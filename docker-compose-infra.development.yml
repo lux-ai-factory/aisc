@@ -1,0 +1,114 @@
+services:
+  # Reverse proxy
+  caddy:
+    image: caddy:2.10.2
+    container_name: caddy
+    restart: always
+    ports:
+      - "443:8005"
+      - "80:8005"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      LOG_FILE: "/data/access.log"
+      CADDY_DOMAIN: ${CADDY_DOMAIN}
+      CADDY_PORT: "8005"
+      CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
+    networks:
+      - backend
+      - frontend
+    # depends_on:
+    #   - a4s-backend
+
+  # MinIO object storage service
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    volumes:
+      - minio_data:/data # Persistent storage
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_USER} # MinIO root username
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD} # MinIO root password
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend
+
+  # MinIO bucket initialization service
+  make_buckets:
+    image: quay.io/minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy # Wait for MinIO to be ready
+    environment:
+      MINIO_ROOT_USER: ${S3_USER} # MinIO credentials for bucket creation
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set minio http://minio:9000 ${S3_USER} ${S3_PASSWORD} &&
+      /usr/bin/mc mb --ignore-existing minio/datasets;
+      /usr/bin/mc mb --ignore-existing minio/artifacts;
+      /usr/bin/mc mb --ignore-existing minio/models &&
+      exit 0;
+      "
+    networks:
+      - backend
+
+  # RabbitMQ Message queue to send the jobs
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq # Persistent storage
+    networks:
+      - backend
+
+  # Redis collects the results.
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data # Persistent storage
+    networks:
+      - backend
+    command: redis-server --protected-mode no
+
+  # PostgreSQL database service
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persistent storage
+    restart: unless-stopped
+    networks:
+      - backend
+
+volumes:
+  minio_data: # Persistent storage for MinIO
+  postgres_data: # Persistent storage for PostgreSQL
+  rabbitmq_data: # Persistent storage for RabbitMQ
+  redis_data: # Persistent storage for Redis
+
+networks:
+  backend:
+  frontend:

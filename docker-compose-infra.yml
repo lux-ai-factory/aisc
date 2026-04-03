@@ -1,0 +1,67 @@
+
+services:
+
+  # MinIO object storage service
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    ports:
+      - "9100:9000"  # S3 API port
+      - "9101:9001"  # Web console port
+    volumes:
+      - ../a4s-data/minio:/data  # Persistent storage
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_USER}        # MinIO root username
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD} # MinIO root password
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # MinIO bucket initialization service
+  make_buckets:
+    image: quay.io/minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy  # Wait for MinIO to be ready
+    environment:
+      MINIO_ROOT_USER: ${S3_USER}        # MinIO credentials for bucket creation
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
+    volumes:
+      - ./tasks/minio_add_bucket.sh:/minio_add_bucket.sh  # Mount initialization script
+    entrypoint: /minio_add_bucket.sh
+
+  # RabbitMQ Message queue to send the jobs
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - ${MQ_PORT}:${MQ_PORT}   # RabbitMQ messaging port
+      - "15672:15672" # RabbitMQ management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${MQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${MQ_PASSWORD}
+
+  # Redis collects the results.
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - ${REDIS_PORT}:${REDIS_PORT}
+    restart: unless-stopped
+
+  # PostgreSQL database service
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres
+    ports:
+      - ${DB_PORT}:${DB_PORT}
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - ../a4s-data/postgres:/var/lib/postgresql/data  # Persistent storage
+    restart: unless-stopped

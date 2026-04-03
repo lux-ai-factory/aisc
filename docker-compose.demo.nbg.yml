@@ -1,0 +1,116 @@
+services:
+  # # Frontend development container
+  a4s-webapp:
+    build: ../a4s-webapp/
+    ports:
+      - "5173:80" # Development server port
+    container_name: a4s-webapp
+    environment:
+      APP_API_URL: ${API_URL_EXTERNAL}
+      APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
+    depends_on:
+      - a4s-backend
+    networks:
+      - frontend
+
+  a4s-backend:
+    build: ../a4s-backend/
+    container_name: a4s-backend
+    environment:
+      S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
+      S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
+      S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
+      S3_URL: ${S3_URL}
+      S3_USER: ${S3_USER}
+      S3_PASSWORD: ${S3_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: ${POSTGRES_DB_HOST}
+      DB_PORT: ${POSTGRES_DB_PORT}
+      A4S_BACKEND_CORS_ALLOWED_ORIGINS: ${A4S_BACKEND_CORS_ALLOWED_ORIGINS}
+      A4S_BACKEND_CSRF_TRUSTED_ORIGINS: ${A4S_BACKEND_CSRF_TRUSTED_ORIGINS}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      ENABLE_SSL_PROXY: true
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  #  Evaluation service development container
+  a4s-eval:
+    build: ../a4s-eval/
+    container_name: a4s-eval
+    # volumes:
+    #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
+    environment:
+      API_URL: ${API_URL} # Address of api-backend
+      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CORS_ORIGINS: "*"
+    depends_on:
+      - a4s-backend
+      #      - a4s-eval-worker
+      - rabbitmq
+      - redis
+    networks:
+      - backend
+  #
+  a4s-eval-worker:
+    build: ../a4s-eval/
+    container_name: a4s-eval-worker
+    # volumes:
+    #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
+    environment:
+      API_URL: ${API_URL} # Address of api-backend
+      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CORS_ORIGINS: "*"
+    depends_on:
+      - a4s-backend
+      - rabbitmq
+      - redis
+    command: "celery -A a4s_eval.celery_worker worker --loglevel=debug"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - celery --app a4s_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend
+
+  a4s-eval-flower:
+    build: ../a4s-eval/
+    container_name: a4s-eval-flower
+    # volumes:
+    #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
+    environment:
+      API_URL: ${API_URL} # Address of api-backend
+      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CORS_ORIGINS: "*"
+    ports:
+      - 5555:5555
+    depends_on:
+      - a4s-backend
+      - rabbitmq
+      - redis
+    command: "celery -A a4s_eval.celery_worker flower"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - celery --app a4s_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend

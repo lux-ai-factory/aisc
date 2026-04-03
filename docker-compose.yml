@@ -1,0 +1,38 @@
+services:
+
+  a4s-backend:
+    image: ghcr.io/lux-ai-factory/a4s-backend:latest
+    ports:
+      - "8000:8000"
+    container_name: backend
+    depends_on:
+      - postgres
+
+
+  a4s-webapp:
+    image: ghcr.io/lux-ai-factory/a4s-webapp:django-port-integrations
+    volumes:
+      - a4s-webapp-node-modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    container_name: webapp
+    depends_on:
+      - a4s-backend
+    env_file:
+      - .env
+
+
+  a4s-eval:
+    image: ghcr.io/lux-ai-factory/a4s-eval:django-port-integrations
+    ports:
+      - "8001:8001"
+    container_name: eval
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+    env_file:
+      - .env
+
+
+volumes:
+  a4s-webapp-node-modules:

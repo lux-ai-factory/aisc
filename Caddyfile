@@ -1,0 +1,54 @@
+(tls-development) {
+  tls internal
+}
+
+(tls-staging) {
+  tls /etc/caddy/aforstest.uni.lux.cert /etc/caddy/aforstest.uni.lux.key
+}
+
+
+{$CADDY_DOMAIN}:{$CADDY_PORT} {
+  log {
+    format console
+    output file {$LOG_FILE} {
+      roll_size 10MB
+      roll_keep 10
+    }
+  }
+
+  import tls-{$CADDY_ENVIRONMENT}
+
+  # Reverse proxy to a4s-backend, Django Admin section
+  handle /admin* {
+    reverse_proxy a4s-backend:8000 {
+        header_up X-Real-IP {remote_host}
+      }
+  }
+
+  # Reverse proxy to a4s-backend, this will serve the static assets need by Django Admin
+  handle /static/admin/* {
+    reverse_proxy a4s-backend:8000 {
+        header_up X-Real-IP {remote_host}
+      }
+  }
+
+  # Should be the backend API, so forward also this path there
+  handle /api/* {
+    reverse_proxy a4s-backend:8000 {
+        header_up X-Real-IP {remote_host}
+      }
+  }
+
+  # Flower 
+  handle /flower/* {
+    reverse_proxy a4s-eval-flower:5555 {
+        header_up X-Real-IP {remote_host}
+      }
+  }
+
+  # Serve the JS frontend by default
+  reverse_proxy  a4s-webapp:80 {
+    header_up X-Real-IP {remote_host}
+  }
+}
+
