@@ -1,21 +1,21 @@
 services:
   # # Frontend development container
-  a4s-webapp:
+  vera-webapp:
     image: ghcr.io/lux-ai-factory/a4s-webapp:wip-plugins
     ports:
       - "5173:80" # Development server port
-    container_name: a4s-webapp
+    container_name: vera-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
     depends_on:
-      - a4s-backend
+      - vera-backend
     networks:
       - frontend
 
-  a4s-backend:
+  vera-backend:
     image: ghcr.io/lux-ai-factory/a4s-backend:wip-plugins
-    container_name: a4s-backend
+    container_name: vera-backend
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
@@ -28,8 +28,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
-      A4S_BACKEND_CORS_ALLOWED_ORIGINS: ${A4S_BACKEND_CORS_ALLOWED_ORIGINS}
-      A4S_BACKEND_CSRF_TRUSTED_ORIGINS: ${A4S_BACKEND_CSRF_TRUSTED_ORIGINS}
+      BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
+      BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       ENABLE_SSL_PROXY: true
       PLUGIN_PATH: ${PLUGIN_PATH}
@@ -47,9 +47,9 @@ services:
       rabbitmq:
         condition: service_started
 
-  a4s-eval-worker:
+  vera-eval-worker:
     image: ghcr.io/lux-ai-factory/a4s-eval:wip-plugins
-    container_name: a4s-eval-worker
+    container_name: vera-eval-worker
     environment:
       API_URL: ${API_URL} # Address of api-backend
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -59,23 +59,23 @@ services:
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
-      - a4s-backend
+      - vera-backend
       - rabbitmq
       - redis
-    command: "celery -A a4s_eval.celery_worker worker --loglevel=info"
+    command: "celery -A vera_eval.celery_worker worker --loglevel=info"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app a4s_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5
     networks:
       - backend
 
-  a4s-eval-flower:
+  vera-eval-flower:
     image: ghcr.io/lux-ai-factory/a4s-eval:wip-plugins
-    container_name: a4s-eval-flower
+    container_name: vera-eval-flower
     environment:
       API_URL: ${API_URL} # Address of api-backend
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -83,16 +83,16 @@ services:
       CORS_ORIGINS: "*"
       FLOWER_URL_PREFIX: flower
     volumes:
-      - /home/deployer/a4splugins:/app/plugins:ro
+      - /home/deployer/plugins:/app/plugins:ro
     depends_on:
-      - a4s-backend
+      - vera-backend
       - rabbitmq
       - redis
-    command: "celery -A a4s_eval.celery_worker flower"
+    command: "celery -A vera_eval.celery_worker flower"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app a4s_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5

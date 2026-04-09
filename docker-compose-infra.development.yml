@@ -18,7 +18,7 @@ services:
       - backend
       - frontend
     # depends_on:
-    #   - a4s-backend
+    #   - vera-backend
 
   # MinIO object storage service
   minio:

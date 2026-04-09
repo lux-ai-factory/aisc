@@ -1,6 +1,6 @@
 services:
 
-  a4s-backend:
+  vera-backend:
     image: ghcr.io/lux-ai-factory/a4s-backend:latest
     ports:
       - "8000:8000"
@@ -9,20 +9,20 @@ services:
       - postgres
 
 
-  a4s-webapp:
+  vera-webapp:
     image: ghcr.io/lux-ai-factory/a4s-webapp:django-port-integrations
     volumes:
-      - a4s-webapp-node-modules:/app/node_modules
+      - vera-webapp-node-modules:/app/node_modules
     ports:
       - "5173:5173"
     container_name: webapp
     depends_on:
-      - a4s-backend
+      - vera-backend
     env_file:
       - .env
 
 
-  a4s-eval:
+  vera-eval:
     image: ghcr.io/lux-ai-factory/a4s-eval:django-port-integrations
     ports:
       - "8001:8001"
@@ -35,4 +35,4 @@ services:
 
 
 volumes:
-  a4s-webapp-node-modules:
+  vera-webapp-node-modules:
