@@ -1,7 +1,7 @@
 services:
   # # Frontend development container
   vera-webapp:
-    image: ghcr.io/lux-ai-factory/a4s-webapp:wip-plugins
+    image: ghcr.io/lux-ai-factory/vera-webapp:wip-plugins
     ports:
       - "5173:80" # Development server port
     container_name: vera-webapp
@@ -14,7 +14,7 @@ services:
       - frontend
 
   vera-backend:
-    image: ghcr.io/lux-ai-factory/a4s-backend:wip-plugins
+    image: ghcr.io/lux-ai-factory/vera-backend:wip-plugins
     container_name: vera-backend
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
@@ -48,7 +48,7 @@ services:
         condition: service_started
 
   vera-eval-worker:
-    image: ghcr.io/lux-ai-factory/a4s-eval:wip-plugins
+    image: ghcr.io/lux-ai-factory/vera-eval:wip-plugins
     container_name: vera-eval-worker
     environment:
       API_URL: ${API_URL} # Address of api-backend
@@ -74,7 +74,7 @@ services:
       - backend
 
   vera-eval-flower:
-    image: ghcr.io/lux-ai-factory/a4s-eval:wip-plugins
+    image: ghcr.io/lux-ai-factory/vera-eval:wip-plugins
     container_name: vera-eval-flower
     environment:
       API_URL: ${API_URL} # Address of api-backend

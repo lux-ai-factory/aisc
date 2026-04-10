@@ -1,7 +1,7 @@
 services:
 
   vera-backend:
-    image: ghcr.io/lux-ai-factory/a4s-backend:latest
+    image: ghcr.io/lux-ai-factory/vera-backend:latest
     ports:
       - "8000:8000"
     container_name: backend
@@ -10,7 +10,7 @@ services:
 
 
   vera-webapp:
-    image: ghcr.io/lux-ai-factory/a4s-webapp:django-port-integrations
+    image: ghcr.io/lux-ai-factory/vera-webapp:django-port-integrations
     volumes:
       - vera-webapp-node-modules:/app/node_modules
     ports:
@@ -23,7 +23,7 @@ services:
 
 
   vera-eval:
-    image: ghcr.io/lux-ai-factory/a4s-eval:django-port-integrations
+    image: ghcr.io/lux-ai-factory/vera-eval:django-port-integrations
     ports:
       - "8001:8001"
     container_name: eval
