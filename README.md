@@ -8,11 +8,13 @@ VERA is a platform for evaluating and assessing risks in AI models.
    ```bash
    git clone --recursive https://github.com/lux-ai-factory/vera.git
    cd vera
+   git submodule foreach 'git checkout master'
    ```
 
    *If you've already cloned without submodules:*
    ```bash
    git submodule update --init --recursive
+   git submodule foreach 'git checkout master'
    ```
    
 ---
