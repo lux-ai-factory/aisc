@@ -1,0 +1,68 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "backend",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "python": "${workspaceFolder}/apps/backend/.venv/bin/python",
+            "args": [
+                "config.asgi:application",
+                "--reload",
+                "--no-access-log"
+            ],
+            "cwd": "${workspaceFolder}/apps/backend",
+            "envFile": "${workspaceFolder}/apps/backend/env.development",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            }
+        },
+        {
+            "name": "eval",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "python": "${workspaceFolder}/apps/eval/.venv/bin/python",
+            "args": [
+                "-A",
+                "vera_eval.celery_worker",
+                "worker"
+            ],
+            "cwd": "${workspaceFolder}/apps/eval",
+            "envFile": "${workspaceFolder}/apps/eval/env.development",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            }
+        },
+        {
+            "name": "eval (flower)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "python": "${workspaceFolder}/apps/eval/.venv/bin/python",
+            "args": [
+                "-A",
+                "vera_eval.celery_worker",
+                "flower"
+            ],
+            "cwd": "${workspaceFolder}/apps/eval",
+            "envFile": "${workspaceFolder}/apps/eval/env.development",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            }
+        },
+        {
+            "name": "webapp",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/apps/webapp",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": [
+                "run",
+                "dev"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
