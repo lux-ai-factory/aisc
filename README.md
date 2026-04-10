@@ -4,8 +4,6 @@ VERA is a platform for evaluating and assessing risks in AI models.
 
 ## 🚀 Getting Started
 
-If you just want to run the full system with all components, use Docker Compose:
-
 1. **Clone the repository and submodules:**
    ```bash
    git clone --recursive https://github.com/lux-ai-factory/vera.git
@@ -16,6 +14,23 @@ If you just want to run the full system with all components, use Docker Compose:
    ```bash
    git submodule update --init --recursive
    ```
+   
+---
+
+## 📁 Repository Structure
+
+This repository consists of three main applications that work in tandem, along with shared libraries for plugin management:
+
+### Applications (`apps/`)
+*   **Webapp (`apps/webapp`)**: A React-based frontend for interacting with the VERA platform.
+*   **Backend (`apps/backend`)**: A Django-based bakend that manages datasets, models, and evaluation requests.
+*   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins.
+
+### Shared Libraries (`shared/`)
+*   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all VERA plugins must implement.
+*   **Plugin Manager (`shared/plugin-manager`)**: A library used by both the backend and evaluation service to discover, load, and execute plugins.
+
+> **Note**: While these shared libraries are typically distributed as separate git repositories and included via `uv`, they are included here as submodules to facilitate local development and ensure compatibility across the entire system.
 
 ---
 
@@ -36,6 +51,8 @@ If you only want to develop and test plugins, you can run the core system in Doc
    ```
 
 Your plugins will be automatically mounted and loaded into the backend and evaluation worker.
+
+   > **Note**: `docker-compose.`**`development`**`.yml` will install the `plugin-interface` and `plugin-manager` from the `shared` folder in this repo 
 
 ### 💻 Developing Core Apps (Webapp, Backend, or Eval)
 
