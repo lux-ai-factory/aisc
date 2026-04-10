@@ -1,15 +1,20 @@
 [submodule "apps/backend"]
 	path = apps/backend
 	url = git@github.com:lux-ai-factory/vera-backend.git
+	branch = master
 [submodule "apps/eval"]
 	path = apps/eval
 	url = git@github.com:lux-ai-factory/vera-eval.git
+	branch = master
 [submodule "apps/webapp"]
 	path = apps/webapp
 	url = git@github.com:lux-ai-factory/vera-webapp.git
+	branch = master
 [submodule "shared/plugin-interface"]
 	path = shared/plugin-interface
 	url = git@github.com:lux-ai-factory/vera-plugin-interface.git
+	branch = master
 [submodule "shared/plugin-manager"]
 	path = shared/plugin-manager
 	url = git@github.com:lux-ai-factory/vera-plugin-manager.git
+	branch = master
