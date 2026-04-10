@@ -105,3 +105,5 @@ uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
 #### 2.2 Run
 
 You can run the apps with the included run configurations in `.vscode/` for **VSCode** or `.run/` for **JetBrains IDEs**.
+
+> **Note**: `backend` and `eval` will use the `env.development` files in their respective folders (`apps/backend/env.development`, `apps/eval/env.development`) when running these run configurations.
