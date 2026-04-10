@@ -68,13 +68,14 @@ This starts PostgreSQL, RabbitMQ, Redis, MinIO, and Caddy.
 
 Make sure you have `node` (for webapp) and `uv` (for Python apps) installed.
 
+#### 2.1 Setup
+
 **Webapp (React):**
+
 ```bash
 cd apps/webapp
 npm i
 ```
-
-You can run the app with the included run configuration in `.vscode/` for VSCode or `.run/` for JetBrains IDEs.
 
 **Backend (Django):**
 ```bash
@@ -89,8 +90,6 @@ uv run manage.py migrate
 uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
 ```
 
-You can run the app with the included run configuration in `.vscode/` for VSCode or `.run/` for JetBrains IDEs.
-
 **Evaluation Service (Celery Worker):**
 ```bash
 cd apps/eval
@@ -103,4 +102,6 @@ uv sync
 uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
 ```
 
-You can run the app with the included run configuration in `.vscode/` for VSCode or `.run/` for JetBrains IDEs.
+#### 2.2 Run
+
+You can run the apps with the included run configurations in `.vscode/` for **VSCode** or `.run/` for **JetBrains IDEs**.
