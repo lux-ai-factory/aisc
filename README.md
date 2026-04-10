@@ -52,7 +52,7 @@ If you only want to develop and test plugins, you can run the core system in Doc
 
 Your plugins will be automatically mounted and loaded into the backend and evaluation worker.
 
-   > **Note**: `docker-compose.`**`development`**`.yml` will install the `plugin-interface` and `plugin-manager` from the `shared` folder in this repo 
+   > **Note**: `docker-compose.development.yml` will install the `plugin-interface` and `plugin-manager` from the `shared` folder in this repo 
 
 ### 💻 Developing Core Apps (Webapp, Backend, or Eval)
 
@@ -71,23 +71,36 @@ Make sure you have `node` (for webapp) and `uv` (for Python apps) installed.
 **Webapp (React):**
 ```bash
 cd apps/webapp
-npm install
-npm run dev
+npm i
 ```
+
+You can run the app with the included run configuration in `.vscode/` for VSCode or `.run/` for JetBrains IDEs.
 
 **Backend (Django):**
 ```bash
 cd apps/backend
-uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
+uv sync
 uv run manage.py migrate
-uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000
 ```
+
+  > **Note**: to run the app with the local `plugin-manager` and `plugin-interface` run the following command
+
+```bash
+uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
+```
+
+You can run the app with the included run configuration in `.vscode/` for VSCode or `.run/` for JetBrains IDEs.
 
 **Evaluation Service (Celery Worker):**
 ```bash
 cd apps/eval
-uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
-uv run celery -A vera_eval.celery_worker worker --loglevel=debug
+uv sync
 ```
 
-*(Note: Ensure your local environment variables in `env.development` are configured to point to `localhost` or `127.0.0.1` instead of container names like `rabbitmq` or `postgres` if you are running outside of the Docker network.)*
+  > **Note**: to run the app with the local `plugin-manager` and `plugin-interface` run the following command
+
+```bash
+uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
+```
+
+You can run the app with the included run configuration in `.vscode/` for VSCode or `.run/` for JetBrains IDEs.
