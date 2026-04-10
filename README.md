@@ -87,7 +87,7 @@ uv run manage.py migrate
   > **Note**: to run the app with the local `plugin-manager` and `plugin-interface` run the following command
 
 ```bash
-uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
+uv pip install --no-deps -e ../../shared/plugin-manager -e ../../shared/plugin-interface
 ```
 
 **Evaluation Service (Celery Worker):**
@@ -99,7 +99,7 @@ uv sync
   > **Note**: to run the app with the local `plugin-manager` and `plugin-interface` run the following command
 
 ```bash
-uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
+uv pip install --no-deps -e ../../shared/plugin-manager -e ../../shared/plugin-interface
 ```
 
 #### 2.2 Run
@@ -107,3 +107,5 @@ uv pip install -e ../../shared/plugin-manager -e ../../shared/plugin-interface
 You can run the apps with the included run configurations in `.vscode/` for **VSCode** or `.run/` for **JetBrains IDEs**.
 
 > **Note**: `backend` and `eval` will use the `env.development` files in their respective folders (`apps/backend/env.development`, `apps/eval/env.development`) when running these run configurations.
+
+> Make sure you update the **PLUGIN_PATH** in `apps/backend/env.development`, `apps/eval/env.development`
