@@ -7,8 +7,7 @@
     <envs>
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
-    <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="uv (backend) (3)" />
+    <option name="SDK_HOME" value="$PROJECT_DIR$/apps/backend/.venv/bin/python" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/apps/backend" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />

@@ -8,13 +8,18 @@ VERA is a platform for evaluating and assessing risks in AI models.
    ```bash
    git clone --recursive https://github.com/lux-ai-factory/vera.git
    cd vera
-   git submodule foreach 'git checkout master'
+   git submodule foreach 'git checkout master; git pull'
    ```
 
    *If you've already cloned without submodules:*
    ```bash
    git submodule update --init --recursive
-   git submodule foreach 'git checkout master'
+   git submodule foreach 'git checkout master; git pull'
+   ```
+   
+   *If the pugin-interface or plugin-manager submodules are not updated:*
+   ```bash
+    git submodule foreach 'uv sync --upgrade-package vera-plugin-manager || :; uv sync --upgrade-package vera-plugin-interface || :'
    ```
    
 ---
@@ -107,6 +112,8 @@ uv pip install --no-deps -e ../../shared/plugin-manager -e ../../shared/plugin-i
 #### 2.2 Run
 
 You can run the apps with the included run configurations in `.vscode/` for **VSCode** or `.run/` for **JetBrains IDEs**.
+
+> **Note**: In **JetBrains IDEs** you will need to setup the python interpreters in the rin configurations to point to the virtual environments in each app
 
 > **Note**: `backend` and `eval` will use the `env.development` files in their respective folders (`apps/backend/env.development`, `apps/eval/env.development`) when running these run configurations.
 

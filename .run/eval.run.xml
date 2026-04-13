@@ -7,8 +7,7 @@
     <envs>
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
-    <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="uv (eval) (2)" />
+    <option name="SDK_HOME" value="$PROJECT_DIR$/apps/eval/.venv/bin/python" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/apps/eval" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -16,7 +15,7 @@
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="true" />
     <option name="SCRIPT_NAME" value="celery" />
-    <option name="PARAMETERS" value="-A vera_eval.celery_worker worker" />
+    <option name="PARAMETERS" value="-A vera_eval.celery_worker:celery_app worker" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="true" />
