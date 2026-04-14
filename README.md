@@ -19,7 +19,7 @@ VERA is a platform for evaluating and assessing risks in AI models.
    
    *If the plugin-interface or plugin-manager submodules are not updated:*
    ```bash
-    GIT_ALLOW_PROTOCOL=file git submodule foreach 'uv sync --upgrade-package vera-plugin-manager || :; uv sync --upgrade-package vera-plugin-interface || :'
+    GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package vera-plugin-manager || :; uv sync --upgrade-package vera-plugin-interface || :'
    ```
    
 ---
