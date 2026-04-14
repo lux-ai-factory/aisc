@@ -17,9 +17,9 @@ VERA is a platform for evaluating and assessing risks in AI models.
    git submodule foreach 'git checkout master; git pull'
    ```
    
-   *If the pugin-interface or plugin-manager submodules are not updated:*
+   *If the plugin-interface or plugin-manager submodules are not updated:*
    ```bash
-    git submodule foreach 'uv sync --upgrade-package vera-plugin-manager || :; uv sync --upgrade-package vera-plugin-interface || :'
+    GIT_ALLOW_PROTOCOL=file git submodule foreach 'uv sync --upgrade-package vera-plugin-manager || :; uv sync --upgrade-package vera-plugin-interface || :'
    ```
    
 ---
