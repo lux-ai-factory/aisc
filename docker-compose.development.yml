@@ -37,6 +37,10 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       PLUGIN_PATH: ${PLUGIN_PATH}
+      PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
+      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
+      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
     networks:
       - backend
     depends_on:
@@ -74,6 +78,10 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
       PLUGIN_PATH: ${PLUGIN_PATH}
+      PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
+      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
+      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
     depends_on:
       - vera-backend
       - rabbitmq
@@ -106,7 +114,12 @@ services:
       - vera-backend
       - rabbitmq
       - redis
-    command: "celery -A vera_eval.celery_worker flower"
+    volumes:
+      - ${PLUGIN_PATH}:/app/plugins
+      - ./shared:/app/shared
+    command: >
+      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
+      && celery -A vera_eval.celery_worker flower"
     healthcheck:
       test:
         - "CMD-SHELL"
