@@ -25,4 +25,4 @@ services:
           fi
         done
     volumes:
-      - ./${PLUGIN_PATH:?PLUGIN_PATH is required}:/downloads
+      - ${PLUGIN_PATH:?PLUGIN_PATH is required}:/downloads
