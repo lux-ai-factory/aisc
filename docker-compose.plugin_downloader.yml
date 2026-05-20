@@ -1,0 +1,28 @@
+services:
+  plugin-downloader:
+    image: alpine:latest
+    container_name: plugin-downloader
+    environment:
+      GH_TOKEN: ${GH_TOKEN:?GH_TOKEN is required}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        apk --no-cache add git github-cli
+
+        cd /downloads
+
+        for repo in \
+          vera-plugin-performance \
+          vera-plugin-data-evaluation \
+          vera-plugin-llm-eval \
+          vera-plugin-counterfactual
+        do
+          if [ -d "$$repo/.git" ]; then
+            cd $$repo && gh repo sync && cd /downloads
+          else
+            gh repo clone https://github.com/lux-ai-factory/$$repo.git
+          fi
+        done
+    volumes:
+      - ${PLUGIN_PATH:?PLUGIN_PATH is required}:/downloads
