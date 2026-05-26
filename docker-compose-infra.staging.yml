@@ -11,14 +11,14 @@ services:
       - /home/deployer/data/caddy:/data
     environment:
       LOG_FILE: "/data/access.log"
-      CADDY_DOMAIN: "https://veratest.uni.lux"
+      CADDY_DOMAIN: "https://aisctest.uni.lux"
       CADDY_PORT: "8005"
       CADDY_ENVIRONMENT: "staging"
     networks:
       - backend
       - frontend
     depends_on:
-      - vera-backend
+      - aisc-backend
 
   # MinIO object storage service
   minio:

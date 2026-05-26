@@ -18,7 +18,7 @@ services:
       - backend
       - frontend
     # depends_on:
-    #   - vera-backend
+    #   - aisc-backend
 
   # MinIO object storage service
   minio:
