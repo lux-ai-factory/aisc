@@ -1,7 +1,7 @@
 services:
 
-  vera-backend:
-    image: ghcr.io/lux-ai-factory/vera-backend:latest
+  aisc-backend:
+    image: ghcr.io/lux-ai-factory/aisc-backend:latest
     ports:
       - "8000:8000"
     container_name: backend
@@ -9,21 +9,21 @@ services:
       - postgres
 
 
-  vera-webapp:
-    image: ghcr.io/lux-ai-factory/vera-webapp:django-port-integrations
+  aisc-webapp:
+    image: ghcr.io/lux-ai-factory/aisc-webapp:django-port-integrations
     volumes:
-      - vera-webapp-node-modules:/app/node_modules
+      - aisc-webapp-node-modules:/app/node_modules
     ports:
       - "5173:5173"
     container_name: webapp
     depends_on:
-      - vera-backend
+      - aisc-backend
     env_file:
       - .env
 
 
-  vera-eval:
-    image: ghcr.io/lux-ai-factory/vera-eval:django-port-integrations
+  aisc-eval:
+    image: ghcr.io/lux-ai-factory/aisc-eval:django-port-integrations
     ports:
       - "8001:8001"
     container_name: eval
@@ -35,4 +35,4 @@ services:
 
 
 volumes:
-  vera-webapp-node-modules:
+  aisc-webapp-node-modules:

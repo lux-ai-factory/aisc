@@ -1,13 +1,13 @@
-# VERA
+# aisc
 
-VERA is a platform for evaluating and assessing risks in AI models.
+aisc is a platform for evaluating and assessing risks in AI models.
 
 ## 🚀 Getting Started
 
 1. **Clone the repository and submodules:**
    ```bash
-   git clone --recursive git@github.com:lux-ai-factory/vera.git
-   cd vera
+   git clone --recursive git@github.com:lux-ai-factory/aisc.git
+   cd aisc
    git submodule foreach 'git checkout master; git pull'
    ```
 
@@ -19,7 +19,7 @@ VERA is a platform for evaluating and assessing risks in AI models.
    
    *If the plugin-interface or plugin-manager submodules are not updated:*
    ```bash
-    GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package vera-plugin-manager || :; uv sync --upgrade-package vera-plugin-interface || :'
+    GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package aisc-plugin-manager || :; uv sync --upgrade-package aisc-plugin-interface || :'
    ```
    
 ---
@@ -29,12 +29,12 @@ VERA is a platform for evaluating and assessing risks in AI models.
 This repository consists of three main applications that work in tandem, along with shared libraries for plugin management:
 
 ### Applications (`apps/`)
-*   **Webapp (`apps/webapp`)**: A React-based frontend for interacting with the VERA platform.
+*   **Webapp (`apps/webapp`)**: A React-based frontend for interacting with the aisc platform.
 *   **Backend (`apps/backend`)**: A Django-based bakend that manages datasets, models, and evaluation requests.
 *   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins.
 
 ### Shared Libraries (`shared/`)
-*   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all VERA plugins must implement.
+*   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all aisc plugins must implement.
 *   **Plugin Manager (`shared/plugin-manager`)**: A library used by both the backend and evaluation service to discover, load, and execute plugins.
 
 > **Note**: While these shared libraries are typically distributed as separate git repositories and included via `uv`, they are included here as submodules to facilitate local development and ensure compatibility across the entire system.
