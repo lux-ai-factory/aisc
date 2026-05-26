@@ -26,7 +26,7 @@
             "python": "${workspaceFolder}/apps/eval/.venv/bin/python",
             "args": [
                 "-A",
-                "vera_eval.celery_worker",
+                "aisc_eval.celery_worker",
                 "worker"
             ],
             "cwd": "${workspaceFolder}/apps/eval",
@@ -43,7 +43,7 @@
             "python": "${workspaceFolder}/apps/eval/.venv/bin/python",
             "args": [
                 "-A",
-                "vera_eval.celery_worker",
+                "aisc_eval.celery_worker",
                 "flower"
             ],
             "cwd": "${workspaceFolder}/apps/eval",

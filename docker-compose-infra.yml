@@ -9,7 +9,7 @@ services:
       - "9100:9000"  # S3 API port
       - "9101:9001"  # Web console port
     volumes:
-      - ../vera-data/minio:/data  # Persistent storage
+      - ../aisc-data/minio:/data  # Persistent storage
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_USER}        # MinIO root username
@@ -63,5 +63,5 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ../vera-data/postgres:/var/lib/postgresql/data  # Persistent storage
+      - ../aisc-data/postgres:/var/lib/postgresql/data  # Persistent storage
     restart: unless-stopped
