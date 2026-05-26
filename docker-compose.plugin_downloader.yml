@@ -13,10 +13,10 @@ services:
         cd /downloads
 
         for repo in \
-          vera-plugin-performance \
-          vera-plugin-data-evaluation \
-          vera-plugin-llm-eval \
-          vera-plugin-counterfactual
+          aisc-plugin-performance \
+          aisc-plugin-data-evaluation \
+          aisc-plugin-llm-eval \
+          aisc-plugin-counterfactual
         do
           if [ -d "$$repo/.git" ]; then
             cd $$repo && gh repo sync && cd /downloads
