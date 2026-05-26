@@ -1,21 +1,21 @@
 services:
   # # Frontend development container
-  vera-webapp:
-    image: ghcr.io/lux-ai-factory/vera-webapp:wip-plugins
+  aisc-webapp:
+    image: ghcr.io/lux-ai-factory/aisc-webapp:wip-plugins
     ports:
       - "5173:80" # Development server port
-    container_name: vera-webapp
+    container_name: aisc-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
     depends_on:
-      - vera-backend
+      - aisc-backend
     networks:
       - frontend
 
-  vera-backend:
-    image: ghcr.io/lux-ai-factory/vera-backend:wip-plugins
-    container_name: vera-backend
+  aisc-backend:
+    image: ghcr.io/lux-ai-factory/aisc-backend:wip-plugins
+    container_name: aisc-backend
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
@@ -47,9 +47,9 @@ services:
       rabbitmq:
         condition: service_started
 
-  vera-eval-worker:
-    image: ghcr.io/lux-ai-factory/vera-eval:wip-plugins
-    container_name: vera-eval-worker
+  aisc-eval-worker:
+    image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
+    container_name: aisc-eval-worker
     environment:
       API_URL: ${API_URL} # Address of api-backend
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -59,23 +59,23 @@ services:
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
-      - vera-backend
+      - aisc-backend
       - rabbitmq
       - redis
-    command: "celery -A vera_eval.celery_worker worker --loglevel=info"
+    command: "celery -A aisc_eval.celery_worker worker --loglevel=info"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5
     networks:
       - backend
 
-  vera-eval-flower:
-    image: ghcr.io/lux-ai-factory/vera-eval:wip-plugins
-    container_name: vera-eval-flower
+  aisc-eval-flower:
+    image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
+    container_name: aisc-eval-flower
     environment:
       API_URL: ${API_URL} # Address of api-backend
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -85,14 +85,14 @@ services:
     volumes:
       - /home/deployer/plugins:/app/plugins:ro
     depends_on:
-      - vera-backend
+      - aisc-backend
       - rabbitmq
       - redis
-    command: "celery -A vera_eval.celery_worker flower"
+    command: "celery -A aisc_eval.celery_worker flower"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5
