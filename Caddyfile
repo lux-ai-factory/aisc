@@ -3,7 +3,7 @@
 }
 
 (tls-staging) {
-  tls /etc/caddy/veratest.uni.lux.cert /etc/caddy/veratest.uni.lux.key
+  tls /etc/caddy/aisctest.uni.lux.cert /etc/caddy/aisctest.uni.lux.key
 }
 
 
@@ -18,36 +18,36 @@
 
   import tls-{$CADDY_ENVIRONMENT}
 
-  # Reverse proxy to vera-backend, Django Admin section
+  # Reverse proxy to aisc-backend, Django Admin section
   handle /admin* {
-    reverse_proxy vera-backend:8000 {
+    reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
   }
 
-  # Reverse proxy to vera-backend, this will serve the static assets need by Django Admin
+  # Reverse proxy to aisc-backend, this will serve the static assets need by Django Admin
   handle /static/admin/* {
-    reverse_proxy vera-backend:8000 {
+    reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
   }
 
   # Should be the backend API, so forward also this path there
   handle /api/* {
-    reverse_proxy vera-backend:8000 {
+    reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
   }
 
   # Flower 
   handle /flower/* {
-    reverse_proxy vera-eval-flower:5555 {
+    reverse_proxy aisc-eval-flower:5555 {
         header_up X-Real-IP {remote_host}
       }
   }
 
   # Serve the JS frontend by default
-  reverse_proxy  vera-webapp:80 {
+  reverse_proxy  aisc-webapp:80 {
     header_up X-Real-IP {remote_host}
   }
 }

@@ -1,25 +1,25 @@
 services:
   # # Frontend development container
-  vera-webapp:
+  aisc-webapp:
     build: apps/webapp/
     ports:
       - "5173:80" # Development server port
-    image: vera-webapp:latest
+    image: aisc-webapp:latest
     pull_policy: never
-    container_name: vera-webapp
+    container_name: aisc-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
     depends_on:
-      - vera-backend
+      - aisc-backend
     networks:
       - frontend
 
-  vera-backend:
+  aisc-backend:
     build: apps/backend/
-    image: vera-backend:latest
+    image: aisc-backend:latest
     pull_policy: never
-    container_name: vera-backend
+    container_name: aisc-backend
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
@@ -55,21 +55,21 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
+      - ${PLUGIN_PATH}:/app/plugins
+      - ./shared:/app/shared
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
       && uv run manage.py migrate --noinput 
       && uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-access-log"
 
   #
-  vera-eval-worker:
+  aisc-eval-worker:
     platform: linux/amd64
     build:
       context: apps/eval/
-    image: vera-eval:latest
+    image: aisc-eval:latest
     pull_policy: never
-    container_name: vera-eval-worker
+    container_name: aisc-eval-worker
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
@@ -83,7 +83,7 @@ services:
       PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
       PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
     depends_on:
-      - vera-backend
+      - aisc-backend
       - rabbitmq
       - redis
     networks:
@@ -93,13 +93,13 @@ services:
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A vera_eval.celery_worker worker --loglevel=debug"
+      && celery -A aisc_eval.celery_worker worker --loglevel=debug"
 
-  vera-eval-flower:
+  aisc-eval-flower:
     platform: linux/amd64
-    image: vera-eval:latest
+    image: aisc-eval:latest
     pull_policy: never
-    container_name: vera-eval-flower
+    container_name: aisc-eval-flower
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
@@ -110,8 +110,8 @@ services:
     ports:
       - "5555:5555"
     depends_on:
-      - vera-eval-worker
-      - vera-backend
+      - aisc-eval-worker
+      - aisc-backend
       - rabbitmq
       - redis
     volumes:
@@ -119,11 +119,11 @@ services:
       - ./shared:/app/shared
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A vera_eval.celery_worker flower"
+      && celery -A aisc_eval.celery_worker flower"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5

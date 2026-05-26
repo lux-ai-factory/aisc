@@ -1,21 +1,21 @@
 services:
   # # Frontend development container
-  vera-webapp:
-    build: ../vera-webapp/
+  aisc-webapp:
+    build: ../aisc-webapp/
     ports:
       - "5173:80" # Development server port
-    container_name: vera-webapp
+    container_name: aisc-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
     depends_on:
-      - vera-backend
+      - aisc-backend
     networks:
       - frontend
 
-  vera-backend:
-    build: ../vera-backend/
-    container_name: vera-backend
+  aisc-backend:
+    build: ../aisc-backend/
+    container_name: aisc-backend
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
@@ -45,9 +45,9 @@ services:
         condition: service_started
 
   #  Evaluation service development container
-  vera-eval:
-    build: ../vera-eval/
-    container_name: vera-eval
+  aisc-eval:
+    build: ../aisc-eval/
+    container_name: aisc-eval
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
@@ -56,16 +56,16 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
     depends_on:
-      - vera-backend
-      #      - vera-eval-worker
+      - aisc-backend
+      #      - aisc-eval-worker
       - rabbitmq
       - redis
     networks:
       - backend
   #
-  vera-eval-worker:
-    build: ../vera-eval/
-    container_name: vera-eval-worker
+  aisc-eval-worker:
+    build: ../aisc-eval/
+    container_name: aisc-eval-worker
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
@@ -74,23 +74,23 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
     depends_on:
-      - vera-backend
+      - aisc-backend
       - rabbitmq
       - redis
-    command: "celery -A vera_eval.celery_worker worker --loglevel=debug"
+    command: "celery -A aisc_eval.celery_worker worker --loglevel=debug"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5
     networks:
       - backend
 
-  vera-eval-flower:
-    build: ../vera-eval/
-    container_name: vera-eval-flower
+  aisc-eval-flower:
+    build: ../aisc-eval/
+    container_name: aisc-eval-flower
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
@@ -101,14 +101,14 @@ services:
     ports:
       - 5555:5555
     depends_on:
-      - vera-backend
+      - aisc-backend
       - rabbitmq
       - redis
-    command: "celery -A vera_eval.celery_worker flower"
+    command: "celery -A aisc_eval.celery_worker flower"
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app vera_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5
