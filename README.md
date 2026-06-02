@@ -33,6 +33,7 @@ This repository consists of three main applications that work in tandem, along w
 *   **Backend (`apps/backend`)**: A Django-based bakend that manages datasets, models, and evaluation requests.
 *   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins.
 *   **Controls (`apps/controls`)**: A Next.js app for AI-compliance checklists with 1–5 readiness scoring and PDF reporting. Served under `/controls`.
+*   **Qualification (`apps/qualification`)**: A Next.js app that qualifies AI systems against the EU AI Act (Articles 10/12/13/14) and generates system cards, via a LiteLLM completion sidecar and a PDF renderer. Served under `/qualification`.
 
 ### Shared Libraries (`shared/`)
 *   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all aisc plugins must implement.
