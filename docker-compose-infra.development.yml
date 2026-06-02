@@ -99,6 +99,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
+      # Creates the `controls` DB (apps/controls) on a fresh volume.
+      - ./init/controls-db.sql:/docker-entrypoint-initdb.d/10-controls-db.sql:ro
     restart: unless-stopped
     networks:
       - backend

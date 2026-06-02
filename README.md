@@ -32,6 +32,7 @@ This repository consists of three main applications that work in tandem, along w
 *   **Webapp (`apps/webapp`)**: A React-based frontend for interacting with the aisc platform.
 *   **Backend (`apps/backend`)**: A Django-based bakend that manages datasets, models, and evaluation requests.
 *   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins.
+*   **Controls (`apps/controls`)**: A Next.js app for AI-compliance checklists with 1–5 readiness scoring and PDF reporting. Served under `/controls`.
 
 ### Shared Libraries (`shared/`)
 *   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all aisc plugins must implement.
