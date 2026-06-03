@@ -58,8 +58,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins
-      - ./shared:/app/shared
+      - ${PLUGIN_PATH}:/app/plugins:z
+      - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
       && uv run manage.py migrate --noinput 
