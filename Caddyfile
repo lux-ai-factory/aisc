@@ -46,6 +46,13 @@
       }
   }
 
+  # AI-compliance checklists app (apps/controls), served under /controls
+  handle /controls* {
+    reverse_proxy controls-web:3000 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
   # Serve the JS frontend by default
   reverse_proxy  aisc-webapp:80 {
     header_up X-Real-IP {remote_host}
