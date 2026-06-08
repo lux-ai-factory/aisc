@@ -53,6 +53,13 @@
     }
   }
 
+  # EU-AI-Act qualification app (apps/qualification), served under /qualification
+  handle /qualification* {
+    reverse_proxy qualification-web:3000 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
   # Serve the JS frontend by default
   reverse_proxy  aisc-webapp:80 {
     header_up X-Real-IP {remote_host}
