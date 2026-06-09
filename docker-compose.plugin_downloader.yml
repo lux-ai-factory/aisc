@@ -17,6 +17,8 @@ services:
           aisc-plugin-data-evaluation \
           aisc-plugin-fairness \
           aisc-plugin-langbite \
+          aisc-plugin-llm-eval \
+          aisc-plugin-strongreject \
           aisc-plugin-explitest
         do
           if [ -d "$$repo/.git" ]; then
