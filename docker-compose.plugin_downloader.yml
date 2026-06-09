@@ -15,7 +15,9 @@ services:
         for repo in \
           aisc-plugin-performance \
           aisc-plugin-data-evaluation \
-          aisc-plugin-llm-eval
+          aisc-plugin-fairness \
+          aisc-plugin-langbite \
+          aisc-plugin-explitest
         do
           if [ -d "$$repo/.git" ]; then
             cd $$repo && gh repo sync && cd /downloads
