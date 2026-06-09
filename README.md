@@ -1,6 +1,6 @@
-# aisc
+# AI Assessment Sandbox Configurator
 
-aisc is a platform for evaluating and assessing risks in AI models.
+The AI Assessment Sandbox Configurator is a platform for evaluating and assessing risks in AI models.
 
 ## 📚 Documentation
 
