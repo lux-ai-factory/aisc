@@ -132,3 +132,99 @@ services:
       retries: 5
     networks:
       - backend
+
+  # ── AI-compliance checklists app (apps/controls submodule) ──
+  controls-pdf:
+    build: apps/controls/services/pdf_renderer
+    container_name: controls-pdf
+    restart: unless-stopped
+    networks:
+      - backend
+
+  controls-migrate:
+    build: apps/controls
+    container_name: controls-migrate
+    command: >
+      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done && npx prisma db seed"
+    env_file: apps/controls/env.development
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
+  controls-web:
+    build:
+      context: apps/controls
+      args:
+        NEXT_BASE_PATH: /controls
+    container_name: controls-web
+    env_file: apps/controls/env.development
+    depends_on:
+      controls-migrate:
+        condition: service_completed_successfully
+      controls-pdf:
+        condition: service_started
+    ports:
+      - "${CONTROLS_WEB_PORT:-3100}:3000"
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  # ── EU-AI-Act qualification app (apps/qualification submodule) ──
+  # LiteLLM completion sidecar — holds the provider key; the app calls it over HTTP.
+  qualification-llm:
+    build: apps/qualification/services/llm
+    container_name: qualification-llm
+    environment:
+      # Default provider is Mistral; LiteLLM picks the key matching LLM_MODEL.
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL: ${QUALIFICATION_LLM_MODEL:-mistral/mistral-large-latest}
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # System-card PDF renderer sidecar.
+  qualification-pdf:
+    build: apps/qualification/services/system_card_renderer
+    container_name: qualification-pdf
+    restart: unless-stopped
+    networks:
+      - backend
+
+  qualification-migrate:
+    build: apps/qualification
+    container_name: qualification-migrate
+    command: >
+      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
+    env_file: apps/qualification/env.development
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
+  qualification-web:
+    build:
+      context: apps/qualification
+      args:
+        NEXT_BASE_PATH: /qualification
+    container_name: qualification-web
+    # Migration is owned by qualification-migrate; the web container only serves.
+    command: ["npx", "next", "start", "-p", "3000"]
+    env_file: apps/qualification/env.development
+    depends_on:
+      qualification-migrate:
+        condition: service_completed_successfully
+      qualification-llm:
+        condition: service_started
+      qualification-pdf:
+        condition: service_started
+    ports:
+      - "${QUALIFICATION_WEB_PORT:-3200}:3000"
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
