@@ -124,23 +124,7 @@ You can run the apps with the included run configurations in `.vscode/` for **VS
 #### 2.3 Run all the platform via Docker, automatically download default plugins
 
 If you want to just try the platform and play a bit with it, you can run all the infra and the application services using a single compose command.
-Before using it you need to set the GH_TOKEN env variable inside the env.plugin_downloader file. Generate a PAT from Github with valid access scope, 
-set the environment variable and run it:
 ```bash
 docker compose --env-file env.plugin_downloader -f docker-compose.plugin_downloader.yml -f docker-compose-infra.development.yml -f docker-compose.development.yml up
 ```
-If the PAT it valid you should see the plugins in the backend interface and also inside the def_plugin folder.
-```
-
-```
-
-
-
-
-
-
-
-
-
-
 
