@@ -2,6 +2,12 @@
 
 aisc is a platform for evaluating and assessing risks in AI models.
 
+## 📚 Documentation
+
+The official documentation lives in the [**lux-ai-factory/rfc**](https://github.com/lux-ai-factory/rfc) repository. It explains the **architecture** and the **mission** of the AI Assessment Sandbox Configurator, describes the **Catalogue** of tests and controls, and provides the **guide for users**.
+
+As the name suggests, it is also a **Request for Comments**: anyone who wishes to contribute is warmly invited to share their feedback.
+
 ## 🚀 Getting Started
 
 1. **Clone the repository and submodules:**
