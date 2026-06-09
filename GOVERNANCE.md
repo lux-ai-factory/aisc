@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The "AI Assessment Sandbox Configurator" (called "The Project" in the rest of this document) is an open source initiative co-developed and co-maintained by the [Interdisciplinary Centre for Security, Reliability and Trust](https://www.uni.lu/snt-en/) at the University of Luxembourg (called "SnT" in the rest of this document) and by the [Luxembourg Institute of Science and Technology]([https://www.list.lu](https://www.list.lu)) (called "LIST" in the rest of this document). This initiative is funded under the [Luxembourg AI Factory]([https://aifactory.lu/](https://aifactory.lu/)) (Horizon Europe grant agreement n° 101234366).
+The "AI Assessment Sandbox Configurator" (called "The Project" in the rest of this document) is an open source initiative co-developed and co-maintained by the [Interdisciplinary Centre for Security, Reliability and Trust](https://www.uni.lu/snt-en/) at the Université du Luxembourg (called "SnT" in the rest of this document) and by the [Luxembourg Institute of Science and Technology]([https://www.list.lu](https://www.list.lu)) (called "LIST" in the rest of this document). This initiative is funded under the [Luxembourg AI Factory]([https://aifactory.lu/](https://aifactory.lu/)) (Horizon Europe grant agreement n° 101234366).
 
 This document defines the governance model of "The Project", including roles, responsibilities, and decision-making processes.
 
