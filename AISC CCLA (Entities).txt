@@ -1,12 +1,12 @@
 # Contributor License Agreement (CLA) – Corporate ("Agreement")
 
 **Project**: AISC – AI Assessment Sandbox
-**Hosting Institution**: Université du Luxembourg  
+**Hosting Institution**: Université du Luxembourg and Luxembourg Institute of Science and Technology  
 **Unit**: Serval Research Group, Interdisciplinary Centre for Security, Reliability and Trust (SnT)
 
 ---
 
-   Thank you for your interest in contributing to the Université du Luxembourg (the
+   Thank you for your interest in contributing to the Université du Luxembourg and Luxembourg Institute of Science and Technology (the
    "Institution"). In order to clarify the intellectual property license
    granted with Contributions from any person or entity, the Institution
    must have a Contributor License Agreement (CLA) on file that has been
@@ -136,7 +136,6 @@
 
 
 
-
 This is a legal contract containing Personally Identifiable Information. 
 Please refer to [include link Privacy policy] for the policy 
 governing how this information is used and shared.
@@ -160,6 +159,6 @@ Schedule B
 ---
 **Copyright Notice**  
 All contributions are incorporated into the Work:  
-© 2024–2025 Université du Luxembourg.  
+© 2024–2026 Université du Luxembourg and Luxembourg Institute of Science and Technology.  
 Originally developed at the Serval Research Group, SnT.
 
