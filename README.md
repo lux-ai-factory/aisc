@@ -144,7 +144,7 @@ By submitting contributions, you agree to the [CLA](CLA/CLA_VERA.md) and license
 ##  License
 
 This project is licensed under the [Apache License 2.0](LICENSE).  
-© 2024–2025 Université du Luxembourg. Originally developed at the Serval Research Group, SnT.
+© 2024–2026 University of Luxembourg and Luxembourg Institute of Science and Technology.
 
 ---
 
