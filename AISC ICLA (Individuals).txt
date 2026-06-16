@@ -2,7 +2,7 @@
 
 **Project**: AISC – AI Assessment Sandbox
 **Hosting Institution**: Université du Luxembourg and Luxembourg Institute of Science and Technology  
-**Unit**: Serval Research Group, Interdisciplinary Centre for Security, Reliability and Trust (SnT)
+**Unit**: SerVal Research Group, Interdisciplinary Centre for Security, Reliability and Trust (SnT)
 
 ---
 
@@ -149,5 +149,5 @@ governing how this information is used and shared.
 **Copyright Notice**  
 All contributions are incorporated into the Work:  
 © 2024–2026 Université du Luxembourg and Luxembourg Institute of Science and Technology.  
-Originally developed at the Serval Research Group, SnT.
+Originally developed at the SerVal Research Group, SnT.
 

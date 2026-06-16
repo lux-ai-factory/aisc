@@ -24,4 +24,8 @@ You do not need to sign the CLA separately — by submitting a pull request, iss
 We may request changes or ask questions before merging your contribution.
 We reserve the right to reject a pull request for any reason.
 
+## Maintainers
+
+The AISC project is co-developed and co-maintained by the **Université du Luxembourg** and the **Luxembourg Institute of Science and Technology (LIST)**, within the **Interdisciplinary Centre for Security, Reliability and Trust (SnT)** and the **SerVal Research Group**. This initiative is funded under the [Luxembourg AI Factory](https://aifactory.lu/) (Horizon Europe grant agreement n° 101234366).
+
 Thank you for contributing to the AISC project!
