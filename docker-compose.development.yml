@@ -261,7 +261,11 @@ services:
       context: apps/catalogue/frontend
       args:
         VITE_API_URL: http://localhost:${CATALOGUE_BACKEND_PORT:-8010}
-        VITE_ENABLE_ADD_ENTRIES: ${VITE_ENABLE_ADD_ENTRIES:-false}
+        # All catalogue features on by default for the demo.
+        VITE_ENABLE_ADD_ENTRIES: ${VITE_ENABLE_ADD_ENTRIES:-true}
+        VITE_ENABLE_SANDBOX: ${VITE_ENABLE_SANDBOX:-true}
+        VITE_ENABLE_WIZARD: ${VITE_ENABLE_WIZARD:-true}
+        VITE_WIZARD_URL: ${VITE_WIZARD_URL:-http://localhost:8090}
     container_name: catalogue-frontend
     depends_on:
       - catalogue-backend
