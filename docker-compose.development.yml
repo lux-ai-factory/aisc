@@ -299,7 +299,9 @@ services:
       context: apps/wizard/frontend
       args:
         VITE_WIZARD_URL: http://localhost/wizard
-        VITE_CATALOGUE_URL: http://localhost:${CATALOGUE_BACKEND_PORT:-8010}
+        # The catalogue UI (frontend), for the wizard's "← Back to catalogue" links
+        # — NOT the catalogue backend API.
+        VITE_CATALOGUE_URL: http://localhost:${CATALOGUE_WEB_PORT:-3000}
     container_name: wizard-frontend
     depends_on:
       - wizard
