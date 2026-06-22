@@ -245,7 +245,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Demo link: the controls app, for Install + installed-count.
-      - CONTROLS_APP_URL=http://controls-web:3000
+      # controls-web serves under basePath /controls, so its API is /controls/api/...
+      - CONTROLS_APP_URL=http://controls-web:3000/controls
     volumes:
       - catalogue_sqlite:/app/data
     ports:
