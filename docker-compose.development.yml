@@ -228,3 +228,47 @@ services:
     networks:
       - backend
       - frontend
+
+  # ── Catalogue of AI tests & controls (apps/catalogue submodule) ──
+  # Browse/filter tests & controls; the "Install" button pushes a control into
+  # the controls app (controls-web) as a reusable checklist template, and the
+  # per-tab summary counts installed checklists via controls-web.
+  catalogue-backend:
+    build:
+      context: apps/catalogue/backend
+    container_name: catalogue-backend
+    environment:
+      - DATABASE_URL=sqlite:///./data/Class_Diagram.db
+      # LLM for the "Add control" ingest (via the `llm` library).
+      - LLM_MODEL=${LLM_MODEL:-mistral/mistral-large-latest}
+      - LLM_MISTRAL_KEY=${LLM_MISTRAL_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Demo link: the controls app, for Install + installed-count.
+      - CONTROLS_APP_URL=http://controls-web:3000
+    volumes:
+      - catalogue_sqlite:/app/data
+    ports:
+      - "${CATALOGUE_BACKEND_PORT:-8010}:8000"
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  catalogue-frontend:
+    build:
+      context: apps/catalogue/frontend
+      args:
+        VITE_API_URL: http://localhost:${CATALOGUE_BACKEND_PORT:-8010}
+        VITE_ENABLE_ADD_ENTRIES: ${VITE_ENABLE_ADD_ENTRIES:-false}
+    container_name: catalogue-frontend
+    depends_on:
+      - catalogue-backend
+    ports:
+      - "${CATALOGUE_WEB_PORT:-3010}:3000"
+    restart: unless-stopped
+    networks:
+      - frontend
+
+volumes:
+  catalogue_sqlite:

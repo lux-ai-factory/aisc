@@ -26,3 +26,7 @@
 	path = apps/qualification
 	url = https://github.com/lux-ai-factory/aisc-qualification.git
 	branch = main
+[submodule "apps/catalogue"]
+	path = apps/catalogue
+	url = https://github.com/lux-ai-factory/catalogue.git
+	branch = feat/catalogue-controls-sync
