@@ -60,6 +60,15 @@
     }
   }
 
+  # Test/control selection wizard (apps/wizard), served under /wizard.
+  # handle_path strips the /wizard prefix: the FastAPI app serves at /api/* and
+  # root_path=/wizard (WIZARD_ROOT_PATH) only fixes generated URLs, not matching.
+  handle_path /wizard* {
+    reverse_proxy wizard:8090 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
   # Serve the JS frontend by default
   reverse_proxy  aisc-webapp:80 {
     header_up X-Real-IP {remote_host}
