@@ -1,2 +1,5 @@
 /.idea/
 def_plugins/
+
+# local plugin clones (setup_plugins.sh)
+plugins/
