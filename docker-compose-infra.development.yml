@@ -114,7 +114,13 @@ services:
     # Pin a version. VERIFY the latest stable at https://www.keycloak.org/downloads
     image: quay.io/keycloak/keycloak:26.6.3
     container_name: keycloak
-    command: start-dev          # dev mode: plain HTTP, relaxed hostname checks (NOT for prod)
+    # --import-realm imports any realm file in /opt/keycloak/data/import/ on startup,
+    # but ONLY creates realms that don't already exist (existing realms are left untouched).
+    # So on a FRESH keycloak DB this recreates the whole `aisc` realm automatically.
+    command: start-dev --import-realm
+    volumes:
+      # Mount the exported realm into Keycloak's import dir (read-only).
+      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
     environment:
       # --- first-run admin user for the Keycloak admin console (Keycloak 26+) ---
       # (For Keycloak < 26 these were KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD.)
