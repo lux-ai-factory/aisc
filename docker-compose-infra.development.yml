@@ -138,8 +138,27 @@ services:
     networks:
       - backend
 
+  # immudb — the tamper-proof AUDIT LOG ledger. Every app's "who did what" lands here (via the backend's
+  # /audit endpoint). Self-contained (its own embedded storage — no external DB needed, unlike Keycloak).
+  # Verified vs docs.immudb.io: gRPC 3322, web console 8080, env vars IMMUDB_*, data dir IMMUDB_DIR.
+  immudb:
+    image: codenotary/immudb:1.11.1     # pinned; latest stable on Docker Hub
+    container_name: immudb
+    environment:
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}   # dev admin password (from env)
+      IMMUDB_FORCE_ADMIN_PASSWORD: "true"               # apply that password at startup (skip change-on-first-login)
+      IMMUDB_DIR: /var/lib/immudb                        # data folder (default ./data) -> the mounted volume
+    volumes:
+      - immudb_data:/var/lib/immudb     # persist the ledger
+    ports:
+      - "3322:3322"             # gRPC — the Django Python SDK connects here
+      - "8086:8080"             # web console (host 8086 -> container 8080; 8080/8081 already taken)
+    networks:
+      - backend
+
 
 volumes:
+  immudb_data: # Persistent storage for the immudb ledger
   minio_data: # Persistent storage for MinIO
   postgres_data: # Persistent storage for PostgreSQL
   rabbitmq_data: # Persistent storage for RabbitMQ
