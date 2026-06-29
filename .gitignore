@@ -1,8 +1,2 @@
 /.idea/
 def_plugins/
-
-# Personal, local-only notes — never commit
-personal-docs/
-
-# Local plugin folder (PLUGIN_PATH points here; machine-specific content)
-plugins/
