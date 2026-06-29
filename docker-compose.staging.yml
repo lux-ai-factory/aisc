@@ -8,6 +8,8 @@ services:
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
+      # Keycloak URL injected into the built webapp JS at container start (env.sh replaces APP_KEYCLOAK_URL).
+      APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
     depends_on:
       - aisc-backend
     networks:
@@ -33,6 +35,10 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       ENABLE_SSL_PROXY: true
       PLUGIN_PATH: ${PLUGIN_PATH}
+      # Keycloak token validation (turn auth ON in staging/prod).
+      AUTH_ENABLED: ${AUTH_ENABLED}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     networks:
