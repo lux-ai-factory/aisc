@@ -167,6 +167,9 @@ services:
         NEXT_BASE_PATH: /controls
     container_name: controls-web
     env_file: apps/controls/env.development
+    environment:
+      # the server-side audit forwarder posts here (service name on the backend network, not localhost)
+      AISC_BACKEND_URL: http://aisc-backend:8000
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
