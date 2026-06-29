@@ -222,6 +222,8 @@ services:
       args:
         NEXT_BASE_PATH: /qualification
     container_name: qualification-web
+    environment:
+      AISC_BACKEND_URL: http://aisc-backend:8000
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
     env_file: apps/qualification/env.development
