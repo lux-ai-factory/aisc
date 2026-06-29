@@ -46,12 +46,17 @@ services:
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
       PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
       PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
+      # immudb audit ledger — inside docker the host is the SERVICE NAME, not localhost.
+      IMMUDB_URL: immudb:3322
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
     networks:
       - backend
     depends_on:
       postgres:
         condition: service_started
       minio:
+        condition: service_healthy
+      immudb:
         condition: service_healthy
       redis:
         condition: service_started
@@ -162,6 +167,9 @@ services:
         NEXT_BASE_PATH: /controls
     container_name: controls-web
     env_file: apps/controls/env.development
+    environment:
+      # the server-side audit forwarder posts here (service name on the backend network, not localhost)
+      AISC_BACKEND_URL: http://aisc-backend:8000
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
@@ -214,6 +222,8 @@ services:
       args:
         NEXT_BASE_PATH: /qualification
     container_name: qualification-web
+    environment:
+      AISC_BACKEND_URL: http://aisc-backend:8000
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
     env_file: apps/qualification/env.development
