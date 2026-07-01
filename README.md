@@ -1,6 +1,12 @@
-# aisc
+# AI Assessment Sandbox Configurator
 
-aisc is a platform for evaluating and assessing risks in AI models.
+The AI Assessment Sandbox Configurator is a platform for evaluating and assessing risks in AI models.
+
+## 📚 Documentation
+
+The official documentation lives in the [**lux-ai-factory/rfc**](https://github.com/lux-ai-factory/rfc) repository. It explains the **architecture** and the **mission** of the AI Assessment Sandbox Configurator, describes the **Catalogue** of tests and controls, and provides the **guide for users**.
+
+As the name suggests, it is also a **Request for Comments**: anyone who wishes to contribute is warmly invited to share their feedback.
 
 ## 🚀 Getting Started
 
@@ -19,7 +25,7 @@ aisc is a platform for evaluating and assessing risks in AI models.
    
    *If the plugin-interface or plugin-manager submodules are not updated:*
    ```bash
-    GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package aisc-plugin-manager || :; uv sync --upgrade-package aisc-plugin-interface || :'
+    GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package aisc-plugin-manager || :'
    ```
    
 ---
@@ -32,6 +38,8 @@ This repository consists of three main applications that work in tandem, along w
 *   **Webapp (`apps/webapp`)**: A React-based frontend for interacting with the aisc platform.
 *   **Backend (`apps/backend`)**: A Django-based bakend that manages datasets, models, and evaluation requests.
 *   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins.
+*   **Controls (`apps/controls`)**: A Next.js app for AI-compliance checklists with 1–5 readiness scoring and PDF reporting. Served under `/controls`.
+*   **Qualification (`apps/qualification`)**: A Next.js app that qualifies AI systems against the EU AI Act (Articles 10/12/13/14) and generates system cards, via a LiteLLM completion sidecar and a PDF renderer. Served under `/qualification`.
 
 ### Shared Libraries (`shared/`)
 *   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all aisc plugins must implement.
@@ -122,23 +130,18 @@ You can run the apps with the included run configurations in `.vscode/` for **VS
 #### 2.3 Run all the platform via Docker, automatically download default plugins
 
 If you want to just try the platform and play a bit with it, you can run all the infra and the application services using a single compose command.
-Before using it you need to set the GH_TOKEN env variable inside the env.plugin_downloader file. Generate a PAT from Github with valid access scope, 
-set the environment variable and run it:
 ```bash
 docker compose --env-file env.plugin_downloader -f docker-compose.plugin_downloader.yml -f docker-compose-infra.development.yml -f docker-compose.development.yml up
 ```
-If the PAT it valid you should see the plugins in the backend interface and also inside the def_plugin folder.
-```
+##  Contributing
 
-```
+We welcome community contributions! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
+By submitting contributions, you agree to the [CLA](CLA/CLA_VERA.md) and license your work under [Apache 2.0](LICENSE).
 
+---
 
+##  License
 
-
-
-
-
-
-
-
+This project is licensed under the [Apache License 2.0](LICENSE).  
+© 2024–2026 Université du Luxembourg and Luxembourg Institute of Science and Technology.
