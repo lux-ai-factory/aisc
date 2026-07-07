@@ -2,8 +2,6 @@ services:
   # # Frontend development container
   aisc-webapp:
     build: apps/webapp/
-    ports:
-      - "5173:80" # Development server port
     image: aisc-webapp:latest
     pull_policy: never
     container_name: aisc-webapp
@@ -62,8 +60,6 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    ports:
-      - "8000:8000"
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
@@ -84,6 +80,7 @@ services:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
       API_URL: ${API_URL} # Address of api-backend
+      API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
@@ -113,12 +110,10 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
-      API_URL: ${API_URL} # Address of api-backend
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
-    ports:
-      - "5555:5555"
+      FLOWER_URL_PREFIX: flower
     depends_on:
       - aisc-eval-worker
       - aisc-backend
@@ -175,8 +170,6 @@ services:
         condition: service_completed_successfully
       controls-pdf:
         condition: service_started
-    ports:
-      - "${CONTROLS_WEB_PORT:-3100}:3000"
     restart: unless-stopped
     networks:
       - backend
@@ -234,8 +227,6 @@ services:
         condition: service_started
       qualification-pdf:
         condition: service_started
-    ports:
-      - "${QUALIFICATION_WEB_PORT:-3200}:3000"
     restart: unless-stopped
     networks:
       - backend

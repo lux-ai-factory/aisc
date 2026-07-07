@@ -58,6 +58,7 @@ services:
     container_name: aisc-eval-worker
     environment:
       API_URL: ${API_URL} # Address of api-backend
+      API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       PLUGIN_PATH: ${PLUGIN_PATH}

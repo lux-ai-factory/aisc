@@ -52,6 +52,7 @@ services:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
       API_URL: ${API_URL} # Address of api-backend
+      API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
