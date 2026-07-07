@@ -32,6 +32,7 @@ services:
       BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       ENABLE_SSL_PROXY: true
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     networks:
       - backend
     depends_on:
@@ -56,6 +57,7 @@ services:
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     depends_on:
       - aisc-backend
       #      - aisc-eval-worker
