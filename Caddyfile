@@ -32,6 +32,11 @@
       }
   }
 
+  # Internal API should only be accessible inside the containers, block all external access
+  handle /api/v1/internal/* {
+    respond "Forbidden - Internal Service Only" 403
+  }
+
   # Should be the backend API, so forward also this path there
   handle /api/* {
     reverse_proxy aisc-backend:8000 {
@@ -61,8 +66,9 @@
   }
 
   # Serve the JS frontend by default
-  reverse_proxy  aisc-webapp:80 {
-    header_up X-Real-IP {remote_host}
+  handle {
+    reverse_proxy aisc-webapp:80 {
+      header_up X-Real-IP {remote_host}
+    }
   }
 }
-

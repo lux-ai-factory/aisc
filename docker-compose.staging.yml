@@ -39,6 +39,7 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     networks:
@@ -58,10 +59,12 @@ services:
     container_name: aisc-eval-worker
     environment:
       API_URL: ${API_URL} # Address of api-backend
+      API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       PLUGIN_PATH: ${PLUGIN_PATH}
       CORS_ORIGINS: "*"
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
