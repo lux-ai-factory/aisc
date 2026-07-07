@@ -47,6 +47,7 @@ services:
       # immudb audit ledger — inside docker the host is the SERVICE NAME, not localhost.
       IMMUDB_URL: immudb:3322
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     networks:
       - backend
     depends_on:
@@ -89,6 +90,7 @@ services:
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
       PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
       PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     depends_on:
       - aisc-backend
       - rabbitmq
