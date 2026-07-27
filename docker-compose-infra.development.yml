@@ -100,11 +100,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
       # Creates the `controls` DB (apps/controls) on a fresh volume.
-      - ./init/controls-db.sql:/docker-entrypoint-initdb.d/10-controls-db.sql:ro
+      - ./init/controls-db.sql:/docker-entrypoint-initdb.d/10-controls-db.sql:ro,Z
       # Creates the `qualification` DB (apps/qualification) on a fresh volume.
-      - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro
+      - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro,Z
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
-      - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro
+      - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
