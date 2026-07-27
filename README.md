@@ -8,17 +8,6 @@ The official documentation lives in the [**lux-ai-factory/rfc**](https://github.
 
 As the name suggests, it is also a **Request for Comments**: anyone who wishes to contribute is warmly invited to share their feedback.
 
-## ⚠️ Current Limitations & Roadmap
-
-The platform currently assumes that both the AI system under test and the test data are **uploaded into the platform**:
-
-- **Models** are uploaded files stored in the platform's object storage (the web UI currently accepts `.onnx`). Assessing a system that runs in your own infrastructure, through the API it already exposes, is not yet supported as a first-class concept; some evaluation plugins (e.g. StrongREJECT) approximate it by taking an API key or base URL in their own configuration.
-- **Datasets** must be uploaded through the webapp. Test sets that already live in your own permanent storage (S3-compatible, Azure Blob, GCS, ...) cannot yet be attached by reference.
-
-Note that the platform's *own* infrastructure is already fully configurable at deployment time: object storage is any S3-compatible endpoint (`S3_URL`, `S3_USER`, `S3_PASSWORD`, `S3_*_BUCKET`), the database is any PostgreSQL instance (`DB_*`), and the broker/cache likewise (`MQ_*`, `REDIS_*`).
-
-**What we are doing about it:** we are introducing **connection profiles**: configure your storage and your system's API endpoint once, then create datasets by reference and register models as endpoints, with evaluations connecting directly to your infrastructure at run time and credentials stored encrypted, write-only. Progress is tracked in [lux-ai-factory/aisc#52](https://github.com/lux-ai-factory/aisc/issues/52).
-
 ## 🚀 Getting Started
 
 1. **Clone the repository and submodules:**
@@ -144,6 +133,19 @@ If you want to just try the platform and play a bit with it, you can run all the
 ```bash
 docker compose --env-file env.plugin_downloader -f docker-compose.plugin_downloader.yml -f docker-compose-infra.development.yml -f docker-compose.development.yml up
 ```
+## ⚠️ Current Limitations & Roadmap
+
+The platform currently assumes that both the AI system under test and the test data are **uploaded into the platform**:
+
+- **Models** are uploaded files stored in the platform's object storage (the web UI currently accepts `.onnx`). Assessing a system that runs in your own infrastructure, through the API it already exposes, is not yet supported as a first-class concept; some evaluation plugins (e.g. StrongREJECT) approximate it by taking an API key or base URL in their own configuration.
+- **Datasets** must be uploaded through the webapp. Test sets that already live in your own permanent storage (S3-compatible, Azure Blob, GCS, ...) cannot yet be attached by reference.
+
+Note that the platform's *own* infrastructure is already fully configurable at deployment time: object storage is any S3-compatible endpoint (`S3_URL`, `S3_USER`, `S3_PASSWORD`, `S3_*_BUCKET`), the database is any PostgreSQL instance (`DB_*`), and the broker/cache likewise (`MQ_*`, `REDIS_*`).
+
+**What we are doing about it:** we are introducing **connection profiles**: configure your storage and your system's API endpoint once, then create datasets by reference and register models as endpoints, with evaluations connecting directly to your infrastructure at run time and credentials stored encrypted, write-only. Progress is tracked in [lux-ai-factory/aisc#52](https://github.com/lux-ai-factory/aisc/issues/52).
+
+---
+
 ##  Contributing
 
 We welcome community contributions! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for details.
