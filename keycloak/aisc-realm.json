@@ -2720,5 +2720,6 @@
   },
   "clientPolicies": {
     "policies": []
-  }
+  },
+  "loginTheme": "application-theme"
 }
