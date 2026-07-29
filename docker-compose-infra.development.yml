@@ -121,6 +121,7 @@ services:
     volumes:
       # Mount the exported realm into Keycloak's import dir (read-only).
       - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
       # --- first-run admin user for the Keycloak admin console (Keycloak 26+) ---
       # (For Keycloak < 26 these were KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD.)
