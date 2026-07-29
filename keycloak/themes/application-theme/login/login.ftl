@@ -3,14 +3,12 @@
     <#if section = "form">
         <div class="login-container">
                 <div class="login-card">
-                <#-- back button disabled
                 <div class="login-back-row">
-                    <a href="__HOME_PAGE_URL__" class="login-back-btn">
+                    <a href="${client.baseUrl!'/'}" class="login-back-btn">
                         <span class="material-icons">arrow_back</span>
                         Back
                     </a>
                 </div>
-                -->
                 <div class="login-header">
                     <img src="${url.resourcesPath}/img/laif_logo.png" alt="Logo" class="login-logo" />
                     <h1 class="login-title">Sign in to AISC</h1>
