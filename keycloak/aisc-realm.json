@@ -712,7 +712,7 @@
       "description": "the client for the django powered backend supported frontend aisc",
       "rootUrl": "",
       "adminUrl": "",
-      "baseUrl": "",
+      "baseUrl": "http://localhost",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
