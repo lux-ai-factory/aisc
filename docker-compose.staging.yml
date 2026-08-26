@@ -65,6 +65,7 @@ services:
       PLUGIN_PATH: ${PLUGIN_PATH}
       CORS_ORIGINS: "*"
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
