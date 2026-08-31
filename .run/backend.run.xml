@@ -8,11 +8,12 @@
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
     <option name="SDK_HOME" value="$PROJECT_DIR$/apps/backend/.venv/bin/python" />
-    <option name="SDK_NAME" value="uv (eval)" />
+    <option name="SDK_NAME" value="uv (aisc backend)" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/apps/backend" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
+    <option name="DEBUG_JUST_MY_CODE" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="true" />
     <option name="SCRIPT_NAME" value="uvicorn" />
