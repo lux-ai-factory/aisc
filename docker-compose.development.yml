@@ -10,6 +10,8 @@ services:
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
       # Keycloak URL injected into the built JS at container start (env.sh replaces APP_KEYCLOAK_URL).
       APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
+      # Public catalogue URL injected into the built JS at container start (env.sh replaces APP_CATALOG_URL).
+      APP_CATALOG_URL: ${CATALOG_URL}
     depends_on:
       - aisc-backend
     networks:
