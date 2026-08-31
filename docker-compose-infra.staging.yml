@@ -90,9 +90,40 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
+      # Create Keycloak's own DB on a fresh volume (Keycloak can't create its own database).
+      - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro
     restart: unless-stopped
     networks:
       - backend
+
+  # Keycloak (SSO) — PRODUCTION mode (`start`), behind Caddy (Caddy terminates TLS; Keycloak speaks HTTP).
+  # DEPLOY NOTES (server-side, can't be done from the repo):
+  #   1. add a DNS record for KEYCLOAK_URL_EXTERNAL and a Caddy route -> http://keycloak:8080
+  #   2. the imported realm's client redirect URIs are dev localhost ones — add the real staging URLs
+  #      (https://aisctest.uni.lux/*) to each client in the Keycloak admin, or ship a staging realm file
+  #   3. for a true prod realm, remove the dev users (admin/user) and let real identity in
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.3
+    container_name: keycloak
+    restart: always
+    command: start --import-realm
+    volumes:
+      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_URL_EXTERNAL} # public URL the browser uses
+      KC_PROXY_HEADERS: xforwarded          # trust Caddy's X-Forwarded-* headers
+      KC_HTTP_ENABLED: "true"               # serve HTTP internally; Caddy does the HTTPS
+    depends_on:
+      - postgres
+    networks:
+      - backend
+      - frontend
 
 volumes:
   minio_data: # Persistent storage for MinIO
