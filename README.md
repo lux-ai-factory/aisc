@@ -32,16 +32,22 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
 
 ## What runs where
 
-After `docker compose ... up`, Caddy serves the platform on port 80 and one module
-publishes its own port:
+**Start here: http://localhost:8100** — a launcher listing the six assessment
+modules in the order they are meant to be used. It is a static page in `homepage/`,
+served by the platform's own Caddy on a listener of its own, because the execution
+engine owns the root of port 80 and cannot be served under a path prefix.
 
 | step | module | open |
 |---|---|---|
 | 1 | Qualification (`apps/qualification`) | http://localhost/qualification |
 | 2 | Control objectives (`apps/control-objectives`) | http://localhost/control-objectives |
-| 3 | Execution engine (`apps/webapp` + `apps/backend` + `apps/eval`) | http://localhost/ |
-| 4 | Controls (`apps/controls`) | http://localhost/controls |
-| 5 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
+| 3 | Catalogue | *not in this install* |
+| 4 | Execution engine (`apps/webapp` + `apps/backend` + `apps/eval`) | http://localhost/ |
+| 5 | Controls (`apps/controls`) | http://localhost/controls |
+| 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
+
+Step 3, the catalogue, is not wired into this install. The launcher keeps it in the
+sequence so the workflow reads correctly, marks it, and does not link it.
 
 Also reachable: the backend's API at `/api`, the Django admin at `/admin`, Celery's
 Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`, users

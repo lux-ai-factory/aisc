@@ -80,3 +80,12 @@
     }
   }
 }
+
+# The launcher: one page listing the assessment modules. It has a listener of
+# its own because the execution engine owns the root of the site above and
+# cannot be served under a path prefix.
+{$CADDY_DOMAIN}:{$HOMEPAGE_PORT} {
+  import tls-{$CADDY_ENVIRONMENT}
+  root * /srv/homepage
+  file_server
+}

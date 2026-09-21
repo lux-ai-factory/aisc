@@ -7,12 +7,16 @@ services:
     ports:
       - "443:8005"
       - "80:8005"
+      # the launcher (see the second site block in the Caddyfile)
+      - "${HOMEPAGE_PORT_EXTERNAL:-8100}:8006"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - ./homepage:/srv/homepage:ro,Z
     environment:
       LOG_FILE: "/data/access.log"
       CADDY_DOMAIN: ${CADDY_DOMAIN}
       CADDY_PORT: "8005"
+      HOMEPAGE_PORT: "8006"
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
     networks:
       - backend

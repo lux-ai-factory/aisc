@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="assets/laif-logo.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  /* tokens lifted from apps/controls and apps/qualification globals.css */
+  :root{
+    --bg:#f7f8fb; --panel:#ffffff;
+    --text:#000000; --muted:#666666;
+    --primary:#000fdf; --primary-hover:#000079;
+    --accent:#ff007e;
+    --border:#e3e6ef; --border-strong:#c9cee0;
+    --radius:0px;
+    --gutter:34px;
+    --col-centre:calc((100% - 2 * var(--gutter)) / 6);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+
+  .topbar{
+    display:flex; align-items:center; gap:20px;
+    padding:14px 28px; border-bottom:1px solid var(--border); background:var(--panel);
+    position:sticky; top:0; z-index:10;
+  }
+  .topbar img{height:34px; width:auto; display:block}
+  .topbar .sep{width:1px; height:26px; background:var(--border-strong)}
+  .topbar h1{font-size:15px; font-weight:600; margin:0; letter-spacing:-.01em}
+
+  main{
+    max-width:1180px; margin:0 auto; padding:40px 28px 56px;
+    min-height:calc(100vh - 63px); display:flex; align-items:center;
+  }
+  .stage{width:100%}
+  .row{display:grid; grid-template-columns:1fr var(--gutter) 1fr var(--gutter) 1fr; align-items:stretch}
+
+  /* horizontal connector: hairline with a solid head */
+  .arrow{position:relative}
+  .arrow::before{
+    content:""; position:absolute; top:50%; left:2px; right:7px;
+    border-top:1px solid var(--border-strong);
+  }
+  .arrow::after{
+    content:""; position:absolute; top:50%; right:1px; transform:translateY(-50%);
+    width:0; height:0;
+    border-top:4px solid transparent; border-bottom:4px solid transparent;
+    border-left:6px solid var(--border-strong);
+  }
+
+  /* row wrap: down from card 3, back across, down into card 4 */
+  .wrap{position:relative; height:52px}
+  .wrap::before{
+    content:""; position:absolute; top:0; height:26px;
+    left:calc(100% - var(--col-centre));
+    border-left:1px solid var(--border-strong);
+  }
+  .wrap::after{
+    content:""; position:absolute; top:26px; bottom:0;
+    left:var(--col-centre); right:var(--col-centre);
+    border-top:1px solid var(--border-strong);
+    border-left:1px solid var(--border-strong);
+  }
+  .wrap span{
+    position:absolute; bottom:0; left:var(--col-centre); transform:translateX(-50%);
+    width:0; height:0;
+    border-left:4px solid transparent; border-right:4px solid transparent;
+    border-top:6px solid var(--border-strong);
+  }
+
+  .card{
+    position:relative; display:flex; flex-direction:column;
+    padding:20px; border:1px solid var(--border); border-radius:var(--radius);
+    background:var(--panel); color:inherit; text-decoration:none;
+    transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;
+  }
+  a.card:hover{
+    border-color:var(--primary); box-shadow:0 0 0 1px var(--primary), 0 6px 18px rgba(0,15,223,.08);
+    transform:translateY(-2px);
+  }
+  a.card:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
+
+  /* a module that is not part of this install: present in the sequence, but
+     deliberately not a link */
+  .card.unavailable{border-style:dashed; background:transparent; cursor:default}
+  .card.unavailable .step{background:var(--border-strong)}
+  .card.unavailable h2,.card.unavailable p{color:var(--muted)}
+  .tag{
+    align-self:flex-start; margin-top:12px; padding:2px 7px;
+    border:1px solid var(--border-strong); color:var(--muted);
+    font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  }
+
+  .meta{display:flex; align-items:center; gap:10px; margin-bottom:14px}
+  .step{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; flex:none;
+    background:var(--primary); color:#fff; font-size:13px; font-weight:700;
+    font-variant-numeric:tabular-nums;
+  }
+  .row:last-child .card:last-child .step{background:var(--accent)}
+  .svc{font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted)}
+  .card h2{margin:0 0 7px; font-size:17px; font-weight:600; letter-spacing:-.012em; line-height:1.28}
+  .card p{margin:0; color:var(--muted); font-size:13.5px}
+
+  @media (prefers-reduced-motion:no-preference){
+    .card{animation:rise .38s cubic-bezier(.22,.61,.36,1) both}
+    .row:first-child .card:nth-child(1){animation-delay:.02s}
+    .row:first-child .card:nth-child(3){animation-delay:.08s}
+    .row:first-child .card:nth-child(5){animation-delay:.14s}
+    .row:last-child  .card:nth-child(1){animation-delay:.20s}
+    .row:last-child  .card:nth-child(3){animation-delay:.26s}
+    .row:last-child  .card:nth-child(5){animation-delay:.32s}
+    @keyframes rise{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+  }
+
+  @media (max-width:700px){
+    .topbar{padding:12px 16px; gap:12px}
+    .topbar h1{font-size:14px}
+  }
+  @media (max-width:900px){
+    main{padding:28px 20px 48px; min-height:0; display:block}
+    .row{grid-template-columns:1fr}
+    .arrow{height:30px}
+    .arrow::before{top:0; bottom:0; left:50%; right:auto; border-top:0; border-left:1px solid var(--border-strong)}
+    .arrow::after{
+      top:auto; bottom:0; right:auto; left:50%; transform:translateX(-50%);
+      border-left:4px solid transparent; border-right:4px solid transparent;
+      border-top:6px solid var(--border-strong); border-bottom:0;
+    }
+    .wrap{height:30px}
+    .wrap::before{left:50%; height:100%}
+    .wrap::after{display:none}
+    .wrap span{left:50%}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <img src="assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="sep"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+</div>
+
+<main>
+  <div class="stage">
+    <div class="row">
+      <a class="card" href="http://localhost/qualification">
+        <span class="meta"><span class="step">1</span><span class="svc">Qualification</span></span>
+        <h2>Qualify</h2>
+        <p>Qualify the AI system against the EU AI Act, Articles 10, 12, 13 and 14, and generate its system card.</p>
+      </a>
+      <div class="arrow" aria-hidden="true"></div>
+      <a class="card" href="http://localhost/control-objectives">
+        <span class="meta"><span class="step">2</span><span class="svc">Control objectives</span></span>
+        <h2>Set control objectives</h2>
+        <p>Turn that qualification into the set of control objectives the system has to meet.</p>
+      </a>
+      <div class="arrow" aria-hidden="true"></div>
+      <div class="card unavailable">
+        <span class="meta"><span class="step">3</span><span class="svc">Catalogue</span></span>
+        <h2>Identify tests and controls</h2>
+        <p>Browse the registry of assessment tools and controls, and choose what will be run.</p>
+        <span class="tag">not in this install</span>
+      </div>
+    </div>
+
+    <div class="wrap" aria-hidden="true"><span></span></div>
+
+    <div class="row">
+      <a class="card" href="http://localhost/">
+        <span class="meta"><span class="step">4</span><span class="svc">Execution engine</span></span>
+        <h2>Execute tests</h2>
+        <p>Register datasets and models, then run the selected evaluations against the system under test.</p>
+      </a>
+      <div class="arrow" aria-hidden="true"></div>
+      <a class="card" href="http://localhost/controls">
+        <span class="meta"><span class="step">5</span><span class="svc">Controls engine</span></span>
+        <h2>Address controls</h2>
+        <p>Work through the compliance checklists, score readiness from 1 to 5 and export the PDF report.</p>
+      </a>
+      <div class="arrow" aria-hidden="true"></div>
+      <a class="card" href="http://localhost:8188/">
+        <span class="meta"><span class="step">6</span><span class="svc">Dashboard</span></span>
+        <h2>Analyse results</h2>
+        <p>Read the assessment results, charts and shared commentary across runs.</p>
+      </a>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
