@@ -86,7 +86,19 @@ case "$loc" in
   *) no "prompt=none for superset gave: ${loc:-no redirect}" ;;
 esac
 
-echo "5. the catalogue's one-click install door on the engine"
+echo "5. nothing is reachable without going through the gateway"
+for e in "control objectives|8090" "immudb console|8086"; do
+  n=${e%%|*}; port=${e#*|}
+  c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://localhost:$port/" 2>/dev/null)
+  [ "$c" = "000" ] && ok "$n publishes no port of its own" || no "$n answers on :$port anonymously ($c)"
+done
+for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672"; do
+  n=${e%%|*}; port=${e#*|}
+  docker ps --filter "label=com.docker.compose.project=aisc" --format '{{.Ports}}' | grep -q "127.0.0.1:$port" \
+    && ok "$n is bound to the loopback only" || no "$n is not loopback-bound on :$port"
+done
+
+echo "6. the catalogue's one-click install door on the engine"
 DOOR=${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install
 TOKEN=${CATALOGUE_INSTALL_TOKEN:-__CATALOGUE_INSTALL_TOKEN__}
 INDEX=${CATALOGUE_INDEX_URL:-http://devpi:3141/root/public/+simple/}

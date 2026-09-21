@@ -41,7 +41,7 @@ services:
       MINIO_ROOT_USER: ${S3_USER} # MinIO root username
       MINIO_ROOT_PASSWORD: ${S3_PASSWORD} # MinIO root password
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"   # loopback only; nothing in a browser talks to MinIO
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -75,7 +75,7 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"
+      - "127.0.0.1:5672:5672"   # loopback only
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -90,7 +90,7 @@ services:
     container_name: redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"   # loopback only
     volumes:
       - redis_data:/data # Persistent storage
     networks:
@@ -106,7 +106,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # loopback only; the host-networked dashboard reads here
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
       # Creates the `controls` DB (apps/controls) on a fresh volume.
@@ -209,8 +209,12 @@ services:
     volumes:
       - immudb_data:/var/lib/immudb     # persist the ledger
     ports:
-      - "3322:3322"             # gRPC — the Django Python SDK connects here
-      - "8086:8080"             # web console (host 8086 -> container 8080; 8080/8081 already taken)
+      # gRPC, bound to the loopback: the dashboard runs with network_mode: host
+      # (so its OIDC issuer matches the browser's) and reaches immudb here.
+      # Everything else uses the compose network.
+      - "127.0.0.1:3322:3322"
+      # The web console is NOT published. It served the audit ledger to anyone
+      # who could reach the port, with no gateway in front of it.
     networks:
       - backend
 

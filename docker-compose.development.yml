@@ -294,8 +294,11 @@ services:
     depends_on:
       control-objectives-migrate:
         condition: service_completed_successfully
-    ports:
-      - "${CONTROL_OBJECTIVES_PORT:-8090}:8090"
+    # No published port on purpose. It is served at /control-objectives through
+    # Caddy, behind the gateway; publishing 8090 made the whole app reachable
+    # with no authentication at all.
+    expose:
+      - "8090"
     networks:
       - backend
       - frontend

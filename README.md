@@ -102,6 +102,23 @@ the stock entrypoint honours `SUPERSET_PORT`.
 Internal traffic is unaffected: services call the backend directly on
 `http://aisc-backend:8000` rather than through Caddy.
 
+**Nothing bypasses the gateway.** Only five ports are published to the network:
+80, 8081 (Keycloak, which the browser must reach), 8100, 8102 and 8188, and every
+one of them answers an anonymous request with a redirect to Keycloak. The apps'
+own ports are not published, and Postgres, Redis, RabbitMQ, MinIO and immudb are
+bound to `127.0.0.1`, reachable from the host only because the dashboard runs with
+`network_mode: host`. `scripts/verify-sso.sh` asserts all of this, so an
+accidentally published port fails the suite.
+
+> [!WARNING]
+> One exception remains, and it is not fixable from this repository. The execution
+> engine's frontend renders its own "Please sign in to get started" screen when its
+> silent Keycloak check has not completed: `GlobalHome.tsx` gates on `authenticated`
+> with no flag, and the app has no equivalent of the backend's `AUTH_ENABLED`, so it
+> cannot be told that the gateway already authenticated. Keycloak does answer its
+> silent check with a code, so the screen is a one-click pass rather than a second
+> login, but making it disappear needs a change in `apps/webapp`.
+
 > [!NOTE]
 > A shared name such as `keycloak.localhost` looks like the tidier answer and does
 > not work over plain HTTP. Keycloak 26 sets `SameSite=None` on its session
