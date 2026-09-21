@@ -60,7 +60,9 @@ All six steps are wired in. The catalogue's Install button only renders when the
 frontend is built with `VITE_ENABLE_INSTALL=true`, which compose passes; without it
 a tool's card shows nothing but Close. The button then asks for the **UUID of the
 target project** in the execution engine, so create the project there first: there
-is no picker, and an install is always into a project.
+is no picker, and an install is always into a project. Get the UUID from the
+engine: open the project at http://localhost/ and take the `pid` from its URL, or
+read it from `aisc_backend_project.pid`.
 
 The catalogue carries **one-click install**: it resolves a
 test to a package on the platform's own index and posts it to the engine's install

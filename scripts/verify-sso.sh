@@ -87,13 +87,18 @@ case "$loc" in
 esac
 
 echo "5. the catalogue's one-click install door on the engine"
-DOOR=http://localhost/api/v1/catalogue/install
+DOOR=${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install
 TOKEN=${CATALOGUE_INSTALL_TOKEN:-__CATALOGUE_INSTALL_TOKEN__}
 INDEX=${CATALOGUE_INDEX_URL:-http://devpi:3141/root/public/+simple/}
 payload() { printf '{"package_name":"langbite","version":"1.1.1","index_url":"%s","project_uuid":"00000000-0000-0000-0000-000000000000"}' "$1"; }
 
 c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$(payload "$INDEX")" "$DOOR")
 [ "$c" = "302" ] && ok "without a session the gateway refuses the door (302)" || no "no-session POST -> $c (want 302)"
+
+# the door is served on the catalogue's own origin; the catalogue's own API must
+# still answer there, which it only does if the route order is explicit
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/tool/langbite/install-info")
+[ "$c" = "200" ] && ok "the catalogue's own API still answers on that origin (200)" || no "catalogue API on the shared origin -> $c"
 
 c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$(payload "$INDEX")" "$DOOR")
 [ "$c" = "401" ] && ok "with a session but no bearer token the door refuses (401)" || no "no-bearer POST -> $c (want 401)"

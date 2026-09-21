@@ -440,7 +440,9 @@ services:
         # without this the Install button does not render at all
         VITE_ENABLE_INSTALL: "true"
         # one-click install: the platform's install door and its token
-        VITE_PLATFORM_URL: ${API_URL_EXTERNAL}
+        # the catalogue's own origin: its install POST is same-origin, so the
+        # gateway session cookie travels with it (see the Caddyfile)
+        VITE_PLATFORM_URL: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}
         VITE_PLATFORM_INSTALL_TOKEN: ${CATALOGUE_INSTALL_TOKEN:-}
     image: aisc-catalogue-frontend:latest
     pull_policy: never
