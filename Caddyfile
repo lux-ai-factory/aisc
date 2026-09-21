@@ -132,3 +132,20 @@
     file_server
   }
 }
+
+# The catalogue (apps/catalogue). Its own listener, like the launcher: it is a
+# Vite SPA with no base-path support, so it needs the root of a site. /api is
+# proxied to its backend on the same origin, which keeps the browser's calls
+# same-origin and avoids a CORS configuration.
+{$CADDY_DOMAIN}:{$CATALOGUE_PORT} {
+  import tls-{$CADDY_ENVIRONMENT}
+  import oauth_endpoints
+  handle_path /api* {
+    import protect
+    reverse_proxy catalogue-backend:8000
+  }
+  handle {
+    import protect
+    reverse_proxy catalogue-frontend:3000
+  }
+}

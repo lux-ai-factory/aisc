@@ -9,6 +9,8 @@ services:
       - "80:8005"
       # the launcher (see the second site block in the Caddyfile)
       - "${HOMEPAGE_PORT_EXTERNAL:-8100}:8006"
+      # the catalogue (third site block; a root-mounted SPA)
+      - "${CATALOGUE_PORT_EXTERNAL:-8102}:8007"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
       - ./homepage:/srv/homepage:ro,Z
@@ -20,6 +22,7 @@ services:
       CADDY_DOMAIN: ${CADDY_DOMAIN}
       CADDY_PORT: "8005"
       HOMEPAGE_PORT: "8006"
+      CATALOGUE_PORT: "8007"
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
     networks:
       - backend
@@ -218,6 +221,8 @@ volumes:
   postgres_data: # Persistent storage for PostgreSQL
   rabbitmq_data: # Persistent storage for RabbitMQ
   redis_data: # Persistent storage for Redis
+  catalogue_sqlite: # the catalogue's own SQLite database (apps/catalogue)
+  devpi_data: # the package index the catalogue installs from
 
 networks:
   backend:

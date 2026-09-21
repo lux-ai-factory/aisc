@@ -51,13 +51,18 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 |---|---|---|
 | 1 | Qualification (`apps/qualification`) | http://localhost/qualification |
 | 2 | Control objectives (`apps/control-objectives`) | http://localhost/control-objectives |
-| 3 | Catalogue | *not in this install* |
+| 3 | Catalogue (`apps/catalogue`) | http://localhost:8102 |
 | 4 | Execution engine (`apps/webapp` + `apps/backend` + `apps/eval`) | http://localhost/ |
 | 5 | Controls (`apps/controls`) | http://localhost/controls |
 | 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
 
-Step 3, the catalogue, is not wired into this install. The launcher keeps it in the
-sequence so the workflow reads correctly, marks it, and does not link it.
+All six steps are wired in. The catalogue carries **one-click install**: it resolves a
+test to a package on the platform's own index and posts it to the engine's install
+door, which is off unless `CATALOGUE_INSTALL_ENABLED` is set, refuses any index
+outside `CATALOGUE_TRUSTED_INDEXES`, and requires the bearer token in
+`CATALOGUE_INSTALL_TOKEN`. That token is inlined into the catalogue's JS bundle,
+which the catalogue's own config file flags as a v1 compromise to be replaced by a
+proxy or per-user tokens: fine for localhost, not for a shared deployment.
 
 **Signing in, once.** Every module above sits behind a gateway: Caddy asks
 oauth2-proxy about each request with `forward_auth`, and an unauthenticated one

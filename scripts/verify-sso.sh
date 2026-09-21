@@ -33,7 +33,8 @@ for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
          "execution engine|http://localhost/|AI Assessment Sandbox" \
          "qualification|http://localhost/qualification|qualification" \
          "controls|http://localhost/controls|controls" \
-         "control objectives|http://localhost/control-objectives/|objectives"; do
+         "control objectives|http://localhost/control-objectives/|objectives" \
+         "catalogue|http://localhost:8102/|AI Factory Sandbox Configurator"; do
   n=$(echo "$e" | cut -d'|' -f1); u=$(echo "$e" | cut -d'|' -f2); m=$(echo "$e" | cut -d'|' -f3)
   body=$(curl -s -b "$J" -c "$J" -L --max-time 30 "$u")
   eff=$(curl -s -b "$J" -c "$J" -L --max-time 30 -o /dev/null -w '%{url_effective}' "$u")
@@ -84,5 +85,35 @@ case "$loc" in
   *login_required*) no "prompt=none said login_required for superset" ;;
   *) no "prompt=none for superset gave: ${loc:-no redirect}" ;;
 esac
+
+echo "5. the catalogue's one-click install door on the engine"
+DOOR=http://localhost/api/v1/catalogue/install
+TOKEN=${CATALOGUE_INSTALL_TOKEN:-__CATALOGUE_INSTALL_TOKEN__}
+INDEX=${CATALOGUE_INDEX_URL:-http://devpi:3141/root/public/+simple/}
+payload() { printf '{"package_name":"langbite","version":"1.1.1","index_url":"%s","project_uuid":"00000000-0000-0000-0000-000000000000"}' "$1"; }
+
+c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$(payload "$INDEX")" "$DOOR")
+[ "$c" = "302" ] && ok "without a session the gateway refuses the door (302)" || no "no-session POST -> $c (want 302)"
+
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$(payload "$INDEX")" "$DOOR")
+[ "$c" = "401" ] && ok "with a session but no bearer token the door refuses (401)" || no "no-bearer POST -> $c (want 401)"
+
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $TOKEN" -d "$(payload http://evil.example/simple/)" "$DOOR")
+[ "$c" = "403" ] && ok "an index outside the allowlist is refused (403)" || no "untrusted index -> $c (want 403)"
+
+# With every gate passed it reaches the business logic, which needs a real
+# project. On a virgin install there is none, so 404 is the proof of passage.
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 90 -X POST -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $TOKEN" -d "$(payload "$INDEX")" "$DOOR")
+case "$c" in
+  404|200|201) ok "token and index accepted: the door reached the engine ($c)" ;;
+  *) no "authorised install -> $c (want 404 on a virgin install, or 2xx)" ;;
+esac
+
+info=$(curl -s -b "$J" -L --max-time 20 http://localhost:8102/api/tool/langbite/install-info)
+printf '%s' "$info" | grep -q '"installable":true' \
+  && ok "the catalogue serves an installable descriptor for a test" \
+  || no "install-info: ${info:0:90}"
 
 echo; echo "passed: $pass  failed: $fail"; [ "$fail" -eq 0 ]

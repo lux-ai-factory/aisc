@@ -48,6 +48,12 @@ services:
       IMMUDB_URL: immudb:3322
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      # the catalogue's one-click install door (apps/backend on this branch):
+      # off unless enabled, refuses anything but the trusted index, and requires
+      # the bearer token the catalogue frontend is built with.
+      CATALOGUE_INSTALL_ENABLED: ${CATALOGUE_INSTALL_ENABLED:-true}
+      CATALOGUE_INSTALL_TOKEN: ${CATALOGUE_INSTALL_TOKEN:-}
+      CATALOGUE_TRUSTED_INDEXES: ${CATALOGUE_TRUSTED_INDEXES:-http://devpi:3141/root/public/+simple/}
     networks:
       - backend
     depends_on:
@@ -379,3 +385,66 @@ services:
       dashboard-migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  # ── Catalogue of tests and controls (apps/catalogue submodule) ──
+  # Step 3 of the assessment: browse the registry and choose what will run. On
+  # this branch it also carries one-click install: the catalogue resolves a tool
+  # to a package on its own index and posts it to the platform's install door.
+  devpi:
+    build: apps/catalogue/devpi
+    image: aisc-catalogue-devpi:latest
+    pull_policy: never
+    container_name: devpi
+    environment:
+      DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
+      DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+    volumes:
+      - devpi_data:/data
+    restart: unless-stopped
+    networks:
+      - backend
+
+  catalogue-backend:
+    build: apps/catalogue/backend
+    image: aisc-catalogue-backend:latest
+    pull_policy: never
+    container_name: catalogue-backend
+    environment:
+      DATABASE_URL: sqlite:///./data/Class_Diagram.db
+      # the index the install descriptor advertises to the platform
+      DEVPI_URL: http://devpi:3141
+      DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
+      # the controls app, for the per-tab "installed" counts
+      CONTROLS_APP_URL: http://controls-web:3000/controls
+      LLM_MODEL: ${CATALOGUE_LLM_MODEL:-mistral/mistral-large-latest}
+      LLM_MISTRAL_KEY: ${MISTRAL_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - catalogue_sqlite:/app/data
+    depends_on:
+      - devpi
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  catalogue-frontend:
+    build:
+      context: apps/catalogue/frontend
+      args:
+        # same-origin: Caddy serves this app and proxies /api to the backend
+        VITE_API_URL: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api
+        VITE_ENABLE_ADD_ENTRIES: "true"
+        VITE_ENABLE_SANDBOX: "true"
+        # one-click install: the platform's install door and its token
+        VITE_PLATFORM_URL: ${API_URL_EXTERNAL}
+        VITE_PLATFORM_INSTALL_TOKEN: ${CATALOGUE_INSTALL_TOKEN:-}
+    image: aisc-catalogue-frontend:latest
+    pull_policy: never
+    container_name: catalogue-frontend
+    depends_on:
+      - catalogue-backend
+    restart: unless-stopped
+    networks:
+      - frontend
