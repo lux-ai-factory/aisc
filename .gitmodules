@@ -33,3 +33,4 @@
 [submodule "apps/results-dashboard"]
 	path = apps/results-dashboard
 	url = https://github.com/lux-ai-factory/aisc-results-dashboard.git
+	branch = feat/unified-modules

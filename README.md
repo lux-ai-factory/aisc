@@ -12,15 +12,25 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
 
 1. **Clone the repository and submodules:**
    ```bash
-   git clone --recursive git@github.com:lux-ai-factory/aisc.git
+   git clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
    cd aisc
-   git submodule foreach 'git checkout master; git pull'
    ```
+
+   `feat/unified-modules` is the branch to ask for. Submodules are pinned by the
+   clone above, so it is the only branch name you need; each one otherwise tracks
+   its own `main` or `master`, except `apps/results-dashboard`, which carries a
+   commit that is not on its `main` yet and so tracks this branch name too.
+
+   > [!NOTE]
+   > `git submodule update --remote --recursive` moves each submodule to the tip of
+   > the branch it tracks, which is not what the pins say. `apps/qualification` is
+   > one commit behind its `main` here, so that command would move it. Use it only
+   > when you mean to update, not to repair a checkout: for that, plain
+   > `git submodule update --init --recursive` restores the pinned commits.
 
    *If you've already cloned without submodules:*
    ```bash
    git submodule update --init --recursive
-   git submodule foreach 'git checkout master; git pull'
    ```
    
    *If the plugin-interface or plugin-manager submodules are not updated:*
