@@ -7,197 +7,329 @@
 <link rel="icon" href="assets/laif-logo.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
-  /* tokens lifted from apps/controls and apps/qualification globals.css */
+  /* Tokens from apps/controls and apps/qualification globals.css. The palette is
+     already severe -- electric blue, hot pink, no rounded corners -- so the page
+     leans into it: Swiss grid, hairlines, oversized numerals, monospace labels. */
   :root{
-    --bg:#f7f8fb; --panel:#ffffff;
-    --text:#000000; --muted:#666666;
+    --bg:#fbfbfd; --panel:#ffffff;
+    --text:#000000; --muted:#5f6478; --faint:#9aa0b4;
     --primary:#000fdf; --primary-hover:#000079;
     --accent:#ff007e;
     --border:#e3e6ef; --border-strong:#c9cee0;
     --radius:0px;
-    --gutter:34px;
+    --gutter:40px;
     --col-centre:calc((100% - 2 * var(--gutter)) / 6);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
+    position:relative; min-height:100vh;
     background:var(--bg); color:var(--text);
     font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
   }
+  /* blueprint grid, faded out towards the edges */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(to right, rgba(0,15,223,.065) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0,15,223,.065) 1px, transparent 1px);
+    background-size:40px 40px;
+    -webkit-mask-image:radial-gradient(ellipse 90% 70% at 50% 42%, #000 35%, transparent 100%);
+            mask-image:radial-gradient(ellipse 90% 70% at 50% 42%, #000 35%, transparent 100%);
+  }
+  /* one cold wash of brand blue, one warm of accent: depth without noise */
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(900px 420px at 8% -8%, rgba(0,15,223,.07), transparent 70%),
+      radial-gradient(700px 360px at 104% 108%, rgba(255,0,126,.06), transparent 70%);
+  }
+  .shell{position:relative; z-index:1}
 
+  /* ---- header: hairline, logo, product name, session ---- */
   .topbar{
-    display:flex; align-items:center; gap:20px;
-    padding:14px 28px; border-bottom:1px solid var(--border); background:var(--panel);
+    display:flex; align-items:center; gap:22px;
+    padding:16px 32px; border-bottom:1px solid var(--border);
+    background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
     position:sticky; top:0; z-index:10;
   }
-  .topbar img{height:34px; width:auto; display:block}
-  .topbar .sep{width:1px; height:26px; background:var(--border-strong)}
-  .topbar h1{font-size:15px; font-weight:600; margin:0; letter-spacing:-.01em}
+  .topbar img{height:32px; width:auto; display:block}
+  .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
+  .topbar h1{
+    margin:0; font-size:12px; font-weight:600; text-transform:uppercase;
+    letter-spacing:.14em; color:var(--text);
+  }
+  .session{
+    margin-left:auto; display:flex; align-items:center; gap:14px;
+    font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
+  }
+  .session b{color:var(--text); font-weight:500}
+  .session a{
+    color:var(--primary); text-decoration:none; border-bottom:1px solid transparent;
+  }
+  .session a:hover{border-bottom-color:var(--primary)}
 
   main{
-    max-width:1180px; margin:0 auto; padding:40px 28px 56px;
-    min-height:calc(100vh - 63px); display:flex; align-items:center;
+    max-width:1280px; margin:0 auto; padding:56px 32px 40px;
+    min-height:calc(100vh - 65px); display:flex; flex-direction:column; justify-content:center;
   }
-  .stage{width:100%}
+
+  /* ---- the sequence ---- */
   .row{display:grid; grid-template-columns:1fr var(--gutter) 1fr var(--gutter) 1fr; align-items:stretch}
 
-  /* horizontal connector: hairline with a solid head */
   .arrow{position:relative}
   .arrow::before{
-    content:""; position:absolute; top:50%; left:2px; right:7px;
+    content:""; position:absolute; top:50%; left:3px; right:9px;
     border-top:1px solid var(--border-strong);
   }
   .arrow::after{
     content:""; position:absolute; top:50%; right:1px; transform:translateY(-50%);
     width:0; height:0;
     border-top:4px solid transparent; border-bottom:4px solid transparent;
-    border-left:6px solid var(--border-strong);
+    border-left:7px solid var(--border-strong);
   }
 
-  /* row wrap: down from card 3, back across, down into card 4 */
-  .wrap{position:relative; height:52px}
+  /* the wrap from step 3 back to step 4, drawn as a path with square nodes */
+  .wrap{position:relative; height:58px}
   .wrap::before{
-    content:""; position:absolute; top:0; height:26px;
+    content:""; position:absolute; top:0; height:29px;
     left:calc(100% - var(--col-centre));
     border-left:1px solid var(--border-strong);
   }
   .wrap::after{
-    content:""; position:absolute; top:26px; bottom:0;
+    content:""; position:absolute; top:29px; bottom:0;
     left:var(--col-centre); right:var(--col-centre);
     border-top:1px solid var(--border-strong);
     border-left:1px solid var(--border-strong);
   }
+  .wrap i{
+    position:absolute; width:5px; height:5px; background:var(--border-strong);
+    top:26.5px;
+  }
+  .wrap i:nth-of-type(1){left:calc(100% - var(--col-centre)); transform:translateX(-2.5px)}
+  .wrap i:nth-of-type(2){left:var(--col-centre); transform:translateX(-2.5px)}
   .wrap span{
     position:absolute; bottom:0; left:var(--col-centre); transform:translateX(-50%);
     width:0; height:0;
     border-left:4px solid transparent; border-right:4px solid transparent;
-    border-top:6px solid var(--border-strong);
+    border-top:7px solid var(--border-strong);
   }
 
+  /* ---- the module card ---- */
   .card{
-    position:relative; display:flex; flex-direction:column;
-    padding:20px; border:1px solid var(--border); border-radius:var(--radius);
+    position:relative; overflow:hidden;
+    display:flex; flex-direction:column;
+    padding:26px 26px 22px; min-height:212px;
+    border:1px solid var(--border); border-radius:var(--radius);
     background:var(--panel); color:inherit; text-decoration:none;
-    transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;
+    transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
   }
+  /* the numeral belongs to the sheet, not to a badge */
+  .card .n{
+    position:absolute; top:6px; right:14px;
+    font-family:var(--mono); font-weight:600; font-size:82px; line-height:1;
+    color:rgba(0,15,223,.06); font-variant-numeric:tabular-nums;
+    pointer-events:none; user-select:none;
+  }
+  .card:last-child .n{color:rgba(255,0,126,.08)}
+  /* a rule that draws itself along the top edge on hover */
+  a.card::before{
+    content:""; position:absolute; top:0; left:0; right:0; height:3px;
+    background:var(--primary); transform:scaleX(0); transform-origin:left;
+    transition:transform .22s cubic-bezier(.22,.61,.36,1);
+  }
+  a.card:last-child::before{background:var(--accent)}
+  a.card:hover::before{transform:scaleX(1)}
   a.card:hover{
-    border-color:var(--primary); box-shadow:0 0 0 1px var(--primary), 0 6px 18px rgba(0,15,223,.08);
-    transform:translateY(-2px);
+    border-color:var(--primary);
+    box-shadow:0 10px 28px rgba(12,18,60,.09);
+    transform:translateY(-3px);
   }
-  a.card:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
+  a.card:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
 
-  /* a module that is not part of this install: present in the sequence, but
-     deliberately not a link */
-  .card.unavailable{border-style:dashed; background:transparent; cursor:default}
-  .card.unavailable .step{background:var(--border-strong)}
-  .card.unavailable h2,.card.unavailable p{color:var(--muted)}
-  .tag{
-    align-self:flex-start; margin-top:12px; padding:2px 7px;
-    border:1px solid var(--border-strong); color:var(--muted);
-    font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  .svc{
+    display:flex; align-items:center; gap:9px;
+    font-family:var(--mono); font-size:10.5px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--faint);
+  }
+  .svc svg{width:15px; height:15px; flex:none; stroke:var(--primary); stroke-width:1.6; fill:none}
+  .card:last-child .svc svg{stroke:var(--accent)}
+
+  .card h2{
+    margin:26px 0 8px; font-size:19px; font-weight:600;
+    letter-spacing:-.018em; line-height:1.24;
+  }
+  .card p{margin:0; color:var(--muted); font-size:13.5px; max-width:34ch}
+
+  .open{
+    margin-top:auto; padding-top:18px; display:flex; align-items:center; gap:7px;
+    font-family:var(--mono); font-size:10.5px; font-weight:500;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--primary);
+  }
+  a.card:last-child .open{color:var(--accent)}
+  .open svg{width:13px; height:13px; stroke:currentColor; stroke-width:1.8; fill:none;
+            transition:transform .16s ease}
+  a.card:hover .open svg{transform:translateX(4px)}
+
+  /* a module that is not part of this install: in the sequence, not a link */
+  .card.off{border-style:dashed; background:transparent; cursor:default}
+  .card.off .n{color:rgba(0,0,0,.05)}
+  .card.off .svc svg{stroke:var(--faint)}
+  .card.off h2{color:var(--muted)}
+  .card.off .tag{
+    margin-top:auto; margin-bottom:0; align-self:flex-start; padding:3px 8px;
+    border:1px solid var(--border-strong); color:var(--faint);
+    font-family:var(--mono); font-size:10px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase;
   }
 
-  .meta{display:flex; align-items:center; gap:10px; margin-bottom:14px}
-  .step{
-    display:inline-flex; align-items:center; justify-content:center;
-    width:26px; height:26px; flex:none;
-    background:var(--primary); color:#fff; font-size:13px; font-weight:700;
-    font-variant-numeric:tabular-nums;
+  /* ---- utility endpoints: data, not prose ---- */
+  .endpoints{
+    display:flex; flex-wrap:wrap; gap:0 28px; margin-top:44px;
+    padding-top:18px; border-top:1px solid var(--border);
+    font-family:var(--mono); font-size:11px; color:var(--faint);
   }
-  .row:last-child .card:last-child .step{background:var(--accent)}
-  .svc{font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted)}
-  .card h2{margin:0 0 7px; font-size:17px; font-weight:600; letter-spacing:-.012em; line-height:1.28}
-  .card p{margin:0; color:var(--muted); font-size:13.5px}
+  .endpoints a{color:var(--muted); text-decoration:none; border-bottom:1px solid transparent}
+  .endpoints a:hover{color:var(--primary); border-bottom-color:var(--primary)}
+  .endpoints span{color:var(--faint)}
 
   @media (prefers-reduced-motion:no-preference){
-    .card{animation:rise .38s cubic-bezier(.22,.61,.36,1) both}
-    .row:first-child .card:nth-child(1){animation-delay:.02s}
-    .row:first-child .card:nth-child(3){animation-delay:.08s}
-    .row:first-child .card:nth-child(5){animation-delay:.14s}
-    .row:last-child  .card:nth-child(1){animation-delay:.20s}
-    .row:last-child  .card:nth-child(3){animation-delay:.26s}
-    .row:last-child  .card:nth-child(5){animation-delay:.32s}
-    @keyframes rise{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+    .card{animation:rise .42s cubic-bezier(.22,.61,.36,1) both}
+    .row:first-child .card:nth-child(1){animation-delay:.03s}
+    .row:first-child .card:nth-child(3){animation-delay:.09s}
+    .row:first-child .card:nth-child(5){animation-delay:.15s}
+    .row:last-of-type .card:nth-child(1){animation-delay:.21s}
+    .row:last-of-type .card:nth-child(3){animation-delay:.27s}
+    .row:last-of-type .card:nth-child(5){animation-delay:.33s}
+    @keyframes rise{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
   }
 
-  @media (max-width:700px){
-    .topbar{padding:12px 16px; gap:12px}
-    .topbar h1{font-size:14px}
-  }
-  @media (max-width:900px){
-    main{padding:28px 20px 48px; min-height:0; display:block}
+  @media (max-width:820px){
+    .topbar{padding:12px 18px; gap:14px}
+    .session em{display:none}
+    main{padding:28px 18px 32px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
-    .arrow{height:30px}
+    .card{min-height:0}
+    .card .n{font-size:64px; top:2px}
+    .arrow{height:34px}
     .arrow::before{top:0; bottom:0; left:50%; right:auto; border-top:0; border-left:1px solid var(--border-strong)}
     .arrow::after{
       top:auto; bottom:0; right:auto; left:50%; transform:translateX(-50%);
       border-left:4px solid transparent; border-right:4px solid transparent;
-      border-top:6px solid var(--border-strong); border-bottom:0;
+      border-top:7px solid var(--border-strong); border-bottom:0;
     }
-    .wrap{height:30px}
+    .wrap{height:34px}
     .wrap::before{left:50%; height:100%}
-    .wrap::after{display:none}
+    .wrap::after,.wrap i{display:none}
     .wrap span{left:50%}
   }
 </style>
 </head>
 <body>
+<div class="shell">
 
 <div class="topbar">
   <img src="assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
-  <span class="sep"></span>
+  <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><em>signed in as</em> <b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>
-  <div class="stage">
-    <div class="row">
-      <a class="card" href="http://localhost/qualification">
-        <span class="meta"><span class="step">1</span><span class="svc">Qualification</span></span>
-        <h2>Qualify</h2>
-        <p>Qualify the AI system against the EU AI Act, Articles 10, 12, 13 and 14, and generate its system card.</p>
-      </a>
-      <div class="arrow" aria-hidden="true"></div>
-      <a class="card" href="http://localhost/control-objectives">
-        <span class="meta"><span class="step">2</span><span class="svc">Control objectives</span></span>
-        <h2>Set control objectives</h2>
-        <p>Turn that qualification into the set of control objectives the system has to meet.</p>
-      </a>
-      <div class="arrow" aria-hidden="true"></div>
-      <div class="card unavailable">
-        <span class="meta"><span class="step">3</span><span class="svc">Catalogue</span></span>
-        <h2>Identify tests and controls</h2>
-        <p>Browse the registry of assessment tools and controls, and choose what will be run.</p>
-        <span class="tag">not in this install</span>
-      </div>
+  <div class="row">
+    <a class="card" href="http://localhost/qualification">
+      <span class="n">1</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM6 7h12v13H6z"/><path d="m9 13 2 2 4-4"/></svg>
+        Qualification
+      </span>
+      <h2>Qualify</h2>
+      <p>Qualify the AI system against the EU AI Act, Articles 10, 12, 13 and 14, and generate its system card.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" href="http://localhost/control-objectives">
+      <span class="n">2</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+        Control objectives
+      </span>
+      <h2>Set control objectives</h2>
+      <p>Turn that qualification into the set of control objectives the system has to meet.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <div class="card off">
+      <span class="n">3</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 5v14"/></svg>
+        Catalogue
+      </span>
+      <h2>Identify tests and controls</h2>
+      <p>Browse the registry of assessment tools and controls, and choose what will be run.</p>
+      <span class="tag">Not in this install</span>
     </div>
+  </div>
 
-    <div class="wrap" aria-hidden="true"><span></span></div>
+  <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
 
-    <div class="row">
-      <a class="card" href="http://localhost/">
-        <span class="meta"><span class="step">4</span><span class="svc">Execution engine</span></span>
-        <h2>Execute tests</h2>
-        <p>Register datasets and models, then run the selected evaluations against the system under test.</p>
-      </a>
-      <div class="arrow" aria-hidden="true"></div>
-      <a class="card" href="http://localhost/controls">
-        <span class="meta"><span class="step">5</span><span class="svc">Controls engine</span></span>
-        <h2>Address controls</h2>
-        <p>Work through the compliance checklists, score readiness from 1 to 5 and export the PDF report.</p>
-      </a>
-      <div class="arrow" aria-hidden="true"></div>
-      <a class="card" href="http://localhost:8188/">
-        <span class="meta"><span class="step">6</span><span class="svc">Dashboard</span></span>
-        <h2>Analyse results</h2>
-        <p>Read the assessment results, charts and shared commentary across runs.</p>
-      </a>
-    </div>
+  <div class="row">
+    <a class="card" href="http://localhost/">
+      <span class="n">4</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16l14-8z"/></svg>
+        Execution engine
+      </span>
+      <h2>Execute tests</h2>
+      <p>Register datasets and models, then run the selected evaluations against the system under test.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" href="http://localhost/controls">
+      <span class="n">5</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3 7-7 9-4-2-7-4-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
+        Controls engine
+      </span>
+      <h2>Address controls</h2>
+      <p>Work through the compliance checklists, score readiness from 1 to 5 and export the PDF report.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" href="http://localhost:8188/">
+      <span class="n">6</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20V11m5 9V5m5 15v-6"/></svg>
+        Dashboard
+      </span>
+      <h2>Analyse results</h2>
+      <p>Read the assessment results, charts and shared commentary across runs.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+  </div>
+
+  <div class="endpoints">
+    <span>Also on this install</span>
+    <a href="http://localhost/api/">API</a>
+    <a href="http://localhost/admin/">Django admin</a>
+    <a href="http://localhost/flower/">Flower</a>
+    <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
   </div>
 </main>
 
+</div>
+<script>
+  fetch('/oauth2/userinfo', {credentials:'same-origin'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (d) document.getElementById('who').textContent =
+        d.preferredUsername || d.user || d.email || 'user';
+    })
+    .catch(function(){});
+</script>
 </body>
 </html>
