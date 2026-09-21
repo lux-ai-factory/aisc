@@ -48,6 +48,10 @@ services:
       IMMUDB_URL: immudb:3322
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      # Keycloak bearer auth for the API (settings.py reads these).
+      AUTH_ENABLED: ${AUTH_ENABLED}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
     networks:
       - backend
     depends_on:

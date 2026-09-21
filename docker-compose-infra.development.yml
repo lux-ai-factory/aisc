@@ -14,6 +14,7 @@ services:
       CADDY_DOMAIN: ${CADDY_DOMAIN}
       CADDY_PORT: "8005"
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
+      CADDY_KEYCLOAK_PATH: /auth
     networks:
       - backend
       - frontend
@@ -116,13 +117,25 @@ services:
     container_name: keycloak
     # --import-realm imports any realm file in /opt/keycloak/data/import/ on startup,
     # but ONLY creates realms that don't already exist (existing realms are left untouched).
-    # So on a FRESH keycloak DB this recreates the whole `aisc` realm automatically.
-    command: start-dev --import-realm
+    # Render the realm template (API_URL_EXTERNAL substituted) into the import dir at startup.
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        URL="$${API_URL_EXTERNAL:-http://localhost}"
+        mkdir -p /opt/keycloak/data/import
+        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        exec /opt/keycloak/bin/kc.sh start-dev --import-realm --proxy-headers=xforwarded
     volumes:
-      # Mount the exported realm into Keycloak's import dir (read-only).
-      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      # Realm template (rendered at startup, see command above).
+      - ./keycloak/aisc-realm.template.json:/tmp/aisc-realm.template.json:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
+      # Base URL used to render redirect URIs in the realm template.
+      API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      # Same-origin SSO path. Do NOT add X-Forwarded-Prefix in Caddyfile —
+      # with proxy-headers=xforwarded it would double /auth.
+      KC_HTTP_RELATIVE_PATH: /auth
       # --- first-run admin user for the Keycloak admin console (Keycloak 26+) ---
       # (For Keycloak < 26 these were KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD.)
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
