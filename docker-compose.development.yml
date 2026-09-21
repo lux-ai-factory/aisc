@@ -349,14 +349,33 @@ services:
     image: aisc-results-dashboard:latest
     pull_policy: never
     container_name: dashboard
-    environment: *dashboard-env
     volumes: *dashboard-volumes
-    ports:
-      - "${DASHBOARD_PORT:-8188}:8088"
+    # network_mode: host, for one reason: Superset authenticates itself, so it
+    # fetches the OIDC metadata server-side and then sends the BROWSER to the
+    # same issuer. Those two have to be the same string, and the only string
+    # that works for both is http://localhost:8081 -- inside a bridge network
+    # `localhost` would be this container. It is also the one origin Keycloak
+    # exempts from marking its cookies Secure, which is what lets the session be
+    # shared over plain HTTP.
+    #
+    # Consequences of host networking, all deliberate: it listens on
+    # DASHBOARD_PORT directly (the stock entrypoint honours SUPERSET_PORT), and
+    # it reaches Postgres, Redis and immudb on their published host ports.
+    network_mode: host
+    environment:
+      <<: *dashboard-env
+      SUPERSET_PORT: ${DASHBOARD_PORT:-8188}
+      SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
+      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/aisc}
+      REDIS_HOST: localhost
+      IMMUDB_HOST: localhost
+      # its own client in the realm; the browser and this container both use
+      # this exact issuer string
+      AISC_OAUTH: ${DASHBOARD_OAUTH:-1}
+      OIDC_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      OIDC_CLIENT_ID: ${DASHBOARD_OIDC_CLIENT_ID:-superset}
+      OIDC_CLIENT_SECRET: ${DASHBOARD_OIDC_CLIENT_SECRET:-__DASHBOARD_OIDC_CLIENT_SECRET__}
     depends_on:
       dashboard-migrate:
         condition: service_completed_successfully
-    networks:
-      - backend
-      - frontend
     restart: unless-stopped

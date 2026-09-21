@@ -66,12 +66,25 @@ than asking a second time. `./scripts/verify-sso.sh` asserts exactly that, one
 login then every module, ending with the `prompt=none` request the engine itself
 makes.
 
-Two things the gateway does not cover. The dashboard on :8188 has its own Superset
-login: putting it behind the same session needs either its native Keycloak SSO,
-which requires an issuer hostname that resolves identically in the browser and in
-the container, or a change in its own repo. And internal traffic is unaffected,
-since services call the backend directly on `http://aisc-backend:8000` rather than
-through Caddy.
+The dashboard is covered differently, because Superset authenticates itself rather
+than being proxied: it uses its own Keycloak client (`superset`, also declared in
+the realm) through the native SSO the dashboard repo ships. Its login page offers
+Keycloak instead of a password form, and with a session already established it
+logs you in without asking. That is why the `dashboard` service runs with
+`network_mode: host`: it fetches the OIDC metadata server-side and then sends the
+browser to the same issuer, so both have to be the identical string, and
+`http://localhost:8081` is the only one that is. It still serves on 8188, since
+the stock entrypoint honours `SUPERSET_PORT`.
+
+Internal traffic is unaffected: services call the backend directly on
+`http://aisc-backend:8000` rather than through Caddy.
+
+> [!NOTE]
+> A shared name such as `keycloak.localhost` looks like the tidier answer and does
+> not work over plain HTTP. Keycloak 26 sets `SameSite=None` on its session
+> cookies, which forces `Secure`, and `localhost` is the one origin exempt from
+> that. On any other hostname the login fails with "Restart login cookie not
+> found" until you put Keycloak behind TLS.
 
 Also reachable: the backend's API at `/api`, the Django admin at `/admin`, Celery's
 Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`).

@@ -1066,6 +1066,38 @@
         "organization",
         "microprofile-jwt"
       ]
+    },
+    {
+      "clientId": "superset",
+      "name": "Results dashboard (Superset)",
+      "description": "Superset authenticates itself against this realm instead of sitting behind the gateway, so it needs its own client. Flask-AppBuilder's OAuth callback path is /oauth-authorized/<provider>. DEV SECRET.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "secret": "__DASHBOARD_OIDC_CLIENT_SECRET__",
+      "redirectUris": [
+        "http://localhost:8188/oauth-authorized/keycloak",
+        "http://localhost:8188/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8188"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8188/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "basic",
+        "email"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "clientScopes": [
