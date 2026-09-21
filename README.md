@@ -49,9 +49,13 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 Step 3, the catalogue, is not wired into this install. The launcher keeps it in the
 sequence so the workflow reads correctly, marks it, and does not link it.
 
+**Signing in.** The execution engine authenticates against Keycloak, so it opens on
+a sign-in page. The realm ships two dev accounts, `user` / `user` and
+`admin` / `admin`. They are development credentials in a committed realm export:
+change them for anything that is not localhost.
+
 Also reachable: the backend's API at `/api`, the Django admin at `/admin`, Celery's
-Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`, users
-`admin` and `user`).
+Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`).
 
 The dashboard has a port of its own because Superset needs the site root and does
 not work under a path prefix. It logs in with its own admin account
