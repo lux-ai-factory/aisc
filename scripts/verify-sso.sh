@@ -98,7 +98,24 @@ for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672"
     && ok "$n is bound to the loopback only" || no "$n is not loopback-bound on :$port"
 done
 
-echo "6. installing a plugin goes through the engine, not a second door"
+echo "6. the platform's projects"
+c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8100/api/projects)
+[ "$c" = "302" ] && ok "the projects API is behind the gateway (302 anonymous)" || no "anonymous /api/projects -> $c"
+body=$(curl -s -b "$J" --max-time 15 http://localhost:8100/api/projects)
+printf '%s' "$body" | grep -q '"slug"' && ok "it lists projects on a session" || no "projects list: ${body:0:80}"
+printf '%s' "$(curl -s -b "$J" --max-time 15 http://localhost:8100/)" | grep -q '<h2>Projects</h2>' \
+  && ok "the launcher is the project list" || no "the launcher is not the project list"
+slug=$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or [{}])[0].get("slug",""))' 2>/dev/null)
+if [ -n "$slug" ]; then
+  n=$(curl -s -b "$J" --max-time 15 "http://localhost:8100/p/$slug" | grep -c 'class="card')
+  [ "$n" = "6" ] && ok "a project page carries the six steps ($slug)" || no "project page has $n cards"
+else
+  no "no project to open"
+fi
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' -d '{"name":"!!! ???"}' http://localhost:8100/api/projects)
+[ "$c" = "422" ] && ok "a name with no usable handle is refused, not guessed (422)" || no "unusable name -> $c"
+
+echo "7. installing a plugin goes through the engine, not a second door"
 # The catalogue emits web+aiscplugin:// links; the engine catches them, shows a
 # project dropdown and posts to its own endpoint. So what has to exist is: the
 # engine's install endpoint, its project list, and no bespoke door.

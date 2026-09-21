@@ -124,12 +124,30 @@
 {$CADDY_DOMAIN}:{$HOMEPAGE_PORT} {
   import tls-{$CADDY_ENVIRONMENT}
   import oauth_endpoints
-  # protect goes INSIDE handle: at site level it would also guard /oauth2/*,
-  # and /oauth2/start would redirect to itself for ever.
-  handle {
-    import protect
-    root * /srv/homepage
-    file_server
+  # `route` to keep the order explicit: the API before the static files.
+  route {
+    # The platform's projects, on the launcher's own origin so the page can read
+    # them with the session cookie it already has.
+    handle_path /api/* {
+      import protect
+      reverse_proxy platform:8000
+    }
+    # A project's page: one file, the slug read from the URL by the page itself.
+    # An explicit rewrite rather than try_files, which resolved "/" to the
+    # project page because "/" is a directory.
+    handle /p/* {
+      import protect
+      root * /srv/homepage
+      rewrite * /project.html
+      file_server
+    }
+    # protect goes INSIDE handle: at site level it would also guard /oauth2/*,
+    # and /oauth2/start would redirect to itself for ever.
+    handle {
+      import protect
+      root * /srv/homepage
+      file_server
+    }
   }
 }
 

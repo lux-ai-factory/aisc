@@ -345,91 +345,115 @@
 
 <main>
   <div class="stage">
-    <div class="head">
-      <h2>Projects</h2>
-      <button class="newbtn" id="new-project">New project</button>
-    </div>
-    <div class="projects" id="projects"></div>
+    <div class="crumb"><a href="/">Projects</a><span>/</span><span id="crumb-slug"></span></div>
+    <h1 class="title" id="project-name">&hellip;</h1>
+    <p class="subtitle" id="project-meta"></p>
+
+    <p class="note">
+      The six steps below are not yet scoped to this project: each module still
+      keeps its own records. The project is the shared identity they will
+      reference, one module at a time.
+    </p>
+
+
+  <div class="row">
+    <a class="card" href="http://localhost/qualification">
+      <span class="n">1</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM6 7h12v13H6z"/><path d="m9 13 2 2 4-4"/></svg>
+        Qualification
+      </span>
+      <h2>Qualify</h2>
+      <p>Qualify the AI system against the EU AI Act, Articles 10, 12, 13 and 14, and generate its system card.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" href="http://localhost/control-objectives">
+      <span class="n">2</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+        Control objectives
+      </span>
+      <h2>Set control objectives</h2>
+      <p>Turn that qualification into the set of control objectives the system has to meet.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" id="catalogue-card" data-engine="http://localhost/" href="http://localhost:8102/">
+      <span class="n">3</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 5v14"/></svg>
+        Catalogue
+      </span>
+      <h2>Identify tests and controls</h2>
+      <p>Browse the registry of assessment tools and controls, and install a test into the engine in one click.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+  </div>
+
+  <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
+
+  <div class="row">
+    <a class="card" href="http://localhost/">
+      <span class="n">4</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16l14-8z"/></svg>
+        Execution engine
+      </span>
+      <h2>Execute tests</h2>
+      <p>Register datasets and models, then run the selected evaluations against the system under test.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" href="http://localhost/controls">
+      <span class="n">5</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3 7-7 9-4-2-7-4-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
+        Controls engine
+      </span>
+      <h2>Address controls</h2>
+      <p>Work through the compliance checklists, score readiness from 1 to 5 and export the PDF report.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+    <div class="arrow" aria-hidden="true"></div>
+    <a class="card" href="http://localhost:8188/">
+      <span class="n">6</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20V11m5 9V5m5 15v-6"/></svg>
+        Dashboard
+      </span>
+      <h2>Analyse results</h2>
+      <p>Read the assessment results, charts and shared commentary across runs.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+  </div>
+
   </div>
 </main>
 
 </div>
 
-<dialog class="new" id="dialog">
-  <form id="new-form">
-    <h3>New project</h3>
-    <label>Name
-      <input name="name" required autocomplete="off" placeholder="MicroCredit Assist Score (MCAS)"/>
-    </label>
-    <label>Description (optional)
-      <textarea name="description" rows="2" placeholder="What is being assessed"></textarea>
-    </label>
-    <span class="err" id="err"></span>
-    <div class="row">
-      <button type="button" class="newbtn ghost" id="cancel">Cancel</button>
-      <button type="submit" class="newbtn">Create</button>
-    </div>
-  </form>
-</dialog>
-
 <script>
-  var list = document.getElementById('projects');
-  var dialog = document.getElementById('dialog');
+  var slug = decodeURIComponent(window.location.pathname.replace(/^\/p\//, '').replace(/\/$/, ''));
+  document.getElementById('crumb-slug').textContent = slug;
 
-  function when(iso) {
-    try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ''; }
-  }
-
-  function render(projects) {
-    if (!projects.length) {
-      list.innerHTML = '<div class="empty">No projects yet. Create one to begin an assessment.</div>';
-      return;
-    }
-    list.innerHTML = projects.map(function (p) {
-      var desc = p.description ? '<p></p>' : '';
-      var card = document.createElement('a');
-      card.className = 'project';
-      card.href = '/p/' + encodeURIComponent(p.slug);
-      card.innerHTML = '<span class="slug"></span><h3></h3>' + desc
-        + '<time></time>';
-      card.querySelector('.slug').textContent = p.slug;
-      card.querySelector('h3').textContent = p.name;
-      if (p.description) card.querySelector('p').textContent = p.description;
-      card.querySelector('time').textContent = when(p.created_at);
-      return card.outerHTML;
-    }).join('');
-  }
-
-  fetch('/api/projects', {credentials: 'same-origin'})
-    .then(function (r) { return r.ok ? r.json() : []; })
-    .then(render)
+  fetch('/api/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
+    .then(function (r) {
+      if (!r.ok) throw new Error('not found');
+      return r.json();
+    })
+    .then(function (p) {
+      document.getElementById('project-name').textContent = p.name;
+      document.title = p.name + ' — AI Assessment Sandbox Configurator';
+      var meta = p.slug + '  ·  created ' + String(p.created_at).slice(0, 10);
+      document.getElementById('project-meta').textContent = p.description
+        ? meta + '  ·  ' + p.description : meta;
+    })
     .catch(function () {
-      list.innerHTML = '<div class="empty">Could not reach the platform service.</div>';
+      document.getElementById('project-name').textContent = 'Unknown project';
+      document.getElementById('project-meta').textContent =
+        'No project with the handle ' + slug + '.';
     });
-
-  document.getElementById('new-project').addEventListener('click', function () { dialog.showModal(); });
-  document.getElementById('cancel').addEventListener('click', function () { dialog.close(); });
-
-  document.getElementById('new-form').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var err = document.getElementById('err');
-    err.textContent = '';
-    var data = new FormData(e.target);
-    fetch('/api/projects', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        name: data.get('name'),
-        description: data.get('description') || null
-      })
-    }).then(function (r) {
-      return r.json().then(function (body) {
-        if (!r.ok) throw new Error(body.detail || 'could not create the project');
-        window.location.href = '/p/' + encodeURIComponent(body.slug);
-      });
-    }).catch(function (e2) { err.textContent = e2.message; });
-  });
 </script>
 <script>
   document.addEventListener('click', function (e) {

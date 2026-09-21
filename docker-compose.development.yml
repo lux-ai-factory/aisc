@@ -412,6 +412,27 @@ services:
     networks:
       - backend
 
+  # ── The platform's own projects (platform/) ──
+  # One project, defined once, that every module will come to reference. Today
+  # it owns a single table and the launcher lists it; the modules still keep
+  # their own databases and are wired to it one at a time.
+  #
+  # No authorisation here on purpose: the gateway has already authenticated the
+  # request, and for now every account may see every project.
+  platform:
+    build: platform
+    image: aisc-platform:latest
+    pull_policy: never
+    container_name: platform
+    environment:
+      PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/platform}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
   # ── Catalogue of tests and controls (apps/catalogue submodule) ──
   # Step 3 of the assessment: browse the registry and choose what will run. On
   # this branch it also carries one-click install: the catalogue resolves a tool

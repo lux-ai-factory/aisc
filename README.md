@@ -42,10 +42,23 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
 
 ## What runs where
 
-**Start here: http://localhost:8100** — a launcher listing the six assessment
-modules in the order they are meant to be used. It is a static page in `homepage/`,
+**Start here: http://localhost:8100** — the project list. Create a project, open
+it, and the six assessment modules appear in the order they are meant to be used. It is a static page in `homepage/`,
 served by the platform's own Caddy on a listener of its own, because the execution
 engine owns the root of port 80 and cannot be served under a path prefix.
+
+A project is defined once, at the platform level: `platform/` is a small service
+over a `platform` database whose only table is `project`, created by
+`init/platform-db.sql` before any app migrates. Its API is served on the
+launcher's own origin at `/api/projects`, behind the same sign-in, and every
+account may see every project.
+
+> [!NOTE]
+> The modules are **not project-aware yet**. Qualification, controls, control
+> objectives, the engine and the dashboard each still keep their own records, so
+> opening a step from inside a project does not scope anything to it. The project
+> is the shared identity they will reference, one module at a time, and the
+> project page says so rather than implying otherwise.
 
 | step | module | open |
 |---|---|---|
