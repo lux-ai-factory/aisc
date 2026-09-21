@@ -14,10 +14,10 @@
      leans into it: Swiss grid, hairlines, oversized numerals, monospace labels. */
   :root{
     --bg:#fbfbfd; --panel:#ffffff;
-    --text:#000000; --muted:#5f6478; --faint:#9aa0b4;
+    --text:#000000; --muted:#474c60; --faint:#6b7288;
     --primary:#000fdf; --primary-hover:#000079;
     --accent:#ff007e;
-    --border:#e3e6ef; --border-strong:#c9cee0;
+    --border:#d3d8e6; --border-strong:#a9b0c6;
     --radius:0px;
     --gutter:40px;
     --col-centre:calc((100% - 2 * var(--gutter)) / 6);
@@ -132,10 +132,10 @@
   .card .n{
     position:absolute; top:8px; right:18px;
     font-family:var(--mono); font-weight:600; font-size:108px; line-height:1;
-    color:rgba(0,15,223,.06); font-variant-numeric:tabular-nums;
+    color:rgba(0,15,223,.46); font-variant-numeric:tabular-nums;
     pointer-events:none; user-select:none;
   }
-  .card:last-child .n{color:rgba(255,0,126,.08)}
+  .card:last-child .n{color:rgba(255,0,126,.50)}
   /* a rule that draws itself along the top edge on hover */
   a.card::before{
     content:""; position:absolute; top:0; left:0; right:0; height:3px;
@@ -177,7 +177,7 @@
 
   /* a module that is not part of this install: in the sequence, not a link */
   .card.off{border-style:dashed; background:transparent; cursor:default}
-  .card.off .n{color:rgba(0,0,0,.05)}
+  .card.off .n{color:rgba(0,0,0,.26)}
   .card.off .svc svg{stroke:var(--faint)}
   .card.off h2{color:var(--muted)}
   .card.off .tag{
