@@ -128,6 +128,15 @@ esac
 
 c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "401" ] && ok "and refuses the same call without a token (401)" || no "unauthenticated /api/v1/projects -> $c (want 401)"
+# The engine's "Public Catalogue" button reads a placeholder that env.sh
+# replaces at container start; unset, it opens the literal string.
+docker exec aisc-webapp sh -c 'grep -qoh "APP_CATALOG_URL" /usr/share/nginx/html/assets/*.js' 2>/dev/null \
+  && no "the engine's catalogue link is still the unsubstituted placeholder" \
+  || ok "the engine's catalogue link is substituted, not a placeholder"
+docker exec aisc-webapp sh -c "grep -qoh '${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}' /usr/share/nginx/html/assets/*.js" 2>/dev/null \
+  && ok "and it points at this install's catalogue" \
+  || no "the catalogue URL is not in the engine's bundle"
+
 c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d '{}' \
       "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install")
 [ "$c" = "404" ] && ok "the bespoke install door is gone (404)" || no "the old door still answers ($c)"

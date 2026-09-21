@@ -58,10 +58,14 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 
 All six steps are wired in, and the catalogue installs a test into the engine:
 
-1. In the catalogue, open a test and press Install.
-2. The catalogue hands the engine a `web+aiscplugin://enable?package=…&version=…`
+1. Start in the engine and press **Public Catalogue** in its top bar. That opens
+   the catalogue with the engine's own address attached, so the catalogue knows
+   where to send installs. (You can also open the catalogue from the launcher and
+   connect it from there.)
+2. Open a test and press Install.
+3. The catalogue hands the engine a `web+aiscplugin://enable?package=…&version=…`
    link. The first time, the browser asks to register that protocol handler.
-3. The engine opens its install dialog, lists your projects in a **dropdown**,
+4. The engine opens its install dialog, lists your projects in a **dropdown**,
    and posts your choice to its own `POST /api/v1/plugins`.
 
 No token, no allowlist and no pasted UUID: the engine knows its own projects, so

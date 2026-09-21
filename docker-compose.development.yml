@@ -10,6 +10,10 @@ services:
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
       # Keycloak URL injected into the built JS at container start (env.sh replaces APP_KEYCLOAK_URL).
       APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
+      # Where the "Public Catalogue" button goes. The bundle ships the literal
+      # placeholder APP_CATALOG_URL and env.sh replaces it at start, so leaving
+      # this unset sends the button to the string "APP_CATALOG_URL" itself.
+      APP_CATALOG_URL: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}
     depends_on:
       - aisc-backend
     networks:
