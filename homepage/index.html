@@ -64,7 +64,8 @@
     letter-spacing:.14em; color:var(--text);
   }
   .session{
-    margin-left:auto; display:flex; align-items:center; gap:14px;
+    margin-left:20px;
+    display:flex; align-items:center; gap:14px;
     font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
   }
   .session b{color:var(--text); font-weight:500}
@@ -187,15 +188,35 @@
     letter-spacing:.1em; text-transform:uppercase;
   }
 
-  /* ---- utility endpoints: data, not prose ---- */
-  .endpoints{
-    display:flex; flex-wrap:wrap; gap:0 28px; margin-top:32px;
-    padding-top:18px; border-top:1px solid var(--border);
-    font-family:var(--mono); font-size:11px; color:var(--faint);
+  /* ---- endpoints: in the header, out of the way until asked for ---- */
+  .menu{position:relative; margin-left:auto}
+  .menu summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:7px;
+    padding:6px 10px; border:1px solid var(--border);
+    font-family:var(--mono); font-size:11px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+    transition:border-color .14s ease, color .14s ease;
   }
-  .endpoints a{color:var(--muted); text-decoration:none; border-bottom:1px solid transparent}
-  .endpoints a:hover{color:var(--primary); border-bottom-color:var(--primary)}
-  .endpoints span{color:var(--faint)}
+  .menu summary::-webkit-details-marker{display:none}
+  .menu summary:hover{color:var(--primary); border-color:var(--border-strong)}
+  .menu summary:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
+  .menu summary svg{
+    width:11px; height:11px; stroke:currentColor; stroke-width:2; fill:none;
+    transition:transform .16s ease;
+  }
+  .menu[open] summary{color:var(--primary); border-color:var(--primary)}
+  .menu[open] summary svg{transform:rotate(180deg)}
+  .menu .panel{
+    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:218px;
+    padding:5px 0; background:var(--panel);
+    border:1px solid var(--border-strong); box-shadow:0 14px 34px rgba(12,18,60,.13);
+  }
+  .menu .panel a{
+    display:block; padding:9px 15px; text-decoration:none;
+    font-family:var(--mono); font-size:11.5px; color:var(--text);
+  }
+  .menu .panel a:hover{background:#f2f4fb; color:var(--primary)}
+  .menu .panel a:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
 
   @media (prefers-reduced-motion:no-preference){
     .card{animation:rise .42s cubic-bezier(.22,.61,.36,1) both}
@@ -236,6 +257,18 @@
   <img src="assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
+  <details class="menu">
+    <summary>
+      Endpoints
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </summary>
+    <div class="panel">
+      <a href="http://localhost/api/docs">API docs</a>
+      <a href="http://localhost/flower/">Flower</a>
+      <a href="http://localhost/admin/">Django admin</a>
+      <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
+    </div>
+  </details>
   <span class="session"><em>signed in as</em> <b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
@@ -311,18 +344,19 @@
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
   </div>
-
-  <div class="endpoints">
-    <span>Also on this install</span>
-    <a href="http://localhost/api/">API</a>
-    <a href="http://localhost/admin/">Django admin</a>
-    <a href="http://localhost/flower/">Flower</a>
-    <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
-  </div>
 </main>
 
 </div>
 <script>
+  document.addEventListener('click', function (e) {
+    var menu = document.querySelector('.menu');
+    if (menu && menu.open && !menu.contains(e.target)) menu.open = false;
+  });
+  document.addEventListener('keydown', function (e) {
+    var menu = document.querySelector('.menu');
+    if (e.key === 'Escape' && menu) menu.open = false;
+  });
+
   fetch('/oauth2/userinfo', {credentials:'same-origin'})
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
