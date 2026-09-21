@@ -387,6 +387,31 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Publishes the bundled plugins to the index at bring-up.
+  #
+  # Without this the index is empty on a fresh install and nothing can be
+  # installed from the catalogue, which is the only route in now that the engine
+  # no longer pre-loads def_plugins. Idempotent: twine skips what is already
+  # there, so a restart republishes nothing.
+  plugin-publisher:
+    image: python:3.12-slim
+    container_name: plugin-publisher
+    working_dir: /src
+    volumes:
+      - ./def_plugins:/src:ro
+    environment:
+      TWINE_USERNAME: ${PACKAGE_REGISTRY_USER:-root}
+      TWINE_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD:-}
+      TWINE_REPOSITORY_URL: ${PACKAGE_REGISTRY_URL:-http://devpi:3141}/${PACKAGE_REGISTRY_INDEX:-root/public}/
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "pip install --quiet build twine && out=$$(mktemp -d) && for d in /src/*/; do [ -f \"$$d/pyproject.toml\" ] || continue; python -m build --outdir $$out \"$$d\" >/dev/null 2>&1 || { echo \"could not build $$d\"; continue; }; done && twine upload --non-interactive $$out/* && echo 'plugins published to the index'"
+    depends_on:
+      - devpi
+    restart: "no"
+    networks:
+      - backend
+
   # ── Catalogue of tests and controls (apps/catalogue submodule) ──
   # Step 3 of the assessment: browse the registry and choose what will run. On
   # this branch it also carries one-click install: the catalogue resolves a tool
