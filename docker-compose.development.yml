@@ -425,7 +425,7 @@ services:
     pull_policy: never
     container_name: platform
     environment:
-      PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/platform}
+      PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://platform_rw:platform_rw@postgres:5432/platform}
     depends_on:
       - postgres
     restart: unless-stopped

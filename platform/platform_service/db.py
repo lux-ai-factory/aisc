@@ -16,7 +16,7 @@ _pool: ConnectionPool | None = None
 def dsn() -> str:
     return os.environ.get(
         "PLATFORM_DATABASE_URL",
-        "postgresql://aisc-postgres-user:dev-password@postgres:5432/platform",
+        "postgresql://platform_rw:platform_rw@postgres:5432/platform",
     )
 
 
@@ -34,7 +34,7 @@ def list_projects() -> list[dict]:
     with pool().connection() as conn:
         return conn.execute(
             "select pid, name, slug, description, created_at, updated_at"
-            " from project order by created_at desc"
+            " from core.project order by created_at desc"
         ).fetchall()
 
 
@@ -42,7 +42,7 @@ def get_project(slug: str) -> dict | None:
     with pool().connection() as conn:
         return conn.execute(
             "select pid, name, slug, description, created_at, updated_at"
-            " from project where slug = %s",
+            " from core.project where slug = %s",
             (slug,),
         ).fetchone()
 
@@ -50,7 +50,7 @@ def get_project(slug: str) -> dict | None:
 def create_project(name: str, slug: str, description: str | None) -> dict:
     with pool().connection() as conn:
         return conn.execute(
-            "insert into project (name, slug, description) values (%s, %s, %s)"
+            "insert into core.project (name, slug, description) values (%s, %s, %s)"
             " returning pid, name, slug, description, created_at, updated_at",
             (name, slug, description),
         ).fetchone()
