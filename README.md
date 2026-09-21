@@ -58,10 +58,9 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 
 All six steps are wired in, and the catalogue installs a test into the engine:
 
-1. Start in the engine and press **Public Catalogue** in its top bar. That opens
-   the catalogue with the engine's own address attached, so the catalogue knows
-   where to send installs. (You can also open the catalogue from the launcher and
-   connect it from there.)
+1. Open the catalogue, either from the launcher's step 3 or with **Public
+   Catalogue** in the engine's top bar. Both attach the engine's address to the
+   link, which is how the catalogue learns where to send an install.
 2. Open a test and press Install.
 3. The catalogue hands the engine a `web+aiscplugin://enable?package=…&version=…`
    link. The first time, the browser asks to register that protocol handler.

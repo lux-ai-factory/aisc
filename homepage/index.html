@@ -294,7 +294,7 @@
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
     <div class="arrow" aria-hidden="true"></div>
-    <a class="card" href="http://localhost:8102/">
+    <a class="card" id="catalogue-card" data-engine="http://localhost/" href="http://localhost:8102/">
       <span class="n">3</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 5v14"/></svg>
@@ -354,6 +354,26 @@
     var menu = document.querySelector('.menu');
     if (e.key === 'Escape' && menu) menu.open = false;
   });
+
+  // The catalogue needs to know which engine to install into. That is a
+  // handshake the engine's own "Public Catalogue" button performs by opening
+  // the catalogue with #env=<base64 {url, expires}>. Without it the catalogue
+  // falls back to a web+aiscplugin:// link, which on Linux asks the desktop for
+  // an application and finds none. The launcher does the same handshake, so
+  // step 3 works whether you arrive from here or from the engine.
+  (function () {
+    var card = document.getElementById('catalogue-card');
+    if (!card) return;
+    card.addEventListener('click', function (e) {
+      try {
+        var payload = { url: card.dataset.engine.replace(/\/+$/, ''),
+                        expires: Date.now() + 60 * 60 * 1000 };
+        e.preventDefault();
+        window.location.href = card.getAttribute('href').replace(/\/+$/, '')
+          + '/#env=' + btoa(JSON.stringify(payload));
+      } catch (err) { /* fall through to the plain href */ }
+    });
+  })();
 
   fetch('/oauth2/userinfo', {credentials:'same-origin'})
     .then(function(r){ return r.ok ? r.json() : null; })
