@@ -437,6 +437,8 @@ services:
         VITE_API_URL: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api
         VITE_ENABLE_ADD_ENTRIES: "true"
         VITE_ENABLE_SANDBOX: "true"
+        # without this the Install button does not render at all
+        VITE_ENABLE_INSTALL: "true"
         # one-click install: the platform's install door and its token
         VITE_PLATFORM_URL: ${API_URL_EXTERNAL}
         VITE_PLATFORM_INSTALL_TOKEN: ${CATALOGUE_INSTALL_TOKEN:-}

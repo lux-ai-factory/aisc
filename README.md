@@ -56,7 +56,13 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 | 5 | Controls (`apps/controls`) | http://localhost/controls |
 | 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
 
-All six steps are wired in. The catalogue carries **one-click install**: it resolves a
+All six steps are wired in. The catalogue's Install button only renders when the
+frontend is built with `VITE_ENABLE_INSTALL=true`, which compose passes; without it
+a tool's card shows nothing but Close. The button then asks for the **UUID of the
+target project** in the execution engine, so create the project there first: there
+is no picker, and an install is always into a project.
+
+The catalogue carries **one-click install**: it resolves a
 test to a package on the platform's own index and posts it to the engine's install
 door, which is off unless `CATALOGUE_INSTALL_ENABLED` is set, refuses any index
 outside `CATALOGUE_TRUSTED_INDEXES`, and requires the bearer token in
