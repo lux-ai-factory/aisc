@@ -56,21 +56,29 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 | 5 | Controls (`apps/controls`) | http://localhost/controls |
 | 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
 
-All six steps are wired in. The catalogue's Install button only renders when the
-frontend is built with `VITE_ENABLE_INSTALL=true`, which compose passes; without it
-a tool's card shows nothing but Close. The button then asks for the **UUID of the
-target project** in the execution engine, so create the project there first: there
-is no picker, and an install is always into a project. Get the UUID from the
-engine: open the project at http://localhost/ and take the `pid` from its URL, or
-read it from `aisc_backend_project.pid`.
+All six steps are wired in, and the catalogue installs a test into the engine:
 
-The catalogue carries **one-click install**: it resolves a
-test to a package on the platform's own index and posts it to the engine's install
-door, which is off unless `CATALOGUE_INSTALL_ENABLED` is set, refuses any index
-outside `CATALOGUE_TRUSTED_INDEXES`, and requires the bearer token in
-`CATALOGUE_INSTALL_TOKEN`. That token is inlined into the catalogue's JS bundle,
-which the catalogue's own config file flags as a v1 compromise to be replaced by a
-proxy or per-user tokens: fine for localhost, not for a shared deployment.
+1. In the catalogue, open a test and press Install.
+2. The catalogue hands the engine a `web+aiscplugin://enable?package=…&version=…`
+   link. The first time, the browser asks to register that protocol handler.
+3. The engine opens its install dialog, lists your projects in a **dropdown**,
+   and posts your choice to its own `POST /api/v1/plugins`.
+
+No token, no allowlist and no pasted UUID: the engine knows its own projects, so
+the install happens where that knowledge is. The endpoint predates the feature and
+is on the engine's `master`.
+
+Packages come from the `devpi` service, the platform's own index; the catalogue's
+`/api/tool/{slug}/install-info` resolves a test to a pinned package on it.
+
+> [!NOTE]
+> There is a second, unused implementation of this in the codebase: a token-guarded
+> `POST /api/v1/catalogue/install` on `aisc-backend`'s `feat/catalogue-1click-install`,
+> with a trusted-index allowlist, driven by an Install button that asks for a project
+> UUID. It was written for a **hosted** catalogue talking to a deployment it can
+> reach over the network. Here both sit in one stack and the browser does the hop, so
+> this install uses the engine's own dialog instead and pins `apps/backend` at
+> `master`.
 
 **Signing in, once.** Every module above sits behind a gateway: Caddy asks
 oauth2-proxy about each request with `forward_auth`, and an unauthenticated one

@@ -98,39 +98,42 @@ for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672"
     && ok "$n is bound to the loopback only" || no "$n is not loopback-bound on :$port"
 done
 
-echo "6. the catalogue's one-click install door on the engine"
-DOOR=${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install
-TOKEN=${CATALOGUE_INSTALL_TOKEN:-__CATALOGUE_INSTALL_TOKEN__}
-INDEX=${CATALOGUE_INDEX_URL:-http://devpi:3141/root/public/+simple/}
-payload() { printf '{"package_name":"langbite","version":"1.1.1","index_url":"%s","project_uuid":"00000000-0000-0000-0000-000000000000"}' "$1"; }
+echo "6. installing a plugin goes through the engine, not a second door"
+# The catalogue emits web+aiscplugin:// links; the engine catches them, shows a
+# project dropdown and posts to its own endpoint. So what has to exist is: the
+# engine's install endpoint, its project list, and no bespoke door.
+# The engine's API wants a Keycloak access token, which the dialog has because
+# keycloak-js gave it one. A session cookie alone is not enough, so the check
+# takes a token the way the app does.
+TOK=$(curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' \
+        -d "username=$U" -d "password=$P" -d 'scope=openid' \
+        "$KC/realms/aisc/protocol/openid-connect/token" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+[ -n "$TOK" ] && ok "the realm issues an access token for the engine's client" || no "no access token from the realm"
 
-c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$(payload "$INDEX")" "$DOOR")
-[ "$c" = "302" ] && ok "without a session the gateway refuses the door (302)" || no "no-session POST -> $c (want 302)"
+c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+[ "$c" = "200" ] && ok "the engine lists projects for the dialog's dropdown (200)" || no "GET /api/v1/projects -> $c"
 
-# the door is served on the catalogue's own origin; the catalogue's own API must
-# still answer there, which it only does if the route order is explicit
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/tool/langbite/install-info")
-[ "$c" = "200" ] && ok "the catalogue's own API still answers on that origin (200)" || no "catalogue API on the shared origin -> $c"
-
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d "$(payload "$INDEX")" "$DOOR")
-[ "$c" = "401" ] && ok "with a session but no bearer token the door refuses (401)" || no "no-bearer POST -> $c (want 401)"
-
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' \
-      -H "Authorization: Bearer $TOKEN" -d "$(payload http://evil.example/simple/)" "$DOOR")
-[ "$c" = "403" ] && ok "an index outside the allowlist is refused (403)" || no "untrusted index -> $c (want 403)"
-
-# With every gate passed it reaches the business logic, which needs a real
-# project. On a virgin install there is none, so 404 is the proof of passage.
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 90 -X POST -H 'Content-Type: application/json' \
-      -H "Authorization: Bearer $TOKEN" -d "$(payload "$INDEX")" "$DOOR")
+c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code}' --max-time 30 \
+      -X POST -H 'Content-Type: application/json' \
+      -d '{"package_name":"x","version":"1.0.0","project_uuid":"00000000-0000-0000-0000-000000000000"}' \
+      http://localhost/api/v1/plugins)
+# 404: no such project on a virgin install, which means it got past auth and
+# schema into the engine's own logic, exactly as the dialog would.
 case "$c" in
-  404|200|201) ok "token and index accepted: the door reached the engine ($c)" ;;
-  *) no "authorised install -> $c (want 404 on a virgin install, or 2xx)" ;;
+  404|400|422|200|201) ok "the engine's own POST /api/v1/plugins accepts the dialog's payload ($c)" ;;
+  401|403) no "POST /api/v1/plugins refused the token ($c)" ;;
+  *) no "POST /api/v1/plugins -> $c" ;;
 esac
 
-info=$(curl -s -b "$J" -L --max-time 20 http://localhost:8102/api/tool/langbite/install-info)
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+[ "$c" = "401" ] && ok "and refuses the same call without a token (401)" || no "unauthenticated /api/v1/projects -> $c (want 401)"
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d '{}' \
+      "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install")
+[ "$c" = "404" ] && ok "the bespoke install door is gone (404)" || no "the old door still answers ($c)"
+info=$(curl -s -b "$J" -L --max-time 20 "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/tool/langbite/install-info")
 printf '%s' "$info" | grep -q '"installable":true' \
-  && ok "the catalogue serves an installable descriptor for a test" \
+  && ok "the catalogue still resolves a test to an installable package" \
   || no "install-info: ${info:0:90}"
 
 echo; echo "passed: $pass  failed: $fail"; [ "$fail" -eq 0 ]

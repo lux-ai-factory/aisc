@@ -48,12 +48,6 @@ services:
       IMMUDB_URL: immudb:3322
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      # the catalogue's one-click install door (apps/backend on this branch):
-      # off unless enabled, refuses anything but the trusted index, and requires
-      # the bearer token the catalogue frontend is built with.
-      CATALOGUE_INSTALL_ENABLED: ${CATALOGUE_INSTALL_ENABLED:-true}
-      CATALOGUE_INSTALL_TOKEN: ${CATALOGUE_INSTALL_TOKEN:-}
-      CATALOGUE_TRUSTED_INDEXES: ${CATALOGUE_TRUSTED_INDEXES:-http://devpi:3141/root/public/+simple/}
     networks:
       - backend
     depends_on:
@@ -442,11 +436,6 @@ services:
         VITE_ENABLE_SANDBOX: "true"
         # without this the Install button does not render at all
         VITE_ENABLE_INSTALL: "true"
-        # one-click install: the platform's install door and its token
-        # the catalogue's own origin: its install POST is same-origin, so the
-        # gateway session cookie travels with it (see the Caddyfile)
-        VITE_PLATFORM_URL: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}
-        VITE_PLATFORM_INSTALL_TOKEN: ${CATALOGUE_INSTALL_TOKEN:-}
     image: aisc-catalogue-frontend:latest
     pull_policy: never
     container_name: catalogue-frontend

@@ -143,15 +143,6 @@
   # `route` because order matters here and handle blocks are sorted by Caddy's
   # own idea of specificity, which puts /api* ahead of the longer path below.
   route {
-    # The engine's install door, served on THIS origin on purpose. The catalogue
-    # posts to it from the browser with axios and no withCredentials, so a
-    # cross-origin call would carry no session cookie, the gateway would refuse
-    # it and the install would fail. Same origin, same cookie, no CORS. The path
-    # is not stripped: the backend serves it at /api/v1/catalogue/install.
-    handle /api/v1/catalogue/install* {
-      import protect
-      reverse_proxy aisc-backend:8000
-    }
     handle_path /api* {
       import protect
       reverse_proxy catalogue-backend:8000
