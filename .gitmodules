@@ -25,11 +25,11 @@
 [submodule "apps/qualification"]
 	path = apps/qualification
 	url = https://github.com/lux-ai-factory/aisc-qualification.git
-	branch = main
+	branch = feat/unified-modules
 [submodule "apps/control-objectives"]
 	path = apps/control-objectives
 	url = https://github.com/lux-ai-factory/aisc-control-objectives.git
-	branch = main
+	branch = feat/unified-modules
 [submodule "apps/results-dashboard"]
 	path = apps/results-dashboard
 	url = https://github.com/lux-ai-factory/aisc-results-dashboard.git

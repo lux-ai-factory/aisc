@@ -349,15 +349,14 @@
     <h1 class="title" id="project-name">&hellip;</h1>
     <p class="subtitle" id="project-meta"></p>
 
-    <p class="note">
-      The six steps below are not yet scoped to this project: each module still
-      keeps its own records. The project is the shared identity they will
-      reference, one module at a time.
+    <p class="note" id="scope-note">
+      Every step below opens on this project: one database, a schema for each
+      module, and every row in it knowing whose project it is.
     </p>
 
 
   <div class="row">
-    <a class="card" href="http://localhost/qualification">
+    <a class="card" id="qualification-card" href="http://localhost/qualification">
       <span class="n">1</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM6 7h12v13H6z"/><path d="m9 13 2 2 4-4"/></svg>
@@ -368,7 +367,7 @@
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
     <div class="arrow" aria-hidden="true"></div>
-    <a class="card" href="http://localhost/control-objectives">
+    <a class="card" id="control-objectives-card" href="http://localhost/control-objectives">
       <span class="n">2</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
@@ -394,7 +393,7 @@
   <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
 
   <div class="row">
-    <a class="card" href="http://localhost/">
+    <a class="card" id="engine-card" href="http://localhost/">
       <span class="n">4</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16l14-8z"/></svg>
@@ -405,7 +404,7 @@
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
     <div class="arrow" aria-hidden="true"></div>
-    <a class="card" href="http://localhost/controls">
+    <a class="card" id="controls-card" href="http://localhost/controls">
       <span class="n">5</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3 7-7 9-4-2-7-4-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
@@ -448,6 +447,21 @@
       var meta = p.slug + '  ·  created ' + String(p.created_at).slice(0, 10);
       document.getElementById('project-meta').textContent = p.description
         ? meta + '  ·  ' + p.description : meta;
+      // Modules that are on the project open inside it: one database, and a
+      // module page that lists anything says whose it is.
+      var inProject = {
+        'control-objectives-card': 'http://localhost/control-objectives/p/',
+        'controls-card': 'http://localhost/controls/p/',
+        'qualification-card': 'http://localhost/qualification/p/'
+      };
+      Object.keys(inProject).forEach(function (id) {
+        var card = document.getElementById(id);
+        if (card) card.href = inProject[id] + encodeURIComponent(p.pid);
+      });
+      // The execution engine is a single-page app with its own project
+      // switcher, so it takes the project as a query and remembers it.
+      var engine = document.getElementById('engine-card');
+      if (engine) engine.href = 'http://localhost/?project=' + encodeURIComponent(p.pid);
     })
     .catch(function () {
       document.getElementById('project-name').textContent = 'Unknown project';

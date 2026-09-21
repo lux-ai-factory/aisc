@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from platform_service import db
 from platform_service.projects import InvalidProject, normalise_name, slug_for, validate_slug
+from platform_service.systems import InvalidSystem, system_key
 
 app = FastAPI(title="AISC platform", docs_url="/docs")
 
@@ -54,6 +55,51 @@ def add_project(body: ProjectIn) -> dict:
         raise HTTPException(status_code=409, detail=f"a project {slug!r} already exists")
 
 
+class SystemIn(BaseModel):
+    name: str
+    version: str | None = None
+    provider: str | None = None
+    description: str | None = None
+
+
+@app.get("/projects/{slug}/systems")
+def systems(slug: str) -> list[dict]:
+    if db.get_project(slug) is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return db.list_systems(slug)
+
+
+@app.post("/projects/{slug}/systems", status_code=201)
+def register_system(slug: str, body: SystemIn) -> dict:
+    """Name a system inside a project, or find the one already named.
+
+    Qualification calls this when it starts describing a system and the engine
+    when it runs tests against one: the same call either way, because the same
+    name and version in the same project is the same system.
+    """
+    try:
+        name, version = system_key(body.name, body.version)
+    except InvalidSystem as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    found = db.register_system(slug, name, version, body.provider, body.description)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return found
+
+
+@app.get("/systems/{pid}")
+def system(pid: str) -> dict:
+    found = db.get_system(pid)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"no system {pid}")
+    return found
+
+
 @app.exception_handler(InvalidProject)
 def invalid_project(_, exc: InvalidProject) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(InvalidSystem)
+def invalid_system(_, exc: InvalidSystem) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})

@@ -37,6 +37,7 @@ services:
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_ENGINE: ${DB_ENGINE}
+      DB_SCHEMA: ${DB_SCHEMA}
       BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
       BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -242,8 +243,10 @@ services:
   # ── AI Act control objectives (apps/control-objectives submodule) ──
   # Reads the AI Card the qualification app exports, ranks that system's risks
   # and maps them onto the control objectives. Keeps its own Postgres database:
-  # the projects, their rankings and what each mapping run cost. The database is
-  # created on a fresh volume by init/control-objectives-db.sql.
+  # the projects, their rankings and what each mapping run cost. Its tables
+  # live in the `control_objectives` schema of the one platform database,
+  # created by init/platform-db.sql; the migration makes the schema if a
+  # database predates it.
   control-objectives-migrate:
     build: apps/control-objectives/
     image: aisc-control-objectives:latest
@@ -252,7 +255,7 @@ services:
     command: >
       sh -c "until alembic upgrade head; do echo '[control-objectives] waiting for postgres'; sleep 2; done"
     environment:
-      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://aisc-postgres-user:dev-password@postgres:5432/control_objectives}
+      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
     depends_on:
       - postgres
     restart: "no"
@@ -269,7 +272,7 @@ services:
       # Served behind Caddy under /control-objectives. FastAPI's root_path only
       # fixes the URLs the app generates; Caddy's handle_path strips the prefix.
       CONTROL_OBJECTIVES_ROOT_PATH: /control-objectives
-      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://aisc-postgres-user:dev-password@postgres:5432/control_objectives}
+      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
       # The model, named BAF's way — the same two variables the qualification
       # filler reads, so both services are configured alike.
       #
@@ -334,7 +337,7 @@ services:
       IMMUDB_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       AISC_AUDIT_ENABLED: "true"
       # the platform's own database, through the read-only role
-      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@postgres:5432/aisc}
+      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@postgres:5432/platform}
       BRANDING_APP_NAME: ${BRANDING_APP_NAME:-}
       BRANDING_LOGO: ${BRANDING_LOGO:-}
       BRANDING_PRIMARY: ${BRANDING_PRIMARY:-}
@@ -373,7 +376,7 @@ services:
       <<: *dashboard-env
       SUPERSET_PORT: ${DASHBOARD_PORT:-8188}
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
-      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/aisc}
+      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/platform}
       REDIS_HOST: localhost
       IMMUDB_HOST: localhost
       # its own client in the realm; the browser and this container both use
@@ -457,7 +460,10 @@ services:
     pull_policy: never
     container_name: catalogue-backend
     environment:
-      DATABASE_URL: sqlite:///./data/Class_Diagram.db
+      # One database for the whole platform; the catalogue owns the `catalogue`
+      # schema in it and connects as its own role. It holds reference data, the
+      # same for every project, so nothing in it belongs to one.
+      DATABASE_URL: ${CATALOGUE_DATABASE_URL:-postgresql+psycopg://catalogue_rw:catalogue_rw@postgres:5432/platform}
       # the index the install descriptor advertises to the platform
       DEVPI_URL: http://devpi:3141
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
@@ -467,10 +473,9 @@ services:
       LLM_MISTRAL_KEY: ${MISTRAL_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    volumes:
-      - catalogue_sqlite:/app/data
     depends_on:
       - devpi
+      - postgres
     restart: unless-stopped
     networks:
       - backend

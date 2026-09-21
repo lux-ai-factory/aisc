@@ -13,7 +13,11 @@
 -- schema, reads the core, and is refused the rest. The grants below are the
 -- contract, and scripts/verify-db-access.sh asserts it by connecting as each
 -- role and trying what it must and must not be able to do.
-CREATE DATABASE platform;
+-- Created only if it is not already the bootstrap database: POSTGRES_DB is
+-- `platform` now that every module lives here, and the image makes that one
+-- itself before running this script.
+SELECT 'CREATE DATABASE platform'
+ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'platform')\gexec
 
 \connect platform
 
@@ -55,6 +59,12 @@ CREATE TABLE core.system (
     -- may legitimately assess systems with the same name
     UNIQUE (project_id, name, version)
 );
+-- An unversioned system stores NULL, and in a UNIQUE constraint NULLs are all
+-- distinct, so the constraint above would let the same unversioned system be
+-- registered twice. This index is what actually makes it one system. (NULLS NOT
+-- DISTINCT would say it in one word; it needs Postgres 15.)
+CREATE UNIQUE INDEX system_identity_idx
+    ON core.system (project_id, name, coalesce(version, ''));
 CREATE INDEX system_project_idx ON core.system (project_id);
 
 COMMENT ON TABLE core.project IS 'An assessment, defined once for the whole platform.';
@@ -67,11 +77,13 @@ CREATE SCHEMA qualification;
 CREATE SCHEMA control_objectives;
 CREATE SCHEMA controls;
 CREATE SCHEMA engine;
+CREATE SCHEMA catalogue;
 
 COMMENT ON SCHEMA qualification      IS 'Step 1: qualifications and system cards.';
 COMMENT ON SCHEMA control_objectives IS 'Step 2: risks, mappings and their runs.';
 COMMENT ON SCHEMA controls           IS 'Step 5: checklists, submissions and answers.';
 COMMENT ON SCHEMA engine             IS 'Step 4: datasets, models, plugins, evaluations, measurements.';
+COMMENT ON SCHEMA catalogue          IS 'Step 3: the registry of tests and controls. Reference data: the same for every project, so nothing in it belongs to one.';
 
 -- ---------------------------------------------------------------------------
 -- roles: a module may write its own schema, read the core, and nothing else.
@@ -92,6 +104,8 @@ BEGIN
         ('control_objectives_rw'),
         ('controls_rw'),
         ('engine_rw'),
+        -- the catalogue: the registry of tests and controls
+        ('catalogue_rw'),
         -- the platform service: the only writer of the core
         ('platform_rw'),
         -- the dashboard: reads everything, writes nothing
@@ -107,13 +121,14 @@ $roles$;
 
 -- everyone may connect, and see the core
 GRANT CONNECT ON DATABASE platform TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, platform_rw, dashboard_ro;
+    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw,
+    platform_rw, dashboard_ro;
 GRANT USAGE ON SCHEMA core TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, dashboard_ro;
+    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, dashboard_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA core TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, dashboard_ro;
+    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, dashboard_ro;
 ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT SELECT ON TABLES TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, dashboard_ro;
+    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, dashboard_ro;
 
 -- the core belongs to the platform service
 GRANT USAGE, CREATE ON SCHEMA core TO platform_rw;
@@ -132,10 +147,19 @@ BEGIN
         ('qualification',      'qualification_rw'),
         ('control_objectives', 'control_objectives_rw'),
         ('controls',           'controls_rw'),
-        ('engine',             'engine_rw')
+        ('engine',             'engine_rw'),
+        -- the catalogue holds no project's data, but the rest of the contract
+        -- is the same: its own schema, its own role, readable by the dashboard
+        ('catalogue',          'catalogue_rw')
     ) AS t(schema_name, role_name)
     LOOP
         EXECUTE format('GRANT USAGE, CREATE ON SCHEMA %I TO %I', m.schema_name, m.role_name);
+        -- A module may point AT the shared vocabulary: a foreign key into
+        -- core.project is how its rows say whose they are. REFERENCES is the
+        -- privilege that allows the key and nothing else; core stays
+        -- read-only to every module.
+        EXECUTE format('GRANT REFERENCES ON core.project TO %I', m.role_name);
+        EXECUTE format('GRANT REFERENCES ON core.system TO %I', m.role_name);
         EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT ALL ON TABLES TO %I',
                        m.role_name, m.schema_name, m.role_name);
         EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT ALL ON SEQUENCES TO %I',

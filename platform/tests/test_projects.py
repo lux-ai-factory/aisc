@@ -52,3 +52,21 @@ def test_an_explicit_slug_is_validated_not_rewritten():
 
 def test_slugs_are_bounded_so_they_fit_a_path():
     assert len(slug_for("x" * 200)) <= 64
+
+
+# A project is named two ways: the slug people read in a URL, and the pid rows
+# point at. Modules are handed whichever their page has, so the platform takes
+# either.
+def test_a_pid_is_recognised_as_a_pid():
+    from platform_service.projects import looks_like_pid
+
+    assert looks_like_pid("01399e17-4b01-4be9-997a-7f5e3574ab22")
+    assert looks_like_pid("01399E17-4B01-4BE9-997A-7F5E3574AB22")
+
+
+def test_a_slug_is_not_mistaken_for_one():
+    from platform_service.projects import looks_like_pid
+
+    assert not looks_like_pid("microcredit-assist-score-mcas")
+    assert not looks_like_pid("")
+    assert not looks_like_pid("01399e17-4b01-4be9-997a")

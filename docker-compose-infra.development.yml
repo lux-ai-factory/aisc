@@ -109,23 +109,14 @@ services:
       - "127.0.0.1:5432:5432"   # loopback only; the host-networked dashboard reads here
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
-      # Creates the `controls` DB (apps/controls) on a fresh volume.
-      - ./init/controls-db.sql:/docker-entrypoint-initdb.d/10-controls-db.sql:ro,Z
-      # Creates the `qualification` DB (apps/qualification) on a fresh volume.
-      - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro,Z
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
       # Creates the platform's own `platform` DB, whose only table is the
       # project every module will come to reference. First, so it exists before
       # any app migrates.
       - ./init/platform-db.sql:/docker-entrypoint-initdb.d/05-platform-db.sql:ro,Z
-      # Creates the `control_objectives` DB (apps/control-objectives) on a fresh volume.
-      - ./init/control-objectives-db.sql:/docker-entrypoint-initdb.d/40-control-objectives-db.sql:ro,Z
       # Creates the `superset` metadata DB (apps/results-dashboard) on a fresh volume.
       - ./init/superset-db.sql:/docker-entrypoint-initdb.d/50-superset-db.sql:ro,Z
-      # Creates the dashboard's read-only role on the platform DB, with default
-      # privileges so tables the backend creates later are readable.
-      - ./init/dashboard-ro.sql:/docker-entrypoint-initdb.d/60-dashboard-ro.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
