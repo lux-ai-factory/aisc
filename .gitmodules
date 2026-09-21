@@ -1,22 +1,22 @@
 [submodule "apps/backend"]
 	path = apps/backend
-	url = git@github.com:lux-ai-factory/aisc-backend.git
+	url = https://github.com/lux-ai-factory/aisc-backend.git
 	branch = master
 [submodule "apps/eval"]
 	path = apps/eval
-	url = git@github.com:lux-ai-factory/aisc-eval.git
+	url = https://github.com/lux-ai-factory/aisc-eval.git
 	branch = master
 [submodule "apps/webapp"]
 	path = apps/webapp
-	url = git@github.com:lux-ai-factory/aisc-webapp.git
+	url = https://github.com/lux-ai-factory/aisc-webapp.git
 	branch = master
 [submodule "shared/plugin-interface"]
 	path = shared/plugin-interface
-	url = git@github.com:lux-ai-factory/aisc-plugin-interface.git
+	url = https://github.com/lux-ai-factory/aisc-plugin-interface.git
 	branch = master
 [submodule "shared/plugin-manager"]
 	path = shared/plugin-manager
-	url = git@github.com:lux-ai-factory/aisc-plugin-manager.git
+	url = https://github.com/lux-ai-factory/aisc-plugin-manager.git
 	branch = master
 [submodule "apps/controls"]
 	path = apps/controls
