@@ -54,20 +54,27 @@ case "$loc" in
 esac
 
 echo "4. the dashboard uses the same Keycloak, with its own client"
-# Flask-AppBuilder with AUTH_OAUTH renders a provider page rather than
-# redirecting, so check that the page offers Keycloak and that the provider
-# link goes to the SAME Keycloak the gateway used.
-page=$(curl -s -b "$J" -c "$J" --max-time 20 http://localhost:8188/login/)
-printf '%s' "$page" | grep -qi 'sign in with keycloak' \
-  && ok "Superset offers Keycloak, not a username/password form" \
-  || no "Superset's login page does not offer Keycloak"
-printf '%s' "$page" | grep -qi 'name="username"' \
-  && no "Superset is still offering a local username/password form" \
-  || ok "no local password form on Superset's login page"
-loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - http://localhost:8188/login/keycloak | grep -i '^location:' | head -1)
+# Superset authenticates itself, and with one provider its /login/ page would be
+# a single button. It is configured to skip that, so the dashboard shows no
+# sign-in screen of its own at all.
+loc=$(curl -s --max-time 20 -o /dev/null -D - http://localhost:8188/login/ | grep -i '^location:' | head -1)
 case "$loc" in
-  *localhost:8081/realms/aisc*client_id=superset*) ok "its provider link goes to the shared Keycloak as client superset" ;;
-  *) no "provider link went to: ${loc:-nowhere}" ;;
+  */login/keycloak*) ok "Superset's login page redirects to the provider, no picker" ;;
+  *) no "Superset's /login/ went to: ${loc:-its own page}" ;;
+esac
+loc=$(curl -s --max-time 20 -o /dev/null -D - http://localhost:8188/login/keycloak | grep -i '^location:' | head -1)
+case "$loc" in
+  *localhost:8081/realms/aisc*client_id=superset*) ok "and that provider is the shared Keycloak, as client superset" ;;
+  *) no "provider route went to: ${loc:-nowhere}" ;;
+esac
+out=$(curl -s -b "$J" -c "$J" -L --max-time 30 -w '\n__URL__%{url_effective}' http://localhost:8188/)
+eff=$(printf '%s' "$out" | tail -1)
+printf '%s' "$out" | grep -qi 'sign in with keycloak\|name="username"' \
+  && no "the dashboard still asked for a sign-in" \
+  || ok "the dashboard opened on that one session, no sign-in screen"
+case "$eff" in
+  *superset/welcome*) ok "and landed on Superset's own page ($eff)" ;;
+  *) no "landed at: $eff" ;;
 esac
 loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - \
   "$KC/realms/aisc/protocol/openid-connect/auth?client_id=superset&redirect_uri=http%3A%2F%2Flocalhost%3A8188%2Foauth-authorized%2Fkeycloak&response_type=code&scope=openid&prompt=none" \
