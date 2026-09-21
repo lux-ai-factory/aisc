@@ -49,10 +49,29 @@ engine owns the root of port 80 and cannot be served under a path prefix.
 Step 3, the catalogue, is not wired into this install. The launcher keeps it in the
 sequence so the workflow reads correctly, marks it, and does not link it.
 
-**Signing in.** The execution engine authenticates against Keycloak, so it opens on
-a sign-in page. The realm ships two dev accounts, `user` / `user` and
-`admin` / `admin`. They are development credentials in a committed realm export:
-change them for anything that is not localhost.
+**Signing in, once.** Every module above sits behind a gateway: Caddy asks
+oauth2-proxy about each request with `forward_auth`, and an unauthenticated one
+becomes a redirect to Keycloak. You sign in at the first page you open and that
+session covers all of them, because the cookie is scoped to domain `localhost`
+and cookies ignore ports.
+
+The realm ships two dev accounts, `user` / `user` and `admin` / `admin`. They are
+development credentials in a committed realm export, as is the gateway's own
+client secret in `keycloak/aisc-realm.json`: change all of them for anything that
+is not localhost.
+
+The execution engine keeps its own Keycloak client and its own check, but it
+initialises with `check-sso`, so it accepts the gateway's session silently rather
+than asking a second time. `./scripts/verify-sso.sh` asserts exactly that, one
+login then every module, ending with the `prompt=none` request the engine itself
+makes.
+
+Two things the gateway does not cover. The dashboard on :8188 has its own Superset
+login: putting it behind the same session needs either its native Keycloak SSO,
+which requires an issuer hostname that resolves identically in the browser and in
+the container, or a change in its own repo. And internal traffic is unaffected,
+since services call the backend directly on `http://aisc-backend:8000` rather than
+through Caddy.
 
 Also reachable: the backend's API at `/api`, the Django admin at `/admin`, Celery's
 Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`).

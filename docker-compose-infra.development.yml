@@ -12,6 +12,9 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
       - ./homepage:/srv/homepage:ro,Z
+    # so forward_auth can reach oauth2-proxy, which runs on the host network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       LOG_FILE: "/data/access.log"
       CADDY_DOMAIN: ${CADDY_DOMAIN}
@@ -119,6 +122,46 @@ services:
     restart: unless-stopped
     networks:
       - backend
+
+  # oauth2-proxy — holds the session that makes ONE sign-in cover every module.
+  #
+  # Caddy asks it about every request with forward_auth: 2xx passes the request
+  # through, 401 becomes a redirect to Keycloak. After the login its cookie is
+  # set for domain `localhost`, and cookies ignore ports, so the same session
+  # covers the platform on :80 and the launcher on :8100.
+  #
+  # network_mode: host on purpose. The issuer URL it talks to must be the SAME
+  # string the browser is redirected to (http://localhost:8081/realms/aisc); from
+  # inside a bridge network `localhost` would be the container itself and
+  # Keycloak's issuer check would fail.
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0
+    container_name: oauth2-proxy
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - keycloak
+    command:
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --skip-provider-button=true
+      - --email-domain=*
+      # the realm's users have no email claim
+      - --oidc-email-claim=preferred_username
+      - --scope=openid profile
+      - --client-id=aisc-gateway
+      - --client-secret=${GATEWAY_CLIENT_SECRET:-__GATEWAY_CLIENT_SECRET__}
+      - --cookie-secret=${GATEWAY_COOKIE_SECRET:-__GATEWAY_COOKIE_SECRET__}
+      - --cookie-domain=localhost
+      - --cookie-secure=false
+      - --cookie-samesite=lax
+      - --whitelist-domain=localhost
+      - --whitelist-domain=localhost:8100
+      - --set-xauthrequest=true
+      # it proxies nothing itself; Caddy does the proxying
+      - --upstream=static://202
 
   # Keycloak — identity & access management (single login / auth for all apps)
   keycloak:

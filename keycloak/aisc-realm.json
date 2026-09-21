@@ -1026,6 +1026,46 @@
         "configure": true,
         "manage": true
       }
+    },
+    {
+      "clientId": "aisc-gateway",
+      "name": "AISC gateway (oauth2-proxy)",
+      "description": "Confidential client for the reverse-proxy gateway: it holds the session that covers every module, so one sign-in is enough. DEV SECRET, change it for any real deployment.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "secret": "__GATEWAY_CLIENT_SECRET__",
+      "redirectUris": [
+        "http://localhost/oauth2/callback",
+        "http://localhost:8100/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost",
+        "http://localhost:8100"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8100/*##http://localhost/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "basic",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "organization",
+        "microprofile-jwt"
+      ]
     }
   ],
   "clientScopes": [

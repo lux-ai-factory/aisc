@@ -7,6 +7,34 @@
 }
 
 
+# forward_auth against oauth2-proxy: one sign-in covers every module below.
+# 2xx lets the request through, 401 becomes a redirect to Keycloak.
+(protect) {
+  forward_auth host.docker.internal:4180 {
+    uri /oauth2/auth
+    copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Preferred-Username
+    @unauth status 401
+    handle_response @unauth {
+      redir * /oauth2/start?rd={http.request.uri}
+    }
+  }
+}
+
+# oauth2-proxy's own endpoints stay open on every origin, or there is no way in.
+(oauth_endpoints) {
+  handle /oauth2/* {
+    reverse_proxy host.docker.internal:4180 {
+      # {host} drops the port, which makes oauth2-proxy build
+      # redirect_uri=http://localhost/oauth2/callback for the launcher too and
+      # Keycloak answer 400. {http.request.hostport} keeps it.
+      header_up Host {http.request.hostport}
+      header_up X-Forwarded-Host {http.request.hostport}
+      header_up X-Forwarded-Proto http
+      header_up X-Real-IP {remote_host}
+    }
+  }
+}
+
 {$CADDY_DOMAIN}:{$CADDY_PORT} {
   log {
     format console
@@ -17,9 +45,11 @@
   }
 
   import tls-{$CADDY_ENVIRONMENT}
+  import oauth_endpoints
 
   # Reverse proxy to aisc-backend, Django Admin section
   handle /admin* {
+    import protect
     reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
@@ -27,6 +57,7 @@
 
   # Reverse proxy to aisc-backend, this will serve the static assets need by Django Admin
   handle /static/admin/* {
+    import protect
     reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
@@ -39,6 +70,7 @@
 
   # Should be the backend API, so forward also this path there
   handle /api/* {
+    import protect
     reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
@@ -46,6 +78,7 @@
 
   # Flower 
   handle /flower/* {
+    import protect
     reverse_proxy aisc-eval-flower:5555 {
         header_up X-Real-IP {remote_host}
       }
@@ -53,6 +86,7 @@
 
   # AI-compliance checklists app (apps/controls), served under /controls
   handle /controls* {
+    import protect
     reverse_proxy controls-web:3000 {
       header_up X-Real-IP {remote_host}
     }
@@ -60,6 +94,7 @@
 
   # EU-AI-Act qualification app (apps/qualification), served under /qualification
   handle /qualification* {
+    import protect
     reverse_proxy qualification-web:3000 {
       header_up X-Real-IP {remote_host}
     }
@@ -68,6 +103,7 @@
   # prefix: the FastAPI app serves at /api/* and CONTROL_OBJECTIVES_ROOT_PATH only
   # fixes the URLs it generates, so the backend's own /api/* does not collide.
   handle_path /control-objectives* {
+    import protect
     reverse_proxy control-objectives:8090 {
       header_up X-Real-IP {remote_host}
     }
@@ -75,6 +111,7 @@
 
   # Serve the JS frontend by default
   handle {
+    import protect
     reverse_proxy aisc-webapp:80 {
       header_up X-Real-IP {remote_host}
     }
@@ -86,6 +123,12 @@
 # cannot be served under a path prefix.
 {$CADDY_DOMAIN}:{$HOMEPAGE_PORT} {
   import tls-{$CADDY_ENVIRONMENT}
-  root * /srv/homepage
-  file_server
+  import oauth_endpoints
+  # protect goes INSIDE handle: at site level it would also guard /oauth2/*,
+  # and /oauth2/start would redirect to itself for ever.
+  handle {
+    import protect
+    root * /srv/homepage
+    file_server
+  }
 }
