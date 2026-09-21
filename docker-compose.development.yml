@@ -234,3 +234,63 @@ services:
     networks:
       - backend
       - frontend
+
+  # ── AI Act control objectives (apps/control-objectives submodule) ──
+  # Reads the AI Card the qualification app exports, ranks that system's risks
+  # and maps them onto the control objectives. Keeps its own Postgres database:
+  # the projects, their rankings and what each mapping run cost. The database is
+  # created on a fresh volume by init/control-objectives-db.sql.
+  control-objectives-migrate:
+    build: apps/control-objectives/
+    image: aisc-control-objectives:latest
+    pull_policy: never
+    container_name: control-objectives-migrate
+    command: >
+      sh -c "until alembic upgrade head; do echo '[control-objectives] waiting for postgres'; sleep 2; done"
+    environment:
+      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://aisc-postgres-user:dev-password@postgres:5432/control_objectives}
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
+  control-objectives:
+    build: apps/control-objectives/
+    image: aisc-control-objectives:latest
+    pull_policy: never
+    container_name: control-objectives
+    env_file: apps/control-objectives/env.development
+    environment:
+      # Served behind Caddy under /control-objectives. FastAPI's root_path only
+      # fixes the URLs the app generates; Caddy's handle_path strips the prefix.
+      CONTROL_OBJECTIVES_ROOT_PATH: /control-objectives
+      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://aisc-postgres-user:dev-password@postgres:5432/control_objectives}
+      # The model, named BAF's way — the same two variables the qualification
+      # filler reads, so both services are configured alike.
+      #
+      # The default is deliberately keyless: the service refuses to start if the
+      # provider needs a key that is not set, so a first install must not default
+      # to a hosted provider. `ollama` reaches a model on the host through
+      # host.docker.internal. For a hosted provider set, in the platform env file:
+      #   CONTROL_OBJECTIVES_LLM_PROVIDER=openai
+      #   CONTROL_OBJECTIVES_LLM_MODEL=gpt-4o
+      #   OPENAI_API_KEY=...        (never commit one)
+      BAF_LLM_PROVIDER: ${CONTROL_OBJECTIVES_LLM_PROVIDER:-ollama}
+      BAF_LLM_MODEL: ${CONTROL_OBJECTIVES_LLM_MODEL:-mistral:latest}
+      BAF_LLM_BASE_URL: ${CONTROL_OBJECTIVES_LLM_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    # so the keyless default above can reach a model running on the host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      control-objectives-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${CONTROL_OBJECTIVES_PORT:-8090}:8090"
+    networks:
+      - backend
+      - frontend
+    restart: unless-stopped

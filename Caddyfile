@@ -64,6 +64,14 @@
       header_up X-Real-IP {remote_host}
     }
   }
+  # AI Act control objectives (apps/control-objectives). handle_path strips the
+  # prefix: the FastAPI app serves at /api/* and CONTROL_OBJECTIVES_ROOT_PATH only
+  # fixes the URLs it generates, so the backend's own /api/* does not collide.
+  handle_path /control-objectives* {
+    reverse_proxy control-objectives:8090 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
 
   # Serve the JS frontend by default
   handle {

@@ -26,3 +26,7 @@
 	path = apps/qualification
 	url = https://github.com/lux-ai-factory/aisc-qualification.git
 	branch = main
+[submodule "apps/control-objectives"]
+	path = apps/control-objectives
+	url = https://github.com/lux-ai-factory/aisc-control-objectives.git
+	branch = main

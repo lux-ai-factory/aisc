@@ -105,6 +105,8 @@ services:
       - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro,Z
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
+      # Creates the `control_objectives` DB (apps/control-objectives) on a fresh volume.
+      - ./init/control-objectives-db.sql:/docker-entrypoint-initdb.d/40-control-objectives-db.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
