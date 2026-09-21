@@ -40,7 +40,14 @@ for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
   eff=$(curl -s -b "$J" -c "$J" -L --max-time 30 -o /dev/null -w '%{url_effective}' "$u")
   case "$eff" in
     *:8081*) no "$n -> bounced to Keycloak ($eff)" ;;
-    *) printf '%s' "$body" | grep -qi "$m" && ok "$n -> served the app (matched \"$m\")" || no "$n -> 200 but no \"$m\" in the body" ;;
+    *) # `case`, not `grep -q`: grep exits at the first hit, printf takes
+       # SIGPIPE, and `pipefail` would then call a found string a failure.
+       shopt -s nocasematch
+       case "$body" in
+         *"$m"*) ok "$n -> served the app (matched \"$m\")" ;;
+         *) no "$n -> 200 but no \"$m\" in the body" ;;
+       esac
+       shopt -u nocasematch ;;
   esac
 done
 
@@ -70,9 +77,12 @@ case "$loc" in
 esac
 out=$(curl -s -b "$J" -c "$J" -L --max-time 30 -w '\n__URL__%{url_effective}' http://localhost:8188/)
 eff=$(printf '%s' "$out" | tail -1)
-printf '%s' "$out" | grep -qi 'sign in with keycloak\|name="username"' \
-  && no "the dashboard still asked for a sign-in" \
-  || ok "the dashboard opened on that one session, no sign-in screen"
+shopt -s nocasematch
+case "$out" in
+  *'sign in with keycloak'*|*'name="username"'*) no "the dashboard still asked for a sign-in" ;;
+  *) ok "the dashboard opened on that one session, no sign-in screen" ;;
+esac
+shopt -u nocasematch
 case "$eff" in
   *superset/welcome*) ok "and landed on Superset's own page ($eff)" ;;
   *) no "landed at: $eff" ;;
@@ -102,9 +112,14 @@ echo "6. the platform's projects"
 c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8100/api/projects)
 [ "$c" = "302" ] && ok "the projects API is behind the gateway (302 anonymous)" || no "anonymous /api/projects -> $c"
 body=$(curl -s -b "$J" --max-time 15 http://localhost:8100/api/projects)
-printf '%s' "$body" | grep -q '"slug"' && ok "it lists projects on a session" || no "projects list: ${body:0:80}"
-printf '%s' "$(curl -s -b "$J" --max-time 15 http://localhost:8100/)" | grep -q '<h2>Projects</h2>' \
-  && ok "the launcher is the project list" || no "the launcher is not the project list"
+case "$body" in
+  *'"slug"'*) ok "it lists projects on a session" ;;
+  *) no "projects list: ${body:0:80}" ;;
+esac
+case "$(curl -s -b "$J" --max-time 15 http://localhost:8100/)" in
+  *'<h2>Projects</h2>'*) ok "the launcher is the project list" ;;
+  *) no "the launcher is not the project list" ;;
+esac
 slug=$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or [{}])[0].get("slug",""))' 2>/dev/null)
 if [ -n "$slug" ]; then
   n=$(curl -s -b "$J" --max-time 15 "http://localhost:8100/p/$slug" | grep -c 'class="card')
@@ -158,7 +173,7 @@ c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Con
       "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install")
 [ "$c" = "404" ] && ok "the bespoke install door is gone (404)" || no "the old door still answers ($c)"
 info=$(curl -s -b "$J" -L --max-time 20 "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/tool/langbite/install-info")
-printf '%s' "$info" | grep -q '"installable":true' \
+printf '%s' "$info" | grep -c '"installable":true' >/dev/null \
   && ok "the catalogue still resolves a test to an installable package" \
   || no "install-info: ${info:0:90}"
 

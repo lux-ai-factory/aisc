@@ -1,7 +1,7 @@
 [submodule "apps/backend"]
 	path = apps/backend
 	url = https://github.com/lux-ai-factory/aisc-backend.git
-	branch = master
+	branch = feat/unified-modules
 [submodule "apps/eval"]
 	path = apps/eval
 	url = https://github.com/lux-ai-factory/aisc-eval.git
@@ -9,7 +9,7 @@
 [submodule "apps/webapp"]
 	path = apps/webapp
 	url = https://github.com/lux-ai-factory/aisc-webapp.git
-	branch = feat/catalogue-intergration
+	branch = feat/unified-modules
 [submodule "shared/plugin-interface"]
 	path = shared/plugin-interface
 	url = https://github.com/lux-ai-factory/aisc-plugin-interface.git
@@ -21,7 +21,7 @@
 [submodule "apps/controls"]
 	path = apps/controls
 	url = https://github.com/lux-ai-factory/aisc-controls.git
-	branch = main
+	branch = feat/unified-modules
 [submodule "apps/qualification"]
 	path = apps/qualification
 	url = https://github.com/lux-ai-factory/aisc-qualification.git
@@ -37,4 +37,4 @@
 [submodule "apps/catalogue"]
 	path = apps/catalogue
 	url = https://github.com/lux-ai-factory/catalogue.git
-	branch = feat/catalogue-1click-install
+	branch = feat/unified-modules
