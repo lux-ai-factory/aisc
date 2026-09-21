@@ -294,3 +294,69 @@ services:
       - backend
       - frontend
     restart: unless-stopped
+
+  # ── Results dashboard (apps/results-dashboard submodule) ──
+  # Superset, reading the platform's own database read-only, so the evaluation
+  # results the execution engine writes can be charted. Unlike the other apps it
+  # cannot be served under a path prefix: Superset 4.1 needs the site root, so
+  # it gets its own published port rather than a Caddy route.
+  #
+  # It shares the platform's Postgres, Redis and immudb instead of bringing its
+  # own, which is what its standalone docker-compose.yml does. Its metadata DB
+  # and its read-only role are created by init/50-superset-db.sql and
+  # init/60-dashboard-ro.sql on a fresh volume.
+  dashboard-migrate:
+    build: apps/results-dashboard
+    image: aisc-results-dashboard:latest
+    pull_policy: never
+    container_name: dashboard-migrate
+    user: root
+    entrypoint: ["/bin/bash", "-c"]
+    # A single argument to `bash -c`: a plain string command is split on
+    # whitespace and truncated at the first &&, which loses the rest.
+    command:
+      - "superset db upgrade && (superset fab create-admin --username ${DASHBOARD_ADMIN:-admin} --firstname Admin --lastname User --email admin@example.com --password ${DASHBOARD_ADMIN_PASSWORD:-admin} || true) && superset init"
+    environment: &dashboard-env
+      SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/superset
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-aisc-dev-secret-change-me}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      IMMUDB_HOST: immudb
+      IMMUDB_PORT: "3322"
+      IMMUDB_USER: immudb
+      IMMUDB_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+      AISC_AUDIT_ENABLED: "true"
+      # the platform's own database, through the read-only role
+      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@postgres:5432/aisc}
+      BRANDING_APP_NAME: ${BRANDING_APP_NAME:-}
+      BRANDING_LOGO: ${BRANDING_LOGO:-}
+      BRANDING_PRIMARY: ${BRANDING_PRIMARY:-}
+      BRANDING_SECONDARY: ${BRANDING_SECONDARY:-}
+      EMBED_ALLOWED_ORIGINS: ${EMBED_ALLOWED_ORIGINS:-}
+    volumes: &dashboard-volumes
+      - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
+      - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
+      - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
+    depends_on:
+      - postgres
+      - redis
+    restart: "no"
+    networks:
+      - backend
+
+  dashboard:
+    build: apps/results-dashboard
+    image: aisc-results-dashboard:latest
+    pull_policy: never
+    container_name: dashboard
+    environment: *dashboard-env
+    volumes: *dashboard-volumes
+    ports:
+      - "${DASHBOARD_PORT:-8188}:8088"
+    depends_on:
+      dashboard-migrate:
+        condition: service_completed_successfully
+    networks:
+      - backend
+      - frontend
+    restart: unless-stopped

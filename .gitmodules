@@ -30,3 +30,6 @@
 	path = apps/control-objectives
 	url = https://github.com/lux-ai-factory/aisc-control-objectives.git
 	branch = main
+[submodule "apps/results-dashboard"]
+	path = apps/results-dashboard
+	url = https://github.com/lux-ai-factory/aisc-results-dashboard.git

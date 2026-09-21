@@ -30,6 +30,34 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
    
 ---
 
+## What runs where
+
+After `docker compose ... up`, Caddy serves the platform on port 80 and one module
+publishes its own port:
+
+| step | module | open |
+|---|---|---|
+| 1 | Qualification (`apps/qualification`) | http://localhost/qualification |
+| 2 | Control objectives (`apps/control-objectives`) | http://localhost/control-objectives |
+| 3 | Execution engine (`apps/webapp` + `apps/backend` + `apps/eval`) | http://localhost/ |
+| 4 | Controls (`apps/controls`) | http://localhost/controls |
+| 5 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
+
+Also reachable: the backend's API at `/api`, the Django admin at `/admin`, Celery's
+Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`, users
+`admin` and `user`).
+
+The dashboard has a port of its own because Superset needs the site root and does
+not work under a path prefix. It logs in with its own admin account
+(`DASHBOARD_ADMIN` / `DASHBOARD_ADMIN_PASSWORD`, both `admin` by default) and reads
+the platform database through a read-only role, so it can chart results but never
+write to them.
+
+Steps 1, 2 and 5 need a model to be useful. Qualification's LiteLLM sidecar takes
+`MISTRAL_API_KEY` or `ANTHROPIC_API_KEY`; control objectives defaults to a keyless
+local Ollama and takes `CONTROL_OBJECTIVES_LLM_PROVIDER` plus that provider's key
+for a hosted model instead.
+
 ## 📁 Repository Structure
 
 This repository consists of three main applications that work in tandem, along with shared libraries for plugin management:

@@ -107,6 +107,11 @@ services:
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
       # Creates the `control_objectives` DB (apps/control-objectives) on a fresh volume.
       - ./init/control-objectives-db.sql:/docker-entrypoint-initdb.d/40-control-objectives-db.sql:ro,Z
+      # Creates the `superset` metadata DB (apps/results-dashboard) on a fresh volume.
+      - ./init/superset-db.sql:/docker-entrypoint-initdb.d/50-superset-db.sql:ro,Z
+      # Creates the dashboard's read-only role on the platform DB, with default
+      # privileges so tables the backend creates later are readable.
+      - ./init/dashboard-ro.sql:/docker-entrypoint-initdb.d/60-dashboard-ro.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
