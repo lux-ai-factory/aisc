@@ -146,10 +146,19 @@ case "$loc" in
 esac
 
 echo "5. nothing is reachable without going through the gateway"
-for e in "control objectives|8090" "immudb console|8086"; do
-  n=${e%%|*}; port=${e#*|}
-  c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://localhost:$port/" 2>/dev/null)
-  [ "$c" = "000" ] && ok "$n publishes no port of its own" || no "$n answers on :$port anonymously ($c)"
+# Asked of THIS install's containers, not of the host: other stacks on the same
+# machine may well be publishing these ports, and that says nothing about
+# whether ours does.
+for e in "control objectives|control-objectives|8090" "immudb console|immudb|8086"; do
+  n=$(echo "$e" | cut -d'|' -f1)
+  container=$(echo "$e" | cut -d'|' -f2)
+  port=$(echo "$e" | cut -d'|' -f3)
+  published=$(docker inspect "$container" \
+                --format "{{range \$p, \$conf := .NetworkSettings.Ports}}{{if \$conf}}{{\$p}} {{end}}{{end}}" 2>/dev/null)
+  case "$published" in
+    *"$port"*) no "$n publishes :$port itself" ;;
+    *) ok "$n publishes no port of its own" ;;
+  esac
 done
 for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672"; do
   n=${e%%|*}; port=${e#*|}

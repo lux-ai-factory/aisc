@@ -199,6 +199,21 @@ services:
     networks:
       - backend
 
+  # AIRO graph builder sidecar: turns a qualification's answers, the agent's
+  # prose extraction and a reviewer's patch into the filled AIRO graph that IS
+  # the system's AI card. Pure computation, no model: without it the app can
+  # collect answers but cannot export a card, which is what step 2 reads.
+  qualification-ontology:
+    build:
+      # The app root, because the picker vocabulary in src/data is shared with
+      # the form, which is what its own Dockerfile says.
+      context: apps/qualification
+      dockerfile: services/ontology/Dockerfile
+    container_name: qualification-ontology
+    restart: unless-stopped
+    networks:
+      - backend
+
   # System-card PDF renderer sidecar.
   qualification-pdf:
     build: apps/qualification/services/system_card_renderer
@@ -236,6 +251,8 @@ services:
       qualification-llm:
         condition: service_started
       qualification-pdf:
+        condition: service_started
+      qualification-ontology:
         condition: service_started
     restart: unless-stopped
     networks:
