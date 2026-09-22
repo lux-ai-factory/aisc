@@ -134,6 +134,24 @@ for gone in control_objectives controls qualification; do
     || no "$live connection(s) still on the $gone database"
 done
 
+echo "the engine has no project of its own to choose"
+# It is opened inside a project and works on it: one row per platform project,
+# named after it, made on the first visit and found every time after.
+dup=$(psql_ "insert into engine.aisc_backend_project
+               (pid,name,description,status,created_at,platform_project_id)
+             select gen_random_uuid(),'a second one','','Created',now(),pid
+               from core.project limit 1" 2>&1)
+case "$dup" in
+  *one_project_per_platform_project*) ok "a second one for the same project is refused" ;;
+  *"0 rows"*|"") no "a second project for the same platform project was accepted" ;;
+  *) no "unexpected: $dup" ;;
+esac
+named=$(psql_ "select count(*) from engine.aisc_backend_project p
+                 join core.project c on c.pid = p.platform_project_id
+                where p.name <> c.name")
+[ "${named:-0}" = "0" ] && ok "and the ones there carry the platform's own name" \
+  || no "$named engine project(s) are named something else"
+
 echo "the dashboard reads the whole database and writes none of it"
 for t in engine.aisc_backend_project 'catalogue.tool' 'controls."Checklist"' \
          'qualification."Qualification"' control_objectives.project core.project; do
