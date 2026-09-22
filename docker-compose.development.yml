@@ -55,6 +55,12 @@ services:
       IMMUDB_URL: immudb:3322
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      # The gateway authenticates every request and passes the token it holds;
+      # the engine verifies it against the realm rather than taking the
+      # gateway's word for it. Defence in depth, and it costs a signature check.
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
     networks:
       - backend
     depends_on:
@@ -478,6 +484,23 @@ services:
     networks:
       - backend
 
+  # The catalogue's schema comes from its migration history, like every other
+  # module's, and the service waits for it rather than creating tables itself.
+  catalogue-migrate:
+    build: apps/catalogue/backend
+    image: aisc-catalogue-backend:latest
+    pull_policy: never
+    container_name: catalogue-migrate
+    command: >
+      sh -c "until uv run alembic upgrade head; do echo '[catalogue] waiting for postgres'; sleep 2; done"
+    environment:
+      DATABASE_URL: ${CATALOGUE_DATABASE_URL:-postgresql+psycopg://catalogue_rw:catalogue_rw@postgres:5432/platform}
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
   catalogue-backend:
     build: apps/catalogue/backend
     image: aisc-catalogue-backend:latest
@@ -498,8 +521,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
-      - devpi
-      - postgres
+      catalogue-migrate:
+        condition: service_completed_successfully
+      devpi:
+        condition: service_started
     restart: unless-stopped
     networks:
       - backend

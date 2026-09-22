@@ -178,17 +178,28 @@ reg=$(docker exec postgres psql -U "$PGUSER" -d superset -At \
         -c "select sqlalchemy_uri from dbs order by id" 2>/dev/null)
 [ -n "$reg" ] && ok "the dashboard has a database registered" \
   || no "the dashboard has no database registered at all"
+# The dashboard runs on the host network, because its OIDC issuer has to read
+# the same from inside the container as it does in the browser. So the address
+# it uses for Postgres is the host's published one, and what matters is that it
+# is THIS install's: our postgres publishes 127.0.0.1:5432, another stack's
+# publishes something else.
+ours=$(docker inspect postgres --format '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}}{{end}}{{end}}' 2>/dev/null)
 case "$reg" in
-  *"@postgres:5432/$PGDB"*) ok "and it names this install's database over the compose network" ;;
+  *"@postgres:5432/$PGDB"*|*"@localhost:${ours:-5432}/$PGDB"*)
+    ok "and it names this install's database (:${ours:-5432}/$PGDB)" ;;
   *) no "it names something else: ${reg:-nothing}" ;;
 esac
 case "$reg" in
   *dashboard_ro*) ok "as dashboard_ro, which can read everything and write nothing" ;;
   *) no "not connecting as dashboard_ro" ;;
 esac
-net=$(docker inspect dashboard --format '{{.HostConfig.NetworkMode}}' 2>/dev/null)
-[ "$net" != "host" ] && ok "and it sits on the compose network, not the host's ($net)" \
-  || no "it runs on the host network, where another stack's ports resolve"
+# It is registered from configuration, not by hand, which is what makes the
+# address above reproducible on the next install rather than whatever someone
+# once typed into the UI.
+case "$(docker logs dashboard 2>&1 | tail -400)" in
+  *"results database registered"*) ok "and it registered that itself, from its configuration" ;;
+  *) no "nothing registered the results database: it is whatever was typed in the UI" ;;
+esac
 
 echo "the catalogue's schema comes from migrations (wave 1)"
 # It creates its tables with create_all, so a column change is silent and a
@@ -199,6 +210,17 @@ n=$(psql_ "select count(*) from information_schema.tables
   || no "the catalogue schema has no migration history: its tables come from create_all"
 [ -f apps/catalogue/backend/alembic.ini ] && ok "and the repo has the migrations to replay" \
   || no "apps/catalogue/backend has no alembic.ini"
+# The history and the models agree: every table the models declare is there,
+# and nothing else is, which is what a baseline built from the models buys.
+declared=$(docker exec catalogue-backend sh -lc "cd /app && uv run --no-sync python -c \"
+from sql_alchemy import Base
+print(' '.join(sorted(t.name for t in Base.metadata.sorted_tables)))\"" 2>/dev/null | tail -1)
+present=$(psql_ "select string_agg(table_name, ' ' order by table_name)
+                   from information_schema.tables
+                  where table_schema='catalogue' and table_name <> 'alembic_version'")
+[ -n "$declared" ] && [ "$declared" = "$present" ] \
+  && ok "and the migrated schema is exactly what the models declare" \
+  || no "models say [$declared], the database has [$present]"
 
 echo "the platform's own project list is unchanged"
 n=$(psql_ "select count(*) from core.project")

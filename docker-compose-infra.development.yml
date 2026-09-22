@@ -145,6 +145,16 @@ services:
       - --http-address=0.0.0.0:4180
       - --reverse-proxy=true
       - --skip-provider-button=true
+      # The gateway holds the session and refreshes it, so what it protects need
+      # not keep a second one. These put the identity and the token it already
+      # has on the auth response, which Caddy copies onto the request.
+      # The ACCESS token, not the id token: the realm puts a user's roles in the
+      # access token, and role-gated endpoints read them from what they verify.
+      - --set-xauthrequest=true
+      - --pass-access-token=true
+      # Keep that session alive while someone is working, rather than letting
+      # the realm drop it after its idle timeout behind their back.
+      - --cookie-refresh=5m
       - --email-domain=*
       # the realm's users have no email claim
       - --oidc-email-claim=preferred_username

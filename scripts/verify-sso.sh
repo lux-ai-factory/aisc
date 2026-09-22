@@ -111,13 +111,27 @@ echo "2d. the gateway is the only session (wave 1)"
 # stops holding one. These assertions describe that end state.
 cmd=$(docker inspect oauth2-proxy --format '{{json .Config.Cmd}}' 2>/dev/null)
 case "$cmd" in
-  *set-authorization-header*|*pass-authorization-header*)
-    ok "the gateway passes the token it holds to what it protects" ;;
+  *pass-access-token*) ok "the gateway passes the token it holds to what it protects" ;;
   *) no "the gateway keeps its token to itself: what it protects has to find its own" ;;
 esac
 case "$(grep -A 12 '(protect)' Caddyfile 2>/dev/null)" in
-  *copy_headers*Authorization*) ok "and the gateway's proxy copies that header onto the request" ;;
-  *) no "forward_auth does not copy Authorization, so the header never arrives" ;;
+  *X-Auth-Request-Access-Token*) ok "and the gateway's proxy copies it onto the request" ;;
+  *) no "forward_auth does not copy the token header, so it never arrives" ;;
+esac
+case "$cmd" in
+  *cookie-refresh*) ok "and it refreshes that session while someone is working" ;;
+  *) no "the gateway never refreshes its session, so the realm drops it mid-work" ;;
+esac
+# The engine verifies what it is handed rather than taking the gateway's word.
+who=$(curl -s -b "$J" --max-time 20 http://localhost/api/v1/me)
+case "$who" in
+  *'"auth_disabled": true'*) no "the engine is not verifying tokens at all (auth disabled)" ;;
+  *'"username": "'*) ok "the engine verifies the token and knows who it is (${who:0:40}...)" ;;
+  *) no "the engine could not say who this is: ${who:0:60}" ;;
+esac
+case "$who" in
+  *primary-user*|*admin*) ok "and the roles survive the handover" ;;
+  *) no "the roles are lost on the way: role-gated endpoints would refuse an admin" ;;
 esac
 # The observable end of it: a signed-in browser, holding only the gateway's
 # cookie and no token of its own, can use the engine's API.
@@ -252,8 +266,13 @@ case "$c" in
   *) no "POST /api/v1/plugins -> $c" ;;
 esac
 
+# This used to require a 401 for a session that carried no token of its own.
+# That was the bug, not the contract: the gateway holds the session and passes
+# the token, so such a call is a signed-in user and is served. What must still
+# be refused is a call carrying neither, which is asserted in section 2d.
 c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
-[ "$c" = "401" ] && ok "and refuses the same call without a token (401)" || no "unauthenticated /api/v1/projects -> $c (want 401)"
+[ "$c" = "200" ] && ok "and serves the same call on the gateway's session alone (200)" \
+  || no "a signed-in session was refused: /api/v1/projects -> $c"
 # The engine's "Public Catalogue" button reads a placeholder that env.sh
 # replaces at container start; unset, it opens the literal string.
 docker exec aisc-webapp sh -c 'grep -qoh "APP_CATALOG_URL" /usr/share/nginx/html/assets/*.js' 2>/dev/null \
