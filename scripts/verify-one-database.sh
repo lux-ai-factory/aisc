@@ -21,11 +21,13 @@ no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 psql_(){ docker exec postgres psql -U "$PGUSER" -d "$PGDB" -At -c "$1" 2>&1; }
 
 # module | container | schema | the table that names a project | its column
+# The link is called project_id in every schema: the project a row belongs to
+# reads the same whichever schema the query is in.
 MODULES=(
-  "control objectives|control-objectives|control_objectives|project|platform_project_id"
-  "controls|controls-web|controls|Submission|projectId"
-  "qualification|qualification-web|qualification|Qualification|projectId"
-  "execution engine|aisc-backend|engine|aisc_backend_project|platform_project_id"
+  "control objectives|control-objectives|control_objectives|project|project_id"
+  "controls|controls-web|controls|Submission|project_id"
+  "qualification|qualification-web|qualification|Qualification|project_id"
+  "execution engine|aisc-backend|engine|aisc_backend_project|project_id"
 )
 # Modules whose data belongs to no project: the catalogue is the registry of
 # tests and controls, the same for every project. Everything else about them is
@@ -138,7 +140,7 @@ echo "the engine has no project of its own to choose"
 # It is opened inside a project and works on it: one row per platform project,
 # named after it, made on the first visit and found every time after.
 dup=$(psql_ "insert into engine.aisc_backend_project
-               (pid,name,description,status,created_at,platform_project_id)
+               (pid,name,description,status,created_at,project_id)
              select gen_random_uuid(),'a second one','','Created',now(),pid
                from core.project limit 1" 2>&1)
 case "$dup" in
@@ -147,7 +149,7 @@ case "$dup" in
   *) no "unexpected: $dup" ;;
 esac
 named=$(psql_ "select count(*) from engine.aisc_backend_project p
-                 join core.project c on c.pid = p.platform_project_id
+                 join core.project c on c.pid = p.project_id
                 where p.name <> c.name")
 [ "${named:-0}" = "0" ] && ok "and the ones there carry the platform's own name" \
   || no "$named engine project(s) are named something else"
@@ -221,6 +223,28 @@ present=$(psql_ "select string_agg(table_name, ' ' order by table_name)
 [ -n "$declared" ] && [ "$declared" = "$present" ] \
   && ok "and the migrated schema is exactly what the models declare" \
   || no "models say [$declared], the database has [$present]"
+
+echo "one name for each link"
+# The project a row belongs to and the system a row is about are two different
+# things, and stay two columns; what they are called is now the same everywhere.
+# Read from the keys themselves, not from every column whose name contains the
+# word: `project_setting_id` points at a project setting, which is a different
+# thing and rightly called something else.
+odd=$(psql_ "select string_agg(conrelid::regclass::text||'.'||a.attname, ', ')
+               from pg_constraint c
+               join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+              where c.contype = 'f'
+                and confrelid::regclass::text in ('core.project','core.system')
+                and a.attname <> case confrelid::regclass::text
+                                   when 'core.project' then 'project_id'
+                                   else 'system_id' end")
+[ -z "$odd" ] && ok "every key into core is named project_id or system_id" \
+  || no "still spelled differently: $odd"
+n=$(psql_ "select count(*) from information_schema.columns
+            where column_name = 'system_id'
+              and table_schema in ('qualification','engine')")
+[ "${n:-0}" = "2" ] && ok "and the system link is where it belongs: the qualification and the evaluation" \
+  || no "the system link is on $n table(s), expected 2"
 
 echo "the platform's own project list is unchanged"
 n=$(psql_ "select count(*) from core.project")
