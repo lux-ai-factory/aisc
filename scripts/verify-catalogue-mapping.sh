@@ -84,13 +84,13 @@ PROJECT=$(api --max-time 20 -X POST -H 'Content-Type: application/json' \
             -d "{\"name\":\"$NAME\"}" "$ENGINE/api/v1/projects" | py 'print(d.get("pid",""))')
 [ -n "$PROJECT" ] && ok "working in a project of its own ($NAME)" || { no "could not create a project"; }
 cleanup(){ [ -n "${PROJECT:-}" ] || return 0
-  psql_ "delete from $SCHEMA.aisc_backend_plugin where project_id in
-           (select id from $SCHEMA.aisc_backend_project where pid = '$PROJECT')" >/dev/null
-  psql_ "delete from $SCHEMA.aisc_backend_project where pid = '$PROJECT'" >/dev/null; }
+  psql_ "delete from $SCHEMA.plugin where project_id in
+           (select id from $SCHEMA.project where pid = '$PROJECT')" >/dev/null
+  psql_ "delete from $SCHEMA.project where pid = '$PROJECT'" >/dev/null; }
 trap 'cleanup; rm -f "$J" "$T"' EXIT
 body(){ printf '{"package_name":"%s","version":"%s","project_uuid":"%s"%s}' "$PKG" "$VER" "$PROJECT" "$1"; }
-mine(){ psql_ "select distinct catalogue_slug from $SCHEMA.aisc_backend_plugin p
-                 join $SCHEMA.aisc_backend_project pr on pr.id = p.project_id
+mine(){ psql_ "select distinct catalogue_slug from $SCHEMA.plugin p
+                 join $SCHEMA.project pr on pr.id = p.project_id
                 where pr.pid = '$PROJECT'"; }
 
 OUT=$(api --max-time 180 -X POST -H 'Content-Type: application/json' \
@@ -120,7 +120,7 @@ esac
 
 echo "6. and it leaves nothing behind"
 cleanup
-LEFT=$(psql_ "select count(*) from $SCHEMA.aisc_backend_project where pid = '$PROJECT'")
+LEFT=$(psql_ "select count(*) from $SCHEMA.project where pid = '$PROJECT'")
 PROJECT=""
 [ "$LEFT" = "0" ] && ok "its own project and rows are gone" || no "$LEFT project row(s) left behind"
 

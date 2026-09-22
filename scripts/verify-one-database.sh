@@ -25,9 +25,9 @@ psql_(){ docker exec postgres psql -U "$PGUSER" -d "$PGDB" -At -c "$1" 2>&1; }
 # reads the same whichever schema the query is in.
 MODULES=(
   "control objectives|control-objectives|control_objectives|project|project_id"
-  "controls|controls-web|controls|Submission|project_id"
-  "qualification|qualification-web|qualification|Qualification|project_id"
-  "execution engine|aisc-backend|engine|aisc_backend_project|project_id"
+  "controls|controls-web|controls|submission|project_id"
+  "qualification|qualification-web|qualification|qualification|project_id"
+  "execution engine|aisc-backend|engine|project|project_id"
 )
 # Modules whose data belongs to no project: the catalogue is the registry of
 # tests and controls, the same for every project. Everything else about them is
@@ -139,7 +139,7 @@ done
 echo "the engine has no project of its own to choose"
 # It is opened inside a project and works on it: one row per platform project,
 # named after it, made on the first visit and found every time after.
-dup=$(psql_ "insert into engine.aisc_backend_project
+dup=$(psql_ "insert into engine.project
                (pid,name,description,status,created_at,project_id)
              select gen_random_uuid(),'a second one','','Created',now(),pid
                from core.project limit 1" 2>&1)
@@ -148,15 +148,15 @@ case "$dup" in
   *"0 rows"*|"") no "a second project for the same platform project was accepted" ;;
   *) no "unexpected: $dup" ;;
 esac
-named=$(psql_ "select count(*) from engine.aisc_backend_project p
+named=$(psql_ "select count(*) from engine.project p
                  join core.project c on c.pid = p.project_id
                 where p.name <> c.name")
 [ "${named:-0}" = "0" ] && ok "and the ones there carry the platform's own name" \
   || no "$named engine project(s) are named something else"
 
 echo "the dashboard reads the whole database and writes none of it"
-for t in engine.aisc_backend_project 'catalogue.tool' 'controls."Checklist"' \
-         'qualification."Qualification"' control_objectives.project core.project; do
+for t in engine.project catalogue.tool controls.checklist \
+         qualification.qualification control_objectives.project core.project; do
   n=$(docker exec postgres psql "postgresql://dashboard_ro:dashboard_ro@localhost:5432/$PGDB" \
         -At -c "select count(*) from $t" 2>&1 | tail -1)
   case "$n" in
@@ -165,7 +165,7 @@ for t in engine.aisc_backend_project 'catalogue.tool' 'controls."Checklist"' \
   esac
 done
 w=$(docker exec postgres psql "postgresql://dashboard_ro:dashboard_ro@localhost:5432/$PGDB" \
-      -At -c "insert into engine.aisc_backend_project (pid,name,description,status,created_at)
+      -At -c "insert into engine.project (pid,name,description,status,created_at)
               values (gen_random_uuid(),'x','','Created',now())" 2>&1 | tail -1)
 case "$w" in
   *"permission denied"*) ok "and cannot write a row anywhere" ;;
@@ -223,6 +223,26 @@ present=$(psql_ "select string_agg(table_name, ' ' order by table_name)
 [ -n "$declared" ] && [ "$declared" = "$present" ] \
   && ok "and the migrated schema is exactly what the models declare" \
   || no "models say [$declared], the database has [$present]"
+
+echo "one naming convention"
+# Quoted CamelCase in one schema and snake_case in another meant a query joining
+# two of them had to remember which half needed quotes.
+odd=$(psql_ "select string_agg(table_schema||'.'||table_name, ', ')
+               from information_schema.tables
+              where table_schema in ('core','qualification','control_objectives','controls','engine','catalogue')
+                and table_name <> lower(table_name)")
+[ -z "$odd" ] && ok "every table is lower case, so nothing needs quoting" \
+  || no "still needs quoting: $odd"
+prefixed=$(psql_ "select count(*) from information_schema.tables
+                   where table_schema='engine' and table_name like 'aisc_backend%'")
+[ "${prefixed:-1}" = "0" ] && ok "and the engine's tables do not repeat the schema's name" \
+  || no "$prefixed engine table(s) still carry the app prefix"
+naive=$(psql_ "select string_agg(table_schema||'.'||table_name||'.'||column_name, ', ')
+                 from information_schema.columns
+                where table_schema in ('core','qualification','control_objectives','controls','catalogue')
+                  and data_type = 'timestamp without time zone'")
+[ -z "$naive" ] && ok "and every timestamp carries its zone" \
+  || no "read as the reader's own zone: $naive"
 
 echo "one name for each link"
 # The project a row belongs to and the system a row is about are two different
