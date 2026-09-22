@@ -58,6 +58,13 @@
     position:sticky; top:0; z-index:10;
   }
   .topbar img{height:32px; width:auto; display:block}
+  /* The way out of a project, where the way out of each tool is: at the top. */
+  .topbar .back{
+    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--primary); text-decoration:none; border:1px solid var(--border-strong);
+    padding:7px 11px; white-space:nowrap;
+  }
+  .topbar .back:hover{background:var(--primary); color:#fff; border-color:var(--primary)}
   .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
   .topbar h1{
     margin:0; font-size:12px; font-weight:600; text-transform:uppercase;
@@ -327,6 +334,7 @@
 <div class="shell">
 
 <div class="topbar">
+  <a class="back" href="/" aria-label="Back to the projects">&larr; Projects</a>
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
@@ -345,7 +353,7 @@
 
 <main>
   <div class="stage">
-    <div class="crumb"><a href="/">Projects</a><span>/</span><span id="crumb-slug"></span></div>
+    <div class="crumb"><span id="crumb-slug"></span></div>
     <h1 class="title" id="project-name">&hellip;</h1>
     <p class="subtitle" id="project-meta"></p>
 

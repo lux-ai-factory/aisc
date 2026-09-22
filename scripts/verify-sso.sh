@@ -70,9 +70,10 @@ for e in "qualification|http://localhost/qualification" \
   esac
 done
 
-echo "2c. and every tool has the way back to the project's six steps"
-# The project page on the launcher is where the other five steps are, so each
-# tool carries a link to it rather than leaving the reader to the back button.
+echo "2c. and every tool has a Back to the project it was entered from"
+# The project page on the launcher is where the six steps are, so each tool
+# carries a link to it rather than leaving the reader to the browser's back
+# button. Matched on what it points at and on its label, not on wording alone.
 # The engine is a single-page app whose page is an empty div until React runs,
 # so it is checked in its bundle below rather than in its HTML.
 for e in "qualification|http://localhost/qualification/p/$PROJECT" \
@@ -81,14 +82,18 @@ for e in "qualification|http://localhost/qualification/p/$PROJECT" \
   n=${e%%|*}; u=${e#*|}
   body=$(curl -s -b "$J" -L --max-time 30 "$u")
   case "$body" in
-    *"/p/$PROJECT"*) ok "$n links back to this project's page" ;;
-    *) no "$n has no way back to the project" ;;
+    *"Back to the project"*) ;;
+    *) no "$n has no Back to the project"; continue ;;
+  esac
+  case "$body" in
+    *"/p/$PROJECT"*) ok "$n has a Back to this project's page" ;;
+    *) no "$n has a Back that does not point at this project" ;;
   esac
 done
 bundle=$(docker exec aisc-webapp sh -c 'cat /usr/share/nginx/html/assets/*.js' | tr -d '\n')
 case "$bundle" in
-  *"All six steps"*) ok "the engine's bundle carries the way back" ;;
-  *) no "the engine's bundle has no way back to the project" ;;
+  *"Back to the project"*) ok "the engine's bundle carries the Back" ;;
+  *) no "the engine's bundle has no Back to the project" ;;
 esac
 case "$bundle" in
   *APP_LAUNCHER_URL*) no "the engine's launcher URL is still the placeholder" ;;
@@ -166,8 +171,13 @@ case "$(curl -s -b "$J" --max-time 15 http://localhost:8100/)" in
 esac
 slug=$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or [{}])[0].get("slug",""))' 2>/dev/null)
 if [ -n "$slug" ]; then
-  n=$(curl -s -b "$J" --max-time 15 "http://localhost:8100/p/$slug" | grep -c 'class="card')
+  page=$(curl -s -b "$J" --max-time 15 "http://localhost:8100/p/$slug")
+  n=$(printf '%s' "$page" | grep -c 'class="card')
   [ "$n" = "6" ] && ok "a project page carries the six steps ($slug)" || no "project page has $n cards"
+  case "$page" in
+    *'aria-label="Back to the projects"'*) ok "and a Projects button back to the list" ;;
+    *) no "the project page has no way back to the projects" ;;
+  esac
 else
   no "no project to open"
 fi
