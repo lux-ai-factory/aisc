@@ -272,9 +272,9 @@ services:
       # Served behind Caddy under /control-objectives. FastAPI's root_path only
       # fixes the URLs the app generates; Caddy's handle_path strips the prefix.
       CONTROL_OBJECTIVES_ROOT_PATH: /control-objectives
-      # The platform: one list of projects. Read only to offer them on the page
-      # reached without one.
-      PLATFORM_URL: http://platform:8000
+      # Where projects are chosen. Reached without one, this service sends the
+      # reader there rather than asking a second time.
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
       # The model, named BAF's way — the same two variables the qualification
       # filler reads, so both services are configured alike.

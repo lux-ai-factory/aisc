@@ -28,12 +28,19 @@ code=$(curl -s -c "$J" -b "$J" -L --max-time 25 -o /dev/null -w '%{http_code}' \
    --data-urlencode "username=$U" --data-urlencode "password=$P" "$form")
 [ "$code" = "200" ] && ok "signed in, landed on the launcher (200)" || no "login landed $code"
 
+# The project is chosen once, on the launcher, and every module is then entered
+# for that project. So the modules are checked where they are actually used:
+# inside a project, whose pid comes from the platform on this same session.
+PROJECT=$(curl -s -b "$J" --max-time 15 http://localhost:8100/api/projects \
+          | python3 -c 'import json,sys; print((json.load(sys.stdin) or [{}])[0].get("pid",""))' 2>/dev/null)
+[ -n "$PROJECT" ] && ok "the platform has a project to work in" || no "no project on the platform"
+
 echo "2. every module on that same session, with no further login"
 for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
-         "execution engine|http://localhost/|AI Assessment Sandbox" \
-         "qualification|http://localhost/qualification|qualification" \
-         "controls|http://localhost/controls|controls" \
-         "control objectives|http://localhost/control-objectives/|objectives" \
+         "execution engine|http://localhost/?project=$PROJECT|AI Assessment Sandbox" \
+         "qualification|http://localhost/qualification/p/$PROJECT|qualification" \
+         "controls|http://localhost/controls/p/$PROJECT/checklists|checklist" \
+         "control objectives|http://localhost/control-objectives/p/$PROJECT/projects|objectives" \
          "catalogue|http://localhost:8102/|AI Factory Sandbox Configurator"; do
   n=$(echo "$e" | cut -d'|' -f1); u=$(echo "$e" | cut -d'|' -f2); m=$(echo "$e" | cut -d'|' -f3)
   body=$(curl -s -b "$J" -c "$J" -L --max-time 30 "$u")
@@ -48,6 +55,18 @@ for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
          *) no "$n -> 200 but no \"$m\" in the body" ;;
        esac
        shopt -u nocasematch ;;
+  esac
+done
+
+echo "2b. and a module reached without a project sends you where one is chosen"
+for e in "qualification|http://localhost/qualification" \
+         "controls|http://localhost/controls" \
+         "control objectives|http://localhost/control-objectives/"; do
+  n=${e%%|*}; u=${e#*|}
+  loc=$(curl -s -b "$J" --max-time 20 -o /dev/null -D - "$u" | grep -i '^location:' | head -1 | tr -d '\r')
+  case "$loc" in
+    *8100*) ok "$n -> the launcher, not a second project list" ;;
+    *) no "$n -> ${loc:-no redirect}: it is deciding the project itself" ;;
   esac
 done
 
