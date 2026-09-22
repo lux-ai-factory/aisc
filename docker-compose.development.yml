@@ -14,6 +14,8 @@ services:
       # placeholder APP_CATALOG_URL and env.sh replaces it at start, so leaving
       # this unset sends the button to the string "APP_CATALOG_URL" itself.
       APP_CATALOG_URL: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}
+      # Where the project was chosen and where the other five steps are.
+      APP_LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
     depends_on:
       - aisc-backend
     networks:
@@ -341,6 +343,7 @@ services:
       AISC_AUDIT_ENABLED: "true"
       # the platform's own database, through the read-only role
       AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@postgres:5432/platform}
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       BRANDING_APP_NAME: ${BRANDING_APP_NAME:-}
       BRANDING_LOGO: ${BRANDING_LOGO:-}
       BRANDING_PRIMARY: ${BRANDING_PRIMARY:-}
@@ -380,6 +383,7 @@ services:
       SUPERSET_PORT: ${DASHBOARD_PORT:-8188}
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
       AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/platform}
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       REDIS_HOST: localhost
       IMMUDB_HOST: localhost
       # its own client in the realm; the browser and this container both use

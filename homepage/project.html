@@ -490,8 +490,11 @@
     if (!card) return;
     card.addEventListener('click', function (e) {
       try {
+        // `back` is this project's page: the catalogue is one of the six
+        // steps and is entered from here, so it is told where to return.
         var payload = { url: card.dataset.engine.replace(/\/+$/, ''),
-                        expires: Date.now() + 60 * 60 * 1000 };
+                        expires: Date.now() + 60 * 60 * 1000,
+                        back: window.location.origin + window.location.pathname };
         e.preventDefault();
         window.location.href = card.getAttribute('href').replace(/\/+$/, '')
           + '/#env=' + btoa(JSON.stringify(payload));

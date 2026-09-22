@@ -70,6 +70,31 @@ for e in "qualification|http://localhost/qualification" \
   esac
 done
 
+echo "2c. and every tool has the way back to the project's six steps"
+# The project page on the launcher is where the other five steps are, so each
+# tool carries a link to it rather than leaving the reader to the back button.
+# The engine is a single-page app whose page is an empty div until React runs,
+# so it is checked in its bundle below rather than in its HTML.
+for e in "qualification|http://localhost/qualification/p/$PROJECT" \
+         "controls|http://localhost/controls/p/$PROJECT/checklists" \
+         "control objectives|http://localhost/control-objectives/p/$PROJECT/projects"; do
+  n=${e%%|*}; u=${e#*|}
+  body=$(curl -s -b "$J" -L --max-time 30 "$u")
+  case "$body" in
+    *"/p/$PROJECT"*) ok "$n links back to this project's page" ;;
+    *) no "$n has no way back to the project" ;;
+  esac
+done
+bundle=$(docker exec aisc-webapp sh -c 'cat /usr/share/nginx/html/assets/*.js' | tr -d '\n')
+case "$bundle" in
+  *"All six steps"*) ok "the engine's bundle carries the way back" ;;
+  *) no "the engine's bundle has no way back to the project" ;;
+esac
+case "$bundle" in
+  *APP_LAUNCHER_URL*) no "the engine's launcher URL is still the placeholder" ;;
+  *) ok "and its launcher URL is substituted, not a placeholder" ;;
+esac
+
 echo "3. the engine's own check-sso finds that session (prompt=none)"
 loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - \
   "$KC/realms/aisc/protocol/openid-connect/auth?client_id=aisc-webapp&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=code&scope=openid&prompt=none" \
