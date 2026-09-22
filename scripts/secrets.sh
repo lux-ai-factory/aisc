@@ -34,8 +34,9 @@ DASHBOARD_OIDC_CLIENT_SECRET=$(rand)
 CATALOGUE_INSTALL_TOKEN=$(rand)
 DJANGO_SECRET_KEY=$(rand)
 INTERNAL_API_KEY=$(rand)
+SUPERSET_SECRET_KEY=$(rand)
 EOF
-  echo "wrote $OUT (6 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+  echo "wrote $OUT (7 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
 else
   echo "$OUT exists; leaving it alone (--rotate to replace)"
 fi

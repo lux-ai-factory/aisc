@@ -149,16 +149,22 @@ echo "2e. nothing is running on a secret anyone can read"
 # The repo used to ship working values for these. The worst was the gateway's
 # cookie secret: whoever holds it can mint a session cookie for any user,
 # offline, and that cookie is the session every module now trusts.
-shipped_cookie="YWlzYy1kZXYtY29va2llLXNlY3JldC0zMi1ieXRlcyE"
-cmd=$(docker inspect oauth2-proxy --format '{{json .Config.Cmd}}' 2>/dev/null)
-case "$cmd" in
-  *"$shipped_cookie"*) no "the gateway is running on the cookie secret that was in the repo" ;;
-  *) ok "the gateway's cookie secret is not the one that was in the repo" ;;
-esac
-case "$cmd" in
-  *aisc-gateway-dev-secret*) no "the gateway is running on the client secret that was in the repo" ;;
-  *) ok "nor its client secret" ;;
-esac
+# By fingerprint, not by the values themselves: a check that refuses a secret
+# should not be the last place that secret is written down.
+#   sha256 of the cookie secret that shipped, and of the client secret
+SHIPPED_COOKIE_SHA=68468559c25d06fff2b3653eaf81c2dff9dc1069f6e58be81c326fca91392d5e
+SHIPPED_CLIENT_SHA=73ce74bda63a34da96e9cf3e53562c1a36c487e57498d402a961313e4340717a
+flag(){ printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+running_cookie=$(docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
+                 | sed -n 's/^--cookie-secret=//p' | head -1)
+running_client=$(docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
+                 | sed -n 's/^--client-secret=//p' | head -1)
+[ "$(flag "$running_cookie")" != "$SHIPPED_COOKIE_SHA" ] \
+  && ok "the gateway's cookie secret is not the one that was in the repo" \
+  || no "the gateway is running on the cookie secret that was in the repo"
+[ "$(flag "$running_client")" != "$SHIPPED_CLIENT_SHA" ] \
+  && ok "nor its client secret" \
+  || no "the gateway is running on the client secret that was in the repo"
 # And the repo carries none of them any more, defaults included.
 if grep -rqE "(GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET|DASHBOARD_OIDC_CLIENT_SECRET|CATALOGUE_INSTALL_TOKEN|DJANGO_SECRET_KEY|INTERNAL_API_KEY)=[^$#[:space:]]" \
      env.development env.plugin_downloader env.staging 2>/dev/null; then
@@ -166,7 +172,10 @@ if grep -rqE "(GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET|DASHBOARD_OIDC_CLIENT
 else
   ok "and no tracked env file carries one"
 fi
-if grep -rqE ':-(aisc-gateway-dev-secret|superset-dev-secret|aisc-catalogue-install-dev-token|YWlzYy1kZXYt)' \
+# A variable whose NAME ends in _SECRET, _TOKEN or _KEY, with a non-empty
+# default. `${MISTRAL_API_KEY:-}` is the right shape: no key, and no pretending
+# there is one. And the name must end there, or KEYCLOAK_INTERNAL_URL matches.
+if grep -rqE '\$\{[A-Z_]*(_SECRET|_TOKEN|_KEY):-[^}[:space:]]' \
      docker-compose.development.yml docker-compose-infra.development.yml 2>/dev/null; then
   no "compose still falls back to a shipped secret"
 else

@@ -356,7 +356,7 @@ services:
       - "superset db upgrade && (superset fab create-admin --username ${DASHBOARD_ADMIN:-admin} --firstname Admin --lastname User --email admin@example.com --password ${DASHBOARD_ADMIN_PASSWORD:-admin} || true) && superset init"
     environment: &dashboard-env
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/superset
-      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-aisc-dev-secret-change-me}
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?run scripts/secrets.sh first}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       IMMUDB_HOST: immudb
