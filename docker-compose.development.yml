@@ -353,7 +353,7 @@ services:
     # A single argument to `bash -c`: a plain string command is split on
     # whitespace and truncated at the first &&, which loses the rest.
     command:
-      - "superset db upgrade && (superset fab create-admin --username ${DASHBOARD_ADMIN:-admin} --firstname Admin --lastname User --email admin@example.com --password ${DASHBOARD_ADMIN_PASSWORD:-admin} || true) && superset init"
+      - "superset db upgrade && (superset fab create-admin --username ${DASHBOARD_ADMIN:-admin} --firstname Admin --lastname User --email admin@example.com --password ${DASHBOARD_ADMIN_PASSWORD:?run scripts/secrets.sh first} || true) && superset init"
     environment: &dashboard-env
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/superset
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?run scripts/secrets.sh first}

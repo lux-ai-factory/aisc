@@ -172,11 +172,14 @@ if grep -rqE "(GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET|DASHBOARD_OIDC_CLIENT
 else
   ok "and no tracked env file carries one"
 fi
-# A variable whose NAME ends in _SECRET, _TOKEN or _KEY, with a non-empty
-# default. `${MISTRAL_API_KEY:-}` is the right shape: no key, and no pretending
-# there is one. And the name must end there, or KEYCLOAK_INTERNAL_URL matches.
-if grep -rqE '\$\{[A-Z_]*(_SECRET|_TOKEN|_KEY):-[^}[:space:]]' \
-     docker-compose.development.yml docker-compose-infra.development.yml 2>/dev/null; then
+# A variable whose NAME says it holds a secret, with a non-empty default.
+# `${MISTRAL_API_KEY:-}` is the right shape: no key, and no pretending there is
+# one. _PASSWORD belongs here too: leaving it out is how a Superset signing key
+# and two database passwords sat in a submodule's own compose unnoticed, and
+# every compose file in the install is read, not only the two at the top.
+if grep -rqE '\$\{[A-Za-z_]*(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|_KEY|CREDENTIALS?)[A-Za-z_]*:-[^}[:space:]]' \
+     docker-compose.development.yml docker-compose-infra.development.yml \
+     apps/*/docker-compose*.yml apps/*/*/docker-compose*.yml 2>/dev/null; then
   no "compose still falls back to a shipped secret"
 else
   ok "and compose refuses to start rather than falling back to one"

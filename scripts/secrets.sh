@@ -21,7 +21,10 @@ TEMPLATE=keycloak/aisc-realm.json
 RENDERED=keycloak/aisc-realm.local.json
 
 rand()      { openssl rand -hex 32; }
-cookie()    { openssl rand -base64 32 | tr -d '\n'; }   # oauth2-proxy: exactly 32 bytes
+# oauth2-proxy decodes this as base64url and wants exactly 32 bytes out. With
+# padding it does not decode, and it then measures the string itself and
+# refuses to start: "cookie_secret must be 16, 24, or 32 bytes ... but is 44".
+cookie()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'; }
 
 if [ "${1:-}" = "--rotate" ] || [ ! -f "$OUT" ]; then
   umask 077
@@ -35,8 +38,17 @@ CATALOGUE_INSTALL_TOKEN=$(rand)
 DJANGO_SECRET_KEY=$(rand)
 INTERNAL_API_KEY=$(rand)
 SUPERSET_SECRET_KEY=$(rand)
+DASHBOARD_ADMIN_PASSWORD=$(rand)
 EOF
-  echo "wrote $OUT (7 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+  echo "wrote $OUT (8 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+
+  # The one with a shape requirement, checked here rather than discovered by a
+  # gateway that will not start.
+  cookie_len=$(awk -F= '/^GATEWAY_COOKIE_SECRET=/{print length($2)}' "$OUT")
+  if [ "$cookie_len" != "43" ]; then
+    echo "GATEWAY_COOKIE_SECRET is $cookie_len characters; oauth2-proxy needs 32 bytes base64url (43)" >&2
+    exit 1
+  fi
 else
   echo "$OUT exists; leaving it alone (--rotate to replace)"
 fi
