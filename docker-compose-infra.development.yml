@@ -6,7 +6,7 @@ services:
     restart: always
     ports:
       - "443:8005"
-      - "80:8005"
+      - "${CADDY_HOST_PORT:-80}:8005"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
     environment:
