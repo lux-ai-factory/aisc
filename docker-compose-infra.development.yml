@@ -160,8 +160,8 @@ services:
       - --oidc-email-claim=preferred_username
       - --scope=openid profile
       - --client-id=aisc-gateway
-      - --client-secret=${GATEWAY_CLIENT_SECRET:-__GATEWAY_CLIENT_SECRET__}
-      - --cookie-secret=${GATEWAY_COOKIE_SECRET:-__GATEWAY_COOKIE_SECRET__}
+      - --client-secret=${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
+      - --cookie-secret=${GATEWAY_COOKIE_SECRET:?run scripts/secrets.sh first}
       - --cookie-domain=localhost
       - --cookie-secure=false
       - --cookie-samesite=lax
@@ -182,7 +182,7 @@ services:
     command: start-dev --import-realm
     volumes:
       # Mount the exported realm into Keycloak's import dir (read-only).
-      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      - ./keycloak/aisc-realm.local.json:/opt/keycloak/data/import/aisc-realm.json:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
       # --- first-run admin user for the Keycloak admin console (Keycloak 26+) ---

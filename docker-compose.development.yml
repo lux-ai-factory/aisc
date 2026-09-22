@@ -414,7 +414,7 @@ services:
       AISC_OAUTH: ${DASHBOARD_OAUTH:-1}
       OIDC_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
       OIDC_CLIENT_ID: ${DASHBOARD_OIDC_CLIENT_ID:-superset}
-      OIDC_CLIENT_SECRET: ${DASHBOARD_OIDC_CLIENT_SECRET:-__DASHBOARD_OIDC_CLIENT_SECRET__}
+      OIDC_CLIENT_SECRET: ${DASHBOARD_OIDC_CLIENT_SECRET:?run scripts/secrets.sh first}
     depends_on:
       dashboard-migrate:
         condition: service_completed_successfully

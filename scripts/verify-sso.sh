@@ -145,6 +145,34 @@ case "$c" in
   *) ok "while an anonymous request is still refused ($c)" ;;
 esac
 
+echo "2e. nothing is running on a secret anyone can read"
+# The repo used to ship working values for these. The worst was the gateway's
+# cookie secret: whoever holds it can mint a session cookie for any user,
+# offline, and that cookie is the session every module now trusts.
+shipped_cookie="YWlzYy1kZXYtY29va2llLXNlY3JldC0zMi1ieXRlcyE"
+cmd=$(docker inspect oauth2-proxy --format '{{json .Config.Cmd}}' 2>/dev/null)
+case "$cmd" in
+  *"$shipped_cookie"*) no "the gateway is running on the cookie secret that was in the repo" ;;
+  *) ok "the gateway's cookie secret is not the one that was in the repo" ;;
+esac
+case "$cmd" in
+  *aisc-gateway-dev-secret*) no "the gateway is running on the client secret that was in the repo" ;;
+  *) ok "nor its client secret" ;;
+esac
+# And the repo carries none of them any more, defaults included.
+if grep -rqE "(GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET|DASHBOARD_OIDC_CLIENT_SECRET|CATALOGUE_INSTALL_TOKEN|DJANGO_SECRET_KEY|INTERNAL_API_KEY)=[^$#[:space:]]" \
+     env.development env.plugin_downloader env.staging 2>/dev/null; then
+  no "a secret is still written in a tracked env file"
+else
+  ok "and no tracked env file carries one"
+fi
+if grep -rqE ':-(aisc-gateway-dev-secret|superset-dev-secret|aisc-catalogue-install-dev-token|YWlzYy1kZXYt)' \
+     docker-compose.development.yml docker-compose-infra.development.yml 2>/dev/null; then
+  no "compose still falls back to a shipped secret"
+else
+  ok "and compose refuses to start rather than falling back to one"
+fi
+
 echo "3. the engine's own check-sso finds that session (prompt=none)"
 loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - \
   "$KC/realms/aisc/protocol/openid-connect/auth?client_id=aisc-webapp&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=code&scope=openid&prompt=none" \
