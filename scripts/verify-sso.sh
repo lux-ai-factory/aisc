@@ -100,6 +100,37 @@ case "$bundle" in
   *) ok "and its launcher URL is substituted, not a placeholder" ;;
 esac
 
+echo "2d. the gateway is the only session (wave 1)"
+# Every request already passes through oauth2-proxy, which holds a session it
+# refreshes. Nothing behind it should keep a second session of its own: the
+# engine's page does, which is why it dies after the realm's 30 idle minutes
+# while every other module keeps working, and why an install fails with 401s.
+#
+# What that costs to fix is config: oauth2-proxy passes the token it already
+# has, Caddy copies that header onto the proxied request, and the engine's page
+# stops holding one. These assertions describe that end state.
+cmd=$(docker inspect oauth2-proxy --format '{{json .Config.Cmd}}' 2>/dev/null)
+case "$cmd" in
+  *set-authorization-header*|*pass-authorization-header*)
+    ok "the gateway passes the token it holds to what it protects" ;;
+  *) no "the gateway keeps its token to itself: what it protects has to find its own" ;;
+esac
+case "$(grep -A 12 '(protect)' Caddyfile 2>/dev/null)" in
+  *copy_headers*Authorization*) ok "and the gateway's proxy copies that header onto the request" ;;
+  *) no "forward_auth does not copy Authorization, so the header never arrives" ;;
+esac
+# The observable end of it: a signed-in browser, holding only the gateway's
+# cookie and no token of its own, can use the engine's API.
+c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+[ "$c" = "200" ] && ok "a session with no token of its own can read the engine's API ($c)" \
+  || no "the engine's API refuses a gateway session that holds no token ($c)"
+# And nothing may reach it without going through the gateway at all.
+c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+case "$c" in
+  200) no "the engine's API answered an anonymous request ($c)" ;;
+  *) ok "while an anonymous request is still refused ($c)" ;;
+esac
+
 echo "3. the engine's own check-sso finds that session (prompt=none)"
 loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - \
   "$KC/realms/aisc/protocol/openid-connect/auth?client_id=aisc-webapp&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=code&scope=openid&prompt=none" \

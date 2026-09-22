@@ -170,6 +170,36 @@ case "$w" in
   *) no "dashboard_ro was able to write: $w" ;;
 esac
 
+echo "the dashboard reads THIS install (wave 1)"
+# It reads the one database as dashboard_ro, or it is reading something else.
+# On a machine running several stacks that is not hypothetical: a connection
+# registered by hand once pointed at another stack's Postgres, and worked.
+reg=$(docker exec postgres psql -U "$PGUSER" -d superset -At \
+        -c "select sqlalchemy_uri from dbs order by id" 2>/dev/null)
+[ -n "$reg" ] && ok "the dashboard has a database registered" \
+  || no "the dashboard has no database registered at all"
+case "$reg" in
+  *"@postgres:5432/$PGDB"*) ok "and it names this install's database over the compose network" ;;
+  *) no "it names something else: ${reg:-nothing}" ;;
+esac
+case "$reg" in
+  *dashboard_ro*) ok "as dashboard_ro, which can read everything and write nothing" ;;
+  *) no "not connecting as dashboard_ro" ;;
+esac
+net=$(docker inspect dashboard --format '{{.HostConfig.NetworkMode}}' 2>/dev/null)
+[ "$net" != "host" ] && ok "and it sits on the compose network, not the host's ($net)" \
+  || no "it runs on the host network, where another stack's ports resolve"
+
+echo "the catalogue's schema comes from migrations (wave 1)"
+# It creates its tables with create_all, so a column change is silent and a
+# rename loses data. Every other module migrates; this one should too.
+n=$(psql_ "select count(*) from information_schema.tables
+            where table_schema='catalogue' and table_name = 'alembic_version'")
+[ "${n:-0}" = "1" ] && ok "the catalogue schema carries a migration history" \
+  || no "the catalogue schema has no migration history: its tables come from create_all"
+[ -f apps/catalogue/backend/alembic.ini ] && ok "and the repo has the migrations to replay" \
+  || no "apps/catalogue/backend has no alembic.ini"
+
 echo "the platform's own project list is unchanged"
 n=$(psql_ "select count(*) from core.project")
 [ "${n:-0}" -ge 1 ] && ok "core.project holds $n project(s)" || no "no projects on the platform"
