@@ -140,6 +140,16 @@ def create_project(name: str, slug: str, description: str | None,
             " values (%s, %s, %s, 'owner')",
             (created["pid"], owner, email),
         )
+        # born with its one AI system, version 1 as a draft named after it
+        system = conn.execute(
+            "insert into core.ai_system (project_id) values (%s) returning pid",
+            (created["pid"],),
+        ).fetchone()
+        conn.execute(
+            "insert into core.ai_system_version (ai_system_id, number, name, created_by)"
+            " values (%s, 1, %s, %s)",
+            (system["pid"], name, owner),
+        )
         return created
 
 
@@ -179,53 +189,142 @@ def provision_all() -> list[str]:
 # module reads `core`, and one writer is what keeps the name meaning one thing.
 
 
-def list_systems(project: str) -> list[dict]:
+_VERSION = (
+    "v.pid, v.ai_system_id, v.number, v.name, v.release, v.provider, v.description,"
+    " v.created_at, v.created_by, v.frozen_at, v.frozen_reason"
+)
+
+
+def ai_system(project: str) -> dict | None:
+    """The project's one AI system with its versions, newest first. None when
+    there is no such project."""
     column = "pid" if looks_like_pid(project) else "slug"
     with pool().connection() as conn:
-        return conn.execute(
-            "select s.pid, s.project_id, s.name, s.version, s.provider, s.description,"
-            "       s.created_at, s.updated_at"
-            "  from core.system s join core.project p on p.pid = s.project_id"
-            f" where p.{column} = %s order by s.name, s.version",
+        found = conn.execute(
+            "select a.pid, a.project_id, a.created_at from core.ai_system a"
+            f" join core.project p on p.pid = a.project_id where p.{column} = %s",
             (project,),
+        ).fetchone()
+        if found is None:
+            return None
+        versions = conn.execute(
+            f"select {_VERSION} from core.ai_system_version v"
+            " where v.ai_system_id = %s order by v.number desc",
+            (found["pid"],),
         ).fetchall()
+    return {**found, "current": versions[0] if versions else None, "versions": versions}
+
+
+def get_ai_system_version(pid: str) -> dict | None:
+    """A version by its own id, with the project it belongs to."""
+    with pool().connection() as conn:
+        return conn.execute(
+            f"select {_VERSION}, a.project_id from core.ai_system_version v"
+            " join core.ai_system a on a.pid = v.ai_system_id where v.pid = %s",
+            (pid,),
+        ).fetchone()
+
+
+def edit_ai_system(project: str, changes: dict, needs_draft: bool = False,
+                   subject: str | None = None) -> dict | None:
+    """Apply an edit to the project's AI system, as ai_system.plan_edit says.
+
+    Returns {"version": the version the edit landed in, "forked_from": the pid
+    it was copied from, or None}. The system row is locked for the length of
+    the edit, so two editors at once make one next version, not two.
+    """
+    from platform_service.ai_system import plan_edit
+
+    column = "pid" if looks_like_pid(project) else "slug"
+    with pool().connection() as conn, conn.transaction():
+        system = conn.execute(
+            "select a.pid from core.ai_system a join core.project p on p.pid = a.project_id"
+            f" where p.{column} = %s for update of a",
+            (project,),
+        ).fetchone()
+        if system is None:
+            return None
+        latest = conn.execute(
+            f"select {_VERSION} from core.ai_system_version v where v.ai_system_id = %s"
+            " order by v.number desc limit 1",
+            (system["pid"],),
+        ).fetchone()
+        plan = plan_edit(latest, changes, needs_draft=needs_draft)
+        forked_from = None
+        if plan["action"] == "update":
+            sets = ", ".join(f"{field} = %s" for field in plan["fields"])
+            conn.execute(
+                f"update core.ai_system_version set {sets} where pid = %s",
+                (*plan["fields"].values(), plan["pid"]),
+            )
+            pid = plan["pid"]
+        elif plan["action"] == "fork":
+            fields = plan["fields"]
+            pid = conn.execute(
+                "insert into core.ai_system_version"
+                " (ai_system_id, number, name, release, provider, description, created_by)"
+                " values (%s, %s, %s, %s, %s, %s, %s) returning pid",
+                (system["pid"], plan["number"], fields["name"], fields["release"],
+                 fields["provider"], fields["description"], subject),
+            ).fetchone()["pid"]
+            forked_from = plan["from_pid"]
+        else:
+            pid = plan["pid"]
+        version = conn.execute(
+            f"select {_VERSION} from core.ai_system_version v where v.pid = %s", (pid,)
+        ).fetchone()
+    return {"version": version, "forked_from": forked_from}
+
+
+def freeze_ai_system_version(pid: str, reason: str) -> dict | None:
+    """Freeze a version because something now depends on it. Freezing a frozen
+    version changes nothing: the first reason and moment are the ones kept."""
+    with pool().connection() as conn:
+        conn.execute(
+            "update core.ai_system_version set frozen_at = now(), frozen_reason = %s"
+            " where pid = %s and frozen_at is null",
+            (reason, pid),
+        )
+    return get_ai_system_version(pid)
+
+
+def _as_old_system(version: dict, project_id) -> dict:
+    """A version in the shape core.system had, for callers not yet moved."""
+    return {"pid": version["pid"], "project_id": project_id, "name": version["name"],
+            "version": version["release"], "provider": version["provider"],
+            "description": version["description"], "created_at": version["created_at"],
+            "updated_at": version["created_at"]}
+
+
+def list_systems(project: str) -> list[dict]:
+    """The one system, as the list core.system used to answer with."""
+    found = ai_system(project)
+    if found is None or found["current"] is None:
+        return []
+    return [_as_old_system(found["current"], found["project_id"])]
 
 
 def get_system(pid: str) -> dict | None:
-    with pool().connection() as conn:
-        return conn.execute(
-            "select pid, project_id, name, version, provider, description,"
-            "       created_at, updated_at from core.system where pid = %s",
-            (pid,),
-        ).fetchone()
+    found = get_ai_system_version(pid)
+    return None if found is None else _as_old_system(found, found["project_id"])
 
 
 def register_system(
     project: str, name: str, version: str | None, provider: str | None,
     description: str | None,
 ) -> dict | None:
-    """The system with this name and version in this project, making it if it
-    is new. Registering the same system twice is the same system, not a second
-    one, so a module may call this every time it starts work. Returns None when
-    there is no such project."""
-    with pool().connection() as conn:
-        column = "pid" if looks_like_pid(project) else "slug"
-        found = conn.execute(
-            f"select pid from core.project where {column} = %s", (project,)
-        ).fetchone()
-        if found is None:
-            return None
-        return conn.execute(
-            "insert into core.system (project_id, name, version, provider, description)"
-            " values (%s, %s, %s, %s, %s)"
-            " on conflict (project_id, name, (coalesce(version, ''))) do update"
-            "    set provider = coalesce(excluded.provider, core.system.provider),"
-            "        description = coalesce(excluded.description, core.system.description),"
-            "        updated_at = now()"
-            " returning pid, project_id, name, version, provider, description,"
-            "           created_at, updated_at",
-            (found["pid"], name, version, provider, description),
-        ).fetchone()
+    """What naming a system meant before there was one per project: now it is
+    an edit of that one system, and answers with the version it landed in."""
+    changes = {"name": name, "release": version}
+    if provider is not None:
+        changes["provider"] = provider
+    if description is not None:
+        changes["description"] = description
+    edited = edit_ai_system(project, changes)
+    if edited is None:
+        return None
+    found = ai_system(project)
+    return _as_old_system(edited["version"], found["project_id"])
 
 
 # ── membership ───────────────────────────────────────────────────────────────

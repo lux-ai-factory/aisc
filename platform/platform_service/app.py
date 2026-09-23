@@ -30,6 +30,7 @@ from platform_service.membership import (
     validate_role,
 )
 from platform_service.projects import InvalidProject, normalise_name, slug_for, validate_slug
+from platform_service.ai_system import InvalidSystem as InvalidAISystem
 from platform_service.systems import InvalidSystem, system_key
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,74 @@ def system(pid: str, caller: Caller = Depends(caller_dependency)) -> dict:
     return found
 
 
+class AISystemEdit(BaseModel):
+    name: str | None = None
+    release: str | None = None
+    provider: str | None = None
+    description: str | None = None
+
+
+class FreezeIn(BaseModel):
+    #: what now depends on this version: "evaluation", "ai card", ...
+    reason: str
+
+
+@app.get("/projects/{slug}/ai-system")
+def get_ai_system(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """The project's one AI system: its current version and every one before."""
+    role_or_404(slug, caller)
+    found = db.ai_system(slug)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return found
+
+
+@app.patch("/projects/{slug}/ai-system")
+def edit_ai_system(slug: str, body: AISystemEdit,
+                   caller: Caller = Depends(caller_dependency)) -> dict:
+    """Change the system. The draft changes in place; a frozen latest version
+    stays as it is and the edit makes the version after it."""
+    role_or_404(slug, caller, needed="editor")
+    changes = body.model_dump(exclude_unset=True)
+    edited = db.edit_ai_system(slug, changes, subject=caller.subject)
+    if edited is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return edited
+
+
+@app.post("/projects/{slug}/ai-system/draft")
+def ai_system_draft(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """A version that may still be changed: the draft, or the next version when
+    the latest is frozen. What the engine asks for before it changes one of the
+    system's parts; `forked_from` tells it to copy the parts across first."""
+    role_or_404(slug, caller, needed="editor")
+    edited = db.edit_ai_system(slug, {}, needs_draft=True, subject=caller.subject)
+    if edited is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return edited
+
+
+@app.get("/ai-system-versions/{pid}")
+def ai_system_version(pid: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    found = db.get_ai_system_version(pid)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"no version {pid}")
+    role_or_404(str(found["project_id"]), caller)
+    return found
+
+
+@app.post("/ai-system-versions/{pid}/freeze")
+def freeze_ai_system_version(pid: str, body: FreezeIn,
+                             caller: Caller = Depends(caller_dependency)) -> dict:
+    """Something now depends on this version, so it stays as it is. Starting an
+    evaluation or submitting an AI card is changing the work: an editor."""
+    found = db.get_ai_system_version(pid)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"no version {pid}")
+    role_or_404(str(found["project_id"]), caller, needed="editor")
+    return db.freeze_ai_system_version(pid, body.reason.strip() or "in use")
+
+
 @app.exception_handler(InvalidProject)
 def invalid_project(_, exc: InvalidProject) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -285,6 +354,11 @@ def invalid_project(_, exc: InvalidProject) -> JSONResponse:
 
 @app.exception_handler(InvalidSystem)
 def invalid_system(_, exc: InvalidSystem) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(InvalidAISystem)
+def invalid_ai_system(_, exc: InvalidAISystem) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
