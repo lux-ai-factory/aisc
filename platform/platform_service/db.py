@@ -5,7 +5,10 @@ the problem needs, and the SQL is easier to read than its abstraction.
 """
 from __future__ import annotations
 
+import logging
 import os
+import threading
+import time
 
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
@@ -13,7 +16,22 @@ from psycopg.rows import dict_row
 from platform_service.migrate import migrate
 from platform_service.projects import looks_like_pid
 
+logger = logging.getLogger(__name__)
+
 _pool: ConnectionPool | None = None
+#: Setup, done once per process, and only marked done once it has worked: a
+#: database still starting, or one project that cannot be provisioned, is
+#: tried again at a later pool() call instead of never.
+_migrated = False
+#: The projects whose database still has to be made or brought up to date.
+#: None until the projects have been listed.
+_unprovisioned: set[str] | None = None
+_last_attempt = 0.0
+#: How long a project that failed to provision is left before it is tried
+#: again, so a broken one costs a connection attempt a minute, not one a request.
+RETRY_SECONDS = 60.0
+_setup_lock = threading.RLock()
+_in_setup = False
 
 
 def dsn() -> str:
@@ -34,22 +52,54 @@ def bootstrap_subjects() -> list[str]:
 
 
 def pool() -> ConnectionPool:
-    global _pool
-    if _pool is None:
-        # open=False so importing this module never touches the network; the
-        # first query opens the pool, and a database that is still starting
-        # produces an error on that request rather than at boot.
-        _pool = ConnectionPool(dsn(), min_size=1, max_size=4, open=True, kwargs={"row_factory": dict_row})
-        # core is this service's to migrate, and it is migrated before it is
-        # read. Here rather than at import, so importing the module still
-        # touches nothing, and here rather than in a startup event, because a
-        # test client that never starts the app would then run on a schema that
-        # does not match the code.
-        with _pool.connection() as conn:
+    global _pool, _in_setup
+    with _setup_lock:
+        if _pool is None:
+            # Made at the first query, so importing this module never touches
+            # the network, and a database that is still starting produces an
+            # error on that request rather than at boot.
+            _pool = ConnectionPool(dsn(), min_size=1, max_size=4, open=True, kwargs={"row_factory": dict_row})
+        # The setup below queries through pool() itself; while it runs, this
+        # thread (the lock is reentrant) gets the pool as it is.
+        if not _in_setup and _setup_pending():
+            _in_setup = True
+            try:
+                _setup(_pool)
+            finally:
+                _in_setup = False
+    return _pool
+
+
+def _setup_pending() -> bool:
+    if not _migrated or _unprovisioned is None:
+        return True
+    return bool(_unprovisioned) and time.monotonic() - _last_attempt >= RETRY_SECONDS
+
+
+def reset() -> None:
+    """Forget the pool and the setup, as a fresh process would. For tests."""
+    global _pool, _migrated, _unprovisioned, _last_attempt
+    with _setup_lock:
+        if _pool is not None:
+            _pool.close()
+        _pool, _migrated, _unprovisioned, _last_attempt = None, False, None, 0.0
+
+
+def _setup(p: ConnectionPool) -> None:
+    """core is this service's to migrate, and it is migrated before it is read.
+    Here rather than at import, so importing the module still touches nothing,
+    and here rather than in a startup event, because a test client that never
+    starts the app would then run on a schema that does not match the code.
+
+    A failure here raises to the request that caused it and leaves the step
+    not done, so the next pool() call does it again."""
+    global _migrated
+    if not _migrated:
+        with p.connection() as conn:
             migrate(conn)
         bootstrap_owners(bootstrap_subjects())
-        provision_all()
-    return _pool
+        _migrated = True
+    provision_all()
 
 
 def list_projects() -> list[dict]:
@@ -98,15 +148,30 @@ def delete_project(pid) -> None:
         conn.execute("delete from core.project where pid = %s", (pid,))
 
 
-def provision_all() -> None:
+def provision_all() -> list[str]:
     """Every project has its database: the ones made before there were any get
-    theirs here, at the first query after start."""
+    theirs here, at the first query after start.
+
+    Each project on its own: one that cannot be provisioned is logged and left
+    for the next attempt, and does not keep the others from theirs. Returns the
+    pids still without one."""
     from platform_service import projectdb
 
+    global _unprovisioned, _last_attempt
     with pool().connection() as conn:
-        pids = [r["pid"] for r in conn.execute("select pid from core.project").fetchall()]
-    for pid in pids:
-        projectdb.provision(dsn(), pid)
+        current = {str(r["pid"]) for r in conn.execute("select pid from core.project").fetchall()}
+    # The first time, every project; after that, the ones that failed and still
+    # exist (retrying one deleted meanwhile would make it a database again).
+    _unprovisioned = current if _unprovisioned is None else _unprovisioned & current
+    _last_attempt = time.monotonic()
+    for pid in sorted(_unprovisioned):
+        try:
+            projectdb.provision(dsn(), pid)
+        except Exception:
+            logger.exception("could not provision the database of project %s; trying again later", pid)
+            continue
+        _unprovisioned.discard(pid)
+    return sorted(_unprovisioned)
 
 
 # ── systems ──────────────────────────────────────────────────────────────────

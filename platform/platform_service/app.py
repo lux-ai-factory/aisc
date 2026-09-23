@@ -11,6 +11,8 @@ often the name of a customer, and 403 would confirm it exists.
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from psycopg import errors
@@ -29,6 +31,8 @@ from platform_service.membership import (
 )
 from platform_service.projects import InvalidProject, normalise_name, slug_for, validate_slug
 from platform_service.systems import InvalidSystem, system_key
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AISC platform", docs_url="/docs")
 
@@ -122,7 +126,9 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
             # the row delete that already happened.
             projectdb.drop(db.dsn(), created["pid"])
         except Exception:
-            pass
+            logger.exception(
+                "could not drop the half-made database of project %s; drop it by hand", created["pid"]
+            )
         raise HTTPException(status_code=503, detail="the project's database could not be made; nothing was created")
     return created
 

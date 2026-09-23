@@ -27,7 +27,7 @@ class NotAPid(ValueError):
 
 def database_name(pid: str | UUID) -> str:
     text = str(pid).lower()
-    if not _PID.match(text):
+    if not _PID.fullmatch(text):
         raise NotAPid(f"not a project id: {text!r}")
     return "project_" + text.replace("-", "")
 

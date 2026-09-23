@@ -502,8 +502,9 @@
       var meta = p.slug + '  ·  created ' + String(p.created_at).slice(0, 10);
       document.getElementById('project-meta').textContent = p.description
         ? meta + '  ·  ' + p.description : meta;
-      // Modules that are on the project open inside it: one database, and a
-      // module page that lists anything says whose it is.
+      // Modules that are on the project open inside it: each keeps what it
+      // holds for the project in the project's own database, and a module page
+      // that lists anything says whose it is.
       var inProject = {
         'control-objectives-card': 'http://localhost/control-objectives/p/',
         'controls-card': 'http://localhost/controls/p/',
@@ -540,6 +541,18 @@
   // falls back to a web+aiscplugin:// link, which on Linux asks the desktop for
   // an application and finds none. The launcher does the same handshake, so
   // step 3 works whether you arrive from here or from the engine.
+  // Where this platform's controls app is, from the controls card itself, so
+  // there is one place to change it: the card is rewritten to .../p/{pid} once
+  // the project is known, and the app is what comes before that.
+  function controlsBase() {
+    var fallback = 'http://localhost/controls';
+    var controls = document.getElementById('controls-card');
+    var href = controls && controls.href; // absolute, as the browser resolved it
+    if (!href) return fallback;
+    var base = String(href).replace(/[?#].*$/, '').replace(/\/p\/[^/]*\/?$/, '').replace(/\/+$/, '');
+    return /^https?:\/\/[^/]/.test(base) ? base : fallback;
+  }
+
   (function () {
     var card = document.getElementById('catalogue-card');
     if (!card) return;
@@ -551,7 +564,7 @@
                         expires: Date.now() + 60 * 60 * 1000,
                         back: window.location.origin + window.location.pathname,
                         project: window.aiscProject,
-                        controls: 'http://localhost/controls' };
+                        controls: controlsBase() };
         e.preventDefault();
         window.location.href = card.getAttribute('href').replace(/\/+$/, '')
           + '/#env=' + btoa(JSON.stringify(payload));
