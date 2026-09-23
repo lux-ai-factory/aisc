@@ -506,11 +506,22 @@ services:
     image: aisc-catalogue-backend:latest
     pull_policy: never
     container_name: catalogue-backend
+    volumes:
+      # aisc_identity: who is calling, answered the same way by every Python
+      # service. Mounted rather than copied, so one fix reaches all of them.
+      - ./shared/identity:/app/shared/identity:ro,z
     environment:
       # One database for the whole platform; the catalogue owns the `catalogue`
       # schema in it and connects as its own role. It holds reference data, the
       # same for every project, so nothing in it belongs to one.
       DATABASE_URL: ${CATALOGUE_DATABASE_URL:-postgresql+psycopg://catalogue_rw:catalogue_rw@postgres:5432/platform}
+      PYTHONPATH: /app/shared/identity
+      # Changing the catalogue takes the admin role: the engine installs what is
+      # listed here and then runs it. Verified against Keycloak rather than
+      # taken on the gateway's word, the same as the engine does.
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
       # the index the install descriptor advertises to the platform
       DEVPI_URL: http://devpi:3141
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
