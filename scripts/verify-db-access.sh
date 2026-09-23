@@ -33,18 +33,15 @@ done
 echo "3. a module owns its own schema"
 allow qualification_rw      "create table if not exists qualification.probe (x int)"      "creates in its schema"
 allow control_objectives_rw "create table if not exists control_objectives.probe (x int)" "creates in its schema"
-allow controls_rw           "create table if not exists controls.probe (x int)"           "creates in its schema"
 allow engine_rw             "create table if not exists engine.probe (x int)"             "creates in its schema"
 allow engine_rw             "insert into engine.probe values (1)"                         "writes its own table"
 
 echo "4. and cannot reach another module's"
 deny qualification_rw "select * from engine.probe"             "cannot read the engine's schema"
 deny engine_rw        "select * from qualification.probe"      "cannot read qualification's schema"
-deny controls_rw      "select * from control_objectives.probe" "cannot read control objectives"
-deny engine_rw        "create table controls.sneaky (x int)"   "cannot create in another schema"
 
 echo "5. the dashboard reads everything and writes nothing"
-for s in core qualification control_objectives controls engine; do
+for s in core qualification control_objectives engine; do
   case "$s" in
     core) allow dashboard_ro "select count(*) from core.project" "reads core";;
     *)    allow dashboard_ro "select count(*) from $s.probe"     "reads $s";;
@@ -61,7 +58,7 @@ done
 
 # clean up the probes, as the owner
 docker exec "$PGC" psql -U "${POSTGRES_USER:-aisc-postgres-user}" -d "$DB" -At -c "
-  drop table if exists qualification.probe, control_objectives.probe, controls.probe, engine.probe;
+  drop table if exists qualification.probe, control_objectives.probe, engine.probe;
   delete from core.project where slug like 'probe-%';" >/dev/null 2>&1
 
 echo "7. the platform service makes project databases, and nobody else does"

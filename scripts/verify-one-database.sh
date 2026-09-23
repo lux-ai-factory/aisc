@@ -25,7 +25,6 @@ psql_(){ docker exec postgres psql -U "$PGUSER" -d "$PGDB" -At -c "$1" 2>&1; }
 # reads the same whichever schema the query is in.
 MODULES=(
   "control objectives|control-objectives|control_objectives|project|project_id"
-  "controls|controls-web|controls|submission|project_id"
   "qualification|qualification-web|qualification|qualification|project_id"
   "execution engine|aisc-backend|engine|project|project_id"
 )
@@ -130,7 +129,7 @@ for m in "${REFERENCE[@]}"; do
 done
 
 echo "nothing is left on a database of its own"
-for gone in control_objectives controls qualification; do
+for gone in control_objectives qualification; do
   live=$(psql_ "select count(*) from pg_stat_activity where datname = '$gone'")
   [ "${live:-0}" = "0" ] && ok "nothing is connected to the old $gone database" \
     || no "$live connection(s) still on the $gone database"
@@ -155,7 +154,7 @@ named=$(psql_ "select count(*) from engine.project p
   || no "$named engine project(s) are named something else"
 
 echo "the dashboard reads the whole database and writes none of it"
-for t in engine.project catalogue.tool controls.checklist \
+for t in engine.project catalogue.tool \
          qualification.qualification control_objectives.project core.project; do
   n=$(docker exec postgres psql "postgresql://dashboard_ro:dashboard_ro@localhost:5432/$PGDB" \
         -At -c "select count(*) from $t" 2>&1 | tail -1)
@@ -229,7 +228,7 @@ echo "one naming convention"
 # two of them had to remember which half needed quotes.
 odd=$(psql_ "select string_agg(table_schema||'.'||table_name, ', ')
                from information_schema.tables
-              where table_schema in ('core','qualification','control_objectives','controls','engine','catalogue')
+              where table_schema in ('core','qualification','control_objectives','engine','catalogue')
                 and table_name <> lower(table_name)")
 [ -z "$odd" ] && ok "every table is lower case, so nothing needs quoting" \
   || no "still needs quoting: $odd"
@@ -239,7 +238,7 @@ prefixed=$(psql_ "select count(*) from information_schema.tables
   || no "$prefixed engine table(s) still carry the app prefix"
 naive=$(psql_ "select string_agg(table_schema||'.'||table_name||'.'||column_name, ', ')
                  from information_schema.columns
-                where table_schema in ('core','qualification','control_objectives','controls','catalogue')
+                where table_schema in ('core','qualification','control_objectives','catalogue')
                   and data_type = 'timestamp without time zone'")
 [ -z "$naive" ] && ok "and every timestamp carries its zone" \
   || no "read as the reader's own zone: $naive"

@@ -149,6 +149,14 @@ if [ -n "$PROJECT" ]; then
   is "and not for a project nobody is in"        404 "$(page controls-web:3000/controls/p/$NOBODY/checklists "$USER")"
   is "qualification opens for a member"          200 "$(page qualification-web:3000/qualification/p/$PROJECT/qualifications "$USER")"
   is "and not for a project nobody is in"        404 "$(page qualification-web:3000/qualification/p/$NOBODY/qualifications "$USER")"
+  CTRL="controls-web:3000/controls/p"
+  is "a path that is not a project is not found"  404 "$(page $CTRL/abc/checklists "$USER")"
+  is "the install page previews for a member"     200 "$(page "$CTRL/$PROJECT/install?slug=accuracy-checklist" "$USER")"
+  is "and is not found for a project nobody is in" 404 "$(page "$CTRL/$NOBODY/install?slug=accuracy-checklist" "$USER")"
+  is "the project chooser opens for anyone signed in" 200 "$(page "controls-web:3000/controls/install?slug=accuracy-checklist" "$USER")"
+  echo "the controls schema no longer lives in the shared database"
+  left=$(docker exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select count(*) from pg_namespace where nspname = \$\$controls\$\$"')
+  is "no shared controls schema" 0 "$left"
 else
   no "the ordinary account is in no project at all"
 fi

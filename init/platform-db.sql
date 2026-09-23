@@ -75,13 +75,11 @@ COMMENT ON TABLE core.system  IS 'The AI system under assessment: qualification 
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA qualification;
 CREATE SCHEMA control_objectives;
-CREATE SCHEMA controls;
 CREATE SCHEMA engine;
 CREATE SCHEMA catalogue;
 
 COMMENT ON SCHEMA qualification      IS 'Step 1: qualifications and system cards.';
 COMMENT ON SCHEMA control_objectives IS 'Step 2: risks, mappings and their runs.';
-COMMENT ON SCHEMA controls           IS 'Step 5: checklists, submissions and answers.';
 COMMENT ON SCHEMA engine             IS 'Step 4: datasets, models, plugins, evaluations, measurements.';
 COMMENT ON SCHEMA catalogue          IS 'Step 3: the registry of tests and controls. Reference data: the same for every project, so nothing in it belongs to one.';
 
@@ -146,7 +144,6 @@ BEGIN
     FOR m IN SELECT * FROM (VALUES
         ('qualification',      'qualification_rw'),
         ('control_objectives', 'control_objectives_rw'),
-        ('controls',           'controls_rw'),
         ('engine',             'engine_rw'),
         -- the catalogue holds no project's data, but the rest of the contract
         -- is the same: its own schema, its own role, readable by the dashboard
