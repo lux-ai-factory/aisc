@@ -59,9 +59,10 @@ CREATE TRIGGER ai_system_version_frozen
     FOR EACH ROW EXECUTE FUNCTION core.ai_system_version_is_frozen();
 
 -- Carry over. Every project gets its system; each row of core.system becomes a
--- version of it, oldest first, under the pid it already had. All but the
--- newest are frozen: the newest stays the draft, since a project could only
--- ever be working on one system at a time and that is the one it was on.
+-- version of it, oldest first, under the pid it already had. All of them are
+-- frozen: a row of core.system was only ever made by qualification when an AI
+-- card was submitted for it (the engine never named one), and a version with
+-- a submitted card is frozen. The next edit makes the version after them.
 INSERT INTO core.ai_system (project_id)
 SELECT pid FROM core.project;
 
@@ -71,10 +72,7 @@ INSERT INTO core.ai_system_version
 SELECT s.pid, a.pid,
        row_number() OVER (PARTITION BY s.project_id ORDER BY s.created_at, s.pid),
        s.name, s.version, s.provider, s.description, s.created_at,
-       CASE WHEN row_number() OVER (PARTITION BY s.project_id ORDER BY s.created_at DESC, s.pid DESC) = 1
-            THEN NULL ELSE now() END,
-       CASE WHEN row_number() OVER (PARTITION BY s.project_id ORDER BY s.created_at DESC, s.pid DESC) = 1
-            THEN NULL ELSE 'carried over from core.system' END
+       now(), 'ai card (carried over from core.system)'
   FROM core.system s
   JOIN core.ai_system a ON a.project_id = s.project_id;
 
