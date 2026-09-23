@@ -162,11 +162,14 @@ services:
   controls-migrate:
     build: apps/controls
     container_name: controls-migrate
+    # Every project database, not one shared one. No seed: a project's
+    # checklists are the ones installed into it from the catalogue.
     command: >
-      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done && npx prisma db seed"
+      sh -c "until node scripts/migrate-projects.mjs; do echo '[controls] waiting for postgres'; sleep 2; done"
     env_file: apps/controls/env.development
     depends_on:
       - postgres
+      - platform
     restart: "no"
     networks:
       - backend
