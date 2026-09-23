@@ -61,6 +61,7 @@ services:
       AUTH_ENABLED: "true"
       KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
     networks:
       - backend
     depends_on:
