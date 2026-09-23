@@ -194,6 +194,9 @@ services:
       CATALOGUE_URL: ${CATALOGUE_URL:-http://catalogue-backend:8000}
       # The hosted catalogue's bridge token, when it sets one. Empty locally.
       CATALOGUE_TOKEN: ${CATALOGUE_BRIDGE_TOKEN:-}
+      # The catalogue's origin in the browser: the only page whose install
+      # dialog may call /controls/api/install with the person's sign-in.
+      CATALOGUE_ORIGIN: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
