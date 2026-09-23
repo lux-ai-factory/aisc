@@ -93,7 +93,7 @@ def test_a_viewer_may_not_name_a_system_and_an_editor_may(client, as_user, proje
         headers=as_user(ALICE),
     )
     refused = client.post(
-        f"/projects/{project['slug']}/systems", json={"name": "MCAS"}, headers=as_user(BOB)
+        f"/projects/{project['slug']}/system-versions", json={"name": "MCAS"}, headers=as_user(BOB)
     )
     assert refused.status_code == 403
 
@@ -103,33 +103,33 @@ def test_a_viewer_may_not_name_a_system_and_an_editor_may(client, as_user, proje
         headers=as_user(ALICE),
     )
     allowed = client.post(
-        f"/projects/{project['slug']}/systems", json={"name": "MCAS"}, headers=as_user(BOB)
+        f"/projects/{project['slug']}/system-versions", json={"name": "MCAS"}, headers=as_user(BOB)
     )
     assert allowed.status_code == 201, allowed.text
 
 
 def test_a_viewer_can_read_the_systems(client, as_user, project):
     client.post(
-        f"/projects/{project['slug']}/systems", json={"name": "MCAS"}, headers=as_user(ALICE)
+        f"/projects/{project['slug']}/system-versions", json={"name": "MCAS"}, headers=as_user(ALICE)
     )
     client.post(
         f"/projects/{project['slug']}/members",
         json={"subject": BOB, "role": "viewer"},
         headers=as_user(ALICE),
     )
-    response = client.get(f"/projects/{project['slug']}/systems", headers=as_user(BOB))
+    response = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(BOB))
     assert response.status_code == 200
     assert [s["name"] for s in response.json()] == ["MCAS"]
 
 
 def test_a_stranger_cannot_read_the_systems(client, as_user, project):
-    assert client.get(f"/projects/{project['slug']}/systems", headers=as_user(BOB)).status_code == 404
+    assert client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(BOB)).status_code == 404
 
 
 def test_a_stranger_cannot_read_a_system_by_its_own_id(client, as_user, project):
     """The system's id is a back door into the project if nobody checks."""
     system = client.post(
-        f"/projects/{project['slug']}/systems", json={"name": "MCAS"}, headers=as_user(ALICE)
+        f"/projects/{project['slug']}/system-versions", json={"name": "MCAS"}, headers=as_user(ALICE)
     ).json()
     assert client.get(f"/systems/{system['pid']}", headers=as_user(BOB)).status_code == 404
     assert client.get(f"/systems/{system['pid']}", headers=as_user(ALICE)).status_code == 200

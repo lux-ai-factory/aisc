@@ -14,3 +14,9 @@ ALTER ROLE platform_rw CREATEDB;
 -- to write in every project database.
 \connect template1
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- core.system is the platform's to migrate (platform migration 0003 adds its version number and
+-- the only-latest rule). It was made by the superuser in init/platform-db.sql; this runs as the
+-- superuser on every start of postgres-setup, and again changes nothing.
+\connect platform
+ALTER TABLE core.system OWNER TO platform_rw;
