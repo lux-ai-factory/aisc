@@ -114,6 +114,15 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
         # A project without its database is a project every module fails on.
         # Better not to have made it.
         db.delete_project(created["pid"])
+        try:
+            # Best-effort: CREATE DATABASE may have already succeeded before
+            # the template step failed, and an orphaned project_<hex> with no
+            # core.project row is exactly the "half made" state this guards
+            # against. A failing drop must not mask the 503 above, nor skip
+            # the row delete that already happened.
+            projectdb.drop(db.dsn(), created["pid"])
+        except Exception:
+            pass
         raise HTTPException(status_code=503, detail="the project's database could not be made; nothing was created")
     return created
 

@@ -7,7 +7,7 @@ import psycopg
 import pytest
 from psycopg.conninfo import make_conninfo
 
-from platform_service import projectdb
+from platform_service import db, projectdb
 from tests.conftest import needs_database
 
 PID = "3f2b8c1e-0d4a-4e7b-9a55-1c2d3e4f5a6b"
@@ -75,3 +75,42 @@ def test_a_project_whose_database_cannot_be_made_is_not_made(client, as_user, un
     response = client.post("/projects", json={"name": slug}, headers=as_user("alice"))
     assert response.status_code == 503
     assert client.get(f"/projects/{slug}", headers=as_user("alice")).status_code == 404
+
+
+@needs_database
+def test_a_database_made_before_its_template_fails_is_not_left_orphaned(
+    client, as_user, unique, monkeypatch, dsn
+):
+    """CREATE DATABASE can succeed and the template step can still fail (a bad
+    template file, a lock, a dropped connection). Either way this is "made, or
+    not at all": no core.project row and no project_<hex> database."""
+    captured = {}
+    original_create_project = db.create_project
+
+    def capture(*args, **kwargs):
+        created = original_create_project(*args, **kwargs)
+        captured["pid"] = created["pid"]
+        return created
+
+    monkeypatch.setattr(db, "create_project", capture)
+
+    def refuse(*_args, **_kwargs):
+        raise psycopg.OperationalError("simulated: the template step fails")
+
+    # The name `migrate` bound inside projectdb, called after CREATE DATABASE
+    # has already run: this is the exact "database exists, template failed"
+    # ordering the fix is for.
+    monkeypatch.setattr(projectdb, "migrate", refuse)
+
+    slug = unique()
+    response = client.post("/projects", json={"name": slug}, headers=as_user("alice"))
+    assert response.status_code == 503
+    assert client.get(f"/projects/{slug}", headers=as_user("alice")).status_code == 404
+
+    assert "pid" in captured, "db.create_project was never reached"
+    name = projectdb.database_name(captured["pid"])
+    with psycopg.connect(dsn) as conn:
+        left_behind = conn.execute(
+            "select 1 from pg_database where datname = %s", (name,)
+        ).fetchone()
+    assert left_behind is None
