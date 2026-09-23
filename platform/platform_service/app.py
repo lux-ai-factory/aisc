@@ -127,6 +127,31 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
     return created
 
 
+class DeleteProjectIn(BaseModel):
+    confirm_name: str
+
+
+@app.delete("/projects/{slug}", status_code=204)
+def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(caller_dependency)) -> None:
+    """Delete a project and everything every module holds for it.
+
+    Only an admin, and only by typing the project's name exactly: this drops the
+    project's database, and there is no undo. The database goes first, so a
+    failure halfway leaves a project with no data rather than data with no
+    project.
+    """
+    if not caller.has_role(ADMIN_ROLE):
+        role_or_404(slug, caller)  # a stranger is told nothing
+        raise HTTPException(status_code=403, detail="only an admin deletes a project")
+    found = db.get_project(slug)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    if body.confirm_name != found["name"]:
+        raise HTTPException(status_code=422, detail="type the project's name exactly to delete it")
+    projectdb.drop(db.dsn(), found["pid"])
+    db.delete_project(found["pid"])
+
+
 # ── who is in a project ──────────────────────────────────────────────────────
 
 

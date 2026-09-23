@@ -358,9 +358,26 @@
     <p class="subtitle" id="project-meta"></p>
 
     <p class="note" id="scope-note">
-      Every step below opens on this project: one database, a schema for each
-      module, and every row in it knowing whose project it is.
+      Every step below opens on this project, and keeps what it does for this
+      project in this project's own database. Nothing here is shared with any
+      other project.
     </p>
+
+    <p id="danger" hidden>
+      <button type="button" class="newbtn ghost" id="delete-open">Delete this project&hellip;</button>
+    </p>
+    <dialog class="new" id="delete-dialog">
+      <form method="dialog" id="delete-form">
+        <h2>Delete this project</h2>
+        <p>This deletes the project and everything every step holds for it: its
+          database is dropped, and there is no undo.</p>
+        <p>Type <b id="delete-name"></b> to confirm.</p>
+        <input id="delete-input" autocomplete="off" spellcheck="false"/>
+        <p class="err" id="delete-err"></p>
+        <button type="button" class="newbtn ghost" id="delete-cancel">Cancel</button>
+        <button type="submit" class="newbtn" id="delete-confirm" disabled>Delete</button>
+      </form>
+    </dialog>
 
 
   <div class="row">
@@ -453,6 +470,35 @@
       document.getElementById('project-name').textContent = p.name;
       document.title = p.name + ' — AI Assessment Sandbox Configurator';
       window.aiscProject = p.pid;
+      fetch('/api/authz/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (a) {
+          if (!a || !a.admin) return;          // only an admin sees it at all
+          var dlg = document.getElementById('delete-dialog');
+          var input = document.getElementById('delete-input');
+          var go = document.getElementById('delete-confirm');
+          var err = document.getElementById('delete-err');
+          document.getElementById('delete-name').textContent = p.name;
+          document.getElementById('danger').hidden = false;
+          document.getElementById('delete-open').onclick = function () {
+            input.value = ''; go.disabled = true; err.textContent = ''; dlg.showModal(); input.focus();
+          };
+          document.getElementById('delete-cancel').onclick = function () { dlg.close(); };
+          input.oninput = function () { go.disabled = input.value !== p.name; };
+          document.getElementById('delete-form').onsubmit = function (e) {
+            e.preventDefault();
+            if (input.value !== p.name) return;
+            go.disabled = true;
+            fetch('/api/projects/' + encodeURIComponent(slug), {
+              method: 'DELETE', credentials: 'same-origin',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({confirm_name: input.value})
+            }).then(function (r) {
+              if (r.status === 204) { window.location.href = '/'; return; }
+              return r.json().then(function (d) { err.textContent = d.detail || ('Refused: ' + r.status); go.disabled = false; });
+            }).catch(function () { err.textContent = 'The platform is not answering. Nothing was deleted.'; go.disabled = false; });
+          };
+        });
       var meta = p.slug + '  ·  created ' + String(p.created_at).slice(0, 10);
       document.getElementById('project-meta').textContent = p.description
         ? meta + '  ·  ' + p.description : meta;
