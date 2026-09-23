@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 
-from platform_service import db, projectdb
+from platform_service import dashboard_bridge, db, projectdb
 from platform_service.membership import (
     InvalidMembership,
     at_least,
@@ -130,6 +130,9 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
                 "could not drop the half-made database of project %s; drop it by hand", created["pid"]
             )
         raise HTTPException(status_code=503, detail="the project's database could not be made; nothing was created")
+    # The dashboard learns about it; if it is not there, it is told later.
+    if not dashboard_bridge.register(created["pid"], created["slug"], created["name"]):
+        db.remember_unregistered(created["pid"])
     return created
 
 
@@ -154,6 +157,8 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
         raise HTTPException(status_code=404, detail=f"no project {slug!r}")
     if body.confirm_name != found["name"]:
         raise HTTPException(status_code=422, detail="type the project's name exactly to delete it")
+    # The dashboard lets go of the project's database before it is dropped.
+    dashboard_bridge.unregister(found["pid"])
     projectdb.drop(db.dsn(), found["pid"])
     db.delete_project(found["pid"])
 

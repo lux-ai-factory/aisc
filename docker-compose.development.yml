@@ -464,6 +464,8 @@ services:
       OIDC_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
       OIDC_CLIENT_ID: ${DASHBOARD_OIDC_CLIENT_ID:-superset}
       OIDC_CLIENT_SECRET: ${DASHBOARD_OIDC_CLIENT_SECRET:?run scripts/secrets.sh first}
+      # the shared secret the platform sends to /api/v1/aisc_project (the bridge)
+      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
     depends_on:
       dashboard-migrate:
         condition: service_completed_successfully
@@ -527,6 +529,14 @@ services:
       # same on every install made from it. Only projects with nobody in them
       # are touched, so this is a one-off that keeps being harmless.
       PLATFORM_BOOTSTRAP_OWNERS: ${PLATFORM_BOOTSTRAP_OWNERS:-c8134e20-7078-465a-8955-f25289bd4540,9feeffe8-6e06-49c8-a7ae-c8993a1e68d4}
+      # Making or deleting a project tells the dashboard's bridge, which makes or
+      # removes that project's dashboard. The dashboard runs on the host network
+      # (see its service), on DASHBOARD_PORT. The token is the shared secret the
+      # bridge checks; with none set, the bridge refuses every call.
+      DASHBOARD_BRIDGE_URL: http://host.docker.internal:${DASHBOARD_PORT:-8188}
+      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_started

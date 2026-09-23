@@ -30,6 +30,10 @@ _last_attempt = 0.0
 #: How long a project that failed to provision is left before it is tried
 #: again, so a broken one costs a connection attempt a minute, not one a request.
 RETRY_SECONDS = 60.0
+#: Projects the dashboard bridge has not taken yet: retried by provision_all.
+_unregistered: set[str] = set()
+#: Whether provision_all has registered every project since the start.
+_registered_all = False
 _setup_lock = threading.RLock()
 _in_setup = False
 
@@ -73,16 +77,24 @@ def pool() -> ConnectionPool:
 def _setup_pending() -> bool:
     if not _migrated or _unprovisioned is None:
         return True
-    return bool(_unprovisioned) and time.monotonic() - _last_attempt >= RETRY_SECONDS
+    return bool(_unprovisioned or _unregistered) and time.monotonic() - _last_attempt >= RETRY_SECONDS
+
+
+def remember_unregistered(pid) -> None:
+    """The dashboard bridge did not take this project: provision_all tries again."""
+    with _setup_lock:
+        _unregistered.add(str(pid))
 
 
 def reset() -> None:
     """Forget the pool and the setup, as a fresh process would. For tests."""
-    global _pool, _migrated, _unprovisioned, _last_attempt
+    global _pool, _migrated, _unprovisioned, _last_attempt, _registered_all
     with _setup_lock:
         if _pool is not None:
             _pool.close()
         _pool, _migrated, _unprovisioned, _last_attempt = None, False, None, 0.0
+        _unregistered.clear()
+        _registered_all = False
 
 
 def _setup(p: ConnectionPool) -> None:
@@ -155,14 +167,16 @@ def provision_all() -> list[str]:
     Each project on its own: one that cannot be provisioned is logged and left
     for the next attempt, and does not keep the others from theirs. Returns the
     pids still without one."""
-    from platform_service import projectdb
+    from platform_service import dashboard_bridge, projectdb
 
-    global _unprovisioned, _last_attempt
+    global _unprovisioned, _last_attempt, _registered_all
     with pool().connection() as conn:
-        current = {str(r["pid"]) for r in conn.execute("select pid from core.project").fetchall()}
+        rows = conn.execute("select pid, slug, name from core.project").fetchall()
+    known = {str(r["pid"]): r for r in rows}
+    current = set(known)
     # The first time, every project; after that, the ones that failed and still
     # exist (retrying one deleted meanwhile would make it a database again).
-    _unprovisioned = current if _unprovisioned is None else _unprovisioned & current
+    _unprovisioned = set(current) if _unprovisioned is None else _unprovisioned & current
     _last_attempt = time.monotonic()
     for pid in sorted(_unprovisioned):
         try:
@@ -171,6 +185,19 @@ def provision_all() -> list[str]:
             logger.exception("could not provision the database of project %s; trying again later", pid)
             continue
         _unprovisioned.discard(pid)
+
+    # The dashboard: every project with its database, on the first run after a
+    # start; after that, the ones whose registration failed and that still exist.
+    ready = current - _unprovisioned
+    todo = ready if not _registered_all else (_unregistered & ready)
+    _unregistered.intersection_update(current)
+    for pid in sorted(todo):
+        row = known[pid]
+        if dashboard_bridge.register(pid, row["slug"], row["name"]):
+            _unregistered.discard(pid)
+        else:
+            _unregistered.add(pid)
+    _registered_all = True
     return sorted(_unprovisioned)
 
 
