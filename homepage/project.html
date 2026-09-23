@@ -452,6 +452,7 @@
     .then(function (p) {
       document.getElementById('project-name').textContent = p.name;
       document.title = p.name + ' — AI Assessment Sandbox Configurator';
+      window.aiscProject = p.pid;
       var meta = p.slug + '  ·  created ' + String(p.created_at).slice(0, 10);
       document.getElementById('project-meta').textContent = p.description
         ? meta + '  ·  ' + p.description : meta;
@@ -502,7 +503,9 @@
         // steps and is entered from here, so it is told where to return.
         var payload = { url: card.dataset.engine.replace(/\/+$/, ''),
                         expires: Date.now() + 60 * 60 * 1000,
-                        back: window.location.origin + window.location.pathname };
+                        back: window.location.origin + window.location.pathname,
+                        project: window.aiscProject,
+                        controls: 'http://localhost/controls' };
         e.preventDefault();
         window.location.href = card.getAttribute('href').replace(/\/+$/, '')
           + '/#env=' + btoa(JSON.stringify(payload));
