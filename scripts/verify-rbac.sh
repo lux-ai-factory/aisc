@@ -138,6 +138,17 @@ if [ -n "$PROJECT" ]; then
   is "the catalogue of objectives is the same for everyone" 200 \
      "$(call control-objectives http://localhost:8090/objectives GET "$USER")"
   is "the engine shows the project to a member"  200 "$(call aisc-backend $ENG/projects?platform_project_id=$PROJECT GET "$USER")"
+  # The two Next apps, through the container rather than the gateway: their door
+  # reads the same token, and the gateway wants a cookie session instead.
+  page() {  # page <container:port/path> <token>
+    docker exec caddy wget -q -O /dev/null -S --header="Authorization: Bearer $2" "http://$1" 2>&1 \
+      | grep -m1 'HTTP/' | awk '{print $2}'
+  }
+  NOBODY=00000000-0000-0000-0000-000000000000
+  is "controls opens for a member"               200 "$(page controls-web:3000/controls/p/$PROJECT/checklists "$USER")"
+  is "and not for a project nobody is in"        404 "$(page controls-web:3000/controls/p/$NOBODY/checklists "$USER")"
+  is "qualification opens for a member"          200 "$(page qualification-web:3000/qualification/p/$PROJECT/qualifications "$USER")"
+  is "and not for a project nobody is in"        404 "$(page qualification-web:3000/qualification/p/$NOBODY/qualifications "$USER")"
 else
   no "the ordinary account is in no project at all"
 fi
