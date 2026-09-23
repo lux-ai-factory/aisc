@@ -218,6 +218,26 @@ services:
     networks:
       - backend
 
+  # The card agent: drafts the prose-fed nodes of an AI card (techniques, components) through the
+  # LLM sidecar, and publishes the draft to qualification-web.
+  qualification-agents:
+    build:
+      context: apps/qualification/services/agents
+      dockerfile: Dockerfile.stack
+      additional_contexts:
+        ontology-prompts: apps/qualification/services/ontology/prompts
+    image: aisc-qualification-agents:latest
+    pull_policy: never
+    container_name: qualification-agents
+    environment:
+      LLM_SERVICE_URL: http://qualification-llm:4000
+      BAF_LLM_BASE_URL: http://qualification-llm:4000
+      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
+      APP_URL: http://qualification-web:3000/qualification
+    restart: unless-stopped
+    networks:
+      - backend
+
   # AIRO graph builder sidecar: turns a qualification's answers, the agent's
   # prose extraction and a reviewer's patch into the filled AIRO graph that IS
   # the system's AI card. Pure computation, no model: without it the app can
@@ -261,6 +281,8 @@ services:
     container_name: qualification-web
     environment:
       AISC_BACKEND_URL: http://aisc-backend:8000
+      # The card agent, which the save starts and the card page polls.
+      AGENT_SERVICE_URL: http://qualification-agents:8012
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
     env_file: apps/qualification/env.development
