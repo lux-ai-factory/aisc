@@ -20,3 +20,6 @@ dev = ["pytest>=8.0", "httpx>=0.27"]
 testpaths = ["tests"]
 # the service is a package in this directory, not an installed distribution
 pythonpath = [".", "../shared/identity"]
+markers = [
+    "chain: a step of scripts/test-pipeline-chain.sh, skipped without CHAIN_JSON",
+]
