@@ -345,6 +345,10 @@ services:
       # Where projects are chosen. Reached without one, this service sends the
       # reader there rather than asking a second time.
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      # "Start assessment" asks the platform for the latest AI card version and
+      # qualification for that version's card, with the caller's own token.
+      PLATFORM_URL: http://platform:8000
+      QUALIFICATION_URL: http://qualification-web:3000/qualification
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
       # The model, named BAF's way — the same two variables the qualification
       # filler reads, so both services are configured alike.
