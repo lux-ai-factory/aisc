@@ -115,9 +115,32 @@ services:
       # project every module will come to reference. First, so it exists before
       # any app migrates.
       - ./init/platform-db.sql:/docker-entrypoint-initdb.d/05-platform-db.sql:ro,Z
+      # Lets the platform make one database per project. After the platform DB,
+      # because it alters the platform's role.
+      - ./init/project-databases.sql:/docker-entrypoint-initdb.d/06-project-databases.sql:ro,Z
       # Creates the `superset` metadata DB (apps/results-dashboard) on a fresh volume.
       - ./init/superset-db.sql:/docker-entrypoint-initdb.d/50-superset-db.sql:ro,Z
     restart: unless-stopped
+    networks:
+      - backend
+
+  # The same grants on a volume that already exists: initdb scripts only run on
+  # an empty one. Idempotent, so it runs on every start and then exits.
+  postgres-setup:
+    image: postgres:14-alpine
+    container_name: postgres-setup
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+    volumes:
+      - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
+    command: >
+      sh -c "until pg_isready -q; do sleep 1; done && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql"
+    depends_on:
+      - postgres
+    restart: "no"
     networks:
       - backend
 

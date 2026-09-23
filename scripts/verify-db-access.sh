@@ -64,4 +64,11 @@ docker exec "$PGC" psql -U "${POSTGRES_USER:-aisc-postgres-user}" -d "$DB" -At -
   drop table if exists qualification.probe, control_objectives.probe, controls.probe, engine.probe;
   delete from core.project where slug like 'probe-%';" >/dev/null 2>&1
 
+echo "7. the platform service makes project databases, and nobody else does"
+probe="probe_db_$$"
+allow platform_rw "create database $probe" "can create a database"
+allow platform_rw "drop database $probe"   "and drop the one it made"
+deny  controls_rw "create database ${probe}_x" "a module cannot create a database"
+deny  engine_rw   "create database ${probe}_y" "nor can the engine"
+
 echo; echo "passed: $pass  failed: $fail"; [ "$fail" -eq 0 ]

@@ -490,7 +490,10 @@ services:
       # are touched, so this is a one-off that keeps being harmless.
       PLATFORM_BOOTSTRAP_OWNERS: ${PLATFORM_BOOTSTRAP_OWNERS:-c8134e20-7078-465a-8955-f25289bd4540,9feeffe8-6e06-49c8-a7ae-c8993a1e68d4}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_started
+      postgres-setup:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - backend
