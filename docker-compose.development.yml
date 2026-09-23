@@ -466,6 +466,8 @@ services:
       OIDC_CLIENT_SECRET: ${DASHBOARD_OIDC_CLIENT_SECRET:?run scripts/secrets.sh first}
       # the shared secret the platform sends to /api/v1/aisc_project (the bridge)
       DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
+      # where a project's own database is, as this host-network container sees it
+      AISC_PROJECT_DB_HOSTPORT: localhost:5432
     depends_on:
       dashboard-migrate:
         condition: service_completed_successfully
