@@ -271,7 +271,8 @@ def edit_ai_system(project: str, changes: dict, needs_draft: bool = False,
         else:
             pid = plan["pid"]
         version = conn.execute(
-            f"select {_VERSION} from core.ai_system_version v where v.pid = %s", (pid,)
+            f"select {_VERSION}, a.project_id from core.ai_system_version v"
+            " join core.ai_system a on a.pid = v.ai_system_id where v.pid = %s", (pid,)
         ).fetchone()
     return {"version": version, "forked_from": forked_from}
 

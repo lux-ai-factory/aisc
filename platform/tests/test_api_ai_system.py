@@ -141,3 +141,13 @@ def test_there_is_never_more_than_one_draft(dsn, client, as_user, project):
             " values (%s, 2, 'a second draft')",
             (body["pid"],),
         )
+
+
+def test_an_edit_answers_with_the_project_it_was_made_in(client, as_user, project):
+    """Qualification files the card under the project the version belongs to."""
+    edited = client.patch(f"/projects/{project['slug']}/ai-system", json={"provider": "LIST"},
+                          headers=as_user(ALICE)).json()
+    drafted = client.post(f"/projects/{project['slug']}/ai-system/draft",
+                          headers=as_user(ALICE)).json()
+    assert edited["version"]["project_id"] == project["pid"]
+    assert drafted["version"]["project_id"] == project["pid"]
