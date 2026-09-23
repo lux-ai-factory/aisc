@@ -1,5 +1,11 @@
 # Authorisation plan
 
+> **Built.** Waves 1 to 6 are done, test-first, and `scripts/verify.sh` runs
+> them: 16 ok, 0 failed. `scripts/verify-rbac.sh` (40 assertions) is the
+> standing proof against the running stack. Wave 0 is the one item left, and it
+> is not code: the parallel stacks still publish their backends on 0.0.0.0.
+> What each wave actually turned into is noted under it.
+
 Where we are: authentication is enforced (oauth2-proxy is the only published
 door in the `aisc` stack, every module backend is internal), and authorisation
 is not. Two endpoints check a role (`me.py:24`, `audit.py:49`). Everything else
