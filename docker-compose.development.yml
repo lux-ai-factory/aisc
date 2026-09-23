@@ -187,6 +187,12 @@ services:
       # Who may be in this project, and who may change it. Asked once per
       # request by the middleware over /p/:path*.
       PLATFORM_URL: http://platform:8000
+      # The catalogue: one, hosted online. In this dev stack its local copy
+      # stands in for it. Server-side only: the install page fetches a control's
+      # package here.
+      CATALOGUE_URL: ${CATALOGUE_URL:-http://catalogue-backend:8000}
+      # The hosted catalogue's bridge token, when it sets one. Empty locally.
+      CATALOGUE_TOKEN: ${CATALOGUE_BRIDGE_TOKEN:-}
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
