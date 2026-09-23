@@ -45,6 +45,14 @@ for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
   n=$(echo "$e" | cut -d'|' -f1); u=$(echo "$e" | cut -d'|' -f2); m=$(echo "$e" | cut -d'|' -f3)
   body=$(curl -s -b "$J" -c "$J" -L --max-time 30 "$u")
   eff=$(curl -s -b "$J" -c "$J" -L --max-time 30 -o /dev/null -w '%{url_effective}' "$u")
+  code=$(curl -s -b "$J" -c "$J" -L --max-time 30 -o /dev/null -w '%{http_code}' "$u")
+  # The status too, not only the words on the page: a Next.js error page says
+  # 500 while still carrying the app's own name, which let two apps sit broken
+  # behind a check that read the body alone.
+  if [ "$code" != "200" ]; then
+    no "$n -> $code"
+    continue
+  fi
   case "$eff" in
     *:8081*) no "$n -> bounced to Keycloak ($eff)" ;;
     *) # `case`, not `grep -q`: grep exits at the first hit, printf takes
