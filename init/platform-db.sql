@@ -174,4 +174,4 @@ END
 $$;
 
 ALTER ROLE platform_rw  IN DATABASE platform SET search_path = core;
-ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core, qualification, control_objectives, controls, engine;
+ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core, qualification, control_objectives, engine;
