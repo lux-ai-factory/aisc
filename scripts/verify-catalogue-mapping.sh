@@ -17,7 +17,9 @@
 # enables or disables anything in a project you are using.
 set -uo pipefail
 J=$(mktemp); T=$(mktemp); trap 'rm -f "$J" "$T"' EXIT
-U=${KC_USER:-user}; P=${KC_PASS:-user}
+# admin, because this script installs plugins, and installing puts code on the
+# server: it takes the admin role (verify-rbac.sh asserts that it does).
+U=${KC_USER:-admin}; P=${KC_PASS:-admin}
 KC=${KEYCLOAK_URL:-http://localhost:8081}
 ENGINE=${ENGINE_URL:-http://localhost}
 CATALOGUE=${CATALOGUE_URL:-http://localhost:8102}

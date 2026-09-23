@@ -181,6 +181,9 @@ services:
     environment:
       # the server-side audit forwarder posts here (service name on the backend network, not localhost)
       AISC_BACKEND_URL: http://aisc-backend:8000
+      # Who may be in this project, and who may change it. Asked once per
+      # request by the middleware over /p/:path*.
+      PLATFORM_URL: http://platform:8000
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
@@ -293,7 +296,17 @@ services:
     pull_policy: never
     container_name: control-objectives
     env_file: apps/control-objectives/env.development
+    volumes:
+      # aisc_identity: who is calling, answered the same way by every Python
+      # service. Mounted rather than copied, so one fix reaches all of them.
+      - ./shared/identity:/app/shared/identity:ro,z
     environment:
+      PYTHONPATH: /app/src:/app/shared/identity
+      # A project belongs to the people in it, and this service holds somebody's
+      # risk ratings, so it has to know who is asking.
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
       # Served behind Caddy under /control-objectives. FastAPI's root_path only
       # fixes the URLs the app generates; Caddy's handle_path strips the prefix.
       CONTROL_OBJECTIVES_ROOT_PATH: /control-objectives
@@ -457,8 +470,25 @@ services:
     image: aisc-platform:latest
     pull_policy: never
     container_name: platform
+    volumes:
+      # aisc_identity: who is calling, answered the same way by every Python
+      # service. Mounted rather than copied, so one fix reaches all of them.
+      - ./shared/identity:/app/shared/identity:ro,z
+      # core is this service's to migrate, and the files are read at startup.
+      - ./platform/migrations:/app/migrations:ro,z
     environment:
       PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://platform_rw:platform_rw@postgres:5432/platform}
+      PYTHONPATH: /app/shared/identity
+      # A project belongs to the people in it, so this service has to know who
+      # is asking. Verified here rather than taken on the gateway's word.
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      # Who owns the projects that predate membership. Keycloak's subjects for
+      # the two seeded accounts; the realm file pins these ids, so they are the
+      # same on every install made from it. Only projects with nobody in them
+      # are touched, so this is a one-off that keeps being harmless.
+      PLATFORM_BOOTSTRAP_OWNERS: ${PLATFORM_BOOTSTRAP_OWNERS:-c8134e20-7078-465a-8955-f25289bd4540,9feeffe8-6e06-49c8-a7ae-c8993a1e68d4}
     depends_on:
       - postgres
     restart: unless-stopped

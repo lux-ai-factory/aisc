@@ -5,6 +5,9 @@ description = "The platform's projects: defined once, referenced by every module
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
+    # aisc_identity verifies Keycloak tokens; the package itself is mounted
+    # from shared/, its one dependency is installed here.
+    "pyjwt[crypto]>=2.8",
     "uvicorn[standard]>=0.30",
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
@@ -16,4 +19,4 @@ dev = ["pytest>=8.0", "httpx>=0.27"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # the service is a package in this directory, not an installed distribution
-pythonpath = ["."]
+pythonpath = [".", "../shared/identity"]

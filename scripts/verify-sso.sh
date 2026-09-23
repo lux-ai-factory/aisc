@@ -302,17 +302,34 @@ TOK=$(curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' 
 c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "200" ] && ok "the engine lists projects for the dialog's dropdown (200)" || no "GET /api/v1/projects -> $c"
 
-c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code}' --max-time 30 \
-      -X POST -H 'Content-Type: application/json' \
-      -d '{"package_name":"x","version":"1.0.0","project_uuid":"00000000-0000-0000-0000-000000000000"}' \
-      http://localhost/api/v1/plugins)
+# Installing puts code on the server, so it takes the admin role. The dialog is
+# the same dialog for everybody; what changes is who it works for, which is
+# asserted in both directions here and in full in verify-rbac.sh.
+ADMIN_TOK=$(curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' \
+        -d 'username=admin' -d 'password=admin' -d 'scope=openid' \
+        "$KC/realms/aisc/protocol/openid-connect/token" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+install_as() {
+  curl -s -b "$J" -H "Authorization: Bearer $1" -o /dev/null -w '%{http_code}' --max-time 30 \
+    -X POST -H 'Content-Type: application/json' \
+    -d '{"package_name":"x","version":"1.0.0","project_uuid":"00000000-0000-0000-0000-000000000000"}' \
+    http://localhost/api/v1/plugins
+}
+c=$(install_as "$ADMIN_TOK")
 # 404: no such project on a virgin install, which means it got past auth and
 # schema into the engine's own logic, exactly as the dialog would.
 case "$c" in
   404|400|422|200|201) ok "the engine's own POST /api/v1/plugins accepts the dialog's payload ($c)" ;;
-  401|403) no "POST /api/v1/plugins refused the token ($c)" ;;
+  401|403) no "POST /api/v1/plugins refused an admin ($c)" ;;
   *) no "POST /api/v1/plugins -> $c" ;;
 esac
+if [ "$U" = "admin" ]; then
+  ok "signed in as admin, so the install above was the ordinary path"
+else
+  c=$(install_as "$TOK")
+  [ "$c" = "403" ] && ok "and refuses an account that may not install code (403)" \
+    || no "an ordinary account's install was not refused: $c"
+fi
 
 # This used to require a 401 for a session that carried no token of its own.
 # That was the bug, not the contract: the gateway holds the session and passes
@@ -330,7 +347,10 @@ docker exec aisc-webapp sh -c "grep -qoh '${CATALOGUE_EXTERNAL_URL:-http://local
   && ok "and it points at this install's catalogue" \
   || no "the catalogue URL is not in the engine's bundle"
 
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' -d '{}' \
+# With an admin token, so the catalogue's own guard on writes is not what
+# answers: a 404 then means there is no such route, which is the point.
+c=$(curl -s -b "$J" -H "Authorization: Bearer $ADMIN_TOK" -o /dev/null -w '%{http_code}' --max-time 20 \
+      -X POST -H 'Content-Type: application/json' -d '{}' \
       "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install")
 [ "$c" = "404" ] && ok "the bespoke install door is gone (404)" || no "the old door still answers ($c)"
 info=$(curl -s -b "$J" -L --max-time 20 "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/tool/langbite/install-info")

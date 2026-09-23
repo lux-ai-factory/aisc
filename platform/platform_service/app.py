@@ -1,21 +1,62 @@
-"""The platform API: the projects every module will come to reference.
+"""The platform API: the projects every module comes to reference.
 
-Authentication is the gateway's job. Every request that arrives here has already
-been through Keycloak, and for now every account may see every project, so there
-is no authorisation logic to get wrong. When that changes it changes here.
+Authentication is the gateway's job and is checked again here, because the
+gateway's word is one hop away from a mistake. Authorisation is this service's
+job, and it is the whole of it: a project belongs to the people in it, and
+every endpoint that returns a project, or anything inside one, goes through the
+same two questions. Is this person in it, and are they enough for this.
+
+A stranger is answered 404 rather than 403. The slug of a project is its name,
+often the name of a customer, and 403 would confirm it exists.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from psycopg import errors
 from pydantic import BaseModel
 
+from aisc_identity import Caller
+from aisc_identity.fastapi import caller_dependency
+
 from platform_service import db
+from platform_service.membership import (
+    InvalidMembership,
+    at_least,
+    may_manage_members,
+    may_write,
+    validate_role,
+)
 from platform_service.projects import InvalidProject, normalise_name, slug_for, validate_slug
 from platform_service.systems import InvalidSystem, system_key
 
 app = FastAPI(title="AISC platform", docs_url="/docs")
+
+#: The realm role that administers the platform. It is not a membership: an
+#: admin is not in the project, it may act on any of them, which is what makes
+#: an orphaned project recoverable.
+ADMIN_ROLE = "admin"
+
+
+def effective_role(project: str, caller: Caller) -> str | None:
+    """What this caller is to this project, counting the admin role."""
+    if caller.has_role(ADMIN_ROLE):
+        return "owner"
+    return db.role_in_project(project, caller.subject)
+
+
+def role_or_404(project: str, caller: Caller, needed: str = "viewer") -> str:
+    """The caller's role, or the answer a stranger gets.
+
+    404 for "not yours" and 403 for "not enough": a member is told they lack
+    the rank, a non-member is told nothing at all.
+    """
+    role = effective_role(project, caller)
+    if not at_least(role, "viewer"):
+        raise HTTPException(status_code=404, detail=f"no project {project!r}")
+    if not at_least(role, needed):
+        raise HTTPException(status_code=403, detail=f"this takes {needed} on this project")
+    return role
 
 
 class ProjectIn(BaseModel):
@@ -24,18 +65,31 @@ class ProjectIn(BaseModel):
     description: str | None = None
 
 
+class MemberIn(BaseModel):
+    subject: str
+    email: str | None = None
+    role: str = "viewer"
+
+
+class MemberRoleIn(BaseModel):
+    role: str
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
 
 @app.get("/projects")
-def projects() -> list[dict]:
-    return db.list_projects()
+def projects(caller: Caller = Depends(caller_dependency)) -> list[dict]:
+    if caller.has_role(ADMIN_ROLE):
+        return db.list_projects()
+    return db.projects_for(caller.subject)
 
 
 @app.get("/projects/{slug}")
-def project(slug: str) -> dict:
+def project(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    role_or_404(slug, caller)
     found = db.get_project(slug)
     if found is None:
         raise HTTPException(status_code=404, detail=f"no project {slug!r}")
@@ -43,16 +97,86 @@ def project(slug: str) -> dict:
 
 
 @app.post("/projects", status_code=201)
-def add_project(body: ProjectIn) -> dict:
+def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Anybody signed in may start an assessment, and owns the one they start."""
     try:
         name = normalise_name(body.name)
         slug = validate_slug(body.slug) if body.slug else slug_for(name)
     except InvalidProject as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     try:
-        return db.create_project(name, slug, body.description)
+        return db.create_project(name, slug, body.description, caller.subject, caller.email)
     except errors.UniqueViolation:
         raise HTTPException(status_code=409, detail=f"a project {slug!r} already exists")
+
+
+# ── who is in a project ──────────────────────────────────────────────────────
+
+
+@app.get("/authz/projects/{slug}")
+def authorisation(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """What this caller may do here.
+
+    The one endpoint that answers for strangers too, because it is what the
+    other modules ask before deciding what to show, and "nothing" is an answer
+    they need rather than an error they have to interpret.
+    """
+    role = effective_role(slug, caller)
+    return {
+        "role": role,
+        "admin": caller.has_role(ADMIN_ROLE),
+        "may_write": may_write(role),
+    }
+
+
+@app.get("/projects/{slug}/members")
+def project_members(slug: str, caller: Caller = Depends(caller_dependency)) -> list[dict]:
+    role_or_404(slug, caller)
+    return db.members(slug)
+
+
+@app.post("/projects/{slug}/members", status_code=201)
+def add_project_member(
+    slug: str, body: MemberIn, caller: Caller = Depends(caller_dependency)
+) -> dict:
+    role = role_or_404(slug, caller)
+    if not may_manage_members(role):
+        raise HTTPException(status_code=403, detail="only an owner decides who is in a project")
+    added = db.add_member(slug, body.subject, body.email, validate_role(body.role))
+    if added is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return added
+
+
+@app.put("/projects/{slug}/members/{subject}")
+def set_project_member_role(
+    slug: str, subject: str, body: MemberRoleIn, caller: Caller = Depends(caller_dependency)
+) -> dict:
+    role = role_or_404(slug, caller)
+    if not may_manage_members(role):
+        raise HTTPException(status_code=403, detail="only an owner decides who is in a project")
+    wanted = validate_role(body.role)
+    if wanted != "owner" and db.role_in_project(slug, subject) == "owner" and db.owner_count(slug) <= 1:
+        raise HTTPException(status_code=409, detail="a project keeps at least one owner")
+    changed = db.add_member(slug, subject, None, wanted)
+    if changed is None:
+        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
+    return changed
+
+
+@app.delete("/projects/{slug}/members/{subject}", status_code=204)
+def remove_project_member(
+    slug: str, subject: str, caller: Caller = Depends(caller_dependency)
+) -> None:
+    role = role_or_404(slug, caller)
+    if not may_manage_members(role):
+        raise HTTPException(status_code=403, detail="only an owner decides who is in a project")
+    if db.role_in_project(slug, subject) == "owner" and db.owner_count(slug) <= 1:
+        # A project with nobody in it is a project nobody can open, and the last
+        # owner leaving is the only way to make one.
+        raise HTTPException(status_code=409, detail="a project keeps at least one owner")
+    if not db.remove_member(slug, subject):
+        raise HTTPException(status_code=404, detail=f"{subject!r} is not in {slug!r}")
 
 
 class SystemIn(BaseModel):
@@ -63,20 +187,25 @@ class SystemIn(BaseModel):
 
 
 @app.get("/projects/{slug}/systems")
-def systems(slug: str) -> list[dict]:
+def systems(slug: str, caller: Caller = Depends(caller_dependency)) -> list[dict]:
+    role_or_404(slug, caller)
     if db.get_project(slug) is None:
         raise HTTPException(status_code=404, detail=f"no project {slug!r}")
     return db.list_systems(slug)
 
 
 @app.post("/projects/{slug}/systems", status_code=201)
-def register_system(slug: str, body: SystemIn) -> dict:
+def register_system(
+    slug: str, body: SystemIn, caller: Caller = Depends(caller_dependency)
+) -> dict:
     """Name a system inside a project, or find the one already named.
 
     Qualification calls this when it starts describing a system and the engine
     when it runs tests against one: the same call either way, because the same
-    name and version in the same project is the same system.
+    name and version in the same project is the same system. Naming it is
+    changing the work, so it takes an editor.
     """
+    role_or_404(slug, caller, needed="editor")
     try:
         name, version = system_key(body.name, body.version)
     except InvalidSystem as exc:
@@ -88,10 +217,16 @@ def register_system(slug: str, body: SystemIn) -> dict:
 
 
 @app.get("/systems/{pid}")
-def system(pid: str) -> dict:
+def system(pid: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """A system by its own id.
+
+    The project is checked here too: an id that skips the project is exactly
+    how a stranger would read one.
+    """
     found = db.get_system(pid)
     if found is None:
         raise HTTPException(status_code=404, detail=f"no system {pid}")
+    role_or_404(str(found["project_id"]), caller)
     return found
 
 
@@ -102,4 +237,9 @@ def invalid_project(_, exc: InvalidProject) -> JSONResponse:
 
 @app.exception_handler(InvalidSystem)
 def invalid_system(_, exc: InvalidSystem) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(InvalidMembership)
+def invalid_membership(_, exc: InvalidMembership) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
