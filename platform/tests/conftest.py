@@ -60,10 +60,17 @@ def _leave_the_database_as_we_found_it():
         return
     import psycopg
 
+    from platform_service import projectdb
+
     with psycopg.connect(DSN) as conn:
+        pids = [r[0] for r in conn.execute(
+            "SELECT pid FROM core.project WHERE slug LIKE %s", (TEST_PREFIX + "%",)
+        ).fetchall()]
         # members and systems follow their project: both are ON DELETE CASCADE.
         conn.execute("DELETE FROM core.project WHERE slug LIKE %s", (TEST_PREFIX + "%",))
         conn.commit()
+    for pid in pids:
+        projectdb.drop(DSN, pid)
 
 
 @pytest.fixture(scope="session")

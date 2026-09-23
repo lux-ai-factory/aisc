@@ -22,25 +22,39 @@ MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
 _LOCK = 8_190_233_419
 
 
-def pending(applied: set[str]) -> list[Path]:
-    return [f for f in sorted(MIGRATIONS.glob("*.sql")) if f.name not in applied]
+def pending(applied: set[str], directory: Path = MIGRATIONS) -> list[Path]:
+    return [f for f in sorted(directory.glob("*.sql")) if f.name not in applied]
 
 
-def migrate(conn) -> list[str]:
-    """Apply what has not been applied. Returns the names it ran."""
+def migrate(conn, directory: Path = MIGRATIONS, table: str = "core.schema_migration") -> list[str]:
+    """Apply what has not been applied. Returns the names it ran.
+
+    `directory` and `table` let the same runner apply the per-project template
+    (platform/project-template/) to a project database, which has no core.
+    """
     with conn.transaction():
         conn.execute("SELECT pg_advisory_xact_lock(%s)", (_LOCK,))
+        schema = table.split(".")[0]
+        # Not unconditional: Postgres checks CREATE privilege on the database
+        # for this statement even when the schema already exists, and
+        # `platform_rw` has that only in a database it made (Task 1 gave it
+        # CREATEDB, nothing more). `core` predates this role's grants, so it
+        # is read here, never (re)created.
+        exists = conn.execute(
+            "SELECT 1 FROM pg_namespace WHERE nspname = %s", (schema,)
+        ).fetchone()
+        if not exists:
+            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS core.schema_migration ("
+            f"CREATE TABLE IF NOT EXISTS {table} ("
             " name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
         )
-        applied = {r["name"] for r in conn.execute(
-            "SELECT name FROM core.schema_migration"
-        ).fetchall()}
+        applied = {r["name"] if isinstance(r, dict) else r[0]
+                   for r in conn.execute(f"SELECT name FROM {table}").fetchall()}
         ran = []
-        for path in pending(applied):
+        for path in pending(applied, directory):
             logger.info("applying %s", path.name)
             conn.execute(path.read_text())
-            conn.execute("INSERT INTO core.schema_migration (name) VALUES (%s)", (path.name,))
+            conn.execute(f"INSERT INTO {table} (name) VALUES (%s)", (path.name,))
             ran.append(path.name)
         return ran

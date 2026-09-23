@@ -476,6 +476,8 @@ services:
       - ./shared/identity:/app/shared/identity:ro,z
       # core is this service's to migrate, and the files are read at startup.
       - ./platform/migrations:/app/migrations:ro,z
+      # what every new project database starts with, one file per module
+      - ./platform/project-template:/app/project-template:ro,z
     environment:
       PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://platform_rw:platform_rw@postgres:5432/platform}
       PYTHONPATH: /app/shared/identity

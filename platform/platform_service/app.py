@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 
-from platform_service import db
+from platform_service import db, projectdb
 from platform_service.membership import (
     InvalidMembership,
     at_least,
@@ -105,9 +105,17 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
     except InvalidProject as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     try:
-        return db.create_project(name, slug, body.description, caller.subject, caller.email)
+        created = db.create_project(name, slug, body.description, caller.subject, caller.email)
     except errors.UniqueViolation:
         raise HTTPException(status_code=409, detail=f"a project {slug!r} already exists")
+    try:
+        projectdb.provision(db.dsn(), created["pid"])
+    except Exception:
+        # A project without its database is a project every module fails on.
+        # Better not to have made it.
+        db.delete_project(created["pid"])
+        raise HTTPException(status_code=503, detail="the project's database could not be made; nothing was created")
+    return created
 
 
 # ── who is in a project ──────────────────────────────────────────────────────

@@ -48,6 +48,7 @@ def pool() -> ConnectionPool:
         with _pool.connection() as conn:
             migrate(conn)
         bootstrap_owners(bootstrap_subjects())
+        provision_all()
     return _pool
 
 
@@ -90,6 +91,22 @@ def create_project(name: str, slug: str, description: str | None,
             (created["pid"], owner, email),
         )
         return created
+
+
+def delete_project(pid) -> None:
+    with pool().connection() as conn:
+        conn.execute("delete from core.project where pid = %s", (pid,))
+
+
+def provision_all() -> None:
+    """Every project has its database: the ones made before there were any get
+    theirs here, at the first query after start."""
+    from platform_service import projectdb
+
+    with pool().connection() as conn:
+        pids = [r["pid"] for r in conn.execute("select pid from core.project").fetchall()]
+    for pid in pids:
+        projectdb.provision(dsn(), pid)
 
 
 # ── systems ──────────────────────────────────────────────────────────────────
