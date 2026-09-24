@@ -6,20 +6,12 @@ get the same answer.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import os
-
-import jinja2
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-_env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(Path(__file__).resolve().parent / "templates")),
-                          autoescape=True)
-# The launcher, where the header's mark and "Back" lead, as in the other modules.
-_env.globals["launcher"] = os.environ.get("LAUNCHER_URL", "http://localhost:8100/").rstrip("/") + "/"
+from .jinja_env import env
 
 
 class ApiError(Exception):
@@ -28,13 +20,19 @@ class ApiError(Exception):
         super().__init__(message)
 
 
+def fail_on(problems) -> None:
+    """A 422 naming the first of a layout's problems and listing them all, if it has any."""
+    if problems:
+        raise ApiError(422, problems[0]["code"], problems[0]["message"] or "The layout is not valid.", problems)
+
+
 def _answer(request: Request, status: int, code: str, message: str, details=()):
     root = request.scope.get("root_path", "") or ""
     path = request.url.path[len(root):] if root and request.url.path.startswith(root) else request.url.path
     if path.startswith("/api/") or path == "/api":
         return JSONResponse(status_code=status,
                             content={"error": {"code": code, "message": message, "details": list(details)}})
-    html = _env.get_template("error.html.j2").render(status=status, message=message,
+    html = env.get_template("error.html.j2").render(status=status, message=message,
                                                      root=request.scope.get("root_path", ""))
     return HTMLResponse(html, status_code=status)
 

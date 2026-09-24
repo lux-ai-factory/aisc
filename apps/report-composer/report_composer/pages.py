@@ -7,21 +7,18 @@ from __future__ import annotations
 
 import os
 import uuid
-from pathlib import Path
 
-import jinja2
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from . import db, forms, layouts
-from .api import ApiError, block_types, fonts, guard, renderer_call
 from . import templates as looks
+from .guards import guard
+from .jinja_env import env
+from .records import layout_or_404
+from .renderer_calls import block_types, fonts, renderer_call
 
 router = APIRouter()
-_env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(Path(__file__).resolve().parent / "templates")),
-                          autoescape=True)
-# The launcher, where the header's mark and "Back" lead, as in the other modules.
-_env.globals["launcher"] = os.environ.get("LAUNCHER_URL", "http://localhost:8100/").rstrip("/") + "/"
 
 
 def _root(request: Request) -> str:
@@ -37,7 +34,7 @@ def _is_pid(ref: str) -> bool:
 
 
 def _page(name: str, request: Request, **context) -> HTMLResponse:
-    return HTMLResponse(_env.get_template(name).render(root=_root(request), **context))
+    return HTMLResponse(env.get_template(name).render(root=_root(request), **context))
 
 
 @router.get("/")
@@ -78,9 +75,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
         return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}", status_code=303)
     url = request.app.state.database_url
     with db.connect(url) as conn:
-        layout = db.get_layout(conn, g.project["pid"], layout_id)
-        if layout is None:
-            raise ApiError(404, "not_found", "No such layout.")
+        layout = layout_or_404(conn, g.project["pid"], layout_id)
         systems = db.systems(conn, g.project["pid"])
         report_rows = db.list_reports(conn, layout["id"])
         templates = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
