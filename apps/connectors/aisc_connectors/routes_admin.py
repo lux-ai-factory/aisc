@@ -54,7 +54,9 @@ def check_auth(auth: dict) -> dict:
         raise HTTPException(422, f"auth scheme {scheme} needs {missing}")
     if scheme == "api_key" and auth["in"] not in ("header", "query"):
         raise HTTPException(422, "api_key goes in a header or the query")
-    allowed = {"scheme", *required[scheme], "scope"}
+    allowed = {"scheme", *required[scheme]}
+    if scheme == "oauth2_client_credentials":
+        allowed.add("scope")
     return {k: v for k, v in auth.items() if k in allowed}
 
 
@@ -64,7 +66,9 @@ def check_settings(current: dict, patch: dict) -> dict:
     if unknown:
         raise HTTPException(422, f"unknown settings {sorted(unknown)}")
     for key, (low, high) in SETTINGS_BOUNDS.items():
-        if not isinstance(merged[key], int) or not low <= merged[key] <= high:
+        # bool is an int subclass in Python: reject it explicitly so {"timeout_s": true} doesn't
+        # silently pass as timeout_s=1.
+        if isinstance(merged[key], bool) or not isinstance(merged[key], int) or not low <= merged[key] <= high:
             raise HTTPException(422, f"{key} must be an integer between {low} and {high}")
     for key in ("verify_tls", "ollama_facade"):
         if not isinstance(merged[key], bool):
@@ -108,8 +112,11 @@ def create(body: NewConnector, admin: Admin = Depends(admin_call),
     except engine_api.EngineError as exc:
         # ruling 2: an engine refusal other than 404 is a 502, never a 500.
         raise HTTPException(502, f"the engine refused: {exc.detail}") from exc
-    row = store.create_connector(body.project_pid, uuid.UUID(system["pid"]), body.name, slugify(body.name),
-                                 "manual", body.environment, admin.caller.subject)
+    try:
+        row = store.create_connector(body.project_pid, uuid.UUID(system["pid"]), body.name, slugify(body.name),
+                                     "manual", body.environment, admin.caller.subject)
+    except store.DuplicateName as exc:
+        raise HTTPException(409, str(exc)) from exc
     return shown(row, engine)
 
 
@@ -141,7 +148,11 @@ def patch(connector_pid: uuid.UUID, body: ConnectorPatch, admin: Admin = Depends
         fields["environment"] = body.environment
     if body.settings is not None:
         fields["settings"] = check_settings(row["settings"] or {}, body.settings)
-    return shown(store.update(connector_pid, **fields) if fields else row, engine)
+    try:
+        updated = store.update(connector_pid, **fields) if fields else row
+    except store.DuplicateName as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return shown(updated, engine)
 
 
 @router.delete("/{connector_pid}", status_code=204)
