@@ -14,7 +14,6 @@ from jsonschema import Draft202012Validator
 DEFAULT_ORDER = ["cover", "ai_card", "risk_classification", "control_objectives", "test_results",
                  "control_answers", "summary_coverage"]
 MAX_BLOCKS, MAX_CHARTS = 50, 10
-FREE_TEXT_PLACEHOLDER = "[text]"
 
 
 def _new_id() -> str:
