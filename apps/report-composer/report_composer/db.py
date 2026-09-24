@@ -1,4 +1,4 @@
-"""The composer's SQL (report run 2026-09-23, 01 section 3.1, D13).
+"""The composer's SQL.
 
 Every helper takes a connection first. It reads core.project, core.system and core.project_member
 and writes only its own schema report_composer. A malformed uuid argument finds nothing.
@@ -27,7 +27,7 @@ def _uuid(value) -> str | None:
         return None
 
 
-# ── versions ─────────────────────────────────────────────────────────────────
+# Versions
 
 def systems(conn, project_pid) -> list[dict]:
     return conn.execute("SELECT pid::text AS pid, number, name, version AS release FROM core.system"
@@ -47,7 +47,7 @@ def latest_system(conn, project_pid) -> dict | None:
                         " WHERE project_id = %s ORDER BY number DESC LIMIT 1", (project_pid,)).fetchone()
 
 
-# ── layouts ──────────────────────────────────────────────────────────────────
+# Layouts
 
 def list_layouts(conn, project_pid) -> list[dict]:
     return conn.execute(
@@ -116,7 +116,7 @@ def delete_layout(conn, project_pid, layout_id) -> bool:
                         (lid, project_pid)).fetchone() is not None
 
 
-# ── templates (a report's look) ──────────────────────────────────────────────
+# Templates (a report's look)
 
 _TEMPLATE = ("id::text AS id, name, font, font_size_pt::float8 AS font_size_pt, primary_color, accent_color,"
              " logo IS NOT NULL AS has_logo, created_at, created_by, updated_at")
@@ -169,7 +169,7 @@ def delete_template(conn, project_pid, template_id) -> bool:
                         (tid, project_pid)).fetchone() is not None
 
 
-# ── generated reports ────────────────────────────────────────────────────────
+# Generated reports
 
 def running_report(conn, layout_id, since) -> bool:
     return conn.execute("SELECT 1 FROM report_composer.generated_report WHERE layout_id = %s AND status = 'running'"

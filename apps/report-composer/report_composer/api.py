@@ -1,4 +1,4 @@
-"""The composer's API under /api (report run 2026-09-23, R4.3, R4.4, D11, D12).
+"""The composer's API under /api.
 
 Rights come from two dependencies: `signed_in` (a verified caller, else 401) and
 `project_guard(right)` (the project by slug or pid, the caller's role in it read on every
@@ -167,7 +167,7 @@ def _blocks(body: dict) -> list:
              "options": b.get("options") if b.get("options") is not None else {}} for b in blocks]
 
 
-# ── versions, block types, choices ───────────────────────────────────────────
+# Versions, block types, choices
 
 @router.get("/p/{ref}/systems")
 def get_systems(request: Request, g: Guarded = Depends(project_guard("viewer"))):
@@ -190,7 +190,7 @@ def get_choices(request: Request, block_type: str, system_id: str,
     return renderer_call(request.app.state.renderer.choices, g.project["pid"], system["pid"], block_type)
 
 
-# ── layouts ──────────────────────────────────────────────────────────────────
+# Layouts
 
 @router.get("/p/{ref}/layouts")
 def get_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
@@ -314,7 +314,7 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
                                                  "X-Content-Type-Options": "nosniff"})
 
 
-# ── reports ──────────────────────────────────────────────────────────────────
+# Reports
 
 @router.post("/p/{ref}/layouts/{layout_id}/reports")
 def post_report(request: Request, layout_id: str, g: Guarded = Depends(project_guard("editor"))):
@@ -344,7 +344,7 @@ def get_pdf(request: Request, report_id: str, g: Guarded = Depends(project_guard
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-# ── templates: a report's look ───────────────────────────────────────────────
+# Templates: a report's look
 
 def fonts(request: Request) -> list:
     return renderer_call(request.app.state.renderer.fonts)

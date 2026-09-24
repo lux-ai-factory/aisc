@@ -1,4 +1,4 @@
-"""The composer's screens, drawn in Python (report run 2026-09-23, R4.1.1, R4.2).
+"""The composer's screens, drawn in Python.
 
 Same rights as the API (the guard of api.py); errors come back as the error page. The only
 script is static/composer.js, which reads the page's data-* attributes and calls the API.

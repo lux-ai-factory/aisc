@@ -1,8 +1,8 @@
-"""Errors of the composer, one shape for every route (report run 2026-09-23, R4.3.1).
+"""Errors of the composer, one shape for every route.
 
 A path under /api/ answers {"error": {"code", "message", "details"}}; any other path the error
 page, with the same status. A message never names the project: a stranger and an unknown project
-get the same answer (R4.4.3).
+get the same answer.
 """
 from __future__ import annotations
 

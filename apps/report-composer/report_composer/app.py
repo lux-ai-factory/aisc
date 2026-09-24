@@ -1,4 +1,4 @@
-"""The report composer (report run 2026-09-23): step 7 of the platform.
+"""The report composer: step 7 of the platform.
 
     uvicorn report_composer.app:app --host 0.0.0.0 --port 8095 --proxy-headers
 """
@@ -49,7 +49,8 @@ def create_app(*, database_url=None, renderer=None, clock=None) -> FastAPI:
 class RestorePrefix:
     """Caddy's handle_path strips /report-composer before the request reaches us. Starlette
     resolves routes and the static mount against the full path (root_path included), so a
-    stripped /static/composer.css was a 404 and the pages came up unstyled. Put it back."""
+    stripped /static/composer.css would be a 404 and the pages would come up unstyled. This
+    puts the prefix back."""
 
     def __init__(self, app, prefix: str = ""):
         self.app, self.prefix = app, prefix.rstrip("/")

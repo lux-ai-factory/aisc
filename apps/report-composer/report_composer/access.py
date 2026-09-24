@@ -1,8 +1,8 @@
-"""Who may read and who may change a project's reports (report run 2026-09-23, R4.4).
+"""Who may read and who may change a project's reports.
 
 The pattern of control-objectives' access.py: the platform's core.project_member says what a
 person is to a project, read on every request. A realm admin reads every project and edits only
-where they are an editor (R4.4.5). No answer from the database means nobody gets in.
+where they are an editor. No answer from the database means nobody gets in.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def decide(method: str, access: Access | None) -> Verdict:
 
 
 def same_origin(headers, origin: str) -> bool:
-    """A write must come from the platform's own pages (R4.4.6)."""
+    """A write must come from the platform's own pages."""
     lowered = {str(k).lower(): v for k, v in dict(headers).items()}
     got = lowered.get("origin")
     if got:

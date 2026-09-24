@@ -1,4 +1,4 @@
-"""The composer's side of the renderer (report run 2026-09-23, R5.4, R7.2.2).
+"""The composer's side of the renderer.
 
 The renderer is internal: only this client talks to it, with the shared token, which never
 appears in a representation, a log line or an answer.

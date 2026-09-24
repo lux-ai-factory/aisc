@@ -1,4 +1,4 @@
-"""Layouts in Python (report run 2026-09-23, R3.3, R3.5 to R3.9, R3.14, R3.15, R7.3.2).
+"""Layouts in Python.
 
 A layout is an ordered list of blocks {instance_id, block_type, options}. Block types, their
 options schemas and the values a data reference may take come from the renderer; this module
@@ -22,7 +22,7 @@ def _new_id() -> str:
 
 
 def default_blocks(block_types) -> list[dict]:
-    """R3.3: the block types of DEFAULT_ORDER the renderer offers, with their default options."""
+    """The block types of DEFAULT_ORDER the renderer offers, with their default options."""
     by_type = {t["type_id"]: t for t in block_types}
     return [{"instance_id": _new_id(), "block_type": t, "options": copy.deepcopy(by_type[t]["default_options"])}
             for t in DEFAULT_ORDER if t in by_type]
@@ -166,7 +166,7 @@ def _reset(options: dict, name: str, block_type: dict) -> None:
 
 
 def reset_invalid(blocks, problems, block_types) -> list[dict]:
-    """R3.9: every option with an invalid reference goes back to its default (or away without one)."""
+    """Every option with an invalid reference goes back to its default (or away without one)."""
     types = {t["type_id"]: t for t in block_types}
     out = copy.deepcopy(list(blocks))
     by_id = {b["instance_id"]: b for b in out if isinstance(b, dict)}

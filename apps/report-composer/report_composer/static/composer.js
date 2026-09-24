@@ -1,5 +1,5 @@
-// The report composer's one script (report run 2026-09-23, R4.1.1). No logic of its own: it reads
-// the page's data-* attributes, collects the form values and calls the API; Python decides the rest.
+// The report composer's one script. No logic of its own: it reads the page's data-* attributes,
+// collects the form values and calls the API; Python decides the rest.
 "use strict";
 (function () {
   const main = document.querySelector("main[data-api]");
@@ -21,7 +21,7 @@
     return (res.data && res.data.error && res.data.error.message) || ("Error " + res.status);
   }
 
-  // ── the layouts list ──
+  // The layouts list
   if (main.dataset.page === "layouts") {
     const base = main.dataset.base;
     const create = main.querySelector('[data-control="new-layout"]');
@@ -40,7 +40,7 @@
     return;
   }
 
-  // ── the templates (a report's look) ──
+  // The templates (a report's look)
   if (main.dataset.page === "templates") {
     function readFile(file, asText) {
       return new Promise(function (resolve, reject) {
@@ -88,7 +88,7 @@
     return;
   }
 
-  // ── the editor ──
+  // The editor
   const list = document.getElementById("blocks");
   const state = main.querySelector("[data-state]");
   const layoutId = main.dataset.layout;

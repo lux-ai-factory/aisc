@@ -1,4 +1,4 @@
-"""Generated reports: the PDF's filename and the generation itself (report run 2026-09-23, R4.3.3 to R4.3.5)."""
+"""Generated reports: the PDF's filename and the generation itself."""
 from __future__ import annotations
 
 import re
@@ -30,7 +30,7 @@ def _error(code, message, details=()) -> dict:
 
 
 def generate(request, project, layout_id, caller) -> tuple[int, dict]:
-    """R4.3.3 to R4.3.5: one generation at a time per layout; the snapshot is stored before the renderer runs."""
+    """One generation at a time per layout; the snapshot is stored before the renderer runs."""
     import base64
     import hashlib
     from datetime import timedelta

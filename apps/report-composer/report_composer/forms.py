@@ -1,4 +1,4 @@
-"""The configure form of a block, from its options schema (report run 2026-09-23, R4.2.2).
+"""The configure form of a block, from its options schema.
 
 Python decides every field; the page only draws what this returns.
 """

@@ -1,4 +1,4 @@
-"""The composer's own migrations, in its schema report_composer (report run 2026-09-23, R4.1.3, D13).
+"""The composer's own migrations, in its schema report_composer.
 
 The same runner as platform/platform_service/migrate.py: ordered .sql files, applied once,
 recorded in a table, under an advisory lock. The schema is made by init/report-roles.sql and
