@@ -1,0 +1,21 @@
+body { font-family: system-ui, sans-serif; margin: 0; color: #1d2330; background: #f6f7f9; }
+header.top { background: #1d2330; color: #fff; padding: 0.6rem 1rem; }
+header.top a { color: #fff; font-weight: bold; text-decoration: none; margin-right: 1rem; }
+main { padding: 1rem; max-width: 1400px; margin: 0 auto; }
+table { border-collapse: collapse; width: 100%; background: #fff; }
+th, td { border: 1px solid #d8dce3; padding: 0.35rem 0.5rem; text-align: left; }
+.forms { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 1rem; }
+.forms form { background: #fff; padding: 0.8rem; border: 1px solid #d8dce3; }
+.forms label, .field label { display: block; margin: 0.3rem 0; }
+.toolbar, .palette { margin: 0.5rem 0; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.columns { display: grid; grid-template-columns: minmax(320px, 1fr) 2fr; gap: 1rem; }
+#blocks { list-style: decimal; padding-left: 1.5rem; }
+#blocks li { background: #fff; border: 1px solid #d8dce3; margin: 0.4rem 0; padding: 0.5rem; }
+#blocks li.dragging { opacity: 0.5; }
+.type { color: #667; font-size: 0.85em; }
+.controls { float: right; }
+.problems { color: #b00020; margin: 0.2rem 0 0; }
+.hint { color: #667; font-size: 0.85em; display: block; }
+.preview iframe { width: 100%; height: 80vh; border: 1px solid #d8dce3; background: #fff; }
+.state { color: #8a6d00; }
+@media (max-width: 800px) { .columns { grid-template-columns: 1fr; } }

@@ -1,0 +1,34 @@
+{%- macro option_value(v) -%}{{ v if v is not none else "" }}{%- endmacro -%}
+{%- macro render_form(fields) -%}
+{% for f in fields %}
+<div class="field" data-field="{{ f.name }}">
+  <label>{{ f.label }}{% if f.required %} *{% endif %}
+  {% if f.widget == "checkbox" %}
+    <input type="checkbox" data-option="{{ f.name }}" data-kind="bool"{% if f.value %} checked{% endif %}>
+  {% elif f.widget == "number" %}
+    <input type="number" data-option="{{ f.name }}" data-kind="int" value="{{ option_value(f.value) }}"{% if f.min is not none %} min="{{ f.min }}"{% endif %}{% if f.max is not none %} max="{{ f.max }}"{% endif %}>
+  {% elif f.widget == "select" %}
+    <select data-option="{{ f.name }}" data-kind="{{ f.kind }}">
+      {% if not f.required and f.kind != "enum" %}<option value=""></option>{% endif %}
+      {% for o in f.options %}<option value="{{ o.value }}"{% if o.value == f.value %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+    </select>
+  {% elif f.widget == "multiselect" %}
+    <select multiple data-option="{{ f.name }}" data-kind="{{ f.kind }}">
+      {% for o in f.options %}<option value="{{ o.value }}"{% if f.value is iterable and f.value is not string and o.value in f.value %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+    </select>
+    {% if f.kind == "all-or-list" %}<span class="hint">None selected means all.</span>{% endif %}
+  {% elif f.widget == "textarea" %}
+    <textarea data-option="{{ f.name }}" data-kind="str" rows="6">{{ option_value(f.value) }}</textarea>
+  {% elif f.widget == "list" %}
+    <input data-option="{{ f.name }}" data-kind="list" value="{{ (f.value or []) | join(', ') }}">
+  {% elif f.widget == "links" %}
+    <textarea data-option="{{ f.name }}" data-kind="links" rows="4">{% for l in (f.value or []) %}{{ l.objective_id }}: {{ (l.tests or []) | join(", ") }} | {{ (l.checklists or []) | join(", ") }}
+{% endfor %}</textarea>
+    <span class="hint">One line per objective: objective: tests | checklists.{% if f.options %} Objectives: {% for o in f.options.objective_id or [] %}{{ o.value }}{% if not loop.last %}, {% endif %}{% endfor %}. Tests: {% for o in f.options.tests or [] %}{{ o.label }}{% if not loop.last %}, {% endif %}{% endfor %}. Checklists: {% for o in f.options.checklists or [] %}{{ o.value }} ({{ o.label }}){% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}</span>
+  {% else %}
+    <input data-option="{{ f.name }}" data-kind="str" value="{{ option_value(f.value) }}">
+  {% endif %}
+  </label>
+</div>
+{% endfor %}
+{%- endmacro -%}

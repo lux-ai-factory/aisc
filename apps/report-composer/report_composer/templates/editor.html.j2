@@ -1,0 +1,64 @@
+{% extends "base.html.j2" %}
+{% from "_form.html.j2" import render_form %}
+{% block title %}{{ layout.name }}: {{ project.name }}{% endblock %}
+{% macro block_controls() -%}
+<span class="controls">
+  <button type="button" data-control="move-up" title="Move up">Up</button>
+  <button type="button" data-control="move-down" title="Move down">Down</button>
+  <button type="button" data-control="remove" title="Remove">Remove</button>
+</span>
+{%- endmacro %}
+{% block main %}
+<main data-api="{{ root }}/api/p/{{ project.slug }}" data-layout="{{ layout.id }}" data-revision="{{ layout.revision }}" data-page="editor">
+  <p><a href="{{ root }}/p/{{ project.slug }}/">All layouts of {{ project.name }}</a></p>
+  <h1>{{ layout.name }}</h1>
+  {% if editor %}
+  <div class="toolbar">
+    <label>Version <select data-control="version">{% for s in systems %}<option value="{{ s.pid }}"{% if s.pid == layout.system_id %} selected{% endif %}>Version {{ s.number }} ({{ s.release or "" }})</option>{% endfor %}</select></label>
+    <button type="button" data-control="save">Save</button>
+    <button type="button" data-control="generate">Generate PDF</button>
+    <button type="button" data-control="save-template">Save as template</button>
+    <span class="state" data-state></span>
+  </div>
+  <div data-control="palette" class="palette">
+    {% for t in palette %}<button type="button" data-add="{{ t.type_id }}">{{ t.title }}</button>{% endfor %}
+  </div>
+  {% for t in palette %}
+  <template data-block-template="{{ t.type_id }}">
+    <li data-block-type="{{ t.type_id }}" draggable="true">
+      <strong>{{ t.title }}</strong> <span class="type">{{ t.type_id }}</span>
+      {{ block_controls() }}
+      <details data-control="configure" open><summary>Options</summary>{{ render_form(t.fields) }}</details>
+      <p class="problems" data-problems></p>
+    </li>
+  </template>
+  {% endfor %}
+  {% else %}
+  <p class="meta">Version {% for s in systems %}{% if s.pid == layout.system_id %}{{ s.number }}{% endif %}{% endfor %}, revision {{ layout.revision }}. You can read this layout; editors change it.</p>
+  {% endif %}
+  <div class="columns">
+    <ol id="blocks">
+    {% for b in blocks %}
+      <li data-instance-id="{{ b.instance_id }}" data-block-type="{{ b.block_type }}"{% if editor %} draggable="true"{% endif %}>
+        {% if b.known %}<strong>{{ b.title }}</strong> <span class="type">{{ b.block_type }}</span>{% else %}<strong>Unknown type: {{ b.block_type }}</strong>{% endif %}
+        {% if editor %}{{ block_controls() }}
+        {% if b.known %}<details data-control="configure"><summary>Options</summary>{{ render_form(b.fields) }}</details>{% endif %}
+        <p class="problems" data-problems></p>{% endif %}
+      </li>
+    {% endfor %}
+    </ol>
+    <div class="preview">
+      <iframe sandbox="" title="Preview" src="{{ root }}/api/p/{{ project.slug }}/layouts/{{ layout.id }}/preview"></iframe>
+    </div>
+  </div>
+  <section class="reports">
+    <h2>Generated reports</h2>
+    <p class="statuses" data-statuses></p>
+    <ul data-reports>
+    {% for r in reports %}<li>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}, revision {{ r.layout_revision }}, {{ r.status }}{% if r.status in ("done", "partial") %}: <a href="{{ root }}/api/p/{{ project.slug }}/reports/{{ r.id }}/pdf">Download</a>{% endif %}</li>
+    {% else %}<li>No report generated yet.</li>{% endfor %}
+    </ul>
+  </section>
+</main>
+{% endblock %}
+{% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}

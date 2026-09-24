@@ -1,0 +1,41 @@
+{% extends "base.html.j2" %}
+{% block title %}Reports: {{ project.name }}{% endblock %}
+{% block main %}
+<main data-api="{{ root }}/api/p/{{ project.slug }}" data-page="layouts" data-base="{{ root }}/p/{{ project.slug }}">
+  <h1>Reports of {{ project.name }}</h1>
+  <table class="layouts">
+    <thead><tr><th>Layout</th><th>Version</th><th>Revision</th><th>Updated</th><th>Last report</th>{% if editor %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for l in layouts %}
+      <tr data-layout="{{ l.id }}">
+        <td><a href="{{ root }}/p/{{ project.slug }}/layouts/{{ l.id }}">{{ l.name }}</a></td>
+        <td>Version {{ l.system_number }}</td>
+        <td>revision {{ l.revision }}</td>
+        <td>{{ l.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{% if l.last_report %}{{ l.last_report.created_at[:16] | replace("T", " ") }} ({{ l.last_report.status }}){% endif %}</td>
+        {% if editor %}<td><button type="button" data-control="delete" data-layout="{{ l.id }}">Delete</button></td>{% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="6">No layout yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if editor %}
+  <section class="forms">
+    <form data-control="new-layout">
+      <h2>New layout</h2>
+      <label>Name <input name="name" required maxlength="120"></label>
+      <label>Version <select name="system_id">{% for s in systems %}<option value="{{ s.pid }}">Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}</select></label>
+      <button type="submit">Create</button>
+    </form>
+    <form data-control="new-from-template">
+      <h2>New from template</h2>
+      <label>Template <select name="template_id">{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></label>
+      <label>Name <input name="name" required maxlength="120"></label>
+      <button type="submit"{% if not templates %} disabled{% endif %}>Create</button>
+    </form>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+{% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}
