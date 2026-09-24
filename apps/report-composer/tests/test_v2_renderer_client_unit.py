@@ -23,7 +23,8 @@ def http(monkeypatch):
         import httpx
 
         rec = Recorder(answer)
-        monkeypatch.setattr(httpx.Client, "request", rec)
+        # a callable instance is not bound as a method, so it is wrapped in a function that is
+        monkeypatch.setattr(httpx.Client, "request", lambda self, *a, **k: rec(self, *a, **k))
         return rec
 
     return install
