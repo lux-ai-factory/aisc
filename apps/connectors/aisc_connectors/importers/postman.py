@@ -1,6 +1,7 @@
 """A Postman collection (v2.1) into one operation per request."""
 from __future__ import annotations
 
+import base64
 import json
 import re
 from typing import Callable
@@ -20,6 +21,27 @@ def _requests(items: list, trail: str = ""):
             yield item.get("name") or trail.strip() or "request", item["request"]
 
 
+def _url_from_parts(url: dict, name: str) -> str:
+    """Postman's url object usually carries a pre-built "raw" string, but a collection can
+    give only the structured parts (protocol/host/path/query, as exported by some API
+    gateways). Build the same shape of string `one_operation` expects from those parts."""
+    if "raw" in url:
+        return url["raw"]
+    host = url.get("host")
+    if not host:
+        raise ImportFailed(f"{name}: the request URL has neither raw nor host to build one from")
+    protocol = url.get("protocol") or "https"
+    netloc = ".".join(host)
+    if url.get("port"):
+        netloc += f":{url['port']}"
+    path = "/".join(url.get("path") or [])
+    query = [q for q in url.get("query") or [] if not q.get("disabled")]
+    built = f"{protocol}://{netloc}/{path}"
+    if query:
+        built += "?" + "&".join(f"{q['key']}={q.get('value', '')}" for q in query)
+    return built
+
+
 def _auth_values(auth: dict, resolve: Callable[[str], str]) -> dict[str, str]:
     return {entry["key"]: resolve(entry.get("value", "")) for entry in auth.get(auth.get("type"), []) or []}
 
@@ -30,6 +52,9 @@ def _auth_header(auth: dict | None, resolve: Callable[[str], str]) -> dict[str, 
     values = _auth_values(auth, resolve)
     if auth.get("type") == "bearer":
         return {"Authorization": f"Bearer {values.get('token', '')}"}
+    if auth.get("type") == "basic":
+        creds = base64.b64encode(f"{values.get('username', '')}:{values.get('password', '')}".encode()).decode()
+        return {"Authorization": f"Basic {creds}"}
     if auth.get("type") == "apikey" and values.get("in", "header") == "header":
         return {values.get("key", "x-api-key"): values.get("value", "")}
     return {}
@@ -65,17 +90,20 @@ def import_postman(text: str) -> ImportResult:
 
     results = []
     for name, request in _requests(collection.get("item") or []):
-        url = request["url"]["raw"] if isinstance(request.get("url"), dict) else request.get("url", "")
+        raw_url = request.get("url")
+        url = _url_from_parts(raw_url, name) if isinstance(raw_url, dict) else (raw_url or "")
         headers = {h["key"]: resolve(h.get("value", "")) for h in request.get("header") or [] if not h.get("disabled")}
         request_auth = request.get("auth") or collection.get("auth")
         headers.update(_auth_header(request_auth, resolve))
-        body, content_type = None, None
+        body, content_type, body_warning = None, None, None
         raw_body = request.get("body") or {}
         if raw_body.get("mode") == "raw":
             body = resolve(raw_body.get("raw", ""))
         elif raw_body.get("mode") == "urlencoded":
             body = "&".join(f"{p['key']}={p.get('value', '')}" for p in raw_body["urlencoded"])
             content_type = "application/x-www-form-urlencoded"
+        elif raw_body.get("mode") in ("formdata", "file"):
+            body_warning = f"{name}: form-data bodies are not imported; add the fields by hand"
         op_id = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "request"
         result = one_operation(request.get("method", "GET"), resolve(url), headers, body, content_type,
                                op_id, summary=name)
@@ -84,5 +112,7 @@ def import_postman(text: str) -> ImportResult:
             cred_name, cred_value = query_credential
             result.auth_suggestion = result.auth_suggestion or {"scheme": "api_key", "in": "query", "name": cred_name}
             result.detected_secrets.setdefault("api_key", cred_value)
+        if body_warning:
+            result.warnings.append(body_warning)
         results.append(result)
     return merge(results)
