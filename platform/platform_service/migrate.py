@@ -37,9 +37,8 @@ def migrate(conn, directory: Path = MIGRATIONS, table: str = "core.schema_migrat
         schema = table.split(".")[0]
         # Not unconditional: Postgres checks CREATE privilege on the database
         # for this statement even when the schema already exists, and
-        # `platform_rw` has that only in a database it made (Task 1 gave it
-        # CREATEDB, nothing more). `core` predates this role's grants, so it
-        # is read here, never (re)created.
+        # `platform_rw` has that only in a database it made. `core` predates
+        # this role's grants, so it is read here, never (re)created.
         exists = conn.execute(
             "SELECT 1 FROM pg_namespace WHERE nspname = %s", (schema,)
         ).fetchone()

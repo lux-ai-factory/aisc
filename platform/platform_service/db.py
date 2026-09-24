@@ -1,7 +1,8 @@
-"""The platform database: a connection pool and the project queries.
+"""The platform database: a connection pool and the queries on `core`.
 
-Deliberately thin. There is one table, so an ORM would be more machinery than
-the problem needs, and the SQL is easier to read than its abstraction.
+Deliberately thin. A handful of tables (projects, their members, the AI card
+versions), so an ORM would be more machinery than the problem needs, and the
+SQL is easier to read than its abstraction.
 """
 from __future__ import annotations
 
@@ -36,6 +37,14 @@ _unregistered: set[str] = set()
 _registered_all = False
 _setup_lock = threading.RLock()
 _in_setup = False
+
+
+_PROJECT = "pid, name, slug, description, created_at, updated_at"
+
+
+def _key_column(identifier: str) -> str:
+    """A project is named by its pid or by its slug; which column that is."""
+    return "pid" if looks_like_pid(identifier) else "slug"
 
 
 def dsn() -> str:
@@ -116,20 +125,15 @@ def _setup(p: ConnectionPool) -> None:
 
 def list_projects() -> list[dict]:
     with pool().connection() as conn:
-        return conn.execute(
-            "select pid, name, slug, description, created_at, updated_at"
-            " from core.project order by created_at desc"
-        ).fetchall()
+        return conn.execute(f"select {_PROJECT} from core.project order by created_at desc").fetchall()
 
 
 def get_project(identifier: str) -> dict | None:
     """The project named by a slug or by its pid: a page has one or the other,
     and both name the same project."""
-    column = "pid" if looks_like_pid(identifier) else "slug"
     with pool().connection() as conn:
         return conn.execute(
-            "select pid, name, slug, description, created_at, updated_at"
-            f" from core.project where {column} = %s",
+            f"select {_PROJECT} from core.project where {_key_column(identifier)} = %s",
             (identifier,),
         ).fetchone()
 
@@ -144,7 +148,7 @@ def create_project(name: str, slug: str, description: str | None,
     with pool().connection() as conn, conn.transaction():
         created = conn.execute(
             "insert into core.project (name, slug, description) values (%s, %s, %s)"
-            " returning pid, name, slug, description, created_at, updated_at",
+            f" returning {_PROJECT}",
             (name, slug, description),
         ).fetchone()
         conn.execute(
@@ -167,15 +171,22 @@ def provision_all() -> list[str]:
     Each project on its own: one that cannot be provisioned is logged and left
     for the next attempt, and does not keep the others from theirs. Returns the
     pids still without one."""
-    from platform_service import dashboard_bridge, projectdb
-
-    global _unprovisioned, _last_attempt, _registered_all
+    global _registered_all
     with pool().connection() as conn:
         rows = conn.execute("select pid, slug, name from core.project").fetchall()
     known = {str(r["pid"]): r for r in rows}
-    current = set(known)
-    # The first time, every project; after that, the ones that failed and still
-    # exist (retrying one deleted meanwhile would make it a database again).
+    _provision_pending(set(known))
+    _register_pending(known)
+    _registered_all = True
+    return sorted(_unprovisioned)
+
+
+def _provision_pending(current: set[str]) -> None:
+    """The first time, every project; after that, the ones that failed and still
+    exist (retrying one deleted meanwhile would make it a database again)."""
+    from platform_service import projectdb
+
+    global _unprovisioned, _last_attempt
     _unprovisioned = set(current) if _unprovisioned is None else _unprovisioned & current
     _last_attempt = time.monotonic()
     for pid in sorted(_unprovisioned):
@@ -186,19 +197,21 @@ def provision_all() -> list[str]:
             continue
         _unprovisioned.discard(pid)
 
-    # The dashboard: every project with its database, on the first run after a
-    # start; after that, the ones whose registration failed and that still exist.
-    ready = current - _unprovisioned
+
+def _register_pending(known: dict[str, dict]) -> None:
+    """The dashboard gets every project with a database on the first run after a
+    start; after that, the ones whose registration failed and that still exist."""
+    from platform_service import dashboard_bridge
+
+    ready = set(known) - _unprovisioned
     todo = ready if not _registered_all else (_unregistered & ready)
-    _unregistered.intersection_update(current)
+    _unregistered.intersection_update(known)
     for pid in sorted(todo):
         row = known[pid]
         if dashboard_bridge.register(pid, row["slug"], row["name"]):
             _unregistered.discard(pid)
         else:
             _unregistered.add(pid)
-    _registered_all = True
-    return sorted(_unprovisioned)
 
 
 # ── systems ──────────────────────────────────────────────────────────────────
@@ -206,16 +219,15 @@ def provision_all() -> list[str]:
 # module reads `core`, and one writer is what keeps the name meaning one thing.
 
 
-_VERSION = ("s.pid, s.project_id, s.number, s.name, s.version, s.provider, s.description,"
-            " s.created_at, s.created_by")
+_VERSION_COLUMNS = "pid, project_id, number, name, version, provider, description, created_at, created_by"
+_VERSION = ", ".join("s." + c for c in _VERSION_COLUMNS.split(", "))
 
 
 def get_system(pid: str) -> dict | None:
     """One saved card version by its own id."""
     with pool().connection() as conn:
         return conn.execute(
-            "select pid, project_id, number, name, version, provider, description,"
-            "       created_at, updated_at, created_by from core.system where pid = %s",
+            f"select {_VERSION_COLUMNS}, updated_at from core.system where pid = %s",
             (pid,),
         ).fetchone()
 
@@ -233,14 +245,13 @@ def create_version(project: str, name: str, version: str | None, provider: str |
             "insert into core.system (project_id, number, name, version, provider, description, created_by)"
             " values (%s, (select coalesce(max(number), 0) + 1 from core.system where project_id = %s),"
             " %s, %s, %s, %s, %s)"
-            " returning pid, project_id, number, name, version, provider, description, created_at, created_by",
+            f" returning {_VERSION_COLUMNS}",
             (pid, pid, name, version, provider, description, subject)).fetchone()
 
 
 def _versions_where(project: str) -> str:
-    column = "pid" if looks_like_pid(project) else "slug"
     return (f"select {_VERSION} from core.system s join core.project p on p.pid = s.project_id"
-            f" where p.{column} = %s order by s.number desc")
+            f" where p.{_key_column(project)} = %s order by s.number desc")
 
 
 def list_versions(project: str) -> list[dict] | None:
@@ -266,17 +277,16 @@ def latest_version(project: str) -> tuple[bool, dict | None]:
 
 
 def _project_pid(conn, identifier: str) -> str | None:
-    column = "pid" if looks_like_pid(identifier) else "slug"
     found = conn.execute(
-        f"select pid from core.project where {column} = %s", (identifier,)
+        f"select pid from core.project where {_key_column(identifier)} = %s", (identifier,)
     ).fetchone()
     return found["pid"] if found else None
 
 
 def role_in_project(project: str, subject: str) -> str | None:
     """What this person is to this project, or None if they are not in it."""
+    column = _key_column(project)
     with pool().connection() as conn:
-        column = "pid" if looks_like_pid(project) else "slug"
         found = conn.execute(
             "select m.role from core.project_member m"
             "  join core.project p on p.pid = m.project_id"
@@ -298,8 +308,8 @@ def projects_for(subject: str) -> list[dict]:
 
 
 def members(project: str) -> list[dict]:
+    column = _key_column(project)
     with pool().connection() as conn:
-        column = "pid" if looks_like_pid(project) else "slug"
         return conn.execute(
             "select m.subject, m.email, m.role, m.added_at"
             "  from core.project_member m join core.project p on p.pid = m.project_id"
@@ -326,8 +336,8 @@ def add_member(project: str, subject: str, email: str | None, role: str) -> dict
 
 
 def owner_count(project: str) -> int:
+    column = _key_column(project)
     with pool().connection() as conn:
-        column = "pid" if looks_like_pid(project) else "slug"
         found = conn.execute(
             "select count(*) as n from core.project_member m"
             "  join core.project p on p.pid = m.project_id"

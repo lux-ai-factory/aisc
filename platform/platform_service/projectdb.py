@@ -6,7 +6,6 @@ another project: it is connected to the wrong place to do it.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from uuid import UUID
 
@@ -15,10 +14,10 @@ from psycopg import errors, sql
 from psycopg.conninfo import make_conninfo
 
 from platform_service.migrate import migrate
+from platform_service.projects import PID
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "project-template"
 TRACKING_TABLE = "provision.template_migration"
-_PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 class NotAPid(ValueError):
@@ -27,7 +26,7 @@ class NotAPid(ValueError):
 
 def database_name(pid: str | UUID) -> str:
     text = str(pid).lower()
-    if not _PID.fullmatch(text):
+    if not PID.fullmatch(text):
         raise NotAPid(f"not a project id: {text!r}")
     return "project_" + text.replace("-", "")
 

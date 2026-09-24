@@ -64,8 +64,8 @@ def validate_slug(slug: str | None) -> str:
 #: A project is named two ways: the slug a URL reads, and the pid rows point at.
 #: A module is handed whichever its page happens to have, so every endpoint that
 #: takes a project takes either; this is how they are told apart.
-_PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 def looks_like_pid(value: str) -> bool:
-    return bool(_PID.match(value or ""))
+    return bool(PID.match(value or ""))
