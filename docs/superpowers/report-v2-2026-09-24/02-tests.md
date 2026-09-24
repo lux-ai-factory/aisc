@@ -363,7 +363,7 @@ renderer with `uv run --extra dev uvicorn report_service:app` in the generator r
 | aisc-report-strongreject (new) | dev | 34cad23 Tests first: the strongreject tool renderer, ... |
 | aisc-report-promptfoo (new) | dev | d7b8a4f Tests first: the promptfoo tool renderer, ... |
 | aisc-install | feat/unified-modules | 1752778 Tests first for report run v2: composer ..., the report bed gains project Mike ... and project Delta |
-| aisc-install | feat/unified-modules | (docs commit: this file and PROGRESS.md) |
+| aisc-install | feat/unified-modules | 5f47cf2 Report run v2, stage 2: tests first (this file and PROGRESS.md) |
 
 aisc-report-mlareject is untouched. Only my own files were staged in aisc-install; other people's changes
 (homepage/project.html, apps/qualification, the form-assembly docs, BRIEF/RULES/00-baseline of this folder) stay
