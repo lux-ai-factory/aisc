@@ -47,3 +47,106 @@ def test_it_imports_end_to_end():
     result = import_openapi(FIXTURE.read_text())
     assert {o.operation_id for o in operations(result.document)} == {"addPet", "getPetById", "uploadFile"}
     assert result.auth_suggestion == {"scheme": "api_key", "in": "header", "name": "api_key"}
+
+
+def test_operation_level_parameter_overrides_path_level_parameter():
+    from aisc_connectors.importers.swagger2 import convert
+
+    doc = {
+        "swagger": "2.0",
+        "info": {"title": "t", "version": "1"},
+        "host": "h",
+        "paths": {
+            "/items": {
+                "parameters": [{"in": "query", "name": "limit", "type": "integer"}],
+                "get": {
+                    "operationId": "listItems",
+                    "parameters": [
+                        {"in": "query", "name": "limit", "type": "integer", "required": True, "maximum": 100}
+                    ],
+                    "responses": {"200": {"description": "ok"}},
+                },
+            }
+        },
+    }
+    params = convert(doc)["paths"]["/items"]["get"]["parameters"]
+    limit_params = [p for p in params if p["name"] == "limit" and p["in"] == "query"]
+    assert len(limit_params) == 1
+    assert limit_params[0] == {
+        "in": "query", "name": "limit", "required": True, "schema": {"type": "integer", "maximum": 100}
+    }
+
+
+def test_shared_response_ref_is_kept_and_becomes_a_component():
+    from aisc_connectors.importers.swagger2 import convert
+
+    doc = {
+        "swagger": "2.0",
+        "info": {"title": "t", "version": "1"},
+        "host": "h",
+        "produces": ["application/json"],
+        "paths": {
+            "/items/{id}": {
+                "get": {
+                    "operationId": "getItem",
+                    "parameters": [{"in": "path", "name": "id", "required": True, "type": "string"}],
+                    "responses": {
+                        "200": {"description": "ok"},
+                        "404": {"$ref": "#/responses/NotFound"},
+                    },
+                }
+            }
+        },
+        "responses": {
+            "NotFound": {
+                "description": "not found",
+                "schema": {"type": "object", "properties": {"message": {"type": "string"}}},
+            },
+        },
+    }
+    result = convert(doc)
+    ref = result["paths"]["/items/{id}"]["get"]["responses"]["404"]
+    assert ref == {"$ref": "#/components/responses/NotFound"}
+    assert result["components"]["responses"]["NotFound"] == {
+        "description": "not found",
+        "content": {"application/json": {"schema": {"type": "object", "properties": {"message": {"type": "string"}}}}},
+    }
+
+
+def test_ref_like_text_in_a_description_is_left_untouched():
+    from aisc_connectors.importers.swagger2 import convert
+
+    doc = {
+        "swagger": "2.0",
+        "info": {"title": "t", "version": "1"},
+        "host": "h",
+        "paths": {
+            "/items": {
+                "get": {
+                    "operationId": "listItems",
+                    "description": "see #/definitions/X for details",
+                    "responses": {"200": {"description": "ok"}},
+                }
+            }
+        },
+        "definitions": {"X": {"type": "object"}},
+    }
+    result = convert(doc)
+    assert result["paths"]["/items"]["get"]["description"] == "see #/definitions/X for details"
+    assert "X" in result["components"]["schemas"]
+
+
+def test_shared_parameter_definitions_become_components_parameters():
+    from aisc_connectors.importers.swagger2 import convert
+
+    doc = {
+        "swagger": "2.0",
+        "info": {"title": "t", "version": "1"},
+        "host": "h",
+        "paths": {"/items": {"get": {"operationId": "listItems", "responses": {"200": {"description": "ok"}}}}},
+        "parameters": {"Limit": {"in": "query", "name": "limit", "type": "integer", "maximum": 100}},
+    }
+    result = convert(doc)
+    assert result["components"]["parameters"]["Limit"] == {
+        "in": "query", "name": "limit", "schema": {"type": "integer", "maximum": 100},
+    }
