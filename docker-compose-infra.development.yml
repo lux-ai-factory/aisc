@@ -11,6 +11,8 @@ services:
       - "${HOMEPAGE_PORT_EXTERNAL:-8100}:8006"
       # the catalogue (third site block; a root-mounted SPA)
       - "${CATALOGUE_PORT_EXTERNAL:-8102}:8007"
+      # the dashboard (Superset), behind the gateway like the rest
+      - "${DASHBOARD_PORT_EXTERNAL:-8188}:8008"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
       - ./homepage:/srv/homepage:ro,Z
@@ -23,6 +25,8 @@ services:
       CADDY_PORT: "8005"
       HOMEPAGE_PORT: "8006"
       CATALOGUE_PORT: "8007"
+      DASHBOARD_PORT: "8008"
+      DASHBOARD_UPSTREAM: host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
     networks:
       - backend
@@ -199,6 +203,10 @@ services:
       # the realm's users have no email claim
       - --oidc-email-claim=preferred_username
       - --scope=openid profile
+      # Signing out ends the Keycloak session too. Without it /oauth2/sign_out only
+      # drops this cookie, and the next page signs the same person straight back in
+      # from Keycloak's own session. {id_token} is the session's, filled in by oauth2-proxy.
+      - --backend-logout-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/logout?id_token_hint={id_token}
       - --client-id=aisc-gateway
       - --client-secret=${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
       - --cookie-secret=${GATEWAY_COOKIE_SECRET:?run scripts/secrets.sh first}
@@ -207,6 +215,7 @@ services:
       - --cookie-samesite=lax
       - --whitelist-domain=localhost
       - --whitelist-domain=localhost:8100
+      - --whitelist-domain=localhost:8188
       - --set-xauthrequest=true
       # it proxies nothing itself; Caddy does the proxying
       - --upstream=static://202

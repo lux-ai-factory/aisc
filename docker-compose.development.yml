@@ -8,8 +8,6 @@ services:
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
-      # Keycloak URL injected into the built JS at container start (env.sh replaces APP_KEYCLOAK_URL).
-      APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
       # Where the "Public Catalogue" button goes. The bundle ships the literal
       # placeholder APP_CATALOG_URL and env.sh replaces it at start, so leaving
       # this unset sends the button to the string "APP_CATALOG_URL" itself.
@@ -496,7 +494,10 @@ services:
     # A single argument to `bash -c`: a plain string command is split on
     # whitespace and truncated at the first &&, which loses the rest.
     command:
-      - "superset db upgrade && (superset fab create-admin --username ${DASHBOARD_ADMIN:-admin} --firstname Admin --lastname User --email admin@example.com --password ${DASHBOARD_ADMIN_PASSWORD:?run scripts/secrets.sh first} || true) && superset init"
+      # No local admin account: people sign in at the gateway, and Superset takes
+      # who they are from it (dashboard-gateway/). The platform's admin is
+      # Superset's Admin through the role sync.
+      - "superset db upgrade && superset init"
     environment: &dashboard-env
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/superset
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?run scripts/secrets.sh first}
@@ -531,7 +532,6 @@ services:
     image: aisc-results-dashboard:latest
     pull_policy: never
     container_name: dashboard
-    volumes: *dashboard-volumes
     # network_mode: host, for one reason: Superset authenticates itself, so it
     # fetches the OIDC metadata server-side and then sends the BROWSER to the
     # same issuer. Those two have to be the same string, and the only string
@@ -544,20 +544,31 @@ services:
     # DASHBOARD_PORT directly (the stock entrypoint honours SUPERSET_PORT), and
     # it reaches Postgres, Redis and immudb on their published host ports.
     network_mode: host
+    # Superset no longer logs anybody in: it sits behind the gateway like every
+    # other module. Caddy serves it on DASHBOARD_PORT after the one sign-in; the
+    # server itself listens only on the Docker host address, reachable from this
+    # machine's containers (Caddy, the platform's bridge) and not the network.
+    volumes:
+      - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
+      - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
+      - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
+      - ./dashboard-gateway:/app/pythonpath_gateway:ro,Z
     environment:
       <<: *dashboard-env
-      SUPERSET_PORT: ${DASHBOARD_PORT:-8188}
+      SUPERSET_BIND_ADDRESS: ${DASHBOARD_BIND_ADDRESS:-172.17.0.1}
+      SUPERSET_PORT: ${DASHBOARD_INTERNAL_PORT:-8189}
+      # the dashboard's own config, run unchanged, then who is signed in taken
+      # from the gateway's verified token
+      SUPERSET_CONFIG_PATH: /app/pythonpath_gateway/superset_gateway_config.py
+      GATEWAY_TOKEN_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      GATEWAY_JWKS_URL: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/certs
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
       AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/platform}
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       REDIS_HOST: localhost
       IMMUDB_HOST: localhost
-      # its own client in the realm; the browser and this container both use
-      # this exact issuer string
-      AISC_OAUTH: ${DASHBOARD_OAUTH:-1}
-      OIDC_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
-      OIDC_CLIENT_ID: ${DASHBOARD_OIDC_CLIENT_ID:-superset}
-      OIDC_CLIENT_SECRET: ${DASHBOARD_OIDC_CLIENT_SECRET:?run scripts/secrets.sh first}
+      # its own Keycloak login stays off: the gateway signs people in
+      AISC_OAUTH: "0"
       # the shared secret the platform sends to /api/v1/aisc_project (the bridge)
       DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
       # where a project's own database is, as this host-network container sees it
@@ -629,7 +640,8 @@ services:
       # removes that project's dashboard. The dashboard runs on the host network
       # (see its service), on DASHBOARD_PORT. The token is the shared secret the
       # bridge checks; with none set, the bridge refuses every call.
-      DASHBOARD_BRIDGE_URL: http://host.docker.internal:${DASHBOARD_PORT:-8188}
+      # straight to Superset, not through Caddy: the bridge has its own token and no session
+      DASHBOARD_BRIDGE_URL: http://host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
       DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"

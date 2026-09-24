@@ -193,49 +193,51 @@ else
   ok "and compose refuses to start rather than falling back to one"
 fi
 
-echo "3. the engine's own check-sso finds that session (prompt=none)"
-loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - \
-  "$KC/realms/aisc/protocol/openid-connect/auth?client_id=aisc-webapp&redirect_uri=http%3A%2F%2Flocalhost%2F&response_type=code&scope=openid&prompt=none" \
-  | grep -i '^location:' | head -1)
-case "$loc" in
-  *code=*) ok "prompt=none returned an auth code: the engine authenticates silently" ;;
-  *login_required*) no "prompt=none said login_required: the engine would still prompt" ;;
-  *) no "prompt=none gave: ${loc:-no redirect}" ;;
+echo "3. the engine has no login of its own"
+# The webapp used to run its own Keycloak client (keycloak-js, check-sso). It now
+# only asks the API who the gateway says this is, and signs in and out there.
+js=$(curl -s -b "$J" --max-time 20 http://localhost/ | grep -oE '/assets/[^"]+\.js' | head -1)
+bundle=$(curl -s -b "$J" --max-time 20 "http://localhost$js")
+case "$bundle" in
+  *silent-check-sso*|*onTokenExpired*|*aisc-webapp*) no "the engine's page still carries a Keycloak client of its own" ;;
+  *) ok "the engine's page has no Keycloak client of its own" ;;
 esac
+for path in /admin/ /_allauth/browser/v1/config; do
+  c=$(docker exec caddy wget -qSO /dev/null "http://aisc-backend:8000$path" 2>&1 | grep -oE 'HTTP/[0-9.]+ [0-9]+' | tail -1)
+  case "$c" in
+    *404) ok "the engine backend has no $path ($c)" ;;
+    *) no "the engine backend still answers $path (${c:-no answer})" ;;
+  esac
+done
 
-echo "4. the dashboard uses the same Keycloak, with its own client"
-# Superset authenticates itself, and with one provider its /login/ page would be
-# a single button. It is configured to skip that, so the dashboard shows no
-# sign-in screen of its own at all.
-loc=$(curl -s --max-time 20 -o /dev/null -D - http://localhost:8188/login/ | grep -i '^location:' | head -1)
+echo "4. the dashboard is behind the gateway, with no login of its own"
+# Superset takes who is signed in from the gateway (dashboard-gateway/): no
+# Keycloak client of its own, no password login, and not reachable around Caddy.
+loc=$(curl -s --max-time 20 -o /dev/null -D - http://localhost:8188/ | grep -i '^location:' | head -1)
 case "$loc" in
-  */login/keycloak*) ok "Superset's login page redirects to the provider, no picker" ;;
-  *) no "Superset's /login/ went to: ${loc:-its own page}" ;;
-esac
-loc=$(curl -s --max-time 20 -o /dev/null -D - http://localhost:8188/login/keycloak | grep -i '^location:' | head -1)
-case "$loc" in
-  *localhost:8081/realms/aisc*client_id=superset*) ok "and that provider is the shared Keycloak, as client superset" ;;
-  *) no "provider route went to: ${loc:-nowhere}" ;;
+  */oauth2/start*) ok "signed out, the dashboard sends you to the gateway" ;;
+  *) no "signed out, the dashboard went to: ${loc:-its own page}" ;;
 esac
 out=$(curl -s -b "$J" -c "$J" -L --max-time 30 -w '\n__URL__%{url_effective}' http://localhost:8188/)
 eff=$(printf '%s' "$out" | tail -1)
 shopt -s nocasematch
 case "$out" in
-  *'sign in with keycloak'*|*'name="username"'*) no "the dashboard still asked for a sign-in" ;;
+  *'sign in with keycloak'*|*'name="username"'*|*'name="password"'*) no "the dashboard still asked for a sign-in" ;;
   *) ok "the dashboard opened on that one session, no sign-in screen" ;;
 esac
 shopt -u nocasematch
 case "$eff" in
-  *superset/welcome*) ok "and landed on Superset's own page ($eff)" ;;
+  *localhost:8188/superset/welcome*) ok "and landed on Superset's own page ($eff)" ;;
   *) no "landed at: $eff" ;;
 esac
-loc=$(curl -s -b "$J" -c "$J" --max-time 20 -o /dev/null -D - \
-  "$KC/realms/aisc/protocol/openid-connect/auth?client_id=superset&redirect_uri=http%3A%2F%2Flocalhost%3A8188%2Foauth-authorized%2Fkeycloak&response_type=code&scope=openid&prompt=none" \
-  | grep -i '^location:' | head -1)
-case "$loc" in
-  *code=*) ok "prompt=none returned a code for superset: the dashboard logs in silently too" ;;
-  *login_required*) no "prompt=none said login_required for superset" ;;
-  *) no "prompt=none for superset gave: ${loc:-no redirect}" ;;
+c=$(curl -s -b "$J" --max-time 20 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"x","provider":"db"}' http://localhost:8188/api/v1/security/login)
+[ "$c" = "404" ] && ok "Superset's password login is gone (404)" || no "Superset's password login answered $c"
+listen=$(ss -tln 2>/dev/null | awk '{print $4}' | grep -E ":${DASHBOARD_INTERNAL_PORT:-8189}$" | sort -u | tr '\n' ' ')
+case "$listen" in
+  *0.0.0.0:*|*'[::]:'*|*'*:'*) no "Superset itself listens on every interface: $listen" ;;
+  '') no "Superset is not listening on ${DASHBOARD_INTERNAL_PORT:-8189}" ;;
+  *) ok "Superset itself listens only on the Docker host address ($listen)" ;;
 esac
 
 echo "5. nothing is reachable without going through the gateway"

@@ -113,15 +113,15 @@ than asking a second time. `./scripts/verify-sso.sh` asserts exactly that, one
 login then every module, ending with the `prompt=none` request the engine itself
 makes.
 
-The dashboard is covered differently, because Superset authenticates itself rather
-than being proxied: it uses its own Keycloak client (`superset`, also declared in
-the realm) through the native SSO the dashboard repo ships. Its login page offers
-Keycloak instead of a password form, and with a session already established it
-logs you in without asking. That is why the `dashboard` service runs with
-`network_mode: host`: it fetches the OIDC metadata server-side and then sends the
-browser to the same issuer, so both have to be the identical string, and
-`http://localhost:8081` is the only one that is. It still serves on 8188, since
-the stock entrypoint honours `SUPERSET_PORT`.
+The dashboard is covered the same way. Superset has no login of its own: Caddy serves it on
+8188 behind the gateway, and `dashboard-gateway/` (loaded through `SUPERSET_CONFIG_PATH`, with
+the dashboard's own `superset_config.py` run unchanged) verifies the token the gateway passes
+and hands Superset the user as `REMOTE_USER`. Roles and project access are synced from the
+token's realm roles and the platform's memberships, by the dashboard's own code. There is no
+local admin account and no password login. Superset still runs with `network_mode: host`, so it
+reaches Postgres on the host port its project connections were registered with, but it listens
+only on the Docker host address (`172.17.0.1:8189`): Caddy and the platform's bridge reach it,
+the network does not.
 
 Internal traffic is unaffected: services call the backend directly on
 `http://aisc-backend:8000` rather than through Caddy.
@@ -150,14 +150,12 @@ accidentally published port fails the suite.
 > that. On any other hostname the login fails with "Restart login cookie not
 > found" until you put Keycloak behind TLS.
 
-Also reachable: the backend's API at `/api`, the Django admin at `/admin`, Celery's
+Also reachable: the backend's API at `/api`, Celery's
 Flower at `/flower`, and Keycloak on http://localhost:8081 (realm `aisc`).
 
 The dashboard has a port of its own because Superset needs the site root and does
-not work under a path prefix. It logs in with its own admin account
-(`DASHBOARD_ADMIN` / `DASHBOARD_ADMIN_PASSWORD`, both `admin` by default) and reads
-the platform database through a read-only role, so it can chart results but never
-write to them.
+not work under a path prefix. It reads the platform database through a read-only
+role, so it can chart results but never write to them.
 
 Steps 1, 2 and 5 need a model to be useful. Qualification's LiteLLM sidecar takes
 `MISTRAL_API_KEY` or `ANTHROPIC_API_KEY`; control objectives defaults to a keyless

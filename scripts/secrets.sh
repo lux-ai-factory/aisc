@@ -33,7 +33,6 @@ if [ "${1:-}" = "--rotate" ] || [ ! -f "$OUT" ]; then
 # Rotating these signs everyone out and needs Keycloak re-imported (make clean).
 GATEWAY_COOKIE_SECRET=$(cookie)
 GATEWAY_CLIENT_SECRET=$(rand)
-DASHBOARD_OIDC_CLIENT_SECRET=$(rand)
 CATALOGUE_INSTALL_TOKEN=$(rand)
 DJANGO_SECRET_KEY=$(rand)
 INTERNAL_API_KEY=$(rand)
@@ -73,7 +72,7 @@ python3 - "$TEMPLATE" "$RENDERED" <<'PY'
 import os, sys
 template, rendered = sys.argv[1], sys.argv[2]
 text = open(template, encoding="utf-8").read()
-for name in ("GATEWAY_CLIENT_SECRET", "DASHBOARD_OIDC_CLIENT_SECRET"):
+for name in ("GATEWAY_CLIENT_SECRET",):
     value = os.environ.get(name, "")
     if not value:
         raise SystemExit(f"{name} is not set: run scripts/secrets.sh first")

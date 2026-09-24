@@ -58,21 +58,6 @@
   import tls-{$CADDY_ENVIRONMENT}
   import oauth_endpoints
 
-  # Reverse proxy to aisc-backend, Django Admin section
-  handle /admin* {
-    import protect
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
-
-  # Reverse proxy to aisc-backend, this will serve the static assets need by Django Admin
-  handle /static/admin/* {
-    import protect
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
 
   # Internal API should only be accessible inside the containers, block all external access
   handle /api/v1/internal/* {
@@ -180,6 +165,19 @@
       root * /srv/homepage
       file_server
     }
+  }
+}
+
+# The dashboard (apps/results-dashboard, Superset). Its own listener, because Superset needs the
+# site root. Behind the gateway like every module: Superset has no login of its own and takes who
+# is signed in from the token protect copies in (dashboard-gateway/). It runs host-networked, so
+# it is reached on the Docker host address.
+{$CADDY_DOMAIN}:{$DASHBOARD_PORT} {
+  import tls-{$CADDY_ENVIRONMENT}
+  import oauth_endpoints
+  handle {
+    import protect
+    reverse_proxy {$DASHBOARD_UPSTREAM}
   }
 }
 
