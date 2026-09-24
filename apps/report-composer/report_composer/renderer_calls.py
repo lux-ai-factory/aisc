@@ -31,3 +31,24 @@ def fonts(request: Request) -> list:
 def choices_for(request: Request, project_pid: str, system_pid: str):
     renderer = request.app.state.renderer
     return lambda block_type: renderer_call(renderer.choices, project_pid, system_pid, block_type)
+
+
+ENGLISH_ONLY = [{"code": "en", "name": "English"}]
+NO_COVERAGE_CHOICES = {"objectives": [], "tests": [], "checklists": []}
+
+
+def languages(request: Request) -> list:
+    """The report languages the renderer offers; English only for a renderer without the call."""
+    renderer = request.app.state.renderer
+    if not hasattr(renderer, "languages"):
+        return list(ENGLISH_ONLY)
+    return renderer_call(renderer.languages) or list(ENGLISH_ONLY)
+
+
+def coverage_choices_for(request: Request, project_pid: str, system_pid: str) -> dict:
+    """What the coverage map may name for the version: objectives, tests, checklists."""
+    renderer = request.app.state.renderer
+    if not hasattr(renderer, "coverage_choices"):
+        return {k: [] for k in NO_COVERAGE_CHOICES}
+    got = renderer_call(renderer.coverage_choices, project_pid, system_pid) or {}
+    return {k: list(got.get(k) or []) for k in NO_COVERAGE_CHOICES}

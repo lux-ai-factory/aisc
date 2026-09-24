@@ -29,11 +29,10 @@ def template_of(conn, project_pid, layout) -> dict | None:
     return db.get_template(conn, project_pid, layout["template_id"], with_logo=True)
 
 
-def chosen_template(conn, project_pid, template_id) -> str:
-    """A layout is saved only with one of its project's templates."""
+def chosen_template(conn, project_pid, template_id) -> str | None:
+    """One of the project's templates, or None: the platform default look (report run v2, R-U6.1)."""
     if not template_id:
-        raise ApiError(422, "template_required", "Choose one of this project's templates before saving.",
-                       [{"pointer": "/template_id", "message": "is required"}])
+        return None
     t = db.get_template(conn, project_pid, template_id)
     if t is None:
         raise ApiError(422, "template_not_in_project", "The template is not one of this project's.",

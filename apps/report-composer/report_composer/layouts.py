@@ -11,6 +11,8 @@ import uuid
 
 from jsonschema import Draft202012Validator
 
+from . import coverage_map
+
 DEFAULT_ORDER = ["cover", "ai_card", "risk_classification", "control_objectives", "test_results",
                  "control_answers", "summary_coverage"]
 MAX_BLOCKS, MAX_CHARTS = 50, 10
@@ -55,34 +57,62 @@ def _message(err) -> str:
     return messages.get(err.validator, err.message[:200])
 
 
-def _option_problems(schema: dict, options: dict, iid, drop_required: set[str]) -> list[dict]:
+def _option_problems(schema: dict, options: dict, iid, drop_required: set[str], refs=()) -> list[dict]:
     out = []
+    seen = set()
     for err in sorted(Draft202012Validator(schema).iter_errors(options), key=lambda e: [str(p) for p in e.path]):
         if err.validator == "required":
             present = err.instance if isinstance(err.instance, dict) else {}
             for name in err.validator_value:
                 if name in present or (not err.path and name in drop_required):
                     continue
-                out.append(_problem(iid, "invalid_options", _pointer(err.path) + "/" + name, "is required"))
+                pointer = _pointer(err.path) + "/" + name
+                if pointer in seen:
+                    continue
+                seen.add(pointer)
+                message = CHOOSE_A_VALUE if (not err.path and name in refs) else "is required"
+                out.append(_problem(iid, "invalid_options", pointer, message))
             continue
         out.append(_problem(iid, "invalid_options", _pointer(err.path), _message(err)))
+    props = schema.get("properties") or {}
+    for name, prop in props.items():
+        if isinstance(prop, dict) and is_all_or_list(prop) and options.get(name) == []:
+            out.append(_problem(iid, "invalid_options", f"/{name}", PICK_ONE))
     return out
 
 
-def _allowed(choices: dict, key: str) -> set:
-    return {c.get("value") for c in choices.get(key) or []}
+PICK_ONE = "Pick at least one, or choose All."
+CHOOSE_A_VALUE = "Choose a value"
 
 
-def _reference_problems(name, value, choices: dict, iid) -> list[dict]:
-    if value is None or value == "all" or value == []:
+def _allowed(choices: dict, key: str) -> list:
+    """The values a reference may take (a list: dict values are not hashable)."""
+    return [c.get("value") for c in choices.get(key) or []]
+
+
+def is_all_or_list(prop: dict) -> bool:
+    """An option that is "all" or a list (a oneOf/anyOf of const "all" and an array)."""
+    alts = (prop or {}).get("oneOf") or (prop or {}).get("anyOf") or []
+    return any(isinstance(a, dict) and a.get("const") == "all" for a in alts) and \
+        any(isinstance(a, dict) and a.get("type") == "array" for a in alts)
+
+
+def _reference_problems(name, value, choices: dict, iid, default=None) -> list[dict]:
+    if value is None or value == "all" or value == [] or (default is not None and value == default):
         return []
     out = []
     bad = "is not available for this project and version"
     if isinstance(value, list):
         for i, item in enumerate(value):
-            if isinstance(item, dict):
+            if isinstance(item, dict) and name in choices:
+                if item not in _allowed(choices, name):
+                    out.append(_problem(iid, "invalid_reference", f"/{name}/{i}", bad))
+            elif isinstance(item, dict):
+                # legacy per-field check (summary links): only where the renderer offers the field's choices
                 for field, v in item.items():
                     key = f"{name}.{field}"
+                    if key not in choices:
+                        continue
                     allowed = _allowed(choices, key)
                     if isinstance(v, list):
                         for j, x in enumerate(v):
@@ -106,7 +136,7 @@ def _is_uuid(value) -> bool:
 
 
 def _layout_problems(blocks) -> list[dict]:
-    """What is wrong with the layout as a whole: too many blocks or charts, more than one cover."""
+    """What is wrong with the layout as a whole: too many blocks or charts, more than one cover or appendix."""
     problems = []
     if len(blocks) > MAX_BLOCKS:
         problems.append(_problem(None, "too_many_blocks", "", f"a layout holds at most {MAX_BLOCKS} blocks"))
@@ -115,6 +145,10 @@ def _layout_problems(blocks) -> list[dict]:
     covers = [b for b in blocks if isinstance(b, dict) and b.get("block_type") == "cover"]
     if len(covers) > 1:
         problems.append(_problem(covers[1].get("instance_id"), "duplicate_cover", "", "a layout has one cover at most"))
+    appendices = [b for b in blocks if isinstance(b, dict) and b.get("block_type") == "appendix"]
+    if len(appendices) > 1:
+        problems.append(_problem(appendices[1].get("instance_id"), "duplicate_appendix", "",
+                                 "a layout has one appendix at most"))
     return problems
 
 
@@ -126,18 +160,23 @@ def _block_problems(b: dict, t: dict, choices_of, allow_missing_references: bool
         return [_problem(iid, "invalid_options", "", "must be an object")]
     merged = {**copy.deepcopy(t.get("default_options") or {}), **options}
     refs = reference_options(t)
-    found = _option_problems(t["options_schema"], merged, iid, set(refs) if allow_missing_references else set())
+    found = _option_problems(t["options_schema"], merged, iid, set(refs) if allow_missing_references else set(),
+                             refs)
     if found or not refs:
         return found
     allowed = choices_of(t["type_id"])
-    return [p for name in refs for p in _reference_problems(name, merged.get(name), allowed, iid)]
+    defaults = t.get("default_options") or {}
+    return [p for name in refs
+            for p in _reference_problems(name, merged.get(name), allowed, iid, defaults.get(name))]
 
 
-def validate_layout(blocks, *, block_types, choices, allow_missing_references=False) -> list[dict]:
+def validate_layout(blocks, *, block_types, choices, allow_missing_references=False, coverage=None,
+                    coverage_choices=None) -> list[dict]:
     """Problems of a layout, layout-level first, as [{instance_id, code, pointer, message}].
 
     `choices(block_type)` answers the values each reference option may take (called at most once
-    per block type, and only for a block whose options are otherwise valid).
+    per block type, and only for a block whose options are otherwise valid). With a non-empty
+    `coverage` map, `coverage_choices()` answers what it may name (report run v2, R-U2.5).
     """
     types = {t["type_id"]: t for t in block_types}
     problems = _layout_problems(blocks)
@@ -165,6 +204,9 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
                                      f"the block type {b.get('block_type')!r} is not available"))
             continue
         problems.extend(_block_problems(b, t, choices_of, allow_missing_references))
+    if coverage:
+        problems.extend(coverage_map.reference_problems(coverage, coverage_choices() if callable(coverage_choices)
+                                                        else (coverage_choices or {})))
     return problems
 
 
