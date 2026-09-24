@@ -86,7 +86,7 @@ services:
       - redis_data:/data # Persistent storage
     networks:
       - backend
-    command: redis-server --protected-mode no
+    command: redis-server --protected-mode no --appendonly yes --appendfsync everysec
 
   # PostgreSQL database service
   postgres:
