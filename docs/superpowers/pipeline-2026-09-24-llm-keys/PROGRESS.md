@@ -6,7 +6,7 @@
 | 2 tests | 02-tests.md + test files | done |
 | 3 plan | 03-coding-plan.md | done |
 | 4 code | commits + 04-code-notes.md | done |
-| 5 verify until green | 05-report.md | pending |
+| 5 verify until green | 05-report.md | done (GREEN) |
 
 ## Stage 1 notes (specs)
 
@@ -82,3 +82,20 @@
 - Before the next `up`: run scripts/secrets.sh once (appends the two new secrets, rebuilds
   env.runtime). Nothing was applied to the running stack. Throwaway container
   aisc-t-llmkeys-s4-ee41f7cc removed.
+
+## Stage 5 notes (verify until green)
+
+- GREEN in 2 rounds, all on throwaway Postgres aisc-t-llmkeys-s5-acc1ddcd (removed). Final: platform 258
+  passed, 2 skipped; A 146 passed; B 297 passed, 1 skipped; qualification-web 2 files 25 passed, tsc clean;
+  whole vitest 421 passed, 20 skipped, 0 failed; top-level 26 passed.
+- Fix: the secrets.test.ts false positive (stage 2 test token literal split, same value, no assertion
+  changed). Commits: apps/qualification c324885; top-level 3f040ee (pointer) and the commit adding this note.
+  No product code changed.
+- Independent checks (scratchpad scripts, not in the repo): uvicorn e2e with real JWT verification against a
+  fake JWKS and a fake OpenAI-compatible provider, 30 of 30 passed (key stored encrypted, never returned,
+  admin-only, isolated per project, internal route guarded, both agents' baf_llm resolve through the
+  platform and send the stored key and chosen model, no key in DEBUG logs). baf_llm.py byte-identical.
+  Real Caddyfile in a throwaway caddy container: every /api/internal/* variant 404. llm.html: no inline
+  handlers, only existing routes.
+- Open: the deploy steps and residual risks in 05-report.md sections 4 and 5 (secrets.sh, rebuilds,
+  commit project.html with the user's edit, verify-llm-keys.sh after deploy, R1 unverified listings).
