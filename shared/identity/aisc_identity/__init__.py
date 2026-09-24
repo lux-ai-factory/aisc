@@ -1,7 +1,7 @@
 """Who is calling: one answer, shared by every Python service on the platform.
 
-The engine verified tokens and the other services could not, which is why they
-enforced nothing. This is that code, lifted out and given a test suite.
+Every service verifies the same Keycloak token the same way, through this
+package, so an authorisation decision means the same thing wherever it is made.
 """
 from aisc_identity.caller import Caller, IdentityMissing, caller_from_claims
 from aisc_identity.headers import GATEWAY_TOKEN_HEADER, token_from_headers

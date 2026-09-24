@@ -52,10 +52,12 @@ def settings() -> Settings:
     )
 
 
-#: The obviously fake identity local work runs as when AUTH_ENABLED is off. It
-#: holds no roles unless AUTH_DEV_ROLES says so, so "it worked on my machine"
-#: cannot mean "because I was admin there".
 def development_caller(roles: tuple[str, ...]) -> Caller:
+    """The obviously fake identity local work runs as when AUTH_ENABLED is off.
+
+    It holds no roles unless AUTH_DEV_ROLES says so, so "it worked on my
+    machine" cannot mean "because I was admin there".
+    """
     return Caller(
         subject="development",
         email="development@localhost",
