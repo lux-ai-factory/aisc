@@ -65,6 +65,14 @@
     }
   }
 
+  # Same-origin Keycloak SSO under /auth. Do NOT send X-Forwarded-Prefix —
+  # with proxy-headers=xforwarded it doubles Keycloak's native /auth path.
+  handle {$CADDY_KEYCLOAK_PATH:/noauth}/* {
+    reverse_proxy keycloak:8080 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
   # Serve the JS frontend by default
   handle {
     reverse_proxy aisc-webapp:80 {
