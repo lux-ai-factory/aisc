@@ -385,6 +385,97 @@ services:
       - frontend
     restart: unless-stopped
 
+  # ── Report (step 7): the composer assembles a report from blocks, the renderer renders it ──
+  report-composer:
+    build: apps/report-composer
+    image: aisc-report-composer:latest
+    pull_policy: never
+    container_name: report-composer
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+    environment:
+      PYTHONPATH: /app:/app/shared/identity
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      REPORT_COMPOSER_ROOT_PATH: /report-composer
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      PLATFORM_ORIGIN: ${PLATFORM_ORIGIN:-http://localhost}
+      REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:-report_composer_rw}@postgres:5432/platform
+      REPORT_RENDERER_URL: http://report-renderer:8001
+      REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      report-renderer:
+        condition: service_started
+    expose:
+      - "8095"
+    networks:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+  report-renderer:
+    build:
+      context: ${REPORT_GENERATOR_DIR:-../aisc-report-generator}
+      additional_contexts:
+        interface: ${REPORT_INTERFACE_DIR:-../aisc-report-plugin-interface}
+        mlareject: ${REPORT_MLAREJECT_DIR:-../aisc-report-mlareject}
+    image: aisc-report-renderer:latest
+    pull_policy: never
+    container_name: report-renderer
+    volumes:
+      # read-only, never copied (02 D3; airo_vocab.json is pinned by the guard)
+      - ./apps/qualification/src/data/airo_vocab.json:/data/airo_vocab.json:ro,z
+      - ./apps/control-objectives/src/aisc_control_objectives/data/ai_act_control_objectives.csv:/data/ai_act_control_objectives.csv:ro,z
+    environment:
+      REPORT_PLATFORM_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:-report_ro}@postgres:5432/platform
+      REPORT_SUPERSET_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:-report_ro}@postgres:5432/superset
+      REPORT_PROJECT_DB_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:-report_ro}@postgres:5432/{database}
+      REPORT_AIRO_VOCAB_PATH: /data/airo_vocab.json
+      REPORT_OBJECTIVES_CSV_PATH: /data/ai_act_control_objectives.csv
+      REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
+      # O1: chart images stay off until Superset screenshots are enabled (set to superset then)
+      REPORT_CHART_IMAGES: "off"
+      REPORT_SUPERSET_PUBLIC_URL: ${DASHBOARD_EXTERNAL_URL:-http://localhost:8188}
+    depends_on:
+      report-grants:
+        condition: service_completed_successfully
+    # called by the composer only: not on the frontend network, not in the Caddyfile
+    expose:
+      - "8001"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # SELECT for report_ro on what the report reads, again on every start (02 D6 (b)(c))
+  report-grants:
+    image: postgres:14-alpine
+    container_name: report-grants
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      REPORT_GRANTS_WAIT_SECONDS: "600"
+    volumes:
+      - ./scripts/report-grants.sh:/setup/report-grants.sh:ro,Z
+      - ./init/report-ro-grants.sql:/setup/report-ro-grants.sql:ro,Z
+    command: ["sh", "/setup/report-grants.sh"]
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      qualification-migrate:
+        condition: service_completed_successfully
+      control-objectives-migrate:
+        condition: service_completed_successfully
+      controls-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
   # ── Results dashboard (apps/results-dashboard submodule) ──
   # Superset, reading the platform's own database read-only, so the evaluation
   # results the execution engine writes can be charted. Unlike the other apps it

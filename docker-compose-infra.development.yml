@@ -120,6 +120,9 @@ services:
       - ./init/project-databases.sql:/docker-entrypoint-initdb.d/06-project-databases.sql:ro,Z
       # Creates the `superset` metadata DB (apps/results-dashboard) on a fresh volume.
       - ./init/superset-db.sql:/docker-entrypoint-initdb.d/50-superset-db.sql:ro,Z
+      # The report's roles (report_ro, report_composer_rw) and the composer's schema.
+      # After 50-superset-db.sql, because it grants CONNECT on the superset database.
+      - ./init/report-roles.sql:/docker-entrypoint-initdb.d/60-report-roles.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
@@ -134,10 +137,17 @@ services:
       PGUSER: ${POSTGRES_USER}
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB}
+      # the report's role passwords (scripts/secrets.sh); the defaults are the role names
+      REPORT_RO_PASSWORD: ${REPORT_RO_PASSWORD:-report_ro}
+      REPORT_COMPOSER_PASSWORD: ${REPORT_COMPOSER_PASSWORD:-report_composer_rw}
     volumes:
       - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
+      - ./init/report-roles.sql:/setup/report-roles.sql:ro,Z
     command: >
-      sh -c "until pg_isready -q; do sleep 1; done && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql"
+      sh -c "until pg_isready -q; do sleep 1; done
+      && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql
+      && psql -v ON_ERROR_STOP=1 -v report_ro_password=\"$$REPORT_RO_PASSWORD\"
+      -v report_composer_password=\"$$REPORT_COMPOSER_PASSWORD\" -f /setup/report-roles.sql"
     depends_on:
       - postgres
     restart: "no"

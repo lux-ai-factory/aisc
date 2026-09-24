@@ -112,6 +112,15 @@
     }
   }
 
+  # The report composer (apps/report-composer), step 7. handle_path strips the prefix;
+  # REPORT_COMPOSER_ROOT_PATH fixes the URLs the app generates. The renderer is never routed.
+  handle_path /report-composer* {
+    import protect
+    reverse_proxy report-composer:8095 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
   # Serve the JS frontend by default
   handle {
     import protect

@@ -39,8 +39,11 @@ DJANGO_SECRET_KEY=$(rand)
 INTERNAL_API_KEY=$(rand)
 SUPERSET_SECRET_KEY=$(rand)
 DASHBOARD_ADMIN_PASSWORD=$(rand)
+REPORT_SERVICE_TOKEN=$(rand)
+REPORT_RO_PASSWORD=$(rand)
+REPORT_COMPOSER_PASSWORD=$(rand)
 EOF
-  echo "wrote $OUT (8 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+  echo "wrote $OUT (11 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
 
   # The one with a shape requirement, checked here rather than discovered by a
   # gateway that will not start.
@@ -52,6 +55,14 @@ EOF
 else
   echo "$OUT exists; leaving it alone (--rotate to replace)"
 fi
+
+# Secrets added after this install was made: appended once, never replacing what is there.
+for name in REPORT_SERVICE_TOKEN REPORT_RO_PASSWORD REPORT_COMPOSER_PASSWORD; do
+  if ! grep -q "^$name=" "$OUT"; then
+    echo "$name=$(rand)" >> "$OUT"
+    echo "added $name to $OUT"
+  fi
+done
 
 # The realm import carries two of them. Rendered, never committed: the template
 # holds placeholders so the repo itself has no secret in it.

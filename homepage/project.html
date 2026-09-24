@@ -452,6 +452,21 @@
     </a>
   </div>
 
+  <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
+
+  <div class="row">
+    <a class="card" id="report-composer-card" href="http://localhost/report-composer/">
+      <span class="n">7</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+        Report
+      </span>
+      <h2>Compose the report</h2>
+      <p>Assemble the assessment report from its blocks, preview it and generate the PDF.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+  </div>
+
   </div>
 </main>
 
@@ -508,7 +523,8 @@
       var inProject = {
         'control-objectives-card': 'http://localhost/control-objectives/p/',
         'controls-card': 'http://localhost/controls/p/',
-        'qualification-card': 'http://localhost/qualification/p/'
+        'qualification-card': 'http://localhost/qualification/p/',
+        'report-composer-card': 'http://localhost/report-composer/p/'
       };
       Object.keys(inProject).forEach(function (id) {
         var card = document.getElementById(id);
