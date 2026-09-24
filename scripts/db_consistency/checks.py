@@ -68,6 +68,49 @@ def c2_unknown_databases_and_schemas(cl: Cluster) -> list[Finding]:
     return out
 
 
+# ── C3 ───────────────────────────────────────────────────────────────────────
+
+#: qualification.qualification column, the core.system column it repeats
+CARD_FIELDS = (("systemName", "name"), ("systemVersion", "version"), ("company", "provider"))
+
+
+def c3_system_identity(cl: Cluster) -> list[Finding]:
+    """A card version's name, version and provider read the same in core, qualification and
+    control objectives. core.system's NULL version or provider is the card's empty string; an
+    assessment is named "<name> <version>", or "<name>" when there is no version."""
+    out = []
+    db = cl.platform_db
+    if cl.exists(db, "qualification.qualification"):
+        rows = cl.rows(db, """
+            SELECT s.pid::text, p.slug, s.number, q.id,
+                   q."systemName", s.name, q."systemVersion", coalesce(s.version, ''),
+                   q.company, coalesce(s.provider, '')
+              FROM qualification.qualification q
+              JOIN core.system s ON s.pid = q.system_id
+              JOIN core.project p ON p.pid = s.project_id
+             ORDER BY p.slug, s.number""")
+        for pid, slug, number, qid, *values in rows:
+            for i, (qcol, scol) in enumerate(CARD_FIELDS):
+                card, core = values[2 * i], values[2 * i + 1]
+                if card != core:
+                    out.append(fail("C3", f"system {pid} ({slug} v{number}): qualification {qid} "
+                                          f"{qcol} is '{card}', core.system {scol} is '{core}'"))
+    if cl.exists(db, "control_objectives.project"):
+        rows = cl.rows(db, """
+            SELECT s.pid::text, p.slug, s.number, a.id, a.name,
+                   s.name || CASE WHEN coalesce(s.version, '') <> '' THEN ' ' || s.version ELSE '' END
+              FROM control_objectives.project a
+              JOIN core.system s ON s.pid = a.system_id
+              JOIN core.project p ON p.pid = s.project_id
+             WHERE a.name IS DISTINCT FROM
+                   s.name || CASE WHEN coalesce(s.version, '') <> '' THEN ' ' || s.version ELSE '' END
+             ORDER BY p.slug, s.number""")
+        out += [fail("C3", f"system {pid} ({slug} v{number}): control_objectives project {aid} is named "
+                           f"'{name}', core.system says '{want}'")
+                for pid, slug, number, aid, name, want in rows]
+    return out
+
+
 # ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -85,5 +128,7 @@ DATA_CHECKS = [
     Check("C1", "orphan databases", "every project database belongs to a project", c1_orphan_databases),
     Check("C2", "unknown databases and schemas", "no database or platform schema outside the known list",
           c2_unknown_databases_and_schemas),
+    Check("C3", "system identity", "every card version has one name, version and provider",
+          c3_system_identity),
 ]
 ALL_CHECKS = DATA_CHECKS

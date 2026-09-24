@@ -265,3 +265,32 @@ def test_c2_the_catalogue_is_never_flagged(bed, cluster):
     # the catalogue schema is in the bed already; a catalogue database of its own is not ours to judge
     with planted(bed, "postgres", 'CREATE DATABASE "catalogue_dev"', 'DROP DATABASE "catalogue_dev"'):
         assert checks.c2_unknown_databases_and_schemas(cluster) == []
+
+
+# ── C3 system identity drift ─────────────────────────────────────────────────
+
+@pytest.mark.parametrize("column, core_value, drifted", [
+    ('"systemName"', "Alpha scorer", "Alpha scorer PRO"),
+    ('"systemVersion"', "1.0", "1.0.1"),
+    ("company", "Acme AI", "Acme Inc"),
+])
+def test_c3_the_card_says_something_else_than_core(bed, cluster, column, core_value, drifted):
+    with planted(bed, "platform",
+                 f"UPDATE qualification.qualification SET {column} = '{drifted}' WHERE id = 'q-a2'",
+                 f"UPDATE qualification.qualification SET {column} = '{core_value}' WHERE id = 'q-a2'"):
+        only(checks.c3_system_identity(cluster), "FAIL", A_V2, "qualification", drifted, core_value)
+
+
+def test_c3_the_assessment_is_named_after_another_version(bed, cluster):
+    with planted(bed, "platform",
+                 "UPDATE control_objectives.project SET name = 'Alpha scorer 0.9' WHERE id = 'coa2'",
+                 "UPDATE control_objectives.project SET name = 'Alpha scorer 1.0' WHERE id = 'coa2'"):
+        only(checks.c3_system_identity(cluster), "FAIL", A_V2, "control_objectives", "Alpha scorer 0.9",
+             "Alpha scorer 1.0")
+
+
+def test_c3_a_version_less_system_is_named_without_one(bed, cluster):
+    with planted(bed, "platform",
+                 "UPDATE control_objectives.project SET name = 'Beta bot ' WHERE id = 'cob1'",
+                 "UPDATE control_objectives.project SET name = 'Beta bot' WHERE id = 'cob1'"):
+        only(checks.c3_system_identity(cluster), "FAIL", B_V1, "control_objectives")
