@@ -123,6 +123,9 @@ services:
       # The report's roles (report_ro, report_composer_rw) and the composer's schema.
       # After 50-superset-db.sql, because it grants CONNECT on the superset database.
       - ./init/report-roles.sql:/docker-entrypoint-initdb.d/60-report-roles.sql:ro,Z
+      # The database inspector's read-only role, and Keycloak's and Superset's databases closed to
+      # PUBLIC. After 50-superset-db.sql, because it closes the superset database.
+      - ./init/inspector-role.sql:/docker-entrypoint-initdb.d/70-inspector-role.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
@@ -140,14 +143,18 @@ services:
       # the report's role passwords (scripts/secrets.sh); the defaults are the role names
       REPORT_RO_PASSWORD: ${REPORT_RO_PASSWORD:-report_ro}
       REPORT_COMPOSER_PASSWORD: ${REPORT_COMPOSER_PASSWORD:-report_composer_rw}
+      # the database inspector's (scripts/secrets.sh), required
+      INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
     volumes:
       - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
       - ./init/report-roles.sql:/setup/report-roles.sql:ro,Z
+      - ./init/inspector-role.sql:/setup/inspector-role.sql:ro,Z
     command: >
       sh -c "until pg_isready -q; do sleep 1; done
       && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql
       && psql -v ON_ERROR_STOP=1 -v report_ro_password=\"$$REPORT_RO_PASSWORD\"
-      -v report_composer_password=\"$$REPORT_COMPOSER_PASSWORD\" -f /setup/report-roles.sql"
+      -v report_composer_password=\"$$REPORT_COMPOSER_PASSWORD\" -f /setup/report-roles.sql
+      && psql -v ON_ERROR_STOP=1 -v inspector_password=\"$$INSPECTOR_PASSWORD\" -f /setup/inspector-role.sql"
     depends_on:
       - postgres
     restart: "no"
@@ -256,6 +263,56 @@ services:
     networks:
       - backend
 
+
+  # The database inspector, for the launcher's admins (Manage > Inspect database on a project page).
+  # Reached only through Caddy at :8100/inspect/pgadmin, behind the sign-in and the platform's
+  # admin gate, so it runs in desktop mode with no login of its own. It connects as inspector_ro
+  # (init/inspector-role.sql): SELECT everywhere it may connect, read-only sessions. The image keeps
+  # /var/lib/pgadmin in a volume, which outlives the container, so the password file is rewritten
+  # and the server list reloaded on every start rather than only on the first.
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: pgadmin
+    environment:
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      # The entrypoint insists on these even in desktop mode, where nobody logs in with them.
+      PGADMIN_DEFAULT_EMAIL: inspector@aisc.example.org
+      PGADMIN_DEFAULT_PASSWORD: unused-in-desktop-mode
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+      PGPASS_FILE: /tmp/pgpass
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      SCRIPT_NAME: /inspect/pgadmin
+      INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
+    # The password file is written from the environment, so the secret never sits in the repo.
+    entrypoint: >
+      sh -c "printf 'postgres:5432:*:inspector_ro:%s\\n' \"$$INSPECTOR_PASSWORD\" > /tmp/pgpass
+      && chmod 600 /tmp/pgpass && cp /tmp/pgpass /var/lib/pgadmin/.pgpass
+      && chmod 600 /var/lib/pgadmin/.pgpass && exec /entrypoint.sh"
+    volumes:
+      - ./inspector/pgadmin-servers.json:/pgadmin4/servers.json:ro,Z
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # Schema diagrams, the other half of the inspector: SchemaSpy's pages for one database (the
+  # platform's or a project's), made on the first visit and again after ten minutes. Behind the same
+  # admin gate, at :8100/inspect/schema/<database>/. Reads as inspector_ro.
+  schema-docs:
+    build: inspector/schema-docs/
+    image: aisc-schema-docs:latest
+    pull_policy: never
+    container_name: schema-docs
+    environment:
+      PGHOST: postgres
+      INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - backend
 
 volumes:
   immudb_data: # Persistent storage for the immudb ledger

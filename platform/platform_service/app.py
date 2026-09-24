@@ -14,12 +14,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from psycopg import errors
 from pydantic import BaseModel
 
 from aisc_identity import Caller
-from aisc_identity.fastapi import caller_dependency
+from aisc_identity.fastapi import caller_dependency, requires_role
 
 from platform_service import dashboard_bridge, db, projectdb
 from platform_service.membership import (
@@ -180,6 +180,17 @@ def authorisation(slug: str, caller: Caller = Depends(caller_dependency)) -> dic
         "admin": caller.has_role(ADMIN_ROLE),
         "may_write": may_write(role),
     }
+
+
+@app.get("/authz/admin", status_code=204)
+def admin_gate(caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> Response:
+    """Whether this caller is an admin, for Caddy to ask with forward_auth.
+
+    The database tools on the launcher see every project's database, so they
+    are behind this rather than behind a membership: 204 lets the request
+    through, 403 does not.
+    """
+    return Response(status_code=204)
 
 
 @app.get("/projects/{slug}/members")

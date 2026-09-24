@@ -42,6 +42,7 @@ DASHBOARD_ADMIN_PASSWORD=$(rand)
 REPORT_SERVICE_TOKEN=$(rand)
 REPORT_RO_PASSWORD=$(rand)
 REPORT_COMPOSER_PASSWORD=$(rand)
+INSPECTOR_PASSWORD=$(rand)
 EOF
   echo "wrote $OUT (11 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
 
@@ -57,7 +58,7 @@ else
 fi
 
 # Secrets added after this install was made: appended once, never replacing what is there.
-for name in REPORT_SERVICE_TOKEN REPORT_RO_PASSWORD REPORT_COMPOSER_PASSWORD; do
+for name in REPORT_SERVICE_TOKEN REPORT_RO_PASSWORD REPORT_COMPOSER_PASSWORD INSPECTOR_PASSWORD; do
   if ! grep -q "^$name=" "$OUT"; then
     echo "$name=$(rand)" >> "$OUT"
     echo "added $name to $OUT"

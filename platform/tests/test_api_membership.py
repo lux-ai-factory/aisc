@@ -171,5 +171,18 @@ def test_authz_tells_an_admin_it_is_an_admin(client, as_user, project):
     assert response.json() == {"role": "owner", "admin": True, "may_write": True}
 
 
+def test_the_admin_gate_lets_an_admin_through(client, as_user):
+    """What Caddy asks before the database tools: only the admin role passes."""
+    assert client.get("/authz/admin", headers=as_user(ADMIN, ("admin",))).status_code == 204
+
+
+def test_the_admin_gate_refuses_anyone_else(client, as_user):
+    assert client.get("/authz/admin", headers=as_user(BOB)).status_code == 403
+
+
+def test_the_admin_gate_asks_a_stranger_to_sign_in(client):
+    assert client.get("/authz/admin").status_code == 401
+
+
 def test_health_needs_no_token(client):
     assert client.get("/health").status_code == 200

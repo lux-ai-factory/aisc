@@ -23,6 +23,14 @@
   }
 }
 
+# After protect: the platform says whether the caller holds the admin role. 204 lets the request
+# through; its 403 goes back to the browser as it is. It reads the token protect just copied in.
+(admin_only) {
+  forward_auth platform:8000 {
+    uri /authz/admin
+  }
+}
+
 # oauth2-proxy's own endpoints stay open on every origin, or there is no way in.
 (oauth_endpoints) {
   handle /oauth2/* {
@@ -152,6 +160,18 @@
       root * /srv/homepage
       rewrite * /project.html
       file_server
+    }
+    # The database inspector, for admins only: it sees every project's database. pgAdmin
+    # serves under this prefix itself (SCRIPT_NAME), so the path goes through unstripped.
+    handle /inspect/pgadmin* {
+      import protect
+      import admin_only
+      reverse_proxy pgadmin:80
+    }
+    handle_path /inspect/schema* {
+      import protect
+      import admin_only
+      reverse_proxy schema-docs:8080
     }
     # protect goes INSIDE handle: at site level it would also guard /oauth2/*,
     # and /oauth2/start would redirect to itself for ever.
