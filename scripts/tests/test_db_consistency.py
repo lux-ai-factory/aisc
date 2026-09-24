@@ -240,3 +240,28 @@ def test_the_script_passes_a_clean_bed_and_fails_a_broken_one(bed):
     assert broken.returncode != 0
     assert f"  FAIL C1 project_{ORPHAN_HEX} has no core.project row" in broken.stdout
     assert "failed: 0" not in broken.stdout
+
+
+# ── C2 unknown databases and schemas ─────────────────────────────────────────
+
+@pytest.mark.parametrize("name", ["aisc", "controls", "qualification", "control_objectives"])
+def test_c2_a_leftover_standalone_database(bed, cluster, name):
+    with planted(bed, "postgres", f'CREATE DATABASE "{name}"', f'DROP DATABASE "{name}"'):
+        only(checks.c2_unknown_databases_and_schemas(cluster), "FAIL", f"database {name}", "leftover")
+
+
+def test_c2_an_unknown_database(bed, cluster):
+    with planted(bed, "postgres", 'CREATE DATABASE "scratch"', 'DROP DATABASE "scratch"'):
+        f = only(checks.c2_unknown_databases_and_schemas(cluster), "FAIL", "database scratch")
+        assert "leftover" not in f.message
+
+
+def test_c2_an_unknown_schema_in_platform(bed, cluster):
+    with planted(bed, "platform", "CREATE SCHEMA junk", "DROP SCHEMA junk"):
+        only(checks.c2_unknown_databases_and_schemas(cluster), "FAIL", "schema junk", "platform")
+
+
+def test_c2_the_catalogue_is_never_flagged(bed, cluster):
+    # the catalogue schema is in the bed already; a catalogue database of its own is not ours to judge
+    with planted(bed, "postgres", 'CREATE DATABASE "catalogue_dev"', 'DROP DATABASE "catalogue_dev"'):
+        assert checks.c2_unknown_databases_and_schemas(cluster) == []
