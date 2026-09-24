@@ -6,7 +6,11 @@ def slugify(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:40].strip("_")
     if not slug:
         return "connector"
-    return f"c_{slug}"[:40] if slug[0].isdigit() else slug
+    if slug[0].isdigit():
+        # The "c_" prefix pushes the 40-char cutoff earlier and can land on an
+        # underscore that survived the strip above; strip it again.
+        return f"c_{slug}"[:40].rstrip("_")
+    return slug
 
 
 def secret_key(slug: str) -> str:
