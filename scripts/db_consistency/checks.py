@@ -311,6 +311,52 @@ def c7_migrations(cl: Cluster) -> list[Finding]:
     return out
 
 
+# ── C8 ───────────────────────────────────────────────────────────────────────
+
+#: Schemas of the platform database that follow the convention. engine is frozen and the
+#: catalogue out of scope, so neither is here.
+LINTED_PLATFORM_SCHEMAS = ("core", "qualification", "control_objectives", "report_composer")
+#: The migration tools' own tables: their columns are the tool's, not ours.
+MIGRATION_TRACKERS = ("schema_migration", "template_migration", "_prisma_migrations", "alembic_version")
+SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _lint(cl: Cluster, db: str, where: str, label: str) -> list[Finding]:
+    rows = cl.rows(db, f"""
+        SELECT c.table_schema, c.table_name, c.column_name, c.data_type
+          FROM information_schema.columns c
+          JOIN information_schema.tables t
+            ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+         WHERE t.table_type = 'BASE TABLE' AND ({where})
+         ORDER BY c.table_schema, c.table_name, c.ordinal_position""")
+    names: dict[str, list[str]] = {}
+    naive: dict[str, list[str]] = {}
+    for schema, table, column, dtype in rows:
+        if table in MIGRATION_TRACKERS or out_of_scope(column):
+            continue
+        where_ = f"{schema}.{table}" if schema != "public" else table
+        if not SNAKE.match(column):
+            names.setdefault(where_, []).append(column)
+        if dtype == "timestamp without time zone":
+            naive.setdefault(where_, []).append(column)
+    return ([warn("C8", f"{label} {t}: columns not snake_case: {', '.join(c)}") for t, c in names.items()]
+            + [warn("C8", f"{label} {t}: timestamp without time zone: {', '.join(c)}") for t, c in naive.items()])
+
+
+def c8_naming(cl: Cluster) -> list[Finding]:
+    """snake_case columns and timestamptz, in the schemas that are not frozen: core,
+    qualification, control_objectives, report_composer, each project database's controls, and
+    superset's aisc_* tables. Not engine (frozen), not the catalogue, not migration trackers."""
+    schemas = ", ".join(f"'{s}'" for s in LINTED_PLATFORM_SCHEMAS)
+    out = _lint(cl, cl.platform_db, f"c.table_schema IN ({schemas})", cl.platform_db)
+    for db in project_databases(cl):
+        out += _lint(cl, db, "c.table_schema = 'controls'", db)
+    if cl.superset_db in cl.databases():
+        out += _lint(cl, cl.superset_db, "c.table_schema = 'public' AND c.table_name LIKE 'aisc\\_%'",
+                     cl.superset_db)
+    return out
+
+
 # ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -338,4 +384,8 @@ DATA_CHECKS = [
     Check("C7", "project database migrations", "no project database is behind on its migrations",
           c7_migrations),
 ]
-ALL_CHECKS = DATA_CHECKS
+#: C8 is about the schemas, not the data: the clean data bed still has the real schemas' names.
+ALL_CHECKS = DATA_CHECKS + [
+    Check("C8", "naming and types", "every column is snake_case and every timestamp has a time zone",
+          c8_naming),
+]

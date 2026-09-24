@@ -484,3 +484,99 @@ def test_c7_a_project_database_never_provisioned(bed, cluster):
         found = checks.c7_migrations(cluster)
         only(found, "FAIL", db, "provision.template_migration", "missing")
         only(found, "FAIL", db, "controls._prisma_migrations", "missing")
+
+
+# ── C8 naming and types lint ─────────────────────────────────────────────────
+
+LINT_PROJECT_DB = f"project_{ORPHAN_HEX}"
+LINT_PLATFORM = """
+CREATE SCHEMA core; CREATE SCHEMA qualification; CREATE SCHEMA control_objectives;
+CREATE SCHEMA report_composer; CREATE SCHEMA engine; CREATE SCHEMA catalogue;
+CREATE TABLE core.project (pid uuid, created_at timestamptz);
+CREATE TABLE core.schema_migration (name text, "appliedAt" timestamp);
+CREATE TABLE qualification.card (id text, answered_at timestamp(3) with time zone);
+CREATE TABLE qualification._prisma_migrations (id text, started_at timestamp);
+CREATE TABLE control_objectives.project (id text, created_at timestamptz);
+CREATE TABLE control_objectives.alembic_version ("versionNum" text);
+CREATE TABLE report_composer.layout (id uuid, created_by text);
+CREATE TABLE engine.frozen ("camelCase" text, created_at timestamp);
+CREATE TABLE catalogue.tool ("toolName" text, created_at timestamp);
+CREATE TABLE public.whatever ("camelCase" text);
+"""
+LINT_PROJECT = """
+CREATE SCHEMA controls; CREATE SCHEMA provision;
+CREATE TABLE controls.submission (id text, "order" integer, closed_at timestamptz);
+CREATE TABLE controls._prisma_migrations (id text, "startedAt" timestamp);
+"""
+LINT_SUPERSET = """
+CREATE TABLE aisc_comment (id integer, author_sub text, created_at timestamptz);
+CREATE TABLE ab_user (id integer, "changedOn" timestamp);
+"""
+
+
+@pytest.fixture(scope="module")
+def lint():
+    """A cluster of its own: C8 on schemas that are clean, on a second throwaway."""
+    t = Throwaway.start("dbcheck-lint")
+    try:
+        for db, text in (("platform", LINT_PLATFORM), ("superset", None), (LINT_PROJECT_DB, None)):
+            if text is None:
+                t.psql("postgres", f'CREATE DATABASE "{db}"')
+        t.psql("platform", LINT_PLATFORM)
+        t.psql("superset", LINT_SUPERSET)
+        t.psql(LINT_PROJECT_DB, LINT_PROJECT)
+        yield t, Cluster(f"host=127.0.0.1 port={t.port} user=aisc-postgres-user password={t.password}")
+    finally:
+        t.stop()
+
+
+def test_c8_clean_schemas_and_what_is_excluded_report_nothing(lint):
+    _, cl = lint
+    assert checks.c8_naming(cl) == []
+
+
+C8_CASES = {
+    "camelCase in qualification": ("platform", 'ALTER TABLE qualification.card ADD COLUMN "systemName" text',
+                                   'ALTER TABLE qualification.card DROP COLUMN "systemName"',
+                                   ("qualification.card", "systemName", "snake_case")),
+    "no time zone in report_composer": ("platform", "ALTER TABLE report_composer.layout ADD COLUMN made timestamp",
+                                        "ALTER TABLE report_composer.layout DROP COLUMN made",
+                                        ("report_composer.layout", "made", "timestamp without time zone")),
+    "camelCase in a project's controls": (LINT_PROJECT_DB, 'ALTER TABLE controls.submission ADD COLUMN "questionId" text',
+                                          'ALTER TABLE controls.submission DROP COLUMN "questionId"',
+                                          (LINT_PROJECT_DB, "controls.submission", "questionId", "snake_case")),
+    "no time zone in superset's aisc tables": ("superset", "ALTER TABLE aisc_comment ALTER created_at TYPE timestamp",
+                                               "ALTER TABLE aisc_comment ALTER created_at TYPE timestamptz",
+                                               ("superset", "aisc_comment", "created_at", "timestamp without time zone")),
+}
+
+
+@pytest.mark.parametrize("case", list(C8_CASES))
+def test_c8_a_column_off_the_convention(lint, case):
+    t, cl = lint
+    db, plant, remove, needles = C8_CASES[case]
+    t.psql(db, plant)
+    try:
+        f = only(checks.c8_naming(cl), "WARN", *needles)
+    finally:
+        t.psql(db, remove)
+    assert f.check == "C8"
+
+
+def test_c8_a_catalogue_named_column_is_not_ours(lint):
+    t, cl = lint
+    t.psql("platform", 'ALTER TABLE qualification.card ADD COLUMN "catalogueId" text')
+    try:
+        assert checks.c8_naming(cl) == []
+    finally:
+        t.psql("platform", 'ALTER TABLE qualification.card DROP COLUMN "catalogueId"')
+
+
+def test_c8_on_the_real_schemas(cluster):
+    found = checks.c8_naming(cluster)
+    text = "\n".join(messages(found))
+    assert all(f.level == "WARN" for f in found)
+    assert '"systemName"' not in text and "systemName" in text   # qualification's camelCase
+    assert "controls.submission_answer" in text and "submissionId" in text
+    assert "aisc_comment" in text and "timestamp without time zone" in text
+    assert "engine." not in text and "catalogue" not in text and "_prisma_migrations" not in text
