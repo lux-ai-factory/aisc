@@ -63,3 +63,53 @@ def test_wp2_aisc_backend_has_no_platform_url(compose):
     q, cfg = compose
     names = set(cfg["services"]["aisc-backend"].get("environment") or {})
     assert "PLATFORM_URL" not in names
+
+
+# ── LLM keys (pipeline 2026-09-24-llm-keys, 01-specs.md S6.1, S6.2, S6.7) ─────
+# A secret given as `${NAME:?...}` is in the fixture's `required` set and so resolves to "dummy":
+# that value proves the `:?` form (D9) without reading env.secrets.
+
+
+def _extra_hosts(svc):
+    hosts = svc.get("extra_hosts") or []
+    if isinstance(hosts, dict):
+        return {f"{k}:{v}" for k, v in hosts.items()}
+    return {h.replace("=", ":", 1) for h in hosts}
+
+
+def test_s6_1_platform_gets_the_two_secrets_and_the_ollama_default(compose):
+    q, cfg = compose
+    env = cfg["services"]["platform"].get("environment") or {}
+    assert env.get("PLATFORM_SECRETS_KEY") == "dummy", "PLATFORM_SECRETS_KEY is not a required `:?` variable"
+    assert env.get("PLATFORM_INTERNAL_TOKEN") == "dummy", "PLATFORM_INTERNAL_TOKEN is not a required `:?` variable"
+    assert env.get("PLATFORM_OLLAMA_BASE_URL") == "http://host.docker.internal:11434"
+    assert "host.docker.internal:host-gateway" in _extra_hosts(cfg["services"]["platform"])
+
+
+def test_s6_2_the_card_agent_reaches_the_platform_with_the_token(compose):
+    q, cfg = compose
+    svc = cfg["services"]["qualification-agents"]
+    env = svc.get("environment") or {}
+    assert env.get("PLATFORM_URL") == "http://platform:8000"
+    assert env.get("PLATFORM_INTERNAL_TOKEN") == "dummy"
+    assert "host.docker.internal:host-gateway" in _extra_hosts(svc)
+    assert "backend" in (svc.get("networks") or {})
+
+
+def test_s6_2_the_risk_mapper_gets_the_token(compose):
+    q, cfg = compose
+    svc = cfg["services"]["control-objectives"]
+    env = svc.get("environment") or {}
+    assert env.get("PLATFORM_INTERNAL_TOKEN") == "dummy"
+    assert env.get("PLATFORM_URL")
+    assert "backend" in (svc.get("networks") or {})
+    assert "backend" in (cfg["services"]["platform"].get("networks") or {})
+
+
+def test_s6_7_the_compose_files_stay_valid_with_the_new_variables(compose):
+    q, cfg = compose
+    assert q.returncode == 0, q.stderr[-2000:]
+    names = {n for s in ("platform", "qualification-agents", "control-objectives")
+             for n in (cfg["services"][s].get("environment") or {})}
+    assert {"PLATFORM_SECRETS_KEY", "PLATFORM_INTERNAL_TOKEN", "PLATFORM_OLLAMA_BASE_URL", "PLATFORM_URL"} <= names
+    assert not (cfg["services"]["platform"].get("ports")), "the platform must publish no port (S5.5)"
