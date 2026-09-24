@@ -100,3 +100,23 @@ def test_other_documents_are_refused():
 
     with pytest.raises(ImportFailed):
         import_openapi("<html>not a spec</html>")
+
+
+def test_an_operations_own_server_is_removed_not_just_warned_about():
+    from aisc_connectors.importers.openapi import import_openapi
+
+    spec = json.dumps({"openapi": "3.1.0", "info": {"title": "t", "version": "1"}, "servers": [{"url": "http://h"}],
+                       "paths": {"/x": {"get": {"operationId": "x", "servers": [{"url": "http://other"}]}}}})
+    result = import_openapi(spec)
+    op = result.document["paths"]["/x"]["get"]
+    assert "servers" not in op
+    assert any("names its own server" in w for w in result.warnings)
+
+
+def test_pasted_text_larger_than_the_spec_limit_is_refused(monkeypatch):
+    from aisc_connectors.importers.errors import ImportFailed
+    from aisc_connectors.importers.openapi import import_openapi
+
+    monkeypatch.setenv("CONNECTORS_MAX_SPEC_BYTES", "10")
+    with pytest.raises(ImportFailed, match="larger than"):
+        import_openapi("x" * 11)

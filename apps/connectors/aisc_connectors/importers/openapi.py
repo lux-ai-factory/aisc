@@ -11,6 +11,7 @@ from openapi_spec_validator import validate
 from aisc_connectors.importers import ImportResult
 from aisc_connectors.importers.errors import ImportFailed
 from aisc_connectors.model import HTTP_METHODS, strip_aisc
+from aisc_connectors.settings import settings
 
 
 def _parse(text: str) -> dict:
@@ -71,6 +72,9 @@ def _auth_suggestion(doc: dict) -> dict | None:
 
 
 def import_openapi(text: str, source_url: str | None = None, base_url: str | None = None) -> ImportResult:
+    limit = settings().max_spec_bytes
+    if len(text.encode("utf-8")) > limit:
+        raise ImportFailed(f"the document is larger than {limit} bytes")
     raw = _parse(text)
     if str(raw.get("swagger", "")).startswith("2"):
         from aisc_connectors.importers import swagger2
@@ -99,5 +103,6 @@ def import_openapi(text: str, source_url: str | None = None, base_url: str | Non
             op["operationId"] = op_id
             if op.get("servers"):
                 warnings.append(f"{op_id} names its own server; the connector's server is used instead")
+                del op["servers"]
             op["x-aisc-binding"] = {"protocol": "http", "method": method, "path": path, "static_headers": {}}
     return ImportResult(document=doc, warnings=warnings, auth_suggestion=_auth_suggestion(raw))

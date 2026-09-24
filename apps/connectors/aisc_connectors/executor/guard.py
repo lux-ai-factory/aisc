@@ -20,5 +20,7 @@ def refuse_metadata_host(url: str) -> None:
         raise GatewayFailure("dns", f"{host} does not resolve") from exc
     for address in addresses:
         ip = ipaddress.ip_address(address.split("%")[0])
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
         if any(ip in net for net in _METADATA):
             raise GatewayFailure("not_allowed", f"{host} resolves to a link-local metadata address")
