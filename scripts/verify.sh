@@ -56,6 +56,7 @@ control objectives|apps/control-objectives|.venv|uv run pytest -q
 catalogue backend|apps/catalogue/backend|.venv|uv run pytest -q -p no:cacheprovider
 catalogue frontend|apps/catalogue/frontend|node_modules|npx vitest run
 qualification|apps/qualification|node_modules|npx vitest run
+qualification prefill|apps/qualification|node_modules|docker run --rm -v "$PWD:/w" -w /w/services/prefill python:3.12-slim sh -lc 'pip install -q -r requirements.txt && PREFILL_FIELDS_PATH=/w/src/data/prefillFields.json python -m pytest -q'
 qualification ontology|apps/qualification|node_modules|docker run --rm -v "$PWD:/w" -w /w/services/ontology python:3.12-slim sh -lc 'pip install -q -r requirements.txt pytest && python -m pytest -q'
 controls|apps/controls|node_modules|npx vitest run
 engine webapp|apps/webapp|node_modules|npx vitest run

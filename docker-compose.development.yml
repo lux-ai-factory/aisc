@@ -205,6 +205,22 @@ services:
       - backend
       - frontend
 
+  # Pre-fill a qualification from a document somebody already wrote. Reads the
+  # file, proposes the form's answers, and hands them back for amending. Stores
+  # nothing, and needs no model: the Annex headings and the usual labels are
+  # the signal.
+  qualification-prefill:
+    build:
+      # the app root, because the field mapping lives with the form
+      context: apps/qualification
+      dockerfile: services/prefill/Dockerfile
+    image: aisc-qualification-prefill:latest
+    pull_policy: never
+    container_name: qualification-prefill
+    restart: unless-stopped
+    networks:
+      - backend
+
   # ── EU-AI-Act qualification app (apps/qualification submodule) ──
   # LiteLLM completion sidecar — holds the provider key; the app calls it over HTTP.
   qualification-llm:
@@ -284,6 +300,8 @@ services:
       AISC_BACKEND_URL: http://aisc-backend:8000
       # The card agent, which the save starts and the card page polls.
       AGENT_SERVICE_URL: http://qualification-agents:8012
+      # Where an uploaded document is turned into the form's answers.
+      PREFILL_URL: http://qualification-prefill:8012
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
     env_file: apps/qualification/env.development
