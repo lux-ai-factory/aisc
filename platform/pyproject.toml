@@ -11,6 +11,9 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
+    # the live model listing calls the providers; keys are Fernet-encrypted at rest
+    "httpx>=0.27",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]
