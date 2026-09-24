@@ -42,6 +42,13 @@ def home():
     return RedirectResponse(os.environ.get("LAUNCHER_URL", "http://localhost:8100/"), status_code=303)
 
 
+@router.get("/p/{ref}")
+def layouts_page_without_slash(request: Request, ref: str):
+    # The launcher links here without the slash. Starlette's own slash redirect
+    # would drop the root path, sending the browser out of the composer.
+    return RedirectResponse(f"{_root(request)}/p/{ref}/", status_code=307)
+
+
 @router.get("/p/{ref}/")
 def layouts_page(request: Request, ref: str):
     g = guard(request, ref, "viewer")
