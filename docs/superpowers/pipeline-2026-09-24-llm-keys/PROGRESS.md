@@ -5,7 +5,7 @@
 | 1 specs | 01-specs.md | done |
 | 2 tests | 02-tests.md + test files | done |
 | 3 plan | 03-coding-plan.md | done |
-| 4 code | commits | pending |
+| 4 code | commits + 04-code-notes.md | done |
 | 5 verify until green | 05-report.md | pending |
 
 ## Stage 1 notes (specs)
@@ -64,3 +64,21 @@
 - Found and recorded: platform/tests/conftest.py cleans pytest-* projects in the LIVE database when
   PLATFORM_TEST_DATABASE_URL is unset; the plan requires it on every platform run.
 - No product code or tests touched; nothing run against the live stack; nothing pushed.
+
+## Stage 4 notes (code)
+
+- Implemented the 13 tasks of 03-coding-plan.md in order; no test edited. Details, deviations
+  D-a to D-g and open items in 04-code-notes.md.
+- Commits (local, not pushed): top-level 7e97a5a, ee82188, d803d4e, 7a228d4, 09a7cb2, 31de564,
+  6754e6f (submodule pointers) and the commit that adds this note; apps/qualification 82322a8,
+  80eb53b, 91beaa8; apps/control-objectives 442fa7f, 351f41c.
+- Final full suites: platform 258 passed, 2 skipped; A 146 passed; B 297 passed, 1 skipped;
+  qualification-web 2 files 25 passed, tsc clean; top-level 26 passed.
+- Still red (one): apps/qualification test/unit/secrets.test.ts flags the stage 2 test files
+  test_baf_llm.py and test_project_llm.py (`TOKEN = "pytest-internal-" + ...` matches its
+  inline-credential regex). Red before stage 4 too; a test-file fix is suggested in 04 section 3.
+- homepage/project.html carries the Manage link on top of the user's uncommitted edit; not
+  committed; the user commits it with their change.
+- Before the next `up`: run scripts/secrets.sh once (appends the two new secrets, rebuilds
+  env.runtime). Nothing was applied to the running stack. Throwaway container
+  aisc-t-llmkeys-s4-ee41f7cc removed.
