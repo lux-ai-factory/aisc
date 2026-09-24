@@ -18,6 +18,24 @@ pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 psql_(){ docker exec postgres psql -U "$PGUSER" -d "$PGDB" -At -c "$1" 2>&1; }
+# Some services are configured with a URL, others with DB_NAME/DB_USER; both
+# say the same two things, so both are read.
+db_settings(){ docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                 | grep -E '^(DATABASE_URL|DB_NAME|DB_USER)='; }
+# The service behind <container> is on the platform database, as <schema>_rw.
+connection_checks(){ # container schema
+  local conf
+  conf=$(db_settings "$1")
+  case "$conf" in
+    *"/$PGDB"*|*"DB_NAME=$PGDB"*) ok "the service is connected to the $PGDB database" ;;
+    *sqlite*) no "still on a file of its own" ;;
+    *) no "the service is not on $PGDB" ;;
+  esac
+  case "$conf" in
+    *"${2}_rw"*) ok "as its own role, ${2}_rw" ;;
+    *) no "not connecting as ${2}_rw" ;;
+  esac
+}
 
 # module | container | schema | the table that names a project | its column
 # The link is called project_id in every schema: the project a row belongs to
@@ -45,19 +63,7 @@ for m in "${MODULES[@]}"; do
                   where table_schema='public' and table_name='$table'")
   [ "$stray" = "0" ] && ok "and none of them in public" || no "$table is also sitting in public"
 
-  # Some services are configured with a URL, others with DB_NAME/DB_USER; both
-  # say the same two things, so both are read.
-  env_of(){ docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}'; }
-  conf=$(env_of "$container" | grep -E '^(DATABASE_URL|DB_NAME|DB_USER)=')
-  case "$conf" in
-    *"/$PGDB"*|*"DB_NAME=$PGDB"*) ok "the service is connected to the $PGDB database" ;;
-    *sqlite*) no "still on a file of its own" ;;
-    *) no "the service is not on $PGDB" ;;
-  esac
-  case "$conf" in
-    *"${schema}_rw"*) ok "as its own role, ${schema}_rw" ;;
-    *) no "not connecting as ${schema}_rw" ;;
-  esac
+  connection_checks "$container" "$schema"
 
   qualified="$schema.\"$table\""
   fk=$(psql_ "select confrelid::regclass::text
@@ -109,17 +115,7 @@ for m in "${REFERENCE[@]}"; do
   n=$(psql_ "select count(*) from information_schema.tables where table_schema='$schema'")
   [ "${n:-0}" -gt 0 ] && ok "has $n tables in the $schema schema" || no "no tables in $schema"
 
-  conf=$(docker inspect "$container" --format '{{range .Config.Env}}{{println .}}{{end}}' \
-         | grep -E '^(DATABASE_URL|DB_NAME|DB_USER)=')
-  case "$conf" in
-    *"/$PGDB"*|*"DB_NAME=$PGDB"*) ok "the service is connected to the $PGDB database" ;;
-    *sqlite*) no "still on a file of its own" ;;
-    *) no "the service is not on $PGDB" ;;
-  esac
-  case "$conf" in
-    *"${schema}_rw"*) ok "as its own role, ${schema}_rw" ;;
-    *) no "not connecting as ${schema}_rw" ;;
-  esac
+  connection_checks "$container" "$schema"
 
   refs=$(psql_ "select count(*) from information_schema.columns
                  where table_schema='$schema' and column_name in ('project_id','projectId')")

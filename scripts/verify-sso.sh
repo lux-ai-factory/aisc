@@ -18,6 +18,12 @@ KC=${KEYCLOAK_URL:-http://localhost:8081}
 pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
+token_for(){ # user password -> an access token for the engine's client, or nothing
+  curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' \
+       -d "username=$1" -d "password=$2" -d 'scope=openid' \
+       "$KC/realms/aisc/protocol/openid-connect/token" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null
+}
 
 echo "1. one Keycloak login, at the launcher"
 page=$(curl -s -c "$J" -b "$J" -L --max-time 25 http://localhost:8100/)
@@ -162,10 +168,12 @@ echo "2e. nothing is running on a secret anyone can read"
 SHIPPED_COOKIE_SHA=68468559c25d06fff2b3653eaf81c2dff9dc1069f6e58be81c326fca91392d5e
 SHIPPED_CLIENT_SHA=73ce74bda63a34da96e9cf3e53562c1a36c487e57498d402a961313e4340717a
 flag(){ printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
-running_cookie=$(docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
-                 | sed -n 's/^--cookie-secret=//p' | head -1)
-running_client=$(docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
-                 | sed -n 's/^--client-secret=//p' | head -1)
+gateway_flag(){ # name -> the value oauth2-proxy runs with for --<name>
+  docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
+    | sed -n "s/^--$1=//p" | head -1
+}
+running_cookie=$(gateway_flag cookie-secret)
+running_client=$(gateway_flag client-secret)
 [ "$(flag "$running_cookie")" != "$SHIPPED_COOKIE_SHA" ] \
   && ok "the gateway's cookie secret is not the one that was in the repo" \
   || no "the gateway is running on the cookie secret that was in the repo"
@@ -293,10 +301,7 @@ echo "7. installing a plugin goes through the engine, not a second door"
 # engine's install endpoint, its project list, and no bespoke door.
 # The role checks below send an access token of their own, so that the answer
 # is about the account named, not about whoever the session belongs to.
-TOK=$(curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' \
-        -d "username=$U" -d "password=$P" -d 'scope=openid' \
-        "$KC/realms/aisc/protocol/openid-connect/token" \
-      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+TOK=$(token_for "$U" "$P")
 [ -n "$TOK" ] && ok "the realm issues an access token for the engine's client" || no "no access token from the realm"
 
 c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
@@ -305,10 +310,7 @@ c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code
 # Installing puts code on the server, so it takes the admin role. The dialog is
 # the same dialog for everybody; what changes is who it works for, which is
 # asserted in both directions here and in full in verify-rbac.sh.
-ADMIN_TOK=$(curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' \
-        -d 'username=admin' -d 'password=admin' -d 'scope=openid' \
-        "$KC/realms/aisc/protocol/openid-connect/token" \
-      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
+ADMIN_TOK=$(token_for admin admin)
 install_as() {
   curl -s -b "$J" -H "Authorization: Bearer $1" -o /dev/null -w '%{http_code}' --max-time 30 \
     -X POST -H 'Content-Type: application/json' \
