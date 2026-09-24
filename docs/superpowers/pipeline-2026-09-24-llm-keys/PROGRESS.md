@@ -4,7 +4,7 @@
 |---|---|---|
 | 1 specs | 01-specs.md | done |
 | 2 tests | 02-tests.md + test files | done |
-| 3 plan | 03-coding-plan.md | pending |
+| 3 plan | 03-coding-plan.md | done |
 | 4 code | commits | pending |
 | 5 verify until green | 05-report.md | pending |
 
@@ -44,3 +44,23 @@
   pre-existing). The throwaway recipe also applies init/inspector-role.sql and init/report-roles.sql.
 - The host runs a real ollama on :11434; the tests never reach it (env cleared, closed ports).
 - homepage/project.html untouched (user's uncommitted edit); S4.2 test is working-tree only.
+
+## Stage 3 notes (plan)
+
+- Wrote 03-coding-plan.md: 13 ordered tasks, each with its requirement IDs, the tests it turns green,
+  files per repo, signatures and SQL, the command to run just those tests, and the commit (repo,
+  explicit paths, message). Order: 1 platform deps, 2 llm_catalogue, 3 0005_llm.sql + llm_store,
+  4 app.py routes + resolve route + validation handler, 5 A baf_llm.py + thin fill/llm.py, 6 A
+  service/agent ?project=, 7 B baf_llm.py byte copy + thin llm.py, 8 B mapper_for + 502 + build_app,
+  9 qualification-web projectId, 10 compose/secrets.sh/Caddyfile/env comments/verify script,
+  11 homepage/llm.html, 12 project.html Manage link (NOT committed), 13 parity, submodule pointer bump,
+  full suites, cleanup.
+- Plan decisions P1 to P11 in section 4 (no proxy/no redirect on both HTTP clients, models route 503
+  without the secrets key, ollama PUT with a key is 422, internal route check order, rotation never
+  aborts, secrets.sh --rotate keeps PLATFORM_SECRETS_KEY, llm.html has no userinfo call, staging
+  compose not wired).
+- No test flagged as wrong. Section 5 lists the strict regex tests and their traps (page regexes scan
+  comments too, `.on...=` and `key...value ==` traps, catalogue reload, first `handle_path /api/*`).
+- Found and recorded: platform/tests/conftest.py cleans pytest-* projects in the LIVE database when
+  PLATFORM_TEST_DATABASE_URL is unset; the plan requires it on every platform run.
+- No product code or tests touched; nothing run against the live stack; nothing pushed.
