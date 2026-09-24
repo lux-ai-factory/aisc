@@ -384,3 +384,51 @@ def test_c4_a_reference_that_does_not_resolve(bed, cluster, case):
     found = checks.c4_references(cluster)
     assert found == [], found
     assert f.check == "C4"
+
+
+# ── C5 users resolve ─────────────────────────────────────────────────────────
+
+C5_CASES = {
+    "member": ("platform",
+               f"INSERT INTO core.project_member (project_id, subject, role) VALUES ('{E}', '{UNKNOWN}', 'viewer')",
+               f"DELETE FROM core.project_member WHERE subject = '{UNKNOWN}'",
+               "core.project_member.subject"),
+    "a user of another realm": (
+               "platform",
+               f"INSERT INTO core.project_member (project_id, subject, role) VALUES ('{E}', '{MASTER_ADMIN}', 'viewer')",
+               f"DELETE FROM core.project_member WHERE subject = '{MASTER_ADMIN}'",
+               "core.project_member.subject"),
+    "layout editor": ("platform",
+               f"UPDATE report_composer.layout SET updated_by = '{UNKNOWN}'",
+               f"UPDATE report_composer.layout SET updated_by = '{OLGA}'",
+               "report_composer.layout.updated_by"),
+    "report author": ("platform",
+               f"UPDATE report_composer.generated_report SET created_by = '{UNKNOWN}'",
+               f"UPDATE report_composer.generated_report SET created_by = '{OLGA}'",
+               "report_composer.generated_report.created_by"),
+    "comment author": ("superset",
+               f"UPDATE aisc_comment SET author_sub = '{UNKNOWN}'",
+               f"UPDATE aisc_comment SET author_sub = '{OLGA}'",
+               "aisc_comment.author_sub"),
+    "review assignee": ("superset",
+               f"UPDATE aisc_review_request SET assignee_user_sub = '{UNKNOWN}'",
+               f"UPDATE aisc_review_request SET assignee_user_sub = '{BOB}'",
+               "aisc_review_request.assignee_user_sub"),
+}
+
+
+@pytest.mark.parametrize("case", list(C5_CASES))
+def test_c5_a_subject_keycloak_does_not_know(bed, cluster, case):
+    db, plant, remove, where = C5_CASES[case]
+    sub = MASTER_ADMIN if "realm" in case else UNKNOWN
+    with planted(bed, db, plant, remove):
+        f = only(checks.c5_users(cluster), "WARN", sub, where, "realm aisc")
+    assert f.check == "C5"
+    assert checks.c5_users(cluster) == []
+
+
+def test_c5_skips_when_keycloak_cannot_be_read(bed, cluster):
+    from dataclasses import replace
+    found = checks.c5_users(replace(cluster, keycloak_db="no_keycloak_here"))
+    assert [f.level for f in found] == ["WARN"]
+    assert "skipped" in found[0].message and "no_keycloak_here" in found[0].message

@@ -206,6 +206,49 @@ def c4_references(cl: Cluster) -> list[Finding]:
     return out + _answers(cl)
 
 
+# ── C5 ───────────────────────────────────────────────────────────────────────
+
+def _columns(cl: Cluster, db: str, where: str) -> list[tuple[str, str, str]]:
+    """(schema, table, column) of information_schema.columns matching `where`."""
+    return cl.rows(db, "SELECT table_schema, table_name, column_name FROM information_schema.columns"
+                       f" WHERE {where} ORDER BY 1, 2, 3")
+
+
+def _subjects(cl: Cluster) -> dict[str, set[str]]:
+    """Every stored Keycloak subject, to where it was found (table.column)."""
+    found: dict[str, set[str]] = {}
+
+    def collect(db: str, schema: str, table: str, column: str, label: str) -> None:
+        for (sub,) in cl.rows(db, f'SELECT DISTINCT "{column}"::text FROM "{schema}"."{table}"'
+                                  f' WHERE "{column}" IS NOT NULL AND "{column}"::text <> \'\''):
+            found.setdefault(sub, set()).add(label)
+
+    db = cl.platform_db
+    if cl.exists(db, "core.project_member"):
+        collect(db, "core", "project_member", "subject", "core.project_member.subject")
+    for schema, table, column in _columns(cl, db, "table_schema = 'report_composer' AND column_name LIKE '%\\_by'"
+                                                  " AND table_name <> 'schema_migration'"):
+        collect(db, schema, table, column, f"{schema}.{table}.{column}")
+    if cl.superset_db in cl.databases():
+        for schema, table, column in _columns(cl, cl.superset_db, "table_schema = 'public'"
+                                              " AND table_name LIKE 'aisc\\_%' AND column_name LIKE '%\\_sub'"):
+            collect(cl.superset_db, schema, table, column, f"{table}.{column}")
+    return found
+
+
+def c5_users(cl: Cluster) -> list[Finding]:
+    """Every stored Keycloak subject is a user of the realm. Skipped, with a WARN saying so,
+    when the Keycloak database cannot be read."""
+    try:
+        users = {r[0] for r in cl.rows(cl.keycloak_db, "SELECT u.id FROM user_entity u"
+                                       " JOIN realm r ON r.id = u.realm_id WHERE r.name = %s", (cl.realm,))}
+    except Exception as exc:
+        reason = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+        return [warn("C5", f"skipped: the {cl.keycloak_db} database cannot be read ({reason})")]
+    return [warn("C5", f"subject {sub} in {', '.join(sorted(where))} is not a user of realm {cl.realm}")
+            for sub, where in sorted(_subjects(cl).items()) if sub not in users]
+
+
 # ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -227,5 +270,6 @@ DATA_CHECKS = [
           c3_system_identity),
     Check("C4", "references resolve", "every reference into core.project and core.system resolves",
           c4_references),
+    Check("C5", "users resolve", "every stored subject is a Keycloak user", c5_users),
 ]
 ALL_CHECKS = DATA_CHECKS
