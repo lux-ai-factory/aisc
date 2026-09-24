@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from .cluster import Cluster
 from .findings import Finding, fail, warn
 
+ROOT = Path(__file__).resolve().parents[2]
+PROJECT_TEMPLATE = ROOT / "platform/project-template"
+CONTROLS_MIGRATIONS = ROOT / "apps/controls/prisma/migrations"
 PROJECT_DB = re.compile(r"^project_[0-9a-f]{32}$")
 
 
@@ -281,6 +285,32 @@ def c6_stale_graph(cl: Cluster) -> list[Finding]:
     return out
 
 
+# ── C7 ───────────────────────────────────────────────────────────────────────
+
+def _behind(cl: Cluster, db: str, table: str, sql: str, wanted: list[str]) -> list[Finding]:
+    if not cl.exists(db, table):
+        return [fail("C7", f"{db}: {table} is missing, so none of its {len(wanted)} migrations is recorded")]
+    have = {r[0] for r in cl.rows(db, sql)}
+    lacking = [w for w in wanted if w not in have]
+    return [fail("C7", f"{db}: {table} lacks {', '.join(lacking)}")] if lacking else []
+
+
+def c7_migrations(cl: Cluster) -> list[Finding]:
+    """Every project database has every platform/project-template/*.sql recorded in
+    provision.template_migration, and every apps/controls/prisma/migrations migration finished
+    (not rolled back) in controls._prisma_migrations."""
+    templates = sorted(p.name for p in PROJECT_TEMPLATE.glob("*.sql"))
+    controls = sorted(p.name for p in CONTROLS_MIGRATIONS.iterdir() if p.is_dir())
+    out = []
+    for db in project_databases(cl):
+        out += _behind(cl, db, "provision.template_migration",
+                       "SELECT name FROM provision.template_migration", templates)
+        out += _behind(cl, db, "controls._prisma_migrations",
+                       "SELECT migration_name FROM controls._prisma_migrations"
+                       " WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL", controls)
+    return out
+
+
 # ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -305,5 +335,7 @@ DATA_CHECKS = [
     Check("C5", "users resolve", "every stored subject is a Keycloak user", c5_users),
     Check("C6", "stale step-2 graph", "every assessment's graph is its card's current knowledge graph",
           c6_stale_graph),
+    Check("C7", "project database migrations", "no project database is behind on its migrations",
+          c7_migrations),
 ]
 ALL_CHECKS = DATA_CHECKS

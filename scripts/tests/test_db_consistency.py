@@ -449,3 +449,38 @@ def test_c6_the_card_has_no_stored_graph_to_compare(bed, cluster):
                  "UPDATE qualification.knowledge_graph SET \"qualificationId\" = 'q-none' WHERE id = 'kg-a2'",
                  "UPDATE qualification.knowledge_graph SET \"qualificationId\" = 'q-a2' WHERE id = 'kg-a2'"):
         only(checks.c6_stale_graph(cluster), "WARN", "coa2", "no stored knowledge graph")
+
+
+# ── C7 project databases behind on migrations ────────────────────────────────
+
+TEMPLATES = sorted(p.name for p in (ROOT / "platform/project-template").glob("*.sql"))
+
+
+def test_c7_a_template_file_not_applied(bed, cluster):
+    last = TEMPLATES[-1]
+    with planted(bed, DB_B, f"DELETE FROM provision.template_migration WHERE name = '{last}'",
+                 f"INSERT INTO provision.template_migration (name) VALUES ('{last}')"):
+        f = only(checks.c7_migrations(cluster), "FAIL", DB_B, "provision.template_migration", last)
+    assert f.check == "C7"
+
+
+def test_c7_a_controls_migration_not_applied(bed, cluster):
+    last = PRISMA[-1]
+    with planted(bed, DB_B, f"UPDATE controls._prisma_migrations SET migration_name = 'x' WHERE migration_name = '{last}'",
+                 f"UPDATE controls._prisma_migrations SET migration_name = '{last}' WHERE migration_name = 'x'"):
+        only(checks.c7_migrations(cluster), "FAIL", DB_B, "controls._prisma_migrations", last)
+
+
+def test_c7_a_rolled_back_controls_migration_is_not_applied(bed, cluster):
+    first = PRISMA[0]
+    with planted(bed, DB_B, f"UPDATE controls._prisma_migrations SET rolled_back_at = now() WHERE migration_name = '{first}'",
+                 f"UPDATE controls._prisma_migrations SET rolled_back_at = NULL WHERE migration_name = '{first}'"):
+        only(checks.c7_migrations(cluster), "FAIL", DB_B, "controls._prisma_migrations", first)
+
+
+def test_c7_a_project_database_never_provisioned(bed, cluster):
+    db = f"project_{ORPHAN_HEX}"
+    with planted(bed, "postgres", f'CREATE DATABASE "{db}"', f'DROP DATABASE "{db}"'):
+        found = checks.c7_migrations(cluster)
+        only(found, "FAIL", db, "provision.template_migration", "missing")
+        only(found, "FAIL", db, "controls._prisma_migrations", "missing")
