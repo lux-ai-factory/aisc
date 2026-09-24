@@ -30,8 +30,9 @@ def import_curl(command: str) -> ImportResult:
             headers[name.strip()] = header_value.strip()
             i += 2
         elif word in _DATA:
-            body, i = value, i + 2
+            body = f"{body}&{value}" if body is not None else value
             content_type = content_type or "application/x-www-form-urlencoded"
+            i += 2
         elif word == "--json":
             body, content_type, i = value, "application/json", i + 2
         elif word in ("-u", "--user"):

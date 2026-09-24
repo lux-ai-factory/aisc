@@ -54,6 +54,14 @@ def test_json_flag_and_line_continuations():
         "type": "object", "properties": {"a": {"type": "integer"}}}
 
 
+def test_repeated_data_flags_are_joined_with_ampersand():
+    from aisc_connectors.importers.curl import import_curl
+    from aisc_connectors.model import operations
+
+    op = operations(import_curl("curl https://h.test/x -d 'a=1' -d 'b=2'").document)[0]
+    assert op.spec["requestBody"]["content"]["application/x-www-form-urlencoded"]["example"] == {"a": "1", "b": "2"}
+
+
 def test_not_a_curl_command_is_refused():
     import pytest
 
