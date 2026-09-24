@@ -11,9 +11,13 @@ services:
       - /home/deployer/data/caddy:/data
     environment:
       LOG_FILE: "/data/access.log"
-      CADDY_DOMAIN: "https://aisctest.uni.lux"
+      CADDY_DOMAIN: "aisctest.uni.lux"
       CADDY_PORT: "8005"
       CADDY_ENVIRONMENT: "staging"
+      # Keycloak on the same origin as the app, under /auth (no DNS/cert for a
+      # subdomain). Must include the leading slash; Caddy proxies /auth/* through
+      # unchanged (KC_HTTP_RELATIVE_PATH=/auth makes Keycloak serve that prefix).
+      CADDY_KEYCLOAK_PATH: "/auth"
     networks:
       - backend
       - frontend
@@ -96,20 +100,34 @@ services:
     networks:
       - backend
 
-  # Keycloak (SSO) — PRODUCTION mode (`start`), behind Caddy (Caddy terminates TLS; Keycloak speaks HTTP).
-  # DEPLOY NOTES (server-side, can't be done from the repo):
-  #   1. add a DNS record for KEYCLOAK_URL_EXTERNAL and a Caddy route -> http://keycloak:8080
-  #   2. the imported realm's client redirect URIs are dev localhost ones — add the real staging URLs
-  #      (https://aisctest.uni.lux/*) to each client in the Keycloak admin, or ship a staging realm file
-  #   3. for a true prod realm, remove the dev users (admin/user) and let real identity in
+  # Keycloak (SSO) — PRODUCTION mode (`start`), behind Caddy (TLS terminated there).
+  # Browser reaches it on the SAME origin as the app: https://aisctest.uni.lux/auth
+  # Keycloak serves under KC_HTTP_RELATIVE_PATH=/auth; Caddy passes /auth through
+  # UNCHANGED. Do NOT add X-Forwarded-Prefix in Caddy — with proxy-headers=xforwarded
+  # it would double the prefix (/auth+auth). For a true prod realm, remove the dev users.
+  # NOTE: the realm is imported only on a FRESH keycloak database; an
+  # already-imported realm must be updated via the Admin Console instead.
   keycloak:
     image: quay.io/keycloak/keycloak:26.6.3
     container_name: keycloak
     restart: always
-    command: start --import-realm
+    # Render the realm from the template (APP_URL from env) into the import
+    # dir, then start Keycloak — one service, plain `compose up` is enough.
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        URL="$${API_URL_EXTERNAL:-http://localhost}"
+        mkdir -p /opt/keycloak/data/import
+        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        exec /opt/keycloak/bin/kc.sh start --import-realm
     volumes:
-      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      # Realm template (rendered at startup, see command above).
+      - ./keycloak/aisc-realm.template.json:/tmp/aisc-realm.template.json:ro
     environment:
+      # API_URL_EXTERNAL = public base URL of the app (frontend + API share one
+      # Caddy domain). The realm's redirect URIs are rendered from it.
+      API_URL_EXTERNAL: ${API_URL_EXTERNAL}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres
@@ -117,6 +135,7 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME: ${KEYCLOAK_URL_EXTERNAL} # public URL the browser uses
+      KC_HTTP_RELATIVE_PATH: /auth          # Keycloak serves UNDER /auth (not stripped by Caddy)
       KC_PROXY_HEADERS: xforwarded          # trust Caddy's X-Forwarded-* headers
       KC_HTTP_ENABLED: "true"               # serve HTTP internally; Caddy does the HTTPS
     depends_on:

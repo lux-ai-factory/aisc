@@ -40,6 +40,7 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
     networks:
