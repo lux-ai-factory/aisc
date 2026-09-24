@@ -294,3 +294,93 @@ def test_c3_a_version_less_system_is_named_without_one(bed, cluster):
                  "UPDATE control_objectives.project SET name = 'Beta bot ' WHERE id = 'cob1'",
                  "UPDATE control_objectives.project SET name = 'Beta bot' WHERE id = 'cob1'"):
         only(checks.c3_system_identity(cluster), "FAIL", B_V1, "control_objectives")
+
+
+# ── C4 references resolve ────────────────────────────────────────────────────
+
+NOWHERE = "00000000-0000-4000-8000-00000000beef"
+EP = "b0e00000-0000-4000-8000-0000000000e2"
+C4_CASES = {
+    "engine project with no platform project": (
+        "platform",
+        f"INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id)"
+        f" VALUES (2, '{EP}', 'Standalone', '', 'active', now(), NULL)",
+        "DELETE FROM engine.project WHERE id = 2",
+        "WARN", ("engine.project", EP, "no platform project")),
+    "engine project of a project that does not exist": (
+        "platform",
+        f"INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id)"
+        f" VALUES (2, '{EP}', 'Ghost', '', 'active', now(), '{NOWHERE}')",
+        "DELETE FROM engine.project WHERE id = 2",
+        "FAIL", ("engine.project", EP, NOWHERE)),
+    "evaluation of a system that does not exist": (
+        "platform",
+        f"UPDATE engine.evaluation SET system_id = '{NOWHERE}' WHERE id = 1",
+        f"UPDATE engine.evaluation SET system_id = '{A_V2}' WHERE id = 1",
+        "FAIL", ("engine.evaluation", NOWHERE)),
+    "evaluation of another project's system": (
+        "platform",
+        f"UPDATE engine.evaluation SET system_id = '{B_V1}' WHERE id = 1",
+        f"UPDATE engine.evaluation SET system_id = '{A_V2}' WHERE id = 1",
+        "FAIL", ("engine.evaluation", B_V1, "another project")),
+    "card of a system that does not exist": (
+        "platform",
+        f"UPDATE qualification.qualification SET system_id = '{NOWHERE}' WHERE id = 'q-a1'",
+        f"UPDATE qualification.qualification SET system_id = '{A_V1}' WHERE id = 'q-a1'",
+        "FAIL", ("qualification.qualification", "q-a1", NOWHERE)),
+    "card in another project than its system": (
+        "platform",
+        f"UPDATE qualification.qualification SET project_id = '{B}' WHERE id = 'q-a1'",
+        f"UPDATE qualification.qualification SET project_id = '{A}' WHERE id = 'q-a1'",
+        "FAIL", ("qualification.qualification", "q-a1", A_V1, "another project")),
+    "assessment of a system that does not exist": (
+        "platform",
+        f"UPDATE control_objectives.project SET system_id = '{NOWHERE}' WHERE id = 'coa2'",
+        f"UPDATE control_objectives.project SET system_id = '{A_V2}' WHERE id = 'coa2'",
+        "FAIL", ("control_objectives.project", "coa2", NOWHERE)),
+    "assessment in another project than its system": (
+        "platform",
+        f"UPDATE control_objectives.project SET project_id = '{E}' WHERE id = 'coa2'",
+        f"UPDATE control_objectives.project SET project_id = '{A}' WHERE id = 'coa2'",
+        "FAIL", ("control_objectives.project", "coa2", "another project")),
+    "layout in another project than its system": (
+        "platform",
+        f"UPDATE report_composer.layout SET project_id = '{B}' WHERE id = '{LAYOUT}'",
+        f"UPDATE report_composer.layout SET project_id = '{A}' WHERE id = '{LAYOUT}'",
+        "FAIL", ("report_composer.layout", LAYOUT, "another project")),
+    "report of another version than its layout": (
+        "platform",
+        f"UPDATE report_composer.generated_report SET system_id = '{A_V1}' WHERE id = '{REPORT}'",
+        f"UPDATE report_composer.generated_report SET system_id = '{A_V2}' WHERE id = '{REPORT}'",
+        "FAIL", ("report_composer.generated_report", REPORT, "layout")),
+    "report of a layout that does not exist": (
+        "platform",
+        f"UPDATE report_composer.generated_report SET layout_id = '{NOWHERE}' WHERE id = '{REPORT}'",
+        f"UPDATE report_composer.generated_report SET layout_id = '{LAYOUT}' WHERE id = '{REPORT}'",
+        "FAIL", ("report_composer.generated_report", REPORT, NOWHERE)),
+    "report of a system that does not exist": (
+        "platform",
+        f"UPDATE report_composer.generated_report SET system_id = '{NOWHERE}' WHERE id = '{REPORT}'",
+        f"UPDATE report_composer.generated_report SET system_id = '{A_V2}' WHERE id = '{REPORT}'",
+        "FAIL", ("report_composer.generated_report", REPORT, NOWHERE)),
+    "answer stamped with another project's version": (
+        DB_A,
+        f"UPDATE controls.submission_answer SET system_version_pid = '{B_V1}' WHERE id = 'a-2'",
+        f"UPDATE controls.submission_answer SET system_version_pid = '{A_V1}' WHERE id = 'a-2'",
+        "FAIL", (DB_A, "a-2", B_V1, "another project")),
+    "answer stamped with a version that does not exist": (
+        DB_A,
+        f"UPDATE controls.submission_answer SET system_version_pid = '{NOWHERE}' WHERE id = 'a-2'",
+        f"UPDATE controls.submission_answer SET system_version_pid = '{A_V1}' WHERE id = 'a-2'",
+        "FAIL", (DB_A, "a-2", NOWHERE)),
+}
+
+
+@pytest.mark.parametrize("case", list(C4_CASES))
+def test_c4_a_reference_that_does_not_resolve(bed, cluster, case):
+    db, plant, remove, level, needles = C4_CASES[case]
+    with planted(bed, db, plant, remove):
+        f = only(checks.c4_references(cluster), level, *needles)
+    found = checks.c4_references(cluster)
+    assert found == [], found
+    assert f.check == "C4"

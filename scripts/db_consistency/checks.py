@@ -111,6 +111,101 @@ def c3_system_identity(cl: Cluster) -> list[Finding]:
     return out
 
 
+# ── C4 ───────────────────────────────────────────────────────────────────────
+
+#: Tables that name both a project and a card version: the version must be of that project.
+PAIRED = ("qualification.qualification", "control_objectives.project",
+          "report_composer.layout", "report_composer.generated_report")
+
+
+def _paired(cl: Cluster, table: str) -> list[Finding]:
+    rows = cl.rows(cl.platform_db, f"""
+        SELECT t.id::text, t.project_id::text, t.system_id::text, s.pid IS NULL, s.project_id::text
+          FROM {table} t LEFT JOIN core.system s ON s.pid = t.system_id
+         WHERE s.pid IS NULL OR s.project_id <> t.project_id
+         ORDER BY 1""")
+    return [fail("C4", f"{table} {rid}: system_id {sid} is not a core.system") if dangling else
+            fail("C4", f"{table} {rid}: system {sid} belongs to another project ({owner}) "
+                       f"than the row's project_id {pid}")
+            for rid, pid, sid, dangling, owner in rows]
+
+
+def _engine(cl: Cluster) -> list[Finding]:
+    db, out = cl.platform_db, []
+    if cl.exists(db, "engine.project"):
+        for pid, name, project in cl.rows(db, """
+                SELECT e.pid::text, e.name, e.project_id::text FROM engine.project e
+                  LEFT JOIN core.project c ON c.pid = e.project_id
+                 WHERE c.pid IS NULL ORDER BY e.id"""):
+            if project is None:
+                out.append(warn("C4", f"engine.project {pid} ({name}) has no platform project (project_id is NULL)"))
+            else:
+                out.append(fail("C4", f"engine.project {pid} ({name}): project_id {project} is not a core.project"))
+    if cl.exists(db, "engine.evaluation"):
+        for pid, sid, dangling, owner, project in cl.rows(db, """
+                SELECT e.pid::text, e.system_id::text, s.pid IS NULL, s.project_id::text, ep.project_id::text
+                  FROM engine.evaluation e
+                  JOIN engine.project ep ON ep.id = e.project_id
+                  LEFT JOIN core.system s ON s.pid = e.system_id
+                 WHERE e.system_id IS NOT NULL
+                   AND (s.pid IS NULL OR s.project_id IS DISTINCT FROM ep.project_id)
+                 ORDER BY e.id"""):
+            if dangling:
+                out.append(fail("C4", f"engine.evaluation {pid}: system_id {sid} is not a core.system"))
+            else:
+                out.append(fail("C4", f"engine.evaluation {pid}: system {sid} belongs to another project "
+                                      f"({owner}) than its engine project's ({project})"))
+    return out
+
+
+def _reports_follow_their_layout(cl: Cluster) -> list[Finding]:
+    rows = cl.rows(cl.platform_db, """
+        SELECT g.id::text, g.layout_id::text, l.id IS NULL, g.project_id::text, g.system_id::text,
+               l.project_id::text, l.system_id::text
+          FROM report_composer.generated_report g
+          JOIN core.system s ON s.pid = g.system_id
+          LEFT JOIN report_composer.layout l ON l.id = g.layout_id
+         WHERE l.id IS NULL OR l.project_id <> g.project_id OR l.system_id <> g.system_id
+         ORDER BY 1""")
+    return [fail("C4", f"report_composer.generated_report {rid}: layout_id {lid} is not a report_composer.layout")
+            if missing else
+            fail("C4", f"report_composer.generated_report {rid}: project {gp} system {gs}, but its layout {lid} "
+                       f"is of project {lp} system {ls}")
+            for rid, lid, missing, gp, gs, lp, ls in rows]
+
+
+def _answers(cl: Cluster) -> list[Finding]:
+    """controls.submission_answer.system_version_pid, in each project database, is a version of
+    THAT project. Orphan databases are C1's."""
+    owner = dict(cl.rows(cl.platform_db, "SELECT pid::text, project_id::text FROM core.system"))
+    out = []
+    projects = core_projects(cl)
+    for db in project_databases(cl):
+        if db not in projects or not cl.exists(db, "controls.submission_answer"):
+            continue
+        pid = projects[db][0]
+        for aid, sv in cl.rows(db, "SELECT id, system_version_pid::text FROM controls.submission_answer"
+                                   " WHERE system_version_pid IS NOT NULL ORDER BY id"):
+            if sv not in owner:
+                out.append(fail("C4", f"{db} controls.submission_answer {aid}: system_version_pid {sv} "
+                                      "is not a core.system"))
+            elif owner[sv] != pid:
+                out.append(fail("C4", f"{db} controls.submission_answer {aid}: version {sv} belongs to "
+                                      f"another project ({owner[sv]}) than the database's ({pid})"))
+    return out
+
+
+def c4_references(cl: Cluster) -> list[Finding]:
+    """Every reference into core.project and core.system resolves, and to the right project."""
+    out = _engine(cl)
+    for table in PAIRED:
+        if cl.exists(cl.platform_db, table):
+            out += _paired(cl, table)
+    if cl.exists(cl.platform_db, "report_composer.generated_report"):
+        out += _reports_follow_their_layout(cl)
+    return out + _answers(cl)
+
+
 # ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -130,5 +225,7 @@ DATA_CHECKS = [
           c2_unknown_databases_and_schemas),
     Check("C3", "system identity", "every card version has one name, version and provider",
           c3_system_identity),
+    Check("C4", "references resolve", "every reference into core.project and core.system resolves",
+          c4_references),
 ]
 ALL_CHECKS = DATA_CHECKS
