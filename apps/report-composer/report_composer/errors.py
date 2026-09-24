@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import os
+
 import jinja2
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
@@ -16,6 +18,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 _env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(Path(__file__).resolve().parent / "templates")),
                           autoescape=True)
+# The launcher, where the header's mark and "Back" lead, as in the other modules.
+_env.globals["launcher"] = os.environ.get("LAUNCHER_URL", "http://localhost:8100/").rstrip("/") + "/"
 
 
 class ApiError(Exception):

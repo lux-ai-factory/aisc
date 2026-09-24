@@ -19,6 +19,8 @@ from .api import ApiError, block_types, guard, renderer_call
 router = APIRouter()
 _env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(Path(__file__).resolve().parent / "templates")),
                           autoescape=True)
+# The launcher, where the header's mark and "Back" lead, as in the other modules.
+_env.globals["launcher"] = os.environ.get("LAUNCHER_URL", "http://localhost:8100/").rstrip("/") + "/"
 
 
 def _root(request: Request) -> str:
