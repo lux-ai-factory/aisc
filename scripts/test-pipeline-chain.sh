@@ -60,6 +60,10 @@ export CHAIN_SU_DSN="postgresql://${TPG_SU}:${TPG_PW}@127.0.0.1:${PORT}/platform
 python3 -c "import json,sys; json.dump({'port': int(sys.argv[1]), 'container': sys.argv[2], 'break': sys.argv[3] or None}, open(sys.argv[4], 'w'))" \
   "$PORT" "$TPG_NAME" "$BREAK" "$CHAIN_JSON"
 
+chain_get() { # key -> its value in $CHAIN_JSON, empty when unset
+  python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2]) or '')" "$CHAIN_JSON" "$1"
+}
+
 setup() {
   tpg_init_platform "$ROOT" || return 1
   local f
@@ -78,7 +82,7 @@ setup() {
 # applied, then the controls migrations as controls_rw.
 project_database() {
   local pid hex db f
-  pid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('project_pid') or '')" "$CHAIN_JSON")
+  pid=$(chain_get project_pid)
   [ -n "$pid" ] || { echo "no project_pid in $CHAIN_JSON (step 1 writes it)"; return 1; }
   hex=${pid//-/}; db=project_$hex
   if [ -z "$(tpg_su postgres -tA -c "SELECT 1 FROM pg_database WHERE datname = '$db'")" ]; then
@@ -128,7 +132,7 @@ apply_break() { # after-step
     co_fk:0)            tpg_su platform -c "ALTER TABLE control_objectives.project DROP CONSTRAINT IF EXISTS fk_project_system_id_core_system" ;;
     card_component:2)   tpg_su platform -c "DELETE FROM qualification.card_component" ;;
     engine_stamp:4)     tpg_su platform -c "UPDATE engine.evaluation SET system_id = NULL" ;;
-    controls_stamp:7)   local db; db=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('project_db') or '')" "$CHAIN_JSON")
+    controls_stamp:7)   local db; db=$(chain_get project_db)
                         tpg_su "$db" -c "UPDATE controls.submission_answer SET system_version_pid = NULL, system_version_number = NULL" ;;
   esac
 }

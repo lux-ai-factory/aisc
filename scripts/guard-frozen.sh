@@ -197,13 +197,15 @@ SUMS
   fi
 }
 
-diff_quiet() { # repo base paths... ; compares base with HEAD (or the working tree)
+# What a base is compared with: HEAD, or nothing (the working tree) when GUARD_SOURCE=worktree.
+cand_head() { [ "$SOURCE" = worktree ] || echo HEAD; }
+diff_quiet() { # repo base paths...
   local repo=$1 base=$2; shift 2
-  if [ "$SOURCE" = worktree ]; then git -C "$repo" diff --quiet "$base" -- "$@"; else git -C "$repo" diff --quiet "$base" HEAD -- "$@"; fi
+  git -C "$repo" diff --quiet "$base" $(cand_head) -- "$@"
 }
 changed_names() { # repo base paths...
   local repo=$1 base=$2; shift 2
-  if [ "$SOURCE" = worktree ]; then git -C "$repo" diff --name-only "$base" -- "$@"; else git -C "$repo" diff --name-only "$base" HEAD -- "$@"; fi
+  git -C "$repo" diff --name-only "$base" $(cand_head) -- "$@"
 }
 
 sean_backend_files() {
@@ -241,8 +243,7 @@ g4() {
   # Dockerfile: exactly dfe4120's change
   local want got
   want=$(git -C "$BACKEND" diff "$DOCKERFILE_COMMIT~1" "$DOCKERFILE_COMMIT" -- Dockerfile | grep -v '^index ')
-  if [ "$SOURCE" = worktree ]; then got=$(git -C "$BACKEND" diff "$ENGINE_REF" -- Dockerfile | grep -v '^index ');
-  else got=$(git -C "$BACKEND" diff "$ENGINE_REF" HEAD -- Dockerfile | grep -v '^index '); fi
+  got=$(git -C "$BACKEND" diff "$ENGINE_REF" $(cand_head) -- Dockerfile | grep -v '^index ')
   if [ "$want" != "$got" ]; then ok=0; fail G4 "backend: Dockerfile differs from $ENGINE_REF by more than $DOCKERFILE_COMMIT"; fi
   # Webapp: Sean's files of 2026-09-23
   local web=(src/api/api.tsx src/components/AISystemSettings.tsx src/components/plugin/PluginConfigForm.tsx
