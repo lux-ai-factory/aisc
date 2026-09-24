@@ -52,6 +52,7 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
     networks:
       - backend
     depends_on:
