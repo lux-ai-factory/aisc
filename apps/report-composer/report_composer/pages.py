@@ -37,6 +37,15 @@ def _page(name: str, request: Request, **context) -> HTMLResponse:
     return HTMLResponse(env.get_template(name).render(root=_root(request), **context))
 
 
+def _by_slug(request: Request, project: dict, rest: str) -> RedirectResponse:
+    """A page asked for by the project's pid is redirected to the same page by its slug."""
+    return RedirectResponse(f"{_root(request)}/p/{project['slug']}{rest}", status_code=303)
+
+
+def _templates(conn, project_pid) -> list[dict]:
+    return [looks.view(x) for x in db.list_templates(conn, project_pid)]
+
+
 @router.get("/")
 def home():
     return RedirectResponse(os.environ.get("LAUNCHER_URL", "http://localhost:8100/"), status_code=303)
@@ -53,12 +62,12 @@ def layouts_page_without_slash(request: Request, ref: str):
 def layouts_page(request: Request, ref: str):
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
-        return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/", status_code=303)
+        return _by_slug(request, g.project, "/")
     url = request.app.state.database_url
     with db.connect(url) as conn:
         rows = db.list_layouts(conn, g.project["pid"])
         systems = db.systems(conn, g.project["pid"])
-        templates = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
+        templates = _templates(conn, g.project["pid"])
     return _page("layouts.html.j2", request, project=g.project, layouts=rows, systems=systems,
                  templates=templates, editor=g.access.may_write)
 
@@ -68,32 +77,41 @@ def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
     return forms.form_fields(block_type["options_schema"], values, choices)
 
 
+def _reference_choices(request: Request, project: dict, layout: dict, by_type: dict) -> dict[str, dict]:
+    """The values each reference option of the layout's block types may take, by block type."""
+    renderer = request.app.state.renderer
+    choices: dict[str, dict] = {}
+    for t in {b["block_type"] for b in layout["blocks"]}:
+        if t in by_type and layouts.reference_options(by_type[t]):
+            choices[t] = renderer_call(renderer.choices, project["pid"], layout["system_id"], t) or {}
+    return choices
+
+
+def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool) -> dict:
+    """A block as the editor's outline draws it; an editor also gets its configure form."""
+    return {"instance_id": block["instance_id"], "block_type": block["block_type"],
+            "title": (block["options"] or {}).get("title") or (block_type["title"] if block_type else None),
+            "known": block_type is not None,
+            "fields": _form_for(block_type, block["options"], choices.get(block["block_type"], {}))
+            if (block_type and editor) else []}
+
+
 @router.get("/p/{ref}/layouts/{layout_id}")
 def editor_page(request: Request, ref: str, layout_id: str):
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
-        return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}", status_code=303)
+        return _by_slug(request, g.project, f"/layouts/{layout_id}")
     url = request.app.state.database_url
     with db.connect(url) as conn:
         layout = layout_or_404(conn, g.project["pid"], layout_id)
         systems = db.systems(conn, g.project["pid"])
         report_rows = db.list_reports(conn, layout["id"])
-        templates = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
+        templates = _templates(conn, g.project["pid"])
     editor = g.access.may_write
     types = block_types(request)
     by_type = {t["type_id"]: t for t in types}
-    choices: dict[str, dict] = {}
-    if editor:
-        renderer = request.app.state.renderer
-        for t in {b["block_type"] for b in layout["blocks"]}:
-            if t in by_type and layouts.reference_options(by_type[t]):
-                choices[t] = renderer_call(renderer.choices, g.project["pid"], layout["system_id"], t) or {}
-    blocks = []
-    for b in layout["blocks"]:
-        t = by_type.get(b["block_type"])
-        blocks.append({"instance_id": b["instance_id"], "block_type": b["block_type"],
-                       "title": (b["options"] or {}).get("title") or (t["title"] if t else None), "known": t is not None,
-                       "fields": _form_for(t, b["options"], choices.get(b["block_type"], {})) if (t and editor) else []})
+    choices = _reference_choices(request, g.project, layout, by_type) if editor else {}
+    blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor) for b in layout["blocks"]]
     palette = [{"type_id": t["type_id"], "title": t["title"], "fields": _form_for(t, {}, {})} for t in types] \
         if editor else []
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,
@@ -104,7 +122,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
 def templates_page(request: Request, ref: str):
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
-        return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/templates", status_code=303)
+        return _by_slug(request, g.project, "/templates")
     with db.connect(request.app.state.database_url) as conn:
         rows = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
     font_list = fonts(request)

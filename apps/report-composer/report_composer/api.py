@@ -20,6 +20,7 @@ from .renderer_calls import block_types, choices_for, fonts, renderer_call
 router = APIRouter(prefix="/api")
 PREVIEW_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
 LOGO_CSP = "default-src 'none'; style-src 'unsafe-inline'"
+NAME_MAX, DESCRIPTION_MAX = 120, 2000
 
 
 def layout_view(layout: dict) -> dict:
@@ -35,6 +36,26 @@ def _text(body: dict, name: str, *, required: bool, max_len: int) -> str:
         raise ApiError(422, "invalid_request", f"{name} must be text of 1 to {max_len} characters.",
                        [{"pointer": f"/{name}", "message": "is not valid"}])
     return value.strip() if required else value
+
+
+def _name_and_description(body: dict) -> tuple[str, str]:
+    return (_text(body, "name", required=True, max_len=NAME_MAX),
+            _text(body, "description", required=False, max_len=DESCRIPTION_MAX))
+
+
+def _revision(body: dict) -> int:
+    revision = body.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool):
+        raise ApiError(422, "invalid_request", "revision is required.", [{"pointer": "/revision", "message": "is required"}])
+    return revision
+
+
+def _layout_name_taken() -> ApiError:
+    return ApiError(422, "name_taken", "A layout of this project already has this name.")
+
+
+def _system_not_in_project() -> ApiError:
+    return ApiError(422, "system_not_in_project", "The version is not one of this project.")
 
 
 def _blocks(body: dict) -> list:
@@ -79,19 +100,11 @@ def get_layouts(request: Request, g: Guarded = Depends(project_guard("viewer")))
 
 @router.post("/p/{ref}/layouts", status_code=201)
 def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
-    name = _text(body, "name", required=True, max_len=120)
-    description = _text(body, "description", required=False, max_len=2000)
+    name, description = _name_and_description(body)
     pid = g.project["pid"]
     url = request.app.state.database_url
     with db.connect(url) as conn:
-        if body.get("system_id") is not None:
-            system = db.system_of_project(conn, pid, body["system_id"])
-            if system is None:
-                raise ApiError(422, "system_not_in_project", "The version is not one of this project.")
-        else:
-            system = db.latest_system(conn, pid)
-            if system is None:
-                raise ApiError(422, "system_not_in_project", "This project has no system version yet.")
+        system = _system_for_new_layout(conn, pid, body.get("system_id"))
         template_id = chosen_template(conn, pid, body.get("template_id"))
     types = block_types(request)
     if "blocks" in body and body["blocks"] is not None:
@@ -106,7 +119,20 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
                                    description=description, blocks=blocks, who=g.caller.subject, now=now)
             return layout_view(db.get_layout(conn, pid, lid))
     except psycopg.errors.UniqueViolation:
-        raise ApiError(422, "name_taken", "A layout of this project already has this name.") from None
+        raise _layout_name_taken() from None
+
+
+def _system_for_new_layout(conn, pid, system_id) -> dict:
+    """The version asked for, or the project's latest when none is."""
+    if system_id is not None:
+        system = db.system_of_project(conn, pid, system_id)
+        if system is None:
+            raise _system_not_in_project()
+        return system
+    system = db.latest_system(conn, pid)
+    if system is None:
+        raise ApiError(422, "system_not_in_project", "This project has no system version yet.")
+    return system
 
 
 @router.get("/p/{ref}/layouts/{layout_id}")
@@ -124,30 +150,21 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
         current = layout_or_404(conn, pid, layout_id)
     if body.get("project_id") is not None and str(body["project_id"]) != pid:
         raise ApiError(422, "immutable_field", "A layout stays in its project.")
-    name = _text(body, "name", required=True, max_len=120)
-    description = _text(body, "description", required=False, max_len=2000)
-    revision = body.get("revision")
-    if not isinstance(revision, int) or isinstance(revision, bool):
-        raise ApiError(422, "invalid_request", "revision is required.", [{"pointer": "/revision", "message": "is required"}])
+    name, description = _name_and_description(body)
+    revision = _revision(body)
     blocks = _blocks(body)
     with db.connect(url) as conn:
         system = db.system_of_project(conn, pid, body.get("system_id") or current["system_id"])
         template_id = chosen_template(conn, pid, body.get("template_id"))
     if system is None:
-        raise ApiError(422, "system_not_in_project", "The version is not one of this project.")
-    types = block_types(request)
-    choices = choices_for(request, pid, system["pid"])
-    problems = layouts.validate_layout(blocks, block_types=types, choices=choices)
-    if problems and body.get("reset_invalid") and all(p["code"] == "invalid_reference" for p in problems):
-        blocks = layouts.reset_invalid(blocks, problems, types)
-        problems = layouts.validate_layout(blocks, block_types=types, choices=choices)
-    fail_on(problems)
+        raise _system_not_in_project()
+    blocks = _checked_blocks(blocks, block_types(request), choices_for(request, pid, system["pid"]),
+                             reset_invalid=bool(body.get("reset_invalid")))
     try:
         with db.connect(url) as conn:
             new = db.update_layout(conn, current["id"], based_on=revision, name=name, description=description,
                                    system_pid=system["pid"], template_id=template_id, blocks=blocks,
-                                   who=g.caller.subject,
-                                   now=request.app.state.clock())
+                                   who=g.caller.subject, now=request.app.state.clock())
             if new is None:
                 latest = layout_or_404(conn, pid, layout_id)
                 raise ApiError(409, "stale_revision",
@@ -155,7 +172,18 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
                                [{"current_revision": latest["revision"]}])
             return layout_view(db.get_layout(conn, pid, current["id"]))
     except psycopg.errors.UniqueViolation:
-        raise ApiError(422, "name_taken", "A layout of this project already has this name.") from None
+        raise _layout_name_taken() from None
+
+
+def _checked_blocks(blocks, types, choices, *, reset_invalid: bool) -> list:
+    """The blocks, or a 422 naming their problems. With reset_invalid, a layout whose only
+    problems are invalid references has those options reset to their defaults instead."""
+    problems = layouts.validate_layout(blocks, block_types=types, choices=choices)
+    if problems and reset_invalid and all(p["code"] == "invalid_reference" for p in problems):
+        blocks = layouts.reset_invalid(blocks, problems, types)
+        problems = layouts.validate_layout(blocks, block_types=types, choices=choices)
+    fail_on(problems)
+    return blocks
 
 
 @router.delete("/p/{ref}/layouts/{layout_id}", status_code=204)
