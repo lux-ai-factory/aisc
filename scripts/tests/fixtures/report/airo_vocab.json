@@ -1,0 +1,12 @@
+{
+  "marketForm": [],
+  "locality": [],
+  "impactArea": [
+    {"id": "health", "label": "Health", "vair": "Health"},
+    {"id": "safety", "label": "Safety", "vair": "Safety"}
+  ],
+  "affected": [
+    {"id": "operator", "label": "Operator (the company providing or running the system)", "airo": "AIOperator"},
+    {"id": "user", "label": "User (people who use the system or are affected by it)", "airo": "AIUser"}
+  ]
+}
