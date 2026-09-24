@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 
-from cryptography.fernet import Fernet, MultiFernet
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from aisc_connectors import db
 from aisc_connectors.settings import settings
@@ -15,9 +15,15 @@ SECRET_NAMES = frozenset(
     {"api_key", "token", "password", "client_secret", "client_cert", "client_key", "ca_bundle"}
 )
 
+_UNREADABLE = "a stored secret cannot be decrypted with CONNECTOR_SECRETS_KEY (was a key removed?)"
+
 
 class VaultMisconfigured(RuntimeError):
     """No usable CONNECTOR_SECRETS_KEY."""
+
+
+class SecretUnreadable(VaultMisconfigured):
+    """A stored secret does not decrypt under any configured key."""
 
 
 class UnknownSecretName(ValueError):
@@ -74,7 +80,12 @@ def plain(connector_pid: uuid.UUID, name: str) -> str | None:
             "SELECT ciphertext FROM connector.secret WHERE connector_pid = %s AND name = %s",
             (connector_pid, name),
         ).fetchone()
-    return None if row is None else _fernet().decrypt(row["ciphertext"].encode()).decode()
+    if row is None:
+        return None
+    try:
+        return _fernet().decrypt(row["ciphertext"].encode()).decode()
+    except InvalidToken as exc:
+        raise SecretUnreadable(_UNREADABLE) from exc
 
 
 def rotate() -> int:
@@ -82,8 +93,12 @@ def rotate() -> int:
     with db.pool().connection() as conn:
         rows = conn.execute("SELECT connector_pid, name, ciphertext FROM connector.secret").fetchall()
         for row in rows:
+            try:
+                rotated = fernet.rotate(row["ciphertext"].encode())
+            except InvalidToken as exc:
+                raise SecretUnreadable(_UNREADABLE) from exc
             conn.execute(
                 "UPDATE connector.secret SET ciphertext = %s WHERE connector_pid = %s AND name = %s",
-                (fernet.rotate(row["ciphertext"].encode()).decode(), row["connector_pid"], row["name"]),
+                (rotated.decode(), row["connector_pid"], row["name"]),
             )
     return len(rows)

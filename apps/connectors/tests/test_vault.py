@@ -73,3 +73,33 @@ def test_rotation_reencrypts_under_the_newest_key(connector, monkeypatch, secret
     assert vault.rotate() == 1
     monkeypatch.setenv("CONNECTOR_SECRETS_KEY", newest)
     assert vault.plain(connector, "token") == "keep-me"
+
+
+def test_a_secret_under_a_removed_key_is_unreadable(connector, monkeypatch, secrets_key):
+    from cryptography.fernet import Fernet
+
+    from aisc_connectors import vault
+
+    vault.put(connector, "token", "keep-me")
+    other = Fernet.generate_key().decode()
+    monkeypatch.setenv("CONNECTOR_SECRETS_KEY", other)
+    with pytest.raises(vault.SecretUnreadable):
+        vault.plain(connector, "token")
+
+
+def test_delete_removes_the_secret(connector):
+    from aisc_connectors import vault
+
+    vault.put(connector, "token", "x")
+    assert vault.delete(connector, "token") is True
+    assert vault.plain(connector, "token") is None
+    assert vault.describe(connector) == []
+    assert vault.delete(connector, "token") is False
+
+
+def test_malformed_key_is_a_misconfiguration(connector, monkeypatch):
+    from aisc_connectors import vault
+
+    monkeypatch.setenv("CONNECTOR_SECRETS_KEY", "not-a-fernet-key")
+    with pytest.raises(vault.VaultMisconfigured):
+        vault.put(connector, "token", "x")
