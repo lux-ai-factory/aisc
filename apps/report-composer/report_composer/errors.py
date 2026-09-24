@@ -29,7 +29,9 @@ class ApiError(Exception):
 
 
 def _answer(request: Request, status: int, code: str, message: str, details=()):
-    if request.url.path.startswith("/api/") or request.url.path == "/api":
+    root = request.scope.get("root_path", "") or ""
+    path = request.url.path[len(root):] if root and request.url.path.startswith(root) else request.url.path
+    if path.startswith("/api/") or path == "/api":
         return JSONResponse(status_code=status,
                             content={"error": {"code": code, "message": message, "details": list(details)}})
     html = _env.get_template("error.html.j2").render(status=status, message=message,

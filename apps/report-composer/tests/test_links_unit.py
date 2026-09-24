@@ -23,3 +23,16 @@ def test_the_launcher_link_without_a_slash_stays_in_the_composer(monkeypatch):
     assert response.status_code in (301, 302, 303, 307, 308)
     assert response.headers["location"] == f"/report-composer/p/{PID}/"
 
+
+
+def test_the_stylesheet_and_script_load_behind_the_stripped_prefix(monkeypatch):
+    # Caddy strips /report-composer, so the browser's /report-composer/static/... arrives as /static/...
+    client = _client(monkeypatch)
+    for asset in ("composer.css", "composer.js", "laif-logo.svg"):
+        assert client.get(f"/static/{asset}").status_code == 200, asset
+
+
+def test_an_api_error_behind_the_prefix_is_still_json(monkeypatch):
+    # errors choose JSON for /api/..., HTML for pages; the restored prefix must not change that
+    response = _client(monkeypatch).get("/api/p/no-such-project/layouts")
+    assert response.headers["content-type"].startswith("application/json"), response.text[:200]

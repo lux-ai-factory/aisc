@@ -32,8 +32,10 @@ def create_app(*, database_url=None, renderer=None, clock=None) -> FastAPI:
             migrate(conn)
         yield
 
-    app = FastAPI(root_path=os.environ.get("REPORT_COMPOSER_ROOT_PATH", ""), lifespan=lifespan,
+    root_path = os.environ.get("REPORT_COMPOSER_ROOT_PATH", "")
+    app = FastAPI(root_path=root_path, lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(RestorePrefix, prefix=root_path)
     app.state.database_url = database_url
     app.state.renderer = renderer
     app.state.clock = clock
@@ -42,6 +44,23 @@ def create_app(*, database_url=None, renderer=None, clock=None) -> FastAPI:
     app.include_router(pages.router)
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     return app
+
+
+class RestorePrefix:
+    """Caddy's handle_path strips /report-composer before the request reaches us. Starlette
+    resolves routes and the static mount against the full path (root_path included), so a
+    stripped /static/composer.css was a 404 and the pages came up unstyled. Put it back."""
+
+    def __init__(self, app, prefix: str = ""):
+        self.app, self.prefix = app, prefix.rstrip("/")
+
+    async def __call__(self, scope, receive, send):
+        if self.prefix and scope["type"] in ("http", "websocket") \
+                and scope["path"] != self.prefix and not scope["path"].startswith(self.prefix + "/"):
+            scope = dict(scope, path=self.prefix + scope["path"])
+            if "raw_path" in scope and scope["raw_path"] is not None:
+                scope["raw_path"] = self.prefix.encode() + scope["raw_path"]
+        await self.app(scope, receive, send)
 
 
 _app = None
