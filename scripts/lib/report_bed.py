@@ -16,7 +16,7 @@ What it builds, in order (each step as the stack does it):
  3. platform migrations 0001.. as platform_rw
  4. the module schemas from the read-only dumps in scripts/tests/fixtures/report/, each restored
     as its own module role (so ownership is as on the stack), and superset's as the superuser
- 5. project databases of Alpha, Beta and Echo as platform_rw with platform/project-template/*.sql
+ 5. project databases of Alpha, Beta, Echo, Mike and Delta as platform_rw with platform/project-template/*.sql
     (every template file, 0003_report.sql included), then schema controls as controls_rw
  6. scripts/report-grants.sh, when present and report_files is on, run inside the container
     like the stack's report-grants one-shot: PG* env, init/report-ro-grants.sql copied to /setup
@@ -67,13 +67,25 @@ IDS = {
     "EVAL_B_V1": "b1e00000-0000-4000-8000-000000000051",
     "EVAL_E_V1": "e1e00000-0000-4000-8000-000000000061",
     "EVAL_E_V2": "e2e00000-0000-4000-8000-000000000062",
+    # report run v2 (seed_tools.sql): project Mike with the three Mijke tools, project Delta with no evaluation
+    "M": "f0000000-0000-4000-8000-000000000001",
+    "M_V1": "f1000000-0000-4000-8000-000000000001",
+    "M_V2": "f2000000-0000-4000-8000-000000000002",
+    "D": "d0000000-0000-4000-8000-000000000001",
+    "D_V1": "d1000000-0000-4000-8000-000000000001",
+    "EVAL_M_V1": "f1e00000-0000-4000-8000-000000000070",
+    "EVAL_M_V2_SR_FAILED": "f2e00000-0000-4000-8000-000000000071",
+    "EVAL_M_V2_LB_SR": "f2e00000-0000-4000-8000-000000000072",
+    "EVAL_M_V2_PF_PARTIAL": "f2e00000-0000-4000-8000-000000000073",
+    "EVAL_M_V2_PF_FULL": "f2e00000-0000-4000-8000-000000000074",
+    "EVAL_M_V2_PF_FAILED": "f2e00000-0000-4000-8000-000000000075",
     # superset chart ids
     "CHART_A": 33,
     "CHART_A2": 34,
     "CHART_B": 35,
     "CHART_E": 36,
 }
-SLUGS = {"A": "alpha", "B": "beta", "C": "gamma", "E": "echo"}
+SLUGS = {"A": "alpha", "B": "beta", "C": "gamma", "E": "echo", "M": "mike", "D": "delta"}
 #: Texts that belong to data a report pinned to Alpha v2 must never show.
 FOREIGN_MARKERS = ("V1MARK", "V3MARK", "NULLMARK", "BETAMARK")
 
@@ -209,7 +221,7 @@ def build(label: str = "report", *, seed: bool = True, modules: bool = True,
                                  ("engine", "engine_rw")):
                 _as_file(t, "platform", role, FIXTURES / f"schema_{schema}.sql")
             _su_file(t, "superset", FIXTURES / "schema_superset.sql")
-            for key in ("A", "B", "E"):
+            for key in ("A", "B", "E", "M", "D"):
                 _project_database(t, IDS[key])
             bed.applied["report-grants.sh"] = report_files and REPORT_GRANTS_SH.exists()
             if bed.applied["report-grants.sh"]:
@@ -222,6 +234,10 @@ def build(label: str = "report", *, seed: bool = True, modules: bool = True,
                 _su_file(t, project_db(IDS["A"]), FIXTURES / "seed_controls_alpha.sql")
                 _su_file(t, project_db(IDS["B"]), FIXTURES / "seed_controls_beta.sql")
                 _su_file(t, project_db(IDS["E"]), FIXTURES / "seed_controls_echo.sql")
+                # report run v2: the Mijke tools (Mike) and a version with no evaluation (Delta)
+                _su_file(t, "platform", FIXTURES / "seed_tools.sql")
+                _su_file(t, project_db(IDS["M"]), FIXTURES / "seed_controls_mike.sql")
+                _su_file(t, project_db(IDS["D"]), FIXTURES / "seed_controls_delta.sql")
         elif seed:
             # core only (the composer's bed): the projects, versions and members
             core = (FIXTURES / "seed_platform.sql").read_text().split("-- ── qualification")[0]
