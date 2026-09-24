@@ -8,3 +8,4 @@ reviews each stage's output before starting the next.
 | stage | started | finished | output | status | result |
 |---|---|---|---|---|---|
 | 1 specs | 23:38 | 23:51 | 01-specs.md | done | V1-V8, U1-U7 specified (R-C, R-V*, R-U*, R-S, R-D); 10 questions with defaults, 8 deviations; no live measurements exist, tool renderers specified from plugin sources |
+| 2 tests | 23:52 | 00:28 | 02-tests.md | done | baseline re-measured (known failures only); 600 new tests, 557 failing for the missing feature, 43 justified guards; goldens from 26e235d; seed gains projects Mike and Delta; 3 new local tool repos; 1 question |
