@@ -432,3 +432,20 @@ def test_c5_skips_when_keycloak_cannot_be_read(bed, cluster):
     found = checks.c5_users(replace(cluster, keycloak_db="no_keycloak_here"))
     assert [f.level for f in found] == ["WARN"]
     assert "skipped" in found[0].message and "no_keycloak_here" in found[0].message
+
+
+# ── C6 stale step-2 graph ────────────────────────────────────────────────────
+
+def test_c6_the_card_was_rebuilt_after_the_assessment(bed, cluster):
+    with planted(bed, "platform",
+                 "UPDATE qualification.knowledge_graph SET jsonld = jsonld || ' ' WHERE id = 'kg-a2'",
+                 f"UPDATE qualification.knowledge_graph SET jsonld = '{JSONLD}' WHERE id = 'kg-a2'"):
+        f = only(checks.c6_stale_graph(cluster), "WARN", "coa2", A_V2, "by content")
+    assert f.check == "C6"
+
+
+def test_c6_the_card_has_no_stored_graph_to_compare(bed, cluster):
+    with planted(bed, "platform",
+                 "UPDATE qualification.knowledge_graph SET \"qualificationId\" = 'q-none' WHERE id = 'kg-a2'",
+                 "UPDATE qualification.knowledge_graph SET \"qualificationId\" = 'q-a2' WHERE id = 'kg-a2'"):
+        only(checks.c6_stale_graph(cluster), "WARN", "coa2", "no stored knowledge graph")

@@ -249,6 +249,38 @@ def c5_users(cl: Cluster) -> list[Finding]:
             for sub, where in sorted(_subjects(cl).items()) if sub not in users]
 
 
+# ── C6 ───────────────────────────────────────────────────────────────────────
+
+def c6_stale_graph(cl: Cluster) -> list[Finding]:
+    """An assessment's graph (control_objectives.graph, step 2) is still its card's current
+    knowledge graph. The two digests are not comparable: qualification's comes from the
+    ontology builder, control objectives' is the sha256 of the bytes it was served. So the
+    comparison is by content, the sha256 of each side's jsonld."""
+    db = cl.platform_db
+    if not (cl.exists(db, "control_objectives.graph") and cl.exists(db, "qualification.knowledge_graph")):
+        return []
+    rows = cl.rows(db, """
+        SELECT a.id, a.system_id::text, q.id, k.id IS NULL,
+               encode(sha256(convert_to(g.jsonld, 'UTF8')), 'hex'),
+               encode(sha256(convert_to(k.jsonld, 'UTF8')), 'hex'), g.uploaded_at, k.built_at
+          FROM control_objectives.graph g
+          JOIN control_objectives.project a ON a.id = g.project_id
+          LEFT JOIN qualification.qualification q ON q.system_id = a.system_id
+          LEFT JOIN qualification.knowledge_graph k ON k."qualificationId" = q.id
+         ORDER BY a.id""")
+    out = []
+    for aid, sid, qid, missing, assessed, current, uploaded, built in rows:
+        if missing:
+            out.append(warn("C6", f"control_objectives project {aid} (system {sid}): its card "
+                                  f"{qid or '(none)'} has no stored knowledge graph to compare with"))
+        elif assessed != current:
+            out.append(warn("C6", f"control_objectives project {aid} (system {sid}): its graph differs from "
+                                  f"card {qid}'s current knowledge graph, compared by content (sha256 of jsonld "
+                                  f"{assessed[:12]} vs {current[:12]}; uploaded {uploaded:%Y-%m-%d %H:%M}, "
+                                  f"card graph built {built:%Y-%m-%d %H:%M})"))
+    return out
+
+
 # ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -271,5 +303,7 @@ DATA_CHECKS = [
     Check("C4", "references resolve", "every reference into core.project and core.system resolves",
           c4_references),
     Check("C5", "users resolve", "every stored subject is a Keycloak user", c5_users),
+    Check("C6", "stale step-2 graph", "every assessment's graph is its card's current knowledge graph",
+          c6_stale_graph),
 ]
 ALL_CHECKS = DATA_CHECKS
