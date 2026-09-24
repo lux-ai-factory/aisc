@@ -150,3 +150,61 @@ def test_shared_parameter_definitions_become_components_parameters():
     assert result["components"]["parameters"]["Limit"] == {
         "in": "query", "name": "limit", "schema": {"type": "integer", "maximum": 100},
     }
+
+
+def test_two_different_ref_parameters_on_one_operation_both_survive_merge():
+    from aisc_connectors.importers.swagger2 import convert
+
+    doc = {
+        "swagger": "2.0",
+        "info": {"title": "t", "version": "1"},
+        "host": "h",
+        "paths": {
+            "/items": {
+                "get": {
+                    "operationId": "listItems",
+                    "parameters": [
+                        {"$ref": "#/parameters/Limit"},
+                        {"$ref": "#/parameters/Offset"},
+                    ],
+                    "responses": {"200": {"description": "ok"}},
+                }
+            }
+        },
+        "parameters": {
+            "Limit": {"in": "query", "name": "limit", "type": "integer"},
+            "Offset": {"in": "query", "name": "offset", "type": "integer"},
+        },
+    }
+    params = convert(doc)["paths"]["/items"]["get"]["parameters"]
+    assert {p["$ref"] for p in params} == {"#/components/parameters/Limit", "#/components/parameters/Offset"}
+
+
+def test_path_level_ref_parameter_is_overridden_by_op_level_inline_parameter():
+    from aisc_connectors.importers.swagger2 import convert
+
+    doc = {
+        "swagger": "2.0",
+        "info": {"title": "t", "version": "1"},
+        "host": "h",
+        "paths": {
+            "/items": {
+                "parameters": [{"$ref": "#/parameters/Limit"}],
+                "get": {
+                    "operationId": "listItems",
+                    "parameters": [
+                        {"in": "query", "name": "limit", "type": "integer", "required": True, "maximum": 100}
+                    ],
+                    "responses": {"200": {"description": "ok"}},
+                },
+            }
+        },
+        "parameters": {"Limit": {"in": "query", "name": "limit", "type": "integer"}},
+    }
+    params = convert(doc)["paths"]["/items"]["get"]["parameters"]
+    limit_params = [p for p in params if p.get("name") == "limit" and p.get("in") == "query"]
+    assert len(limit_params) == 1
+    assert limit_params[0] == {
+        "in": "query", "name": "limit", "required": True, "schema": {"type": "integer", "maximum": 100}
+    }
+    assert all("$ref" not in p for p in params)

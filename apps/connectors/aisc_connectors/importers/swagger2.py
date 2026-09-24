@@ -47,10 +47,26 @@ def _convert_param(param: dict) -> dict:
         "schema": _param_schema(param)}
 
 
-def _merge_params(shared: list[dict], op_params: list[dict]) -> list[dict]:
-    """Operation-level parameters win over path-level ones sharing the same (name, in)."""
-    overridden = {(p.get("name"), p.get("in")) for p in op_params}
-    return [p for p in shared if (p.get("name"), p.get("in")) not in overridden] + op_params
+def _param_merge_key(param: dict, definitions: dict):
+    """The (name, in) a parameter overrides on, resolving a $ref through the top-level definitions.
+
+    Two different unresolvable refs must never collide, so an unresolvable ref is keyed by its
+    own ref string rather than falling back to a shared (None, None).
+    """
+    ref = param.get("$ref")
+    if ref is None:
+        return (param.get("name"), param.get("in"))
+    target = definitions.get(ref.rsplit("/", 1)[-1])
+    if target is None:
+        return ("$ref", ref)
+    return (target.get("name"), target.get("in"))
+
+
+def _merge_params(shared: list[dict], op_params: list[dict], definitions: dict) -> list[dict]:
+    """Operation-level parameters win over path-level ones sharing the same (name, in),
+    resolving $ref parameters against the document's shared parameter definitions."""
+    overridden = {_param_merge_key(p, definitions) for p in op_params}
+    return [p for p in shared if _param_merge_key(p, definitions) not in overridden] + op_params
 
 
 def _convert_response(response: dict, produces: list[str]) -> dict:
@@ -68,6 +84,9 @@ def _operation(op: dict, consumes: list[str], produces: list[str]) -> dict:
     produces = op.get("produces") or produces or ["application/json"]
     params, form = [], {}
     for param in op.get("parameters") or []:
+        if "$ref" in param:
+            params.append({"$ref": param["$ref"]})
+            continue
         where = param.get("in")
         if where == "body":
             out["requestBody"] = {"required": bool(param.get("required")),
@@ -112,6 +131,7 @@ def convert(doc: dict) -> dict:
     doc = copy.deepcopy(doc)
     scheme = (doc.get("schemes") or ["https"])[0]
     servers = [{"url": f"{scheme}://{doc['host']}{doc.get('basePath', '')}".rstrip("/")}] if doc.get("host") else []
+    param_definitions = doc.get("parameters") or {}
     paths = {}
     for path, item in (doc.get("paths") or {}).items():
         shared = item.get("parameters") or []
@@ -119,7 +139,7 @@ def convert(doc: dict) -> dict:
         for method in HTTP_METHODS:
             if method in item:
                 op = dict(item[method])
-                op["parameters"] = _merge_params(shared, op.get("parameters") or [])
+                op["parameters"] = _merge_params(shared, op.get("parameters") or [], param_definitions)
                 paths[path][method] = _operation(op, doc.get("consumes") or [], doc.get("produces") or [])
     out = {
         "openapi": "3.1.0",
@@ -130,7 +150,7 @@ def convert(doc: dict) -> dict:
             "schemas": doc.get("definitions") or {},
             "securitySchemes": _security(doc.get("securityDefinitions") or {}),
             "responses": _shared_responses(doc.get("responses") or {}, doc.get("produces") or []),
-            "parameters": _shared_parameters(doc.get("parameters") or {}),
+            "parameters": _shared_parameters(param_definitions),
         },
     }
     return _refs(out)
