@@ -29,8 +29,11 @@ def _uuid(value) -> str | None:
 
 # Versions
 
+_SYSTEM = "pid::text AS pid, number, name, version AS release"
+
+
 def systems(conn, project_pid) -> list[dict]:
-    return conn.execute("SELECT pid::text AS pid, number, name, version AS release FROM core.system"
+    return conn.execute(f"SELECT {_SYSTEM} FROM core.system"
                         " WHERE project_id = %s ORDER BY number DESC", (project_pid,)).fetchall()
 
 
@@ -38,12 +41,12 @@ def system_of_project(conn, project_pid, system_pid) -> dict | None:
     s = _uuid(system_pid)
     if s is None:
         return None
-    return conn.execute("SELECT pid::text AS pid, number, name, version AS release FROM core.system"
+    return conn.execute(f"SELECT {_SYSTEM} FROM core.system"
                         " WHERE project_id = %s AND pid = %s", (project_pid, s)).fetchone()
 
 
 def latest_system(conn, project_pid) -> dict | None:
-    return conn.execute("SELECT pid::text AS pid, number, name, version AS release FROM core.system"
+    return conn.execute(f"SELECT {_SYSTEM} FROM core.system"
                         " WHERE project_id = %s ORDER BY number DESC LIMIT 1", (project_pid,)).fetchone()
 
 
@@ -141,14 +144,17 @@ def template_names(conn, project_pid) -> set[str]:
                                             (project_pid,)).fetchall()}
 
 
+def _look_values(look) -> tuple:
+    return look["name"], look["font"], look["font_size_pt"], look["primary_color"], look["accent_color"]
+
+
 def insert_template(conn, *, project_pid, look, logo, who, now) -> str:
     mime, raw = logo if logo else (None, None)
     return conn.execute(
         "INSERT INTO report_composer.template (project_id, name, font, font_size_pt, primary_color, accent_color,"
         " logo_mime, logo, created_at, created_by, updated_at, updated_by)"
         " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
-        (project_pid, look["name"], look["font"], look["font_size_pt"], look["primary_color"], look["accent_color"],
-         mime, raw, now, who, now, who)).fetchone()["id"]
+        (project_pid, *_look_values(look), mime, raw, now, who, now, who)).fetchone()["id"]
 
 
 def update_template(conn, project_pid, template_id, *, look, logo, who, now) -> bool:
@@ -157,8 +163,7 @@ def update_template(conn, project_pid, template_id, *, look, logo, who, now) -> 
         "UPDATE report_composer.template SET name = %s, font = %s, font_size_pt = %s, primary_color = %s,"
         " accent_color = %s, logo_mime = %s, logo = %s, updated_at = %s, updated_by = %s"
         " WHERE id = %s AND project_id = %s RETURNING id",
-        (look["name"], look["font"], look["font_size_pt"], look["primary_color"], look["accent_color"], mime, raw,
-         now, who, template_id, project_pid)).fetchone() is not None
+        (*_look_values(look), mime, raw, now, who, template_id, project_pid)).fetchone() is not None
 
 
 def delete_template(conn, project_pid, template_id) -> bool:

@@ -106,14 +106,9 @@ def _is_uuid(value) -> bool:
         return False
 
 
-def validate_layout(blocks, *, block_types, choices, allow_missing_references=False) -> list[dict]:
-    """Problems of a layout, layout-level first, as [{instance_id, code, pointer, message}].
-
-    `choices(block_type)` answers the values each reference option may take (called at most once
-    per block type, and only for a block whose options are otherwise valid).
-    """
-    types = {t["type_id"]: t for t in block_types}
-    problems: list[dict] = []
+def _layout_problems(blocks) -> list[dict]:
+    """What is wrong with the layout as a whole: too many blocks or charts, more than one cover."""
+    problems = []
     if len(blocks) > MAX_BLOCKS:
         problems.append(_problem(None, "too_many_blocks", "", f"a layout holds at most {MAX_BLOCKS} blocks"))
     if sum(1 for b in blocks if isinstance(b, dict) and b.get("block_type") == "dashboard_chart") > MAX_CHARTS:
@@ -121,8 +116,40 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
     covers = [b for b in blocks if isinstance(b, dict) and b.get("block_type") == "cover"]
     if len(covers) > 1:
         problems.append(_problem(covers[1].get("instance_id"), "duplicate_cover", "", "a layout has one cover at most"))
+    return problems
+
+
+def _block_problems(b: dict, t: dict, choices_of, allow_missing_references: bool) -> list[dict]:
+    """What is wrong with one block of a known type: its options first, then its references."""
+    iid = b["instance_id"]
+    options = b.get("options") if b.get("options") is not None else {}
+    if not isinstance(options, dict):
+        return [_problem(iid, "invalid_options", "", "must be an object")]
+    merged = {**copy.deepcopy(t.get("default_options") or {}), **options}
+    refs = reference_options(t)
+    found = _option_problems(t["options_schema"], merged, iid, set(refs) if allow_missing_references else set())
+    if found or not refs:
+        return found
+    allowed = choices_of(t["type_id"])
+    return [p for name in refs for p in _reference_problems(name, merged.get(name), allowed, iid)]
+
+
+def validate_layout(blocks, *, block_types, choices, allow_missing_references=False) -> list[dict]:
+    """Problems of a layout, layout-level first, as [{instance_id, code, pointer, message}].
+
+    `choices(block_type)` answers the values each reference option may take (called at most once
+    per block type, and only for a block whose options are otherwise valid).
+    """
+    types = {t["type_id"]: t for t in block_types}
+    problems = _layout_problems(blocks)
     seen: set = set()
     cache: dict = {}
+
+    def choices_of(type_id):
+        if type_id not in cache:
+            cache[type_id] = choices(type_id) or {}
+        return cache[type_id]
+
     for b in blocks:
         if not isinstance(b, dict) or not _is_uuid(b.get("instance_id")):
             problems.append(_problem(b.get("instance_id") if isinstance(b, dict) else None, "invalid_block",
@@ -138,22 +165,7 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
             problems.append(_problem(iid, "unknown_block_type", "/block_type",
                                      f"the block type {b.get('block_type')!r} is not available"))
             continue
-        options = b.get("options") if b.get("options") is not None else {}
-        if not isinstance(options, dict):
-            problems.append(_problem(iid, "invalid_options", "", "must be an object"))
-            continue
-        merged = {**copy.deepcopy(t.get("default_options") or {}), **options}
-        refs = reference_options(t)
-        found = _option_problems(t["options_schema"], merged, iid, set(refs) if allow_missing_references else set())
-        if found:
-            problems.extend(found)
-            continue
-        if not refs:
-            continue
-        if t["type_id"] not in cache:
-            cache[t["type_id"]] = choices(t["type_id"]) or {}
-        for name in refs:
-            problems.extend(_reference_problems(name, merged.get(name), cache[t["type_id"]], iid))
+        problems.extend(_block_problems(b, t, choices_of, allow_missing_references))
     return problems
 
 

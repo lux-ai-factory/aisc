@@ -21,6 +21,10 @@ def _array_of(prop: dict) -> dict:
     return prop.get("items") or {}
 
 
+def _enum_options(values) -> list[dict]:
+    return [{"value": v, "label": str(v)} for v in values]
+
+
 def form_fields(options_schema, values, choices) -> list[dict]:
     required = set(options_schema.get("required", []))
     values = values or {}
@@ -37,18 +41,18 @@ def form_fields(options_schema, values, choices) -> list[dict]:
         elif _is_all_or_list(prop):
             enum = _array_of(prop).get("enum")
             field.update(widget="multiselect", kind="all-or-list",
-                         options=choices.get(name) or [{"value": v, "label": str(v)} for v in enum or []])
+                         options=choices.get(name) or _enum_options(enum or []))
         elif prop.get("type") == "array":
             enum = items.get("enum")
             if enum:
-                field.update(widget="multiselect", kind="list", options=[{"value": v, "label": str(v)} for v in enum])
+                field.update(widget="multiselect", kind="list", options=_enum_options(enum))
             else:
                 field.update(widget="list", kind="list")
         elif name in choices:
             field.update(widget="select", kind="int" if prop.get("type") == "integer" else "str",
                          options=list(choices[name]))
         elif "enum" in prop:
-            field.update(widget="select", kind="enum", options=[{"value": v, "label": str(v)} for v in prop["enum"]])
+            field.update(widget="select", kind="enum", options=_enum_options(prop["enum"]))
         elif prop.get("type") == "boolean":
             field.update(widget="checkbox", kind="bool")
         elif prop.get("type") in ("integer", "number"):

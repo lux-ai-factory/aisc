@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 import psycopg
-from psycopg.rows import dict_row
+
+from . import db
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +57,13 @@ def same_origin(headers, origin: str) -> bool:
 
 def find_project(database_url, ref) -> dict | None:
     """The project named by its pid or its slug, or None."""
-    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+    with db.connect(database_url) as conn:
         return conn.execute("SELECT pid::text AS pid, slug, name FROM core.project WHERE pid::text = %s OR slug = %s",
                             (str(ref), str(ref))).fetchone()
 
 
 def role_in_project(database_url, project_pid, subject) -> str | None:
-    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+    with db.connect(database_url) as conn:
         row = conn.execute("SELECT role FROM core.project_member WHERE project_id = %s AND subject = %s",
                            (str(project_pid), subject)).fetchone()
     return row["role"] if row else None
