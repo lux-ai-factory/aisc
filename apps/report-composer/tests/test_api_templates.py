@@ -92,8 +92,9 @@ def test_a_template_exports_as_one_file_with_its_logo(client, auth):
     assert r.status_code == 200
     assert "attachment" in r.headers["content-disposition"] and ".json" in r.headers["content-disposition"]
     doc = json.loads(r.content)
-    assert doc == {"format": "aisc-report-template", "version": 1, "name": "Bank X", "font": "liberation-serif",
-                   "font_size_pt": 11, "primary_color": "#123456", "accent_color": "#abcdef", "logo": LOGO}
+    assert doc == {"format": "aisc-report-template", "version": 2, "name": "Bank X", "font": "liberation-serif",
+                   "font_size_pt": 11, "primary_color": "#123456", "accent_color": "#abcdef", "logo": LOGO,
+                   "header_text": None, "footer_text": None, "marking": "none", "show_document_id": False}
 
 
 def test_an_exported_template_imports_into_another_project(client, auth):
@@ -127,9 +128,9 @@ def test_a_viewer_cannot_import(client, auth):
 
 # ── a layout is saved with a template ────────────────────────────────────────
 
-def test_a_layout_is_not_saved_without_a_template(client, auth):
+def test_a_layout_is_saved_without_a_template(client, auth):
     r = client.post("/api/p/alpha/layouts", json={"name": "No look", "system_id": IDS["A_V2"]}, headers=auth("alice"))
-    assert r.status_code == 422 and error_code(r) == "template_required"
+    assert r.status_code == 201 and r.json()["template_id"] is None
 
 
 def test_a_layout_is_not_saved_with_another_projects_template(client, auth):
@@ -139,7 +140,7 @@ def test_a_layout_is_not_saved_with_another_projects_template(client, auth):
     assert r.status_code == 422 and error_code(r) == "template_not_in_project"
 
 
-def test_saving_changes_the_template_and_needs_one(client, auth):
+def test_saving_changes_the_template(client, auth):
     a = new_template(client, auth, name="A")
     b = new_template(client, auth, name="B")
     lay = new_layout(client, auth, name="Styled", system_id=IDS["A_V2"], template_id=a["id"])
@@ -147,7 +148,7 @@ def test_saving_changes_the_template_and_needs_one(client, auth):
     r = put_layout(client, auth, lay, template_id=b["id"])
     assert r.status_code == 200 and r.json()["template_id"] == b["id"]
     r = put_layout(client, auth, r.json(), template_id=None)
-    assert r.status_code == 422 and error_code(r) == "template_required"
+    assert r.status_code == 200 and r.json()["template_id"] is None
 
 
 def test_deleting_a_template_leaves_its_layouts_without_one(client, auth):
@@ -172,13 +173,14 @@ def test_the_pdf_is_made_in_the_saved_templates_look(client, auth, fake_renderer
                              "accent_color": "#abcdef", "logo": LOGO}
 
 
-def test_a_layout_without_a_template_is_not_generated(client, auth, fake_renderer):
+def test_a_layout_whose_template_was_deleted_is_generated_in_the_platform_look(client, auth, fake_renderer):
     t = new_template(client, auth, name="Going")
     lay = new_layout(client, auth, name="Orphan", system_id=IDS["A_V2"], template_id=t["id"])
     client.delete(f"/api/p/alpha/templates/{t['id']}", headers=auth("alice"))
     r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", headers=auth("alice"))
-    assert r.status_code == 422 and error_code(r) == "template_required"
-    assert not [s for s in fake_renderer.snapshots if s["mode"] == "pdf"]
+    assert r.status_code == 201, r.text[:300]
+    pdf = [s for s in fake_renderer.snapshots if s["mode"] == "pdf"]
+    assert pdf and "style" not in pdf[-1]
 
 
 def test_the_preview_uses_the_template_and_works_without_one(client, auth, fake_renderer):

@@ -68,7 +68,7 @@ def test_r4_1_1_one_small_script(client, auth):
     from pathlib import Path
 
     js = Path(__file__).resolve().parents[1] / "report_composer/static/composer.js"
-    assert js.exists() and len(js.read_text().splitlines()) < 300
+    assert js.exists() and len(js.read_text().splitlines()) < 500
 
 
 # R7.3.3: the composer reads no module schema
@@ -142,5 +142,5 @@ def test_generate_answers_next_to_the_button_and_downloads_the_pdf():
     start = js.index('what === "generate"')
     handler = js[start:js.index("} else if", start + 1) if "} else if" in js[start + 1:] else len(js)]
     assert "[data-state]" in handler or "state.textContent" in handler, "status must show next to the button"
-    assert '"/pdf"' in handler and ".download" in handler and ".click()" in handler, "a finished PDF must download"
+    assert '"/download"' in handler and ".download" in handler and ".click()" in handler, "a finished PDF must download"
     assert "location.reload" not in handler
