@@ -1,4 +1,4 @@
-"""Every technology becomes the same canonical OpenAPI document (spec D3)."""
+"""Every technology becomes the same canonical OpenAPI document."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

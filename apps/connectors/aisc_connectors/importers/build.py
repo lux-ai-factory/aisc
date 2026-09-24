@@ -1,4 +1,4 @@
-"""A canonical document with one operation, from what a person can paste (spec D3)."""
+"""A canonical document with one operation, from what a person can paste."""
 from __future__ import annotations
 
 import base64

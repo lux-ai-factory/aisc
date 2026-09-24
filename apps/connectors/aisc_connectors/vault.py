@@ -1,4 +1,4 @@
-"""Credentials of the systems we connect to: encrypted at rest, never read back (spec D7).
+"""Credentials of the systems we connect to: encrypted at rest, never read back.
 
 Only the executor calls plain(). Every other caller gets the masked form.
 """

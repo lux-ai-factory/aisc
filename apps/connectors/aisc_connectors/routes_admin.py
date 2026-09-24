@@ -1,4 +1,4 @@
-"""Admin routes: /api/v1/connectors. Every route depends on admin_call (spec D7)."""
+"""Admin routes: /api/v1/connectors. Every route depends on admin_call."""
 from __future__ import annotations
 
 import uuid
@@ -19,7 +19,7 @@ SETTINGS_BOUNDS = {"timeout_s": (1, 300), "rate_limit_per_minute": (1, 6000)}
 
 
 def engine_for(admin: Admin = Depends(admin_call)):
-    # Yielded so the httpx client closes at the end of the request (ruling 1).
+    # Yielded so the httpx client closes at the end of the request.
     with engine_api.EngineClient(admin.token) as engine:
         yield engine
 
@@ -90,7 +90,7 @@ def orphaned(row: dict, engine: engine_api.EngineClient) -> bool:
     except engine_api.NotFound:
         return True
     except engine_api.EngineError as exc:
-        # ruling 2: an engine refusal other than 404 is a 502, never a 500.
+        # An engine refusal other than 404 is a 502, never a 500.
         raise HTTPException(502, f"the engine refused: {exc.detail}") from exc
 
 
@@ -110,7 +110,7 @@ def create(body: NewConnector, admin: Admin = Depends(admin_call),
     except engine_api.NotFound:
         raise HTTPException(404, "the engine knows no such project")
     except engine_api.EngineError as exc:
-        # ruling 2: an engine refusal other than 404 is a 502, never a 500.
+        # An engine refusal other than 404 is a 502, never a 500.
         raise HTTPException(502, f"the engine refused: {exc.detail}") from exc
     try:
         row = store.create_connector(body.project_pid, uuid.UUID(system["pid"]), body.name, slugify(body.name),

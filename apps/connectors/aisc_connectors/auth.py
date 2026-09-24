@@ -1,4 +1,4 @@
-"""Admin only, and the admin's own token kept to call the engine with (spec D2, D7)."""
+"""Admin only, and the admin's own token kept to call the engine with."""
 from __future__ import annotations
 
 from dataclasses import dataclass

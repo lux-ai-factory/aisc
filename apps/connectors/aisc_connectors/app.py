@@ -1,4 +1,4 @@
-"""The connectors service: admin routes, the gateway plugins call, and a health check."""
+"""The connectors service: the admin routes and a health check."""
 from fastapi import FastAPI
 
 app = FastAPI(title="AISC connectors")

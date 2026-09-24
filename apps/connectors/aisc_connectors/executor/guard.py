@@ -1,4 +1,4 @@
-"""Outbound safety for everything that leaves this service (spec D7)."""
+"""Outbound safety for everything that leaves this service."""
 from __future__ import annotations
 
 import ipaddress

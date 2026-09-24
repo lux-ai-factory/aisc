@@ -1,6 +1,6 @@
 """The engine, reached only through its public API and only with the admin's own token.
 
-Nothing here touches the engine's database: its schema is frozen, grants included (spec D2).
+Nothing here touches the engine's database: its schema is frozen, grants included.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ class EngineClient:
 
     def _send(self, method: str, url: str, **kwargs: object) -> httpx.Response:
         # Never let the message name the token or a request/response body: it may
-        # carry a secret (create_secret's plaintext value, spec D2/D7).
+        # carry a secret (create_secret's plaintext value).
         try:
             return self._http.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:

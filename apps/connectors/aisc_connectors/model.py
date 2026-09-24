@@ -1,4 +1,4 @@
-"""The canonical document: OpenAPI 3.1 whose operations carry x-aisc-binding (spec D3)."""
+"""The canonical document: OpenAPI 3.1 whose operations carry x-aisc-binding."""
 from __future__ import annotations
 
 import copy

@@ -1,4 +1,4 @@
-"""What can go wrong, in words a person can act on (spec D8)."""
+"""What can go wrong, in words a person can act on."""
 from __future__ import annotations
 
 #: Target-side kinds: the target answered, and this is what its answer means.

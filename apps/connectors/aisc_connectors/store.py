@@ -23,11 +23,10 @@ class DuplicateName(ValueError):
 
 
 def _insert(project_pid, ai_system_pid, name, slug, kind, environment, created_by, *, compute_target_access):
-    # Computing is_target_access inside the INSERT (instead of a separate SELECT then INSERT) closes
-    # the race window between the two statements: concurrent creates for the same project can no
-    # longer both see "no target access yet" and both insert one. If two such INSERTs still land at
-    # the same instant, the partial unique index one_target_access_per_project catches the loser and
-    # we retry it once, hard-coded to false, below.
+    # is_target_access is computed inside the INSERT, not by a SELECT before it, so concurrent
+    # creates for the same project cannot both see "no target access yet" in between. If two such
+    # INSERTs land at the same instant, the partial unique index one_target_access_per_project
+    # catches the loser, and create_connector retries it once with false.
     is_target_sql = ("NOT EXISTS (SELECT 1 FROM connector.connector WHERE project_pid = %s AND is_target_access)"
                       if compute_target_access else "false")
     params: list[object] = [uuid.uuid4(), project_pid, ai_system_pid, name, slug, kind, environment]
