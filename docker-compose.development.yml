@@ -8,6 +8,7 @@ services:
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
+      APP_SHOW_CELERY_TASKS: ${SHOW_CELERY_TASKS}
       # Keycloak URL injected into the built JS at container start (env.sh replaces APP_KEYCLOAK_URL).
       APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
       # Public catalogue URL injected into the built JS at container start (env.sh replaces APP_CATALOG_URL).
@@ -50,6 +51,11 @@ services:
       IMMUDB_URL: immudb:3322
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      # Keycloak bearer auth for the API (settings.py reads these).
+      AUTH_ENABLED: ${AUTH_ENABLED}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
     networks:
       - backend
     depends_on:
@@ -119,6 +125,7 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
       FLOWER_URL_PREFIX: flower
+      FLOWER_UNAUTHENTICATED_API: "true"
     depends_on:
       - aisc-eval-worker
       - aisc-backend
@@ -127,9 +134,10 @@ services:
     volumes:
       - ${PLUGIN_PATH}:/app/plugins
       - ./shared:/app/shared
+      - flower_data:/data
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker flower"
+      && celery -A aisc_eval.celery_worker flower --db=/data/flower.db --persistent=True"
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -236,3 +244,6 @@ services:
     networks:
       - backend
       - frontend
+
+volumes:
+  flower_data:
