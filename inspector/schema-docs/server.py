@@ -28,6 +28,10 @@ WORK = OUTPUT.parent / (OUTPUT.name + "-work")
 MAX_AGE = int(os.environ.get("SCHEMA_DOCS_MAX_AGE", "600"))
 DATABASE = re.compile(r"^(platform|project_[0-9a-f]{32})$")
 SCHEMAS = "^(?!pg_|information_schema).*"
+SCHEMASPY_JAR = "/usr/local/lib/schemaspy/schemaspy-app.jar"
+SCHEMASPY_TIMEOUT = 300
+#: How much of SchemaSpy's output to log when a run fails.
+FAILURE_TAIL = 2000
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -37,9 +41,38 @@ def _lock(database: str) -> threading.Lock:
         return _locks.setdefault(database, threading.Lock())
 
 
+def _index(database: str) -> Path:
+    return OUTPUT / database / "index.html"
+
+
 def _fresh(database: str) -> bool:
-    index = OUTPUT / database / "index.html"
+    index = _index(database)
     return index.is_file() and time.time() - index.stat().st_mtime < MAX_AGE
+
+
+def _schemaspy_command(database: str, config: Path, site: Path) -> list[str]:
+    return [
+        "java", "-jar", SCHEMASPY_JAR,
+        "-configFile", str(config),
+        "-dp", "/drivers_inc/", "-t", "pgsql11",
+        "-host", os.environ.get("PGHOST", "postgres"),
+        "-port", os.environ.get("PGPORT", "5432"),
+        "-db", database, "-u", "inspector_ro",
+        "-all", "-schemaSpec", SCHEMAS,
+        "-o", str(site),
+    ]
+
+
+def _swap_in(site: Path, database: str) -> None:
+    """Replace the database's published site with `site`, keeping the old one
+    aside until the new one is in place."""
+    target = OUTPUT / database
+    old = OUTPUT / (database + ".old")
+    shutil.rmtree(old, ignore_errors=True)
+    if target.exists():
+        target.rename(old)
+    site.rename(target)
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def generate(database: str) -> None:
@@ -52,25 +85,10 @@ def generate(database: str) -> None:
     site = work / "site"
     try:
         subprocess.run(
-            [
-                "java", "-jar", "/usr/local/lib/schemaspy/schemaspy-app.jar",
-                "-configFile", str(config),
-                "-dp", "/drivers_inc/", "-t", "pgsql11",
-                "-host", os.environ.get("PGHOST", "postgres"),
-                "-port", os.environ.get("PGPORT", "5432"),
-                "-db", database, "-u", "inspector_ro",
-                "-all", "-schemaSpec", SCHEMAS,
-                "-o", str(site),
-            ],
-            check=True, capture_output=True, timeout=300,
+            _schemaspy_command(database, config, site),
+            check=True, capture_output=True, timeout=SCHEMASPY_TIMEOUT,
         )
-        target = OUTPUT / database
-        old = OUTPUT / (database + ".old")
-        shutil.rmtree(old, ignore_errors=True)
-        if target.exists():
-            target.rename(old)
-        site.rename(target)
-        shutil.rmtree(old, ignore_errors=True)
+        _swap_in(site, database)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -101,9 +119,9 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     generate(database)
                 except subprocess.CalledProcessError as exc:
-                    tail = (exc.stdout or b"")[-2000:].decode(errors="replace")
+                    tail = (exc.stdout or b"")[-FAILURE_TAIL:].decode(errors="replace")
                     self.log_error("schemaspy failed for %s: %s", database, tail)
-                    if not (OUTPUT / database / "index.html").is_file():
+                    if not _index(database).is_file():
                         self.send_error(HTTPStatus.BAD_GATEWAY, "SchemaSpy could not read this database")
                         return
         super().do_GET()
