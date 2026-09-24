@@ -4,14 +4,14 @@
 #   ./scripts/secrets.sh            # make them if they are missing
 #   ./scripts/secrets.sh --rotate   # make new ones, replacing what is there
 #
-# Why this exists: the repo used to ship working values for these, so every
-# clone of it ran on secrets that anyone could read. The worst of them was the
-# gateway's cookie secret: whoever holds it can mint a session cookie for any
-# user, offline, and that cookie is now the session every module trusts.
+# A secret committed to the repo is a secret every clone shares. The worst of
+# them would be the gateway's cookie secret: whoever holds it can mint a
+# session cookie for any user, offline, and that cookie is the session every
+# module trusts.
 #
-# So nothing here has a default any more. The compose files refuse to start
-# without these, this writes them once into env.secrets, which is git-ignored,
-# and the realm import is rendered from its template with the same values.
+# So none of them has a default. The compose files refuse to start without
+# these, this writes them once into env.secrets, which is git-ignored, and the
+# realm import is rendered from its template with the same values.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

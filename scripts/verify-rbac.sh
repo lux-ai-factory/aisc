@@ -6,8 +6,7 @@
 # Signing in is verify-sso.sh's subject. This is the other half: two real
 # accounts, and for each one both directions, what they may do and what they
 # must be refused. A test that only checks the allowed direction would pass on
-# a system with no authorisation at all, which is exactly the system this
-# replaced.
+# a system with no authorisation at all.
 #
 # `admin` holds the realm's admin role; `user` holds primary-user and is an
 # ordinary account.

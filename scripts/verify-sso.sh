@@ -8,10 +8,9 @@
 # Keycloak's own login page, which is also a 200. So each module is checked by
 # what it served and where the chain ended, not by its status code.
 #
-# The last assertion is the one that matters for the execution engine: its SPA
-# initialises Keycloak with onLoad "check-sso", which is a prompt=none
-# authorization request. If that returns a code, the engine authenticates from
-# the gateway's session and never shows its own sign-in page.
+# No module keeps a sign-in of its own: the gateway holds the one session and
+# passes its token on, and sections 2d, 3 and 4 assert that the engine and the
+# dashboard take who is signed in from it.
 set -uo pipefail
 J=$(mktemp); trap 'rm -f "$J"' EXIT
 U=${KC_USER:-user}; P=${KC_PASS:-user}
@@ -154,9 +153,9 @@ case "$c" in
 esac
 
 echo "2e. nothing is running on a secret anyone can read"
-# The repo used to ship working values for these. The worst was the gateway's
-# cookie secret: whoever holds it can mint a session cookie for any user,
-# offline, and that cookie is the session every module now trusts.
+# Values that were once committed to the repo are known to anyone with a clone.
+# The worst is the gateway's cookie secret: whoever holds it can mint a session
+# cookie for any user, offline, and that cookie is the session every module trusts.
 # By fingerprint, not by the values themselves: a check that refuses a secret
 # should not be the last place that secret is written down.
 #   sha256 of the cookie secret that shipped, and of the client secret
@@ -173,7 +172,7 @@ running_client=$(docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{pr
 [ "$(flag "$running_client")" != "$SHIPPED_CLIENT_SHA" ] \
   && ok "nor its client secret" \
   || no "the gateway is running on the client secret that was in the repo"
-# And the repo carries none of them any more, defaults included.
+# And the repo carries none of them, defaults included.
 if grep -rqE "(GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET|DASHBOARD_OIDC_CLIENT_SECRET|CATALOGUE_INSTALL_TOKEN|DJANGO_SECRET_KEY|INTERNAL_API_KEY)=[^$#[:space:]]" \
      env.development env.plugin_downloader env.staging 2>/dev/null; then
   no "a secret is still written in a tracked env file"
@@ -194,8 +193,8 @@ else
 fi
 
 echo "3. the engine has no login of its own"
-# The webapp used to run its own Keycloak client (keycloak-js, check-sso). It now
-# only asks the API who the gateway says this is, and signs in and out there.
+# The webapp runs no Keycloak client of its own (no keycloak-js, no check-sso):
+# it asks the API who the gateway says this is, and signs in and out there.
 js=$(curl -s -b "$J" --max-time 20 http://localhost/ | grep -oE '/assets/[^"]+\.js' | head -1)
 bundle=$(curl -s -b "$J" --max-time 20 "http://localhost$js")
 case "$bundle" in
@@ -292,9 +291,8 @@ echo "7. installing a plugin goes through the engine, not a second door"
 # The catalogue emits web+aiscplugin:// links; the engine catches them, shows a
 # project dropdown and posts to its own endpoint. So what has to exist is: the
 # engine's install endpoint, its project list, and no bespoke door.
-# The engine's API wants a Keycloak access token, which the dialog has because
-# keycloak-js gave it one. A session cookie alone is not enough, so the check
-# takes a token the way the app does.
+# The role checks below send an access token of their own, so that the answer
+# is about the account named, not about whoever the session belongs to.
 TOK=$(curl -s --max-time 15 -d 'client_id=aisc-webapp' -d 'grant_type=password' \
         -d "username=$U" -d "password=$P" -d 'scope=openid' \
         "$KC/realms/aisc/protocol/openid-connect/token" \
@@ -333,10 +331,9 @@ else
     || no "an ordinary account's install was not refused: $c"
 fi
 
-# This used to require a 401 for a session that carried no token of its own.
-# That was the bug, not the contract: the gateway holds the session and passes
-# the token, so such a call is a signed-in user and is served. What must still
-# be refused is a call carrying neither, which is asserted in section 2d.
+# A session that carries no token of its own is still a signed-in user: the
+# gateway holds the session and passes the token, so the call is served. What
+# must be refused is a call carrying neither, which is asserted in section 2d.
 c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "200" ] && ok "and serves the same call on the gateway's session alone (200)" \
   || no "a signed-in session was refused: /api/v1/projects -> $c"

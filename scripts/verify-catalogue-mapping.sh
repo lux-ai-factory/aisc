@@ -24,7 +24,7 @@ KC=${KEYCLOAK_URL:-http://localhost:8081}
 ENGINE=${ENGINE_URL:-http://localhost}
 CATALOGUE=${CATALOGUE_URL:-http://localhost:8102}
 SLUG=${ENTRY_SLUG:-langbite}
-# One database now, and the engine owns a schema in it.
+# One database, and the engine owns a schema in it.
 PGDB=${PLATFORM_DB:-platform}; PGUSER=${PGUSER:-aisc-postgres-user}; SCHEMA=${ENGINE_SCHEMA:-engine}
 pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }

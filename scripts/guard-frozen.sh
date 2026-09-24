@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Is what must not change still unchanged? (pipeline 2026-09-23, 03 "Guard spec")
+# Is what must not change still unchanged? (docs/superpowers/pipeline-2026-09-23/03-specs.md)
 #
 #   scripts/guard-frozen.sh                    # G1..G5
 #   scripts/guard-frozen.sh --only G3,G4       # a subset
 #   scripts/guard-frozen.sh --reference-only   # build the e34fca3 reference dump, print its path
-#   scripts/guard-frozen.sh --orders           # WP4: 0023 / WP3 prisma / platform 0003 in all 6 orders
+#   scripts/guard-frozen.sh --orders           # engine 0023, qualification's card versions, platform 0003: all 6 orders
 #
 # G1  engine schema at HEAD equals the engine schema at backend e34fca3
 # G2  qualification.knowledge_graph and qualification.qualification_risk unchanged since e112001
@@ -18,8 +18,8 @@
 # no `docker compose` command is run.
 #
 # Sources: committed trees (`git archive <rev>`), so other people's uncommitted files do not
-# change the verdict. GUARD_SOURCE=worktree reads the working trees instead (for stage 5 before
-# a commit). Outputs go to $GUARD_OUT (default: a fresh mktemp dir), printed at the end.
+# change the verdict. GUARD_SOURCE=worktree reads the working trees instead (to check before
+# committing). Outputs go to $GUARD_OUT (default: a fresh mktemp dir), printed at the end.
 #
 # Exit status: 0 when every selected check passes, 1 otherwise.
 set -uo pipefail
@@ -49,9 +49,9 @@ SOURCE=${GUARD_SOURCE:-head}
 # copies, so the checked-out sources come first.
 SHARED_PYTHONPATH=$ROOT/shared/plugin-interface/src:$ROOT/shared/plugin-manager/src
 
-# Pinned references (03 Guard spec)
+# Pinned references
 ENGINE_REF=e34fca3          # backend: merge of Sean's work
-QUAL_REF=e112001            # qualification before WP3
+QUAL_REF=e112001            # qualification before the card-versions migration
 WEBAPP_REF=429f62c          # webapp: Sean's files
 EVAL_REF=e5b1b0a
 PI_REF=97eddea
@@ -61,7 +61,7 @@ LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679
 ENGINE_0023_GLOB='0023_*.py'
 PLATFORM_0003=0003_card_versions_in_core_system.sql
-QUAL_WP3=20260923210000_card_versions_point_at_core_system
+QUAL_CARD_VERSIONS=20260923210000_card_versions_point_at_core_system
 CO_LIVE_REV=3b91d0e7a52c
 
 OUT=${GUARD_OUT:-$(mktemp -d "${TMPDIR:-/tmp}/guard-frozen.XXXXXX")}
@@ -78,7 +78,7 @@ fail() { echo "$1 FAIL: $2"; FAILED=1; }
 selected() { case ",$ONLY," in *",$1,"*) return 0 ;; esac; return 1; }
 log() { echo "[guard] $*" >&2; }
 
-# --- trees ---------------------------------------------------------------------------------
+# Source trees: references, candidates and the live shape, unpacked under $WORK.
 tree() { # repo-dir rev dest [paths...]
   local repo=$1 rev=$2 dest=$3; shift 3
   mkdir -p "$dest"
@@ -101,7 +101,7 @@ prepare_trees() {
   tree "$BACKEND" "$LIVE_ENGINE" "$WORK/live/backend"
 }
 
-# --- steps against the throwaway "platform" database ----------------------------------------
+# Migration steps against the throwaway "platform" database.
 engine_migrate() { # tree [app target]
   local t=$1; shift
   (cd "$t" && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
@@ -143,7 +143,7 @@ build_candidate() {
   local miss=""
   [ -f "$WORK/cand/top/platform/migrations/$PLATFORM_0003" ] || miss="$miss platform/migrations/$PLATFORM_0003"
   ls "$WORK/cand/backend/aisc_backend/migrations/"$ENGINE_0023_GLOB >/dev/null 2>&1 || miss="$miss apps/backend/aisc_backend/migrations/$ENGINE_0023_GLOB"
-  [ -d "$WORK/cand/qualification/prisma/migrations/$QUAL_WP3" ] || miss="$miss apps/qualification/prisma/migrations/$QUAL_WP3"
+  [ -d "$WORK/cand/qualification/prisma/migrations/$QUAL_CARD_VERSIONS" ] || miss="$miss apps/qualification/prisma/migrations/$QUAL_CARD_VERSIONS"
   [ -z "$miss" ] || echo "MISSING:$miss" > "$OUT/candidate.missing"
   : > "$OUT/cand.log"
   platform_migrations "$WORK/cand/top" >>"$OUT/cand.log" 2>&1 || echo "platform migrations failed" >> "$OUT/candidate.errors"
@@ -212,8 +212,8 @@ sean_backend_files() {
       [ -n "$f" ] && git -C "$BACKEND" cat-file -e "$ENGINE_REF:$f" 2>/dev/null && echo "$f"
     done
 }
-# Files the pipeline may add or change in the backend (03 WP1, WP9, amendment A1). Tests are
-# checked separately: Sean's must be identical, new ones are allowed.
+# Files the backend may add or change on top of $ENGINE_REF. Tests are checked separately:
+# Sean's must be identical, new ones are allowed.
 backend_allowed() {
   case "$1" in
     aisc_backend/migrations/0022_parts_belong_to_a_version_of_the_one_system.py) return 0 ;;
@@ -228,7 +228,7 @@ backend_allowed() {
 
 g4() {
   local ok=1 f bad="" sean
-  # Sean's backend files: byte-identical to e34fca3 (A1: including routers/evaluation.py and
+  # Sean's backend files: byte-identical to e34fca3 (including routers/evaluation.py and
   # models/evaluation.py)
   sean=$(sean_backend_files)
   for f in $sean; do diff_quiet "$BACKEND" "$ENGINE_REF" "$f" || bad="$bad $f"; done
@@ -272,7 +272,8 @@ g5() {
   [ $ok = 1 ] && pass G5
 }
 
-# --- WP4: migration orders -----------------------------------------------------------------
+# Migration orders (--orders): engine 0023 (E), qualification's card versions (Q) and platform
+# 0003 (P), applied in every order on a live-shaped fixture.
 seed_live_shape() {
   # platform 0001; one project and its system (so 0002 carries it over under the same pid, as
   # it did live); 0002; qualification up to 20260923180000 with the MCAS card, 14 answers and 1
@@ -303,8 +304,8 @@ step() { # E|Q|P -> run that step on "platform"
          || { echo "MISSING engine $ENGINE_0023_GLOB"; return 1; }
        local m; m=$(basename "$(ls "$WORK/cand/backend/aisc_backend/migrations/"$ENGINE_0023_GLOB | head -1)" .py)
        engine_migrate "$WORK/cand/backend" aisc_backend "$m" ;;
-    Q) [ -d "$WORK/cand/qualification/prisma/migrations/$QUAL_WP3" ] \
-         || { echo "MISSING qualification $QUAL_WP3"; return 1; }
+    Q) [ -d "$WORK/cand/qualification/prisma/migrations/$QUAL_CARD_VERSIONS" ] \
+         || { echo "MISSING qualification $QUAL_CARD_VERSIONS"; return 1; }
        prisma_deploy "$WORK/cand/qualification" ;;
     P) [ -f "$WORK/cand/top/platform/migrations/$PLATFORM_0003" ] \
          || { echo "MISSING platform $PLATFORM_0003"; return 1; }
@@ -354,8 +355,8 @@ orders() {
   [ $s41 = 1 ] && pass S4.1 || fail S4.1 "see order lines above"
   [ $s42 = 1 ] && pass S4.2 || fail S4.2 "see order lines above"
   [ $s43 = 1 ] && pass S4.3 || fail S4.3 "see order lines above"
-  # S4.4: without the ownership fix, E and Q pass, P fails with S2.8's message; after the fix
-  # P succeeds on a re-run.
+  # S4.4: without the ownership fix, E and Q pass and P fails on core.system's owner; after the
+  # fix P succeeds on a re-run.
   restore fixture
   local e q p1 p2 rec
   e=$(step E 2>&1); local es=$?
@@ -372,7 +373,6 @@ orders() {
   fi
 }
 
-# --- main ------------------------------------------------------------------------------------
 case "$MODE" in
   reference)
     prepare_trees; start_db

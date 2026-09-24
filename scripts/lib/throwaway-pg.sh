@@ -11,7 +11,7 @@
 # pg_dump run inside the container, since the host has neither.
 #
 # Same major version as the live stack (postgres:14-alpine), so pg_dump output
-# is comparable with a dump of the live DB (03 section 0, D11).
+# is comparable with a dump of the live DB.
 
 TPG_IMAGE=${TPG_IMAGE:-postgres:14-alpine}
 TPG_SU=aisc-postgres-user

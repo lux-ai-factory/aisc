@@ -8,10 +8,9 @@
 #   the service is actually connected to that database as its own role,
 #   its root table points at `core.project` with a real foreign key,
 #   the database itself refuses a row whose project does not exist,
-#   and the module still answers through the gateway, inside a project.
-#
-# Modules arrive here one at a time, as each is moved onto the platform
-# database; the ones not yet moved are listed at the end as still to come.
+#   and nothing that belongs to no project (reference data) names one.
+# Then the rules that hold across schemas: the dashboard reads and never
+# writes, one naming convention, and one name for each link into core.
 set -uo pipefail
 S=$(mktemp); trap 'rm -f "$S"' EXIT
 PGDB=${PLATFORM_DB:-platform}; PGUSER=${PGUSER:-aisc-postgres-user}
@@ -245,7 +244,7 @@ naive=$(psql_ "select string_agg(table_schema||'.'||table_name||'.'||column_name
 
 echo "one name for each link"
 # The project a row belongs to and the system a row is about are two different
-# things, and stay two columns; what they are called is now the same everywhere.
+# things, and stay two columns, each called the same in every schema.
 # Read from the keys themselves, not from every column whose name contains the
 # word: `project_setting_id` points at a project setting, which is a different
 # thing and rightly called something else.

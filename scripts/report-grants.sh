@@ -1,7 +1,8 @@
 #!/bin/sh
-# The report-grants one-shot (report run 2026-09-23, 02 D6 (b)(c)): SELECT for report_ro on the
-# tables the report reads, in the platform and superset databases and in every project database.
-# Superuser, idempotent, runs on every start after the module migrations.
+# The report-grants one-shot: SELECT for report_ro on the tables the report reads, in the platform
+# and superset databases and in every project database. Superuser, idempotent, runs on every
+# start after the module migrations. Design: docs/superpowers/report-2026-09-23/02-architecture.md,
+# deviation D6.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 WAIT=${REPORT_GRANTS_WAIT_SECONDS:-600}

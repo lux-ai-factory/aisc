@@ -5,11 +5,10 @@
 #   ./scripts/verify.sh --stack      # only the checks against the running stack
 #   ./scripts/verify.sh --modules    # only the module test suites
 #
-# There were five answers to this question: three scripts against the running
-# stack and a test runner per module, each with its own invocation and its own
-# idea of how to say "fine". This runs all of them and prints one line at the
-# end, so "does this install work" has a single answer that a person or a CI job
-# can read.
+# The checks against the running stack and the test runner of every module each
+# have their own invocation and their own idea of how to say "fine". This runs
+# all of them and prints one line at the end, so "does this install work" has a
+# single answer that a person or a CI job can read.
 #
 # A module whose dependencies are not installed is reported as skipped, not as
 # passed: a check that did not run is not a check that succeeded.

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# The pipeline, step 1 to step 6, on one throwaway database (pipeline 2026-09-23, 03 WP12).
+# The pipeline, step 1 to step 8, on one throwaway database (docs/superpowers/pipeline-2026-09-23/03-specs.md).
 #
 #   scripts/test-pipeline-chain.sh                 # the whole chain; exit 0 when every step passes
 #   scripts/test-pipeline-chain.sh --break <link>  # break one link; exit 0 when the run fails at
-#                                                  # the step that consumes it (S12.2)
+#                                                  # the step that consumes it
 #
 # Links: qualification_fk, co_fk, engine_stamp, controls_stamp, card_component.
 #
 # One postgres:14-alpine container (scripts/lib/throwaway-pg.sh) with every migration at HEAD
 # (platform, qualification, engine, control-objectives) and, before step 5, the project's own
 # database with the platform template and the controls migrations. The container is removed on
-# exit (S12.3). Never the host's 5432, never `docker compose`.
+# exit. Never the host's 5432, never `docker compose`.
 #
 # Each step runs the tests of one module that carry the chain tag, selected by name:
 #   pytest (platform, control-objectives):  -m chain -k chain_step<N>

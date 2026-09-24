@@ -7,6 +7,7 @@ aisc-t-<label>-<hex> on a port the kernel picks on 127.0.0.1, psql run inside th
 
 from __future__ import annotations
 
+import json
 import secrets
 import socket
 import subprocess
@@ -65,7 +66,6 @@ class Throwaway:
         r = self.psql(db, wrapped.replace("\n", " "), role=role, check=False)
         if r.returncode != 0:
             raise AssertionError(f"query failed as {role or SU} on {db}: {r.stderr.strip()}")
-        import json
         return json.loads(r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "[]")
 
     def scalar(self, db: str, sql: str) -> str:

@@ -1,8 +1,9 @@
 """The report test bed: one throwaway Postgres with every database the report reads.
 
-Report run 2026-09-23, 02 section 5. Used by the renderer's tests (aisc-report-generator),
-the composer's tests (apps/report-composer) and the stack tests (scripts/tests). Test
-infrastructure only: it builds data, it implements nothing of the report.
+Design: docs/superpowers/report-2026-09-23/02-architecture.md, section 5. Used by the
+renderer's tests (aisc-report-generator), the composer's tests (apps/report-composer) and the
+stack tests (scripts/tests). Test infrastructure only: it builds data, it implements nothing of
+the report.
 
     from report_bed import build
     bed = build("renderer")        # postgres:14-alpine, aisc-t-renderer-<hex>, a free port
@@ -11,14 +12,14 @@ infrastructure only: it builds data, it implements nothing of the report.
 
 What it builds, in order (each step as the stack does it):
  1. init/platform-db.sql, init/project-databases.sql, init/superset-db.sql (superuser)
- 2. init/report-roles.sql (superuser), WHEN IT EXISTS: stage 5 writes it
+ 2. init/report-roles.sql (superuser), when present and report_files is on
  3. platform migrations 0001.. as platform_rw
  4. the module schemas from the read-only dumps in scripts/tests/fixtures/report/, each restored
     as its own module role (so ownership is as on the stack), and superset's as the superuser
  5. project databases of Alpha, Beta and Echo as platform_rw with platform/project-template/*.sql
-    (0003_report.sql included once it exists), then schema controls as controls_rw
- 6. scripts/report-grants.sh, WHEN IT EXISTS, run inside the container like the stack's
-    report-grants one-shot: PG* env, init/report-ro-grants.sql copied to /setup
+    (every template file, 0003_report.sql included), then schema controls as controls_rw
+ 6. scripts/report-grants.sh, when present and report_files is on, run inside the container
+    like the stack's report-grants one-shot: PG* env, init/report-ro-grants.sql copied to /setup
  7. the seed (fixtures/report/seed_*.sql), as the superuser
 
 Never the host's 5432: the port is one the kernel picks, and `check_dsn_env` refuses to go on
@@ -105,7 +106,7 @@ def check_dsn_env(port: int | None = None) -> None:
 @dataclass
 class ReportBed:
     t: Throwaway
-    #: which of stage 5's files the bed found and applied
+    #: which of the report's grant files (report-roles.sql, report-grants.sh) the bed applied
     applied: dict[str, bool] = field(default_factory=dict)
     ids: dict = field(default_factory=lambda: dict(IDS))
 
@@ -120,7 +121,7 @@ class ReportBed:
         return f"postgresql://aisc-postgres-user:{self.t.password}@127.0.0.1:{self.t.port}/{db}"
 
     def project_db_template(self, role: str = "report_ro") -> str:
-        """A DSN with `{database}` in place of the name, as REPORT_PROJECT_DB_URL (D1)."""
+        """A DSN with `{database}` in place of the name, as REPORT_PROJECT_DB_URL."""
         return f"postgresql://{role}:{role}@127.0.0.1:{self.t.port}/{{database}}"
 
     def psql(self, db: str, sql: str, role: str | None = None, check: bool = True):
@@ -136,7 +137,7 @@ class ReportBed:
         self.t.stop()
 
     def env(self) -> dict[str, str]:
-        """The renderer's environment on this bed (names as in 02 D1, D3, D6)."""
+        """The renderer's environment on this bed."""
         return {
             "REPORT_PLATFORM_DATABASE_URL": self.dsn("report_ro", "platform"),
             "REPORT_SUPERSET_DATABASE_URL": self.dsn("report_ro", "superset"),
