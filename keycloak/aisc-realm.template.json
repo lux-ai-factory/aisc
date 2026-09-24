@@ -710,20 +710,20 @@
       "clientId": "aisc-webapp",
       "name": "aisc-webapp",
       "description": "the client for the django powered backend supported frontend aisc",
-      "rootUrl": "",
+      "rootUrl": "${API_URL_EXTERNAL}",
       "adminUrl": "",
-      "baseUrl": "http://localhost",
+      "baseUrl": "/",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
-        "http://localhost:5173/*",
-        "http://localhost/*"
+        "${API_URL_EXTERNAL}/*",
+        "${API_URL_EXTERNAL}:5173/*"
       ],
       "webOrigins": [
-        "http://localhost:5173",
-        "http://localhost"
+        "${API_URL_EXTERNAL}",
+        "${API_URL_EXTERNAL}:5173"
       ],
       "notBefore": 0,
       "bearerOnly": false,
@@ -924,14 +924,16 @@
     {
       "id": "8011ef38-59b3-4594-9318-d3141b79cbc5",
       "clientId": "controls",
+      "rootUrl": "${API_URL_EXTERNAL}",
+      "baseUrl": "/controls",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
-        "http://localhost:3100/*",
-        "http://localhost:3000/*",
-        "http://localhost/controls/*"
+        "${API_URL_EXTERNAL}/controls/*",
+        "${API_URL_EXTERNAL}:3000/*",
+        "${API_URL_EXTERNAL}:3100/*"
       ],
       "webOrigins": [
         "+"
@@ -977,14 +979,16 @@
     {
       "id": "5c090635-1d4f-4fa3-a63b-666fec55e8e4",
       "clientId": "qualification",
+      "rootUrl": "${API_URL_EXTERNAL}",
+      "baseUrl": "/qualification",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
-        "http://localhost:3200/*",
-        "http://localhost:3000/*",
-        "http://localhost/qualification/*"
+        "${API_URL_EXTERNAL}/qualification/*",
+        "${API_URL_EXTERNAL}:3000/*",
+        "${API_URL_EXTERNAL}:3200/*"
       ],
       "webOrigins": [
         "+"
