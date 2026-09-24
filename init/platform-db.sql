@@ -57,7 +57,13 @@ CREATE TABLE core.system (
     updated_at  timestamptz NOT NULL DEFAULT now(),
     -- a system's name is unique inside its project, not globally: two projects
     -- may legitimately assess systems with the same name
-    UNIQUE (project_id, name, version)
+    UNIQUE (project_id, name, version),
+    -- What the modules point at when their work is of one card version: the
+    -- pair, so a row cannot name the version of another project. pid alone is
+    -- already unique; this makes the pair a key. Here rather than only in
+    -- platform migration 0004 because on a fresh volume a module may migrate
+    -- before the platform has, and this file runs before any of them can connect.
+    CONSTRAINT system_pid_project_id_key UNIQUE (pid, project_id)
 );
 -- An unversioned system stores NULL, and in a UNIQUE constraint NULLs are all
 -- distinct, so the constraint above would let the same unversioned system be
