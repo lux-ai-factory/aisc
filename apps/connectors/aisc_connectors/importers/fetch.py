@@ -28,11 +28,14 @@ def fetch_text(url: str) -> str:
     current = url
     redirects = 0
     while True:
-        if time.monotonic() > deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise ImportFailed(f"the download took longer than {int(_DEADLINE_SECONDS)} s")
         refuse_metadata_host(current)
         try:
-            with httpx.stream("GET", current, timeout=20, follow_redirects=False) as response:
+            with httpx.stream(
+                "GET", current, timeout=httpx.Timeout(min(20.0, remaining)), follow_redirects=False
+            ) as response:
                 if response.status_code in _REDIRECT_STATUSES:
                     location = response.headers.get("location")
                     if not location:

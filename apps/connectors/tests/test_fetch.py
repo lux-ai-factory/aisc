@@ -73,6 +73,36 @@ def test_the_overall_download_is_bounded_to_30_seconds(monkeypatch):
         fetch_text("http://good.example/spec.json")
 
 
+def test_each_hop_gets_only_the_time_left(monkeypatch):
+    """Each hop's own httpx timeout must shrink to what remains of the 30 s deadline, so two
+    stalled hops (each allowed up to the old fixed 20 s) cannot together exceed it."""
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo())
+    seen_timeouts = []
+
+    def record_timeout(request):
+        seen_timeouts.append(request.extensions.get("timeout"))
+        if len(seen_timeouts) == 1:
+            return httpx.Response(302, headers={"location": "http://also-good.example/real.json"})
+        return httpx.Response(200, text="ok")
+
+    # 1st monotonic() call sets the deadline (t=0 -> deadline=30). 2nd is hop 1's "remaining"
+    # check (still t=0, remaining=30, so hop 1's timeout is capped at 20, not by remaining).
+    # 3rd is hop 2's "remaining" check, after 25s have elapsed (remaining=5, so hop 2's timeout
+    # must be capped at that 5s, not the fixed 20s). 4th is the chunk-deadline check for hop 2's
+    # single chunk (still under the 30s deadline, so it must not itself raise).
+    times = iter([0.0, 0.0, 25.0, 25.0])
+    monkeypatch.setattr(fetch_module.time, "monotonic", lambda: next(times, 25.0))
+
+    with respx.mock() as router:
+        router.get("http://good.example/spec.json").mock(side_effect=record_timeout)
+        router.get("http://also-good.example/real.json").mock(side_effect=record_timeout)
+        assert fetch_text("http://good.example/spec.json") == "ok"
+
+    assert len(seen_timeouts) == 2
+    assert seen_timeouts[0]["connect"] == pytest.approx(20.0)
+    assert seen_timeouts[1]["connect"] <= 5.0
+
+
 def test_ipv4_mapped_ipv6_metadata_addresses_are_refused(monkeypatch):
     def getaddrinfo(host, *_args, **_kwargs):
         return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::ffff:169.254.169.254", 0, 0, 0))]
