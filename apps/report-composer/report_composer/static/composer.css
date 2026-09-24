@@ -222,3 +222,34 @@ a.btn.small { padding: 6px 10px; font-size: 12px; font-weight: 700; }
 .look form { margin-top: 12px; }
 .field input[type="color"] { padding: 2px; height: 42px; }
 .field label.inline { flex-direction: row; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-weight: 600; margin-top: 8px; }
+
+/* Report run v2: help lines, More options, commentary, chapters, coverage map, messages, dialog */
+.help { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.4; }
+details[data-more], details[data-commentary] { margin-top: 10px; }
+details[data-more] > summary, details[data-commentary] > summary { cursor: pointer; font-weight: 700; font-size: 13px; }
+fieldset { border: 1px solid var(--border); padding: 8px 12px; margin: 0; }
+fieldset legend { font-weight: 700; font-size: 13px; }
+.choices { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.choice-filter { display: block; margin: 6px 0; }
+.inline-problem, .problems { color: var(--error); }
+#blocks li[data-depth="1"] { margin-left: 28px; border-left: 3px solid var(--border-strong); padding-left: 10px; }
+.palette button { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; max-width: 240px; }
+.palette .description { font-weight: 400; font-size: 12px; color: var(--muted); }
+.coverage-map { margin-top: 16px; }
+.coverage-map > summary { cursor: pointer; font-weight: 700; }
+.coverage-scroll { overflow-x: auto; max-width: 100%; }
+.coverage-map table.coverage th.objective { position: sticky; left: 0; background: var(--panel); z-index: 1; min-width: 220px; }
+.coverage tr.group th { background: var(--panel-2); text-transform: none; font-size: 13px; color: var(--text); }
+.coverage .kind { display: block; font-weight: 400; text-transform: none; }
+.coverage td { text-align: center; }
+[data-message] { background: var(--pink-soft); border-left: 4px solid var(--accent); padding: 10px 14px; margin-bottom: 18px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+[data-message][hidden] { display: none; }
+[data-message].ok { background: var(--info-soft); border-left-color: var(--info); }
+dialog[data-confirm] { border: 1px solid var(--border-strong); padding: 20px 24px; max-width: 460px; }
+dialog[data-confirm]::backdrop { background: rgba(0, 0, 0, 0.3); }
+.dialog-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.preview-label { font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+.preview-label.error { color: var(--error); }
+.preview-controls { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.legacy-links { font-size: 13px; margin: 4px 0; }

@@ -11,12 +11,13 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import db, forms, layouts
+from . import coverage_map, db, forms, layouts, presets
 from . import templates as looks
+from .api import may_delete_preset
 from .guards import guard
 from .jinja_env import env
 from .records import layout_or_404
-from .renderer_calls import block_types, fonts, renderer_call
+from .renderer_calls import block_types, coverage_choices_for, fonts, languages, renderer_call
 
 router = APIRouter()
 
@@ -68,8 +69,11 @@ def layouts_page(request: Request, ref: str):
         rows = db.list_layouts(conn, g.project["pid"])
         systems = db.systems(conn, g.project["pid"])
         templates = _templates(conn, g.project["pid"])
+        saved = [presets.from_row(r) for r in db.list_presets(conn)]
+    saved_presets = [{**presets.summary(p), "may_delete": may_delete_preset(p, g.caller)} for p in saved]
     return _page("layouts.html.j2", request, project=g.project, layouts=rows, systems=systems,
-                 templates=templates, editor=g.access.may_write)
+                 templates=templates, editor=g.access.may_write, built_in_presets=presets.built_in(),
+                 saved_presets=saved_presets)
 
 
 def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
@@ -87,11 +91,37 @@ def _reference_choices(request: Request, project: dict, layout: dict, by_type: d
     return choices
 
 
-def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool) -> dict:
+CONTENT_EXCLUDED = ("cover", "chapter", "appendix")
+
+
+def _depths(blocks: list[dict]) -> list[tuple[int, bool]]:
+    """(depth, empty chapter) per block: 1 after a chapter until the next chapter or appendix (R-V5.9),
+    and whether a chapter holds no content block (R-V5.8). Computed from the order; nothing is stored."""
+    out = []
+    inside = False
+    for i, b in enumerate(blocks):
+        t = b["block_type"]
+        if t == "chapter":
+            rest = blocks[i + 1:]
+            end = next((j for j, r in enumerate(rest) if r["block_type"] in ("chapter", "appendix")), len(rest))
+            empty = not any(r["block_type"] not in CONTENT_EXCLUDED for r in rest[:end])
+            out.append((0, empty))
+            inside = True
+        elif t == "appendix":
+            out.append((0, False))
+            inside = False
+        else:
+            out.append((1 if inside and t != "cover" else 0, False))
+    return out
+
+
+def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, depth: int = 0,
+                   empty_chapter: bool = False, problems=()) -> dict:
     """A block as the editor's outline draws it; an editor also gets its configure form."""
     return {"instance_id": block["instance_id"], "block_type": block["block_type"],
             "title": (block["options"] or {}).get("title") or (block_type["title"] if block_type else None),
-            "known": block_type is not None,
+            "known": block_type is not None, "depth": depth, "empty_chapter": empty_chapter,
+            "problems": [p["message"] for p in problems],
             "fields": _form_for(block_type, block["options"], choices.get(block["block_type"], {}))
             if (block_type and editor) else []}
 
@@ -108,14 +138,30 @@ def editor_page(request: Request, ref: str, layout_id: str):
         report_rows = db.list_reports(conn, layout["id"])
         templates = _templates(conn, g.project["pid"])
     editor = g.access.may_write
+    pid = g.project["pid"]
     types = block_types(request)
     by_type = {t["type_id"]: t for t in types}
     choices = _reference_choices(request, g.project, layout, by_type) if editor else {}
-    blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor) for b in layout["blocks"]]
-    palette = [{"type_id": t["type_id"], "title": t["title"], "fields": _form_for(t, {}, {})} for t in types] \
+    cover_choices = coverage_choices_for(request, pid, layout["system_id"])
+    problems = layouts.validate_layout(layout["blocks"], block_types=types, choices=lambda t: choices.get(t, {}),
+                                       coverage=layout.get("coverage"), coverage_choices=cover_choices) \
         if editor else []
+    by_block: dict[str, list] = {}
+    for p in problems:
+        by_block.setdefault(p.get("instance_id"), []).append(p)
+    depths = _depths(layout["blocks"])
+    blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor, depth, empty,
+                             by_block.get(b["instance_id"], ()))
+              for b, (depth, empty) in zip(layout["blocks"], depths)]
+    palette = [{"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
+                "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in types] if editor else []
+    number = next((s["number"] for s in systems if s["pid"] == layout["system_id"]), None)
+    grid = coverage_map.grid(layout.get("coverage"), cover_choices, number)
+    template_ids = {t["id"] for t in templates}
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,
-                 reports=report_rows, palette=palette, editor=editor, templates=templates)
+                 reports=report_rows, palette=palette, editor=editor, templates=templates,
+                 languages=languages(request), grid=grid, map_problems=by_block.get(None, []),
+                 template_known=layout.get("template_id") in template_ids)
 
 
 @router.get("/p/{ref}/templates")

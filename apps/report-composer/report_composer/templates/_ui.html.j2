@@ -1,0 +1,7 @@
+{#- The message region (R-U7.2) and the one confirmation dialog (R-U7.3), used first in every page's main. -#}
+{%- macro message_region() -%}
+<div data-message role="alert" aria-live="polite" hidden><span data-message-text></span> <button type="button" class="small ghost" data-control="close-message">Close</button></div>
+{%- endmacro -%}
+{%- macro confirm_dialog() -%}
+<dialog data-confirm><p data-confirm-message></p><div class="dialog-buttons"><button type="button" class="ghost" data-confirm-cancel autofocus>Cancel</button> <button type="button" class="danger" data-confirm-ok>Confirm</button></div></dialog>
+{%- endmacro -%}
