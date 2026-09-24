@@ -75,6 +75,18 @@ def _apikey_query_credential(auth: dict | None, resolve: Callable[[str], str]) -
     return values.get("key", "api_key"), values.get("value", "")
 
 
+def _body(raw_body: dict, name: str, resolve: Callable[[str], str]) -> tuple[str | None, str | None, str | None]:
+    """(body, content type, warning) of a request's body; form-data is left out with a warning."""
+    if raw_body.get("mode") == "raw":
+        return resolve(raw_body.get("raw", "")), None, None
+    if raw_body.get("mode") == "urlencoded":
+        body = "&".join(f"{p['key']}={p.get('value', '')}" for p in raw_body["urlencoded"])
+        return body, "application/x-www-form-urlencoded", None
+    if raw_body.get("mode") in ("formdata", "file"):
+        return None, None, f"{name}: form-data bodies are not imported; add the fields by hand"
+    return None, None, None
+
+
 def import_postman(text: str) -> ImportResult:
     try:
         collection = json.loads(text)
@@ -95,15 +107,7 @@ def import_postman(text: str) -> ImportResult:
         headers = {h["key"]: resolve(h.get("value", "")) for h in request.get("header") or [] if not h.get("disabled")}
         request_auth = request.get("auth") or collection.get("auth")
         headers.update(_auth_header(request_auth, resolve))
-        body, content_type, body_warning = None, None, None
-        raw_body = request.get("body") or {}
-        if raw_body.get("mode") == "raw":
-            body = resolve(raw_body.get("raw", ""))
-        elif raw_body.get("mode") == "urlencoded":
-            body = "&".join(f"{p['key']}={p.get('value', '')}" for p in raw_body["urlencoded"])
-            content_type = "application/x-www-form-urlencoded"
-        elif raw_body.get("mode") in ("formdata", "file"):
-            body_warning = f"{name}: form-data bodies are not imported; add the fields by hand"
+        body, content_type, body_warning = _body(request.get("body") or {}, name, resolve)
         op_id = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "request"
         result = one_operation(request.get("method", "GET"), resolve(url), headers, body, content_type,
                                op_id, summary=name)

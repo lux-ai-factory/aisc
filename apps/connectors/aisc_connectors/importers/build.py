@@ -47,17 +47,20 @@ def _content(body: str, content_type: str) -> dict:
     return {content_type: {"schema": {"type": "string"}, "example": body}}
 
 
-def one_operation(method: str, url: str, headers: dict[str, str], body: str | None, content_type: str | None,
-                  operation_id: str, summary: str = "", example_response: str | None = None) -> ImportResult:
-    parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
-        raise ImportFailed(f"{url!r} is not an http(s) URL")
-    method = method.lower()
-    netloc = parts.netloc
-    url_user = url_password = None
-    if "@" in netloc:
-        userinfo, _, netloc = netloc.rpartition("@")
-        url_user, _, url_password = userinfo.partition(":")
+def _split_userinfo(netloc: str) -> tuple[str, str | None, str | None]:
+    """The host part of a netloc, and the user and password written before an "@", if any."""
+    if "@" not in netloc:
+        return netloc, None, None
+    userinfo, _, host = netloc.rpartition("@")
+    user, _, password = userinfo.partition(":")
+    return host, user, password
+
+
+def _read_headers(headers: dict[str, str], content_type: str | None):
+    """(auth, secrets, static headers, content type) from the pasted headers.
+
+    Credentials become the auth suggestion and a secret, never a static header.
+    """
     auth, secrets, static = None, {}, {}
     for name, value in headers.items():
         low = name.lower()
@@ -76,6 +79,38 @@ def one_operation(method: str, url: str, headers: dict[str, str], body: str | No
             content_type = content_type or value.split(";")[0].strip()
         elif low not in _DROP_HEADERS:
             static[name] = value
+    return auth, secrets, static, content_type
+
+
+def _query_parameters(query: str, auth: dict | None, secrets: dict[str, str]):
+    """The query's parameters, less the credential ones, which go to auth and secrets instead."""
+    params = []
+    for k, v in parse_qsl(query, keep_blank_values=True):
+        if k.lower() in _QUERY_CRED_NAMES:
+            if auth is None:
+                auth = {"scheme": "api_key", "in": "query", "name": k}
+            secrets["api_key"] = v
+            continue
+        params.append({"in": "query", "name": k, "required": False, "schema": {"type": "string"}, "example": v})
+    return params, auth
+
+
+def _response_content(example_response: str) -> dict:
+    try:
+        parsed = json.loads(example_response)
+    except ValueError:
+        return {"text/plain": {"schema": {"type": "string"}}}
+    return {"application/json": {"schema": infer_schema(parsed), "example": parsed}}
+
+
+def one_operation(method: str, url: str, headers: dict[str, str], body: str | None, content_type: str | None,
+                  operation_id: str, summary: str = "", example_response: str | None = None) -> ImportResult:
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise ImportFailed(f"{url!r} is not an http(s) URL")
+    method = method.lower()
+    netloc, url_user, url_password = _split_userinfo(parts.netloc)
+    auth, secrets, static, content_type = _read_headers(headers, content_type)
     if auth is None and url_user:
         auth = {"scheme": "basic", "username": url_user}
         if url_password:
@@ -84,33 +119,33 @@ def one_operation(method: str, url: str, headers: dict[str, str], body: str | No
                 "x-aisc-binding": {"protocol": "http", "method": method, "path": parts.path or "/",
                                    "static_headers": static},
                 "responses": {"200": {"description": "the answer"}}}
-    query_params = []
-    for k, v in parse_qsl(parts.query, keep_blank_values=True):
-        if k.lower() in _QUERY_CRED_NAMES:
-            if auth is None:
-                auth = {"scheme": "api_key", "in": "query", "name": k}
-            secrets["api_key"] = v
-            continue
-        query_params.append({"in": "query", "name": k, "required": False, "schema": {"type": "string"}, "example": v})
+    query_params, auth = _query_parameters(parts.query, auth, secrets)
     if query_params:
         op["parameters"] = query_params
     if body is not None:
         op["requestBody"] = {"content": _content(body, content_type or "application/json")}
     if example_response:
-        try:
-            parsed = json.loads(example_response)
-            op["responses"]["200"]["content"] = {"application/json": {"schema": infer_schema(parsed),
-                                                                      "example": parsed}}
-        except ValueError:
-            op["responses"]["200"]["content"] = {"text/plain": {"schema": {"type": "string"}}}
+        op["responses"]["200"]["content"] = _response_content(example_response)
     document = {"openapi": "3.1.0", "info": {"title": netloc, "version": "1"},
                 "servers": [{"url": f"{parts.scheme}://{netloc}"}], "paths": {parts.path or "/": {method: op}}}
     return ImportResult(document=document, auth_suggestion=auth, detected_secrets=secrets)
 
 
+def path_operation_id(method: str, path: str) -> str:
+    """An operationId for an operation that has none: its method and its path."""
+    return method + "_" + (re.sub(r"[^A-Za-z0-9]+", "_", path).strip("_") or "root")
+
+
+def unique_operation_id(operation_id: str, used: set[str]) -> str:
+    """The id, with "_" appended until no earlier operation has it; recorded in `used`."""
+    while operation_id in used:
+        operation_id += "_"
+    used.add(operation_id)
+    return operation_id
+
+
 def synth_id(method: str, url: str) -> str:
-    path = urlsplit(url).path
-    return method.lower() + "_" + (re.sub(r"[^A-Za-z0-9]+", "_", path).strip("_") or "root")
+    return path_operation_id(method.lower(), urlsplit(url).path)
 
 
 def merge(results: list[ImportResult]) -> ImportResult:
@@ -134,9 +169,7 @@ def merge(results: list[ImportResult]) -> ImportResult:
                     out.warnings.append(f"skipped a duplicate {method.upper()} {path} "
                                         f"({op.get('operationId', '?')}): kept the first one")
                     continue
-                while op["operationId"] in used:
-                    op["operationId"] += "_"
-                used.add(op["operationId"])
+                op["operationId"] = unique_operation_id(op["operationId"], used)
                 seen.add((path, method))
                 merged["paths"].setdefault(path, {})[method] = op
         out.auth_suggestion = out.auth_suggestion or result.auth_suggestion
