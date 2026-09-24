@@ -11,19 +11,20 @@
   <section class="qf-section">
     <h2>Layouts</h2>
     <table class="layouts">
-      <thead><tr><th>Layout</th><th>Version</th><th>Revision</th><th>Updated</th><th>Last report</th>{% if editor %}<th></th>{% endif %}</tr></thead>
+      <thead><tr><th>Layout</th><th>Version</th><th>Template</th><th>Revision</th><th>Updated</th><th>Last report</th>{% if editor %}<th></th>{% endif %}</tr></thead>
       <tbody>
       {% for l in layouts %}
         <tr data-layout="{{ l.id }}">
           <td><a href="{{ root }}/p/{{ project.slug }}/layouts/{{ l.id }}">{{ l.name }}</a></td>
           <td>Version {{ l.system_number }}</td>
+          <td class="muted">{{ l.template_name or "none chosen" }}</td>
           <td class="muted">revision {{ l.revision }}</td>
           <td class="muted">{{ l.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
           <td class="muted">{% if l.last_report %}{{ l.last_report.created_at[:16] | replace("T", " ") }} ({{ l.last_report.status }}){% endif %}</td>
           {% if editor %}<td class="actions"><button type="button" class="small danger" data-control="delete" data-layout="{{ l.id }}">Delete</button></td>{% endif %}
         </tr>
       {% else %}
-        <tr><td colspan="6" class="muted">No layout yet.{% if editor %} Create one below.{% endif %}</td></tr>
+        <tr><td colspan="7" class="muted">No layout yet.{% if editor %} Create one below.{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -34,12 +35,8 @@
       <h2>New layout</h2>
       <div class="field"><label>Name <input name="name" required maxlength="120"></label></div>
       <div class="field"><label>Version <select name="system_id">{% for s in systems %}<option value="{{ s.pid }}">Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}</select></label></div>
-      <button type="submit">Create</button>
-    </form>
-    <form data-control="new-from-template" class="qf-section">
-      <h2>New from template</h2>
-      <div class="field"><label>Template <select name="template_id">{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></label></div>
-      <div class="field"><label>Name <input name="name" required maxlength="120"></label></div>
+      <div class="field"><label>Template <select name="template_id" required>{% for x in templates %}<option value="{{ x.id }}">{{ x.name }}</option>{% endfor %}</select></label>
+        {% if not templates %}<span class="hint">This project has no template yet: <a href="{{ root }}/p/{{ project.slug }}/templates">make one first</a>.</span>{% endif %}</div>
       <button type="submit"{% if not templates %} disabled{% endif %}>Create</button>
     </form>
   </section>

@@ -22,6 +22,7 @@
       {% if project %}
       <a href="{{ launcher }}p/{{ project.pid }}" aria-label="Back to the project">&larr; Back</a>
       <a href="{{ root }}/p/{{ project.slug }}/"{% if here == "layouts" %} class="nav-here"{% endif %}>Reports</a>
+      <a href="{{ root }}/p/{{ project.slug }}/templates"{% if here == "templates" %} class="nav-here"{% endif %}>Templates</a>
       {% endif %}
     </nav>
   </div>

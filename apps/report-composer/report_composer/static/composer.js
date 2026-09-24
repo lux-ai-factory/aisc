@@ -27,14 +27,8 @@
     const create = main.querySelector('[data-control="new-layout"]');
     if (create) create.addEventListener("submit", async function (ev) {
       ev.preventDefault();
-      const res = await call("POST", "/layouts", { name: create.name.value, system_id: create.system_id.value });
-      if (res.ok) location.href = base + "/layouts/" + res.data.id; else alert(message(res));
-    });
-    const fromTemplate = main.querySelector('[data-control="new-from-template"]');
-    if (fromTemplate) fromTemplate.addEventListener("submit", async function (ev) {
-      ev.preventDefault();
-      const res = await call("POST", "/layouts", { name: fromTemplate.name.value,
-                                                    template_id: fromTemplate.template_id.value });
+      const res = await call("POST", "/layouts", { name: create.name.value, system_id: create.system_id.value,
+                                                    template_id: create.template_id.value });
       if (res.ok) location.href = base + "/layouts/" + res.data.id; else alert(message(res));
     });
     main.addEventListener("click", async function (ev) {
@@ -46,13 +40,62 @@
     return;
   }
 
+  // ── the templates (a report's look) ──
+  if (main.dataset.page === "templates") {
+    function readFile(file, asText) {
+      return new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () { resolve(reader.result); };
+        reader.onerror = reject;
+        if (asText) reader.readAsText(file); else reader.readAsDataURL(file);
+      });
+    }
+    async function lookOf(form) {
+      const body = { name: form.name.value, font: form.font.value, font_size_pt: parseFloat(form.font_size_pt.value),
+                     primary_color: form.primary_color.value, accent_color: form.accent_color.value };
+      const file = form.logo.files[0];
+      if (file) {
+        const url = await readFile(file, false);
+        body.logo = { mime: file.type, data_base64: url.slice(url.indexOf(",") + 1) };
+      } else if (form.drop_logo && form.drop_logo.checked) {
+        body.logo = null;
+      } else if (form.dataset.template) {
+        body.keep_logo = true;
+      }
+      return body;
+    }
+    main.addEventListener("submit", async function (ev) {
+      const form = ev.target;
+      const what = form.dataset.control;
+      if (!what) return;
+      ev.preventDefault();
+      let res;
+      if (what === "new-template") res = await call("POST", "/templates", await lookOf(form));
+      else if (what === "edit-template") res = await call("PUT", "/templates/" + form.dataset.template, await lookOf(form));
+      else if (what === "import-template") {
+        let doc;
+        try { doc = JSON.parse(await readFile(form.file.files[0], true)); } catch (e) { alert("This file is not a template."); return; }
+        res = await call("POST", "/templates/import", doc);
+      } else return;
+      if (res.ok) location.reload(); else alert(message(res));
+    });
+    main.addEventListener("click", async function (ev) {
+      const button = ev.target.closest('[data-control="delete-template"]');
+      if (!button || !confirm("Delete this template? Layouts using it must choose another before their next save.")) return;
+      const res = await call("DELETE", "/templates/" + button.dataset.template);
+      if (res.ok) location.reload(); else alert(message(res));
+    });
+    return;
+  }
+
   // ── the editor ──
   const list = document.getElementById("blocks");
   const state = main.querySelector("[data-state]");
   const layoutId = main.dataset.layout;
   let revision = parseInt(main.dataset.revision, 10);
 
-  function dirty() { if (state) state.textContent = "Unsaved changes"; }
+  let unsaved = false;
+  function dirty() { unsaved = true; if (state) state.textContent = "Unsaved changes"; }
 
   function valueOf(input) {
     const kind = input.dataset.kind;
@@ -106,12 +149,14 @@
   async function save(resetInvalid) {
     const version = main.querySelector('[data-control="version"]');
     const title = document.querySelector("h1");
+    const template = main.querySelector('[data-control="template"]');
     const body = { name: title.textContent.trim(), revision: revision, blocks: collect(),
-                   system_id: version ? version.value : undefined };
+                   system_id: version ? version.value : undefined, template_id: template ? template.value || null : null };
     if (resetInvalid) body.reset_invalid = true;
     const res = await call("PUT", "/layouts/" + layoutId, body);
     if (res.ok) {
       revision = res.data.revision;
+      unsaved = false;
       showProblems([]);
       if (state) state.textContent = "Saved (revision " + revision + ")";
       reloadPreview();
@@ -147,6 +192,7 @@
       await save(false);
     } else if (what === "generate") {
       const statuses = main.querySelector("[data-statuses]");
+      if (unsaved) { statuses.textContent = "Save first: only a saved layout is generated."; return; }
       statuses.textContent = "Generating...";
       const res = await call("POST", "/layouts/" + layoutId + "/reports", {});
       if (res.ok) {
@@ -157,11 +203,6 @@
       } else {
         statuses.textContent = message(res);
       }
-    } else if (what === "save-template") {
-      const name = prompt("Name of the template");
-      if (!name) return;
-      const res = await call("POST", "/layouts/" + layoutId + "/template", { name: name });
-      alert(res.ok ? "Template saved." : message(res));
     }
   });
 

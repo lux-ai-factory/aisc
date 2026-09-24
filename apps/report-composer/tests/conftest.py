@@ -12,7 +12,7 @@ The API the tests assume of `report_composer` (stage 5 implements it):
     renderer: an object with block_types(), choices(project_id, system_id, block_type), render(snapshot)
         raising report_composer.renderer_client.RendererUnavailable / RendererTimeout;
         report_composer.renderer_client.HttpRendererClient(base_url, token, timeout=120.0)
-    report_composer.layouts: default_blocks, validate_layout, reset_invalid, to_template, from_template
+    report_composer.layouts: default_blocks, validate_layout, reset_invalid
     report_composer.reports.pdf_filename(slug, number, layout_name, when)
     report_composer.access: Access(role, admin), decide(method, access), same_origin(headers, origin)
     report_composer.forms.form_fields(options_schema, values, choices)
@@ -150,6 +150,9 @@ CHOICES = {
 }
 
 
+FONTS = [{"id": "inter", "label": "Inter"}, {"id": "liberation-serif", "label": "Liberation Serif (Times)"}]
+
+
 class FakeRenderer:
     """The renderer from the composer's side (R7.4.1): records what it is sent."""
 
@@ -162,6 +165,9 @@ class FakeRenderer:
 
     def block_types(self):
         return copy.deepcopy(BLOCK_TYPES)
+
+    def fonts(self):
+        return copy.deepcopy(FONTS)
 
     def choices(self, project_id, system_id, block_type):
         self.choice_calls.append((str(project_id), str(system_id), block_type))
@@ -288,8 +294,29 @@ def error_code(response) -> str | None:
         return None
 
 
+def new_template(client, auth, slug="alpha", who="alice", **body):
+    body.setdefault("name", f"Look {time.monotonic_ns()}")
+    body.setdefault("font", "inter")
+    body.setdefault("font_size_pt", 10)
+    body.setdefault("primary_color", "#000fdf")
+    body.setdefault("accent_color", "#ff007e")
+    r = client.post(f"/api/p/{slug}/templates", json=body, headers=auth(who))
+    assert r.status_code == 201, (r.status_code, r.text[:500])
+    return r.json()
+
+
+def some_template(client, auth, slug="alpha", who="alice") -> str:
+    """A template of this project to save layouts with: the first one, made when there is none."""
+    r = client.get(f"/api/p/{slug}/templates", headers=auth(who))
+    if r.status_code == 200 and r.json():
+        return r.json()[0]["id"]
+    return new_template(client, auth, slug=slug, who=who, name="House style")["id"]
+
+
 def new_layout(client, auth, slug="alpha", who="alice", **body):
     body.setdefault("name", f"Layout {time.monotonic_ns()}")
+    if "template_id" not in body:
+        body["template_id"] = some_template(client, auth, slug=slug, who=who)
     r = client.post(f"/api/p/{slug}/layouts", json=body, headers=auth(who))
     assert r.status_code == 201, (r.status_code, r.text[:500])
     return r.json()
@@ -297,7 +324,8 @@ def new_layout(client, auth, slug="alpha", who="alice", **body):
 
 def put_layout(client, auth, layout, slug="alpha", who="alice", **changes):
     body = {"name": layout["name"], "description": layout.get("description") or "",
-            "system_id": layout["system_id"], "revision": layout["revision"], "blocks": layout["blocks"]}
+            "system_id": layout["system_id"], "revision": layout["revision"], "blocks": layout["blocks"],
+            "template_id": layout.get("template_id")}
     body.update(changes)
     return client.put(f"/api/p/{slug}/layouts/{layout['id']}", json=body, headers=auth(who))
 

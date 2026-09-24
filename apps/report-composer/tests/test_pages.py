@@ -19,7 +19,8 @@ def test_r4_2_1_layouts_list(client, auth):
     page = client.get("/p/alpha/", headers=auth("alice"))
     assert page.status_code == 200
     t = page.text
-    assert "Board pack" in t and "New layout" in t and "New from template" in t and "Delete" in t
+    assert "Board pack" in t and "New layout" in t and "Delete" in t
+    assert "New from template" not in t          # templates are looks now, not block recipes
 
 
 # R4.2.6
@@ -28,7 +29,7 @@ def test_r4_2_6_a_viewer_sees_no_edit_controls(client, auth):
     listing = client.get("/p/alpha/", headers=auth("victor")).text
     assert "Viewed" in listing and "New layout" not in listing and "Delete" not in listing
     editor = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("victor")).text)
-    for control in ("palette", "save", "generate", "save-template", "move-up", "move-down", "remove", "configure"):
+    for control in ("palette", "save", "generate", "template", "move-up", "move-down", "remove", "configure"):
         assert editor.find(attrs={"data-control": control}) is None, control
     assert editor.find("iframe") is not None                        # preview is available
 
@@ -40,7 +41,7 @@ def test_r4_2_2_the_editor(client, auth):
     doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
     palette = doc.find(attrs={"data-control": "palette"})
     assert palette is not None and "free_text" in str(palette)
-    for control in ("save", "generate", "move-up", "move-down", "remove", "configure", "version"):
+    for control in ("save", "generate", "move-up", "move-down", "remove", "configure", "version", "template"):
         assert doc.find(attrs={"data-control": control}) is not None, control
     blocks = [el["data-instance-id"] for el in doc.find_all(attrs={"data-instance-id": True})]
     assert blocks == [b["instance_id"] for b in lay["blocks"]]
@@ -79,3 +80,54 @@ def test_r7_3_3_the_composer_code_names_no_module_schema():
     assert len(list(root.rglob("*.py"))) > 1, "missing feature: report_composer has no code yet"
     for schema in ("qualification.", "control_objectives.", "engine.", "controls.", "aisc_comment", "catalogue"):
         assert schema not in code, schema
+
+
+# templates are chosen per layout, and live on their own screen
+def test_the_editor_offers_the_projects_templates_with_the_saved_one_selected(client, auth):
+    from conftest import new_template
+
+    a = new_template(client, auth, name="Plain")
+    b = new_template(client, auth, name="Bank X")
+    lay = new_layout(client, auth, name="Picked", system_id=IDS["A_V2"], template_id=b["id"])
+    doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
+    select = doc.find(attrs={"data-control": "template"})
+    options = {o["value"]: o.get_text(strip=True) for o in select.find_all("option") if o.get("value")}
+    assert options == {a["id"]: "Plain", b["id"]: "Bank X"}
+    assert select.find("option", selected=True)["value"] == b["id"]
+
+
+def test_the_new_layout_form_asks_for_a_template(client, auth):
+    from conftest import new_template
+
+    new_template(client, auth, name="Plain")
+    doc = soup(client.get("/p/alpha/", headers=auth("alice")).text)
+    form = doc.find(attrs={"data-control": "new-layout"})
+    assert form.find("select", attrs={"name": "template_id"}) is not None
+
+
+def test_the_templates_screen(client, auth):
+    from conftest import new_template
+
+    new_template(client, auth, name="Bank X", primary_color="#123456")
+    page = client.get("/p/alpha/templates", headers=auth("alice"))
+    assert page.status_code == 200
+    doc = soup(page.text)
+    assert "Bank X" in doc.get_text() and "#123456" in page.text
+    for control in ("new-template", "import-template", "export-template", "delete-template", "edit-template"):
+        assert doc.find(attrs={"data-control": control}) is not None, control
+
+
+def test_a_viewer_sees_templates_but_cannot_change_them(client, auth):
+    from conftest import new_template
+
+    new_template(client, auth, name="Bank X")
+    doc = soup(client.get("/p/alpha/templates", headers=auth("victor")).text)
+    assert "Bank X" in doc.get_text()
+    assert doc.find(attrs={"data-control": "export-template"}) is not None
+    for control in ("new-template", "import-template", "delete-template", "edit-template"):
+        assert doc.find(attrs={"data-control": control}) is None, control
+
+
+def test_the_header_links_the_templates(client, auth):
+    doc = soup(client.get("/p/alpha/", headers=auth("alice")).text)
+    assert doc.find("a", href=lambda h: h and h.endswith("/p/alpha/templates")) is not None

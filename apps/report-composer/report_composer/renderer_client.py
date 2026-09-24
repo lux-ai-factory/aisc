@@ -59,6 +59,9 @@ class HttpRendererClient:
     def block_types(self) -> list:
         return self._call("GET", "/v1/block-types")
 
+    def fonts(self) -> list:
+        return self._call("GET", "/v1/fonts")
+
     def choices(self, project_id, system_id, block_type) -> dict:
         return self._call("POST", "/v1/choices", {"project_id": str(project_id), "system_id": str(system_id),
                                                   "block_type": block_type})

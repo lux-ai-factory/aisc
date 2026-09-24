@@ -21,7 +21,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from conftest import IDS, blk, lazily, need, report_bed
+from conftest import IDS, blk, lazily, need, new_template, report_bed, some_template
 
 pytestmark = [pytest.mark.db, pytest.mark.e2e]
 GENERATOR = Path(os.environ.get("REPORT_GENERATOR_DIR", Path(__file__).resolve().parents[4] / "aisc-report-generator"))
@@ -112,8 +112,10 @@ def blocks():
 def test_e2e_compose_preview_and_generate(e2e_client, auth):
     c = e2e_client
     erin = auth("erin")
-    r = c.post("/api/p/echo/layouts", json={"name": "Echo pack", "system_id": IDS["E_V2"], "blocks": blocks()},
-               headers=erin)
+    look = new_template(c, auth, slug="echo", who="erin", name="Echo look", font="liberation-serif",
+                        primary_color="#123456", accent_color="#abcdef")
+    r = c.post("/api/p/echo/layouts", json={"name": "Echo pack", "system_id": IDS["E_V2"], "blocks": blocks(),
+                                           "template_id": look["id"]}, headers=erin)
     assert r.status_code == 201, r.text[:800]
     lay = r.json()
     assert [b["block_type"] for b in lay["blocks"]] == ORDER
@@ -125,6 +127,7 @@ def test_e2e_compose_preview_and_generate(e2e_client, auth):
     for marker in ("echo card E2MARK", "Answer E2MARK", "accuracy_E2MARK", "Echo comment", "Written by the editor."):
         assert marker in html, marker
     assert "is newer" not in html
+    assert "--l-aif-primary: #123456" in html and "Liberation Serif" in html      # the template's look
 
     r = c.post(f"/api/p/echo/layouts/{lay['id']}/reports", json={}, headers=erin)
     assert r.status_code == 201, r.text[:800]
@@ -144,7 +147,8 @@ def test_e2e_pinned_to_version_1(e2e_client, auth):
     c = e2e_client
     erin = auth("erin")
     lay = c.post("/api/p/echo/layouts", json={"name": "Echo v1", "system_id": IDS["E_V1"],
-                                             "blocks": [b for b in blocks() if b["block_type"] != "summary_coverage"]},
+                                             "blocks": [b for b in blocks() if b["block_type"] != "summary_coverage"],
+                                             "template_id": some_template(c, auth, slug="echo", who="erin")},
                  headers=erin).json()
     html = c.get(f"/api/p/echo/layouts/{lay['id']}/preview", headers=erin).text
     assert "E2MARK" not in html

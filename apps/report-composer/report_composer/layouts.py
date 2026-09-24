@@ -180,28 +180,3 @@ def reset_invalid(blocks, problems, block_types) -> list[dict]:
             b.setdefault("options", {})
             _reset(b["options"], name, t)
     return out
-
-
-def to_template(blocks, block_types, keep_text=False) -> list[dict]:
-    """R3.14: the layout without project data: no instance ids, references reset, free text replaced."""
-    types = {t["type_id"]: t for t in block_types}
-    out = []
-    for b in blocks:
-        t = types.get(b["block_type"])
-        if t is None:
-            out.append({"block_type": b["block_type"], "options": {}})
-            continue
-        options = copy.deepcopy(b.get("options") or {})
-        for name in reference_options(t):
-            if name in options:
-                _reset(options, name, t)
-        if b["block_type"] == "free_text" and not keep_text and "text" in options:
-            options["text"] = FREE_TEXT_PLACEHOLDER
-        out.append({"block_type": b["block_type"], "options": options})
-    return out
-
-
-def from_template(template_blocks) -> list[dict]:
-    """R3.15: a layout from a template: copies, with new instance ids."""
-    return [{"instance_id": _new_id(), "block_type": b["block_type"], "options": copy.deepcopy(b.get("options") or {})}
-            for b in template_blocks]

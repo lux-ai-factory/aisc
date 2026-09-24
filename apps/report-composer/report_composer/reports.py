@@ -36,7 +36,7 @@ def generate(request, project, layout_id, caller) -> tuple[int, dict]:
     from datetime import timedelta
 
     from . import db, layouts
-    from .api import ApiError, block_types, choices_for, fail_on, snapshot_of
+    from .api import ApiError, block_types, choices_for, fail_on, snapshot_of, template_of
     from .renderer_client import RendererTimeout
 
     url, renderer, clock = request.app.state.database_url, request.app.state.renderer, request.app.state.clock
@@ -50,7 +50,11 @@ def generate(request, project, layout_id, caller) -> tuple[int, dict]:
                                         choices=choices_for(request, project["pid"], layout["system_id"])))
         if db.running_report(conn, layout["id"], clock() - timedelta(minutes=GENERATION_WINDOW_MINUTES)):
             raise ApiError(409, "generation_running", "A report of this layout is being generated.")
-        snapshot = snapshot_of(project, layout, "pdf", caller)
+        # only what is saved is generated, and it is saved with a template: no template, no report
+        template = template_of(conn, project["pid"], layout)
+        if template is None:
+            raise ApiError(422, "template_required", "Choose a template for this layout and save it first.")
+        snapshot = snapshot_of(project, layout, "pdf", caller, template)
         report_id = db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
                                      project_id=project["pid"], system_id=layout["system_id"], snapshot=snapshot,
                                      created_by=caller.subject, created_at=clock())

@@ -1,7 +1,7 @@
 """Sign-in and rights on every route (report run 2026-09-23: R4.4.1 to R4.4.6, R4.3.1, R7.3.1)."""
 import pytest
 
-from conftest import IDS, error_code, need, new_layout
+from conftest import IDS, error_code, need, new_layout, some_template
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
@@ -13,7 +13,7 @@ PROJECT_ROUTES = [
 
 
 # R4.4.1, R4.3.1
-@pytest.mark.parametrize("method,path", PROJECT_ROUTES + [("get", "/api/block-types"), ("get", "/api/templates")])
+@pytest.mark.parametrize("method,path", PROJECT_ROUTES + [("get", "/api/block-types"), ("get", "/api/p/alpha/templates")])
 def test_r4_4_1_no_sign_in_is_401(client, method, path):
     r = getattr(client, method)(path, headers={"Origin": "http://localhost"})
     assert r.status_code == 401
@@ -65,7 +65,8 @@ def test_r4_4_2_the_role_is_read_on_every_request(client, auth, bed):
     assert client.post("/api/p/alpha/layouts", json={"name": "a"}, headers=auth("victor")).status_code == 403
     bed.psql("platform", f"UPDATE core.project_member SET role = 'editor' WHERE project_id = '{IDS['A']}' AND subject = 'victor'")
     try:
-        assert client.post("/api/p/alpha/layouts", json={"name": "b"}, headers=auth("victor")).status_code == 201
+        body = {"name": "b", "template_id": some_template(client, auth)}
+        assert client.post("/api/p/alpha/layouts", json=body, headers=auth("victor")).status_code == 201
     finally:
         bed.psql("platform", f"UPDATE core.project_member SET role = 'viewer' WHERE project_id = '{IDS['A']}' AND subject = 'victor'")
 

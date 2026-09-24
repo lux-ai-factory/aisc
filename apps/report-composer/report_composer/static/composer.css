@@ -200,3 +200,25 @@ main.error p { color: var(--muted); }
   .site-header .inner { padding: 16px 20px; flex-wrap: wrap; gap: 12px; }
   .site-nav { gap: 18px; font-size: 13px; }
 }
+
+/* links styled as buttons */
+a.btn.ghost { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+a.btn.ghost:hover { background: var(--primary); color: #ffffff; }
+a.btn.small { padding: 6px 10px; font-size: 12px; font-weight: 700; }
+
+/* Templates: one card per look, drawn in its own colours */
+.looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px; }
+.looks > .qf-section { margin-bottom: 0; }
+.look { border-top: 4px solid var(--look-primary, var(--primary)); }
+.look-sample img { max-height: 48px; max-width: 180px; display: block; margin-bottom: 12px; }
+.look-sample h2 { margin: 0 0 4px; font-size: 20px; color: var(--look-primary, var(--text)); }
+.look-meta { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+.swatches { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+.swatch { width: 18px; height: 18px; border: 1px solid var(--border-strong); display: inline-block; }
+.swatch + .swatch, .swatches .swatch:nth-of-type(2) { margin-left: 10px; }
+.look-actions { display: flex; gap: 8px; }
+.look details { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.look summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em; }
+.look form { margin-top: 12px; }
+.field input[type="color"] { padding: 2px; height: 42px; }
+.field label.inline { flex-direction: row; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-weight: 600; margin-top: 8px; }

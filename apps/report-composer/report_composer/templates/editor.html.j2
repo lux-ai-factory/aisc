@@ -18,9 +18,9 @@
   {% if editor %}
   <div class="toolbar qf-section">
     <label>Version <select data-control="version">{% for s in systems %}<option value="{{ s.pid }}"{% if s.pid == layout.system_id %} selected{% endif %}>Version {{ s.number }} ({{ s.release or "" }})</option>{% endfor %}</select></label>
+    <label>Template <select data-control="template">{% if not layout.template_id %}<option value="" selected>Choose a template</option>{% endif %}{% for x in templates %}<option value="{{ x.id }}"{% if x.id == layout.template_id %} selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
     <span class="state" data-state></span>
     <span class="spacer"></span>
-    <button type="button" class="ghost" data-control="save-template">Save as template</button>
     <button type="button" class="ghost" data-control="save">Save</button>
     <button type="button" data-control="generate">Generate PDF</button>
   </div>
@@ -41,6 +41,7 @@
     </li>
   </template>
   {% endfor %}
+  {% if not templates %}<p class="notice">This project has no template yet, and a layout is saved with one: <a href="{{ root }}/p/{{ project.slug }}/templates">make a template</a>.</p>{% endif %}
   {% else %}
   <p class="meta">Version {% for s in systems %}{% if s.pid == layout.system_id %}{{ s.number }}{% endif %}{% endfor %}, revision {{ layout.revision }}. You can read this layout; editors change it.</p>
   {% endif %}

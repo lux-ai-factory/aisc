@@ -110,37 +110,3 @@ def test_r3_9_reset_invalid_sets_the_defaults():
 
 
 # R3.14, R7.3.2
-def test_r3_14_a_template_carries_no_project_data():
-    blocks = [blk("cover", report_title="Mine"), blk("test_results", evaluations=[IDS["EVAL_A_V2"]]),
-              blk("dashboard_chart", chart_id=33, width=800), blk("control_answers", checklists=["cl-1"]),
-              blk("summary_coverage", links=[{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]),
-              blk("free_text", text="Confidential words")]
-    t = need(L, "to_template")(blocks, BLOCK_TYPES, keep_text=False)
-    assert [x["block_type"] for x in t] == [b["block_type"] for b in blocks]
-    assert all(set(x) == {"block_type", "options"} for x in t)          # no instance ids
-    opts = [x["options"] for x in t]
-    assert opts[0]["report_title"] == "Mine"                            # not a reference: kept
-    assert opts[1]["evaluations"] == "all"
-    assert "chart_id" not in opts[2] and opts[2]["width"] == 800
-    assert opts[3]["checklists"] == "all"
-    assert opts[4]["links"] == []
-    assert opts[5]["text"] == "[text]"
-    assert "Confidential words" not in repr(t) and IDS["EVAL_A_V2"] not in repr(t)
-
-
-def test_r3_14_keep_text():
-    t = need(L, "to_template")([blk("free_text", text="Keep me")], BLOCK_TYPES, keep_text=True)
-    assert t[0]["options"]["text"] == "Keep me"
-
-
-# R3.15
-def test_r3_15_a_layout_from_a_template_gets_new_instance_ids():
-    template = [{"block_type": "cover", "options": {"report_title": "T"}},
-                {"block_type": "free_text", "options": {"text": "[text]"}}]
-    a = need(L, "from_template")(template)
-    b = need(L, "from_template")(template)
-    assert [x["block_type"] for x in a] == ["cover", "free_text"]
-    assert a[0]["options"] == {"report_title": "T"}
-    assert {x["instance_id"] for x in a}.isdisjoint({x["instance_id"] for x in b})
-    a[0]["options"]["report_title"] = "changed"
-    assert template[0]["options"]["report_title"] == "T"            # a copy

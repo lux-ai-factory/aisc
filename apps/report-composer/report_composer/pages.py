@@ -14,7 +14,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from . import db, forms, layouts
-from .api import ApiError, block_types, guard, renderer_call
+from .api import ApiError, block_types, fonts, guard, renderer_call
+from . import templates as looks
 
 router = APIRouter()
 _env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(Path(__file__).resolve().parent / "templates")),
@@ -60,7 +61,7 @@ def layouts_page(request: Request, ref: str):
     with db.connect(url) as conn:
         rows = db.list_layouts(conn, g.project["pid"])
         systems = db.systems(conn, g.project["pid"])
-        templates = db.list_templates(conn) if g.access.may_write else []
+        templates = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
     return _page("layouts.html.j2", request, project=g.project, layouts=rows, systems=systems,
                  templates=templates, editor=g.access.may_write)
 
@@ -82,6 +83,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
             raise ApiError(404, "not_found", "No such layout.")
         systems = db.systems(conn, g.project["pid"])
         report_rows = db.list_reports(conn, layout["id"])
+        templates = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
     editor = g.access.may_write
     types = block_types(request)
     by_type = {t["type_id"]: t for t in types}
@@ -100,4 +102,17 @@ def editor_page(request: Request, ref: str, layout_id: str):
     palette = [{"type_id": t["type_id"], "title": t["title"], "fields": _form_for(t, {}, {})} for t in types] \
         if editor else []
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,
-                 reports=report_rows, palette=palette, editor=editor)
+                 reports=report_rows, palette=palette, editor=editor, templates=templates)
+
+
+@router.get("/p/{ref}/templates")
+def templates_page(request: Request, ref: str):
+    g = guard(request, ref, "viewer")
+    if _is_pid(ref):
+        return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/templates", status_code=303)
+    with db.connect(request.app.state.database_url) as conn:
+        rows = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
+    font_list = fonts(request)
+    labels = {f["id"]: f["label"] for f in font_list}
+    return _page("templates.html.j2", request, project=g.project, templates=rows, fonts=font_list, labels=labels,
+                 editor=g.access.may_write, here="templates")

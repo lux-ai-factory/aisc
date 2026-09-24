@@ -17,6 +17,7 @@ from aisc_identity.caller import IdentityMissing
 from aisc_identity.service import Misconfigured, NotAuthenticated, caller_from_headers
 
 from . import access, db, layouts, reports
+from . import templates as looks
 from .errors import ApiError
 from .renderer_client import RendererRejected, RendererTimeout, RendererUnavailable
 
@@ -84,12 +85,35 @@ def requested_by(caller) -> str:
     return caller.username or caller.email or caller.subject
 
 
-def snapshot_of(project, layout, mode, caller) -> dict:
-    return {"project_id": project["pid"], "system_id": layout["system_id"],
+def snapshot_of(project, layout, mode, caller, template=None) -> dict:
+    """What the renderer is sent; `template` (read with its logo) gives the report its look."""
+    snap = {"project_id": project["pid"], "system_id": layout["system_id"],
             "layout": {"id": layout["id"], "name": layout["name"], "revision": layout["revision"]},
             "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": b["options"]}
                        for b in layout["blocks"]],
             "mode": mode, "requested_by": requested_by(caller)}
+    if template is not None:
+        snap["style"] = looks.style(template)
+    return snap
+
+
+def template_of(conn, project_pid, layout) -> dict | None:
+    """The layout's template with its logo, or None (never chosen, or deleted since)."""
+    if not layout.get("template_id"):
+        return None
+    return db.get_template(conn, project_pid, layout["template_id"], with_logo=True)
+
+
+def chosen_template(conn, project_pid, template_id) -> str:
+    """A layout is saved only with one of its project's templates."""
+    if not template_id:
+        raise ApiError(422, "template_required", "Choose one of this project's templates before saving.",
+                       [{"pointer": "/template_id", "message": "is required"}])
+    t = db.get_template(conn, project_pid, template_id)
+    if t is None:
+        raise ApiError(422, "template_not_in_project", "The template is not one of this project's.",
+                       [{"pointer": "/template_id", "message": "is not one of this project's templates"}])
+    return t["id"]
 
 
 def renderer_call(fn, *args):
@@ -120,8 +144,8 @@ def fail_on(problems) -> None:
 
 
 def layout_view(layout: dict) -> dict:
-    return {k: layout[k] for k in ("id", "project_id", "name", "description", "system_id", "revision", "blocks",
-                                   "created_at", "updated_at")}
+    return {k: layout[k] for k in ("id", "project_id", "name", "description", "system_id", "template_id", "revision",
+                                   "blocks", "created_at", "updated_at")}
 
 
 def _text(body: dict, name: str, *, required: bool, max_len: int) -> str:
@@ -189,24 +213,17 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
             system = db.latest_system(conn, pid)
             if system is None:
                 raise ApiError(422, "system_not_in_project", "This project has no system version yet.")
-        template = None
-        if body.get("template_id") is not None:
-            template = db.get_template(conn, body["template_id"])
-            if template is None:
-                raise ApiError(404, "not_found", "No such template.")
+        template_id = chosen_template(conn, pid, body.get("template_id"))
     types = block_types(request)
-    if template is not None:
-        blocks = layouts.from_template(template["blocks"])
-    elif "blocks" in body and body["blocks"] is not None:
+    if "blocks" in body and body["blocks"] is not None:
         blocks = _blocks(body)
     else:
         blocks = layouts.default_blocks(types)
-    fail_on(layouts.validate_layout(blocks, block_types=types, choices=choices_for(request, pid, system["pid"]),
-                                    allow_missing_references=template is not None))
+    fail_on(layouts.validate_layout(blocks, block_types=types, choices=choices_for(request, pid, system["pid"])))
     now = request.app.state.clock()
     try:
         with db.connect(url) as conn:
-            lid = db.insert_layout(conn, project_pid=pid, system_pid=system["pid"], name=name,
+            lid = db.insert_layout(conn, project_pid=pid, system_pid=system["pid"], template_id=template_id, name=name,
                                    description=description, blocks=blocks, who=g.caller.subject, now=now)
             return layout_view(db.get_layout(conn, pid, lid))
     except psycopg.errors.UniqueViolation:
@@ -243,6 +260,7 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
     blocks = _blocks(body)
     with db.connect(url) as conn:
         system = db.system_of_project(conn, pid, body.get("system_id") or current["system_id"])
+        template_id = chosen_template(conn, pid, body.get("template_id"))
     if system is None:
         raise ApiError(422, "system_not_in_project", "The version is not one of this project.")
     types = block_types(request)
@@ -255,7 +273,8 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
     try:
         with db.connect(url) as conn:
             new = db.update_layout(conn, current["id"], based_on=revision, name=name, description=description,
-                                   system_pid=system["pid"], blocks=blocks, who=g.caller.subject,
+                                   system_pid=system["pid"], template_id=template_id, blocks=blocks,
+                                   who=g.caller.subject,
                                    now=request.app.state.clock())
             if new is None:
                 latest = _layout_or_404(conn, pid, layout_id)
@@ -288,7 +307,9 @@ def validate(request: Request, layout_id: str, g: Guarded = Depends(project_guar
 def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
     with db.connect(request.app.state.database_url) as conn:
         layout = _layout_or_404(conn, g.project["pid"], layout_id)
-    result = renderer_call(request.app.state.renderer.render, snapshot_of(g.project, layout, "preview", g.caller))
+        template = template_of(conn, g.project["pid"], layout)
+    result = renderer_call(request.app.state.renderer.render,
+                           snapshot_of(g.project, layout, "preview", g.caller, template))
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
                                                  "X-Content-Type-Options": "nosniff"})
 
@@ -323,48 +344,93 @@ def get_pdf(request: Request, report_id: str, g: Guarded = Depends(project_guard
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-# ── templates ────────────────────────────────────────────────────────────────
+# ── templates: a report's look ───────────────────────────────────────────────
 
-def _template_row(t: dict) -> dict:
-    return {"id": t["id"], "name": t["name"], "description": t["description"],
-            "block_types": [b["block_type"] for b in t["blocks"]],
-            **({"created_by": t["created_by"], "created_at": t["created_at"]} if "created_by" in t else {})}
+def fonts(request: Request) -> list:
+    return renderer_call(request.app.state.renderer.fonts)
 
 
-@router.post("/p/{ref}/layouts/{layout_id}/template", status_code=201)
-def post_template(request: Request, layout_id: str, body: dict = Body(...),
-                  g: Guarded = Depends(project_guard("editor"))):
-    name = _text(body, "name", required=True, max_len=120)
-    description = _text(body, "description", required=False, max_len=2000)
-    url = request.app.state.database_url
-    with db.connect(url) as conn:
-        layout = _layout_or_404(conn, g.project["pid"], layout_id)
-    blocks = layouts.to_template(layout["blocks"], block_types(request), keep_text=bool(body.get("keep_text")))
+def _template_or_404(conn, pid, template_id, with_logo=False) -> dict:
+    t = db.get_template(conn, pid, template_id, with_logo=with_logo)
+    if t is None:
+        raise ApiError(404, "not_found", "No such template.")
+    return t
+
+
+def _save_template(request: Request, g: Guarded, body, template_id=None, rename_if_taken=False):
+    look, logo = looks.checked(body, fonts(request))
+    url, pid, now = request.app.state.database_url, g.project["pid"], request.app.state.clock()
     try:
         with db.connect(url) as conn:
-            t = db.insert_template(conn, name=name, description=description, blocks=blocks,
-                                   source_project_id=g.project["pid"], created_by=g.caller.subject,
-                                   now=request.app.state.clock())
+            if template_id is not None and body.get("keep_logo") and "logo" not in body:
+                current = _template_or_404(conn, pid, template_id, with_logo=True)
+                logo = (current["logo_mime"], bytes(current["logo"])) if current.get("logo") else None
+            if rename_if_taken:
+                look["name"] = looks.free_name(look["name"], db.template_names(conn, pid))
+            if template_id is None:
+                template_id = db.insert_template(conn, project_pid=pid, look=look, logo=logo, who=g.caller.subject,
+                                                 now=now)
+            elif not db.update_template(conn, pid, template_id, look=look, logo=logo, who=g.caller.subject, now=now):
+                raise ApiError(404, "not_found", "No such template.")
+            return looks.view(_template_or_404(conn, pid, template_id))
     except psycopg.errors.UniqueViolation:
-        raise ApiError(422, "name_taken", "A template already has this name.") from None
-    return {"id": t["id"], "name": t["name"], "description": t["description"],
-            "block_types": [b["block_type"] for b in t["blocks"]]}
+        raise ApiError(422, "name_taken", "A template of this project already has this name.") from None
 
 
-@router.get("/templates")
-def get_templates(request: Request, caller=Depends(signed_in)):
+@router.get("/fonts")
+def get_fonts(request: Request, caller=Depends(signed_in)):
+    return fonts(request)
+
+
+@router.get("/p/{ref}/templates")
+def get_templates(request: Request, g: Guarded = Depends(project_guard("viewer"))):
     with db.connect(request.app.state.database_url) as conn:
-        return [_template_row(t) for t in db.list_templates(conn)]
+        return [looks.view(t) for t in db.list_templates(conn, g.project["pid"])]
 
 
-@router.delete("/templates/{template_id}", status_code=204)
-def delete_template(request: Request, template_id: str, caller=Depends(signed_in)):
-    check_origin(request)
+@router.post("/p/{ref}/templates", status_code=201)
+def post_template(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
+    return _save_template(request, g, body)
+
+
+@router.post("/p/{ref}/templates/import", status_code=201)
+def import_template(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
+    return _save_template(request, g, looks.from_export(body), rename_if_taken=True)
+
+
+@router.put("/p/{ref}/templates/{template_id}")
+def put_template(request: Request, template_id: str, body: dict = Body(...),
+                 g: Guarded = Depends(project_guard("editor"))):
     with db.connect(request.app.state.database_url) as conn:
-        t = db.get_template(conn, template_id)
-        if t is None:
+        current = _template_or_404(conn, g.project["pid"], template_id)
+    return _save_template(request, g, body, template_id=current["id"])
+
+
+@router.delete("/p/{ref}/templates/{template_id}", status_code=204)
+def delete_template(request: Request, template_id: str, g: Guarded = Depends(project_guard("editor"))):
+    with db.connect(request.app.state.database_url) as conn:
+        if not db.delete_template(conn, g.project["pid"], template_id):
             raise ApiError(404, "not_found", "No such template.")
-        if t["created_by"] != caller.subject and not caller.has_role(access.ADMIN_ROLE):
-            raise ApiError(403, "forbidden", "Only the template's creator or an admin may delete it.")
-        db.delete_template(conn, t["id"])
     return Response(status_code=204)
+
+
+@router.get("/p/{ref}/templates/{template_id}/export")
+def export_template(request: Request, template_id: str, g: Guarded = Depends(project_guard("viewer"))):
+    with db.connect(request.app.state.database_url) as conn:
+        t = _template_or_404(conn, g.project["pid"], template_id, with_logo=True)
+    import json
+
+    return Response(json.dumps(looks.export_doc(t), indent=2), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{looks.filename(t["name"])}"'})
+
+
+@router.get("/p/{ref}/templates/{template_id}/logo")
+def template_logo(request: Request, template_id: str, g: Guarded = Depends(project_guard("viewer"))):
+    with db.connect(request.app.state.database_url) as conn:
+        t = _template_or_404(conn, g.project["pid"], template_id, with_logo=True)
+    if not t.get("logo"):
+        raise ApiError(404, "not_found", "This template has no logo.")
+    # an SVG is served as an image only: no script of it runs in this origin
+    return Response(bytes(t["logo"]), media_type=t["logo_mime"],
+                    headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+                             "X-Content-Type-Options": "nosniff"})
