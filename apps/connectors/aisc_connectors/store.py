@@ -22,6 +22,14 @@ class DuplicateName(ValueError):
     """A connector with this (project_pid, slug) already exists."""
 
 
+def _is_slug_taken(exc: psycopg.errors.UniqueViolation) -> bool:
+    return exc.diag.constraint_name == _SLUG_CONSTRAINT
+
+
+def _duplicate_name() -> DuplicateName:
+    return DuplicateName("a connector with this name already exists in the project")
+
+
 def _insert(project_pid, ai_system_pid, name, slug, kind, environment, created_by, *, compute_target_access):
     # is_target_access is computed inside the INSERT, not by a SELECT before it, so concurrent
     # creates for the same project cannot both see "no target access yet" in between. If two such
@@ -47,8 +55,8 @@ def create_connector(project_pid, ai_system_pid, name, slug, kind, environment, 
         return _insert(project_pid, ai_system_pid, name, slug, kind, environment, created_by,
                        compute_target_access=True)
     except psycopg.errors.UniqueViolation as exc:
-        if exc.diag.constraint_name == _SLUG_CONSTRAINT:
-            raise DuplicateName("a connector with this name already exists in the project") from exc
+        if _is_slug_taken(exc):
+            raise _duplicate_name() from exc
         if exc.diag.constraint_name == _TARGET_ACCESS_INDEX:
             # Lost the race for target access between our NOT EXISTS check and the INSERT: someone
             # else's connector already claimed it, so this one is not the target-access connector.
@@ -85,8 +93,8 @@ def update(connector_pid, **fields) -> dict:
                 (*values, connector_pid),
             ).fetchone()
         except psycopg.errors.UniqueViolation as exc:
-            if exc.diag.constraint_name == _SLUG_CONSTRAINT:
-                raise DuplicateName("a connector with this name already exists in the project") from exc
+            if _is_slug_taken(exc):
+                raise _duplicate_name() from exc
             raise
 
 

@@ -16,6 +16,17 @@ router = APIRouter(prefix="/api/v1/connectors")
 
 SETTINGS_DEFAULTS = {"timeout_s": 30, "rate_limit_per_minute": 60, "verify_tls": True, "ollama_facade": False}
 SETTINGS_BOUNDS = {"timeout_s": (1, 300), "rate_limit_per_minute": (1, 6000)}
+SETTINGS_FLAGS = ("verify_tls", "ollama_facade")
+
+#: The fields each auth scheme needs besides "scheme"; nothing else is kept.
+AUTH_REQUIRED_FIELDS = {
+    "none": [], "bearer": [], "mtls": [],
+    "api_key": ["in", "name"], "basic": ["username"],
+    "oauth2_client_credentials": ["token_url", "client_id"],
+}
+
+_SHOWN_COLUMNS = ("pid", "project_pid", "ai_system_pid", "name", "slug", "kind", "environment",
+                  "auth", "chat", "is_target_access", "import_warnings")
 
 
 def engine_for(admin: Admin = Depends(admin_call)):
@@ -42,19 +53,15 @@ class SecretValue(BaseModel):
 
 def check_auth(auth: dict) -> dict:
     scheme = auth.get("scheme")
-    required = {
-        "none": [], "bearer": [], "mtls": [],
-        "api_key": ["in", "name"], "basic": ["username"],
-        "oauth2_client_credentials": ["token_url", "client_id"],
-    }
-    if scheme not in required:
+    if scheme not in AUTH_REQUIRED_FIELDS:
         raise HTTPException(422, f"unknown auth scheme {scheme!r}")
-    missing = [f for f in required[scheme] if not auth.get(f)]
+    required = AUTH_REQUIRED_FIELDS[scheme]
+    missing = [f for f in required if not auth.get(f)]
     if missing:
         raise HTTPException(422, f"auth scheme {scheme} needs {missing}")
     if scheme == "api_key" and auth["in"] not in ("header", "query"):
         raise HTTPException(422, "api_key goes in a header or the query")
-    allowed = {"scheme", *required[scheme]}
+    allowed = {"scheme", *required}
     if scheme == "oauth2_client_credentials":
         allowed.add("scope")
     return {k: v for k, v in auth.items() if k in allowed}
@@ -70,7 +77,7 @@ def check_settings(current: dict, patch: dict) -> dict:
         # silently pass as timeout_s=1.
         if isinstance(merged[key], bool) or not isinstance(merged[key], int) or not low <= merged[key] <= high:
             raise HTTPException(422, f"{key} must be an integer between {low} and {high}")
-    for key in ("verify_tls", "ollama_facade"):
+    for key in SETTINGS_FLAGS:
         if not isinstance(merged[key], bool):
             raise HTTPException(422, f"{key} must be true or false")
     return merged
@@ -83,6 +90,11 @@ def loaded(connector_pid: uuid.UUID) -> dict:
     return found
 
 
+def engine_refused(exc: engine_api.EngineError) -> HTTPException:
+    # An engine refusal other than 404 is a 502, never a 500.
+    return HTTPException(502, f"the engine refused: {exc.detail}")
+
+
 def orphaned(row: dict, engine: engine_api.EngineClient) -> bool:
     try:
         engine.aisystem(row["project_pid"])
@@ -90,13 +102,11 @@ def orphaned(row: dict, engine: engine_api.EngineClient) -> bool:
     except engine_api.NotFound:
         return True
     except engine_api.EngineError as exc:
-        # An engine refusal other than 404 is a 502, never a 500.
-        raise HTTPException(502, f"the engine refused: {exc.detail}") from exc
+        raise engine_refused(exc) from exc
 
 
 def shown(row: dict, engine: engine_api.EngineClient) -> dict:
-    return {**{k: row[k] for k in ("pid", "project_pid", "ai_system_pid", "name", "slug", "kind", "environment",
-                                   "auth", "chat", "is_target_access", "import_warnings")},
+    return {**{k: row[k] for k in _SHOWN_COLUMNS},
             "settings": {**SETTINGS_DEFAULTS, **(row["settings"] or {})},
             "secrets": vault.describe(row["pid"]),
             "orphaned": orphaned(row, engine)}
@@ -110,8 +120,7 @@ def create(body: NewConnector, admin: Admin = Depends(admin_call),
     except engine_api.NotFound:
         raise HTTPException(404, "the engine knows no such project")
     except engine_api.EngineError as exc:
-        # An engine refusal other than 404 is a 502, never a 500.
-        raise HTTPException(502, f"the engine refused: {exc.detail}") from exc
+        raise engine_refused(exc) from exc
     try:
         row = store.create_connector(body.project_pid, uuid.UUID(system["pid"]), body.name, slugify(body.name),
                                      "manual", body.environment, admin.caller.subject)

@@ -19,6 +19,10 @@ class Operation:
     spec: dict
 
 
+def _changes_data(method: str, op: dict) -> bool:
+    return method not in SAFE_METHODS or op.get("x-aisc-binding", {}).get("protocol") == "soap"
+
+
 def operations(document: dict) -> list[Operation]:
     found = []
     for path, item in (document.get("paths") or {}).items():
@@ -27,8 +31,7 @@ def operations(document: dict) -> list[Operation]:
             if not isinstance(op, dict) or "operationId" not in op:
                 continue
             found.append(Operation(op["operationId"], method, path, op.get("summary") or "",
-                                   method not in SAFE_METHODS or op.get("x-aisc-binding", {}).get("protocol") == "soap",
-                                   op.get("x-aisc-binding") or {}, op))
+                                   _changes_data(method, op), op.get("x-aisc-binding") or {}, op))
     return found
 
 
