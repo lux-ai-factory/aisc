@@ -131,6 +131,10 @@
   import oauth_endpoints
   # `route` to keep the order explicit: the API before the static files.
   route {
+    # The platform's internal route (service token, resolved keys) is never served here.
+    handle /api/internal/* {
+      respond 404
+    }
     # The platform's projects, on the launcher's own origin so the page can read
     # them with the session cookie it already has.
     handle_path /api/* {

@@ -12,6 +12,13 @@
 # So none of them has a default. The compose files refuse to start without
 # these, this writes them once into env.secrets, which is git-ignored, and the
 # realm import is rendered from its template with the same values.
+#
+# PLATFORM_SECRETS_KEY is the exception to --rotate: it encrypts the LLM API keys
+# stored in every project's database, so a fresh one would make all of them
+# unreadable. --rotate keeps it. To rotate it: prepend a new Fernet key to it
+# (comma list, newest first), restart the platform, run
+#   python -m platform_service.llm_store rotate
+# in the platform container, then drop the old key from the list.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -25,6 +32,14 @@ rand()      { openssl rand -hex 32; }
 # padding it does not decode, and it then measures the string itself and
 # refuses to start: "cookie_secret must be 16, 24, or 32 bytes ... but is 44".
 cookie()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'; }
+# Fernet wants urlsafe base64 of 32 bytes WITH its `=` padding: 44 characters.
+fernet()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n'; }
+
+# The LLM keys' encryption key survives --rotate (see the top of this file).
+secrets_key=""
+if [ -f "$OUT" ]; then
+  secrets_key=$(awk -F= '/^PLATFORM_SECRETS_KEY=/{print substr($0, index($0,"=")+1)}' "$OUT")
+fi
 
 if [ "${1:-}" = "--rotate" ] || [ ! -f "$OUT" ]; then
   umask 077
@@ -42,8 +57,10 @@ REPORT_SERVICE_TOKEN=$(rand)
 REPORT_RO_PASSWORD=$(rand)
 REPORT_COMPOSER_PASSWORD=$(rand)
 INSPECTOR_PASSWORD=$(rand)
+PLATFORM_INTERNAL_TOKEN=$(rand)
+PLATFORM_SECRETS_KEY=${secrets_key:-$(fernet)}
 EOF
-  echo "wrote $OUT (11 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+  echo "wrote $OUT (13 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
 
   # The one with a shape requirement, checked here rather than discovered by a
   # gateway that will not start.
@@ -63,6 +80,14 @@ for name in REPORT_SERVICE_TOKEN REPORT_RO_PASSWORD REPORT_COMPOSER_PASSWORD INS
     echo "added $name to $OUT"
   fi
 done
+if ! grep -q "^PLATFORM_INTERNAL_TOKEN=" "$OUT"; then
+  echo "PLATFORM_INTERNAL_TOKEN=$(rand)" >> "$OUT"
+  echo "added PLATFORM_INTERNAL_TOKEN to $OUT"
+fi
+if ! grep -q "^PLATFORM_SECRETS_KEY=" "$OUT"; then
+  echo "PLATFORM_SECRETS_KEY=$(fernet)" >> "$OUT"
+  echo "added PLATFORM_SECRETS_KEY to $OUT"
+fi
 
 # The realm import carries two of them. Rendered, never committed: the template
 # holds placeholders so the repo itself has no secret in it.
