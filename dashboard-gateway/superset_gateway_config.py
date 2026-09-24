@@ -70,6 +70,11 @@ class GatewaySecurityManager(KeycloakSecurityManager):
         claims = request.environ.get(CLAIMS_KEY) or {}
         if user is None or not claims:
             return user
+        self._sync_from_claims(user, claims)
+        return user
+
+    def _sync_from_claims(self, user, claims: dict) -> None:
+        """Roles and profile from the verified token, on every sign-in."""
         desired = roles_for_login(
             (claims.get("realm_access") or {}).get("roles", []),
             self._member_projects(claims.get("sub")),
@@ -79,7 +84,6 @@ class GatewaySecurityManager(KeycloakSecurityManager):
         user.first_name = claims.get("given_name") or user.first_name
         user.last_name = claims.get("family_name") or user.last_name
         self.update_user(user)
-        return user
 
 
 CUSTOM_SECURITY_MANAGER = GatewaySecurityManager

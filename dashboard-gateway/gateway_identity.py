@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 #: Where the verified claims travel with the request, for the role sync.
 CLAIMS_KEY = "aisc.gateway_claims"
 TOKEN_HEADER = "HTTP_X_AUTH_REQUEST_ACCESS_TOKEN"
+#: Named explicitly, as everywhere else: an open list admits `alg: none`.
+ALGORITHMS = ["RS256"]
 
 
 class GatewayIdentity:
@@ -38,7 +40,7 @@ class GatewayIdentity:
 
     def claims(self, token: str) -> Optional[dict]:
         try:
-            return jwt.decode(token, self.key_for(token), algorithms=["RS256"],
+            return jwt.decode(token, self.key_for(token), algorithms=ALGORITHMS,
                               issuer=self.issuer, options={"verify_aud": False})
         except Exception as exc:  # a bad token is nobody, never an error page
             log.info("gateway token refused: %s", exc)
