@@ -191,17 +191,27 @@
     } else if (what === "save") {
       await save(false);
     } else if (what === "generate") {
-      const statuses = main.querySelector("[data-statuses]");
-      if (unsaved) { statuses.textContent = "Save first: only a saved layout is generated."; return; }
-      statuses.textContent = "Generating...";
+      // the answer goes next to the button, and a finished PDF downloads at once
+      const say = function (text) { if (state) state.textContent = text; };
+      if (unsaved) { say("Save first: only a saved layout is generated."); return; }
+      control.disabled = true;
+      say("Generating the PDF...");
       const res = await call("POST", "/layouts/" + layoutId + "/reports", {});
-      if (res.ok) {
-        statuses.textContent = "Report " + res.data.status + ": " + res.data.block_statuses.map(function (s) {
-          return s.block_type + " " + s.status;
-        }).join(", ");
-        setTimeout(function () { location.reload(); }, 1500);
-      } else {
-        statuses.textContent = message(res);
+      control.disabled = false;
+      if (!res.ok) { say(message(res)); return; }
+      const failed = res.data.block_statuses.filter(function (s) { return s.status === "error"; });
+      if (res.data.status === "failed") { say("The PDF could not be made."); return; }
+      const pdf = api + "/reports/" + res.data.id + "/pdf";
+      say(failed.length ? "PDF ready, " + failed.length + " section(s) with errors: downloading." : "PDF ready: downloading.");
+      const link = document.createElement("a");
+      link.href = pdf; link.download = ""; document.body.appendChild(link); link.click(); link.remove();
+      const reportsList = main.querySelector("[data-reports]");
+      if (reportsList) {
+        const item = document.createElement("li");
+        item.innerHTML = "Just now, revision " + revision + ", " + res.data.status + ': <a href="' + pdf + '">Download</a>';
+        const empty = reportsList.querySelector(".muted");
+        if (empty) empty.remove();
+        reportsList.prepend(item);
       }
     }
   });

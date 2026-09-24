@@ -131,3 +131,16 @@ def test_a_viewer_sees_templates_but_cannot_change_them(client, auth):
 def test_the_header_links_the_templates(client, auth):
     doc = soup(client.get("/p/alpha/", headers=auth("alice")).text)
     assert doc.find("a", href=lambda h: h and h.endswith("/p/alpha/templates")) is not None
+
+
+# Generate PDF: the feedback is next to the button and the finished PDF downloads at once
+# (it used to go to the "Generated reports" card below the preview, off screen, then reload)
+def test_generate_answers_next_to_the_button_and_downloads_the_pdf():
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "report_composer/static/composer.js").read_text()
+    start = js.index('what === "generate"')
+    handler = js[start:js.index("} else if", start + 1) if "} else if" in js[start + 1:] else len(js)]
+    assert "[data-state]" in handler or "state.textContent" in handler, "status must show next to the button"
+    assert '"/pdf"' in handler and ".download" in handler and ".click()" in handler, "a finished PDF must download"
+    assert "location.reload" not in handler
