@@ -198,12 +198,14 @@
   }
 
   // Indentation and the empty-chapter hint for the current order, as Python computes them (R-V5.8, R-V5.9)
+  let outlineAsked = 0;                                  // the latest outline request; older answers are ignored
   async function redrawOutline() {
+    const mine = ++outlineAsked;
     const blocks = Array.from(list.children).map(function (li) {
       return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType };
     });
     const res = await call("POST", "/layouts/" + layoutId + "/outline", { blocks: blocks });
-    if (!res.ok) return;
+    if (!res.ok || mine !== outlineAsked) return;
     res.data.outline.forEach(function (o) {
       const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
       if (!li) return;

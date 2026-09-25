@@ -111,3 +111,34 @@ def test_fix_chapter_indentation_follows_a_move(live):
         f"""() => document.querySelector('#blocks li[data-instance-id="{card['instance_id']}"]').dataset.depth === "1" """,
         timeout=5000)
     assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
+
+
+def test_fix_r2_5_an_older_outline_answer_arriving_last_is_ignored(live):
+    """Fix round 2, item 5: two quick moves whose outline answers arrive out of order leave the indentation
+    and the empty-chapter hint of the latest order on screen."""
+    cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
+    page, lay = live([cover, chapter, card])
+    held = []
+
+    def hold_first_outline(route):
+        if not held:
+            held.append(route)                            # answered later, after the second move's answer
+        else:
+            route.continue_()
+
+    page.route("**/outline", hold_first_outline)
+    card_li = _li(page, card["instance_id"])
+    card_li.locator('[data-control="move-up"]').click()   # order 1: card before the chapter (depth 0)
+    deadline = time.monotonic() + 5
+    while not held and time.monotonic() < deadline:
+        page.wait_for_timeout(20)
+    assert held, "the first outline request was not sent"
+    with page.expect_response(lambda r: r.url.endswith("/outline"), timeout=5000):
+        card_li.locator('[data-control="move-down"]').click()  # order 2: card back in the chapter (depth 1)
+    page.wait_for_timeout(300)
+    assert card_li.get_attribute("data-depth") == "1"
+    with page.expect_response(lambda r: r.url.endswith("/outline"), timeout=5000):
+        held[0].continue_()                               # the answer for order 1 now arrives last
+    page.wait_for_timeout(300)
+    assert card_li.get_attribute("data-depth") == "1"
+    assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
