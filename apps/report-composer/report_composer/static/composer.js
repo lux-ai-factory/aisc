@@ -221,14 +221,11 @@
     schedule();
   }
 
-  // Indentation and the empty-chapter hint for the current order, as Python computes them (R-V5.8, R-V5.9)
-  let outlineAsked = 0;                                  // the latest outline request; older answers are ignored
+  // Indentation, the empty-chapter and the not-written hints, as Python computes them (R-V5.8, R-V5.9, R2-D3.8.3)
+  let outlineAsked = 0, outlineTimer = null;             // the latest outline request; older answers are ignored
   async function redrawOutline() {
     const mine = ++outlineAsked;
-    const blocks = Array.from(list.children).map(function (li) {
-      return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType };
-    });
-    const res = await call("POST", "/layouts/" + layoutId + "/outline", { blocks: blocks });
+    const res = await call("POST", "/layouts/" + layoutId + "/outline", { blocks: collect() });
     if (!res.ok || mine !== outlineAsked) return;
     res.data.outline.forEach(function (o) {
       const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
@@ -236,9 +233,11 @@
       li.dataset.depth = String(o.depth);
       const before = li.querySelector("details, [data-problems]");
       hint(li, "data-empty-chapter", o.empty_chapter ? EMPTY_CHAPTER : "", "hint", before);
+      hint(li, "data-unwritten", o.unwritten_hint || "", "hint", li.querySelector("details, [data-problems]"));
     });
   }
   function moved() { dirty(); redrawOutline(); }
+  function edited() { dirty(); clearTimeout(outlineTimer); outlineTimer = setTimeout(redrawOutline, 800); }
 
   function parse(value, isJson) {
     if (!isJson) return value;
@@ -460,7 +459,8 @@
     }
     const li = ev.target.closest("li");
     if (li) { applyShowIf(li); pickOneHints(); }
-    if (ev.target.closest("#blocks, .toolbar, details[data-coverage-map]")) dirty();
+    if (ev.target.closest("#blocks")) edited();
+    else if (ev.target.closest(".toolbar, details[data-coverage-map]")) dirty();
   });
   main.addEventListener("input", function (ev) {
     const filter = ev.target.closest("[data-filter]");
@@ -471,7 +471,7 @@
       });
       return;
     }
-    if (ev.target.closest("#blocks")) dirty();
+    if (ev.target.closest("#blocks")) edited();
   });
   window.addEventListener("beforeunload", function (ev) {
     if (unsaved) { ev.preventDefault(); ev.returnValue = ""; }

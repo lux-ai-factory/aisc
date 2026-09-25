@@ -296,7 +296,16 @@ def outline(request: Request, layout_id: str, body: dict = Body(...),
     if not all(isinstance(b["block_type"], str) for b in blocks):
         raise ApiError(422, "invalid_request", "Every block needs a block_type.",
                        [{"pointer": "/blocks", "message": "is not valid"}])
-    return {"outline": layouts.outline(blocks)}
+    return {"outline": layouts.outline(blocks, _block_types_or_none(request))}
+
+
+def _block_types_or_none(request: Request) -> list:
+    """The renderer's block types, or [] when it is unavailable: the outline then uses the fixed prose list
+    (DV12-6), so indentation keeps working without the renderer."""
+    try:
+        return block_types(request)
+    except ApiError:
+        return []
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/preview")

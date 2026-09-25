@@ -11,7 +11,7 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import coverage_map, db, forms, layouts, presets
+from . import coverage_map, db, forms, layouts, presets, prose
 from . import templates as looks
 from .api import may_delete_preset
 from .guards import guard
@@ -93,10 +93,13 @@ def _reference_choices(request: Request, project: dict, layout: dict, by_type: d
 
 def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, depth: int = 0,
                    empty_chapter: bool = False, problems=()) -> dict:
-    """A block as the editor's outline draws it; an editor also gets its configure form."""
+    """A block as the editor's outline draws it; an editor also gets its configure form. A block still
+    holding the placeholder in a prose option gets the unwritten hint (R2-D3.8.3)."""
+    unwritten = prose.unwritten(block["block_type"], block["options"] or {}, block_type)
     return {"instance_id": block["instance_id"], "block_type": block["block_type"],
             "title": (block["options"] or {}).get("title") or (block_type["title"] if block_type else None),
             "known": block_type is not None, "depth": depth, "empty_chapter": empty_chapter,
+            "unwritten_hint": prose.unwritten_hint(block["block_type"], unwritten),
             "problems": [p["message"] for p in problems],
             "fields": _form_for(block_type, block["options"], choices.get(block["block_type"], {}))
             if (block_type and editor) else []}

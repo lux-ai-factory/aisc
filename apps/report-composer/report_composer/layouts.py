@@ -11,7 +11,7 @@ import uuid
 
 from jsonschema import Draft202012Validator
 
-from . import coverage_map
+from . import coverage_map, prose
 
 DEFAULT_ORDER = ["cover", "ai_card", "risk_classification", "control_objectives", "test_results",
                  "control_answers", "summary_coverage"]
@@ -259,8 +259,16 @@ def outline_depths(blocks: list[dict]) -> list[tuple[int, bool]]:
     return out
 
 
-def outline(blocks: list[dict]) -> list[dict]:
-    """The editor's outline for any block order: {instance_id, depth, empty_chapter} per block (fix round 1:
-    the editor redraws indentation and the empty-chapter hint from this after a move)."""
-    return [{"instance_id": b.get("instance_id"), "depth": depth, "empty_chapter": empty}
-            for b, (depth, empty) in zip(blocks, outline_depths(blocks))]
+def outline(blocks: list[dict], block_types=()) -> list[dict]:
+    """The editor's outline for any block order: {instance_id, depth, empty_chapter, unwritten, unwritten_hint}
+    per block (fix round 1: the editor redraws indentation and hints from this after a move or an edit).
+    `unwritten` names the options still holding the placeholder (R2-D3.8.3); a block type the renderer
+    does not describe uses the fixed list."""
+    by_type = {t["type_id"]: t for t in block_types or ()}
+    out = []
+    for b, (depth, empty) in zip(blocks, outline_depths(blocks)):
+        options = b.get("options") if isinstance(b.get("options"), dict) else {}
+        names = prose.unwritten(b["block_type"], options, by_type.get(b["block_type"]))
+        out.append({"instance_id": b.get("instance_id"), "depth": depth, "empty_chapter": empty,
+                    "unwritten": names, "unwritten_hint": prose.unwritten_hint(b["block_type"], names)})
+    return out

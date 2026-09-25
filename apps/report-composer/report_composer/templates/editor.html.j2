@@ -60,6 +60,7 @@
           {% if editor %}{{ block_controls() }}{% endif %}
           {% if b.known %}<strong>{{ b.title }}</strong> <span class="type">{{ b.block_type }}</span>{% else %}<strong>Unknown type: {{ b.block_type }}</strong>{% endif %}
           {% if b.empty_chapter %}<p class="hint" data-empty-chapter>This chapter is empty.</p>{% endif %}
+          {% if b.unwritten_hint %}<p class="hint" data-unwritten>{{ b.unwritten_hint }}</p>{% endif %}
           {% if editor %}
           {% if b.known %}<details data-control="configure"><summary>Options</summary>{{ render_form(b.fields, b.instance_id) }}</details>{% endif %}
           <p class="problems" data-problems>{% for m in b.problems %}{{ m }} {% endfor %}</p>{% endif %}
