@@ -176,7 +176,7 @@ def test_r2_d3_6_1_import_stores_no_reference_of_the_source(client_v2, auth):
     assert "chart_id" not in chart
     assert tests.get("evaluations", "all") == "all"
     assert changes.get("compare_to", "previous") == "previous"
-    text = json.dumps(exported)
+    text = json.dumps(exported["blocks"])      # the name holds a time stamp that may contain "991"
     assert "991" not in text and "dead" not in text and "a9000000" not in text
 
 
