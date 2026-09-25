@@ -18,8 +18,13 @@
 
 SELECT pg_advisory_xact_lock(8190233523);
 
+-- Isolation 2026-09-25 (03-coding-plan.md P1-D2): without core.system (a volume made after the
+-- isolation) there is nothing to constrain.
 DO $$
 BEGIN
+  IF to_regclass('core.system') IS NULL THEN
+    RETURN;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                   WHERE conrelid = 'core.system'::regclass AND conname = 'system_pid_project_id_key') THEN
     ALTER TABLE core.system ADD CONSTRAINT system_pid_project_id_key UNIQUE (pid, project_id);
