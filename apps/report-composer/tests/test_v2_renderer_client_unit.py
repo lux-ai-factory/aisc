@@ -1,5 +1,5 @@
-"""The composer's client for the renderer's v2 routes (R-S.7, R-V8.5, R-U2.7, R-V8.9): stage 4 adds
-`languages()` and `coverage_choices(project_id, system_id)` to HttpRendererClient. No network: httpx
+"""The composer's client for the renderer's v2 routes (R-U2.7, R-V8.9): stage 4 added
+`coverage_choices(project_id, system_id)` to HttpRendererClient (`languages()` goes, R2-D1.9). No network: httpx
 is replaced by a recorder."""
 import pytest
 
@@ -33,17 +33,6 @@ def http(monkeypatch):
 def client():
     Http = need("report_composer.renderer_client", "HttpRendererClient")
     return Http("http://renderer:8001", token="t" * 32)
-
-
-def test_r_s_7_languages_is_get_v1_languages(http):
-    rec = http([{"code": "en", "name": "English"}, {"code": "fr", "name": "Français"}])
-    c = client()
-    if not hasattr(c, "languages"):
-        pytest.fail("missing feature: HttpRendererClient.languages", pytrace=False)
-    assert c.languages()[1]["code"] == "fr"
-    method, url, body, headers = rec.calls[-1]
-    assert (method, url) == ("GET", "http://renderer:8001/v1/languages")
-    assert headers.get("X-Report-Token") == "t" * 32
 
 
 def test_r_u2_7_coverage_choices_is_post_v1_coverage_choices(http):

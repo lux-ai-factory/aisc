@@ -4,7 +4,7 @@ Markup hooks these tests assume (stage 4 implements them; documented in 02-tests
 - coverage map: `details[data-coverage-map]`, summary "Coverage map: {m} of {n} objectives linked",
   a table whose group rows carry the requirement group, checkboxes `input[type=checkbox][data-objective]
   [data-kind=tests|checklists][data-value]`
-- editor toolbar: `select[data-control=language]`, buttons `[data-control=generate]` "Generate PDF" and
+- editor toolbar (no language control since part 2, R2-D1.9): buttons `[data-control=generate]` "Generate PDF" and
   `[data-control=generate-docx]` "Generate Word (DOCX)"
 - outline: `li[data-instance-id][data-depth]` (1 inside a chapter, 0 otherwise)
 - block form: `details[data-more]` "More options" (closed), `details[data-commentary]` "Add a commentary",
@@ -188,15 +188,7 @@ def test_r_v5_8_an_empty_chapter_is_a_hint_not_an_error(client_v2, auth):
     assert client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice")).json()["valid"] is True
 
 
-# ── R-V8.13, R-V8.14 language select and two generate buttons ───────────────
-
-def test_r_v8_13_the_language_select(client_v2, auth):
-    lay, doc = editor(client_v2, auth, [v2blk("cover")], language="fr")
-    sel = doc.find("select", attrs={"data-control": "language"})
-    assert sel is not None
-    assert [(o["value"], o.get_text(strip=True)) for o in sel.find_all("option")] == [("en", "English"), ("fr", "Français")]
-    assert sel.find("option", selected=True)["value"] == "fr"
-
+# ── R-V8.14 two generate buttons (the language select is gone: R2-D1.9, test_p2_english_only.py) ──
 
 def test_r_v8_14_two_generate_buttons(client_v2, auth):
     lay, doc = editor(client_v2, auth, [v2blk("cover")])
@@ -206,7 +198,7 @@ def test_r_v8_14_two_generate_buttons(client_v2, auth):
 
 
 def test_r_v8_16_the_composer_screens_stay_in_english(client_v2, auth):
-    lay, doc = editor(client_v2, auth, [v2blk("cover")], language="fr")
+    lay, doc = editor(client_v2, auth, [v2blk("cover")])
     assert doc.find("html").get("lang") == "en"
 
 

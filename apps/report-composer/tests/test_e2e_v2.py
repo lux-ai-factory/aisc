@@ -1,12 +1,14 @@
-"""End to end, report run v2: composer API -> real renderer -> PDF and DOCX (R-V1.3, R-V8.1, R-V8.9,
-R-V8.14, R-V8.15, R-U2.1, R-U3.1, R-V5.14, R-V5.15, R-S.3).
+"""End to end, report run v2: composer API -> real renderer -> PDF and DOCX (R-V1.3, R-V8.9,
+R-V8.14, R-V8.15, R-U2.1, R-U3.1, R-V5.14, R-V5.15, R-S.3; part 2: R2-C.1, R2-D1.10, R2-D1.12, R2-D3.8.4).
 
 A full throwaway bed (aisc-t-e2e2-*), project Mike (seed_tools.sql: the three Mijke tools on version 2).
 The real renderer (aisc-report-generator via REPORT_GENERATOR_DIR, default ../../../aisc-report-generator)
 runs as a subprocess on a free port; the composer talks to it with HttpRendererClient.
 
 Mia (owner of Mike) starts a layout from the built-in preset "eu-ai-act" on the platform default look,
-sets French and a coverage map, previews a draft, generates a PDF and a DOCX and downloads both.
+sends a French language (which an older client may still do; it is ignored, all reports are English) and a
+coverage map, previews a draft, generates a PDF and a DOCX and downloads both. The preset's unwritten free text
+("Write this section.") is left out of both documents.
 """
 import io
 import json
@@ -93,7 +95,7 @@ def e2e(full_bed, renderer_url, make_client, monkeypatch):
         c.__exit__(None, None, None)
 
 
-def test_e2e_v2_preset_french_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
+def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     c, mia = e2e, auth("mia")
     r = c.post("/api/p/mike/layouts", json={"name": "Mijke conformity", "system_id": IDS["M_V2"],
                                            "template_id": None, "preset": "eu-ai-act"}, headers=mia)
@@ -106,7 +108,7 @@ def test_e2e_v2_preset_french_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     saved = c.put(f"/api/p/mike/layouts/{lay['id']}", json=body, headers=mia)
     assert saved.status_code == 200, saved.text[:800]
     lay = saved.json()
-    assert lay["language"] == "fr" and lay["coverage"] == coverage
+    assert "language" not in lay and lay["coverage"] == coverage
 
     # a draft preview: the saved blocks plus an unsaved free text
     draft_blocks = lay["blocks"] + [{"instance_id": "40000000-0000-4000-8000-000000000001",
@@ -117,7 +119,7 @@ def test_e2e_v2_preset_french_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
                      "numbering": lay["numbering"], "coverage": coverage, "blocks": draft_blocks}, headers=mia)
     assert d.status_code == 200, d.text[:800]
     html = d.json()["html"]
-    assert re.search(r'<html[^>]*\blang="fr"', html)
+    assert re.search(r'<html[^>]*\blang="en"', html)
     assert "DRAFTMARK" in html and "Content-Security-Policy" in html
     assert "gpt-4o-mini" in html                         # LangBiTe's group table, from the version's data
     assert "M1MARK" not in html and "HARMFULPROMPTCONTENT" not in html
@@ -132,6 +134,7 @@ def test_e2e_v2_preset_french_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
 
     text = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
     assert "System and risks" in text and "DRAFTMARK" not in text      # only the saved revision is generated
+    assert "Write this section." not in text                           # R2-D3.8.4
 
     # DOCX
     r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "docx"}, headers=mia)
@@ -143,6 +146,7 @@ def test_e2e_v2_preset_french_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     with zipfile.ZipFile(io.BytesIO(docx.content)) as z:
         body_xml = z.read("word/document.xml").decode("utf-8")
     assert "System and risks" in body_xml and "Evidence" in body_xml
+    assert "Write this section." not in body_xml                       # R2-D3.8.4
 
     # what was stored: format, fingerprint, the v2 snapshot with the document id
     for rid, fmt in ((pdf_id, "pdf"), (docx_id, "docx")):
@@ -152,7 +156,7 @@ def test_e2e_v2_preset_french_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
         assert stored["format"] == fmt
         assert re.fullmatch(r"[0-9a-f]{64}", stored["fingerprint"] or "")
         snap = stored["snapshot"]
-        assert snap["snapshot_version"] == 2 and snap["language"] == "fr" and snap["mode"] == fmt
+        assert snap["snapshot_version"] == 2 and "language" not in snap and snap["mode"] == fmt
         assert snap["document"]["id"] == rid and snap["coverage_links"] == coverage
     listed = c.get(f"/api/p/mike/layouts/{lay['id']}/reports", headers=mia).json()
     assert sorted(x["format"] for x in listed) == ["docx", "pdf"]

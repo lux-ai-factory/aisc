@@ -27,7 +27,7 @@ SEQUENCES = {
 
 
 def preset_file(blocks, name="Carried structure", **over):
-    doc = {"format": "aisc-report-preset", "version": 1, "name": name, "description": "", "language": "en",
+    doc = {"format": "aisc-report-preset", "version": 1, "name": name, "description": "",
            "toc": "auto", "numbering": False, "blocks": blocks}
     doc.update(over)
     return doc
@@ -65,7 +65,8 @@ def test_r_v1_1_built_in_preset_files_hold_the_block_sequence(preset_id):
 
 def test_r_v1_1_built_in_preset_document_settings():
     full, eu, audit, ex = (_load(p) for p in BUILT_IN)
-    assert (full.get("toc"), full.get("numbering"), full.get("language")) == ("auto", False, "en")
+    assert (full.get("toc"), full.get("numbering")) == ("auto", False)
+    assert all("language" not in d for d in (full, eu, audit, ex))       # R2-D1.13
     assert (eu.get("toc"), eu.get("numbering")) == ("on", True)
     assert (audit.get("toc"), audit.get("numbering")) == ("on", True)
     assert ex.get("toc") == "off"
@@ -99,7 +100,7 @@ def test_r_v1_2_no_preset_and_no_blocks_is_the_full_assessment(client_v2, auth):
     assert r.status_code == 201, r.text[:300]
     lay = r.json()
     assert [b["block_type"] for b in lay["blocks"]] == DEFAULT_ORDER
-    assert (lay.get("toc"), lay.get("numbering"), lay.get("language")) == ("auto", False, "en")
+    assert (lay.get("toc"), lay.get("numbering")) == ("auto", False) and "language" not in lay   # R2-D1.10
 
 
 @pytest.mark.parametrize("preset_id", BUILT_IN)
@@ -199,7 +200,7 @@ def test_r_v1_6_duplicate_names_copy_then_copy_2(client_v2, auth):
 
 def test_r_v1_6_a_copy_keeps_everything_but_ids_revision_and_reports(client_v2, auth):
     lay = create(client_v2, auth, name="Original", preset="eu-ai-act").json()
-    body = {**{k: lay[k] for k in ("name", "system_id", "template_id", "revision", "blocks")}, "language": "fr",
+    body = {**{k: lay[k] for k in ("name", "system_id", "template_id", "revision", "blocks")},
             "coverage": [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]}
     saved = client_v2.put(f"/api/p/alpha/layouts/{lay['id']}", json=body, headers=auth("alice"))
     assert saved.status_code == 200, saved.text[:300]
@@ -209,8 +210,9 @@ def test_r_v1_6_a_copy_keeps_everything_but_ids_revision_and_reports(client_v2, 
     copy_ = r.json()
     src = saved.json()
     assert copy_["id"] != src["id"] and copy_["revision"] == 1
-    for key in ("system_id", "template_id", "language", "toc", "numbering", "coverage"):
+    for key in ("system_id", "template_id", "toc", "numbering", "coverage"):
         assert copy_[key] == src[key], key
+    assert "language" not in copy_                                       # R2-D1.13: no language copied
     assert [b["options"] for b in copy_["blocks"]] == [b["options"] for b in src["blocks"]]
     assert not {b["instance_id"] for b in copy_["blocks"]} & {b["instance_id"] for b in src["blocks"]}
     assert client_v2.get(f"/api/p/alpha/layouts/{copy_['id']}/reports", headers=auth("alice")).json() == []
@@ -238,7 +240,7 @@ def test_r_v1_7_export_is_a_preset_file(client_v2, auth):
     assert r.status_code == 200, "missing feature: GET .../export"
     assert 'attachment; filename="report-preset-board-pack-q3.json"' in r.headers["content-disposition"]
     doc = r.json()
-    assert set(doc) == {"format", "version", "name", "description", "language", "toc", "numbering", "blocks"}
+    assert set(doc) == {"format", "version", "name", "description", "toc", "numbering", "blocks"}   # R2-D1.13
     assert (doc["format"], doc["version"]) == ("aisc-report-preset", 1)
     assert [set(b) for b in doc["blocks"]] == [{"block_type", "options"}] * 4
     tests, chart = doc["blocks"][2]["options"], doc["blocks"][3]["options"]
@@ -397,10 +399,12 @@ def test_r_v1_edge_zero_block_preset_starts_empty_and_is_not_generated(client_v2
 
 
 def test_r_v1_edge_a_language_no_longer_offered_falls_back_to_english_with_a_notice(client_v2, auth):
+    """Changed by R2-D1.13 (D1): any language in a preset file is ignored, with no notice."""
     r = create(client_v2, auth, preset_file=preset_file([{"block_type": "cover", "options": {}}], language="de"))
     assert r.status_code == 201, r.text[:300]
-    assert r.json().get("language") == "en"
-    assert "de" in json.dumps(r.json().get("details"))
+    assert "language" not in r.json()
+    assert "language" not in json.dumps(r.json().get("details") or []) and \
+        "language" not in json.dumps(r.json().get("notices") or [])
 
 
 # ── fix round 1, finding 4: every free text is dropped unless "Keep texts" ────

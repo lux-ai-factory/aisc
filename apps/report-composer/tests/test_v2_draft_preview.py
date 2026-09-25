@@ -22,7 +22,7 @@ def layout(client, auth):
 
 
 def draft(lay, **over):
-    body = {"system_id": lay["system_id"], "template_id": lay["template_id"], "language": "en", "toc": "auto",
+    body = {"system_id": lay["system_id"], "template_id": lay["template_id"], "toc": "auto",
             "numbering": False, "coverage": [], "blocks": lay["blocks"]}
     body.update(over)
     return body
@@ -38,12 +38,13 @@ def test_r_u3_1_the_draft_is_rendered_and_nothing_is_stored(client_v2, auth, fak
     lay = layout(client_v2, auth)
     blocks = [v2blk("ai_card"), v2blk("free_text", text="unsaved text")]
     r = post(client_v2, auth, lay, draft(lay, blocks=blocks, language="fr", toc="on", numbering=True))
-    assert r.status_code == 200, "missing feature: POST .../preview"
+    assert r.status_code == 200, r.text[:300]
     body = r.json()
     assert set(body) >= {"html", "problems", "block_statuses"}
     sent = fake_v2.snapshots[-1]
     assert sent["mode"] == "preview" and [b["instance_id"] for b in sent["blocks"]] == [b["instance_id"] for b in blocks]
-    assert sent.get("language") == "fr" and (sent.get("document") or {}).get("toc") == "on"
+    # R2-D1.10, R2-D1.12: the draft's language is accepted and ignored; the snapshot carries none
+    assert "language" not in sent and (sent.get("document") or {}).get("toc") == "on"
     again = client_v2.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).json()
     assert again["revision"] == 1 and again["blocks"] == lay["blocks"]
 

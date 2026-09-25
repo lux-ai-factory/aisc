@@ -8,7 +8,6 @@ implements in `report_composer.renderer_client.HttpRendererClient` (the real ren
                                                                         `new_instance_options`)
     renderer.fonts()                             GET  /v1/fonts        (unchanged)
     renderer.choices(project_id, system_id, t)   POST /v1/choices      (unchanged)
-    renderer.languages() -> [{code, name}]       GET  /v1/languages    (R-V8.5; English first)
     renderer.coverage_choices(project_id, system_id)
         -> {objectives: [{value, label, group}], tests: [{value, label}], checklists: [{value, label}]}
                                                  POST /v1/coverage-choices (R-U2.7)
@@ -20,7 +19,8 @@ implements in `report_composer.renderer_client.HttpRendererClient` (the real ren
 The block types are the shapes of 01-specs.md: every property carries `title` and `description`
 (R-U5.1), enum values carry `x-aisc-enum-labels`, "more options" carry `x-aisc-more: true` (R-U5.4),
 chart's dependent options carry `x-aisc-show-if` (R-V4.15), and the common properties include
-`commentary` and `commentary_position` (R-V3.6).
+`commentary` and `commentary_position` (R-V3.6). Part 2 (R2-D1.9): the renderer's `languages()` call is no
+longer used by the composer, so the fake has none.
 """
 from __future__ import annotations
 
@@ -36,7 +36,6 @@ from conftest import BLOCK_TYPES, CHOICES, FONTS, IDS, PDF
 FINGERPRINT = "f1a9e2b7c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789ab"
 #: a DOCX is a zip; the fake's bytes start like one
 DOCX = b"PK\x03\x04" + b"fake docx from the fake renderer" + b"\x00" * 16
-LANGUAGES = [{"code": "en", "name": "English"}, {"code": "fr", "name": "Français"}]
 
 
 def _p(schema: dict, title: str, description: str, more: bool = False, **extra) -> dict:
@@ -266,9 +265,6 @@ class FakeRendererV2:
 
     def fonts(self):
         return copy.deepcopy(FONTS)
-
-    def languages(self):
-        return copy.deepcopy(LANGUAGES)
 
     def choices(self, project_id, system_id, block_type):
         self.choice_calls.append((str(project_id), str(system_id), block_type))

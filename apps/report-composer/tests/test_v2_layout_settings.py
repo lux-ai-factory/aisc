@@ -1,4 +1,5 @@
-"""Layout settings of report run v2 (01-specs.md): language (R-V8.1), document settings (R-V5.1 composer
+"""Layout settings of report run v2 (01-specs.md; the language setting is gone in part 2, R2-D1.10 to
+R2-D1.12, see test_p2_english_only.py): document settings (R-V5.1 composer
 side), the coverage map (R-U2.1, R-U2.5), the optional template (R-U6.1, R-U6.4), the "pick at least one"
 rule (R-U4.3), compare_to after a version change (R-V7.11), API shapes (R-D.3, R-D.4, R-C.6) and the v2
 snapshot (R-S.3, R-V5.14). Database tests, v2 fake renderer.
@@ -32,39 +33,35 @@ def put(client, auth, layout, who="alice", **changes):
 def test_r_c_6_new_fields_default_to_todays_behaviour(client_v2, auth):
     lay_ = lay(client_v2, auth)
     got = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("victor")).json()
-    assert {k: got.get(k) for k in ("language", "toc", "numbering", "coverage")} == \
-        {"language": "en", "toc": "auto", "numbering": False, "coverage": []}
+    assert {k: got.get(k) for k in ("toc", "numbering", "coverage")} == \
+        {"toc": "auto", "numbering": False, "coverage": []}
+    assert "language" not in got                          # R2-D1.10: views carry no language
 
 
 def test_r_d_3_post_and_put_accept_the_new_fields(client_v2, auth):
+    # R2-D1.10: a language key is accepted and ignored (never 422, never stored, absent from the answer)
     lay_ = lay(client_v2, auth, language="fr", toc="on", numbering=True, coverage=MAP[:1])
-    assert (lay_.get("language"), lay_.get("toc"), lay_.get("numbering"), lay_.get("coverage")) == ("fr", "on", True, MAP[:1])
-    r = put(client_v2, auth, lay_, language="en", toc="off", numbering=False, coverage=MAP)
+    assert (lay_.get("toc"), lay_.get("numbering"), lay_.get("coverage")) == ("on", True, MAP[:1])
+    assert "language" not in lay_
+    r = put(client_v2, auth, lay_, language="de", toc="off", numbering=False, coverage=MAP)
     assert r.status_code == 200, r.text[:300]
-    assert (r.json().get("language"), r.json().get("toc"), r.json().get("numbering"), r.json().get("coverage")) == ("en", "off", False, MAP)
+    assert (r.json().get("toc"), r.json().get("numbering"), r.json().get("coverage")) == ("off", False, MAP)
+    assert "language" not in r.json()
 
 
 def test_r_d_3_absent_on_put_keeps_the_current_value(client_v2, auth):
     lay_ = lay(client_v2, auth)
-    first = put(client_v2, auth, lay_, language="fr", toc="on", numbering=True, coverage=MAP)
+    first = put(client_v2, auth, lay_, toc="on", numbering=True, coverage=MAP)
     assert first.status_code == 200, first.text[:300]
     second = put(client_v2, auth, first.json())       # an older client sends none of them
     assert second.status_code == 200
-    assert (second.json().get("language"), second.json().get("toc"), second.json().get("numbering"), second.json().get("coverage")) == \
-        ("fr", "on", True, MAP)
-
-
-def test_r_d_3_the_layouts_list_carries_the_language(client_v2, auth):
-    lay(client_v2, auth, language="fr")
-    rows = client_v2.get("/api/p/alpha/layouts", headers=auth("victor")).json()
-    assert rows and rows[0].get("language") == "fr"
+    assert (second.json().get("toc"), second.json().get("numbering"), second.json().get("coverage")) == \
+        ("on", True, MAP)
 
 
 # ── R-D.4 validation of the new fields ───────────────────────────────────────
 
 @pytest.mark.parametrize("change,code", [
-    ({"language": "xx"}, "unknown_language"),
-    ({"language": "de"}, "unknown_language"),          # the fake renderer offers en and fr only
     ({"toc": "sometimes"}, "invalid_request"),
     ({"numbering": "yes"}, "invalid_request"),
 ])
@@ -174,28 +171,23 @@ def test_r_u6_4_a_deleted_template_leaves_a_layout_that_saves_and_generates(clie
     assert "style" not in fake_v2.snapshots[-1]
 
 
-# ── R-S.3, R-V8.1, R-V5.14, R-U2.1: the v2 snapshot ──────────────────────────
+# ── R-S.3, R-V5.14, R-U2.1: the v2 snapshot (no language, R2-D1.12) ───────────
 
 def test_r_s_3_the_stored_snapshot_is_version_2_with_the_new_keys(client_v2, auth, fake_v2, bed):
-    lay_ = lay(client_v2, auth, language="fr", toc="on", numbering=True, coverage=MAP)
+    lay_ = lay(client_v2, auth, toc="on", numbering=True, coverage=MAP)
     r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={}, headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
     rid = r.json()["id"]
     sent = fake_v2.snapshots[-1]
-    assert sent.get("snapshot_version") == 2 and sent.get("language") == "fr"
+    assert sent.get("snapshot_version") == 2 and "language" not in sent
     assert sent.get("document") == {"id": rid, "toc": "on", "numbering": True}
     assert sent.get("coverage_links") == MAP
     import json
 
     stored = json.loads(bed.scalar("platform", f"SELECT snapshot::text FROM report_composer.generated_report WHERE id = '{rid}'"))
-    for key in ("snapshot_version", "language", "document", "coverage_links"):
+    for key in ("snapshot_version", "document", "coverage_links"):
         assert stored.get(key) == sent[key], key
-
-
-def test_r_v8_1_the_language_is_sent_in_the_preview_snapshot(client_v2, auth, fake_v2):
-    lay_ = lay(client_v2, auth, language="fr")
-    client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}/preview", headers=auth("victor"))
-    assert fake_v2.snapshots[-1].get("language") == "fr"
+    assert "language" not in stored
 
 
 def test_r_u2_1_coverage_links_are_always_in_new_snapshots(client_v2, auth, fake_v2):
