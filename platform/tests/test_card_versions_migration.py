@@ -49,7 +49,7 @@ def test_d1_project_databases_sql_gives_core_system_to_platform_rw():
 
 
 def test_d1_running_the_platform_part_twice_makes_platform_rw_the_owner():
-    with scratch_database() as (su, _rw):
+    with scratch_database(old_layout=True) as (su, _rw):
         for _ in range(2):  # it runs on every start of postgres-setup
             with psycopg.connect(su, autocommit=True) as conn:
                 conn.execute(project_databases_platform_part())
@@ -61,7 +61,7 @@ def test_d1_running_the_platform_part_twice_makes_platform_rw_the_owner():
 
 
 def test_s2_6_on_a_fresh_database_0003_succeeds_and_core_system_is_empty():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
         apply_platform_migrations(rw)
         assert M0003 in _applied(rw)
@@ -74,7 +74,7 @@ def test_s2_6_on_a_fresh_database_0003_succeeds_and_core_system_is_empty():
 
 def test_s2_6_constraints_after_0003():
     """Step 5: (project_id, number) is the key; (project_id, name, version) is not."""
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
         apply_platform_migrations(rw)
         with psycopg.connect(rw) as conn:
@@ -91,7 +91,7 @@ def test_s2_6_constraints_after_0003():
 
 
 def test_s2_6_number_must_be_positive():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
         apply_platform_migrations(rw)
         with psycopg.connect(rw) as conn:
@@ -101,7 +101,7 @@ def test_s2_6_number_must_be_positive():
 
 
 def test_s2_6_grants_on_core_system_are_kept():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
         apply_platform_migrations(rw)
         assert M0003 in _applied(rw)
@@ -134,7 +134,7 @@ def _live_shaped(su, rw):
 
 
 def test_s2_7_on_the_live_shape_every_pid_is_kept_and_mcas_is_number_1():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         mcas_project, empty_project = _live_shaped(su, rw)
         with psycopg.connect(rw) as conn:
             version_pids = {str(r[0]) for r in conn.execute("select pid from core.ai_system_version").fetchall()}
@@ -158,7 +158,7 @@ def test_s2_7_on_the_live_shape_every_pid_is_kept_and_mcas_is_number_1():
 
 
 def test_s2_8_without_ownership_0003_fails_with_the_guard_message_and_is_not_recorded():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         apply_platform_migrations(rw, upto="0002")
         with pytest.raises(psycopg.errors.RaiseException, match=GUARD):
             apply_platform_migrations(rw)
@@ -174,7 +174,7 @@ def test_s2_8_without_ownership_0003_fails_with_the_guard_message_and_is_not_rec
 
 
 def test_s2_4_the_trigger_refuses_changes_to_an_older_version_and_to_number_or_project():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
         apply_platform_migrations(rw)
         with psycopg.connect(rw, autocommit=True) as conn:

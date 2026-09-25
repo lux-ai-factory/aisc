@@ -11,8 +11,13 @@ the report.
     bed.stop()
 
 What it builds, in order (each step as the stack does it):
- 1. init/platform-db.sql, init/project-databases.sql, init/superset-db.sql (superuser)
- 2. init/report-roles.sql (superuser), when present and report_files is on
+ 1. the pre-isolation init/platform-db.sql (scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql,
+    isolation 03-coding-plan.md G3: this bed is the OLD shared layout on purpose, step 1 of
+    report_bed_isolated and the bed of every report test not yet converted), init/project-databases.sql,
+    init/superset-db.sql (superuser)
+ 2. init/report-roles.sql (superuser), when present and report_files is on, plus what its
+    pre-isolation version made in `platform` and the current one no longer does (the shared
+    report_composer schema, core.system grants, the composer's search_path)
  3. platform migrations 0001.. as platform_rw
  4. the module schemas from the read-only dumps in scripts/tests/fixtures/report/, each restored
     as its own module role (so ownership is as on the stack), and superset's as the superuser
@@ -40,6 +45,19 @@ sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
 from throwaway import Throwaway, platform_migration  # noqa: E402
 
 REPORT_ROLES_SQL = ROOT / "init/report-roles.sql"
+#: The pre-isolation init/platform-db.sql (f01288a): core.system and the module schemas in `platform`.
+PRE_ISOLATION_PLATFORM_DB_SQL = ROOT / "scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql"
+#: What the pre-isolation init/report-roles.sql (f01288a) made in `platform` that the isolated one does
+#: not: the shared composer schema, core.system for both roles, and the composer's search_path.
+PRE_ISOLATION_REPORT_ROLES_EXTRA = """
+CREATE SCHEMA IF NOT EXISTS report_composer AUTHORIZATION report_composer_rw;
+ALTER SCHEMA report_composer OWNER TO report_composer_rw;
+COMMENT ON SCHEMA report_composer IS 'Step 7: report layouts, templates and generated reports.';
+GRANT SELECT ON core.system TO report_ro, report_composer_rw;
+GRANT REFERENCES ON core.project, core.system TO report_composer_rw;
+ALTER DEFAULT PRIVILEGES FOR ROLE platform_rw IN SCHEMA core GRANT SELECT ON TABLES TO report_composer_rw;
+ALTER ROLE report_composer_rw IN DATABASE platform SET search_path = report_composer, core;
+"""
 REPORT_GRANTS_SQL = ROOT / "init/report-ro-grants.sql"
 REPORT_GRANTS_SH = ROOT / "scripts/report-grants.sh"
 PROJECT_TEMPLATE = ROOT / "platform/project-template"
@@ -207,12 +225,13 @@ def build(label: str = "report", *, seed: bool = True, modules: bool = True,
     bed = ReportBed(t)
     try:
         check_dsn_env(t.port)
-        _su_file(t, "postgres", ROOT / "init/platform-db.sql")
+        _su_file(t, "postgres", PRE_ISOLATION_PLATFORM_DB_SQL)
         _su_file(t, "platform", ROOT / "init/project-databases.sql")
         _su_file(t, "postgres", ROOT / "init/superset-db.sql")
         bed.applied["report-roles.sql"] = report_files and REPORT_ROLES_SQL.exists()
         if bed.applied["report-roles.sql"]:
             _su_file(t, "platform", REPORT_ROLES_SQL)
+            _run(t, "platform", PRE_ISOLATION_REPORT_ROLES_EXTRA, None, "pre-isolation report-roles lines")
         for m in sorted((ROOT / "platform/migrations").glob("*.sql")):
             platform_migration(t, m)
         if modules:

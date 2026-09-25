@@ -2,8 +2,8 @@
 
 Qualification describes a system, the engine tests it, and the dashboard reads
 what the tests produced. For any of that to join up they have to mean the same
-system, which is what `core.system` is: one row, inside one project, written by
-the platform and read by everyone else.
+system, which is what a card version is: one row of `project.system`, inside
+the project's own database, written by the platform and read by everyone else.
 
 These tests are about identity rules, so they need no database.
 """
