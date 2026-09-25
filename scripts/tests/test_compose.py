@@ -140,3 +140,16 @@ def test_each_agent_gets_the_token_of_its_own_system_only(tmp_path):
     holders = [name for name, svc in services.items()
                if any(v in ("card-token", "risk-token") for v in (svc.get("environment") or {}).values())]
     assert sorted(holders) == ["control-objectives", "platform", "qualification-agents"]
+
+
+def test_controls_fetches_packages_from_the_catalogue_the_launcher_opens(compose):
+    """The launcher opens the dev catalogue (localhost:3000, its API published on the host's
+    :8000). Its Install button sends the slug to controls, which fetches the package server-side:
+    from the same catalogue, reached through the host, not from the stack's own catalogue-backend
+    (2026-09-25: installs failed with "The catalogue is not answering" while it was stopped)."""
+    q, cfg = compose
+    svc = cfg["services"]["controls-web"]
+    assert (svc.get("environment") or {}).get("CATALOGUE_URL") == "http://host.docker.internal:8000/api"
+    assert "host.docker.internal:host-gateway" in _extra_hosts(svc)
+    launcher = (ROOT / "homepage" / "project.html").read_text()
+    assert 'id="catalogue-card"' in launcher and 'href="http://localhost:3000/"' in launcher

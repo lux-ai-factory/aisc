@@ -192,7 +192,9 @@ services:
       # The catalogue: one, hosted online. In this dev stack its local copy
       # stands in for it. Server-side only: the install page fetches a control's
       # package here.
-      CATALOGUE_URL: ${CATALOGUE_URL:-http://catalogue-backend:8000}
+      # The catalogue the launcher opens (the dev catalogue, localhost:3000, its API on the
+      # host's :8000/api): its Install button sends the slug here, and the package is fetched from it.
+      CATALOGUE_URL: ${CATALOGUE_URL:-http://host.docker.internal:8000/api}
       # The hosted catalogue's bridge token, when it sets one. Empty locally.
       CATALOGUE_TOKEN: ${CATALOGUE_BRIDGE_TOKEN:-}
       # The catalogue's origin in the browser: the only page whose install
@@ -206,6 +208,8 @@ services:
       controls-pdf:
         condition: service_started
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - backend
       - frontend
