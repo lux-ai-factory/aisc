@@ -30,20 +30,22 @@ class RendererRejected(RendererError):
 
 
 class HttpRendererClient:
-    def __init__(self, base_url, token, timeout=120.0):
+    def __init__(self, base_url, token, timeout=120.0, quick_timeout=2.0):
         self.base_url = str(base_url).rstrip("/")
         self.timeout = timeout
+        self.quick_timeout = quick_timeout    # for calls made while the user edits (the outline)
         self.__token = token
 
     def __repr__(self):
         return f"HttpRendererClient({self.base_url!r})"
 
-    def _call(self, method: str, path: str, json=None):
+    def _call(self, method: str, path: str, json=None, timeout=None):
+        timeout = self.timeout if timeout is None else timeout
         try:
-            with httpx.Client(timeout=self.timeout) as http:
+            with httpx.Client(timeout=timeout) as http:
                 r = http.request(method, self.base_url + path, json=json, headers={"X-Report-Token": self.__token})
         except httpx.TimeoutException:
-            raise RendererTimeout(f"no answer within {self.timeout:g} s") from None
+            raise RendererTimeout(f"no answer within {timeout:g} s") from None
         except httpx.HTTPError as exc:
             raise RendererUnavailable(f"renderer not reachable ({type(exc).__name__})") from None
         if r.status_code in (404, 422):
@@ -58,6 +60,10 @@ class HttpRendererClient:
 
     def block_types(self) -> list:
         return self._call("GET", "/v1/block-types")
+
+    def block_types_quick(self) -> list:
+        """The block types with the short timeout: the outline route must not wait long for them."""
+        return self._call("GET", "/v1/block-types", timeout=self.quick_timeout)
 
     def fonts(self) -> list:
         return self._call("GET", "/v1/fonts")

@@ -17,7 +17,8 @@ from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, check_origin, project_guard, signed_in
 from .records import NO_LAYOUT, NO_TEMPLATE, chosen_template, layout_or_404, template_of, template_or_404
-from .renderer_calls import block_types, choices_for, coverage_choices_for, fonts, renderer_call
+from .renderer_calls import (block_types, choices_for, coverage_choices_for, fonts, outline_block_types,
+                             renderer_call)
 from .settings import document_settings
 
 router = APIRouter(prefix="/api")
@@ -296,16 +297,9 @@ def outline(request: Request, layout_id: str, body: dict = Body(...),
     if not all(isinstance(b["block_type"], str) for b in blocks):
         raise ApiError(422, "invalid_request", "Every block needs a block_type.",
                        [{"pointer": "/blocks", "message": "is not valid"}])
-    return {"outline": layouts.outline(blocks, _block_types_or_none(request))}
-
-
-def _block_types_or_none(request: Request) -> list:
-    """The renderer's block types, or [] when it is unavailable: the outline then uses the fixed prose list
-    (DV12-6), so indentation keeps working without the renderer."""
-    try:
-        return block_types(request)
-    except ApiError:
-        return []
+    # cached block types, short timeout, [] when the renderer fails: the outline then uses the fixed prose
+    # list (DV12-6), so indentation keeps working without the renderer
+    return {"outline": layouts.outline(blocks, outline_block_types(request))}
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/preview")
