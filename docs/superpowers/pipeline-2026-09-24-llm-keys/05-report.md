@@ -130,3 +130,14 @@ Not done by design: `docker-compose.staging.yml` is not wired (P11).
   it is useless.
 - The e2e drove each agent's `baf_llm` directly, not the full fill or map flow; those flows are
   covered by A's `test_project_llm.py` and B's `test_project_llm.py` with fakes.
+
+## Addendum 2026-09-25: the card agent's project is no longer the caller's to name
+
+The residual risk "anyone on the backend network can make the card agent use another
+project's key" is closed (apps/qualification e9d0693). `POST /fill/{id}` takes no project and
+a `?project=` a caller adds is ignored; `fill_one` reads `projectId` from the app's export of
+the qualification (`GET /api/qualifications/{id}/extracted`, which now carries the
+qualification's own project) and asks the platform for that project only. The filler trigger
+in qualification-web is back to the qualification id alone, and the agent CLI lost `--project`.
+The risk mapper already took its project from the assessment record. Tests: agents 148 passed
+(on the commit alone), qualification vitest whole run 693 passed / 35 skipped, tsc clean.
