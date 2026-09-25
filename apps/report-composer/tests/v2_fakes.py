@@ -51,7 +51,7 @@ COMMON_V2 = {
     "page_break_before": _p({"type": "boolean"}, "Start on a new page",
                             "Starts this section on a new page in the PDF.", more=True),
     "commentary": _p({"type": "string", "minLength": 0, "maxLength": 10000}, "Commentary",
-                     "Your own words about this section, printed with it."),
+                     "Your own words about this section, printed with it.", **{"x-aisc-prose": True}),
     "commentary_position": _p({"enum": ["after", "before"]}, "Place the commentary",
                               "Where the commentary goes.", more=True,
                               **{"x-aisc-enum-labels": {"after": "After the section", "before": "Before the section"}}),
@@ -148,7 +148,8 @@ def _v2_types() -> list[dict]:
                      description="Coverage of the objectives."))
     # free_text with format; new blocks get markdown (R-V3.12)
     out.append(_type("free_text", "Free text", {
-        "text": _p({"type": "string", "minLength": 1, "maxLength": 20000}, "Text", "The section's text."),
+        "text": _p({"type": "string", "minLength": 1, "maxLength": 20000}, "Text", "The section's text.",
+                   **{"x-aisc-prose": True}),
         "format": _p({"enum": ["plain", "markdown"]}, "Format", "Plain text or light formatting.", more=True,
                      **{"x-aisc-enum-labels": {"plain": "Plain text", "markdown": "Light formatting"}}),
     }, {"format": "plain"}, required=("text",), contract_version=2, new_instance_options={"format": "markdown"},
@@ -166,7 +167,8 @@ def _v2_types() -> list[dict]:
         "metric": _p({"type": "object", "properties": {"tool": {"type": "string"}, "metric": {"type": "string"}},
                       "x-aisc-reference": True}, "Metric", "Which metric.",
                      **show("metric_by_evaluation", "metric_by_dimension")),
-        "dimension": _p({"type": "string"}, "Dimension", "Group by this dimension.", **show("metric_by_dimension")),
+        "dimension": _p({"type": "string", "x-aisc-prose": False}, "Dimension", "Group by this dimension.",
+                        **show("metric_by_dimension")),
         "runs": _p({"enum": ["latest", "each"]}, "Runs", "The latest run or each run.", more=True,
                    **{"x-aisc-enum-labels": {"latest": "Latest run", "each": "Each run"}}),
         "show_table": _p({"type": "boolean"}, "Show the data table", "Prints the numbers under the chart.", more=True),
@@ -194,7 +196,8 @@ def _v2_types() -> list[dict]:
     }, {"compare_to": "previous", "sections": ["card", "objectives", "tests", "controls"], "show_unchanged": False},
         description="What changed since an earlier version."))
     chapter = _type("chapter", "Chapter", {
-        "intro": _p({"type": "string", "maxLength": 5000}, "Introduction", "A short text under the heading."),
+        "intro": _p({"type": "string", "maxLength": 5000}, "Introduction", "A short text under the heading.",
+                    **{"x-aisc-prose": True}),
     }, {"intro": ""}, required=("title",), description="Groups the following blocks.")
     chapter["options_schema"]["properties"]["title"] = _p({"type": "string", "minLength": 1, "maxLength": 200},
                                                           "Chapter title", "The chapter's heading.")
