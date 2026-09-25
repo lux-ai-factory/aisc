@@ -23,7 +23,7 @@ services:
 
   # MinIO object storage service
   minio:
-    image: quay.io/minio/minio
+    image: pgsty/minio
     container_name: minio
     volumes:
       - minio_data:/data # Persistent storage
@@ -43,7 +43,7 @@ services:
 
   # MinIO bucket initialization service
   make_buckets:
-    image: quay.io/minio/mc
+    image: pgsty/minio
     depends_on:
       minio:
         condition: service_healthy # Wait for MinIO to be ready
