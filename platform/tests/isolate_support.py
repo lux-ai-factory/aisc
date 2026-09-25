@@ -830,14 +830,17 @@ def fk_orphans(conn) -> list[str]:
     return out
 
 
-def xact_commits(dbnames: list[str]) -> dict[str, int]:
-    """pg_stat_database.xact_commit, read from the cluster's `postgres` database so that reading does
-    not count as a transaction of the databases being watched. Waits for the stats to settle."""
+def written_tuples(dbnames: list[str]) -> dict[str, tuple[int, int, int]]:
+    """Rows inserted, updated and deleted per database (pg_stat_database), read from the cluster's
+    `postgres` database. Test correction T9: xact_commit moved on every new connection, which the
+    tool needs to read its targets, so it could not tell reading from writing; these counters only
+    move when a row is written. Waits for the stats to settle."""
     time.sleep(2.0)
     with psycopg.connect(dsn_for("postgres"), autocommit=True) as c:
         c.execute("SELECT pg_stat_clear_snapshot()")
-        return dict(c.execute(
-            "SELECT datname, xact_commit FROM pg_stat_database WHERE datname = ANY(%s)", (dbnames,)).fetchall())
+        return {d: (i, u, x) for d, i, u, x in c.execute(
+            "SELECT datname, tup_inserted, tup_updated, tup_deleted FROM pg_stat_database"
+            " WHERE datname = ANY(%s)", (dbnames,)).fetchall()}
 
 
 def tuple_counters(dsn: str, schemas: tuple[str, ...]) -> dict[str, tuple[int, int, int]]:

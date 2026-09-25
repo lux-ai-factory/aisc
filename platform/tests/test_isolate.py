@@ -27,7 +27,7 @@ CLI: ``python -m platform_service.isolate <subcommand> (--project PID [--project
   database it creates and drops, reads the moving tables from it and core.project from
   ISOLATE_SUPERUSER_URL's database, and then verifies exactly as ``verify`` does.
 - Reads of a target that change nothing end in ROLLBACK, so ``plan``, ``copy --dry-run`` and an
-  ``already done`` project leave ``pg_stat_database.xact_commit`` of every target unchanged.
+  ``already done`` project leave the rows written in every target (pg_stat_database tup_inserted/updated/deleted) unchanged.
 
 Report JSON (``--report``; keys and counts only, never row values, I12.15)::
 
@@ -277,7 +277,7 @@ def test_I12_4_a_row_owned_by_two_projects_aborts_before_any_write(make_world, r
         c.execute("SET LOCAL session_replication_role = replica")
         # evaluation_plugin 1 is A's, component 3 is B's
         c.execute("INSERT INTO engine.evaluation_input (id, pid, name, description, created_at, value,"
-                  " component_id, evaluation_plugin_id) VALUES (2, gen_random_uuid(), 'i', '', now(), '{}', 3, 1)")
+                  " component_id, evaluation_plugin_id) VALUES (2, gen_random_uuid(), 'i2', '', now(), '{}', 3, 1)")
     before = _snapshot(w)
     res = S.run(w, "copy", "--all", report=rpt())
     S.assert_refused(res, {"owned by two projects", "cross-project reference"},
@@ -537,11 +537,11 @@ def test_I12_8_a_second_copy_is_already_done_and_writes_nothing(make_world, rpt)
     copied(w, S.run(w, "copy", "--all", report=rpt()))
     before = _snapshot(w)
     dbs = [w.target_db(p) for p in w.pids]
-    commits = S.xact_commits(dbs)
+    commits = S.written_tuples(dbs)
     res = S.run(w, "copy", "--all", report=rpt())
     assert res.returncode == 0, res.output[-3000:]
     assert [res.status(p) for p in w.pids] == ["already done", "already done"]
-    assert S.xact_commits(dbs) == commits, "I12.8: an already-done project must not be written"
+    assert S.written_tuples(dbs) == commits, "I12.8: an already-done project must not be written"
     _no_write_anywhere(w, before)
 
 
@@ -729,10 +729,10 @@ def test_I12_12_plan_and_dry_run_compute_everything_and_write_nothing(make_world
     w = make_world()
     before = _snapshot(w)
     dbs = [w.target_db(p) for p in w.pids]
-    commits = S.xact_commits(dbs)
+    commits = S.written_tuples(dbs)
     res = S.run(w, *argv, report=rpt())
     assert res.returncode == 0, res.output[-3000:]
-    assert S.xact_commits(dbs) == commits
+    assert S.written_tuples(dbs) == commits
     _no_write_anywhere(w, before)
     a = res.report["projects"][w.A]
     assert a["status"] == "planned"
