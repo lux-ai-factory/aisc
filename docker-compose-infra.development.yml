@@ -31,6 +31,8 @@ services:
     networks:
       - backend
       - frontend
+      # to reach pgadmin and schema-docs, which are on no other network (API auth WP3)
+      - inspector
     # depends_on:
     #   - aisc-backend
 
@@ -133,6 +135,8 @@ services:
     restart: unless-stopped
     networks:
       - backend
+      # pgadmin and schema-docs read here as inspector_ro (API auth WP3)
+      - inspector
 
   # The same grants on a volume that already exists: initdb scripts only run on
   # an empty one. Idempotent, so it runs on every start and then exits.
@@ -304,7 +308,9 @@ services:
       - postgres
     restart: unless-stopped
     networks:
-      - backend
+      # Only caddy (the admin gate at /inspect/*) and postgres share this network, so no plugin
+      # or other service can reach it (API auth WP3).
+      - inspector
 
   # Schema diagrams, the other half of the inspector: SchemaSpy's pages for one database (the
   # platform's or a project's), made on the first visit and again after ten minutes. Behind the same
@@ -321,7 +327,9 @@ services:
       - postgres
     restart: unless-stopped
     networks:
-      - backend
+      # Only caddy (the admin gate at /inspect/*) and postgres share this network, so no plugin
+      # or other service can reach it (API auth WP3).
+      - inspector
 
 volumes:
   immudb_data: # Persistent storage for the immudb ledger
@@ -335,3 +343,5 @@ volumes:
 networks:
   backend:
   frontend:
+  # pgadmin, schema-docs, caddy and postgres only (API auth WP3)
+  inspector:
