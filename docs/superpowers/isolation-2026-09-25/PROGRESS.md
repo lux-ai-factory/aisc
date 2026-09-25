@@ -4,7 +4,7 @@
 |---|---|---|
 | 1 survey + specs | 01-specs.md | done 2026-09-25 |
 | 2 tests | 02-tests.md + tests | done 2026-09-25 |
-| 3 coding plan | 03-coding-plan.md (work packages) | pending |
+| 3 coding plan | 03-coding-plan.md (work packages) | done 2026-09-25 |
 | 4 code | one fresh agent per work package | pending |
 | 5 verify + full rehearsal on the live copy | 05-rehearsal.md | pending |
 | 6 live migration | orchestrator, stack quiet | pending |
@@ -40,3 +40,27 @@
   pg_dump command is wrong (-t overrides -n), engine.metric_category_metrics is not placed by I12.3, fresh
   volume needs platform migrations 0002..0004 guarded, and an existing unguarded engine route
   (GET /plugins/{pid}/evaluations/{uuid}/result) was found.
+
+## Stage 3 notes (2026-09-25)
+
+- Read-only research (one agent per module, the platform and framework by the stage agent); one throwaway PG14
+  probe (removed) confirmed that platform_rw cannot `ALTER ROLE <other> IN DATABASE ... SET`. No product code, no
+  test edited, nothing pushed.
+- Order (03-coding-plan.md section 3): wave 0 P1; wave 1 W1, P2, Q1, O1, C1, E1, R2, D1; wave 2 E2, R1; wave 3 V1
+  and Q2 (when the I4.6 gate opens); wave 4 X1; wave 5 Z1 (every suite together).
+- Global decisions G1..G9 (section 2): W1 is the only writer of compose and env files; V1 owns guard-frozen,
+  throwaway-pg, pipeline chain; the old layout is a fixture copied from f01288a; C9 marks retired objects with a
+  `retired:` comment that every-start init files respect; a superuser-owned definer function sets the module
+  search_paths; the qualification baseline is `20260925000000_project_database` (supersedes I3.5's name); the
+  stage-7 dump is two files (supersedes I15.2); the copy stops at the first failed project; isolation images get
+  their own tag.
+- Open issues 1..12 of 02-tests.md resolved in section 5 (engine.metric_category_metrics by rule L, fresh volume by
+  guards inside platform migrations 0002..0004, the live leak on
+  GET /plugins/{evaluation_plugin_pid}/evaluations/{evaluation_uuid}/result closed by E2's door and still exposed
+  live until cutover), plus new issues N1..N9.
+- Tests flagged wrong, with the named correction a WP makes (section 4): T1 baseline name (3 files), T2
+  isolationActionsAndPages cache reset, T3 agents fixture type, T4 formLibrary fixture (Q2), T5 engine _seed
+  connection, T6 engine CONTROLS artifacts row, T7 Sean's two webapp tests. Weak but kept: W-1..W-6.
+- For the user before stage 6: which env file the live cutover uses, and which directory the live stack runs from
+  after C11 (section 5).
+
