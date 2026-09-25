@@ -1,8 +1,9 @@
 """The platform database: a connection pool and the queries on `core`.
 
-Deliberately thin. A handful of tables (projects, their members, the AI card
-versions), so an ORM would be more machinery than the problem needs, and the
-SQL is easier to read than its abstraction.
+Deliberately thin. A handful of tables (projects and their members here; the
+AI card versions in each project's own database), so an ORM would be more
+machinery than the problem needs, and the SQL is easier to read than its
+abstraction.
 """
 from __future__ import annotations
 
@@ -11,8 +12,10 @@ import os
 import threading
 import time
 
-from psycopg_pool import ConnectionPool
+import psycopg
+from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from platform_service.migrate import migrate
 from platform_service.projects import looks_like_pid
@@ -214,60 +217,129 @@ def _register_pending(known: dict[str, dict]) -> None:
             _unregistered.add(pid)
 
 
-# ── systems ──────────────────────────────────────────────────────────────────
-# The system under assessment, inside a project. Written only here: every
-# module reads `core`, and one writer is what keeps the name meaning one thing.
+# ── card versions ────────────────────────────────────────────────────────────
+# The saved versions of a project's AI card, one row each in project.system of
+# that project's own database (isolation 2026-09-25, 01-specs.md I1.5, I2.2, D1,
+# D2). Written only here, as platform_rw, the owner of every project database:
+# one writer keeps the numbering in one place. The shared table they used to be
+# rows of is never read or written again. Every call opens that database, uses
+# it and closes it (I17.1), like llm_store: nothing pooled is left on a
+# database that may be dropped.
 
 
+class ProjectDatabaseGone(LookupError):
+    """The project's row exists, its database does not (between drop and delete)."""
+
+
+#: The order of a version in every response (unchanged by the isolation).
 _VERSION_COLUMNS = "pid, project_id, number, name, version, provider, description, created_at, created_by"
-_VERSION = ", ".join("s." + c for c in _VERSION_COLUMNS.split(", "))
+#: What project.system has of those: every column but project_id (the database is the project).
+_STORED = "pid, number, name, version, provider, description, created_at, created_by"
 
 
-def get_system(pid: str) -> dict | None:
-    """One saved card version by its own id."""
+def _is_missing_database(exc: Exception) -> bool:
+    return "does not exist" in str(exc) and "database" in str(exc)
+
+
+def project_connection(pid) -> psycopg.Connection:
+    """A new connection to this project's database, as the platform's own role.
+
+    Raises ProjectDatabaseGone when the database is not there: looked up first,
+    and also when it is dropped between that look and the connect."""
+    from platform_service import projectdb
+
+    name = projectdb.database_name(pid)
     with pool().connection() as conn:
-        return conn.execute(
-            f"select {_VERSION_COLUMNS}, updated_at from core.system where pid = %s",
-            (pid,),
-        ).fetchone()
+        exists = conn.execute("select 1 from pg_database where datname = %s", (name,)).fetchone()
+    if exists is None:
+        raise ProjectDatabaseGone(str(pid))
+    try:
+        return psycopg.connect(make_conninfo(dsn(), dbname=name), row_factory=dict_row)
+    except psycopg.OperationalError as exc:
+        if _is_missing_database(exc):
+            raise ProjectDatabaseGone(str(pid)) from None
+        raise
+
+
+def _project_ref(conn, identifier: str) -> dict | None:
+    """{"pid", "slug"} of the project named by its pid or slug, from core.project."""
+    return conn.execute(
+        f"select pid, slug from core.project where {_key_column(identifier)} = %s", (identifier,)
+    ).fetchone()
+
+
+def _as_version(row: dict | None, project_pid) -> dict | None:
+    """A project.system row in the response shape of before: project_id is the project's pid."""
+    if row is None:
+        return None
+    out = {"pid": row["pid"], "project_id": project_pid}
+    out.update({c: row[c] for c in _VERSION_COLUMNS.split(", ")[2:]})
+    if "updated_at" in row:
+        out["updated_at"] = row["updated_at"]
+    return out
+
+
+def _resolve(project: str):
+    with pool().connection() as conn:
+        found = _project_ref(conn, project)
+    return found["pid"] if found else None
 
 
 def create_version(project: str, name: str, version: str | None, provider: str | None,
                    description: str | None, subject: str | None) -> dict | None:
-    """The project's next card version, numbered max+1 under a per-project
-    advisory lock, so two saves at once get 1 and 2. None: no such project."""
-    with pool().connection() as conn, conn.transaction():
-        pid = _project_pid(conn, project)
-        if pid is None:
-            return None
-        conn.execute("select pg_advisory_xact_lock(hashtext(%s))", (str(pid),))
-        return conn.execute(
-            "insert into core.system (project_id, number, name, version, provider, description, created_by)"
-            " values (%s, (select coalesce(max(number), 0) + 1 from core.system where project_id = %s),"
-            " %s, %s, %s, %s, %s)"
-            f" returning {_VERSION_COLUMNS}",
-            (pid, pid, name, version, provider, description, subject)).fetchone()
-
-
-def _versions_where(project: str) -> str:
-    return (f"select {_VERSION} from core.system s join core.project p on p.pid = s.project_id"
-            f" where p.{_key_column(project)} = %s order by s.number desc")
+    """The project's next card version, numbered max+1 under an advisory lock
+    taken in the project's database, so two saves at once get n and n+1.
+    None: no such project. ProjectDatabaseGone: its database is gone."""
+    pid = _resolve(project)
+    if pid is None:
+        return None
+    with project_connection(pid) as conn, conn.transaction():
+        conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        row = conn.execute(
+            "insert into project.system (number, name, version, provider, description, created_by)"
+            " values ((select coalesce(max(number), 0) + 1 from project.system), %s, %s, %s, %s, %s)"
+            f" returning {_STORED}",
+            (name, version, provider, description, subject)).fetchone()
+    return _as_version(row, pid)
 
 
 def list_versions(project: str) -> list[dict] | None:
     """Every saved card version of the project, highest number first. None: no such project."""
-    with pool().connection() as conn:
-        if _project_pid(conn, project) is None:
-            return None
-        return conn.execute(_versions_where(project), (project,)).fetchall()
+    pid = _resolve(project)
+    if pid is None:
+        return None
+    with project_connection(pid) as conn:
+        rows = conn.execute(f"select {_STORED} from project.system order by number desc").fetchall()
+    return [_as_version(r, pid) for r in rows]
 
 
 def latest_version(project: str) -> tuple[bool, dict | None]:
     """(whether the project exists, its highest-numbered card version or None)."""
-    with pool().connection() as conn:
-        if _project_pid(conn, project) is None:
-            return False, None
-        return True, conn.execute(_versions_where(project) + " limit 1", (project,)).fetchone()
+    pid = _resolve(project)
+    if pid is None:
+        return False, None
+    with project_connection(pid) as conn:
+        row = conn.execute(f"select {_STORED} from project.system order by number desc limit 1").fetchone()
+    return True, _as_version(row, pid)
+
+
+def get_system(version_pid: str, project_pids: list[str]) -> dict | None:
+    """One saved card version by its own id, looked for only in these projects'
+    databases (the caller's, or every one for an admin: I2.3). A project whose
+    database is gone, or has no project.system yet, is skipped."""
+    for pid in project_pids:
+        try:
+            conn = project_connection(pid)
+        except ProjectDatabaseGone:
+            continue
+        with conn:
+            if conn.execute("select to_regclass('project.system') as t").fetchone()["t"] is None:
+                continue
+            row = conn.execute(f"select {_STORED}, updated_at from project.system where pid = %s",
+                               (version_pid,)).fetchone()
+        if row is not None:
+            return _as_version(row, pid)
+    return None
 
 
 # ── membership ───────────────────────────────────────────────────────────────

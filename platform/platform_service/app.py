@@ -308,8 +308,11 @@ def create_system_version(
     when name and version repeat. Saving is changing the work: an editor."""
     role_or_404(project, caller, needed="editor")
     name, version = system_key(body.name, body.version)
-    made = db.create_version(project, name, version, body.provider, body.description,
-                             caller.subject)
+    try:
+        made = db.create_version(project, name, version, body.provider, body.description,
+                                 caller.subject)
+    except db.ProjectDatabaseGone:
+        raise no_project(project) from None
     if made is None:
         raise no_project(project)
     return made
@@ -319,7 +322,10 @@ def create_system_version(
 def system_versions(project: str, caller: Caller = Depends(caller_dependency)) -> list[dict]:
     """Every saved card version, highest number first."""
     role_or_404(project, caller)
-    found = db.list_versions(project)
+    try:
+        found = db.list_versions(project)
+    except db.ProjectDatabaseGone:
+        raise no_project(project) from None
     if found is None:
         raise no_project(project)
     return found
@@ -329,7 +335,10 @@ def system_versions(project: str, caller: Caller = Depends(caller_dependency)) -
 def latest_system_version(project: str, caller: Caller = Depends(caller_dependency)) -> dict | None:
     """The latest saved card version, or null when the project has none yet."""
     role_or_404(project, caller)
-    exists, found = db.latest_version(project)
+    try:
+        exists, found = db.latest_version(project)
+    except db.ProjectDatabaseGone:
+        raise no_project(project) from None
     if not exists:
         raise no_project(project)
     return found
@@ -337,14 +346,23 @@ def latest_system_version(project: str, caller: Caller = Depends(caller_dependen
 
 @app.get("/systems/{pid}")
 def system(pid: str, caller: Caller = Depends(caller_dependency)) -> dict:
-    """A system by its own id.
+    """A card version by its own id.
 
-    The project is checked here too: an id that skips the project is exactly
-    how a stranger would read one.
+    It is looked for only in the databases of the caller's projects (every
+    project for an admin): the id alone names no database, and one the caller
+    is not in is never opened (I2.3). The project is checked again on the one
+    found: an id that skips the project is exactly how a stranger would read one.
     """
-    found = db.get_system(pid)
+    missing = HTTPException(status_code=404, detail=f"no system {pid}")
+    if not looks_like_pid(pid):
+        raise missing
+    if caller.has_role(ADMIN_ROLE):
+        project_pids = [str(p["pid"]) for p in db.list_projects()]
+    else:
+        project_pids = [str(p["pid"]) for p in db.projects_for(caller.subject)]
+    found = db.get_system(pid, project_pids)
     if found is None:
-        raise HTTPException(status_code=404, detail=f"no system {pid}")
+        raise missing
     role_or_404(str(found["project_id"]), caller)
     return found
 
