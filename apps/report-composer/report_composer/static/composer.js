@@ -42,21 +42,24 @@
   }
   if (region) region.querySelector('[data-control="close-message"]').addEventListener("click", function () { say(""); });
 
-  // Notices Python gave (for example references reset on import), carried to the next page and shown there
-  const NOTICES_KEY = "rc-notices";
-  function keepNotices(notices) {
-    if (!notices || !notices.length) return;
-    try {
-      sessionStorage.setItem(NOTICES_KEY, JSON.stringify(notices.map(function (n) { return n.message; })));
-    } catch (e) { /* no storage: the notices are not carried over */ }
+  // Notices Python gave (references reset on import) are carried to the next page and shown there
+  function keepNotices(n) {
+    const texts = (n || []).map(function (x) { return x.message; });
+    try { if (texts.length) sessionStorage.setItem("rc-notices", JSON.stringify(texts)); } catch (e) { /* no storage */ }
   }
   function showKeptNotices() {
     let kept = null;
-    try {
-      kept = JSON.parse(sessionStorage.getItem(NOTICES_KEY) || "null");
-      sessionStorage.removeItem(NOTICES_KEY);
-    } catch (e) { kept = null; }
+    try { kept = JSON.parse(sessionStorage.getItem("rc-notices") || "null"); sessionStorage.removeItem("rc-notices"); }
+    catch (e) { kept = null; }
     if (Array.isArray(kept) && kept.length) say(kept.join(" "), true);
+  }
+
+  // A hint paragraph marked `attr` inside `parent`: shown with `text`, removed when `text` is empty
+  function hint(parent, attr, text, cls, before) {
+    let p = parent.querySelector("[" + attr + "]");
+    if (!text) { if (p) p.remove(); return; }
+    if (!p) p = parent.insertBefore(document.createElement("p"), before || null);
+    p.className = cls || "hint"; p.setAttribute(attr, ""); p.textContent = text;
   }
 
   // The one confirmation dialog: its texts come from the button that asks (data-confirm-text)
@@ -231,12 +234,8 @@
       const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
       if (!li) return;
       li.dataset.depth = String(o.depth);
-      let hint = li.querySelector("[data-empty-chapter]");
-      if (o.empty_chapter && !hint) {
-        hint = document.createElement("p");
-        hint.className = "hint"; hint.setAttribute("data-empty-chapter", ""); hint.textContent = EMPTY_CHAPTER;
-        li.insertBefore(hint, li.querySelector("details, [data-problems]"));
-      } else if (!o.empty_chapter && hint) hint.remove();
+      const before = li.querySelector("details, [data-problems]");
+      hint(li, "data-empty-chapter", o.empty_chapter ? EMPTY_CHAPTER : "", "hint", before);
     });
   }
   function moved() { dirty(); redrawOutline(); }
@@ -292,8 +291,7 @@
   // The coverage map: the ticked boxes, one entry per objective (Python computed the grid)
   function coverage() {
     if (!coverageMap) return undefined;
-    const byObjective = {};
-    const order = [];
+    const byObjective = {}, order = [];
     coverageMap.querySelectorAll("input[data-objective]:checked").forEach(function (box) {
       const id = box.dataset.objective;
       if (!byObjective[id]) { byObjective[id] = { objective_id: id, tests: [], checklists: [] }; order.push(id); }
@@ -305,20 +303,14 @@
   function editorState() {
     const pick = function (name) { const c = control(name); return c ? c.value : undefined; };
     const numbering = control("numbering");
-    return { system_id: pick("version"), template_id: pick("template") || null,
-             toc: pick("toc"), numbering: numbering ? numbering.checked : undefined, coverage: coverage(),
-             blocks: collect() };
+    return { system_id: pick("version"), template_id: pick("template") || null, toc: pick("toc"),
+             numbering: numbering ? numbering.checked : undefined, coverage: coverage(), blocks: collect() };
   }
 
   function pickOneHints() {
     list.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
-      let hint = set.querySelector("[data-pick-one]");
-      const empty = Array.isArray(valueOf(set)) && valueOf(set).length === 0;
-      if (empty && !hint) {
-        hint = document.createElement("p");
-        hint.className = "inline-problem"; hint.setAttribute("data-pick-one", ""); hint.textContent = PICK_ONE;
-        set.appendChild(hint);
-      } else if (!empty && hint) hint.remove();
+      const v = valueOf(set);
+      hint(set, "data-pick-one", Array.isArray(v) && v.length === 0 ? PICK_ONE : "", "inline-problem");
     });
   }
 
@@ -448,8 +440,7 @@
       link.href = file; link.download = ""; document.body.appendChild(link); link.click(); link.remove();
       const reportsList = main.querySelector("[data-reports]");
       if (reportsList) {
-        const item = document.createElement("li");
-        const a = document.createElement("a");
+        const item = document.createElement("li"), a = document.createElement("a");
         a.href = file; a.textContent = "Download";
         item.textContent = "Just now, revision " + revision + ", " + fmt.toUpperCase() + ", " + res.data.status + ": ";
         item.appendChild(a);
