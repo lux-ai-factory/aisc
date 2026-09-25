@@ -154,6 +154,9 @@ services:
   controls-pdf:
     build: apps/controls/services/pdf_renderer
     container_name: controls-pdf
+    environment:
+      # its one caller's token (controls-web): everything but /health needs it
+      CONTROLS_WEB_TO_PDF_TOKEN: ${CONTROLS_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
@@ -195,6 +198,8 @@ services:
       # The catalogue's origin in the browser: the only page whose install
       # dialog may call /controls/api/install with the person's sign-in.
       CATALOGUE_ORIGIN: ${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}
+      # sent to controls-pdf by the submission report route
+      CONTROLS_WEB_TO_PDF_TOKEN: ${CONTROLS_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
@@ -217,6 +222,9 @@ services:
     image: aisc-qualification-prefill:latest
     pull_policy: never
     container_name: qualification-prefill
+    environment:
+      # its one caller's token (qualification-web)
+      QUALIFICATION_WEB_TO_PREFILL_TOKEN: ${QUALIFICATION_WEB_TO_PREFILL_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
@@ -231,6 +239,8 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LLM_MODEL: ${QUALIFICATION_LLM_MODEL:-mistral/mistral-large-latest}
+      # its one caller's token (qualification-web, which holds LLM_SERVICE_URL)
+      QUALIFICATION_WEB_TO_LLM_TOKEN: ${QUALIFICATION_WEB_TO_LLM_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
@@ -257,6 +267,11 @@ services:
       PLATFORM_URL: http://platform:8000
       # its own system's token only: it can resolve card_agent and nothing else
       PLATFORM_INTERNAL_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
+      # the token qualification-web sends to start and read a run
+      QUALIFICATION_WEB_TO_AGENTS_TOKEN: ${QUALIFICATION_WEB_TO_AGENTS_TOKEN:?run scripts/secrets.sh first}
+      # its own tokens for the two services it calls: the app's /extracted and the ontology
+      QUALIFICATION_AGENTS_TO_WEB_TOKEN: ${QUALIFICATION_AGENTS_TO_WEB_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
     extra_hosts:
       # for a project that chose a model served by ollama on the host
       - "host.docker.internal:host-gateway"
@@ -275,6 +290,10 @@ services:
       context: apps/qualification
       dockerfile: services/ontology/Dockerfile
     container_name: qualification-ontology
+    environment:
+      # two callers, a token each
+      QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
@@ -283,6 +302,9 @@ services:
   qualification-pdf:
     build: apps/qualification/services/system_card_renderer
     container_name: qualification-pdf
+    environment:
+      # its one caller's token (qualification-web)
+      QUALIFICATION_WEB_TO_PDF_TOKEN: ${QUALIFICATION_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
@@ -311,6 +333,14 @@ services:
       AGENT_SERVICE_URL: http://qualification-agents:8012
       # Where an uploaded document is turned into the form's answers.
       PREFILL_URL: http://qualification-prefill:8012
+      # One token per service it calls, and the card agent's token for the two
+      # /extracted routes it accepts from the agent (API auth, 2026-09-25).
+      QUALIFICATION_AGENTS_TO_WEB_TOKEN: ${QUALIFICATION_AGENTS_TO_WEB_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_AGENTS_TOKEN: ${QUALIFICATION_WEB_TO_AGENTS_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_PREFILL_TOKEN: ${QUALIFICATION_WEB_TO_PREFILL_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_LLM_TOKEN: ${QUALIFICATION_WEB_TO_LLM_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_PDF_TOKEN: ${QUALIFICATION_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
     env_file: apps/qualification/env.development

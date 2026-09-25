@@ -59,9 +59,17 @@ REPORT_COMPOSER_PASSWORD=$(rand)
 INSPECTOR_PASSWORD=$(rand)
 PLATFORM_CARD_AGENT_TOKEN=$(rand)
 PLATFORM_RISK_MAPPER_TOKEN=$(rand)
+QUALIFICATION_AGENTS_TO_WEB_TOKEN=$(rand)
+QUALIFICATION_WEB_TO_AGENTS_TOKEN=$(rand)
+QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN=$(rand)
+QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN=$(rand)
+QUALIFICATION_WEB_TO_PREFILL_TOKEN=$(rand)
+QUALIFICATION_WEB_TO_LLM_TOKEN=$(rand)
+QUALIFICATION_WEB_TO_PDF_TOKEN=$(rand)
+CONTROLS_WEB_TO_PDF_TOKEN=$(rand)
 PLATFORM_SECRETS_KEY=${secrets_key:-$(fernet)}
 EOF
-  echo "wrote $OUT (14 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+  echo "wrote $OUT (22 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
 
   # The one with a shape requirement, checked here rather than discovered by a
   # gateway that will not start.
@@ -83,6 +91,22 @@ for name in REPORT_SERVICE_TOKEN REPORT_RO_PASSWORD REPORT_COMPOSER_PASSWORD INS
 done
 # One token per agentic system, so each agent resolves only its own choice and key.
 for name in PLATFORM_CARD_AGENT_TOKEN PLATFORM_RISK_MAPPER_TOKEN; do
+  if ! grep -q "^$name=" "$OUT"; then
+    echo "$name=$(rand)" >> "$OUT"
+    echo "added $name to $OUT"
+  fi
+done
+# One token per caller edge of the service-only APIs (API auth, 2026-09-25): each
+# is held by its caller and its callee only, so no service can call another with
+# a token it was not given.
+for name in QUALIFICATION_AGENTS_TO_WEB_TOKEN \
+    QUALIFICATION_WEB_TO_AGENTS_TOKEN \
+    QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN \
+    QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN \
+    QUALIFICATION_WEB_TO_PREFILL_TOKEN \
+    QUALIFICATION_WEB_TO_LLM_TOKEN \
+    QUALIFICATION_WEB_TO_PDF_TOKEN \
+    CONTROLS_WEB_TO_PDF_TOKEN; do
   if ! grep -q "^$name=" "$OUT"; then
     echo "$name=$(rand)" >> "$OUT"
     echo "added $name to $OUT"
