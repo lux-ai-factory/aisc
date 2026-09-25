@@ -33,7 +33,8 @@ def live(client_v2, auth, token, fake_v2, bed, monkeypatch):
     port = _free_port()
     monkeypatch.setenv("PLATFORM_ORIGIN", f"http://127.0.0.1:{port}")
     app = need("report_composer.app", "create_app")(
-        database_url=bed.dsn("report_composer_rw", "platform"), renderer=fake_v2, clock=lambda: FIXED_NOW)
+        database_url=bed.dsn("report_composer_rw", "platform"),
+        project_database_url=bed.project_db_template("report_composer_rw"), renderer=fake_v2, clock=lambda: FIXED_NOW)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()

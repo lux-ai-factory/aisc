@@ -51,7 +51,7 @@ from platform_service import projectdb
 
 REPO = Path(__file__).resolve().parents[2]
 LIVE_SHAPE = REPO / "scripts" / "tests" / "fixtures" / "isolation" / "live_shape.sql"
-COMPOSER_MIGRATIONS = REPO / "apps" / "report-composer" / "migrations"
+COMPOSER_MIGRATIONS = REPO / "apps" / "report-composer" / "pre_isolation_migrations"
 PLATFORM_DIR = REPO / "platform"
 
 SUPERUSER_DSN = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")

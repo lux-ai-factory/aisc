@@ -23,7 +23,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from conftest import FIXED_NOW, ISSUER, IDS, Missing, lazily, need, report_bed
+from conftest import FIXED_NOW, ISSUER, IDS, Missing, lazily, need, report_bed, report_bed_isolated
 
 pytestmark = [pytest.mark.db, pytest.mark.e2e]
 GENERATOR = Path(os.environ.get("REPORT_GENERATOR_DIR", Path(__file__).resolve().parents[4] / "aisc-report-generator"))
@@ -35,7 +35,8 @@ EU = ["cover", "key_figures", "chapter", "ai_card", "risk_classification", "chap
 @pytest.fixture(scope="module")
 def full_bed():
     report_bed.check_dsn_env()
-    b = report_bed.build("e2e2")
+    # isolation S-D13: the renderer and the composer read one database per project
+    b = report_bed_isolated.build_isolated("e2e2", modules=True)
     yield b
     b.stop()
 
@@ -78,12 +79,14 @@ def e2e(full_bed, renderer_url, make_client, monkeypatch):
         yield Missing("missing feature: the renderer service did not start:\n" + log.read_text()[-1500:])
         return
     monkeypatch.setenv("REPORT_COMPOSER_DATABASE_URL", full_bed.dsn("report_composer_rw", "platform"))
+    monkeypatch.setenv("REPORT_COMPOSER_PROJECT_DATABASE_URL", full_bed.project_db_template("report_composer_rw"))
     Http = need("report_composer.renderer_client", "HttpRendererClient")
     from fastapi.testclient import TestClient
 
     def build():
         app = need("report_composer.app", "create_app")(
-            database_url=full_bed.dsn("report_composer_rw", "platform"), renderer=Http(url, token=TOKEN),
+            database_url=full_bed.dsn("report_composer_rw", "platform"),
+            project_database_url=full_bed.project_db_template("report_composer_rw"), renderer=Http(url, token=TOKEN),
             clock=lambda: FIXED_NOW)
         c = TestClient(app, base_url="http://localhost")
         c.__enter__()
@@ -151,7 +154,7 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     # what was stored: format, fingerprint, the v2 snapshot with the document id
     for rid, fmt in ((pdf_id, "pdf"), (docx_id, "docx")):
         stored = json.loads(full_bed.scalar(
-            "platform", "SELECT row_to_json(t)::text FROM (SELECT format, fingerprint, snapshot FROM"
+            report_bed.project_db(IDS["M"]), "SELECT row_to_json(t)::text FROM (SELECT format, fingerprint, snapshot FROM"
                         f" report_composer.generated_report WHERE id = '{rid}') t"))
         assert stored["format"] == fmt
         assert re.fullmatch(r"[0-9a-f]{64}", stored["fingerprint"] or "")

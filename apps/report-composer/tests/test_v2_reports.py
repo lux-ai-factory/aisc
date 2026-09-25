@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from conftest import IDS, error_code, new_layout, new_template
+from conftest import IDS, error_code, new_layout, new_template, pdb_of
 from v2_fakes import DOCX, FINGERPRINT, client_v2, fake_v2, unique, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
@@ -51,7 +51,7 @@ def test_r_v8_14_an_unknown_format_is_refused(client_v2, auth):
 def test_r_v8_15_docx_is_stored_with_its_format_and_downloads_as_word(client_v2, auth, bed):
     lay = layout(client_v2, auth)
     rid = generate(client_v2, auth, lay, format="docx").json()["id"]
-    fmt = bed.scalar("platform", f"SELECT format FROM report_composer.generated_report WHERE id = '{rid}'")
+    fmt = bed.scalar(pdb_of("A"), f"SELECT format FROM report_composer.generated_report WHERE id = '{rid}'")
     assert fmt == "docx"
     r = client_v2.get(f"/api/p/alpha/reports/{rid}/download", headers=auth("victor"))
     assert r.status_code == 200 and r.content == DOCX
@@ -107,7 +107,7 @@ def test_r_v8_12_a_document_over_25_mb_is_not_stored(client_v2, auth, fake_v2):
 def test_r_v5_15_the_fingerprint_is_stored(client_v2, auth, bed):
     lay = layout(client_v2, auth)
     rid = generate(client_v2, auth, lay).json()["id"]
-    got = bed.scalar("platform", f"SELECT fingerprint FROM report_composer.generated_report WHERE id = '{rid}'")
+    got = bed.scalar(pdb_of("A"), f"SELECT fingerprint FROM report_composer.generated_report WHERE id = '{rid}'")
     assert got == FINGERPRINT
 
 

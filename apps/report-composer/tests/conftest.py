@@ -1,12 +1,14 @@
 """Fixtures of the composer tests (report run 2026-09-23, stage 3; 02 section 5).
 
-Database tests run on a throwaway postgres:14-alpine bed (scripts/lib/report_bed.py): core schema,
-init/report-roles.sql once it exists, and the core part of the seed (projects alpha, beta, gamma,
-echo; versions; members). The composer connects as `report_composer_rw`. Never the host's 5432.
+Database tests run on a throwaway postgres:14-alpine bed in the isolated layout
+(scripts/lib/report_bed_isolated.py, isolation 2026-09-25): the core part of the seed (projects alpha,
+beta, gamma, echo; members) in `platform`, and one database per project holding its versions in
+project.system and the composer's schema. The composer connects as `report_composer_rw`. Never the
+host's 5432.
 
-The API the tests assume of `report_composer` (stage 5 implements it):
+The API the tests assume of `report_composer` (stage 5 implements it; isolation I8.1 adds the project DSN):
 
-    report_composer.app.create_app(*, database_url, renderer, clock=None) -> FastAPI
+    report_composer.app.create_app(*, database_url, project_database_url, renderer, clock=None) -> FastAPI
         routes: /api/... (R4.3, the /report-composer prefix is stripped by Caddy) and /p/{slug}/... pages;
         migrations run at start (lifespan), so the TestClient is used as a context manager.
     renderer: an object with block_types(), choices(project_id, system_id, block_type), render(snapshot)
@@ -33,8 +35,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]           # aisc-install
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 import report_bed  # noqa: E402
+import report_bed_isolated  # noqa: E402
 
 IDS = report_bed.IDS
+
+
+def pdb_of(key: str = "A") -> str:
+    """The database of the seed's project `key` (isolation: a project's composer rows live there)."""
+    return report_bed.project_db(IDS[key])
 ISSUER = "http://keycloak:8080/realms/aisc"
 ORIGIN = "http://localhost"
 FIXED_NOW = datetime(2026, 9, 20, 10, 30, tzinfo=timezone.utc)
@@ -198,7 +206,8 @@ class FakeRenderer:
 @pytest.fixture(scope="session")
 def bed():
     report_bed.check_dsn_env()
-    b = report_bed.build("composer", modules=False)
+    # isolation S-D13: the isolated layout; gamma gets a database too, as "another project alice edits"
+    b = report_bed_isolated.build_isolated("composer", modules=False, no_database=frozenset())
     yield b
     b.stop()
 
@@ -250,6 +259,7 @@ def make_client(bed, key, monkeypatch):
     monkeypatch.setenv("KEYCLOAK_JWKS_URL", "http://keycloak:8080/unused-in-tests")
     monkeypatch.setenv("PLATFORM_ORIGIN", ORIGIN)
     monkeypatch.setenv("REPORT_COMPOSER_DATABASE_URL", bed.dsn("report_composer_rw", "platform"))
+    monkeypatch.setenv("REPORT_COMPOSER_PROJECT_DATABASE_URL", bed.project_db_template("report_composer_rw"))
     monkeypatch.setenv("REPORT_SERVICE_TOKEN", "composer-test-token-0123456789")
     import aisc_identity.service
 
@@ -261,7 +271,8 @@ def make_client(bed, key, monkeypatch):
 
         def build():
             app = need("report_composer.app", "create_app")(
-                database_url=bed.dsn("report_composer_rw", "platform"), renderer=renderer, clock=clock)
+                database_url=bed.dsn("report_composer_rw", "platform"),
+                project_database_url=bed.project_db_template("report_composer_rw"), renderer=renderer, clock=clock)
             c = TestClient(app, base_url="http://localhost")
             c.__enter__()
             opened.append(c)
@@ -281,10 +292,12 @@ def client(make_client, fake_renderer):
 
 @pytest.fixture
 def clean_layouts(bed):
-    """Every test starts with no layouts, templates or reports (the schema may not exist yet)."""
-    bed.psql("platform", "DO $$ BEGIN IF to_regclass('report_composer.layout') IS NOT NULL THEN "
-                         "TRUNCATE report_composer.layout, report_composer.template CASCADE; END IF; END $$;",
-             check=False)
+    """Every test starts with no layouts, templates or reports (the tables may not exist yet), in each
+    project's database."""
+    for k in ("A", "B", "C", "E"):
+        bed.psql(pdb_of(k), "DO $$ BEGIN IF to_regclass('report_composer.layout') IS NOT NULL THEN "
+                            "TRUNCATE report_composer.layout, report_composer.template CASCADE; END IF; END $$;",
+                 check=False)
     yield
 
 

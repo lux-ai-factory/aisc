@@ -137,7 +137,7 @@ def bed():
     report_bed.check_dsn_env()
     b = report_bed.build("dbcheck", seed=False)
     try:
-        for f in sorted((ROOT / "apps/report-composer/migrations").glob("*.sql")):
+        for f in sorted((ROOT / "apps/report-composer/pre_isolation_migrations").glob("*.sql")):
             sql(b, "platform", "SET search_path = report_composer, core;\n"
                    "CREATE TABLE IF NOT EXISTS report_composer.schema_migration (name text PRIMARY KEY,"
                    " applied_at timestamptz NOT NULL DEFAULT now());\n" + f.read_text()

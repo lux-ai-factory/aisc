@@ -1,6 +1,6 @@
 """V1: reusable report structures (report run v2, 01-specs.md section 2: R-V1.1 to R-V1.12).
 
-Presets: four built-in JSON files, saved presets (table report_composer.preset, platform wide) and
+Presets: four built-in JSON files, saved presets (table report_library.preset, platform wide, isolation D4) and
 preset files. Database tests on the composer bed, with the v2 fake renderer (v2_fakes.py).
 """
 import json
@@ -276,7 +276,7 @@ def test_r_v1_8_save_list_export_a_saved_preset(client_v2, auth, bed):
     exported = client_v2.get(f"/api/presets/{pid}/export", headers=auth("bob"))
     assert exported.status_code == 200 and exported.json()["format"] == "aisc-report-preset"
     assert exported.json()["blocks"][1]["options"]["text"] == "Write this section."
-    source = bed.scalar("platform", f"SELECT source_project_id::text FROM report_composer.preset WHERE id = '{pid}'")
+    source = bed.scalar("platform", f"SELECT source_project_id::text FROM report_library.preset WHERE id = '{pid}'")
     assert source == IDS["A"]
 
 

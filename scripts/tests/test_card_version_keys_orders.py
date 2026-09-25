@@ -145,7 +145,7 @@ class Stack:
 
     def R(self, directory: Path | None = None):
         with self.connect("report_composer_rw") as conn:
-            composer_migrate(conn, directory or RC / "migrations")
+            composer_migrate(conn, directory or RC / "pre_isolation_migrations")
 
     def snapshot(self, name: str):
         self.su(f'DROP DATABASE IF EXISTS "{name}"', "postgres")
@@ -184,7 +184,7 @@ def _live(stack: Stack):
     shutil.rmtree(prisma / "migrations" / LIVE_QUAL_NEW)
     stack.Q(prisma)
     stack.C(LIVE_CO)
-    stack.R(_only(RC / "migrations", LIVE_RC))
+    stack.R(_only(RC / "pre_isolation_migrations", LIVE_RC))
     stack.su("SET session_replication_role = replica;\n" + SEED)
 
 

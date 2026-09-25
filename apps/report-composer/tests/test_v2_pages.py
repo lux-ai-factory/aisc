@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import IDS, new_layout, new_template
+from conftest import IDS, new_layout, new_template, pdb_of
 from test_v2_browser import live  # noqa: F401  (the browser fixture)
 from v2_fakes import clean_presets, client_v2, fake_v2, unique, v2blk  # noqa: F401
 
@@ -78,8 +78,8 @@ def test_r_u4_2_all_or_list_radios_then_checkboxes(client_v2, auth):
 def test_r_u4_3_a_stored_empty_list_shows_only_these_and_the_problem(client_v2, auth, bed):
     tests = v2blk("test_results")
     lay, _ = editor(client_v2, auth, [tests])
-    bed.psql("platform", "UPDATE report_composer.layout_block SET options = options || '{\"evaluations\": []}'"
-                         f" WHERE instance_id = '{tests['instance_id']}'")
+    bed.psql(pdb_of("A"), "UPDATE report_composer.layout_block SET options = options || '{\"evaluations\": []}'"
+                          f" WHERE instance_id = '{tests['instance_id']}'")
     doc = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
     field = li_of(doc, tests["instance_id"]).find(attrs={"data-field": "evaluations"})
     assert field.find_all("input", attrs={"type": "radio"})[1].has_attr("checked")
@@ -248,9 +248,9 @@ def test_r_u1_2_no_tests_or_checklists_for_the_version(client_v2, auth):
 
 def test_r_u1_3_entries_not_available_for_the_version(client_v2, auth, bed):
     lay, _, _ = coverage_panel(client_v2, auth)
-    r = bed.psql("platform", "UPDATE report_composer.layout SET coverage = "
-                             "'[{\"objective_id\": \"R3.1\", \"tests\": [\"Gone tool\"], \"checklists\": []}]'"
-                             f" WHERE id = '{lay['id']}'", check=False)
+    r = bed.psql(pdb_of("A"), "UPDATE report_composer.layout SET coverage = "
+                              "'[{\"objective_id\": \"R3.1\", \"tests\": [\"Gone tool\"], \"checklists\": []}]'"
+                              f" WHERE id = '{lay['id']}'", check=False)
     assert r.returncode == 0, "missing feature: column report_composer.layout.coverage"
     panel = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text).find(
         "details", attrs={"data-coverage-map": True})

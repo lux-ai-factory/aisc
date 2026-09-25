@@ -6,7 +6,7 @@ snapshot (R-S.3, R-V5.14). Database tests, v2 fake renderer.
 """
 import pytest
 
-from conftest import IDS, error_code, new_layout, new_template, some_template
+from conftest import IDS, error_code, new_layout, new_template, pdb_of, some_template
 from v2_fakes import client_v2, fake_v2, unique, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
@@ -184,7 +184,7 @@ def test_r_s_3_the_stored_snapshot_is_version_2_with_the_new_keys(client_v2, aut
     assert sent.get("coverage_links") == MAP
     import json
 
-    stored = json.loads(bed.scalar("platform", f"SELECT snapshot::text FROM report_composer.generated_report WHERE id = '{rid}'"))
+    stored = json.loads(bed.scalar(pdb_of("A"), f"SELECT snapshot::text FROM report_composer.generated_report WHERE id = '{rid}'"))
     for key in ("snapshot_version", "document", "coverage_links"):
         assert stored.get(key) == sent[key], key
     assert "language" not in stored

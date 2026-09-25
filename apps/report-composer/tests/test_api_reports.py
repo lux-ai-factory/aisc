@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from conftest import FIXED_NOW, IDS, PDF, blk, error_code, need, new_layout, put_layout
+from conftest import FIXED_NOW, IDS, PDF, blk, error_code, need, new_layout, pdb_of, put_layout
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
@@ -35,7 +35,7 @@ def test_r4_2_5_generate_stores_the_snapshot_and_the_pdf(client, auth, fake_rend
     assert body["status"] == "done" and len(body["block_statuses"]) == 2
     sent = fake_renderer.snapshots[-1]
     assert sent["mode"] == "pdf" and sent["requested_by"] == "Alice Editor"
-    stored = bed.rows("platform", f"SELECT layout_revision, status, size_bytes, sha256, snapshot FROM report_composer.generated_report WHERE id = '{body['id']}'")[0]
+    stored = bed.rows(pdb_of("A"), f"SELECT layout_revision, status, size_bytes, sha256, snapshot FROM report_composer.generated_report WHERE id = '{body['id']}'")[0]
     assert stored["layout_revision"] == 1 and stored["size_bytes"] == len(PDF)
     assert [b["instance_id"] for b in stored["snapshot"]["blocks"]] == [b["instance_id"] for b in lay["blocks"]]
 
@@ -45,7 +45,7 @@ def test_r3_12_the_snapshot_survives_edits(client, auth, bed):
     lay = layout(client, auth)
     rid = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice")).json()["id"]
     put_layout(client, auth, lay, blocks=[blk("ai_card")])
-    snap = bed.rows("platform", f"SELECT snapshot FROM report_composer.generated_report WHERE id = '{rid}'")[0]["snapshot"]
+    snap = bed.rows(pdb_of("A"), f"SELECT snapshot FROM report_composer.generated_report WHERE id = '{rid}'")[0]["snapshot"]
     assert [b["block_type"] for b in snap["blocks"]] == ["cover", "free_text"]
 
 
@@ -89,7 +89,7 @@ def test_r4_3_5_the_renderer_failing_is_502_and_failed(client, auth, fake_render
     fake_renderer.fail = Unavailable("down")
     r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
     assert r.status_code == 502 and error_code(r) == "renderer_unavailable"
-    row = bed.rows("platform", f"SELECT status, pdf IS NULL AS no_pdf, error_ref FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'")[0]
+    row = bed.rows(pdb_of("A"), f"SELECT status, pdf IS NULL AS no_pdf, error_ref FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'")[0]
     assert row["status"] == "failed" and row["no_pdf"] and re.fullmatch(r"[0-9a-f]{8}", row["error_ref"])
     assert row["error_ref"] in r.text
 
@@ -101,7 +101,7 @@ def test_r7_2_2_a_renderer_timeout_is_504_and_failed(client, auth, fake_renderer
     fake_renderer.fail = Timeout("120 s")
     r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
     assert r.status_code == 504 and error_code(r) == "renderer_timeout"
-    assert bed.scalar("platform", f"SELECT status FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "failed"
+    assert bed.scalar(pdb_of("A"), f"SELECT status FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "failed"
 
 
 def test_r7_2_2_the_http_client_times_out_at_120_seconds():
@@ -115,16 +115,16 @@ def test_r7_2_5_a_pdf_over_25_mb_is_not_stored(client, auth, fake_renderer, bed)
     fake_renderer.pdf = b"%PDF-" + b"0" * (25 * 1024 * 1024)
     r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
     assert "pdf_too_large" in r.text
-    row = bed.rows("platform", f"SELECT status, pdf IS NULL AS no_pdf FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'")[0]
+    row = bed.rows(pdb_of("A"), f"SELECT status, pdf IS NULL AS no_pdf FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'")[0]
     assert row == {"status": "failed", "no_pdf": True}
 
 
 # R4.3.3
 def test_r4_3_3_one_generation_at_a_time(client, auth, bed):
     lay = layout(client, auth)
-    bed.psql("platform", "INSERT INTO report_composer.generated_report (id, layout_id, layout_revision, project_id, "
-                         "system_id, snapshot, status, created_by, created_at) VALUES (gen_random_uuid(), "
-                         f"'{lay['id']}', 1, '{IDS['A']}', '{IDS['A_V2']}', '{{}}', 'running', 'olga', now())")
+    bed.psql(pdb_of("A"), "INSERT INTO report_composer.generated_report (id, layout_id, layout_revision, "
+                          "system_id, snapshot, status, created_by, created_at) VALUES (gen_random_uuid(), "
+                          f"'{lay['id']}', 1, '{IDS['A_V2']}', '{{}}', 'running', 'olga', now())")
     r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
     assert r.status_code == 409 and error_code(r) == "generation_running"
 
