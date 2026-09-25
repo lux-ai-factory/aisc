@@ -10,7 +10,7 @@ nothing deployed, the running stack not touched. The top-level submodule pointer
 |---|---|---|
 | apps/qualification | `8f0ab50` | F6, F7, F9 in qualification-web; the door on agents, ontology, prefill, llm, qualification-pdf; every caller sends its token |
 | apps/controls | `b3b4a57` | the door on controls-pdf; the report route sends its token |
-| top-level | see `git log` (this file's commit) | compose wiring, secrets.sh, env comments, scripts/tests/test_service_tokens.py, these notes |
+| top-level | `33700ec` (and the follow-up that records this hash) | compose wiring, secrets.sh, env comments, scripts/tests/test_service_tokens.py, these notes |
 
 The qualification commit was built as HEAD plus my patch only: the index was clean, the patch was
 applied with `git apply --cached`, the staged diff was compared byte for byte with the patch, and
