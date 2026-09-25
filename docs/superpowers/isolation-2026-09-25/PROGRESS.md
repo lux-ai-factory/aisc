@@ -6,6 +6,7 @@
 | 2 tests | 02-tests.md + tests | done 2026-09-25 |
 | 3 coding plan | 03-coding-plan.md (work packages) | done 2026-09-25 |
 | 4 code | one fresh agent per work package | pending |
+| 4 / P1 | platform: template 0006..0010, project.system, init files (04-P1-notes.md; commits 8c13e87, a9a0397, d9fe305, a774ba2, aae72d1) | done 2026-09-25 |
 | 5 verify + full rehearsal on the live copy | 05-rehearsal.md | pending |
 | 6 live migration | orchestrator, stack quiet | pending |
 | 7 drop shared schemas after dump + verify | orchestrator | pending |
