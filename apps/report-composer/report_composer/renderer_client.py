@@ -5,6 +5,10 @@ appears in a representation, a log line or an answer.
 """
 from __future__ import annotations
 
+import json as jsonlib
+import threading
+import time
+
 import httpx
 
 
@@ -39,31 +43,72 @@ class HttpRendererClient:
     def __repr__(self):
         return f"HttpRendererClient({self.base_url!r})"
 
-    def _call(self, method: str, path: str, json=None, timeout=None):
+    def _call(self, method: str, path: str, json=None, timeout=None, deadline=None):
+        """One call. `timeout` limits each network step; `deadline` (a time.monotonic() value), when given, also
+        ends the call once passed while the answer's body is still arriving."""
         timeout = self.timeout if timeout is None else timeout
+        headers = {"X-Report-Token": self.__token}
         try:
             with httpx.Client(timeout=timeout) as http:
-                r = http.request(method, self.base_url + path, json=json, headers={"X-Report-Token": self.__token})
+                if deadline is None:
+                    r = http.request(method, self.base_url + path, json=json, headers=headers)
+                    return self._answer(r.status_code, r.content)
+                with http.stream(method, self.base_url + path, json=json, headers=headers) as r:
+                    body = bytearray()
+                    for chunk in r.iter_bytes():
+                        if time.monotonic() > deadline:
+                            raise RendererTimeout("the answer did not arrive in time")
+                        body += chunk
+                    return self._answer(r.status_code, bytes(body))
         except httpx.TimeoutException:
             raise RendererTimeout(f"no answer within {timeout:g} s") from None
         except httpx.HTTPError as exc:
             raise RendererUnavailable(f"renderer not reachable ({type(exc).__name__})") from None
-        if r.status_code in (404, 422):
+
+    @staticmethod
+    def _answer(status: int, content: bytes):
+        def parsed():
+            return jsonlib.loads(content)
+
+        if status in (404, 422):
             try:
-                body = r.json()
+                body = parsed()
             except ValueError:
                 body = {}
-            raise RendererRejected(r.status_code, body.get("problems") if isinstance(body, dict) else None)
-        if r.status_code >= 400:          # 401, 5xx and anything else unexpected
-            raise RendererUnavailable(f"renderer answered {r.status_code}")
-        return r.json()
+            raise RendererRejected(status, body.get("problems") if isinstance(body, dict) else None)
+        if status >= 400:          # 401, 5xx and anything else unexpected
+            raise RendererUnavailable(f"renderer answered {status}")
+        return parsed()
+
+    def _call_within(self, seconds: float, method: str, path: str, json=None):
+        """The call with a deadline for the whole of it (finding 3 of 16-reverify-part2.md): the caller gets an
+        answer or RendererTimeout after at most `seconds`, even from a renderer that sends its answer byte by
+        byte. The call runs in a helper thread, which itself stops at the next piece of body after the
+        deadline, or at the next per-step timeout."""
+        end = time.monotonic() + seconds
+        done, out = threading.Event(), {}
+
+        def work():
+            try:
+                out["value"] = self._call(method, path, json, timeout=seconds, deadline=end)
+            except BaseException as exc:  # noqa: BLE001 - handed to the caller below
+                out["error"] = exc
+            finally:
+                done.set()
+
+        threading.Thread(target=work, name="renderer-quick-call", daemon=True).start()
+        if not done.wait(seconds):
+            raise RendererTimeout(f"no answer within {seconds:g} s")
+        if "error" in out:
+            raise out["error"]
+        return out["value"]
 
     def block_types(self) -> list:
         return self._call("GET", "/v1/block-types")
 
     def block_types_quick(self) -> list:
-        """The block types with the short timeout: the outline route must not wait long for them."""
-        return self._call("GET", "/v1/block-types", timeout=self.quick_timeout)
+        """The block types within the short deadline: the outline route must not wait long for them."""
+        return self._call_within(self.quick_timeout, "GET", "/v1/block-types")
 
     def fonts(self) -> list:
         return self._call("GET", "/v1/fonts")
