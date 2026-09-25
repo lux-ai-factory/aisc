@@ -63,3 +63,15 @@ the live cluster, which dropped and recreated the (already empty) leftover datab
   `<scratchpad>/<WP>/` (e.g. .../scratchpad/Q1/), never in a file another agent could write.
 - Before any test run, check that every DB URL you pass points at your own throwaway container's
   port (never 5432) and a non-live database name; abort otherwise.
+
+## The live stack is DOWN (2026-09-25, on the user's instruction)
+All `aisc` containers are stopped (volumes kept; dump ~/aisc-backup-pre-shutdown-*). The user asked to
+finish the isolation and bring the project up again with the new layout. Consequences:
+- X1 no longer needs a live cutover with services running: it becomes ONE maintenance script run with
+  only Postgres up: back up, bring the shared schemas to their head, provision project databases, move
+  and verify every row (P2's tool), retire the shared schemas (kept, unreachable), then start every
+  service on the new images and run the end-to-end checks; stage 7 (dump, verify-dump, drop) follows.
+  Rollback = restore the dump and start the images tagged pre-isolation.
+- Still NEVER start, stop or change the `aisc` stack or its volumes yourself: the orchestrator runs the
+  maintenance step. The rehearsal on a restored copy in a throwaway container stays mandatory.
+- Never use broad `pkill` patterns: stop only processes you started, by PID.
