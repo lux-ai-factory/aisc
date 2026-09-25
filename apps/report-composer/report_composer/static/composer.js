@@ -42,6 +42,23 @@
   }
   if (region) region.querySelector('[data-control="close-message"]').addEventListener("click", function () { say(""); });
 
+  // Notices Python gave (for example references reset on import), carried to the next page and shown there
+  const NOTICES_KEY = "rc-notices";
+  function keepNotices(notices) {
+    if (!notices || !notices.length) return;
+    try {
+      sessionStorage.setItem(NOTICES_KEY, JSON.stringify(notices.map(function (n) { return n.message; })));
+    } catch (e) { /* no storage: the notices are not carried over */ }
+  }
+  function showKeptNotices() {
+    let kept = null;
+    try {
+      kept = JSON.parse(sessionStorage.getItem(NOTICES_KEY) || "null");
+      sessionStorage.removeItem(NOTICES_KEY);
+    } catch (e) { kept = null; }
+    if (Array.isArray(kept) && kept.length) say(kept.join(" "), true);
+  }
+
   // The one confirmation dialog: its texts come from the button that asks (data-confirm-text)
   const dialog = main.querySelector("dialog[data-confirm]");
   function ask(text, action) {
@@ -102,7 +119,10 @@
                          { name: form.name.value, keep_text: form.keep_text.checked });
         if (res.ok) { location.reload(); return; }
       } else return;
-      if (res.ok) location.href = base + "/layouts/" + res.data.id; else say(errorText(res));
+      if (res.ok) {
+        keepNotices(res.data.notices);
+        location.href = base + "/layouts/" + res.data.id;
+      } else say(errorText(res));
     });
     main.addEventListener("click", async function (ev) {
       const button = ev.target.closest("button[data-control]");
@@ -174,6 +194,7 @@
   }
 
   // The editor
+  showKeptNotices();
   const list = document.getElementById("blocks");
   const state = main.querySelector("[data-state]");
   const layoutId = main.dataset.layout;

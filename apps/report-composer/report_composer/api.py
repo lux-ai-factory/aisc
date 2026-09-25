@@ -163,6 +163,8 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
             view = layout_view(db.get_layout(conn, pid, lid))
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
+    if body.get("preset_file") is not None:
+        view["notices"] = presets.reference_notices(preset.reset, "data that is not in this project")
     return view
 
 
@@ -413,7 +415,7 @@ def import_preset(request: Request, body=Body(...), caller=Depends(signed_in)):
     with db.connect(request.app.state.database_url) as conn:
         p.name = looks.free_name(p.name, db.preset_names(conn))
         p.id = _insert_preset(conn, p, source_project_id=None, who=caller.subject, now=request.app.state.clock())
-    return presets.summary(p)
+    return {**presets.summary(p), "notices": presets.reference_notices(p.reset, "data of another project or platform")}
 
 
 def _preset_or_404(conn, preset_id) -> presets.Preset:

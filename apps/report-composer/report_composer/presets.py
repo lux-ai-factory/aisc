@@ -36,6 +36,9 @@ class Preset:
     blocks: list = field(default_factory=list)
     built_in: bool = False
     created_by: str | None = None
+    #: (block index, option, label) of every reference a preset file held and that was reset (R2-D3.6);
+    #: neither exported nor stored
+    reset: list = field(default_factory=list)
 
     @property
     def block_types(self) -> list[str]:
@@ -103,8 +106,35 @@ def _without_references(options: dict, block_type: dict) -> dict:
     return out
 
 
+def reset_references(blocks, block_types) -> tuple[list[dict], list[tuple[int, str, str]]]:
+    """R2-D3.6.1: the blocks of a preset file with every reference option reset (file options only, no
+    defaults merged), and (i, option, label) for each reference whose value in the file was changed."""
+    types = _types(block_types)
+    out, changed = [], []
+    for i, b in enumerate(blocks):
+        options = dict(b.get("options") or {})
+        t = types.get(b["block_type"])
+        if t is not None:
+            kept = _without_references(options, t)
+            props = (t.get("options_schema") or {}).get("properties") or {}
+            for name in layouts.reference_options(t):
+                if name in options and (name not in kept or kept[name] != options[name]):
+                    changed.append((i, name, props[name].get("title") or name))
+            options = kept
+        out.append({"block_type": b["block_type"], "options": options})
+    return out, changed
+
+
+def reference_notices(changed, where: str) -> list[dict]:
+    """One notice per reset reference (R2-D3.6.2); `where` says whose data it pointed at."""
+    return [{"pointer": f"/blocks/{i}/{option}",
+             "message": f"The {label} of block {i + 1} pointed at {where}; it was reset to its default."}
+            for i, option, label in changed]
+
+
 def from_file(doc, block_types) -> Preset:
-    """A preset file checked (R-V1.10): 422 not_a_preset, unknown_block_type, invalid_options or duplicate_cover."""
+    """A preset file checked (R-V1.10): 422 not_a_preset, unknown_block_type, invalid_options or duplicate_cover.
+    Its references are reset and listed in `reset` (R2-D3.6.1)."""
     if not isinstance(doc, dict) or doc.get("format") != FILE_FORMAT or doc.get("version") != FILE_VERSION:
         raise ApiError(422, "not_a_preset", "This file is not a report preset.")
     blocks = doc.get("blocks")
@@ -139,9 +169,9 @@ def from_file(doc, block_types) -> Preset:
     if isinstance(doc.get("numbering"), bool):
         settings["numbering"] = doc["numbering"]
     description = doc.get("description") if isinstance(doc.get("description"), str) else ""
-    return Preset(id=None, name=name.strip()[:NAME_MAX], description=description[:2000],
-                  blocks=[{"block_type": b["block_type"], "options": dict(b.get("options") or {})} for b in blocks],
-                  **settings)
+    kept, changed = reset_references(blocks, block_types)
+    return Preset(id=None, name=name.strip()[:NAME_MAX], description=description[:2000], blocks=kept,
+                  reset=changed, **settings)
 
 
 def blocks_for_layout(preset: Preset, block_types) -> list[dict]:
