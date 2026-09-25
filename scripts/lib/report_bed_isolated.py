@@ -12,7 +12,8 @@ database per project before the real tool exists:
 What it does, in order:
  1. `report_bed.build(label, modules=...)`: the old (shared) layout with its fixed seed.
  2. A project database for every project of core.project that should have one (the seed says gamma
-    has none; with modules=False the composer bed gets databases for alpha, beta and echo).
+    has none, `no_database` defaults to gamma; legacy beds pass `no_database=frozenset()` so gamma
+    gets one too; with modules=False the composer bed gets databases for alpha, beta and echo).
  3. Per project P, in P's database: the moving schemas (qualification, control_objectives, engine,
     report_composer when present) and core.system are restored from a pg_dump of `platform`, then
     every row that is not P's is removed (core.project cascade, then an FK-driven prune of engine,
@@ -235,8 +236,11 @@ def _core_functions(bed):
     return _CORE_FUNCTIONS
 
 
-def build_isolated(label: str = "iso-rep", *, modules: bool = True):
+def build_isolated(label: str = "iso-rep", *, modules: bool = True, no_database=frozenset(NO_DATABASE)):
+    """`no_database`: the pids of the seed that get no project database (default: gamma, as the seed says).
+    Legacy beds pass `frozenset()` so that gamma, too, has a database holding its own version C_V1."""
     global _CORE_FUNCTIONS
+    no_database = frozenset(no_database)
     _CORE_FUNCTIONS = None
     bed = report_bed.build(label, seed=True, modules=modules)
     try:
@@ -249,14 +253,14 @@ def build_isolated(label: str = "iso-rep", *, modules: bool = True):
                 "SELECT 1 FROM pg_namespace WHERE nspname = %s", (s,)).fetchone()]
             existing = {r[0] for r in conn.execute("SELECT datname FROM pg_database").fetchall()}
         for pid in pids:
-            if pid not in NO_DATABASE and project_db(pid) not in existing:
+            if pid not in no_database and project_db(pid) not in existing:
                 report_bed._project_database(bed.t, pid)
         _dump(bed, "/tmp/iso-core.dump", "-t", "core.system", "-t", "core.project")
         with_tables = [s for s in schemas if _has_tables(bed, s)]
         if with_tables:
             _dump(bed, "/tmp/iso-modules.dump", *[x for s in with_tables for x in ("-n", s)])
         for pid in pids:
-            if pid not in NO_DATABASE:
+            if pid not in no_database:
                 _isolate_one(bed, pid, with_tables, templates_applied=not missing)
         with _connect(bed, "platform") as conn, conn.transaction():
             for s in schemas:
