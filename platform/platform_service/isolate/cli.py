@@ -59,7 +59,9 @@ def parse(argv) -> argparse.Namespace:
 
 
 def _connect(dsn: str, *, read_only: bool = False, snapshot: bool = False) -> psycopg.Connection:
-    conn = psycopg.connect(dsn, autocommit=False)
+    # prepare_threshold=None: no server-side prepared statements, so psycopg never sends
+    # DEALLOCATE ALL after a ROLLBACK (a statement outside the read-only transaction)
+    conn = psycopg.connect(dsn, autocommit=False, prepare_threshold=None)
     if snapshot:
         conn.isolation_level = IsolationLevel.REPEATABLE_READ
     if read_only:
