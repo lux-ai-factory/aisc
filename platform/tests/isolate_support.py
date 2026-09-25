@@ -125,7 +125,7 @@ OLD_CORE = [
     "0003_card_versions_in_core_system.sql", "0004_card_version_of_its_project.sql",
 ]
 # New layout (I3.5, I5.4, I7.7, I8.2, controls head before I6.2's FK migration, C7/C8b).
-NEW_QUALIFICATION_BASELINE = "20260926000000_project_database"
+NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
 NEW_DJANGO = "0025_the_database_is_the_project"
 NEW_COMPOSER = "0001_project_database.sql"
