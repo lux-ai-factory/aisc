@@ -9,11 +9,16 @@
   const PICK_ONE = "Pick at least one, or choose All.";
 
   async function call(method, path, body, base) {
-    const r = await fetch((base || api) + path, {
-      method: method, credentials: "same-origin",
-      headers: body === undefined ? {} : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    let r;
+    try {
+      r = await fetch((base || api) + path, {
+        method: method, credentials: "same-origin",
+        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {                                   // no answer at all (network down): an error like others
+      return { ok: false, status: 0, data: null };
+    }
     let data = null;
     try { data = await r.json(); } catch (e) { data = null; }
     return { ok: r.ok, status: r.status, data: data };
@@ -21,7 +26,7 @@
 
   function errorText(res) {
     const err = res.data && res.data.error;
-    if (!err) return "Error " + res.status;
+    if (!err) return res.status === 0 ? "The composer could not be reached." : "Error " + res.status;
     const ref = (err.details || []).map(function (d) { return d && d.error_ref; }).filter(Boolean)[0];
     return err.message + (ref && err.message.indexOf(ref) < 0 ? " (ref " + ref + ")" : "");
   }
@@ -318,8 +323,9 @@
     if (inFlight) { queued = true; return; }
     inFlight = true;
     const mine = ++sent;
-    const res = await call("POST", "/layouts/" + layoutId + "/preview", editorState());
-    inFlight = false;
+    let res;
+    try { res = await call("POST", "/layouts/" + layoutId + "/preview", editorState()); }
+    finally { inFlight = false; }                        // a failure never blocks later previews
     if (mine > shown) {                                  // an answer to an older state is ignored
       shown = mine;
       if (res.ok) { frame.srcdoc = res.data.html; showSaved(); showProblems(res.data.problems); }

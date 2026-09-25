@@ -20,6 +20,8 @@ dev = [
     "pytest>=8.0",
     "beautifulsoup4>=4.12",
     "pypdf>=4.0",
+    # browser tests of composer.js (fix round 1); they drive the system Chrome, no browser download
+    "playwright>=1.40",
 ]
 
 [build-system]
