@@ -61,12 +61,18 @@ class Throwaway:
             input=sql, text=True, capture_output=True, check=check)
 
     def rows(self, db: str, sql: str, role: str | None = None) -> list[dict]:
-        """Rows as dicts, through psql's JSON aggregation."""
+        """Rows as dicts, through psql's JSON aggregation. psql prints tuples only, unaligned (-t -A), so
+        the whole output is the one JSON value, however many lines json_agg spreads it over."""
         wrapped = f"SELECT coalesce(json_agg(t), '[]') FROM ({sql}) t"
-        r = self.psql(db, wrapped.replace("\n", " "), role=role, check=False)
+        user = role or SU
+        pw = self.password if user == SU else user
+        r = subprocess.run(
+            ["docker", "exec", "-i", "-e", f"PGPASSWORD={pw}", self.name, "psql", "-X", "-q", "-t", "-A",
+             "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-U", user, "-d", db, "-f", "-"],
+            input=wrapped.replace("\n", " "), text=True, capture_output=True)
         if r.returncode != 0:
             raise AssertionError(f"query failed as {role or SU} on {db}: {r.stderr.strip()}")
-        return json.loads(r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "[]")
+        return json.loads(out) if (out := r.stdout.strip()) else []
 
     def scalar(self, db: str, sql: str) -> str:
         r = subprocess.run(
