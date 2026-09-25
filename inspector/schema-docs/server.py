@@ -10,6 +10,7 @@ connects as inspector_ro, which reads and never writes.
 """
 from __future__ import annotations
 
+import html
 import os
 import re
 import shutil
@@ -27,6 +28,23 @@ OUTPUT = Path(os.environ.get("SCHEMA_DOCS_OUTPUT", "/srv/schema-docs"))
 WORK = OUTPUT.parent / (OUTPUT.name + "-work")
 MAX_AGE = int(os.environ.get("SCHEMA_DOCS_MAX_AGE", "600"))
 DATABASE = re.compile(r"^(platform|project_[0-9a-f]{32})$")
+PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+#: What each schema holds, in words, for the landing page. A schema not listed here
+#: is still shown, by its name alone.
+PROJECT_SCHEMAS = {
+    "controls": "Controls checklists, their questions, and the answers submitted for this project.",
+    "llm": "LLM keys (stored encrypted, never readable) and the provider and model each agentic system uses.",
+    "provision": "Bookkeeping: which template migrations this database has had.",
+}
+PLATFORM_SCHEMAS = {
+    "core": "Projects, their members, and the versions of each project's AI system card.",
+    "qualification": "EU AI Act qualification: forms, answers, risks and the AI card's knowledge graph.",
+    "control_objectives": "Risk assessments and the control objectives mapped to each risk.",
+    "engine": "The execution engine: systems, components, test plugins, evaluations and their results.",
+    "catalogue": "The public catalogue of tests and controls.",
+    "report_composer": "Report layouts, templates and the reports generated from them.",
+}
 SCHEMAS = "^(?!pg_|information_schema).*"
 SCHEMASPY_JAR = "/usr/local/lib/schemaspy/schemaspy-app.jar"
 SCHEMASPY_TIMEOUT = 300
@@ -59,6 +77,8 @@ def _schemaspy_command(database: str, config: Path, site: Path) -> list[str]:
         "-port", os.environ.get("PGPORT", "5432"),
         "-db", database, "-u", "inspector_ro",
         "-all", "-schemaSpec", SCHEMAS,
+        # structure only: row counts would tell a project member how much the others hold
+        "-norows",
         "-o", str(site),
     ]
 
@@ -93,6 +113,62 @@ def generate(database: str) -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+STYLE = """
+body{font:15px/1.5 system-ui,sans-serif;margin:0;background:#f6f7f9;color:#1d2330}
+main{max-width:960px;margin:0 auto;padding:24px 16px}
+h1{font-size:24px;margin:0 0 4px} h2{font-size:18px;margin:28px 0 4px}
+.lede,.note{color:#556} .note{font-size:13px}
+.schema{background:#fff;border:1px solid #dde1e8;border-radius:8px;padding:12px 14px;margin:10px 0}
+.schema h3{font-size:15px;margin:0} .schema p{margin:4px 0 8px;color:#445}
+.links a{margin-right:14px} summary{cursor:pointer;color:#445;font-size:13px}
+.tables{columns:3 180px;margin:6px 0 0;padding-left:18px;font-size:13px}
+"""
+
+
+def _schemas_of(database: str, known: dict[str, str]) -> list[str]:
+    """The schemas SchemaSpy made pages for, or the known ones before its first run."""
+    site = OUTPUT / database
+    made = sorted(p.name for p in site.iterdir() if (p / "index.html").is_file()) if site.is_dir() else []
+    return made or list(known)
+
+
+def _section(title: str, database: str, known: dict[str, str], intro: str) -> str:
+    e = html.escape
+    parts = [f"<h2>{e(title)}</h2>", f'<p class="lede">{e(intro)} '
+             f'<a href="{e(database)}/">Overview of every table</a></p>']
+    if not _index(database).is_file():
+        parts.append('<p class="note">The first time a database is opened, its diagrams are built: '
+                     "allow up to a minute.</p>")
+    for schema in _schemas_of(database, known):
+        base = f"{database}/{schema}"
+        tables = sorted(p.stem for p in (OUTPUT / base / "tables").glob("*.html"))
+        listing = ""
+        if tables:
+            items = "".join(f'<li><a href="{e(base)}/tables/{e(t)}.html">{e(t)}</a></li>' for t in tables)
+            listing = f"<details><summary>{len(tables)} tables</summary><ul class=tables>{items}</ul></details>"
+        parts.append(
+            f'<div class="schema"><h3>{e(schema)}</h3><p>{e(known.get(schema, ""))}</p>'
+            f'<div class="links"><a href="{e(base)}/index.html">Tables and columns</a>'
+            f'<a href="{e(base)}/relationships.html">Relationship diagram</a></div>{listing}</div>')
+    return "".join(parts)
+
+
+def landing_page(project: str | None) -> str:
+    """One page for the diagrams a project member may explore: the project's own
+    database first, then the shared one. Structure only, never rows."""
+    body = ['<h1>Database diagrams</h1><p class="lede">How the data is organised: tables, columns and '
+            "how they link. No data is shown here.</p>"]
+    if project:
+        body.append(_section("This project", "project_" + project.replace("-", ""), PROJECT_SCHEMAS,
+                             "What is kept in this project's own database."))
+    body.append(_section("Shared platform", "platform", PLATFORM_SCHEMAS,
+                         "Modules that are not per project yet keep their data here, for every project together."))
+    return ("<!doctype html><html lang=en><head><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<title>Database diagrams</title><style>{STYLE}</style></head><body><main>"
+            + "".join(body) + "</main></body></html>")
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(OUTPUT), **kwargs)
@@ -103,6 +179,15 @@ class Handler(SimpleHTTPRequestHandler):
         if parts.path == "/health":
             self.send_response(HTTPStatus.NO_CONTENT)
             self.end_headers()
+            return
+        if parts.path in ("", "/"):
+            project = parse_qs(parts.query).get("project", [""])[0]
+            page = landing_page(project if PID.fullmatch(project) else None).encode()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(page)))
+            self.end_headers()
+            self.wfile.write(page)
             return
         if not DATABASE.fullmatch(database) or ".." in parts.path.split("/"):
             self.send_error(HTTPStatus.NOT_FOUND, "Not a database this shows")

@@ -31,6 +31,14 @@
   }
 }
 
+# The database diagrams: the platform reads the path Caddy passes (X-Forwarded-Uri) and lets a
+# member through to the landing page, the shared platform and their own project's database.
+(schema_gate) {
+  forward_auth platform:8000 {
+    uri /authz/schema
+  }
+}
+
 # oauth2-proxy's own endpoints stay open on every origin, or there is no way in.
 (oauth_endpoints) {
   handle /oauth2/* {
@@ -150,16 +158,18 @@
       rewrite * /project.html
       file_server
     }
-    # The database inspector, for admins only: it sees every project's database. pgAdmin
-    # serves under this prefix itself (SCRIPT_NAME), so the path goes through unstripped.
+    # pgAdmin, for admins only: it shows every project's data. It serves under this
+    # prefix itself (SCRIPT_NAME), so the path goes through unstripped.
     handle /inspect/pgadmin* {
       import protect
       import admin_only
       reverse_proxy pgadmin:80
     }
+    # The diagrams show structure, never rows: members see their own project's and the
+    # shared platform's, and the platform decides which (see schema_gate).
     handle_path /inspect/schema* {
       import protect
-      import admin_only
+      import schema_gate
       reverse_proxy schema-docs:8080
     }
     # protect goes INSIDE handle: at site level it would also guard /oauth2/*,

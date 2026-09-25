@@ -12,10 +12,12 @@ often the name of a customer, and 403 would confirm it exists.
 from __future__ import annotations
 
 import hmac
+import re
+import uuid
 import logging
 import os
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -217,6 +219,43 @@ def admin_gate(caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> Response:
     are behind this rather than behind a membership: 204 lets the request
     through, 403 does not.
     """
+    return Response(status_code=204)
+
+
+#: What /inspect/schema serves: the landing page, the shared database and project databases.
+SCHEMA_DATABASE = re.compile(r"^(platform|project_([0-9a-f]{32}))$")
+
+
+@app.get("/authz/schema", status_code=204)
+def schema_gate(request: Request, caller: Caller = Depends(caller_dependency)) -> Response:
+    """Whether this caller may see the database diagrams Caddy was asked for.
+
+    The diagrams show structure, never rows, so they are for project members, not only
+    admins: the landing page and the shared platform's diagrams to anyone signed in, a
+    project's own database to its members. Only an admin may force a new SchemaSpy run
+    (?refresh=1). Caddy passes the path in X-Forwarded-Uri, with or without the
+    /inspect/schema prefix it strips."""
+    parts = urlsplit(request.headers.get("x-forwarded-uri", "/"))
+    path = parts.path.removeprefix("/inspect/schema")
+    admin = caller.has_role(ADMIN_ROLE)
+    refused = HTTPException(status_code=403, detail="these diagrams are not yours to see")
+    if "refresh" in parse_qs(parts.query) and not admin:
+        raise refused
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        return Response(status_code=204)
+    if ".." in segments:
+        raise refused
+    found = SCHEMA_DATABASE.fullmatch(segments[0])
+    if found is None:
+        raise refused
+    if found.group(2) is None:
+        return Response(status_code=204)
+    pid = str(uuid.UUID(found.group(2)))
+    if db.get_project(pid) is None:
+        raise refused
+    if not admin and effective_role(pid, caller) is None:
+        raise refused
     return Response(status_code=204)
 
 
