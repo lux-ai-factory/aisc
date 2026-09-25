@@ -251,6 +251,7 @@ class Run:
                 entry["status"] = "failed"
                 self.refusals.extend(e.refusals)
                 log.error("project %s: failed (%s); stopping, later projects are not attempted", pid, e)
+                self.not_attempted(pid)
                 return 1
             except Exception as e:  # noqa: BLE001 - any failure rolls that project back
                 tgt.rollback()
@@ -258,6 +259,7 @@ class Run:
                 entry["error"] = REP.describe(e, self.su)
                 log.error("project %s: failed (%s); stopping, later projects are not attempted",
                           pid, entry["error"])
+                self.not_attempted(pid)
                 return 1
             finally:
                 _close(tgt)
@@ -282,6 +284,16 @@ class Run:
             finally:
                 _close(lib)
         return 0
+
+    def not_attempted(self, failed: str) -> None:
+        """G8: after a failed project nothing later runs; the report says so."""
+        for pid in self.selected:
+            if pid > failed:
+                self.project_entry(pid)["status"] = "planned"
+                self.project_entry(pid)["note"] = "not attempted"
+        if self.rep.get("library"):
+            self.rep["library"]["status"] = "planned"
+            self.rep["library"]["note"] = "not attempted"
 
     # ── verify, report ───────────────────────────────────────────────────────
     def verify(self, *, failing: bool = True) -> int:

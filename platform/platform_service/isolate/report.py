@@ -62,13 +62,14 @@ def summary(rep: dict) -> str:
              f" (snapshot {rep.get('snapshot_time')})"]
     for pid, p in sorted(rep.get("projects", {}).items()):
         lines.append(f"project {pid} ({p.get('database')}): {p.get('status')}"
+                     + (f" ({p['note']})" if p.get("note") else "")
                      + (f" [{p['error']}]" if p.get("error") else ""))
         for t, e in sorted((p.get("tables") or {}).items()):
             lines.append(f"  {t} -> {e['target']}: source {e['source_rows']}, to copy {e['to_copy']},"
                          f" present {e['already_present']}, copied {e['copied']}, count {e['count']}")
     lib = rep.get("library") or {}
     if lib:
-        lines.append(f"library: {lib.get('status')}")
+        lines.append(f"library: {lib.get('status')}" + (f" ({lib['note']})" if lib.get("note") else ""))
         for t, e in sorted((lib.get("tables") or {}).items()):
             lines.append(f"  {t} -> {e['target']}: source {e['source_rows']}, to copy {e['to_copy']},"
                          f" present {e['already_present']}, copied {e['copied']}, count {e['count']}")
