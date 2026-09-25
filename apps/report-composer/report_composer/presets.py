@@ -159,9 +159,29 @@ def blocks_for_layout(preset: Preset, block_types) -> list[dict]:
     return out
 
 
+# Free text of the built-in blocks, used when the renderer does not describe a block type.
+KNOWN_FREE_TEXT = {"free_text": (("text", True),), "chapter": (("intro", False),)}
+# A text option longer than this is prose written for one project (text, intro, commentary), not a title.
+TITLE_MAX = 300
+
+
+def _free_text_options(type_id: str, block_type: dict | None) -> list[tuple[str, bool]]:
+    """(option name, needs a value) for every free-text option of a block type (fix round 1, finding 4):
+    every string option whose maxLength is above TITLE_MAX, plus the common commentary."""
+    found = {"commentary": False}
+    for name, required in KNOWN_FREE_TEXT.get(type_id, ()):
+        found[name] = required
+    schema = (block_type or {}).get("options_schema") or {}
+    for name, prop in (schema.get("properties") or {}).items():
+        if isinstance(prop, dict) and prop.get("type") == "string" and (prop.get("maxLength") or 0) > TITLE_MAX:
+            found[name] = (prop.get("minLength") or 0) > 0
+    return list(found.items())
+
+
 def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
-    """A layout's structure as a preset (R-V1.7, R-V1.9): references stripped, texts become
-    placeholders unless kept, the coverage map left behind. Cover title and subtitle stay."""
+    """A layout's structure as a preset (R-V1.7, R-V1.9): references stripped, every free text (free text,
+    chapter intro, commentary, any long text option of a plugin block) becomes the placeholder or empty
+    unless kept, the coverage map left behind. Titles, cover title and subtitle stay."""
     types = _types(block_types)
     blocks = []
     for b in layout["blocks"]:
@@ -170,10 +190,9 @@ def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
         if t is not None:
             options = _without_references(options, t)
         if not keep_text:
-            if b["block_type"] == "free_text" and "text" in options:
-                options["text"] = PLACEHOLDER
-            if "commentary" in options:
-                options["commentary"] = ""
+            for name, required in _free_text_options(b["block_type"], t):
+                if name in options:
+                    options[name] = PLACEHOLDER if required else ""
         blocks.append({"block_type": b["block_type"], "options": options})
     return Preset(id=None, name=layout["name"], description=layout.get("description") or "",
                   language=layout.get("language") or "en", toc=layout.get("toc") or "auto",

@@ -401,3 +401,52 @@ def test_r_v1_edge_a_language_no_longer_offered_falls_back_to_english_with_a_not
     assert r.status_code == 201, r.text[:300]
     assert r.json().get("language") == "en"
     assert "de" in json.dumps(r.json().get("details"))
+
+
+# ── fix round 1, finding 4: every free text is dropped unless "Keep texts" ────
+
+def _chapter_layout(client, auth):
+    blocks = [v2blk("cover", report_title="Kept title"),
+              v2blk("chapter", title="Findings", intro="Findings for Bank X show a gap.", commentary="Chapter aside"),
+              v2blk("free_text", text="Secret findings")]
+    return create(client, auth, name=unique("Chapters"), blocks=blocks).json()
+
+
+def test_fix4_a_saved_preset_drops_the_chapter_intro(client_v2, auth):
+    lay = _chapter_layout(client_v2, auth)
+    r = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/preset", json={"name": unique("Audit"), "description": ""},
+                       headers=auth("alice"))
+    assert r.status_code == 201
+    exported = client_v2.get(f"/api/presets/{r.json()['id']}/export", headers=auth("bob")).json()
+    chapter = exported["blocks"][1]["options"]
+    assert chapter["title"] == "Findings"                        # structure stays
+    assert chapter.get("intro", "") == "" and chapter.get("commentary", "") == ""
+    assert "Bank X" not in json.dumps(exported)
+
+
+def test_fix4_the_layout_export_drops_the_intro_and_keep_text_keeps_it(client_v2, auth):
+    lay = _chapter_layout(client_v2, auth)
+    doc = client_v2.get(f"/api/p/alpha/layouts/{lay['id']}/export", headers=auth("alice")).json()
+    assert doc["blocks"][1]["options"].get("intro", "") == ""
+    kept = client_v2.get(f"/api/p/alpha/layouts/{lay['id']}/export?keep_text=true", headers=auth("alice")).json()
+    assert kept["blocks"][1]["options"]["intro"] == "Findings for Bank X show a gap."
+
+
+def test_fix4_any_long_text_option_of_a_plugin_block_is_dropped_too():
+    """The rule follows the block type's schema: every text option longer than a title is free text."""
+    from report_composer import presets
+
+    plugin_type = {"type_id": "auditor_notes", "default_options": {"notes": "", "heading": "Notes"},
+                   "options_schema": {"type": "object", "properties": {
+                       "heading": {"type": "string", "maxLength": 200},
+                       "notes": {"type": "string", "maxLength": 4000},
+                       "summary": {"type": "string", "minLength": 1, "maxLength": 2000}}}}
+    layout = {"name": "L", "blocks": [{"block_type": "auditor_notes",
+                                       "options": {"heading": "Auditor", "notes": "Client X", "summary": "Y"}}]}
+    p = presets.from_layout(layout, [plugin_type])
+    options = p.blocks[0]["options"]
+    assert options["heading"] == "Auditor"
+    assert options["notes"] == ""
+    assert options["summary"] == presets.PLACEHOLDER             # a required text keeps a valid value
+    kept = presets.from_layout(layout, [plugin_type], keep_text=True).blocks[0]["options"]
+    assert kept == {"heading": "Auditor", "notes": "Client X", "summary": "Y"}
