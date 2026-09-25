@@ -8,6 +8,7 @@
   const api = main.dataset.api;
   const PICK_ONE = "Pick at least one, or choose All.";
   const EMPTY_CHAPTER = "This chapter is empty.";
+  const OUTLINE_FAILED = "The chapter outline could not be updated.";
 
   async function call(method, path, body, base) {
     let r;
@@ -34,11 +35,16 @@
 
   // The message region at the top of every page (no browser alert)
   const region = main.querySelector("[data-message]");
-  function say(text, ok) {
+  function say(text, ok, action) {                  // action {label, run}: a button that runs it once
     if (!region) return;
     region.querySelector("[data-message-text]").textContent = text;
     region.classList.toggle("ok", !!ok);
     region.hidden = !text;
+    const act = region.querySelector('[data-control="message-action"]');
+    if (!act) return;
+    act.hidden = !action;
+    act.textContent = action ? action.label : "";
+    act.onclick = action ? function () { say(""); action.run(); } : null;
   }
   if (region) region.querySelector('[data-control="close-message"]').addEventListener("click", function () { say(""); });
 
@@ -207,12 +213,7 @@
   const control = function (name) { return main.querySelector('[data-control="' + name + '"]'); };
   let revision = parseInt(main.dataset.revision, 10);
   let unsaved = false;
-
-  function setLabel(text, error) {
-    if (!label) return;
-    label.textContent = text;
-    label.classList.toggle("error", !!error);
-  }
+  function setLabel(text, error) { if (label) { label.textContent = text; label.classList.toggle("error", !!error); } }
   function showSaved() { setLabel(unsaved ? "Preview of unsaved changes" : "Preview of revision " + revision); }
   function dirty() {
     unsaved = true;
@@ -226,7 +227,14 @@
   async function redrawOutline() {
     const mine = ++outlineAsked;
     const res = await call("POST", "/layouts/" + layoutId + "/outline", { blocks: collect() });
-    if (!res.ok || mine !== outlineAsked) return;
+    if (mine !== outlineAsked) return;
+    if (!res.ok) {                                       // R2-D3.3: no stale indentation, and a way to retry
+      Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; });
+      list.querySelectorAll("[data-empty-chapter], [data-unwritten]").forEach(function (p) { p.remove(); });
+      say(OUTLINE_FAILED, false, { label: "Try again", run: redrawOutline });
+      return;
+    }
+    if (region && region.querySelector("[data-message-text]").textContent === OUTLINE_FAILED) say("");
     res.data.outline.forEach(function (o) {
       const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
       if (!li) return;
@@ -243,7 +251,6 @@
     if (!isJson) return value;
     try { return JSON.parse(value); } catch (e) { return value; }
   }
-
   function valueOf(input) {
     const kind = input.dataset.kind;
     if (kind === "bool") return input.checked;
@@ -269,7 +276,6 @@
     }
     return input.value;
   }
-
   function optionsOf(li) {
     const options = {};
     li.querySelectorAll("[data-option]").forEach(function (input) {
@@ -280,7 +286,6 @@
     });
     return options;
   }
-
   function collect() {
     return Array.from(list.children).map(function (li) {
       return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType, options: optionsOf(li) };
@@ -305,14 +310,12 @@
     return { system_id: pick("version"), template_id: pick("template") || null, toc: pick("toc"),
              numbering: numbering ? numbering.checked : undefined, coverage: coverage(), blocks: collect() };
   }
-
   function pickOneHints() {
     list.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
       const v = valueOf(set);
       hint(set, "data-pick-one", Array.isArray(v) && v.length === 0 ? PICK_ONE : "", "inline-problem");
     });
   }
-
   function showProblems(problems) {
     list.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
     const mapBox = main.querySelector("[data-map-problems]");
@@ -348,7 +351,6 @@
   try { auto = localStorage.getItem("composer.autoRefresh") !== "off"; } catch (e) { auto = true; }
   const autoBox = control("auto-refresh");
   if (autoBox) autoBox.checked = auto;
-
   function schedule() {
     if (!auto || !frame) return;
     clearTimeout(timer);
@@ -387,9 +389,7 @@
     const err = res.data && res.data.error;
     if (err && err.code === "invalid_reference" && !resetInvalid &&
         await ask("Some options or coverage map entries name data this version does not have. Reset them and save?",
-                  "Reset and save")) {
-      return save(true);
-    }
+                  "Reset and save")) return save(true);
     showProblems(err && err.details && err.details.length ? err.details : [{ message: errorText(res) }]);
     return false;
   }
