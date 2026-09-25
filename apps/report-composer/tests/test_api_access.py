@@ -24,7 +24,9 @@ def test_r4_4_1_no_sign_in_is_401(client, method, path):
 # R4.4.3
 @pytest.mark.parametrize("method,path", PROJECT_ROUTES)
 def test_r4_4_3_a_stranger_gets_404(client, auth, method, path):
-    r = getattr(client, method)(path, headers=auth("bob"), json={"name": "x"} if method == "post" else None)
+    # R2-D3.5.3: json= only for post (TestClient.get takes no json argument)
+    extra = {"json": {"name": "x"}} if method == "post" else {}
+    r = getattr(client, method)(path, headers=auth("bob"), **extra)
     assert r.status_code == 404
 
 
