@@ -46,9 +46,9 @@ def live(client_v2, auth, token, fake_v2, bed, monkeypatch):
     context = browser.new_context(extra_http_headers={"Authorization": f"Bearer {token('alice')}"})
     errors = []
 
-    def open_editor(blocks):
+    def open_editor(blocks, **body):
         monkeypatch.setenv("PLATFORM_ORIGIN", "http://localhost")
-        lay = new_layout(client_v2, auth, name=unique("Browser"), blocks=blocks, system_id=IDS["A_V2"])
+        lay = new_layout(client_v2, auth, name=unique("Browser"), blocks=blocks, system_id=IDS["A_V2"], **body)
         monkeypatch.setenv("PLATFORM_ORIGIN", f"http://127.0.0.1:{port}")
         page = context.new_page()
         page.on("pageerror", lambda exc: errors.append(str(exc)))

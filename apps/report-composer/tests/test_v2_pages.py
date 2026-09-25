@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from conftest import IDS, new_layout, new_template
+from test_v2_browser import live  # noqa: F401  (the browser fixture)
 from v2_fakes import clean_presets, client_v2, fake_v2, unique, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
@@ -278,10 +279,25 @@ def test_r_u1_5_viewers_see_the_grid_read_only(client_v2, auth):
     assert boxes and all(b.has_attr("disabled") for b in boxes)
 
 
-def test_r_u1_1_python_computes_the_grid_and_js_only_collects():
-    js = JS.read_text()
-    assert "data-coverage-map" in js or "coverageMap" in js, "missing feature: coverage map ticks sent on save"
-    assert "coverage" in js
+def test_r_u1_1_python_computes_the_grid_and_js_only_collects(live):
+    """In the browser: the script sends exactly the ticked boxes on save and computes nothing itself; the
+    summary line changes only when Python draws the page again (05-verify.md note 11: was a word check)."""
+    page, lay = live([v2blk("summary_coverage")], coverage=MAP)
+    summary = page.locator("details[data-coverage-map] > summary")
+    assert summary.inner_text().strip() == "Coverage map: 1 of 4 objectives linked"
+    summary.click()
+    page.check('input[data-objective="R2.1"][data-kind="tests"][data-value="LangBiTe"]')
+    assert summary.inner_text().strip() == "Coverage map: 1 of 4 objectives linked"     # no count in the script
+    with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith(f"/layouts/{lay['id']}")) as resp:
+        page.click('[data-control="save"]')
+    assert resp.value.status == 200
+    sent = resp.value.request
+    assert sent.post_data_json["coverage"] == [
+        {"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]},
+        {"objective_id": "R2.1", "tests": ["LangBiTe"], "checklists": []}]
+    page.reload()
+    assert page.locator("details[data-coverage-map] > summary").inner_text().strip() == \
+        "Coverage map: 2 of 4 objectives linked"
 
 
 def test_r_u2_6_legacy_links_are_read_only_with_a_switch(client_v2, auth):
