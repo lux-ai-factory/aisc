@@ -8,6 +8,7 @@
 | 4 code | one fresh agent per work package | pending |
 | 4 / P1 | platform: template 0006..0010, project.system, init files (04-P1-notes.md; commits 8c13e87, a9a0397, d9fe305, a774ba2, aae72d1) | done 2026-09-25 |
 | 4 / W1 | compose and env wiring: DSN templates, migrate one-shots, membership DSN, isolate one-shot, image tags (04-W1-notes.md; commits 3a3c672, 215bb95) | done 2026-09-25 |
+| 4 / D1 | dashboard: engine dataset on each project's own connection (project.system, no pid filter), memberships over AISC_MEMBERSHIP_DB_URI (NullPool), no AISC Results registration, remove_results_connection() for C12; dashboard suite 140 passed, 0 failed (04-D1-notes.md; results-dashboard commit 7ff4999) | done 2026-09-25 |
 | 5 verify + full rehearsal on the live copy | 05-rehearsal.md | pending |
 | 6 live migration | orchestrator, stack quiet | pending |
 | 7 drop shared schemas after dump + verify | orchestrator | pending |
