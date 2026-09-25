@@ -136,6 +136,7 @@ def test_p2r1_1_the_outline_route_asks_the_renderer_once_for_many_edits(make_cli
     fake = Counting()
     client = make_client(fake)
     lay = new_layout(client, auth, name=unique("Cache"), system_id=IDS["A_V2"], blocks=BLOCKS)
+    client.app.state.outline_block_types = None       # an empty cache: saving the layout may have filled it
     fake.type_calls = 0
     first = outline(client, auth, lay)
     for _ in range(4):
@@ -149,6 +150,7 @@ def test_p2r1_1_a_hung_renderer_gives_the_fallback_outline_with_the_quick_call(m
     fake = Hung()
     client = make_client(fake)
     lay = new_layout(client, auth, name=unique("Hung"), system_id=IDS["A_V2"], blocks=BLOCKS)
+    client.app.state.outline_block_types = None       # an empty cache: saving the layout may have filled it
     fake.slow = False
     got = outline(client, auth, lay)
     outline(client, auth, lay)
