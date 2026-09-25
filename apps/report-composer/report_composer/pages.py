@@ -17,7 +17,7 @@ from .api import may_delete_preset
 from .guards import guard
 from .jinja_env import env
 from .records import layout_or_404
-from .renderer_calls import block_types, coverage_choices_for, fonts, languages, renderer_call
+from .renderer_calls import block_types, coverage_choices_for, fonts, renderer_call
 
 router = APIRouter()
 
@@ -136,7 +136,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
     template_ids = {t["id"] for t in templates}
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,
                  reports=report_rows, palette=palette, editor=editor, templates=templates,
-                 languages=languages(request), grid=grid, map_problems=by_block.get(None, []),
+                 grid=grid, map_problems=by_block.get(None, []),
                  template_known=layout.get("template_id") in template_ids)
 
 

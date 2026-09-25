@@ -1,7 +1,7 @@
 """Generated reports: the snapshot sent to the renderer, the document's filename and the generation itself.
 
-Report run v2: snapshots are version 2 (language, document settings, coverage map), a report is a
-PDF or a Word document (DOCX), and the renderer's fingerprint is stored with it.
+Report run v2: snapshots are version 2 (document settings, coverage map; no language, reports are
+English), a report is a PDF or a Word document (DOCX), and the renderer's fingerprint is stored with it.
 """
 from __future__ import annotations
 
@@ -66,7 +66,6 @@ def snapshot_of(project, layout, mode, caller, template=None, *, document_id=Non
             "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": b["options"]}
                        for b in layout["blocks"]],
             "mode": mode, "requested_by": requested_by(caller),
-            "language": layout.get("language") or "en",
             "document": snapshot_document(layout, document_id),
             "coverage_links": list(layout.get("coverage") or [])}
     if template is not None:

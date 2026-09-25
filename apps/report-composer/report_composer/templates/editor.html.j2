@@ -22,7 +22,6 @@
   <div class="toolbar qf-section">
     <label>Version <select data-control="version">{% for s in systems %}<option value="{{ s.pid }}"{% if s.pid == layout.system_id %} selected{% endif %}>Version {{ s.number }} ({{ s.release or "" }})</option>{% endfor %}</select></label>
     <label>Template <select data-control="template"><option value=""{% if not template_known %} selected{% endif %}>Platform default</option>{% for x in templates %}<option value="{{ x.id }}"{% if x.id == layout.template_id %} selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
-    <label>Language <select data-control="language">{% for l in languages %}<option value="{{ l.code }}"{% if l.code == layout.language %} selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></label>
     <label>Contents <select data-control="toc"><option value="auto"{% if layout.toc == "auto" %} selected{% endif %}>Automatic</option><option value="on"{% if layout.toc == "on" %} selected{% endif %}>Always</option><option value="off"{% if layout.toc == "off" %} selected{% endif %}>Never</option></select></label>
     <label class="inline"><input type="checkbox" data-control="numbering"{% if layout.numbering %} checked{% endif %}> Number the sections</label>
     <span class="state" data-state></span>

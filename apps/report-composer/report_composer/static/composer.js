@@ -284,7 +284,7 @@
   function editorState() {
     const pick = function (name) { const c = control(name); return c ? c.value : undefined; };
     const numbering = control("numbering");
-    return { system_id: pick("version"), template_id: pick("template") || null, language: pick("language"),
+    return { system_id: pick("version"), template_id: pick("template") || null,
              toc: pick("toc"), numbering: numbering ? numbering.checked : undefined, coverage: coverage(),
              blocks: collect() };
   }

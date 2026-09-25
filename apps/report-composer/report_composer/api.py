@@ -17,7 +17,7 @@ from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, check_origin, project_guard, signed_in
 from .records import NO_LAYOUT, NO_TEMPLATE, chosen_template, layout_or_404, template_of, template_or_404
-from .renderer_calls import (block_types, choices_for, coverage_choices_for, fonts, languages, renderer_call)
+from .renderer_calls import block_types, choices_for, coverage_choices_for, fonts, renderer_call
 from .settings import document_settings
 
 router = APIRouter(prefix="/api")
@@ -29,7 +29,7 @@ DRAFT_MAX_BYTES = 1_048_576
 
 def layout_view(layout: dict) -> dict:
     return {k: layout[k] for k in ("id", "project_id", "name", "description", "system_id", "template_id", "revision",
-                                   "blocks", "created_at", "updated_at", "language", "toc", "numbering", "coverage")}
+                                   "blocks", "created_at", "updated_at", "toc", "numbering", "coverage")}
 
 
 def _text(body: dict, name: str, *, required: bool, max_len: int) -> str:
@@ -113,18 +113,11 @@ def _preset_named(conn, preset_id) -> presets.Preset:
     return found
 
 
-def _preset_settings(preset: presets.Preset | None, offered: list[dict]) -> tuple[dict, list[dict]]:
-    """The document settings a preset starts a layout with, and a notice when its language is gone."""
+def _preset_settings(preset: presets.Preset | None) -> dict:
+    """The document settings a preset starts a layout with: toc and numbering (R2-D1.13)."""
     if preset is None:
-        return {}, []
-    base = {k: v for k, v in (("language", preset.language), ("toc", preset.toc), ("numbering", preset.numbering))
-            if v is not None}
-    notices = []
-    if base.get("language") and base["language"] not in [lang.get("code") for lang in offered]:
-        notices.append({"pointer": "/language", "language": base["language"],
-                        "message": f"The preset's language {base['language']} is not offered; the layout uses English."})
-        base["language"] = "en"
-    return base, notices
+        return {}
+    return {k: v for k, v in (("toc", preset.toc), ("numbering", preset.numbering)) if v is not None}
 
 
 @router.post("/p/{ref}/layouts", status_code=201)
@@ -156,9 +149,7 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
         blocks = _blocks(body)
     else:
         blocks = layouts.default_blocks(types)
-    offered = languages(request)
-    base, notices = _preset_settings(preset, offered)
-    settings = document_settings(body, base, offered)
+    settings = document_settings(body, _preset_settings(preset))
     fail_on(layouts.validate_layout(
         blocks, block_types=types, choices=choices_for(request, pid, system["pid"]),
         allow_missing_references=preset is not None, coverage=settings["coverage"],
@@ -172,8 +163,6 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
             view = layout_view(db.get_layout(conn, pid, lid))
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
-    if notices:
-        view["details"] = notices
     return view
 
 
@@ -213,7 +202,7 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
         template_id = chosen_template(conn, pid, body.get("template_id"))
     if system is None:
         raise _system_not_in_project()
-    settings = document_settings(body, current, languages(request) if body.get("language") is not None else [])
+    settings = document_settings(body, current)
     blocks, settings["coverage"] = _checked_blocks(
         blocks, block_types(request), choices_for(request, pid, system["pid"]),
         reset_invalid=bool(body.get("reset_invalid")), coverage=settings["coverage"],
@@ -332,7 +321,7 @@ def _draft_preview(request: Request, g: Guarded, layout_id: str, body: dict) -> 
             raise _system_not_in_project()
         template_id = chosen_template(conn, pid, body.get("template_id"))
         template = db.get_template(conn, pid, template_id, with_logo=True) if template_id else None
-    settings = document_settings(body, current, languages(request) if body.get("language") is not None else [])
+    settings = document_settings(body, current)
     blocks = _blocks(body) if body.get("blocks") is not None else current["blocks"]
     problems = layouts.validate_layout(
         blocks, block_types=block_types(request), choices=choices_for(request, pid, system["pid"]),
@@ -362,7 +351,7 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
                 name = presets.copy_name(src["name"], db.layout_names(conn, pid))
             blocks = [{"instance_id": str(uuid.uuid4()), "block_type": b["block_type"], "options": b["options"]}
                       for b in src["blocks"]]
-            settings = {k: src[k] for k in ("language", "toc", "numbering", "coverage")}
+            settings = {k: src[k] for k in ("toc", "numbering", "coverage")}
             lid = db.insert_layout(conn, project_pid=pid, system_pid=src["system_id"], template_id=src["template_id"],
                                    name=name, description=src.get("description") or "", blocks=blocks,
                                    who=g.caller.subject, now=now, settings=settings)
@@ -386,9 +375,8 @@ def export_layout(request: Request, layout_id: str, keep_text: bool = False,
 
 
 def _insert_preset(conn, p: presets.Preset, *, source_project_id, who, now) -> str:
-    return db.insert_preset(conn, name=p.name, description=p.description, language=p.language, toc=p.toc,
-                            numbering=p.numbering, blocks=p.blocks, source_project_id=source_project_id, who=who,
-                            now=now)
+    return db.insert_preset(conn, name=p.name, description=p.description, toc=p.toc, numbering=p.numbering,
+                            blocks=p.blocks, source_project_id=source_project_id, who=who, now=now)
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/preset", status_code=201)

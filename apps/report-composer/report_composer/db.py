@@ -53,7 +53,7 @@ def latest_system(conn, project_pid) -> dict | None:
 # Layouts
 
 #: a layout's document settings and coverage map before anyone sets them (today's behaviour)
-DEFAULT_SETTINGS = {"language": "en", "toc": "auto", "numbering": False, "coverage": []}
+DEFAULT_SETTINGS = {"toc": "auto", "numbering": False, "coverage": []}
 
 
 def layout_names(conn, project_pid) -> set[str]:
@@ -64,8 +64,7 @@ def layout_names(conn, project_pid) -> set[str]:
 def list_layouts(conn, project_pid) -> list[dict]:
     return conn.execute(
         "SELECT l.id::text AS id, l.name, l.description, l.system_id::text AS system_id, s.number AS system_number,"
-        " l.revision, l.updated_at, lr.last_report, l.template_id::text AS template_id, t.name AS template_name,"
-        " l.language"
+        " l.revision, l.updated_at, lr.last_report, l.template_id::text AS template_id, t.name AS template_name"
         " FROM report_composer.layout l JOIN core.system s ON s.pid = l.system_id"
         " LEFT JOIN report_composer.template t ON t.id = l.template_id"
         " LEFT JOIN LATERAL (SELECT json_build_object('id', r.id, 'created_at', r.created_at, 'status', r.status)"
@@ -81,7 +80,7 @@ def get_layout(conn, project_pid, layout_id, for_update=False) -> dict | None:
     row = conn.execute(
         "SELECT l.id::text AS id, l.project_id::text AS project_id, l.name, l.description,"
         " l.system_id::text AS system_id, l.template_id::text AS template_id, l.revision, l.created_at,"
-        " l.created_by, l.updated_at, l.updated_by, l.language, l.toc, l.numbering, l.coverage"
+        " l.created_by, l.updated_at, l.updated_by, l.toc, l.numbering, l.coverage"
         " FROM report_composer.layout l WHERE l.id = %s AND l.project_id = %s"
         + (" FOR UPDATE" if for_update else ""), (lid, project_pid)).fetchone()
     if row is None:
@@ -104,9 +103,9 @@ def insert_layout(conn, *, project_pid, system_pid, template_id, name, descripti
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     row = conn.execute(
         "INSERT INTO report_composer.layout (project_id, system_id, template_id, name, description, created_at,"
-        " created_by, updated_at, updated_by, language, toc, numbering, coverage)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
-        (project_pid, system_pid, template_id, name, description, now, who, now, who, s["language"], s["toc"],
+        " created_by, updated_at, updated_by, toc, numbering, coverage)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
+        (project_pid, system_pid, template_id, name, description, now, who, now, who, s["toc"],
          s["numbering"], Jsonb(s["coverage"]))).fetchone()
     _insert_blocks(conn, row["id"], blocks)
     return row["id"]
@@ -116,9 +115,9 @@ def update_layout(conn, layout_id, *, based_on, name, description, system_pid, t
                   now, settings) -> int | None:
     row = conn.execute(
         "UPDATE report_composer.layout SET revision = revision + 1, name = %s, description = %s, system_id = %s,"
-        " template_id = %s, updated_at = %s, updated_by = %s, language = %s, toc = %s, numbering = %s,"
+        " template_id = %s, updated_at = %s, updated_by = %s, toc = %s, numbering = %s,"
         " coverage = %s WHERE id = %s AND revision = %s RETURNING revision",
-        (name, description, system_pid, template_id, now, who, settings["language"], settings["toc"],
+        (name, description, system_pid, template_id, now, who, settings["toc"],
          settings["numbering"], Jsonb(settings["coverage"]), layout_id, based_on)).fetchone()
     if row is None:
         return None
@@ -241,7 +240,7 @@ def get_report(conn, project_pid, report_id) -> dict | None:
 
 # Saved presets (platform wide)
 
-_PRESET = ("id::text AS id, name, description, language, toc, numbering, blocks, source_project_id::text AS"
+_PRESET = ("id::text AS id, name, description, toc, numbering, blocks, source_project_id::text AS"
            " source_project_id, created_by, created_at")
 
 
@@ -260,13 +259,12 @@ def preset_names(conn) -> set[str]:
     return {r["name"] for r in conn.execute("SELECT name FROM report_composer.preset").fetchall()}
 
 
-def insert_preset(conn, *, name, description, language, toc, numbering, blocks, source_project_id, who,
-                  now) -> str:
+def insert_preset(conn, *, name, description, toc, numbering, blocks, source_project_id, who, now) -> str:
     return conn.execute(
-        "INSERT INTO report_composer.preset (name, description, language, toc, numbering, blocks,"
-        " source_project_id, created_by, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        "INSERT INTO report_composer.preset (name, description, toc, numbering, blocks,"
+        " source_project_id, created_by, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
         " RETURNING id::text AS id",
-        (name, description, language, toc, numbering, Jsonb(blocks), source_project_id, who, now)).fetchone()["id"]
+        (name, description, toc, numbering, Jsonb(blocks), source_project_id, who, now)).fetchone()["id"]
 
 
 def delete_preset(conn, preset_id) -> bool:

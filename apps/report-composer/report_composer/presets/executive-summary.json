@@ -4,7 +4,6 @@
   "id": "executive-summary",
   "name": "Executive summary",
   "description": "The main numbers, a coverage chart, what is not covered and what changed since the last version.",
-  "language": "en",
   "toc": "off",
   "numbering": false,
   "blocks": [

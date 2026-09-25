@@ -4,7 +4,6 @@
   "id": "internal-audit",
   "name": "Internal audit",
   "description": "Scope, key figures, control answers, test results, uncovered objectives and findings.",
-  "language": "en",
   "toc": "on",
   "numbering": true,
   "blocks": [

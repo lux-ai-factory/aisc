@@ -1,9 +1,10 @@
 """Presets: report structures without project data (report run v2, R-V1.1 to R-V1.12).
 
-A preset is an ordered list of {block_type, options} plus the document settings language, toc and
-numbering. Built-in presets are the JSON files of report_composer/presets/; saved presets sit in
-report_composer.preset and are seen by every signed-in user; a preset file carries a structure to
-another project or platform. A layout made from a preset keeps no link to it.
+A preset is an ordered list of {block_type, options} plus the document settings toc and numbering
+(reports are English only; a `language` in a file or row is ignored). Built-in presets are the JSON
+files of report_composer/presets/; saved presets sit in report_composer.preset and are seen by every
+signed-in user; a preset file carries a structure to another project or platform. A layout made from
+a preset keeps no link to it.
 """
 from __future__ import annotations
 
@@ -30,7 +31,6 @@ class Preset:
     id: str | None
     name: str
     description: str = ""
-    language: str | None = None
     toc: str | None = None
     numbering: bool | None = None
     blocks: list = field(default_factory=list)
@@ -44,7 +44,7 @@ class Preset:
 
 def _preset_of(doc: dict, *, built_in: bool, preset_id=None, created_by=None) -> Preset:
     return Preset(id=preset_id if preset_id is not None else doc.get("id"), name=doc.get("name") or "",
-                  description=doc.get("description") or "", language=doc.get("language"), toc=doc.get("toc"),
+                  description=doc.get("description") or "", toc=doc.get("toc"),
                   numbering=doc.get("numbering"),
                   blocks=[{"block_type": b["block_type"], "options": dict(b.get("options") or {})}
                           for b in doc.get("blocks") or []],
@@ -134,8 +134,6 @@ def from_file(doc, block_types) -> Preset:
     if not isinstance(name, str) or not name.strip():
         name = "Imported preset"
     settings = {}
-    if isinstance(doc.get("language"), str):
-        settings["language"] = doc["language"]
     if doc.get("toc") in ("auto", "on", "off"):
         settings["toc"] = doc["toc"]
     if isinstance(doc.get("numbering"), bool):
@@ -195,14 +193,14 @@ def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
                     options[name] = PLACEHOLDER if required else ""
         blocks.append({"block_type": b["block_type"], "options": options})
     return Preset(id=None, name=layout["name"], description=layout.get("description") or "",
-                  language=layout.get("language") or "en", toc=layout.get("toc") or "auto",
+                  toc=layout.get("toc") or "auto",
                   numbering=bool(layout.get("numbering")), blocks=blocks)
 
 
 def export_doc(p: Preset) -> dict:
     """The preset file (R-V1.7)."""
     return {"format": FILE_FORMAT, "version": FILE_VERSION, "name": p.name, "description": p.description,
-            "language": p.language or "en", "toc": p.toc or "auto", "numbering": bool(p.numbering),
+            "toc": p.toc or "auto", "numbering": bool(p.numbering),
             "blocks": [{"block_type": b["block_type"], "options": copy.deepcopy(b["options"])} for b in p.blocks]}
 
 

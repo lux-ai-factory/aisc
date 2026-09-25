@@ -1,7 +1,7 @@
-"""A layout's document settings and coverage map (report run v2, R-V5.1, R-V8.1, R-U2.1, R-D.3, R-D.4).
+"""A layout's document settings and coverage map (report run v2, R-V5.1, R-U2.1, R-D.3; part 2 R2-D1.10).
 
-`language`, `toc`, `numbering` and `coverage` sit on the layout. On PUT an absent key keeps the
-current value, so an older client does not wipe them.
+`toc`, `numbering` and `coverage` sit on the layout. On PUT an absent key keeps the current value, so an
+older client does not wipe them. Reports are English only: a `language` sent by an older client is ignored.
 """
 from __future__ import annotations
 
@@ -16,16 +16,11 @@ def _invalid(pointer: str, message: str) -> ApiError:
     return ApiError(422, "invalid_request", message, [{"pointer": pointer, "message": message}])
 
 
-def document_settings(body: dict, current: dict | None, languages: list[dict]) -> dict:
-    """The settings to store: body values checked, absent ones from `current` (or the defaults)."""
+def document_settings(body: dict, current: dict | None) -> dict:
+    """The settings to store: body values checked, absent ones from `current` (or the defaults).
+    A `language` key in the body is ignored (R2-D1.10)."""
     base = {k: (current or {}).get(k, v) for k, v in DEFAULT_SETTINGS.items()}
     out = dict(base)
-    if body.get("language") is not None:
-        codes = [lang.get("code") for lang in languages]
-        if body["language"] not in codes:
-            raise ApiError(422, "unknown_language", "This language is not offered by the report renderer.",
-                           [{"pointer": "/language", "message": "is not an offered language"}])
-        out["language"] = body["language"]
     if "toc" in body and body["toc"] is not None:
         if body["toc"] not in TOC_VALUES:
             raise _invalid("/toc", "toc must be one of auto, on, off.")

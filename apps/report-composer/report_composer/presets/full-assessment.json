@@ -4,7 +4,6 @@
   "id": "full-assessment",
   "name": "Full assessment",
   "description": "Every part of the assessment, in the order of the default layout.",
-  "language": "en",
   "toc": "auto",
   "numbering": false,
   "blocks": [
