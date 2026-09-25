@@ -3,10 +3,13 @@ every indentation and outline hint, says so in the message region with a "Try ag
 older answer arriving afterwards, and redraws on the next successful answer. Browser test (system Chrome
 through Playwright), on the composer served over HTTP with the v2 fake renderer, like test_v2_browser.py.
 """
+import json
 import time
 
 import pytest
 
+from conftest import IDS
+from test_p2_presets import FOREIGN, label, preset_file
 from test_v2_browser import _li, live  # noqa: F401  (the browser fixture)
 from v2_fakes import clean_presets, client_v2, fake_v2, v2blk  # noqa: F401
 
@@ -55,3 +58,30 @@ def test_r2_d3_3_1_a_failed_outline_request_clears_the_outline_and_offers_try_ag
         f"""() => document.querySelector('#blocks li[data-instance-id="{card['instance_id']}"]').dataset.depth === "1" """,
         timeout=5000)
     assert MESSAGE not in region.inner_text()
+
+
+def test_r2_d3_6_2_the_composer_shows_notices_as_information(live):
+    """Fix round 1 of part 2, finding 2 (R2-D3.6.2): a preset file with another project's references is imported
+    on the layouts page; the new layout's editor opens and its message region names every reset reference, as
+    information (not an error). Replaces a test that only searched composer.js for the word "notices"."""
+    page, _ = live([v2blk("cover")])                        # any page of the served composer, to learn its address
+    base = page.url.rsplit("/layouts/", 1)[0]
+    page.goto(base + "/")
+    form = page.locator('form[data-control="import-preset"]')
+    form.locator('select[name="system_id"]').select_option(IDS["A_V2"])
+    form.locator('input[name="file"]').set_input_files(
+        files=[{"name": "preset.json", "mimeType": "application/json",
+                "buffer": json.dumps(preset_file(FOREIGN[:3])).encode()}])
+    with page.expect_navigation(url="**/layouts/*", timeout=10000):
+        form.get_by_role("button", name="Import").click()
+    page.wait_for_selector("main[data-api]")
+    region = page.locator("main [data-message]")
+    tail = "pointed at data that is not in this project; it was reset to its default."
+    region.filter(has_text=tail).wait_for(timeout=5000)
+    text = region.inner_text()
+    assert f"The {label('dashboard_chart', 'chart_id')} of block 2 {tail}" in text
+    assert f"The {label('test_results', 'evaluations')} of block 3 {tail}" in text
+    assert "ok" in (region.get_attribute("class") or "")      # information, not an error
+    page.reload()                                             # shown once: the carried notices are used up
+    page.wait_for_selector("main[data-api]")
+    assert tail not in page.locator("main").inner_text()

@@ -216,10 +216,5 @@ def test_r2_d3_6_2_no_notice_when_nothing_was_reset(client_v2, auth):
     assert r.status_code == 201, r.text[:300]
     assert r.json().get("notices", []) == []
 
-
-def test_r2_d3_6_2_the_composer_shows_notices_as_information():
-    """The editor / layouts page script puts `notices` in the message region as information."""
-    from pathlib import Path
-
-    js = (Path(__file__).resolve().parents[1] / "report_composer/static/composer.js").read_text(encoding="utf-8")
-    assert "notices" in js
+# The composer showing these notices to the user is a browser test: test_p2_browser.py,
+# test_r2_d3_6_2_the_composer_shows_notices_as_information (fix round 1 of part 2, finding 2).
