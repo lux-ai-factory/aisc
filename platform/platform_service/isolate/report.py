@@ -43,6 +43,9 @@ def redact(text: str, dsn: str | None) -> str:
 def describe(exc: BaseException, dsn: str | None) -> str:
     """An exception without row data: for a database error, its class, sqlstate, constraint
     and table only (the message and detail can quote key or row values)."""
+    if isinstance(exc, psycopg.OperationalError) and exc.sqlstate is None:
+        # a connection failure: libpq's text names host, port, user and database, never a row
+        return redact(f"{type(exc).__name__}: {exc}", dsn).strip()
     if isinstance(exc, psycopg.Error):
         d = exc.diag
         parts = [type(exc).__name__, f"sqlstate={exc.sqlstate}"]
