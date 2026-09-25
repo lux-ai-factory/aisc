@@ -48,3 +48,8 @@
 - Security work already deployed must survive: per-caller service tokens, API auth, per-system LLM
   tokens, the LLM keys in each project's `llm` schema, the diagrams gate.
 - Prose in docs without em dashes. Record progress in PROGRESS.md at the end of every stage.
+
+## Confirmed by the user after stage 1 (2026-09-25)
+- D3/D4: forms and report presets are ONE shared library in the `platform` database (like the
+  catalogue); when a project uses a form version or a preset, that version is copied into the project
+  database, so the project's data never depends on the shared copy afterwards. (01-specs.md D3, D4.)
