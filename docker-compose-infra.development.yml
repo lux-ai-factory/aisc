@@ -317,7 +317,7 @@ services:
   # admin gate, at :8100/inspect/schema/<database>/. Reads as inspector_ro.
   schema-docs:
     build: inspector/schema-docs/
-    image: aisc-schema-docs:latest
+    image: aisc-schema-docs:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: schema-docs
     environment:

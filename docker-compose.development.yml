@@ -2,7 +2,7 @@ services:
   # # Frontend development container
   aisc-webapp:
     build: apps/webapp/
-    image: aisc-webapp:latest
+    image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-webapp
     environment:
@@ -21,10 +21,12 @@ services:
 
   aisc-backend:
     build: apps/backend/
-    image: aisc-backend:latest
+    image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-backend
-    environment:
+    # DB_NAME=platform is the engine's membership alias and the template its
+    # per-project aliases are copied from (project_<hex>, search_path engine).
+    environment: &backend-env
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
       S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
@@ -73,20 +75,47 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      # the engine's tables live in each project's database; the one-shot below
+      # migrates them all before the engine serves
+      aisc-backend-migrate:
+        condition: service_completed_successfully
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && uv run manage.py migrate --noinput 
       && uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-access-log"
+
+  # Migrates the engine's schema in every project database engine_rw may enter,
+  # then grants the readers (I7.6). Exit 2 is a permanent error: no retry.
+  aisc-backend-migrate:
+    build: apps/backend/
+    image: aisc-backend:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: aisc-backend-migrate
+    environment:
+      <<: *backend-env
+    volumes:
+      - ${PLUGIN_PATH}:/app/plugins:z
+      - ./shared:/app/shared:z
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_started
+      platform:
+        condition: service_started
+    restart: "no"
+    command: >
+      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface
+      && until uv run manage.py migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[engine] waiting for postgres'; sleep 2; done"
 
   #
   aisc-eval-worker:
     platform: linux/amd64
     build:
       context: apps/eval/
-    image: aisc-eval:latest
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-eval-worker
     # volumes:
@@ -119,7 +148,7 @@ services:
 
   aisc-eval-flower:
     platform: linux/amd64
-    image: aisc-eval:latest
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-eval-flower
     # volumes:
@@ -153,6 +182,8 @@ services:
   # ── AI-compliance checklists app (apps/controls submodule) ──
   controls-pdf:
     build: apps/controls/services/pdf_renderer
+    image: aisc-controls-pdf:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: controls-pdf
     environment:
       # its one caller's token (controls-web): everything but /health needs it
@@ -163,6 +194,8 @@ services:
 
   controls-migrate:
     build: apps/controls
+    image: aisc-controls-migrate:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: controls-migrate
     # Every project database, not one shared one. No seed: a project's
     # checklists are the ones installed into it from the catalogue.
@@ -181,6 +214,8 @@ services:
       context: apps/controls
       args:
         NEXT_BASE_PATH: /controls
+    image: aisc-controls-web:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: controls-web
     env_file: apps/controls/env.development
     environment:
@@ -223,7 +258,7 @@ services:
       # the app root, because the field mapping lives with the form
       context: apps/qualification
       dockerfile: services/prefill/Dockerfile
-    image: aisc-qualification-prefill:latest
+    image: aisc-qualification-prefill:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: qualification-prefill
     environment:
@@ -237,6 +272,8 @@ services:
   # LiteLLM completion sidecar — holds the provider key; the app calls it over HTTP.
   qualification-llm:
     build: apps/qualification/services/llm
+    image: aisc-qualification-llm:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-llm
     environment:
       # Default provider is Mistral; LiteLLM picks the key matching LLM_MODEL.
@@ -257,7 +294,7 @@ services:
       dockerfile: Dockerfile.stack
       additional_contexts:
         ontology-prompts: apps/qualification/services/ontology/prompts
-    image: aisc-qualification-agents:latest
+    image: aisc-qualification-agents:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: qualification-agents
     environment:
@@ -293,6 +330,8 @@ services:
       # the form, which is what its own Dockerfile says.
       context: apps/qualification
       dockerfile: services/ontology/Dockerfile
+    image: aisc-qualification-ontology:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-ontology
     environment:
       # two callers, a token each
@@ -305,6 +344,8 @@ services:
   # System-card PDF renderer sidecar.
   qualification-pdf:
     build: apps/qualification/services/system_card_renderer
+    image: aisc-qualification-pdf:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-pdf
     environment:
       # its one caller's token (qualification-web)
@@ -315,12 +356,22 @@ services:
 
   qualification-migrate:
     build: apps/qualification
+    image: aisc-qualification-migrate:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-migrate
+    # Every project database, not one shared one; the form library on platform
+    # first (I3.6, I4.2). Exit 2 is a permanent error: no retry. No env_file:
+    # the submodule's one would bring DATABASE_URL back (I3.8).
     command: >
-      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
-    env_file: apps/qualification/env.development
+      sh -c "until node scripts/migrate-projects.mjs; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[qualification] waiting for postgres'; sleep 2; done"
+    environment: &qualification-db-env
+      # a template: {database} becomes project_<pid without hyphens>
+      PROJECT_DATABASE_URL: ${QUALIFICATION_PROJECT_DATABASE_URL:-postgresql://qualification_rw:qualification_rw@postgres:5432/{database}?schema=qualification&connection_limit=2}
+      # the install-wide form library, the only thing it reads on platform
+      FORM_LIBRARY_DATABASE_URL: ${QUALIFICATION_FORM_LIBRARY_DATABASE_URL:-postgresql://qualification_rw:qualification_rw@postgres:5432/platform?schema=form_library&connection_limit=2}
     depends_on:
       - postgres
+      - platform
     restart: "no"
     networks:
       - backend
@@ -330,8 +381,17 @@ services:
       context: apps/qualification
       args:
         NEXT_BASE_PATH: /qualification
+    image: aisc-qualification-web:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-web
     environment:
+      <<: *qualification-db-env
+      # what apps/qualification/env.development used to provide, minus DATABASE_URL
+      LLM_SERVICE_URL: http://qualification-llm:4000
+      SYSTEM_CARD_RENDERER_URL: http://qualification-pdf:8005
+      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
+      PLATFORM_URL: http://platform:8000
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       AISC_BACKEND_URL: http://aisc-backend:8000
       # The card agent, which the save starts and the card page polls.
       AGENT_SERVICE_URL: http://qualification-agents:8012
@@ -347,7 +407,6 @@ services:
       QUALIFICATION_WEB_TO_PDF_TOKEN: ${QUALIFICATION_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
-    env_file: apps/qualification/env.development
     depends_on:
       qualification-migrate:
         condition: service_completed_successfully
@@ -364,29 +423,33 @@ services:
 
   # ── AI Act control objectives (apps/control-objectives submodule) ──
   # Reads the AI Card the qualification app exports, ranks that system's risks
-  # and maps them onto the control objectives. Keeps its own Postgres database:
-  # the projects, their rankings and what each mapping run cost. Its tables
-  # live in the `control_objectives` schema of the one platform database,
-  # created by init/platform-db.sql; the migration makes the schema if a
-  # database predates it.
+  # and maps them onto the control objectives: the assessments, their rankings
+  # and what each mapping run cost. Its tables live in the `control_objectives`
+  # schema of each project's own database (the template makes the schema, its
+  # migrations the tables); on platform it reads only who is in which project.
   control-objectives-migrate:
     build: apps/control-objectives/
-    image: aisc-control-objectives:latest
+    image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: control-objectives-migrate
+    # every project database the role may enter (I5.5); exit 2 is a permanent error
     command: >
-      sh -c "until alembic upgrade head; do echo '[control-objectives] waiting for postgres'; sleep 2; done"
+      sh -c "until python -m aisc_control_objectives.migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[control-objectives] waiting for postgres'; sleep 2; done"
     environment:
+      # membership only (core.project, core.project_member)
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
+      # a template: {database} becomes project_<pid without hyphens>
+      PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:control_objectives_rw@postgres:5432/{database}}
     depends_on:
       - postgres
+      - platform
     restart: "no"
     networks:
       - backend
 
   control-objectives:
     build: apps/control-objectives/
-    image: aisc-control-objectives:latest
+    image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: control-objectives
     env_file: apps/control-objectives/env.development
@@ -414,7 +477,10 @@ services:
       # its own system's token only: it can resolve risk_mapper and nothing else
       PLATFORM_INTERNAL_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
       QUALIFICATION_URL: http://qualification-web:3000/qualification
+      # membership only (core.project, core.project_member)
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
+      # each project's assessments, in that project's database
+      PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:control_objectives_rw@postgres:5432/{database}}
       # The model, named BAF's way — the same two variables the qualification
       # filler reads, so both services are configured alike.
       #
@@ -450,12 +516,12 @@ services:
   # ── Report (step 7): the composer assembles a report from blocks, the renderer renders it ──
   report-composer:
     build: apps/report-composer
-    image: aisc-report-composer:latest
+    image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: report-composer
     volumes:
       - ./shared/identity:/app/shared/identity:ro,z
-    environment:
+    environment: &composer-env
       PYTHONPATH: /app:/app/shared/identity
       AUTH_ENABLED: "true"
       KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
@@ -463,12 +529,19 @@ services:
       REPORT_COMPOSER_ROOT_PATH: /report-composer
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       PLATFORM_ORIGIN: ${PLATFORM_ORIGIN:-http://localhost}
+      # membership (core.project, core.project_member) and the preset library
       REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:-report_composer_rw}@postgres:5432/platform
+      # a template: {database} becomes project_<pid without hyphens>
+      REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:-report_composer_rw}@postgres:5432/{database}
       REPORT_RENDERER_URL: http://report-renderer:8001
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
     depends_on:
       postgres-setup:
         condition: service_completed_successfully
+      report-composer-migrate:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
       report-renderer:
         condition: service_started
     expose:
@@ -478,13 +551,32 @@ services:
       - frontend
     restart: unless-stopped
 
+  # The preset library on platform, then every project database (I8.4).
+  report-composer-migrate:
+    image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: report-composer-migrate
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+    environment:
+      <<: *composer-env
+    command: ["python", "-m", "report_composer.migrate"]
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
+    restart: "no"
+    networks:
+      - backend
+
   report-renderer:
     build:
       context: ${REPORT_GENERATOR_DIR:-../aisc-report-generator}
       additional_contexts:
         interface: ${REPORT_INTERFACE_DIR:-../aisc-report-plugin-interface}
         mlareject: ${REPORT_MLAREJECT_DIR:-../aisc-report-mlareject}
-    image: aisc-report-renderer:latest
+    image: aisc-report-renderer:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: report-renderer
     volumes:
@@ -534,13 +626,17 @@ services:
         condition: service_completed_successfully
       controls-migrate:
         condition: service_completed_successfully
+      aisc-backend-migrate:
+        condition: service_completed_successfully
     restart: "no"
     networks:
       - backend
 
   # ── Results dashboard (apps/results-dashboard submodule) ──
-  # Superset, reading the platform's own database read-only, so the evaluation
-  # results the execution engine writes can be charted. Unlike the other apps it
+  # Superset, reading each project's own database read-only (one connection per
+  # project, made by the bridge), so the evaluation results the execution engine
+  # writes can be charted. On platform it reads only who is in which project,
+  # over a plain DSN that is never a Superset connection. Unlike the other apps it
   # cannot be served under a path prefix: Superset 4.1 needs the site root, so
   # it gets its own published port rather than a Caddy route.
   #
@@ -550,7 +646,7 @@ services:
   # init/60-dashboard-ro.sql on a fresh volume.
   dashboard-migrate:
     build: apps/results-dashboard
-    image: aisc-results-dashboard:latest
+    image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: dashboard-migrate
     user: root
@@ -572,8 +668,6 @@ services:
       IMMUDB_USER: immudb
       IMMUDB_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       AISC_AUDIT_ENABLED: "true"
-      # the platform's own database, through the read-only role
-      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@postgres:5432/platform}
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       BRANDING_APP_NAME: ${BRANDING_APP_NAME:-}
       BRANDING_LOGO: ${BRANDING_LOGO:-}
@@ -593,7 +687,7 @@ services:
 
   dashboard:
     build: apps/results-dashboard
-    image: aisc-results-dashboard:latest
+    image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: dashboard
     # network_mode: host, for one reason: Superset authenticates itself, so it
@@ -627,7 +721,8 @@ services:
       GATEWAY_TOKEN_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
       GATEWAY_JWKS_URL: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/certs
       SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
-      AISC_RESULTS_DB_URI: ${AISC_RESULTS_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/platform}
+      # memberships at sign-in (SELECT core.project_member only); localhost because of the host network
+      AISC_MEMBERSHIP_DB_URI: ${AISC_MEMBERSHIP_DB_URI:-postgresql+psycopg2://dashboard_ro:dashboard_ro@localhost:5432/platform}
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       REDIS_HOST: localhost
       IMMUDB_HOST: localhost
@@ -676,7 +771,7 @@ services:
   # request, and for now every account may see every project.
   platform:
     build: platform
-    image: aisc-platform:latest
+    image: aisc-platform:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: platform
     volumes:
@@ -728,13 +823,36 @@ services:
       - backend
       - frontend
 
+  # The move tool (python -m platform_service.isolate): copies each project's rows
+  # from the shared schemas into its own database. A separate one-shot so the
+  # superuser credential never sits in the long-running platform service; the
+  # profile keeps `up` from ever starting it. Run it with
+  #   docker compose --profile isolation run --rm isolate <subcommand> ...
+  # (the cutover adds -v "$BACKUP:/backup" on that line).
+  isolate:
+    image: aisc-platform:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    profiles: ["isolation"]
+    entrypoint: ["python", "-m", "platform_service.isolate"]
+    environment:
+      # no password in the URL (nothing to URL-encode); libpq and pg_restore read PGPASSWORD
+      ISOLATE_SUPERUSER_URL: postgresql://${POSTGRES_USER}@postgres:5432/${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PYTHONPATH: /app/shared/identity
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+      - ./platform/project-template:/app/project-template:ro,z
+    networks:
+      - backend
+    restart: "no"
+
   # ── Catalogue of tests and controls (apps/catalogue submodule) ──
   # Step 3 of the assessment: browse the registry and choose what will run. On
   # this branch it also carries one-click install: the catalogue resolves a tool
   # to a package on its own index and posts it to the platform's install door.
   devpi:
     build: apps/catalogue/devpi
-    image: aisc-catalogue-devpi:latest
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: devpi
     environment:
@@ -750,7 +868,7 @@ services:
   # module's, and the service waits for it rather than creating tables itself.
   catalogue-migrate:
     build: apps/catalogue/backend
-    image: aisc-catalogue-backend:latest
+    image: aisc-catalogue-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: catalogue-migrate
     command: >
@@ -765,7 +883,7 @@ services:
 
   catalogue-backend:
     build: apps/catalogue/backend
-    image: aisc-catalogue-backend:latest
+    image: aisc-catalogue-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: catalogue-backend
     volumes:
@@ -813,7 +931,7 @@ services:
         VITE_ENABLE_SANDBOX: "true"
         # without this the Install button does not render at all
         VITE_ENABLE_INSTALL: "true"
-    image: aisc-catalogue-frontend:latest
+    image: aisc-catalogue-frontend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: catalogue-frontend
     depends_on:
