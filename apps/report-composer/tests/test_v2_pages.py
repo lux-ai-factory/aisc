@@ -422,9 +422,12 @@ def test_fix_outline_route_gives_depth_and_empty_chapter_for_any_order(client_v2
                                         for b in order]}, headers=auth("alice"))
     assert r.status_code == 200, r.text[:300]
     assert r.json() == {"outline": [
-        {"instance_id": cover["instance_id"], "depth": 0, "empty_chapter": False},
-        {"instance_id": card["instance_id"], "depth": 0, "empty_chapter": False},
-        {"instance_id": chapter["instance_id"], "depth": 0, "empty_chapter": True}]}
+        {"instance_id": cover["instance_id"], "depth": 0, "empty_chapter": False, "unwritten": [],
+         "unwritten_hint": None},
+        {"instance_id": card["instance_id"], "depth": 0, "empty_chapter": False, "unwritten": [],
+         "unwritten_hint": None},
+        {"instance_id": chapter["instance_id"], "depth": 0, "empty_chapter": True, "unwritten": [],
+         "unwritten_hint": None}]}
 
 
 def test_fix_outline_route_is_for_editors_and_checks_its_input(client_v2, auth):
