@@ -440,3 +440,18 @@ def test_fix_outline_route_is_for_editors_and_checks_its_input(client_v2, auth):
     url = f"/api/p/alpha/layouts/{lay['id']}/outline"
     assert client_v2.post(url, json={"blocks": "x"}, headers=auth("alice")).status_code == 422
     assert client_v2.post(url, json={"blocks": []}, headers=auth("victor")).status_code in (403, 404)
+
+
+# ── fix round 2, item 4: the outline route keeps the layouts' block limit ─────
+
+def test_fix_r2_4_outline_route_refuses_more_blocks_than_a_layout_holds(client_v2, auth):
+    from conftest import error_code
+
+    lay, _ = editor(client_v2, auth, [v2blk("cover")])
+    url = f"/api/p/alpha/layouts/{lay['id']}/outline"
+    blocks = [{"instance_id": f"id-{i}", "block_type": "chapter"} for i in range(51)]
+    r = client_v2.post(url, json={"blocks": blocks}, headers=auth("alice"))
+    assert r.status_code == 422 and error_code(r) == "too_many_blocks", r.text[:300]
+    assert r.json()["error"]["details"][0]["pointer"] == "/blocks"
+    r = client_v2.post(url, json={"blocks": blocks[:50]}, headers=auth("alice"))
+    assert r.status_code == 200 and len(r.json()["outline"]) == 50
