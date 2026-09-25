@@ -233,3 +233,34 @@ def reset_invalid(blocks, problems, block_types) -> list[dict]:
             b.setdefault("options", {})
             _reset(b["options"], name, t)
     return out
+
+
+CONTENT_EXCLUDED = ("cover", "chapter", "appendix")
+
+
+def outline_depths(blocks: list[dict]) -> list[tuple[int, bool]]:
+    """(depth, empty chapter) per block: 1 after a chapter until the next chapter or appendix (R-V5.9),
+    and whether a chapter holds no content block (R-V5.8). Computed from the order; nothing is stored."""
+    out = []
+    inside = False
+    for i, b in enumerate(blocks):
+        t = b["block_type"]
+        if t == "chapter":
+            rest = blocks[i + 1:]
+            end = next((j for j, r in enumerate(rest) if r["block_type"] in ("chapter", "appendix")), len(rest))
+            empty = not any(r["block_type"] not in CONTENT_EXCLUDED for r in rest[:end])
+            out.append((0, empty))
+            inside = True
+        elif t == "appendix":
+            out.append((0, False))
+            inside = False
+        else:
+            out.append((1 if inside and t != "cover" else 0, False))
+    return out
+
+
+def outline(blocks: list[dict]) -> list[dict]:
+    """The editor's outline for any block order: {instance_id, depth, empty_chapter} per block (fix round 1:
+    the editor redraws indentation and the empty-chapter hint from this after a move)."""
+    return [{"instance_id": b.get("instance_id"), "depth": depth, "empty_chapter": empty}
+            for b, (depth, empty) in zip(blocks, outline_depths(blocks))]

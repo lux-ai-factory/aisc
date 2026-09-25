@@ -1,6 +1,7 @@
 """Browser behaviours of composer.js (report run v2, fix round 1).
 
-The draft preview recovers after a network failure (05-verify.md note 5).
+The draft preview recovers after a network failure (05-verify.md note 5), and the chapter indentation and
+the "This chapter is empty." hint follow the block order after a move (note 6, R-V5.8, R-V5.9).
 The real composer app runs with uvicorn on the bed with the v2 fake renderer; the system Chrome drives the
 editor page through Playwright (no browser download).
 """
@@ -91,3 +92,22 @@ def test_fix_the_preview_recovers_after_a_network_failure(live):
     page.wait_for_function("() => document.querySelector('main iframe').srcdoc.includes('free_text')",
                            timeout=5000)
     assert "could not be reached" not in label.inner_text()
+
+
+def test_fix_chapter_indentation_follows_a_move(live):
+    cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
+    page, lay = live([cover, chapter, card])
+    assert _li(page, card["instance_id"]).get_attribute("data-depth") == "1"
+    assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
+
+    _li(page, card["instance_id"]).locator('[data-control="move-up"]').click()
+    page.wait_for_function(
+        f"""() => document.querySelector('#blocks li[data-instance-id="{card['instance_id']}"]').dataset.depth === "0" """,
+        timeout=5000)
+    _li(page, chapter["instance_id"]).get_by_text("This chapter is empty.").wait_for(timeout=5000)
+
+    _li(page, card["instance_id"]).locator('[data-control="move-down"]').click()
+    page.wait_for_function(
+        f"""() => document.querySelector('#blocks li[data-instance-id="{card['instance_id']}"]').dataset.depth === "1" """,
+        timeout=5000)
+    assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()

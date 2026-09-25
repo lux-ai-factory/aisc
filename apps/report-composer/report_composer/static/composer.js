@@ -7,6 +7,7 @@
   if (!main) return;
   const api = main.dataset.api;
   const PICK_ONE = "Pick at least one, or choose All.";
+  const EMPTY_CHAPTER = "This chapter is empty.";
 
   async function call(method, path, body, base) {
     let r;
@@ -196,6 +197,27 @@
     schedule();
   }
 
+  // Indentation and the empty-chapter hint for the current order, as Python computes them (R-V5.8, R-V5.9)
+  async function redrawOutline() {
+    const blocks = Array.from(list.children).map(function (li) {
+      return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType };
+    });
+    const res = await call("POST", "/layouts/" + layoutId + "/outline", { blocks: blocks });
+    if (!res.ok) return;
+    res.data.outline.forEach(function (o) {
+      const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
+      if (!li) return;
+      li.dataset.depth = String(o.depth);
+      let hint = li.querySelector("[data-empty-chapter]");
+      if (o.empty_chapter && !hint) {
+        hint = document.createElement("p");
+        hint.className = "hint"; hint.setAttribute("data-empty-chapter", ""); hint.textContent = EMPTY_CHAPTER;
+        li.insertBefore(hint, li.querySelector("details, [data-problems]"));
+      } else if (!o.empty_chapter && hint) hint.remove();
+    });
+  }
+  function moved() { dirty(); redrawOutline(); }
+
   function parse(value, isJson) {
     if (!isJson) return value;
     try { return JSON.parse(value); } catch (e) { return value; }
@@ -372,13 +394,13 @@
       });
       list.appendChild(item);
       applyShowIf(item);
-      dirty();
+      moved();
     } else if (what === "move-up" && li && li.previousElementSibling) {
-      list.insertBefore(li, li.previousElementSibling); dirty();
+      list.insertBefore(li, li.previousElementSibling); moved();
     } else if (what === "move-down" && li && li.nextElementSibling) {
-      list.insertBefore(li.nextElementSibling, li); dirty();
+      list.insertBefore(li.nextElementSibling, li); moved();
     } else if (what === "remove" && li) {
-      li.remove(); dirty();
+      li.remove(); moved();
     } else if (what === "save") {
       await save(false);
     } else if (what === "refresh-preview") {
@@ -448,7 +470,7 @@
     if (dragged) dragged.classList.add("dragging");
   });
   list.addEventListener("dragend", function () {
-    if (dragged) dragged.classList.remove("dragging");
+    if (dragged) { dragged.classList.remove("dragging"); redrawOutline(); }
     dragged = null;
   });
   list.addEventListener("dragover", function (ev) {

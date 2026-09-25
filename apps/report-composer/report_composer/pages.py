@@ -91,30 +91,6 @@ def _reference_choices(request: Request, project: dict, layout: dict, by_type: d
     return choices
 
 
-CONTENT_EXCLUDED = ("cover", "chapter", "appendix")
-
-
-def _depths(blocks: list[dict]) -> list[tuple[int, bool]]:
-    """(depth, empty chapter) per block: 1 after a chapter until the next chapter or appendix (R-V5.9),
-    and whether a chapter holds no content block (R-V5.8). Computed from the order; nothing is stored."""
-    out = []
-    inside = False
-    for i, b in enumerate(blocks):
-        t = b["block_type"]
-        if t == "chapter":
-            rest = blocks[i + 1:]
-            end = next((j for j, r in enumerate(rest) if r["block_type"] in ("chapter", "appendix")), len(rest))
-            empty = not any(r["block_type"] not in CONTENT_EXCLUDED for r in rest[:end])
-            out.append((0, empty))
-            inside = True
-        elif t == "appendix":
-            out.append((0, False))
-            inside = False
-        else:
-            out.append((1 if inside and t != "cover" else 0, False))
-    return out
-
-
 def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, depth: int = 0,
                    empty_chapter: bool = False, problems=()) -> dict:
     """A block as the editor's outline draws it; an editor also gets its configure form."""
@@ -149,7 +125,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
     by_block: dict[str, list] = {}
     for p in problems:
         by_block.setdefault(p.get("instance_id"), []).append(p)
-    depths = _depths(layout["blocks"])
+    depths = layouts.outline_depths(layout["blocks"])
     blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor, depth, empty,
                              by_block.get(b["instance_id"], ()))
               for b, (depth, empty) in zip(layout["blocks"], depths)]

@@ -292,6 +292,19 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
                                                  "X-Content-Type-Options": "nosniff"})
 
 
+@router.post("/p/{ref}/layouts/{layout_id}/outline")
+def outline(request: Request, layout_id: str, body: dict = Body(...),
+            g: Guarded = Depends(project_guard("editor"))):
+    """Indentation and empty-chapter hints for the editor's current block order; nothing is stored."""
+    with db.connect(request.app.state.database_url) as conn:
+        layout_or_404(conn, g.project["pid"], layout_id)
+    blocks = _blocks(body)
+    if not all(isinstance(b["block_type"], str) for b in blocks):
+        raise ApiError(422, "invalid_request", "Every block needs a block_type.",
+                       [{"pointer": "/blocks", "message": "is not valid"}])
+    return {"outline": layouts.outline(blocks)}
+
+
 @router.post("/p/{ref}/layouts/{layout_id}/preview")
 async def preview_draft(request: Request, layout_id: str, g: Guarded = Depends(project_guard("editor"))):
     """The editor's unsaved state rendered as a preview; nothing is stored (report run v2, R-U3.1)."""

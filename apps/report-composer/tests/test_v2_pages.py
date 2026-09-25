@@ -401,3 +401,26 @@ def test_r_v1_screens_presets_section(client_v2, auth):
     other = soup(client_v2.get("/p/alpha/", headers=auth("olga")).text)       # an owner, not the creator
     assert other.find(attrs={"data-control": "export-preset"}) is not None
     assert other.find(attrs={"data-control": "delete-preset"}) is None
+
+
+# ── fix round 1 (05-verify note 6): the outline after a move comes from Python ──
+
+def test_fix_outline_route_gives_depth_and_empty_chapter_for_any_order(client_v2, auth):
+    cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
+    lay, _ = editor(client_v2, auth, [cover, chapter, card])
+    order = [cover, card, chapter]
+    r = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/outline",
+                       json={"blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"]}
+                                        for b in order]}, headers=auth("alice"))
+    assert r.status_code == 200, r.text[:300]
+    assert r.json() == {"outline": [
+        {"instance_id": cover["instance_id"], "depth": 0, "empty_chapter": False},
+        {"instance_id": card["instance_id"], "depth": 0, "empty_chapter": False},
+        {"instance_id": chapter["instance_id"], "depth": 0, "empty_chapter": True}]}
+
+
+def test_fix_outline_route_is_for_editors_and_checks_its_input(client_v2, auth):
+    lay, _ = editor(client_v2, auth, [v2blk("cover")])
+    url = f"/api/p/alpha/layouts/{lay['id']}/outline"
+    assert client_v2.post(url, json={"blocks": "x"}, headers=auth("alice")).status_code == 422
+    assert client_v2.post(url, json={"blocks": []}, headers=auth("victor")).status_code in (403, 404)
