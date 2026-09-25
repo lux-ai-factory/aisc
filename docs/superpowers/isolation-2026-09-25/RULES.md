@@ -53,3 +53,13 @@
 - D3/D4: forms and report presets are ONE shared library in the `platform` database (like the
   catalogue); when a project uses a form version or a preset, that version is copied into the project
   database, so the project's data never depends on the shared copy afterwards. (01-specs.md D3, D4.)
+
+## Added after the O1 incident (2026-09-25)
+At about 14:54 UTC an O1 baseline run read a throwaway-DB env file from the SHARED scratchpad that
+another agent had overwritten; its test DB variable was unset and an old conftest default pointed at
+the live cluster, which dropped and recreated the (already empty) leftover database
+`control_objectives_test` there. No data was lost (it was empty in the 11:49 dump). From now on:
+- Each work package keeps its throwaway credentials and files ONLY in its own subdirectory
+  `<scratchpad>/<WP>/` (e.g. .../scratchpad/Q1/), never in a file another agent could write.
+- Before any test run, check that every DB URL you pass points at your own throwaway container's
+  port (never 5432) and a non-live database name; abort otherwise.
