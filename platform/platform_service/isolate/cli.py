@@ -42,7 +42,7 @@ def parse(argv) -> argparse.Namespace:
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--report", metavar="PATH")
-    a = ap.parse_args(argv)
+    a = ap.parse_intermixed_args(argv)
     if a.dumps and a.subcommand != "verify-dump":
         raise Usage(f"{a.subcommand} takes no positional arguments")
     if a.subcommand == "verify-dump" and not a.dumps:
