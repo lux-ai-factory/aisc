@@ -20,7 +20,7 @@ from psycopg.conninfo import make_conninfo
 
 from platform_service import projectdb
 from tests.conftest import needs_database
-from tests.llm_support import INTERNAL_TOKEN, SECRETS_KEY, FakeServer, new_key
+from tests.llm_support import INTERNAL_TOKEN, RISK_TOKEN, SECRETS_KEY, FakeServer, new_key
 
 pytestmark = needs_database
 
@@ -35,7 +35,9 @@ NOT_VALID_KEY = "the key is not a valid API key string"
 @pytest.fixture(autouse=True)
 def _secrets(monkeypatch):
     monkeypatch.setenv("PLATFORM_SECRETS_KEY", SECRETS_KEY)
-    monkeypatch.setenv("PLATFORM_INTERNAL_TOKEN", INTERNAL_TOKEN)
+    monkeypatch.setenv("PLATFORM_CARD_AGENT_TOKEN", INTERNAL_TOKEN)
+    monkeypatch.setenv("PLATFORM_RISK_MAPPER_TOKEN", RISK_TOKEN)
+    monkeypatch.delenv("PLATFORM_INTERNAL_TOKEN", raising=False)
     monkeypatch.delenv("PLATFORM_OLLAMA_BASE_URL", raising=False)
 
 
@@ -80,8 +82,15 @@ def put_system(client, project, system, headers, provider, model):
                       headers=headers)
 
 
-def resolve(client, pid, system="card_agent", token=INTERNAL_TOKEN, headers=None):
+#: each system's own token, which is what its agent holds
+TOKEN_OF = {"card_agent": INTERNAL_TOKEN, "risk_mapper": RISK_TOKEN}
+OWN = object()
+
+
+def resolve(client, pid, system="card_agent", token=OWN, headers=None):
     h = dict(headers or {})
+    if token is OWN:
+        token = TOKEN_OF.get(system, INTERNAL_TOKEN)
     if token is not None:
         h["X-AISC-Service-Token"] = token
     return client.get(f"/internal/projects/{pid}/llm/{system}", headers=h)
@@ -527,11 +536,12 @@ def test_s2_23_s5_5_a_missing_or_wrong_token_is_401(client, project):
 
 
 @pytest.mark.parametrize("value", [None, ""])
-def test_s2_23_without_platform_internal_token_the_route_is_closed(client, project, monkeypatch, value):
-    if value is None:
-        monkeypatch.delenv("PLATFORM_INTERNAL_TOKEN")
-    else:
-        monkeypatch.setenv("PLATFORM_INTERNAL_TOKEN", value)
+def test_s2_23_without_any_system_token_the_route_is_closed(client, project, monkeypatch, value):
+    for name in ("PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
+        if value is None:
+            monkeypatch.delenv(name)
+        else:
+            monkeypatch.setenv(name, value)
     assert resolve(client, project["pid"], token="").status_code == 503
     assert resolve(client, project["pid"], token="anything").status_code == 503
 
@@ -545,7 +555,42 @@ def test_s2_23_the_token_is_compared_in_constant_time():
             source += inspect.getsource(importlib.import_module(f"platform_service.{name}"))
         except ImportError:
             pass
-    assert "compare_digest" in source and "PLATFORM_INTERNAL_TOKEN" in source
+    assert "compare_digest" in source
+    assert "PLATFORM_CARD_AGENT_TOKEN" in source and "PLATFORM_RISK_MAPPER_TOKEN" in source
+
+
+# ── each agentic system resolves only itself (2026-09-25) ──────────────────
+
+
+def test_each_system_resolves_with_its_own_token(client, project):
+    assert resolve(client, project["pid"], "card_agent").status_code == 200
+    assert resolve(client, project["pid"], "risk_mapper").status_code == 200
+
+
+@pytest.mark.parametrize("system,foreign", [("card_agent", "risk_mapper"), ("risk_mapper", "card_agent")])
+def test_a_system_cannot_resolve_the_other_systems_choice(client, admin, project, system, foreign):
+    """The card agent's token never yields the risk mapper's key, and the other way round."""
+    key = new_key()
+    assert client.put(f"{base(project)}/providers/mistral", json={"api_key": key}, headers=admin).status_code == 200
+    assert client.put(f"{base(project)}/systems/{system}", json={"provider": "mistral", "model": "m"},
+                      headers=admin).status_code == 200
+    r = resolve(client, project["pid"], system, token=TOKEN_OF[foreign])
+    assert r.status_code == 403
+    assert key not in r.text
+    assert resolve(client, project["pid"], system).json()["api_key"] == key
+
+
+def test_a_system_whose_token_is_not_set_cannot_resolve(client, project, monkeypatch):
+    monkeypatch.delenv("PLATFORM_RISK_MAPPER_TOKEN")
+    assert resolve(client, project["pid"], "card_agent").status_code == 200
+    assert resolve(client, project["pid"], "risk_mapper", token="").status_code == 401
+    assert resolve(client, project["pid"], "risk_mapper", token=RISK_TOKEN).status_code == 401
+
+
+def test_the_old_shared_token_opens_nothing(client, project, monkeypatch):
+    monkeypatch.setenv("PLATFORM_INTERNAL_TOKEN", "the-old-shared-one")
+    for system in ("card_agent", "risk_mapper"):
+        assert resolve(client, project["pid"], system, token="the-old-shared-one").status_code == 401
 
 
 @pytest.mark.parametrize("header", ["X-Forwarded-For", "X-Forwarded-Host"])
@@ -649,3 +694,9 @@ def test_s5_4_a_key_of_one_project_is_nothing_in_another(client, admin, as_user,
     assert r.json() == {"configured": False}
     assert key not in r.text
     assert put_system(client, other, "card_agent", admin, "openai", "gpt-a").status_code == 422
+
+
+def test_one_token_for_both_systems_closes_the_route(client, project, monkeypatch):
+    monkeypatch.setenv("PLATFORM_RISK_MAPPER_TOKEN", INTERNAL_TOKEN)
+    for system in ("card_agent", "risk_mapper"):
+        assert resolve(client, project["pid"], system, token=INTERNAL_TOKEN).status_code == 503

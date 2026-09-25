@@ -57,10 +57,11 @@ REPORT_SERVICE_TOKEN=$(rand)
 REPORT_RO_PASSWORD=$(rand)
 REPORT_COMPOSER_PASSWORD=$(rand)
 INSPECTOR_PASSWORD=$(rand)
-PLATFORM_INTERNAL_TOKEN=$(rand)
+PLATFORM_CARD_AGENT_TOKEN=$(rand)
+PLATFORM_RISK_MAPPER_TOKEN=$(rand)
 PLATFORM_SECRETS_KEY=${secrets_key:-$(fernet)}
 EOF
-  echo "wrote $OUT (13 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
+  echo "wrote $OUT (14 secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new ))"
 
   # The one with a shape requirement, checked here rather than discovered by a
   # gateway that will not start.
@@ -80,10 +81,13 @@ for name in REPORT_SERVICE_TOKEN REPORT_RO_PASSWORD REPORT_COMPOSER_PASSWORD INS
     echo "added $name to $OUT"
   fi
 done
-if ! grep -q "^PLATFORM_INTERNAL_TOKEN=" "$OUT"; then
-  echo "PLATFORM_INTERNAL_TOKEN=$(rand)" >> "$OUT"
-  echo "added PLATFORM_INTERNAL_TOKEN to $OUT"
-fi
+# One token per agentic system, so each agent resolves only its own choice and key.
+for name in PLATFORM_CARD_AGENT_TOKEN PLATFORM_RISK_MAPPER_TOKEN; do
+  if ! grep -q "^$name=" "$OUT"; then
+    echo "$name=$(rand)" >> "$OUT"
+    echo "added $name to $OUT"
+  fi
+done
 if ! grep -q "^PLATFORM_SECRETS_KEY=" "$OUT"; then
   echo "PLATFORM_SECRETS_KEY=$(fernet)" >> "$OUT"
   echo "added PLATFORM_SECRETS_KEY to $OUT"

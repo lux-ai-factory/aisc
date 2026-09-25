@@ -255,7 +255,8 @@ services:
       # "Models and API keys"): the agent asks the platform's internal route for it,
       # with this token. A project without a choice keeps the variables above.
       PLATFORM_URL: http://platform:8000
-      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN:?run scripts/secrets.sh first}
+      # its own system's token only: it can resolve card_agent and nothing else
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
     extra_hosts:
       # for a project that chose a model served by ollama on the host
       - "host.docker.internal:host-gateway"
@@ -376,7 +377,8 @@ services:
       # qualification for that version's card, with the caller's own token.
       PLATFORM_URL: http://platform:8000
       # Asks the platform for the model its project chose, before each map.
-      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN:?run scripts/secrets.sh first}
+      # its own system's token only: it can resolve risk_mapper and nothing else
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
       QUALIFICATION_URL: http://qualification-web:3000/qualification
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:control_objectives_rw@postgres:5432/platform}
       # The model, named BAF's way — the same two variables the qualification
@@ -675,7 +677,9 @@ services:
       # with this Fernet key list (newest first), and handed to the two agents
       # only on the internal route, which this token guards.
       PLATFORM_SECRETS_KEY: ${PLATFORM_SECRETS_KEY:?run scripts/secrets.sh first}
-      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_INTERNAL_TOKEN:?run scripts/secrets.sh first}
+      # one token per agentic system: each agent resolves only its own choice and key
+      PLATFORM_CARD_AGENT_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
+      PLATFORM_RISK_MAPPER_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
       # where a project's ollama choice is reached unless it stored its own URL
       PLATFORM_OLLAMA_BASE_URL: ${PLATFORM_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     extra_hosts:

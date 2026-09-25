@@ -543,25 +543,50 @@ def _internal(status: int, body: dict) -> JSONResponse:
     return JSONResponse(status_code=status, content=body, headers={"Cache-Control": "no-store"})
 
 
+#: The token each agentic system resolves itself with, by the variable that holds it.
+SYSTEM_TOKENS = {"card_agent": "PLATFORM_CARD_AGENT_TOKEN", "risk_mapper": "PLATFORM_RISK_MAPPER_TOKEN"}
+
+
+def system_tokens() -> dict[str, str]:
+    """system -> its token, for the systems whose variable is set (read on every call)."""
+    return {system: os.environ[name] for system, name in SYSTEM_TOKENS.items() if os.environ.get(name)}
+
+
+def system_of_token(given: str, tokens: dict[str, str]) -> str | None:
+    """The system this token belongs to, or None. Every token is compared, in constant time."""
+    found = None
+    for system, expected in tokens.items():
+        if hmac.compare_digest(given.encode(), expected.encode()):
+            found = system
+    return found
+
+
 @app.get("/internal/projects/{pid}/llm/{system}")
 def resolve_llm(pid: str, system: str, request: Request) -> JSONResponse:
     """The system's choice for this project, with its decrypted key.
 
     Reached on the backend network only: a request that came through Caddy (it
-    carries X-Forwarded-*) is 404, and every call needs PLATFORM_INTERNAL_TOKEN in
-    X-AISC-Service-Token. Without that variable the route is closed (503)."""
+    carries X-Forwarded-*) is 404. Each agentic system has a token of its own
+    (SYSTEM_TOKENS), sent in X-AISC-Service-Token, and a token opens only its own
+    system: the card agent can never be handed the risk mapper's key, nor the other
+    way round (403). With no system token set the route is closed (503)."""
     if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
         return _internal(404, {"detail": "not here"})
-    expected = os.environ.get("PLATFORM_INTERNAL_TOKEN", "")
-    if not expected:
-        return _internal(503, {"detail": "the internal route is closed: PLATFORM_INTERNAL_TOKEN is not set"})
-    given = request.headers.get("x-aisc-service-token", "")
-    if not hmac.compare_digest(given.encode(), expected.encode()):
+    tokens = system_tokens()
+    if not tokens:
+        return _internal(503, {"detail": "the internal route is closed: no system token is set"})
+    if len(set(tokens.values())) < len(tokens):
+        # one value for both would be the shared token again, under two names
+        return _internal(503, {"detail": "the internal route is closed: the system tokens must differ"})
+    caller_system = system_of_token(request.headers.get("x-aisc-service-token", ""), tokens)
+    if caller_system is None:
         return _internal(401, {"detail": "a service token is needed"})
     if not looks_like_pid(pid):
         return _internal(422, {"detail": "not a project id"})
     if system not in llm_store.SYSTEMS:
         return _internal(404, {"detail": f"no system {system!r}"})
+    if system != caller_system:
+        return _internal(403, {"detail": f"this token is {caller_system}'s, not {system}'s"})
     if db.get_project(pid) is None:
         return _internal(404, {"detail": f"no project {pid!r}"})
     choice = llm_store.resolve_choice(pid, system)

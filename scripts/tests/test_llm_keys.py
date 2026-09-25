@@ -209,7 +209,9 @@ def run_secrets(d):
 
 
 def check_shapes(values):
-    assert re.fullmatch(r"[0-9a-f]{64}", values["PLATFORM_INTERNAL_TOKEN"])
+    for name in ("PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
+        assert re.fullmatch(r"[0-9a-f]{64}", values[name])
+    assert values["PLATFORM_CARD_AGENT_TOKEN"] != values["PLATFORM_RISK_MAPPER_TOKEN"]
     key = values["PLATFORM_SECRETS_KEY"]
     assert len(key) == 44
     assert len(base64.urlsafe_b64decode(key)) == 32
@@ -223,7 +225,8 @@ def test_s6_3_a_new_install_gets_both_secrets_and_a_second_run_keeps_them(scratc
     check_shapes(first)
     run_secrets(scratch)
     again = secrets_of(scratch)
-    assert again["PLATFORM_INTERNAL_TOKEN"] == first["PLATFORM_INTERNAL_TOKEN"]
+    for name in ("PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
+        assert again[name] == first[name]
     assert again["PLATFORM_SECRETS_KEY"] == first["PLATFORM_SECRETS_KEY"]
     assert (runtime.stat().st_mtime if runtime.exists() else None) == before, "the repo's env.runtime was touched"
 
@@ -277,7 +280,7 @@ def test_s6_5_the_agents_need_nothing_new():
 @pytest.mark.parametrize("name", ["env.development", "env.staging"])
 def test_s6_6_env_files_say_where_the_two_secrets_come_from(name):
     lines = [l for l in read(ROOT / name).splitlines() if l.startswith("#")]
-    for secret in ("PLATFORM_SECRETS_KEY", "PLATFORM_INTERNAL_TOKEN"):
+    for secret in ("PLATFORM_SECRETS_KEY", "PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
         assert any(secret in l and "env.secrets" in l for l in lines), f"{name}: no comment for {secret}"
-    for secret in ("PLATFORM_SECRETS_KEY", "PLATFORM_INTERNAL_TOKEN"):
+    for secret in ("PLATFORM_SECRETS_KEY", "PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
         assert not re.search(rf"^{secret}=", read(ROOT / name), re.M), f"{name} must not set {secret}"

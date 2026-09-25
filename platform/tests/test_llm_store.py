@@ -21,7 +21,7 @@ from psycopg.conninfo import make_conninfo
 
 from platform_service import db, projectdb
 from tests.conftest import needs_database
-from tests.llm_support import INTERNAL_TOKEN, SECRETS_KEY, new_key
+from tests.llm_support import INTERNAL_TOKEN, RISK_TOKEN, SECRETS_KEY, new_key
 
 pytestmark = needs_database
 
@@ -33,7 +33,9 @@ TEMPLATE_FILE = projectdb.TEMPLATE / "0005_llm.sql"
 @pytest.fixture(autouse=True)
 def _secrets(monkeypatch):
     monkeypatch.setenv("PLATFORM_SECRETS_KEY", SECRETS_KEY)
-    monkeypatch.setenv("PLATFORM_INTERNAL_TOKEN", INTERNAL_TOKEN)
+    monkeypatch.setenv("PLATFORM_CARD_AGENT_TOKEN", INTERNAL_TOKEN)
+    monkeypatch.setenv("PLATFORM_RISK_MAPPER_TOKEN", RISK_TOKEN)
+    monkeypatch.delenv("PLATFORM_INTERNAL_TOKEN", raising=False)
 
 
 @pytest.fixture

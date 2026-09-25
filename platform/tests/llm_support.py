@@ -22,7 +22,9 @@ from cryptography.fernet import Fernet
 #: One Fernet key for the whole session, so every stored key the suite writes can be
 #: read by every later test (the rotation test re-encrypts every project's keys).
 SECRETS_KEY = Fernet.generate_key().decode()
-INTERNAL_TOKEN = "pytest-internal-" + uuid.uuid4().hex
+INTERNAL_TOKEN = "pytest-internal-" + uuid.uuid4().hex  # the card agent's
+#: the risk mapper's: each agentic system has a token of its own and resolves only itself
+RISK_TOKEN = "pytest-risk-" + uuid.uuid4().hex
 
 
 def new_key() -> str:

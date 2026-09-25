@@ -81,7 +81,9 @@ def test_s6_1_platform_gets_the_two_secrets_and_the_ollama_default(compose):
     q, cfg = compose
     env = cfg["services"]["platform"].get("environment") or {}
     assert env.get("PLATFORM_SECRETS_KEY") == "dummy", "PLATFORM_SECRETS_KEY is not a required `:?` variable"
-    assert env.get("PLATFORM_INTERNAL_TOKEN") == "dummy", "PLATFORM_INTERNAL_TOKEN is not a required `:?` variable"
+    for name in ("PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
+        assert env.get(name) == "dummy", f"{name} is not a required `:?` variable"
+    assert "PLATFORM_INTERNAL_TOKEN" not in env, "the platform takes one token per system, not a shared one"
     assert env.get("PLATFORM_OLLAMA_BASE_URL") == "http://host.docker.internal:11434"
     assert "host.docker.internal:host-gateway" in _extra_hosts(cfg["services"]["platform"])
 
@@ -111,5 +113,30 @@ def test_s6_7_the_compose_files_stay_valid_with_the_new_variables(compose):
     assert q.returncode == 0, q.stderr[-2000:]
     names = {n for s in ("platform", "qualification-agents", "control-objectives")
              for n in (cfg["services"][s].get("environment") or {})}
-    assert {"PLATFORM_SECRETS_KEY", "PLATFORM_INTERNAL_TOKEN", "PLATFORM_OLLAMA_BASE_URL", "PLATFORM_URL"} <= names
+    assert {"PLATFORM_SECRETS_KEY", "PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN",
+            "PLATFORM_INTERNAL_TOKEN", "PLATFORM_OLLAMA_BASE_URL", "PLATFORM_URL"} <= names
     assert not (cfg["services"]["platform"].get("ports")), "the platform must publish no port (S5.5)"
+
+
+def test_each_agent_gets_the_token_of_its_own_system_only(tmp_path):
+    """The card agent holds the card agent's token and the risk mapper the risk mapper's, so
+    neither can resolve the other's key (2026-09-25)."""
+    args, required = [], set()
+    for f in FILES:
+        shutil.copy(ROOT / f, tmp_path / f)
+        args += ["-f", str(tmp_path / f)]
+        required |= set(re.findall(r"\$\{([A-Z0-9_]+):\?", (ROOT / f).read_text()))
+    env = {**os.environ, **{k: "dummy" for k in required},
+           "PLATFORM_CARD_AGENT_TOKEN": "card-token", "PLATFORM_RISK_MAPPER_TOKEN": "risk-token"}
+    j = subprocess.run(["docker", "compose", "-p", "aisc-t-config", "--project-directory", str(ROOT),
+                        "--env-file", str(ROOT / "env.development"), *args, "config", "--format", "json"],
+                       env=env, capture_output=True, text=True)
+    assert j.returncode == 0, j.stderr[-2000:]
+    services = json.loads(j.stdout)["services"]
+    assert services["qualification-agents"]["environment"]["PLATFORM_INTERNAL_TOKEN"] == "card-token"
+    assert services["control-objectives"]["environment"]["PLATFORM_INTERNAL_TOKEN"] == "risk-token"
+    platform = services["platform"]["environment"]
+    assert (platform["PLATFORM_CARD_AGENT_TOKEN"], platform["PLATFORM_RISK_MAPPER_TOKEN"]) == ("card-token", "risk-token")
+    holders = [name for name, svc in services.items()
+               if any(v in ("card-token", "risk-token") for v in (svc.get("environment") or {}).values())]
+    assert sorted(holders) == ["control-objectives", "platform", "qualification-agents"]
