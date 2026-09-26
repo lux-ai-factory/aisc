@@ -1,41 +1,99 @@
 #!/bin/sh
-# The report-grants one-shot: SELECT for report_ro on the tables the report reads, in the platform
-# and superset databases and in every project database. Superuser, idempotent, runs on every
-# start after the module migrations. Design: docs/superpowers/report-2026-09-23/02-architecture.md,
-# deviation D6.
+# The report-grants one-shot, the superuser's repair of the readers' grants (isolation I2.6, I2.7).
+#
+# Since the isolation every module's tables live in each project's own database project_<hex>,
+# and each module grants report_ro and dashboard_ro the tables of the I2.6 list from its own
+# migrations. This one-shot is the backstop: in every project database it (re)grants exactly that
+# list to both readers and takes away anything else, so a database migrated before a reader
+# existed, or a grant revoked by hand, is repaired on the next start. It also grants report_ro the
+# superset tables of init/report-ro-grants.sql. `platform` gets nothing from here: the readers'
+# rights there come from the init files (I1.4).
+#
+# Superuser, idempotent, safe on a project database whose modules have not migrated yet (a table
+# that is not there is skipped). Prints database names only. Runs after the module migrate
+# one-shots (compose depends_on).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-WAIT=${REPORT_GRANTS_WAIT_SECONDS:-600}
 
 until pg_isready -q; do sleep 1; done
 
-# The engine's tables come from aisc-backend's own migrations, which no one-shot waits for.
-i=0
-until [ "$(psql -d platform -tAc "SELECT to_regclass('engine.measurement') IS NOT NULL")" = "t" ]; do
-  i=$((i + 1))
-  if [ "$i" -ge "$WAIT" ]; then
-    echo "[report-grants] engine.measurement is not there after ${WAIT}s; granting what exists"
-    break
-  fi
-  sleep 1
-done
+psql -v ON_ERROR_STOP=1 -d postgres -f "$HERE/report-ro-grants.sql"
 
-psql -v ON_ERROR_STOP=1 -d platform -f "$HERE/report-ro-grants.sql"
+# Databases made later are copies of template1: the pre-isolation default privilege for report_ro
+# on controls_rw's tables (it also covered _prisma_migrations and any later table) is taken away.
+psql -v ON_ERROR_STOP=1 -d template1 <<'SQL'
+DO $undo$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'controls_rw')
+       AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'report_ro') THEN
+        EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE controls_rw REVOKE SELECT ON TABLES FROM report_ro';
+    END IF;
+END
+$undo$;
+SQL
 
-# Every project database: the controls tables are owned by controls_rw.
-for db in $(psql -d platform -tAc "SELECT datname FROM pg_database WHERE datname ~ '^project_[0-9a-f]{32}$' ORDER BY 1"); do
+for db in $(psql -d postgres -tAc "SELECT datname FROM pg_database WHERE datname ~ '^project_[0-9a-f]{32}$' ORDER BY 1"); do
   psql -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
 DO $grants$
 DECLARE
-    t text;
+    -- I2.6, exhaustive: the one reader list, for report_ro and dashboard_ro.
+    listed text[] := ARRAY[
+        'project.system',
+        'controls.checklist', 'controls.checklist_question', 'controls.source', 'controls.submission',
+        'controls.submission_answer',
+        'qualification.qualification', 'qualification.qualification_answer', 'qualification.qualification_risk',
+        'qualification.knowledge_graph', 'qualification.card_component', 'qualification.form',
+        'qualification.form_version', 'qualification.form_question', 'qualification.form_version_question',
+        'control_objectives.project', 'control_objectives.graph', 'control_objectives.risk',
+        'control_objectives.mapped_objective', 'control_objectives.mapping_run']
+        || ARRAY(SELECT 'engine.' || t FROM unnest(ARRAY[
+            'project', 'ai_system', 'ai_component', 'evaluation', 'evaluation_plugin', 'evaluation_input',
+            'plugin', 'observation', 'measurement', 'metric', 'direct', 'derived', 'metric_category',
+            'metric_category_metrics', 'artifact']) AS t);
+    -- the schemas a reader may enter (report_composer: USAGE only, no table)
+    schemas text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer'];
+    -- the schemas whose other tables a reader must not read: the above, plus secrets and bookkeeping
+    guarded text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer',
+                            'llm', 'provision'];
+    reader text;
+    s text;
+    rel text;
 BEGIN
-    EXECUTE format('GRANT CONNECT ON DATABASE %I TO report_ro', current_database());
-    IF to_regnamespace('controls') IS NOT NULL THEN
-        EXECUTE 'GRANT USAGE ON SCHEMA controls TO report_ro';
-        FOREACH t IN ARRAY ARRAY['checklist', 'checklist_question', 'submission',
-                                 'submission_answer', 'source'] LOOP
-            IF to_regclass('controls.' || t) IS NOT NULL THEN
-                EXECUTE format('GRANT SELECT ON controls.%I TO report_ro', t);
+    FOREACH reader IN ARRAY ARRAY['report_ro', 'dashboard_ro'] LOOP
+        CONTINUE WHEN NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = reader);
+        EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), reader);
+        FOREACH s IN ARRAY schemas LOOP
+            IF to_regnamespace(s) IS NOT NULL THEN
+                EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', s, reader);
+            END IF;
+        END LOOP;
+        -- everything else first: every table of the guarded schemas, every right
+        FOR rel IN SELECT format('%I.%I', n.nspname, c.relname) FROM pg_class c
+                     JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = ANY (guarded) AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                      AND (n.nspname || '.' || c.relname) <> ALL (listed) LOOP
+            EXECUTE format('REVOKE ALL ON %s FROM %I', rel, reader);
+        END LOOP;
+        -- then the list: SELECT and nothing more
+        FOREACH rel IN ARRAY listed LOOP
+            IF to_regclass(rel) IS NOT NULL THEN
+                EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON %s FROM %I', rel, reader);
+                EXECUTE format('GRANT SELECT ON %s TO %I', rel, reader);
+            END IF;
+        END LOOP;
+        -- plugin_config.config may hold tool settings: only the columns that tie a run to its tool
+        IF to_regclass('engine.plugin_config') IS NOT NULL THEN
+            EXECUTE format('GRANT SELECT (id, plugin_id) ON engine.plugin_config TO %I', reader);
+        END IF;
+    END LOOP;
+    -- no reader right by a default privilege: it would also cover secrets and later tables (I2.6)
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'controls_rw') THEN
+        FOREACH reader IN ARRAY ARRAY['report_ro', 'dashboard_ro'] LOOP
+            CONTINUE WHEN NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = reader);
+            EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE controls_rw REVOKE SELECT ON TABLES FROM %I', reader);
+            IF to_regnamespace('controls') IS NOT NULL THEN
+                EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE controls_rw IN SCHEMA controls'
+                               ' REVOKE SELECT ON TABLES FROM %I', reader);
             END IF;
         END LOOP;
     END IF;
@@ -44,8 +102,4 @@ $grants$;
 SQL
   echo "[report-grants] $db"
 done
-
-# Databases made later are copies of template1: controls_rw's tables there become readable too.
-psql -v ON_ERROR_STOP=1 -d template1 -c \
-  "ALTER DEFAULT PRIVILEGES FOR ROLE controls_rw GRANT SELECT ON TABLES TO report_ro"
 echo "[report-grants] done"
