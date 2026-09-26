@@ -33,17 +33,20 @@ PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 #: What each schema holds, for the landing page: a title a person reads, then a sentence.
 #: A schema not listed here is still shown, under its own name.
 PROJECT_SCHEMAS = {
+    "project": ("AI card versions", "Every saved version of this project's AI system card, numbered; only the latest changes."),
+    "qualification": ("Qualification", "EU AI Act qualification: forms, answers, risks and the AI card's knowledge graph."),
     "controls": ("Controls", "Controls checklists, their questions, and the answers submitted for this project."),
+    "control_objectives": ("Control objectives", "Risk assessments and the control objectives mapped to each risk."),
+    "engine": ("Execution engine", "Systems, components, test plugins, evaluations and their results."),
+    "report_composer": ("Reports", "Report layouts, templates and the reports generated from them."),
     "llm": ("LLM keys and models", "LLM keys (stored encrypted, never readable) and the provider and model each agentic system uses."),
     "provision": ("Provisioning", "Bookkeeping: which template migrations this database has had."),
 }
 PLATFORM_SCHEMAS = {
-    "core": ("Projects and AI systems", "Projects, their members, and the versions of each project's AI system card."),
-    "qualification": ("Qualification", "EU AI Act qualification: forms, answers, risks and the AI card's knowledge graph."),
-    "control_objectives": ("Control objectives", "Risk assessments and the control objectives mapped to each risk."),
-    "engine": ("Execution engine", "Systems, components, test plugins, evaluations and their results."),
+    "core": ("Projects and their members", "Every project, and who may work in it with which role."),
     "catalogue": ("Catalogue", "The public catalogue of tests and controls."),
-    "report_composer": ("Reports", "Report layouts, templates and the reports generated from them."),
+    "form_library": ("Form library", "The forms every project may use; a project keeps its own copy of each version it uses."),
+    "report_library": ("Report presets", "Shared report presets, which hold no project data."),
 }
 SCHEMAS = "^(?!pg_|information_schema).*"
 SCHEMASPY_JAR = "/usr/local/lib/schemaspy/schemaspy-app.jar"
@@ -233,7 +236,7 @@ def landing_page(project: str | None) -> str:
         sections.append(_section("01", "This project", "project_" + project.replace("-", ""), PROJECT_SCHEMAS,
                                  "What is kept in this project's own database.", "own", 0))
     sections.append(_section("02" if project else "01", "Shared platform", "platform", PLATFORM_SCHEMAS,
-                             "Modules that are not per project yet keep their data here, for every project together.",
+                             "What every project shares: the list of projects and their members, the catalogue and the two libraries.",
                              "shared", 180))
     return ("<!doctype html><html lang=en><head><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
