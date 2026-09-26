@@ -14,6 +14,7 @@
 # is comparable with a dump of the live DB.
 
 TPG_IMAGE=${TPG_IMAGE:-postgres:14-alpine}
+TPG_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 TPG_SU=aisc-postgres-user
 TPG_NAME=""
 PORT=""
@@ -123,4 +124,40 @@ tpg_copy_db() { # template, new
        JOIN pg_database d ON d.oid = s.setdatabase WHERE d.datname = '$tpl'" \
     | tpg_su postgres -f - >/dev/null
   tpg_su postgres -c "GRANT CONNECT ON DATABASE \"$new\" TO qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, platform_rw, dashboard_ro" >/dev/null
+}
+
+# A project's database, made the way the platform provisions one (platform_service.projectdb,
+# isolation I2.4, I19.2): created by platform_rw, then every pending file of the project template
+# applied as platform_rw in one transaction under the platform's advisory lock, each recorded in
+# provision.template_migration. Idempotent: a second call applies only files added since.
+# The cluster needs init/project-databases.sql first (tpg_init_platform): templates 0007..0010 call
+# aisc_setup.apply_role_setting, which it installs in template1. Prints the database name.
+tpg_project_db() { # pid [template_dir]
+  local pid dir db applied f name
+  pid=$(printf '%s' "${1:-}" | tr 'A-F' 'a-f')
+  dir=${2:-$TPG_ROOT/platform/project-template}
+  if ! [[ "$pid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+    echo "tpg_project_db: not a project pid: '${1:-}'" >&2; return 1
+  fi
+  db=project_${pid//-/}
+  if [ -z "$(tpg_su postgres -tA -c "SELECT 1 FROM pg_database WHERE datname = '$db'")" ]; then
+    tpg_as platform platform_rw -c "CREATE DATABASE \"$db\"" >/dev/null || return 1
+  fi
+  applied=$(tpg_as "$db" platform_rw -tA -c \
+    "SELECT name FROM provision.template_migration" 2>/dev/null || true)
+  {
+    echo "BEGIN;"
+    echo "SELECT pg_advisory_xact_lock(8190233419);"
+    echo "CREATE SCHEMA IF NOT EXISTS provision;"
+    echo "CREATE TABLE IF NOT EXISTS provision.template_migration (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());"
+    for f in $(ls "$dir"/*.sql | sort); do
+      name=$(basename "$f")
+      grep -qxF "$name" <<<"$applied" && continue
+      cat "$f"
+      echo ";"
+      echo "INSERT INTO provision.template_migration (name) VALUES ('$name');"
+    done
+    echo "COMMIT;"
+  } | tpg_as "$db" platform_rw -f - >/dev/null || return 1
+  echo "$db"
 }
