@@ -28,7 +28,19 @@ NAME_MAX, DESCRIPTION_MAX = 120, 2000
 DRAFT_MAX_BYTES = 1_048_576
 
 
-def layout_view(layout: dict) -> dict:
+def _project_db(request: Request, g: Guarded):
+    """The guarded project's own database (I8.1): opened only after the guard has decided."""
+    return request.app.state.projects.connect(g.project["pid"])
+
+
+def _library(request: Request):
+    """`platform`, for the install-wide preset library report_library (D4)."""
+    return db.connect(request.app.state.database_url)
+
+
+def layout_view(layout: dict, project_pid: str) -> dict:
+    """A layout as the API answers it; project_id is the guarded project's (the row has none)."""
+    layout = {**layout, "project_id": project_pid}
     return {k: layout[k] for k in ("id", "project_id", "name", "description", "system_id", "template_id", "revision",
                                    "blocks", "created_at", "updated_at", "toc", "numbering", "coverage")}
 
@@ -76,8 +88,8 @@ def _blocks(body: dict) -> list:
 
 @router.get("/p/{ref}/systems")
 def get_systems(request: Request, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        return db.systems(conn, g.project["pid"])
+    with _project_db(request, g) as conn:
+        return db.systems(conn)
 
 
 @router.get("/block-types")
@@ -88,8 +100,8 @@ def get_block_types(request: Request, caller=Depends(signed_in)):
 @router.get("/p/{ref}/choices")
 def get_choices(request: Request, block_type: str, system_id: str,
                 g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        system = db.system_of_project(conn, g.project["pid"], system_id)
+    with _project_db(request, g) as conn:
+        system = db.system_of_project(conn, system_id)
     if system is None:
         raise ApiError(404, "not_found", "No such version in this project.")
     return renderer_call(request.app.state.renderer.choices, g.project["pid"], system["pid"], block_type)
@@ -99,15 +111,17 @@ def get_choices(request: Request, block_type: str, system_id: str,
 
 @router.get("/p/{ref}/layouts")
 def get_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        return db.list_layouts(conn, g.project["pid"])
+    with _project_db(request, g) as conn:
+        return db.list_layouts(conn)
 
 
-def _preset_named(conn, preset_id) -> presets.Preset:
-    """A built-in preset by id or a saved one by uuid, or 422 unknown_preset."""
+def _preset_named(request: Request, preset_id) -> presets.Preset:
+    """A built-in preset by id or a saved one by uuid (read from the library on `platform`), or 422
+    unknown_preset."""
     found = presets.built_in_by_id(preset_id) if isinstance(preset_id, str) else None
     if found is None and isinstance(preset_id, str):
-        row = db.get_preset(conn, preset_id)
+        with _library(request) as conn:
+            row = db.get_preset(conn, preset_id)
         found = presets.from_row(row) if row else None
     if found is None:
         raise ApiError(422, "unknown_preset", "No such preset.", [{"pointer": "/preset", "message": "is not a preset"}])
@@ -128,19 +142,18 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
         raise ApiError(422, "invalid_request", "Give at most one of preset, preset_file and blocks.",
                        [{"pointer": "/" + k, "message": "only one source of blocks"} for k in sources])
     pid = g.project["pid"]
-    url = request.app.state.database_url
     types = block_types(request)
     preset = None
-    with db.connect(url) as conn:
-        system = _system_for_new_layout(conn, pid, body.get("system_id"))
-        template_id = chosen_template(conn, pid, body.get("template_id"))
+    with _project_db(request, g) as conn:
+        system = _system_for_new_layout(conn, body.get("system_id"))
+        template_id = chosen_template(conn, body.get("template_id"))
         if body.get("preset") == "empty":
             preset = presets.Preset(id="empty", name="Empty layout")
         elif body.get("preset") is not None:
-            preset = _preset_named(conn, body["preset"])
+            preset = _preset_named(request, body["preset"])
         elif body.get("preset_file") is not None:
             preset = presets.from_file(body["preset_file"], types)
-        taken = db.layout_names(conn, pid)
+        taken = db.layout_names(conn)
     if body.get("name") is None and body.get("preset_file") is not None:
         body = {**body, "name": looks.free_name(preset.name, taken)}
     name, description = _name_and_description(body)
@@ -157,11 +170,11 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
         coverage_choices=lambda: coverage_choices_for(request, pid, system["pid"])))
     now = request.app.state.clock()
     try:
-        with db.connect(url) as conn:
-            lid = db.insert_layout(conn, project_pid=pid, system_pid=system["pid"], template_id=template_id, name=name,
+        with _project_db(request, g) as conn:
+            lid = db.insert_layout(conn, system_pid=system["pid"], template_id=template_id, name=name,
                                    description=description, blocks=blocks, who=g.caller.subject, now=now,
                                    settings=settings)
-            view = layout_view(db.get_layout(conn, pid, lid))
+            view = layout_view(db.get_layout(conn, lid), pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
     if body.get("preset_file") is not None:
@@ -169,14 +182,14 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
     return view
 
 
-def _system_for_new_layout(conn, pid, system_id) -> dict:
+def _system_for_new_layout(conn, system_id) -> dict:
     """The version asked for, or the project's latest when none is."""
     if system_id is not None:
-        system = db.system_of_project(conn, pid, system_id)
+        system = db.system_of_project(conn, system_id)
         if system is None:
             raise _system_not_in_project()
         return system
-    system = db.latest_system(conn, pid)
+    system = db.latest_system(conn)
     if system is None:
         raise ApiError(422, "system_not_in_project", "This project has no system version yet.")
     return system
@@ -184,25 +197,24 @@ def _system_for_new_layout(conn, pid, system_id) -> dict:
 
 @router.get("/p/{ref}/layouts/{layout_id}")
 def get_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        return layout_view(layout_or_404(conn, g.project["pid"], layout_id))
+    with _project_db(request, g) as conn:
+        return layout_view(layout_or_404(conn, layout_id), g.project["pid"])
 
 
 @router.put("/p/{ref}/layouts/{layout_id}")
 def put_layout(request: Request, layout_id: str, body: dict = Body(...),
                g: Guarded = Depends(project_guard("editor"))):
     pid = g.project["pid"]
-    url = request.app.state.database_url
-    with db.connect(url) as conn:
-        current = layout_or_404(conn, pid, layout_id)
+    with _project_db(request, g) as conn:
+        current = layout_or_404(conn, layout_id)
     if body.get("project_id") is not None and str(body["project_id"]) != pid:
         raise ApiError(422, "immutable_field", "A layout stays in its project.")
     name, description = _name_and_description(body)
     revision = _revision(body)
     blocks = _blocks(body)
-    with db.connect(url) as conn:
-        system = db.system_of_project(conn, pid, body.get("system_id") or current["system_id"])
-        template_id = chosen_template(conn, pid, body.get("template_id"))
+    with _project_db(request, g) as conn:
+        system = db.system_of_project(conn, body.get("system_id") or current["system_id"])
+        template_id = chosen_template(conn, body.get("template_id"))
     if system is None:
         raise _system_not_in_project()
     settings = document_settings(body, current)
@@ -211,16 +223,16 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
         reset_invalid=bool(body.get("reset_invalid")), coverage=settings["coverage"],
         coverage_choices=_once(lambda: coverage_choices_for(request, pid, system["pid"])))
     try:
-        with db.connect(url) as conn:
+        with _project_db(request, g) as conn:
             new = db.update_layout(conn, current["id"], based_on=revision, name=name, description=description,
                                    system_pid=system["pid"], template_id=template_id, blocks=blocks,
                                    who=g.caller.subject, now=request.app.state.clock(), settings=settings)
             if new is None:
-                latest = layout_or_404(conn, pid, layout_id)
+                latest = layout_or_404(conn, layout_id)
                 raise ApiError(409, "stale_revision",
                                f"The layout was saved meanwhile; the current revision is {latest['revision']}.",
                                [{"current_revision": latest["revision"]}])
-            return layout_view(db.get_layout(conn, pid, current["id"]))
+            return layout_view(db.get_layout(conn, current["id"]), pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
 
@@ -255,16 +267,16 @@ def _checked_blocks(blocks, types, choices, *, reset_invalid: bool, coverage=(),
 
 @router.delete("/p/{ref}/layouts/{layout_id}", status_code=204)
 def delete_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("editor"))):
-    with db.connect(request.app.state.database_url) as conn:
-        if not db.delete_layout(conn, g.project["pid"], layout_id):
+    with _project_db(request, g) as conn:
+        if not db.delete_layout(conn, layout_id):
             raise ApiError(404, "not_found", NO_LAYOUT)
     return Response(status_code=204)
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/validate")
 def validate(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer", origin_check=False))):
-    with db.connect(request.app.state.database_url) as conn:
-        layout = layout_or_404(conn, g.project["pid"], layout_id)
+    with _project_db(request, g) as conn:
+        layout = layout_or_404(conn, layout_id)
     pid = g.project["pid"]
     problems = layouts.validate_layout(
         layout["blocks"], block_types=block_types(request), choices=choices_for(request, pid, layout["system_id"]),
@@ -275,9 +287,9 @@ def validate(request: Request, layout_id: str, g: Guarded = Depends(project_guar
 
 @router.get("/p/{ref}/layouts/{layout_id}/preview")
 def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        layout = layout_or_404(conn, g.project["pid"], layout_id)
-        template = template_of(conn, g.project["pid"], layout)
+    with _project_db(request, g) as conn:
+        layout = layout_or_404(conn, layout_id)
+        template = template_of(conn, layout)
     result = renderer_call(request.app.state.renderer.render,
                            reports.snapshot_of(g.project, layout, "preview", g.caller, template))
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
@@ -288,8 +300,8 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
 def outline(request: Request, layout_id: str, body: dict = Body(...),
             g: Guarded = Depends(project_guard("editor"))):
     """Indentation and empty-chapter hints for the editor's current block order; nothing is stored."""
-    with db.connect(request.app.state.database_url) as conn:
-        layout_or_404(conn, g.project["pid"], layout_id)
+    with _project_db(request, g) as conn:
+        layout_or_404(conn, layout_id)
     blocks = _blocks(body)
     if len(blocks) > layouts.MAX_BLOCKS:   # the limit of layout save (fix round 2, item 4)
         raise ApiError(422, "too_many_blocks", f"A layout holds at most {layouts.MAX_BLOCKS} blocks.",
@@ -319,13 +331,13 @@ async def preview_draft(request: Request, layout_id: str, g: Guarded = Depends(p
 
 def _draft_preview(request: Request, g: Guarded, layout_id: str, body: dict) -> dict:
     pid = g.project["pid"]
-    with db.connect(request.app.state.database_url) as conn:
-        current = layout_or_404(conn, pid, layout_id)
-        system = db.system_of_project(conn, pid, body.get("system_id") or current["system_id"])
+    with _project_db(request, g) as conn:
+        current = layout_or_404(conn, layout_id)
+        system = db.system_of_project(conn, body.get("system_id") or current["system_id"])
         if system is None:
             raise _system_not_in_project()
-        template_id = chosen_template(conn, pid, body.get("template_id"))
-        template = db.get_template(conn, pid, template_id, with_logo=True) if template_id else None
+        template_id = chosen_template(conn, body.get("template_id"))
+        template = db.get_template(conn, template_id, with_logo=True) if template_id else None
     settings = document_settings(body, current)
     blocks = _blocks(body) if body.get("blocks") is not None else current["blocks"]
     problems = layouts.validate_layout(
@@ -345,22 +357,21 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
                      g: Guarded = Depends(project_guard("editor"))):
     body = body or {}
     pid = g.project["pid"]
-    url = request.app.state.database_url
     now = request.app.state.clock()
     try:
-        with db.connect(url) as conn:
-            src = layout_or_404(conn, pid, layout_id)
+        with _project_db(request, g) as conn:
+            src = layout_or_404(conn, layout_id)
             if body.get("name") is not None:
                 name = _text(body, "name", required=True, max_len=NAME_MAX)
             else:
-                name = presets.copy_name(src["name"], db.layout_names(conn, pid))
+                name = presets.copy_name(src["name"], db.layout_names(conn))
             blocks = [{"instance_id": str(uuid.uuid4()), "block_type": b["block_type"], "options": b["options"]}
                       for b in src["blocks"]]
             settings = {k: src[k] for k in ("toc", "numbering", "coverage")}
-            lid = db.insert_layout(conn, project_pid=pid, system_pid=src["system_id"], template_id=src["template_id"],
+            lid = db.insert_layout(conn, system_pid=src["system_id"], template_id=src["template_id"],
                                    name=name, description=src.get("description") or "", blocks=blocks,
                                    who=g.caller.subject, now=now, settings=settings)
-            return layout_view(db.get_layout(conn, pid, lid))
+            return layout_view(db.get_layout(conn, lid), pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
 
@@ -374,8 +385,8 @@ def _preset_file_response(p: presets.Preset) -> Response:
 @router.get("/p/{ref}/layouts/{layout_id}/export")
 def export_layout(request: Request, layout_id: str, keep_text: bool = False,
                   g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        layout = layout_or_404(conn, g.project["pid"], layout_id)
+    with _project_db(request, g) as conn:
+        layout = layout_or_404(conn, layout_id)
     return _preset_file_response(presets.from_layout(layout, block_types(request), keep_text=keep_text))
 
 
@@ -389,11 +400,14 @@ def save_as_preset(request: Request, layout_id: str, body: dict = Body(...),
                    g: Guarded = Depends(project_guard("editor"))):
     name = presets.checked_name(body.get("name"))
     description = _text(body, "description", required=False, max_len=DESCRIPTION_MAX)
+    # the layout is read in the project's database, the copy is written to the library on `platform`:
+    # two steps, not one transaction, which is fine for a copy (D4)
+    with _project_db(request, g) as conn:
+        layout = layout_or_404(conn, layout_id)
+    p = presets.from_layout(layout, block_types(request), keep_text=bool(body.get("keep_text")))
+    p.name, p.description = name, description
     try:
-        with db.connect(request.app.state.database_url) as conn:
-            layout = layout_or_404(conn, g.project["pid"], layout_id)
-            p = presets.from_layout(layout, block_types(request), keep_text=bool(body.get("keep_text")))
-            p.name, p.description = name, description
+        with _library(request) as conn:
             p.id = _insert_preset(conn, p, source_project_id=g.project["pid"], who=g.caller.subject,
                                   now=request.app.state.clock())
     except psycopg.errors.UniqueViolation:
@@ -407,7 +421,7 @@ def _all_presets(conn) -> list[presets.Preset]:
 
 @router.get("/presets")
 def get_presets(request: Request, caller=Depends(signed_in)):
-    with db.connect(request.app.state.database_url) as conn:
+    with _library(request) as conn:
         return [presets.summary(p) for p in _all_presets(conn)]
 
 
@@ -415,7 +429,7 @@ def get_presets(request: Request, caller=Depends(signed_in)):
 def import_preset(request: Request, body=Body(...), caller=Depends(signed_in)):
     check_origin(request)
     p = presets.from_file(body, block_types(request))
-    with db.connect(request.app.state.database_url) as conn:
+    with _library(request) as conn:
         p.name = looks.free_name(p.name, db.preset_names(conn))
         p.id = _insert_preset(conn, p, source_project_id=None, who=caller.subject, now=request.app.state.clock())
     return {**presets.summary(p), "notices": presets.reference_notices(p.reset, "data of another project or platform")}
@@ -433,7 +447,7 @@ def _preset_or_404(conn, preset_id) -> presets.Preset:
 
 @router.get("/presets/{preset_id}/export")
 def export_preset(request: Request, preset_id: str, caller=Depends(signed_in)):
-    with db.connect(request.app.state.database_url) as conn:
+    with _library(request) as conn:
         return _preset_file_response(_preset_or_404(conn, preset_id))
 
 
@@ -445,7 +459,7 @@ def may_delete_preset(p: presets.Preset, caller) -> bool:
 @router.delete("/presets/{preset_id}", status_code=204)
 def delete_preset(request: Request, preset_id: str, caller=Depends(signed_in)):
     check_origin(request)
-    with db.connect(request.app.state.database_url) as conn:
+    with _library(request) as conn:
         p = _preset_or_404(conn, preset_id)
         if not may_delete_preset(p, caller):
             raise ApiError(403, "forbidden", "Only its creator or an administrator deletes this preset."
@@ -469,14 +483,14 @@ def post_report(request: Request, layout_id: str, body: dict | None = Body(None)
 
 @router.get("/p/{ref}/layouts/{layout_id}/reports")
 def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        layout = layout_or_404(conn, g.project["pid"], layout_id)
+    with _project_db(request, g) as conn:
+        layout = layout_or_404(conn, layout_id)
         return db.list_reports(conn, layout["id"])
 
 
 def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool) -> Response:
-    with db.connect(request.app.state.database_url) as conn:
-        report = db.get_report(conn, g.project["pid"], report_id)
+    with _project_db(request, g) as conn:
+        report = db.get_report(conn, report_id)
     fmt = (report or {}).get("format") or "pdf"
     if report is None or report["pdf"] is None or (only_pdf and fmt != "pdf"):
         raise ApiError(404, "not_found", "No such report.")
@@ -501,20 +515,20 @@ def download(request: Request, report_id: str, g: Guarded = Depends(project_guar
 
 def _save_template(request: Request, g: Guarded, body, template_id=None, rename_if_taken=False):
     look, logo = looks.checked(body, fonts(request))
-    url, pid, now = request.app.state.database_url, g.project["pid"], request.app.state.clock()
+    now = request.app.state.clock()
     try:
-        with db.connect(url) as conn:
+        with _project_db(request, g) as conn:
             if template_id is not None and body.get("keep_logo") and "logo" not in body:
-                current = template_or_404(conn, pid, template_id, with_logo=True)
+                current = template_or_404(conn, template_id, with_logo=True)
                 logo = (current["logo_mime"], bytes(current["logo"])) if current.get("logo") else None
             if rename_if_taken:
-                look["name"] = looks.free_name(look["name"], db.template_names(conn, pid))
+                look["name"] = looks.free_name(look["name"], db.template_names(conn))
             if template_id is None:
-                template_id = db.insert_template(conn, project_pid=pid, look=look, logo=logo, who=g.caller.subject,
+                template_id = db.insert_template(conn, look=look, logo=logo, who=g.caller.subject,
                                                  now=now)
-            elif not db.update_template(conn, pid, template_id, look=look, logo=logo, who=g.caller.subject, now=now):
+            elif not db.update_template(conn, template_id, look=look, logo=logo, who=g.caller.subject, now=now):
                 raise ApiError(404, "not_found", NO_TEMPLATE)
-            return looks.view(template_or_404(conn, pid, template_id))
+            return looks.view(template_or_404(conn, template_id))
     except psycopg.errors.UniqueViolation:
         raise ApiError(422, "name_taken", "A template of this project already has this name.") from None
 
@@ -526,8 +540,8 @@ def get_fonts(request: Request, caller=Depends(signed_in)):
 
 @router.get("/p/{ref}/templates")
 def get_templates(request: Request, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        return [looks.view(t) for t in db.list_templates(conn, g.project["pid"])]
+    with _project_db(request, g) as conn:
+        return [looks.view(t) for t in db.list_templates(conn)]
 
 
 @router.post("/p/{ref}/templates", status_code=201)
@@ -543,31 +557,31 @@ def import_template(request: Request, body: dict = Body(...), g: Guarded = Depen
 @router.put("/p/{ref}/templates/{template_id}")
 def put_template(request: Request, template_id: str, body: dict = Body(...),
                  g: Guarded = Depends(project_guard("editor"))):
-    with db.connect(request.app.state.database_url) as conn:
-        current = template_or_404(conn, g.project["pid"], template_id)
+    with _project_db(request, g) as conn:
+        current = template_or_404(conn, template_id)
     return _save_template(request, g, body, template_id=current["id"])
 
 
 @router.delete("/p/{ref}/templates/{template_id}", status_code=204)
 def delete_template(request: Request, template_id: str, g: Guarded = Depends(project_guard("editor"))):
-    with db.connect(request.app.state.database_url) as conn:
-        if not db.delete_template(conn, g.project["pid"], template_id):
+    with _project_db(request, g) as conn:
+        if not db.delete_template(conn, template_id):
             raise ApiError(404, "not_found", NO_TEMPLATE)
     return Response(status_code=204)
 
 
 @router.get("/p/{ref}/templates/{template_id}/export")
 def export_template(request: Request, template_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        t = template_or_404(conn, g.project["pid"], template_id, with_logo=True)
+    with _project_db(request, g) as conn:
+        t = template_or_404(conn, template_id, with_logo=True)
     return Response(json.dumps(looks.export_doc(t), indent=2), media_type="application/json",
                     headers={"Content-Disposition": f'attachment; filename="{looks.filename(t["name"])}"'})
 
 
 @router.get("/p/{ref}/templates/{template_id}/logo")
 def template_logo(request: Request, template_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    with db.connect(request.app.state.database_url) as conn:
-        t = template_or_404(conn, g.project["pid"], template_id, with_logo=True)
+    with _project_db(request, g) as conn:
+        t = template_or_404(conn, template_id, with_logo=True)
     if not t.get("logo"):
         raise ApiError(404, "not_found", "This template has no logo.")
     # an SVG is served as an image only: no script of it runs in this origin

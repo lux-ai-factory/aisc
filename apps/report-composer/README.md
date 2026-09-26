@@ -40,14 +40,28 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
 
 ## Storage
 
-Schema `report_composer` of the `platform` database, owned by `report_composer_rw` (made by
-`init/report-roles.sql`); tables from `migrations/`, applied at start.
+One database per project (isolation 2026-09-25). A project's layouts, templates and generated
+reports are tables of schema `report_composer` in that project's own database `project_<pid without
+hyphens>`; the schema is made by the platform's project template (`0010_report_composer.sql`), the
+tables by `migrations/project/` (tracked in `report_composer.schema_migration` of each project
+database), and a layout's or report's version names a row of that database's `project.system`.
+
+Saved presets are the install-wide library: table `report_library.preset` of the `platform` database
+(schema owned by `report_composer_rw`, made by the init files), from `migrations/library/` (tracked in
+`report_library.schema_migration`). On `platform` the composer otherwise reads only `core.project` and
+`core.project_member`.
+
+Migrations run in the one-shot `python -m report_composer.migrate` (the library, then every project
+database), again at start, and on the first open of a project database made later (advisory lock
+8_190_233_707 in each database). The files the shared schema had before the isolation are kept in
+`pre_isolation_migrations/` for the cutover; the image no longer ships them.
 
 ## Environment
 
 | variable | meaning |
 |---|---|
-| `REPORT_COMPOSER_DATABASE_URL` | the platform database as `report_composer_rw` |
+| `REPORT_COMPOSER_DATABASE_URL` | the platform database as `report_composer_rw` (membership and the preset library) |
+| `REPORT_COMPOSER_PROJECT_DATABASE_URL` | the same kind of DSN with `{database}` in place of the name, for each project's database |
 | `REPORT_RENDERER_URL` | the renderer, e.g. `http://report-renderer:8001` |
 | `REPORT_SERVICE_TOKEN` | the token shared with the renderer |
 | `REPORT_COMPOSER_ROOT_PATH` | the prefix Caddy strips (`/report-composer`) |

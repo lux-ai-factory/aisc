@@ -43,8 +43,8 @@ def _by_slug(request: Request, project: dict, rest: str) -> RedirectResponse:
     return RedirectResponse(f"{_root(request)}/p/{project['slug']}{rest}", status_code=303)
 
 
-def _templates(conn, project_pid) -> list[dict]:
-    return [looks.view(x) for x in db.list_templates(conn, project_pid)]
+def _templates(conn) -> list[dict]:
+    return [looks.view(x) for x in db.list_templates(conn)]
 
 
 @router.get("/")
@@ -64,11 +64,12 @@ def layouts_page(request: Request, ref: str):
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, "/")
-    url = request.app.state.database_url
-    with db.connect(url) as conn:
-        rows = db.list_layouts(conn, g.project["pid"])
-        systems = db.systems(conn, g.project["pid"])
-        templates = _templates(conn, g.project["pid"])
+    # the project's rows from its own database, the saved presets from the library on `platform` (D4)
+    with request.app.state.projects.connect(g.project["pid"]) as conn:
+        rows = db.list_layouts(conn)
+        systems = db.systems(conn)
+        templates = _templates(conn)
+    with db.connect(request.app.state.database_url) as conn:
         saved = [presets.from_row(r) for r in db.list_presets(conn)]
     saved_presets = [{**presets.summary(p), "may_delete": may_delete_preset(p, g.caller)} for p in saved]
     return _page("layouts.html.j2", request, project=g.project, layouts=rows, systems=systems,
@@ -110,12 +111,11 @@ def editor_page(request: Request, ref: str, layout_id: str):
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, f"/layouts/{layout_id}")
-    url = request.app.state.database_url
-    with db.connect(url) as conn:
-        layout = layout_or_404(conn, g.project["pid"], layout_id)
-        systems = db.systems(conn, g.project["pid"])
+    with request.app.state.projects.connect(g.project["pid"]) as conn:
+        layout = layout_or_404(conn, layout_id)
+        systems = db.systems(conn)
         report_rows = db.list_reports(conn, layout["id"])
-        templates = _templates(conn, g.project["pid"])
+        templates = _templates(conn)
     editor = g.access.may_write
     pid = g.project["pid"]
     types = block_types(request)
@@ -148,8 +148,8 @@ def templates_page(request: Request, ref: str):
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, "/templates")
-    with db.connect(request.app.state.database_url) as conn:
-        rows = [looks.view(x) for x in db.list_templates(conn, g.project["pid"])]
+    with request.app.state.projects.connect(g.project["pid"]) as conn:
+        rows = _templates(conn)
     font_list = fonts(request)
     labels = {f["id"]: f["label"] for f in font_list}
     return _page("templates.html.j2", request, project=g.project, templates=rows, fonts=font_list, labels=labels,

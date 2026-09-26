@@ -2,8 +2,8 @@
 
 A preset is an ordered list of {block_type, options} plus the document settings toc and numbering
 (reports are English only; a `language` in a file or row is ignored). Built-in presets are the JSON
-files of report_composer/presets/; saved presets sit in report_composer.preset and are seen by every
-signed-in user; a preset file carries a structure to another project or platform. A layout made from
+files of report_composer/presets/; saved presets sit in report_library.preset, the install-wide
+library in the platform database (isolation D4), and are seen by every signed-in user; a preset file carries a structure to another project or platform. A layout made from
 a preset keeps no link to it.
 """
 from __future__ import annotations
