@@ -231,10 +231,12 @@ def test_d6b_a_new_module_table_is_not_readable(bed):
 
 def test_d6c_a_project_database_made_later_is_readable_after_the_next_grants_run(bed):
     """D6 (c), I2.6, I2.7: a project database created after the grants (by platform_rw, from template1 and
-    the project template, schema controls made by controls_rw) is not readable through a default
-    privilege; the next scripts/report-grants.sh run makes its listed tables readable."""
+    the project template, schema controls made by controls_rw) whose module did not grant the readers
+    (here: its grants taken back, as for a database migrated before report_ro existed) is not readable
+    through any default privilege; the next scripts/report-grants.sh run makes its listed tables readable."""
     pid = str(uuid.uuid4())
     db = report_bed._project_database(bed.t, pid)
+    bed.psql(db, "REVOKE SELECT ON ALL TABLES IN SCHEMA controls FROM report_ro, dashboard_ro")
     r = as_ro(bed, db, "SELECT count(*) FROM controls.submission_answer")
     assert not ok(r) and "permission denied" in r.stderr, "I2.6: readable before the repair: a default privilege"
     g = report_bed.run_report_grants(bed.t)

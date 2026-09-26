@@ -61,6 +61,20 @@ ALTER ROLE report_composer_rw IN DATABASE platform SET search_path = report_comp
 REPORT_GRANTS_SQL = ROOT / "init/report-ro-grants.sql"
 REPORT_GRANTS_SH = ROOT / "scripts/report-grants.sh"
 PROJECT_TEMPLATE = ROOT / "platform/project-template"
+#: I2.6: the five controls tables for both readers, as apps/controls' migration
+#: 20260926000100_readers_read_the_listed_tables grants them (a missing reader is skipped).
+CONTROLS_READERS_SQL = """
+DO $$
+DECLARE reader text;
+BEGIN
+  FOREACH reader IN ARRAY ARRAY['report_ro', 'dashboard_ro'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = reader) THEN
+      EXECUTE format('GRANT SELECT ON controls.checklist, controls.checklist_question, controls.source, '
+                     'controls.submission, controls.submission_answer TO %I', reader);
+    END IF;
+  END LOOP;
+END $$;
+"""
 
 #: Fixed ids of the seed. Version 2 of Alpha is the usual pinned version.
 IDS = {
@@ -202,6 +216,10 @@ def _project_database(t: Throwaway, pid: str) -> str:
         t.psql(name, f.read_text() + f"\n;\nINSERT INTO provision.template_migration (name) VALUES ('{f.name}');",
                role="platform_rw")
     _as_file(t, name, "controls_rw", FIXTURES / "schema_controls.sql")
+    # What controls' own migration 20260926000100_readers_read_the_listed_tables grants, as the
+    # tables' owner: the fixture above is the schema only. Before the isolation a default privilege
+    # in template1 did this for every later database; I2.6 forbids it (report-grants.sh removes it).
+    _run(t, name, CONTROLS_READERS_SQL, "controls_rw", "controls reader grants")
     return name
 
 
