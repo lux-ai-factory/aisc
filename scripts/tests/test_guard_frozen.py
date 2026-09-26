@@ -96,8 +96,9 @@ def test_s0_3_scripts_never_target_the_hosts_5432():
 # --- WP1: engine undo ---------------------------------------------------------------------------
 
 def test_s1_1_engine_schema_equals_e34fca3(guard_all):
-    """S1.1 / G1: migrations 0001..0023 at HEAD give exactly the e34fca3 engine schema (with
-    platform 0003 applied first; the "0003 after" order is covered by S4.1)."""
+    """S1.1 / G1: the engine migrations at HEAD, applied by migrate_projects in a project database
+    (isolation I7.12), give exactly the e34fca3 engine schema up to the two differences of I7.9;
+    the "0003 after" order is covered by S4.1, on the pre-isolation trees."""
     r, out = guard_all
     lines = verdict(r.stdout, "G1")
     assert lines == ["G1 PASS (engine schema equals e34fca3)"], "\n".join(lines) or r.stdout[-3000:]
@@ -112,7 +113,8 @@ def test_s1_4_backend_part_of_g4_and_g5(guard_all):
 
 
 def test_s1_6_one_ai_system_per_engine_project(guard_all):
-    """S1.6: the candidate engine schema keeps UNIQUE (project_id) on engine.ai_system."""
+    """S1.6: the candidate engine schema (in a project database) keeps UNIQUE (project_id) on
+    engine.ai_system."""
     r, out = guard_all
     dump = (out / "engine.candidate.sql").read_text()
     assert re.search(r"ALTER TABLE ONLY engine\.ai_system\s+ADD CONSTRAINT \w+ UNIQUE \(project_id\);", dump), \
