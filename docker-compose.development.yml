@@ -551,7 +551,8 @@ services:
       - frontend
     restart: unless-stopped
 
-  # The preset library on platform, then every project database (I8.4).
+  # The preset library on platform, then every project database (I8.4). Exit 2 is a
+  # permanent error: no retry; any other failure (postgres not up yet) is retried.
   report-composer-migrate:
     image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -560,7 +561,8 @@ services:
       - ./shared/identity:/app/shared/identity:ro,z
     environment:
       <<: *composer-env
-    command: ["python", "-m", "report_composer.migrate"]
+    command: >
+      sh -c "until python -m report_composer.migrate; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[report-composer] waiting for postgres'; sleep 2; done"
     depends_on:
       postgres-setup:
         condition: service_completed_successfully

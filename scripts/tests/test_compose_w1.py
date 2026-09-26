@@ -93,7 +93,12 @@ def test_i8_4_report_composer_migrate_one_shot(default_tag):
     svc = default_tag.get("report-composer-migrate")
     assert svc, "I8.4: no service report-composer-migrate"
     cmd = svc.get("command") or []
-    assert (" ".join(cmd) if isinstance(cmd, list) else cmd) == "python -m report_composer.migrate"
+    text = " ".join(cmd) if isinstance(cmd, list) else cmd
+    assert "python -m report_composer.migrate" in text
+    # the migrate one-shots' convention (orchestrator's decision for V1): exit 2 is permanent and
+    # stops the loop, any other failure is retried
+    assert "until python -m report_composer.migrate;" in text, text
+    assert re.search(r"\[ \$\$?s -eq 2 \] && exit 2", text), text
     assert svc.get("restart") in (None, "no")
     assert svc["image"] == default_tag["report-composer"]["image"]
     assert svc.get("environment") == default_tag["report-composer"].get("environment")
