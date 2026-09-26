@@ -3,14 +3,18 @@
 #
 #   ./scripts/verify-db-consistency.sh [--only C1,C3]
 #
-# What this asserts, against the RUNNING stack's Postgres (or the one PG* points at):
+# What this asserts, against the RUNNING stack's Postgres (or the one PG* points at). Since the
+# isolation every module and the card versions (project.system) live in each project's own
+# database project_<hex>; platform keeps core.project, core.project_member and the libraries:
 #   C1 every project database belongs to a project, and every project has its database,
-#   C2 no database or platform schema outside the known list (the old standalone ones too),
-#   C3 a card version's name, version and provider read the same in every module,
-#   C4 every reference into core.project and core.system resolves, to the right project,
+#   C2 no database or platform schema outside the known list (the old standalone ones too; a
+#      retired module schema or an extra core table is a WARN until the stage-7 drop),
+#   C3 a card version's name, version and provider read the same in every module of its database,
+#   C4 every card-version pid, stamp and card component resolves in its own project database,
 #   C5 every stored Keycloak subject is a user of the aisc realm (WARN),
 #   C6 an assessment's graph is still the card's current knowledge graph (WARN),
-#   C7 no project database is behind on its template or controls migrations,
+#   C7 no database is behind on any migration history (template, qualification, controls,
+#      control objectives, engine, report composer; the libraries in platform),
 #   C8 snake_case columns and timestamptz in the schemas that are not frozen (WARN).
 # The catalogue is out of scope. Every session is default_transaction_read_only=on and
 # only SELECTs are sent: this reads, it never changes a row.
