@@ -24,10 +24,18 @@ Run from the repo root:
         scripts/tests/test_card_version_keys_orders.py
 
 Every database is a throwaway postgres:14-alpine container, never the host's 5432.
+
+A historical regression since the isolation (2026-09-25, 03-coding-plan.md V1): the composite keys it
+pins exist only in the pre-isolation shared layout, which the current init files and module
+migrations no longer build (I1.6, I1.7). So, like `scripts/guard-frozen.sh --orders`, it runs on the
+trees of the top-level commit f01288a: its init files, platform migrations and runner, its report
+composer, and the qualification and control-objectives commits of its gitlinks. The assertions are
+unchanged.
 """
 
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import os
 import shutil
@@ -43,10 +51,33 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
 from throwaway import Throwaway  # noqa: E402
 
-QUAL = ROOT / "apps/qualification"
-CO = ROOT / "apps/control-objectives"
-RC = ROOT / "apps/report-composer"
-PRISMA = QUAL / "node_modules/.bin/prisma"
+#: the pre-isolation top-level commit (03-coding-plan.md G3)
+REF = "f01288a"
+
+
+def _export(repo: Path, rev: str, dest: Path, *paths: str) -> Path:
+    dest.mkdir(parents=True, exist_ok=True)
+    archive = subprocess.run(["git", "-C", str(repo), "archive", rev, *paths], check=True, capture_output=True)
+    subprocess.run(["tar", "-x", "-C", str(dest)], input=archive.stdout, check=True)
+    return dest
+
+
+def _gitlink(path: str) -> str:
+    return subprocess.run(["git", "-C", str(ROOT), "rev-parse", f"{REF}:{path}"], check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+TREES = Path(tempfile.mkdtemp(prefix="orders-trees-"))
+atexit.register(shutil.rmtree, TREES, True)
+TOP = _export(ROOT, REF, TREES / "top", "init", "platform/migrations", "platform/platform_service/migrate.py",
+              "apps/report-composer/migrations", "apps/report-composer/report_composer/migrate.py")
+QUAL = _export(ROOT / "apps/qualification", _gitlink("apps/qualification"), TREES / "qualification", "prisma")
+CO = _export(ROOT / "apps/control-objectives", _gitlink("apps/control-objectives"), TREES / "control-objectives",
+             "alembic", "alembic.ini", "src")
+RC = TOP / "apps/report-composer"
+#: the tools stay the worktree's: prisma's CLI and control objectives' virtualenv (alembic, sqlalchemy)
+PRISMA = ROOT / "apps/qualification/node_modules/.bin/prisma"
+CO_PYTHON = ROOT / "apps/control-objectives/.venv/bin/python"
 
 #: What exists on the live stack today, before this change.
 LIVE_PLATFORM = ["0001_project_membership.sql", "0002_one_ai_system_per_project.sql",
@@ -95,7 +126,7 @@ def _runner(path: Path, name: str):
     return module.migrate
 
 
-platform_migrate = _runner(ROOT / "platform/platform_service/migrate.py", "platform_migrate")
+platform_migrate = _runner(TOP / "platform/platform_service/migrate.py", "platform_migrate")
 composer_migrate = _runner(RC / "report_composer/migrate.py", "composer_migrate")
 
 
@@ -127,25 +158,25 @@ class Stack:
 
     # the steps
     def S(self):
-        self.su_file(ROOT / "init/project-databases.sql")
+        self.su_file(TOP / "init/project-databases.sql")
 
     def P(self, directory: Path | None = None):
         with self.connect("platform_rw") as conn:
-            platform_migrate(conn, directory or ROOT / "platform/migrations")
+            platform_migrate(conn, directory or TOP / "platform/migrations")
 
     def Q(self, prisma_dir: Path | None = None):
         schema = (prisma_dir or QUAL / "prisma") / "schema.prisma"
-        _run([str(PRISMA), "migrate", "deploy", "--schema", str(schema)], QUAL,
+        _run([str(PRISMA), "migrate", "deploy", "--schema", str(schema)], ROOT / "apps/qualification",
              {"DATABASE_URL": self.t.dsn("qualification_rw", "platform") + "?schema=qualification"})
 
     def C(self, rev: str = "head"):
-        _run(["uv", "run", "--quiet", "alembic", "upgrade", rev], CO,
+        _run([str(CO_PYTHON), "-m", "alembic", "upgrade", rev], CO,
              {"DATABASE_URL": self.t.dsn("control_objectives_rw", "platform").replace(
-                 "postgresql://", "postgresql+psycopg://")})
+                 "postgresql://", "postgresql+psycopg://"), "PYTHONPATH": str(CO / "src")})
 
     def R(self, directory: Path | None = None):
         with self.connect("report_composer_rw") as conn:
-            composer_migrate(conn, directory or RC / "pre_isolation_migrations")
+            composer_migrate(conn, directory or RC / "migrations")
 
     def snapshot(self, name: str):
         self.su(f'DROP DATABASE IF EXISTS "{name}"', "postgres")
@@ -167,24 +198,24 @@ class Stack:
 
 def _fresh(stack: Stack):
     """What docker-entrypoint-initdb.d runs on a new volume, before anyone can connect."""
-    stack.su_file(ROOT / "init/platform-db.sql", "postgres")
+    stack.su_file(TOP / "init/platform-db.sql", "postgres")
     stack.S()
-    stack.su_file(ROOT / "init/report-roles.sql")
+    stack.su_file(TOP / "init/report-roles.sql")
 
 
 def _live(stack: Stack):
     """A volume made before this change, with every module at today's head and one row each."""
-    stack.su_file(ROOT / "init/platform-db.sql", "postgres")
+    stack.su_file(TOP / "init/platform-db.sql", "postgres")
     stack.su(f"ALTER TABLE core.system DROP CONSTRAINT {UNIQUE}")
     stack.su("ALTER TABLE core.system OWNER TO platform_rw")   # what postgres-setup did until now
-    stack.su_file(ROOT / "init/report-roles.sql")
-    stack.P(_only(ROOT / "platform/migrations", LIVE_PLATFORM))
+    stack.su_file(TOP / "init/report-roles.sql")
+    stack.P(_only(TOP / "platform/migrations", LIVE_PLATFORM))
     prisma = Path(tempfile.mkdtemp(prefix="orders-prisma-")) / "prisma"
     shutil.copytree(QUAL / "prisma", prisma)
     shutil.rmtree(prisma / "migrations" / LIVE_QUAL_NEW)
     stack.Q(prisma)
     stack.C(LIVE_CO)
-    stack.R(_only(RC / "pre_isolation_migrations", LIVE_RC))
+    stack.R(_only(RC / "migrations", LIVE_RC))
     stack.su("SET session_replication_role = replica;\n" + SEED)
 
 
