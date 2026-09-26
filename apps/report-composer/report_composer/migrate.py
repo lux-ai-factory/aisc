@@ -10,7 +10,12 @@ table, under advisory lock 8_190_233_707 taken in the database being migrated. T
 the platform (template 0010 in a project database, the init files for report_library); the start loop
 never makes one, so the composer never creates its schema in `platform`.
 
-    python -m report_composer.migrate    the library, then every project database; exit 0 when all are ok
+    python -m report_composer.migrate    the library, then every project database
+
+Exit status, the convention of every migrate one-shot (the compose loop retries 1 and stops on 2):
+0 when the library and every project database are at their head; 1 when the platform database
+cannot be reached yet; 2 for a missing setting, or when the library or any project database failed
+(permanent: report-composer does not start on a half-migrated set).
 
 This file stays loadable on its own (a test loads it with spec_from_file_location): at the top level it
 imports only the standard library and psycopg.
@@ -120,19 +125,28 @@ def migrate_everything(database_url: str, project_database_url: str, *, library:
     return results
 
 
+#: exit statuses of the one-shot
+OK, RETRY, PERMANENT = 0, 1, 2
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     database_url = os.environ.get("REPORT_COMPOSER_DATABASE_URL", "")
     project_database_url = os.environ.get("REPORT_COMPOSER_PROJECT_DATABASE_URL", "")
     if not database_url or not project_database_url:
         logger.error("REPORT_COMPOSER_DATABASE_URL and REPORT_COMPOSER_PROJECT_DATABASE_URL must both be set")
-        return 1
+        return PERMANENT
+    try:
+        project_databases(database_url)   # the platform answers, or the loop waits for it
+    except psycopg.OperationalError as exc:
+        logger.error("the platform database cannot be reached yet: %s", type(exc).__name__)
+        return RETRY
     results = migrate_everything(database_url, project_database_url)
     failed = sorted(name for name, r in results.items() if r != "ok")
     logger.info("migrated %d of %d databases", len(results) - len(failed), len(results))
     for name in failed:
         logger.error("not migrated: %s (%s)", name, results[name])
-    return 0 if not failed else 1
+    return OK if not failed else PERMANENT
 
 
 if __name__ == "__main__":
