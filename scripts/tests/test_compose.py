@@ -186,3 +186,11 @@ def test_the_runtime_env_points_at_the_hosted_catalogue():
     assert env.get("CATALOGUE_API_URL") == HOSTED_CATALOGUE_API, base
     assert env.get("CATALOGUE_ORIGIN") == HOSTED_ORIGIN, base
     assert "CATALOGUE_PORT_EXTERNAL" not in env, base
+
+
+def test_the_report_renderer_has_every_build_context_its_dockerfile_copies_from(compose):
+    """The renderer's Dockerfile (aisc-report-generator) copies from five named contexts; compose
+    must give all five, or `up --build` fails on a fresh machine (it did on 2026-09-27: promptfoo)."""
+    q, cfg = compose
+    contexts = (cfg["services"]["report-renderer"].get("build") or {}).get("additional_contexts") or {}
+    assert set(contexts) >= {"interface", "mlareject", "langbite", "strongreject", "promptfoo"}, sorted(contexts)

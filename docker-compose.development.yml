@@ -574,6 +574,9 @@ services:
       additional_contexts:
         interface: ${REPORT_INTERFACE_DIR:-../aisc-report-plugin-interface}
         mlareject: ${REPORT_MLAREJECT_DIR:-../aisc-report-mlareject}
+        langbite: ${REPORT_LANGBITE_DIR:-../aisc-report-langbite}
+        strongreject: ${REPORT_STRONGREJECT_DIR:-../aisc-report-strongreject}
+        promptfoo: ${REPORT_PROMPTFOO_DIR:-../aisc-report-promptfoo}
     image: aisc-report-renderer:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: report-renderer
