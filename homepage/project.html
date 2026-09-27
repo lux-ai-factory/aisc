@@ -238,7 +238,6 @@
 
   @media (max-width:820px){
     .topbar{padding:12px 18px; gap:14px}
-    .session em{display:none}
     main{padding:28px 18px 32px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
@@ -299,14 +298,21 @@
     margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);
     color:var(--muted); font-size:13px; background:rgba(0,15,223,.02);
   }
-  .crumb{
-    display:flex; align-items:center; gap:10px; margin-bottom:6px;
-    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
-  }
-  .crumb a{color:var(--primary); text-decoration:none}
-  .crumb a:hover{text-decoration:underline}
-  .crumb span{color:var(--faint)}
   .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
+  .titlerow{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  /* Manage: the admin's menu, at the right end of the title row */
+  .titlerow .manage{margin-left:0; margin-top:4px}
+  .menu .panel .group{
+    display:block; padding:8px 15px 4px; font-family:var(--mono); font-size:10px;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+  }
+  .menu .panel .sep{display:block; height:1px; margin:5px 0; background:var(--border)}
+  .menu .panel button.danger{
+    display:block; width:100%; padding:9px 15px; text-align:left; cursor:pointer;
+    background:none; border:0; font-family:var(--mono); font-size:11.5px; color:var(--error, #e30613);
+  }
+  .menu .panel button.danger:hover{background:#fdecf2}
+  .menu .panel button.danger:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
   .subtitle{margin:0 0 30px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
 
   dialog.new{
@@ -348,19 +354,43 @@
       <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
     </div>
   </details>
-  <span class="session"><em>signed in as</em> <b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>
   <div class="stage">
-    <div class="crumb"><span id="crumb-slug"></span></div>
-    <h1 class="title" id="project-name">&hellip;</h1>
+    <div class="titlerow">
+      <h1 class="title" id="project-name">&hellip;</h1>
+      <details class="menu manage" id="manage" hidden>
+        <summary>
+          Manage
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="panel">
+          <span class="group">Inspect database</span>
+          <a id="inspect-schema" target="_blank" rel="noopener">Schema diagrams: this project</a>
+          <!-- Qualification, control objectives and the engine keep their data here, for
+               every project together, rather than in the project's own database. -->
+          <a href="/inspect/schema/platform/" target="_blank" rel="noopener">Schema diagrams: shared platform</a>
+          <a href="/inspect/pgadmin/" target="_blank" rel="noopener">Browse &amp; query (pgAdmin)</a>
+          <span class="sep"></span>
+          <button type="button" class="danger" id="delete-open">Delete this project&hellip;</button>
+        </div>
+      </details>
+    </div>
     <p class="subtitle" id="project-meta"></p>
-
-    <p class="note" id="scope-note">
-      Every step below opens on this project: one database, a schema for each
-      module, and every row in it knowing whose project it is.
-    </p>
+    <dialog class="new" id="delete-dialog">
+      <form method="dialog" id="delete-form">
+        <h2>Delete this project</h2>
+        <p>This deletes the project and everything every step holds for it: its
+          database is dropped, and there is no undo.</p>
+        <p>Type <b id="delete-name"></b> to confirm.</p>
+        <input id="delete-input" autocomplete="off" spellcheck="false"/>
+        <p class="err" id="delete-err"></p>
+        <button type="button" class="newbtn ghost" id="delete-cancel">Cancel</button>
+        <button type="submit" class="newbtn" id="delete-confirm" disabled>Delete</button>
+      </form>
+    </dialog>
 
 
   <div class="row">
@@ -386,7 +416,7 @@
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
     <div class="arrow" aria-hidden="true"></div>
-    <a class="card" id="catalogue-card" data-engine="http://localhost/" href="http://localhost:8102/">
+    <a class="card" id="catalogue-card" data-engine="http://localhost/" href="http://localhost:3000/">
       <span class="n">3</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 5v14"/></svg>
@@ -435,6 +465,21 @@
     </a>
   </div>
 
+  <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
+
+  <div class="row">
+    <a class="card" id="report-composer-card" href="http://localhost/report-composer/">
+      <span class="n">7</span>
+      <span class="svc">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+        Report
+      </span>
+      <h2>Compose the report</h2>
+      <p>Assemble the assessment report from its blocks, preview it and generate the PDF.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
+  </div>
+
   </div>
 </main>
 
@@ -442,7 +487,6 @@
 
 <script>
   var slug = decodeURIComponent(window.location.pathname.replace(/^\/p\//, '').replace(/\/$/, ''));
-  document.getElementById('crumb-slug').textContent = slug;
 
   fetch('/api/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
     .then(function (r) {
@@ -452,15 +496,51 @@
     .then(function (p) {
       document.getElementById('project-name').textContent = p.name;
       document.title = p.name + ' — AI Assessment Sandbox Configurator';
+      window.aiscProject = p.pid;
+      fetch('/api/authz/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (a) {
+          if (!a || !a.admin) return;          // only an admin sees it at all
+          // The inspector opens on this project's own database: project_<pid without hyphens>.
+          document.getElementById('inspect-schema').href =
+            '/inspect/schema/project_' + String(p.pid).replace(/-/g, '') + '/';
+          var dlg = document.getElementById('delete-dialog');
+          var input = document.getElementById('delete-input');
+          var go = document.getElementById('delete-confirm');
+          var err = document.getElementById('delete-err');
+          document.getElementById('delete-name').textContent = p.name;
+          document.getElementById('manage').hidden = false;
+          document.getElementById('delete-open').onclick = function () {
+            document.getElementById('manage').open = false;
+            input.value = ''; go.disabled = true; err.textContent = ''; dlg.showModal(); input.focus();
+          };
+          document.getElementById('delete-cancel').onclick = function () { dlg.close(); };
+          input.oninput = function () { go.disabled = input.value !== p.name; };
+          document.getElementById('delete-form').onsubmit = function (e) {
+            e.preventDefault();
+            if (input.value !== p.name) return;
+            go.disabled = true;
+            fetch('/api/projects/' + encodeURIComponent(slug), {
+              method: 'DELETE', credentials: 'same-origin',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({confirm_name: input.value})
+            }).then(function (r) {
+              if (r.status === 204) { window.location.href = '/'; return; }
+              return r.json().then(function (d) { err.textContent = d.detail || ('Refused: ' + r.status); go.disabled = false; });
+            }).catch(function () { err.textContent = 'The platform is not answering. Nothing was deleted.'; go.disabled = false; });
+          };
+        });
       var meta = p.slug + '  ·  created ' + String(p.created_at).slice(0, 10);
       document.getElementById('project-meta').textContent = p.description
         ? meta + '  ·  ' + p.description : meta;
-      // Modules that are on the project open inside it: one database, and a
-      // module page that lists anything says whose it is.
+      // Modules that are on the project open inside it: each keeps what it
+      // holds for the project in the project's own database, and a module page
+      // that lists anything says whose it is.
       var inProject = {
         'control-objectives-card': 'http://localhost/control-objectives/p/',
         'controls-card': 'http://localhost/controls/p/',
-        'qualification-card': 'http://localhost/qualification/p/'
+        'qualification-card': 'http://localhost/qualification/p/',
+        'report-composer-card': 'http://localhost/report-composer/p/'
       };
       Object.keys(inProject).forEach(function (id) {
         var card = document.getElementById(id);
@@ -479,13 +559,25 @@
 </script>
 <script>
   document.addEventListener('click', function (e) {
-    var menu = document.querySelector('.menu');
-    if (menu && menu.open && !menu.contains(e.target)) menu.open = false;
+    document.querySelectorAll('.menu').forEach(function (menu) {
+      if (menu.open && !menu.contains(e.target)) menu.open = false;
+    });
   });
   document.addEventListener('keydown', function (e) {
-    var menu = document.querySelector('.menu');
-    if (e.key === 'Escape' && menu) menu.open = false;
+    if (e.key === 'Escape') document.querySelectorAll('.menu').forEach(function (menu) { menu.open = false; });
   });
+
+  // Where this platform's controls app is, from the controls card itself, so
+  // there is one place to change it: the card is rewritten to .../p/{pid} once
+  // the project is known, and the app is what comes before that.
+  function controlsBase() {
+    var fallback = 'http://localhost/controls';
+    var controls = document.getElementById('controls-card');
+    var href = controls && controls.href; // absolute, as the browser resolved it
+    if (!href) return fallback;
+    var base = String(href).replace(/[?#].*$/, '').replace(/\/p\/[^/]*\/?$/, '').replace(/\/+$/, '');
+    return /^https?:\/\/[^/]/.test(base) ? base : fallback;
+  }
 
   // The catalogue needs to know which engine to install into. That is a
   // handshake the engine's own "Public Catalogue" button performs by opening
@@ -502,7 +594,9 @@
         // steps and is entered from here, so it is told where to return.
         var payload = { url: card.dataset.engine.replace(/\/+$/, ''),
                         expires: Date.now() + 60 * 60 * 1000,
-                        back: window.location.origin + window.location.pathname };
+                        back: window.location.origin + window.location.pathname,
+                        project: window.aiscProject,
+                        controls: controlsBase() };
         e.preventDefault();
         window.location.href = card.getAttribute('href').replace(/\/+$/, '')
           + '/#env=' + btoa(JSON.stringify(payload));

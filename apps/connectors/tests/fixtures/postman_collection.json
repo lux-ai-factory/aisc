@@ -1,0 +1,13 @@
+{
+  "info": {"name": "Acme", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "variable": [{"key": "baseUrl", "value": "https://api.acme.test"}],
+  "item": [
+    {"name": "Score applicant", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/score"},
+      "header": [{"key": "Content-Type", "value": "application/json"}],
+      "body": {"mode": "raw", "raw": "{\"amount\": 100}"}}},
+    {"name": "Folder", "item": [
+      {"name": "Health", "request": {"method": "GET", "url": "{{baseUrl}}/health"}},
+      {"name": "Elsewhere", "request": {"method": "GET", "url": "https://other.test/x"}}
+    ]}
+  ]
+}

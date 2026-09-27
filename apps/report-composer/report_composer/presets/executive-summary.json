@@ -1,0 +1,35 @@
+{
+  "format": "aisc-report-preset",
+  "version": 1,
+  "id": "executive-summary",
+  "name": "Executive summary",
+  "description": "The main numbers, a coverage chart, what is not covered and what changed since the last version.",
+  "toc": "off",
+  "numbering": false,
+  "blocks": [
+    {
+      "block_type": "cover",
+      "options": {}
+    },
+    {
+      "block_type": "key_figures",
+      "options": {}
+    },
+    {
+      "block_type": "chart",
+      "options": {
+        "dataset": "coverage_status"
+      }
+    },
+    {
+      "block_type": "summary_coverage",
+      "options": {
+        "show_uncovered_only": true
+      }
+    },
+    {
+      "block_type": "changes_since",
+      "options": {}
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "format": "aisc-report-preset",
+  "version": 1,
+  "id": "full-assessment",
+  "name": "Full assessment",
+  "description": "Every part of the assessment, in the order of the default layout.",
+  "toc": "auto",
+  "numbering": false,
+  "blocks": [
+    {
+      "block_type": "cover",
+      "options": {}
+    },
+    {
+      "block_type": "ai_card",
+      "options": {}
+    },
+    {
+      "block_type": "risk_classification",
+      "options": {}
+    },
+    {
+      "block_type": "control_objectives",
+      "options": {}
+    },
+    {
+      "block_type": "test_results",
+      "options": {}
+    },
+    {
+      "block_type": "control_answers",
+      "options": {}
+    },
+    {
+      "block_type": "summary_coverage",
+      "options": {}
+    }
+  ]
+}

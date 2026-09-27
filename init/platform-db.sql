@@ -57,7 +57,13 @@ CREATE TABLE core.system (
     updated_at  timestamptz NOT NULL DEFAULT now(),
     -- a system's name is unique inside its project, not globally: two projects
     -- may legitimately assess systems with the same name
-    UNIQUE (project_id, name, version)
+    UNIQUE (project_id, name, version),
+    -- What the modules point at when their work is of one card version: the
+    -- pair, so a row cannot name the version of another project. pid alone is
+    -- already unique; this makes the pair a key. Here rather than only in
+    -- platform migration 0004 because on a fresh volume a module may migrate
+    -- before the platform has, and this file runs before any of them can connect.
+    CONSTRAINT system_pid_project_id_key UNIQUE (pid, project_id)
 );
 -- An unversioned system stores NULL, and in a UNIQUE constraint NULLs are all
 -- distinct, so the constraint above would let the same unversioned system be
@@ -75,13 +81,11 @@ COMMENT ON TABLE core.system  IS 'The AI system under assessment: qualification 
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA qualification;
 CREATE SCHEMA control_objectives;
-CREATE SCHEMA controls;
 CREATE SCHEMA engine;
 CREATE SCHEMA catalogue;
 
 COMMENT ON SCHEMA qualification      IS 'Step 1: qualifications and system cards.';
 COMMENT ON SCHEMA control_objectives IS 'Step 2: risks, mappings and their runs.';
-COMMENT ON SCHEMA controls           IS 'Step 5: checklists, submissions and answers.';
 COMMENT ON SCHEMA engine             IS 'Step 4: datasets, models, plugins, evaluations, measurements.';
 COMMENT ON SCHEMA catalogue          IS 'Step 3: the registry of tests and controls. Reference data: the same for every project, so nothing in it belongs to one.';
 
@@ -146,7 +150,6 @@ BEGIN
     FOR m IN SELECT * FROM (VALUES
         ('qualification',      'qualification_rw'),
         ('control_objectives', 'control_objectives_rw'),
-        ('controls',           'controls_rw'),
         ('engine',             'engine_rw'),
         -- the catalogue holds no project's data, but the rest of the contract
         -- is the same: its own schema, its own role, readable by the dashboard
@@ -177,4 +180,4 @@ END
 $$;
 
 ALTER ROLE platform_rw  IN DATABASE platform SET search_path = core;
-ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core, qualification, control_objectives, controls, engine;
+ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core, qualification, control_objectives, engine;

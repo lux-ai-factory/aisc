@@ -9,9 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
-  /* Tokens from apps/controls and apps/qualification globals.css. The palette is
-     already severe -- electric blue, hot pink, no rounded corners -- so the page
-     leans into it: Swiss grid, hairlines, oversized numerals, monospace labels. */
+  /* Tokens from apps/controls and apps/qualification globals.css: electric blue,
+     hot pink, no rounded corners, on a grid of hairlines with monospace labels. */
   :root{
     --bg:#fbfbfd; --panel:#ffffff;
     --text:#000000; --muted:#474c60; --faint:#6b7288;
@@ -231,7 +230,6 @@
 
   @media (max-width:820px){
     .topbar{padding:12px 18px; gap:14px}
-    .session em{display:none}
     main{padding:28px 18px 32px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
@@ -340,7 +338,7 @@
       <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
     </div>
   </details>
-  <span class="session"><em>signed in as</em> <b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>
@@ -440,26 +438,6 @@
     var menu = document.querySelector('.menu');
     if (e.key === 'Escape' && menu) menu.open = false;
   });
-
-  // The catalogue needs to know which engine to install into. That is a
-  // handshake the engine's own "Public Catalogue" button performs by opening
-  // the catalogue with #env=<base64 {url, expires}>. Without it the catalogue
-  // falls back to a web+aiscplugin:// link, which on Linux asks the desktop for
-  // an application and finds none. The launcher does the same handshake, so
-  // step 3 works whether you arrive from here or from the engine.
-  (function () {
-    var card = document.getElementById('catalogue-card');
-    if (!card) return;
-    card.addEventListener('click', function (e) {
-      try {
-        var payload = { url: card.dataset.engine.replace(/\/+$/, ''),
-                        expires: Date.now() + 60 * 60 * 1000 };
-        e.preventDefault();
-        window.location.href = card.getAttribute('href').replace(/\/+$/, '')
-          + '/#env=' + btoa(JSON.stringify(payload));
-      } catch (err) { /* fall through to the plain href */ }
-    });
-  })();
 
   fetch('/oauth2/userinfo', {credentials:'same-origin'})
     .then(function(r){ return r.ok ? r.json() : null; })

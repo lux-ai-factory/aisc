@@ -1,0 +1,27 @@
+[project]
+name = "aisc-connectors"
+version = "0.1.0"
+description = "Connectors: reach any assessed system through one OpenAPI view."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "psycopg[binary,pool]>=3.2",
+    "httpx>=0.27",
+    "cryptography>=43",
+    "jmespath>=1.0",
+    "pyyaml>=6.0",
+    "openapi-spec-validator>=0.7",
+    "zeep>=4.2",
+    "graphql-core>=3.2",
+    # aisc_identity is mounted from shared/; its one dependency is installed here
+    "pyjwt[crypto]>=2.8",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "respx>=0.21"]
+
+[tool.pytest.ini_options]
+# aisc_identity is shared by every Python service, mounted from shared/ (as report-composer)
+pythonpath = [".", "../../shared/identity"]
+testpaths = ["tests"]

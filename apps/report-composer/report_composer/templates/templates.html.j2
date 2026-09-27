@@ -1,0 +1,69 @@
+{% extends "base.html.j2" %}
+{% from "_ui.html.j2" import message_region, confirm_dialog %}
+{% block title %}Templates: {{ project.name }}{% endblock %}
+{% macro look_fields(t=None) -%}
+<div class="look-fields">
+  <div class="field"><label>Name <input name="name" required maxlength="120" value="{{ t.name if t else '' }}"></label></div>
+  <div class="field"><label>Font <select name="font">{% for f in fonts %}<option value="{{ f.id }}"{% if t and t.font == f.id %} selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label></div>
+  <div class="field"><label>Font size (pt) <input name="font_size_pt" type="number" min="8" max="16" step="0.5" value="{{ t.font_size_pt if t else 10 }}"></label></div>
+  <div class="field"><label>Primary colour <input name="primary_color" type="color" value="{{ t.primary_color if t else '#000fdf' }}"></label></div>
+  <div class="field"><label>Accent colour <input name="accent_color" type="color" value="{{ t.accent_color if t else '#ff007e' }}"></label></div>
+  <div class="field"><label>Logo (PNG, JPEG or SVG, up to 1 MB) <input name="logo" type="file" accept="image/png,image/jpeg,image/svg+xml"></label>
+    {% if t and t.has_logo %}<label class="inline"><input type="checkbox" name="drop_logo"> Remove the current logo</label>{% endif %}</div>
+  <div class="field"><label>Header text <input name="header_text" maxlength="120" value="{{ t.header_text if t and t.header_text else '' }}" placeholder="{project}, Version {version}"></label>
+    <span class="help">Empty: the project and version. You can use {project}, {version}, {release}, {layout} and {date}.</span></div>
+  <div class="field"><label>Footer text <input name="footer_text" maxlength="120" value="{{ t.footer_text if t and t.footer_text else '' }}"></label>
+    <span class="help">Printed at the bottom left of every page. You can use {project}, {version}, {release}, {layout} and {date}.</span></div>
+  <div class="field"><label>Marking <select name="marking">{% for value, label in (("none", "None"), ("public", "Public"), ("internal", "Internal"), ("confidential", "Confidential"), ("strictly_confidential", "Strictly confidential")) %}<option value="{{ value }}"{% if t and t.marking == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <span class="help">Printed at the top right of every page and on the cover.</span></div>
+  <details><summary>More options</summary>
+    <div class="field"><label class="inline"><input type="checkbox" name="show_document_id"{% if t and t.show_document_id %} checked{% endif %}> Print the document id and fingerprint</label>
+      <span class="help">Prints a line at the bottom of every page that identifies the generated document.</span></div>
+  </details>
+</div>
+{%- endmacro %}
+{% block main %}
+<main data-api="{{ root }}/api/p/{{ project.slug }}" data-page="templates">
+  {{ message_region() }}
+  {% if editor %}{{ confirm_dialog() }}{% endif %}
+  <div class="rc-header">
+    <p class="rc-eyebrow">Step 7: the report</p>
+    <h1>Templates of {{ project.name }}</h1>
+    <p>A template is a report's look: its font, font size, colours, logo, header, footer and marking. A layout without a template uses the platform look. Export a template to use it in another project.</p>
+  </div>
+  <section class="looks">
+  {% for t in templates %}
+    <article class="qf-section look" data-template="{{ t.id }}" style="--look-primary: {{ t.primary_color }}; --look-accent: {{ t.accent_color }}">
+      <div class="look-sample">
+        {% if t.has_logo %}<img src="{{ root }}/api/p/{{ project.slug }}/templates/{{ t.id }}/logo" alt="Logo of {{ t.name }}">{% endif %}
+        <h2>{{ t.name }}</h2>
+        <p class="look-meta">{{ labels.get(t.font, t.font) }}, {{ t.font_size_pt }} pt</p>
+        <p class="swatches"><span class="swatch" style="background: {{ t.primary_color }}"></span>{{ t.primary_color }}
+          <span class="swatch" style="background: {{ t.accent_color }}"></span>{{ t.accent_color }}</p>
+      </div>
+      <div class="look-actions">
+        <a class="btn ghost small" data-control="export-template" href="{{ root }}/api/p/{{ project.slug }}/templates/{{ t.id }}/export" download>Export</a>
+        {% if editor %}<button type="button" class="small danger" data-control="delete-template" data-template="{{ t.id }}" data-confirm-action="Delete template" data-confirm-text="Delete the template {{ t.name }}? Layouts using it switch to the platform look.">Delete</button>{% endif %}
+      </div>
+      {% if editor %}
+      <details><summary>Edit</summary>
+        <form data-control="edit-template" data-template="{{ t.id }}">{{ look_fields(t) }}<button type="submit">Save template</button></form>
+      </details>
+      {% endif %}
+    </article>
+  {% else %}
+    <p class="qf-section muted">No template yet.{% if editor %} Create one below, or import one exported from another project.{% endif %}</p>
+  {% endfor %}
+  </section>
+  {% if editor %}
+  <section class="forms">
+    <form data-control="new-template" class="qf-section"><h2>New template</h2>{{ look_fields() }}<button type="submit">Create</button></form>
+    <form data-control="import-template" class="qf-section"><h2>Import a template</h2>
+      <p class="qf-help">A file exported from another project's templates.</p>
+      <div class="field"><label>File <input name="file" type="file" accept="application/json,.json" required></label></div>
+      <button type="submit">Import</button></form>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+{% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}

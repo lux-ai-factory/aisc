@@ -1,0 +1,117 @@
+{% extends "base.html.j2" %}
+{% from "_form.html.j2" import render_form %}
+{% from "_ui.html.j2" import message_region, confirm_dialog %}
+{% block title %}{{ layout.name }}: {{ project.name }}{% endblock %}
+{% macro block_controls() -%}
+<span class="controls">
+  <button type="button" data-control="move-up" title="Move up">Up</button>
+  <button type="button" data-control="move-down" title="Move down">Down</button>
+  <button type="button" data-control="remove" title="Remove">Remove</button>
+</span>
+{%- endmacro %}
+{% block main %}
+<main data-api="{{ root }}/api/p/{{ project.slug }}" data-layout="{{ layout.id }}" data-revision="{{ layout.revision }}" data-page="editor">
+  {{ message_region() }}
+  {% if editor %}{{ confirm_dialog() }}{% endif %}
+  <a class="rc-back" href="{{ root }}/p/{{ project.slug }}/">&larr; All layouts of {{ project.name }}</a>
+  <div class="rc-header">
+    <p class="rc-eyebrow">Report layout</p>
+    <h1>{{ layout.name }}</h1>
+  </div>
+  {% if editor %}
+  <div class="toolbar qf-section">
+    <label>Version <select data-control="version">{% for s in systems %}<option value="{{ s.pid }}"{% if s.pid == layout.system_id %} selected{% endif %}>Version {{ s.number }} ({{ s.release or "" }})</option>{% endfor %}</select></label>
+    <label>Template <select data-control="template"><option value=""{% if not template_known %} selected{% endif %}>Platform default</option>{% for x in templates %}<option value="{{ x.id }}"{% if x.id == layout.template_id %} selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+    <label>Contents <select data-control="toc"><option value="auto"{% if layout.toc == "auto" %} selected{% endif %}>Automatic</option><option value="on"{% if layout.toc == "on" %} selected{% endif %}>Always</option><option value="off"{% if layout.toc == "off" %} selected{% endif %}>Never</option></select></label>
+    <label class="inline"><input type="checkbox" data-control="numbering"{% if layout.numbering %} checked{% endif %}> Number the sections</label>
+    <span class="state" data-state></span>
+    <span class="spacer"></span>
+    <button type="button" class="ghost" data-control="save">Save</button>
+    <button type="button" data-control="generate">Generate PDF</button>
+    <button type="button" class="ghost" data-control="generate-docx">Generate Word (DOCX)</button>
+  </div>
+  {% if not template_known %}<p class="notice">This layout uses the platform look.{% if not templates %} <a href="{{ root }}/p/{{ project.slug }}/templates">Make a template</a> to give reports your own look.{% endif %}</p>{% endif %}
+  <section class="qf-section">
+    <h2>Add a block</h2>
+    <p class="qf-help">Each block is one section of the report. Add it, then drag it into place or move it up and down.</p>
+    <div data-control="palette" class="palette">
+      {% for t in palette %}<button type="button" data-add="{{ t.type_id }}"><strong>{{ t.title }}</strong>{% if t.description %}<span class="description">{{ t.description }}</span>{% endif %}</button>{% endfor %}
+    </div>
+  </section>
+  {% for t in palette %}
+  <template data-block-template="{{ t.type_id }}">
+    <li data-block-type="{{ t.type_id }}" data-depth="0" draggable="true">
+      {{ block_controls() }}
+      <strong>{{ t.title }}</strong> <span class="type">{{ t.type_id }}</span>
+      <details data-control="configure" open><summary>Options</summary>{{ render_form(t.fields) }}</details>
+      <p class="problems" data-problems></p>
+    </li>
+  </template>
+  {% endfor %}
+  {% else %}
+  <p class="meta">Version {% for s in systems %}{% if s.pid == layout.system_id %}{{ s.number }}{% endif %}{% endfor %}, revision {{ layout.revision }}. You can read this layout; editors change it.</p>
+  {% endif %}
+  <div class="columns">
+    <section class="qf-section">
+      <h2>Blocks, in order</h2>
+      <ol id="blocks">
+      {% for b in blocks %}
+        <li data-instance-id="{{ b.instance_id }}" data-block-type="{{ b.block_type }}" data-depth="{{ b.depth }}"{% if editor %} draggable="true"{% endif %}>
+          {% if editor %}{{ block_controls() }}{% endif %}
+          {% if b.known %}<strong>{{ b.title }}</strong> <span class="type">{{ b.block_type }}</span>{% else %}<strong>Unknown type: {{ b.block_type }}</strong>{% endif %}
+          {% if b.empty_chapter %}<p class="hint" data-empty-chapter>This chapter is empty.</p>{% endif %}
+          {% if b.unwritten_hint %}<p class="hint" data-unwritten>{{ b.unwritten_hint }}</p>{% endif %}
+          {% if editor %}
+          {% if b.known %}<details data-control="configure"><summary>Options</summary>{{ render_form(b.fields, b.instance_id) }}</details>{% endif %}
+          <p class="problems" data-problems>{% for m in b.problems %}{{ m }} {% endfor %}</p>{% endif %}
+        </li>
+      {% endfor %}
+      </ol>
+      <details class="coverage-map" data-coverage-map>
+        <summary>Coverage map: {{ grid.linked }} of {{ grid.total }} objectives linked</summary>
+        {% if grid.message %}<p class="hint">{{ grid.message }}</p>{% endif %}
+        {% if grid.groups and grid.columns or grid.unavailable %}
+        <div class="coverage-scroll">
+        <table class="coverage">
+          <thead><tr><th class="objective">Objective</th>{% for c in grid.columns %}<th>{{ c.label }}<span class="kind">{{ "test" if c.kind == "tests" else "checklist" }}</span></th>{% endfor %}</tr></thead>
+          <tbody>
+          {% if grid.columns %}
+          {% for g in grid.groups %}
+            <tr class="group"><th class="objective" colspan="{{ grid.columns | length + 1 }}">{{ g.group }}</th></tr>
+            {% for r in g.rows %}
+            <tr><th class="objective">{{ r.label }}</th>{% for cell in r.cells %}<td><input type="checkbox" data-objective="{{ r.objective_id }}" data-kind="{{ cell.kind }}" data-value="{{ cell.value }}" aria-label="{{ r.objective_id }}: {{ cell.value }}"{% if cell.checked %} checked{% endif %}{% if not editor %} disabled{% endif %}></td>{% endfor %}</tr>
+            {% endfor %}
+          {% endfor %}
+          {% endif %}
+          {% if grid.unavailable %}
+            <tr class="group"><th class="objective" colspan="{{ grid.columns | length + 1 }}">Not available for this version</th></tr>
+            {% for u in grid.unavailable %}
+            <tr><th class="objective">{{ u.objective_id }}</th><td colspan="{{ grid.columns | length or 1 }}">{% for cell in u.cells %}<label class="inline"><input type="checkbox" data-objective="{{ u.objective_id }}" data-kind="{{ cell.kind }}" data-value="{{ cell.value }}" checked{% if not editor %} disabled{% endif %}> {{ cell.value }}</label> {% endfor %}</td></tr>
+            {% endfor %}
+          {% endif %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        <p class="problems" data-map-problems>{% for p in map_problems %}{{ p.pointer }}: {{ p.message }} {% endfor %}</p>
+      </details>
+    </section>
+    <section class="preview qf-section">
+      <h2>Preview</h2>
+      <p class="preview-label" data-preview-label>Preview of revision {{ layout.revision }}</p>
+      {% if editor %}<div class="preview-controls"><button type="button" class="small ghost" data-control="refresh-preview">Refresh preview</button>
+        <label class="inline"><input type="checkbox" data-control="auto-refresh" checked> Auto-refresh</label></div>{% endif %}
+      <iframe sandbox="" title="Preview" src="{{ root }}/api/p/{{ project.slug }}/layouts/{{ layout.id }}/preview"></iframe>
+    </section>
+  </div>
+  <section class="reports qf-section" style="margin-top: 20px">
+    <h2>Generated reports</h2>
+    <p class="statuses" data-statuses></p>
+    <ul data-reports>
+    {% for r in reports %}<li>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}, revision {{ r.layout_revision }}, {{ (r.format or "pdf") | upper }}, {{ r.status }}{% if r.status in ("done", "partial") %}: <a href="{{ root }}/api/p/{{ project.slug }}/reports/{{ r.id }}/download">Download</a>{% if r.sha256 %} <span class="muted">SHA-256 {{ r.sha256[:12] }}{% if r.fingerprint %}, fingerprint {{ r.fingerprint[:12] }}{% endif %}</span>{% endif %}{% endif %}</li>
+    {% else %}<li class="muted">No report generated yet.</li>{% endfor %}
+    </ul>
+  </section>
+</main>
+{% endblock %}
+{% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}

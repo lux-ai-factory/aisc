@@ -17,12 +17,14 @@
 # enables or disables anything in a project you are using.
 set -uo pipefail
 J=$(mktemp); T=$(mktemp); trap 'rm -f "$J" "$T"' EXIT
-U=${KC_USER:-user}; P=${KC_PASS:-user}
+# admin, because this script installs plugins, and installing puts code on the
+# server: it takes the admin role (verify-rbac.sh asserts that it does).
+U=${KC_USER:-admin}; P=${KC_PASS:-admin}
 KC=${KEYCLOAK_URL:-http://localhost:8081}
 ENGINE=${ENGINE_URL:-http://localhost}
 CATALOGUE=${CATALOGUE_URL:-http://localhost:8102}
 SLUG=${ENTRY_SLUG:-langbite}
-# One database now, and the engine owns a schema in it.
+# One database, and the engine owns a schema in it.
 PGDB=${PLATFORM_DB:-platform}; PGUSER=${PGUSER:-aisc-postgres-user}; SCHEMA=${ENGINE_SCHEMA:-engine}
 pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }

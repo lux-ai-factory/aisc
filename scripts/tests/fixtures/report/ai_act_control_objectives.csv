@@ -1,0 +1,6 @@
+"ID","Macro_Requirement","Legal_Basis","Sub_Requirement_Label","Control_Objective","Assessment_Mode","Target","Standards_Grounding","Grounding_Tier_Flag","Notes"
+"R1.1","R1 Human Agency and Oversight","AI Act Art. 14","Operator oversight capability","A qualified operator can monitor and halt the system.","Control","G, S","","",""
+"R2.1","R2 Data Governance","AI Act Art. 10","Training data quality","Training data is relevant and examined for bias.","Control","G","","",""
+"R3.1","R3 Record Keeping","AI Act Art. 12","Automatic logs","Events are logged automatically.","Control","G","","",""
+"R4.1","R4 Accuracy","AI Act Art. 15","Declared accuracy","Accuracy levels are declared and met.","Test","S","","",""
+"R5.1","R5 Transparency","AI Act Art. 13","Instructions for use","Deployers receive instructions for use.","Control","G","","",""

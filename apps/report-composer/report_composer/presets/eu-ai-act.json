@@ -1,0 +1,75 @@
+{
+  "format": "aisc-report-preset",
+  "version": 1,
+  "id": "eu-ai-act",
+  "name": "EU AI Act conformity",
+  "description": "Key figures, then the system and its risks, the control objectives and the evidence, with a method appendix.",
+  "toc": "on",
+  "numbering": true,
+  "blocks": [
+    {
+      "block_type": "cover",
+      "options": {}
+    },
+    {
+      "block_type": "key_figures",
+      "options": {}
+    },
+    {
+      "block_type": "chapter",
+      "options": {
+        "title": "System and risks"
+      }
+    },
+    {
+      "block_type": "ai_card",
+      "options": {}
+    },
+    {
+      "block_type": "risk_classification",
+      "options": {}
+    },
+    {
+      "block_type": "chapter",
+      "options": {
+        "title": "Control objectives"
+      }
+    },
+    {
+      "block_type": "control_objectives",
+      "options": {
+        "show_severity": true
+      }
+    },
+    {
+      "block_type": "summary_coverage",
+      "options": {}
+    },
+    {
+      "block_type": "chapter",
+      "options": {
+        "title": "Evidence"
+      }
+    },
+    {
+      "block_type": "test_results",
+      "options": {}
+    },
+    {
+      "block_type": "control_answers",
+      "options": {}
+    },
+    {
+      "block_type": "appendix",
+      "options": {}
+    },
+    {
+      "block_type": "free_text",
+      "options": {
+        "title": "Method",
+        "text": "Write this section.",
+        "format": "markdown"
+      }
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+"""Errors of the composer, one shape for every route.
+
+A path under /api/ answers {"error": {"code", "message", "details"}}; any other path the error
+page, with the same status. A message never names the project: a stranger and an unknown project
+get the same answer.
+"""
+from __future__ import annotations
+
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from .jinja_env import env
+
+
+class ApiError(Exception):
+    def __init__(self, status: int, code: str, message: str, details=()):
+        self.status, self.code, self.message, self.details = status, code, message, list(details)
+        super().__init__(message)
+
+
+def fail_on(problems) -> None:
+    """A 422 naming the first of a layout's problems and listing them all, if it has any."""
+    if problems:
+        raise ApiError(422, problems[0]["code"], problems[0]["message"] or "The layout is not valid.", problems)
+
+
+def _answer(request: Request, status: int, code: str, message: str, details=()):
+    root = request.scope.get("root_path", "") or ""
+    path = request.url.path[len(root):] if root and request.url.path.startswith(root) else request.url.path
+    if path.startswith("/api/") or path == "/api":
+        return JSONResponse(status_code=status,
+                            content={"error": {"code": code, "message": message, "details": list(details)}})
+    html = env.get_template("error.html.j2").render(status=status, message=message,
+                                                     root=request.scope.get("root_path", ""))
+    return HTMLResponse(html, status_code=status)
+
+
+def install(app) -> None:
+    @app.exception_handler(ApiError)
+    async def _api_error(request: Request, exc: ApiError):
+        return _answer(request, exc.status, exc.code, exc.message, exc.details)
+
+    @app.exception_handler(RequestValidationError)
+    async def _invalid(request: Request, exc: RequestValidationError):
+        details = [{"pointer": "/" + "/".join(str(p) for p in e.get("loc", ())[1:]), "message": e.get("msg", "")}
+                   for e in exc.errors()]
+        return _answer(request, 422, "invalid_request", "The request is not valid.", details)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(request: Request, exc: StarletteHTTPException):
+        if exc.status_code == 404:
+            return _answer(request, 404, "not_found", "Not found.")
+        if exc.status_code == 405:
+            return _answer(request, 405, "method_not_allowed", "This method is not allowed here.")
+        return _answer(request, exc.status_code, "error", str(exc.detail))

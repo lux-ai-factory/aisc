@@ -5,11 +5,10 @@
 #   ./scripts/verify.sh --stack      # only the checks against the running stack
 #   ./scripts/verify.sh --modules    # only the module test suites
 #
-# There were five answers to this question: three scripts against the running
-# stack and a test runner per module, each with its own invocation and its own
-# idea of how to say "fine". This runs all of them and prints one line at the
-# end, so "does this install work" has a single answer that a person or a CI job
-# can read.
+# The checks against the running stack and the test runner of every module each
+# have their own invocation and their own idea of how to say "fine". This runs
+# all of them and prints one line at the end, so "does this install work" has a
+# single answer that a person or a CI job can read.
 #
 # A module whose dependencies are not installed is reported as skipped, not as
 # passed: a check that did not run is not a check that succeeded.
@@ -33,7 +32,7 @@ run(){ # name | command
 
 if [ "$ONLY" != "--modules" ]; then
   line "the running stack"
-  for s in verify-db-access.sh verify-one-database.sh verify-sso.sh verify-catalogue-mapping.sh; do
+  for s in verify-db-access.sh verify-one-database.sh verify-sso.sh verify-rbac.sh verify-catalogue-mapping.sh; do
     if [ -x "scripts/$s" ]; then run "$s" "scripts/$s"; else skipped "$s" "not executable"; fi
   done
 fi
@@ -50,14 +49,17 @@ if [ "$ONLY" != "--stack" ]; then
     fi
     run "$name" bash -c "cd '$dir' && $cmd"
   done <<'MODULES'
+identity|shared/identity|.venv|.venv/bin/python -m pytest -q
 platform|platform|.venv|uv run --extra dev pytest -q
 control objectives|apps/control-objectives|.venv|uv run pytest -q
 catalogue backend|apps/catalogue/backend|.venv|uv run pytest -q -p no:cacheprovider
 catalogue frontend|apps/catalogue/frontend|node_modules|npx vitest run
 qualification|apps/qualification|node_modules|npx vitest run
+qualification prefill|apps/qualification|node_modules|docker run --rm -v "$PWD:/w" -w /w/services/prefill python:3.12-slim sh -lc 'pip install -q -r requirements.txt && PREFILL_FIELDS_PATH=/w/src/data/prefillFields.json python -m pytest -q'
 qualification ontology|apps/qualification|node_modules|docker run --rm -v "$PWD:/w" -w /w/services/ontology python:3.12-slim sh -lc 'pip install -q -r requirements.txt pytest && python -m pytest -q'
 controls|apps/controls|node_modules|npx vitest run
 engine webapp|apps/webapp|node_modules|npx vitest run
+results dashboard|apps/results-dashboard|.venv|PYTHONPATH=. .venv/bin/python -m pytest -q --ignore=tests/test_sso_login.py
 engine backend|.|.|docker exec -e DB_ENGINE=django.db.backends.sqlite3 -e DB_NAME=/tmp/aisc-verify.db aisc-backend .venv/bin/python manage.py test aisc_backend.tests.routers aisc_backend.tests.repositories aisc_backend.tests.immudb aisc_backend.tests.keycloak aisc_backend.tests.test_sample aisc_backend.tests.test_platform_links
 MODULES
 fi

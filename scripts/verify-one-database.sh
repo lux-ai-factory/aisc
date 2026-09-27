@@ -8,10 +8,9 @@
 #   the service is actually connected to that database as its own role,
 #   its root table points at `core.project` with a real foreign key,
 #   the database itself refuses a row whose project does not exist,
-#   and the module still answers through the gateway, inside a project.
-#
-# Modules arrive here one at a time, as each is moved onto the platform
-# database; the ones not yet moved are listed at the end as still to come.
+#   and nothing that belongs to no project (reference data) names one.
+# Then the rules that hold across schemas: the dashboard reads and never
+# writes, one naming convention, and one name for each link into core.
 set -uo pipefail
 S=$(mktemp); trap 'rm -f "$S"' EXIT
 PGDB=${PLATFORM_DB:-platform}; PGUSER=${PGUSER:-aisc-postgres-user}
@@ -19,13 +18,30 @@ pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 psql_(){ docker exec postgres psql -U "$PGUSER" -d "$PGDB" -At -c "$1" 2>&1; }
+# Some services are configured with a URL, others with DB_NAME/DB_USER; both
+# say the same two things, so both are read.
+db_settings(){ docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                 | grep -E '^(DATABASE_URL|DB_NAME|DB_USER)='; }
+# The service behind <container> is on the platform database, as <schema>_rw.
+connection_checks(){ # container schema
+  local conf
+  conf=$(db_settings "$1")
+  case "$conf" in
+    *"/$PGDB"*|*"DB_NAME=$PGDB"*) ok "the service is connected to the $PGDB database" ;;
+    *sqlite*) no "still on a file of its own" ;;
+    *) no "the service is not on $PGDB" ;;
+  esac
+  case "$conf" in
+    *"${2}_rw"*) ok "as its own role, ${2}_rw" ;;
+    *) no "not connecting as ${2}_rw" ;;
+  esac
+}
 
 # module | container | schema | the table that names a project | its column
 # The link is called project_id in every schema: the project a row belongs to
 # reads the same whichever schema the query is in.
 MODULES=(
   "control objectives|control-objectives|control_objectives|project|project_id"
-  "controls|controls-web|controls|submission|project_id"
   "qualification|qualification-web|qualification|qualification|project_id"
   "execution engine|aisc-backend|engine|project|project_id"
 )
@@ -47,19 +63,7 @@ for m in "${MODULES[@]}"; do
                   where table_schema='public' and table_name='$table'")
   [ "$stray" = "0" ] && ok "and none of them in public" || no "$table is also sitting in public"
 
-  # Some services are configured with a URL, others with DB_NAME/DB_USER; both
-  # say the same two things, so both are read.
-  env_of(){ docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}'; }
-  conf=$(env_of "$container" | grep -E '^(DATABASE_URL|DB_NAME|DB_USER)=')
-  case "$conf" in
-    *"/$PGDB"*|*"DB_NAME=$PGDB"*) ok "the service is connected to the $PGDB database" ;;
-    *sqlite*) no "still on a file of its own" ;;
-    *) no "the service is not on $PGDB" ;;
-  esac
-  case "$conf" in
-    *"${schema}_rw"*) ok "as its own role, ${schema}_rw" ;;
-    *) no "not connecting as ${schema}_rw" ;;
-  esac
+  connection_checks "$container" "$schema"
 
   qualified="$schema.\"$table\""
   fk=$(psql_ "select confrelid::regclass::text
@@ -111,17 +115,7 @@ for m in "${REFERENCE[@]}"; do
   n=$(psql_ "select count(*) from information_schema.tables where table_schema='$schema'")
   [ "${n:-0}" -gt 0 ] && ok "has $n tables in the $schema schema" || no "no tables in $schema"
 
-  conf=$(docker inspect "$container" --format '{{range .Config.Env}}{{println .}}{{end}}' \
-         | grep -E '^(DATABASE_URL|DB_NAME|DB_USER)=')
-  case "$conf" in
-    *"/$PGDB"*|*"DB_NAME=$PGDB"*) ok "the service is connected to the $PGDB database" ;;
-    *sqlite*) no "still on a file of its own" ;;
-    *) no "the service is not on $PGDB" ;;
-  esac
-  case "$conf" in
-    *"${schema}_rw"*) ok "as its own role, ${schema}_rw" ;;
-    *) no "not connecting as ${schema}_rw" ;;
-  esac
+  connection_checks "$container" "$schema"
 
   refs=$(psql_ "select count(*) from information_schema.columns
                  where table_schema='$schema' and column_name in ('project_id','projectId')")
@@ -130,7 +124,7 @@ for m in "${REFERENCE[@]}"; do
 done
 
 echo "nothing is left on a database of its own"
-for gone in control_objectives controls qualification; do
+for gone in control_objectives qualification; do
   live=$(psql_ "select count(*) from pg_stat_activity where datname = '$gone'")
   [ "${live:-0}" = "0" ] && ok "nothing is connected to the old $gone database" \
     || no "$live connection(s) still on the $gone database"
@@ -155,7 +149,7 @@ named=$(psql_ "select count(*) from engine.project p
   || no "$named engine project(s) are named something else"
 
 echo "the dashboard reads the whole database and writes none of it"
-for t in engine.project catalogue.tool controls.checklist \
+for t in engine.project catalogue.tool \
          qualification.qualification control_objectives.project core.project; do
   n=$(docker exec postgres psql "postgresql://dashboard_ro:dashboard_ro@localhost:5432/$PGDB" \
         -At -c "select count(*) from $t" 2>&1 | tail -1)
@@ -229,7 +223,7 @@ echo "one naming convention"
 # two of them had to remember which half needed quotes.
 odd=$(psql_ "select string_agg(table_schema||'.'||table_name, ', ')
                from information_schema.tables
-              where table_schema in ('core','qualification','control_objectives','controls','engine','catalogue')
+              where table_schema in ('core','qualification','control_objectives','engine','catalogue')
                 and table_name <> lower(table_name)")
 [ -z "$odd" ] && ok "every table is lower case, so nothing needs quoting" \
   || no "still needs quoting: $odd"
@@ -239,14 +233,14 @@ prefixed=$(psql_ "select count(*) from information_schema.tables
   || no "$prefixed engine table(s) still carry the app prefix"
 naive=$(psql_ "select string_agg(table_schema||'.'||table_name||'.'||column_name, ', ')
                  from information_schema.columns
-                where table_schema in ('core','qualification','control_objectives','controls','catalogue')
+                where table_schema in ('core','qualification','control_objectives','catalogue')
                   and data_type = 'timestamp without time zone'")
 [ -z "$naive" ] && ok "and every timestamp carries its zone" \
   || no "read as the reader's own zone: $naive"
 
 echo "one name for each link"
 # The project a row belongs to and the system a row is about are two different
-# things, and stay two columns; what they are called is now the same everywhere.
+# things, and stay two columns, each called the same in every schema.
 # Read from the keys themselves, not from every column whose name contains the
 # word: `project_setting_id` points at a project setting, which is a different
 # thing and rightly called something else.

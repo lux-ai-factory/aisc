@@ -1,0 +1,24 @@
+{
+  "swagger": "2.0",
+  "info": {"title": "Petstore", "version": "1"},
+  "host": "petstore.example.com",
+  "basePath": "/v2",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "securityDefinitions": {"key": {"type": "apiKey", "in": "header", "name": "api_key"}},
+  "paths": {
+    "/pet": {"post": {"operationId": "addPet",
+      "parameters": [{"in": "body", "name": "body", "required": true, "schema": {"$ref": "#/definitions/Pet"}}],
+      "responses": {"200": {"description": "ok", "schema": {"$ref": "#/definitions/Pet"}}}}},
+    "/pet/{petId}": {"get": {"operationId": "getPetById",
+      "parameters": [{"in": "path", "name": "petId", "required": true, "type": "integer", "format": "int64"}],
+      "responses": {"200": {"description": "ok", "schema": {"$ref": "#/definitions/Pet"}}}}},
+    "/pet/{petId}/uploadImage": {"post": {"operationId": "uploadFile", "consumes": ["multipart/form-data"],
+      "parameters": [{"in": "path", "name": "petId", "required": true, "type": "integer"},
+                     {"in": "formData", "name": "file", "type": "file"},
+                     {"in": "formData", "name": "note", "type": "string"}],
+      "responses": {"200": {"description": "ok"}}}}
+  },
+  "definitions": {"Pet": {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}}}
+}

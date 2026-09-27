@@ -1,0 +1,49 @@
+{
+  "format": "aisc-report-preset",
+  "version": 1,
+  "id": "internal-audit",
+  "name": "Internal audit",
+  "description": "Scope, key figures, control answers, test results, uncovered objectives and findings.",
+  "toc": "on",
+  "numbering": true,
+  "blocks": [
+    {
+      "block_type": "cover",
+      "options": {}
+    },
+    {
+      "block_type": "free_text",
+      "options": {
+        "title": "Scope",
+        "text": "Write this section.",
+        "format": "markdown"
+      }
+    },
+    {
+      "block_type": "key_figures",
+      "options": {}
+    },
+    {
+      "block_type": "control_answers",
+      "options": {}
+    },
+    {
+      "block_type": "test_results",
+      "options": {}
+    },
+    {
+      "block_type": "summary_coverage",
+      "options": {
+        "show_uncovered_only": true
+      }
+    },
+    {
+      "block_type": "free_text",
+      "options": {
+        "title": "Findings",
+        "text": "Write this section.",
+        "format": "markdown"
+      }
+    }
+  ]
+}
