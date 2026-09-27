@@ -233,7 +233,8 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
     migration, 'Not a valid boolean'). env.runtime is env.plugin_downloader plus the secrets."""
     bare = set()
     for f in FILES + ["docker-compose.plugin_downloader.yml"]:
-        bare |= set(re.findall(r"\$\{([A-Z0-9_]+)\}", (ROOT / f).read_text()))
+        # $${VAR} is escaped: the container's shell expands it, not compose
+        bare |= set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)\}", (ROOT / f).read_text()))
     env = {l.split("=", 1)[0].strip() for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
            if "=" in l and not l.lstrip().startswith("#")}
     secrets = set(re.findall(r"^\s*(?:echo\s+\"?)?([A-Z0-9_]+)=", (ROOT / "scripts" / "secrets.sh").read_text(), re.M))
