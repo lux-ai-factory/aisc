@@ -691,6 +691,13 @@ services:
     image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: dashboard
+    # Superset listens only on SUPERSET_BIND_ADDRESS (below), so the image's own
+    # check on localhost always failed: ask where it listens.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS \"http://$${SUPERSET_BIND_ADDRESS}:$${SUPERSET_PORT}/health\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     # network_mode: host, for one reason: Superset authenticates itself, so it
     # fetches the OIDC metadata server-side and then sends the BROWSER to the
     # same issuer. Those two have to be the same string, and the only string

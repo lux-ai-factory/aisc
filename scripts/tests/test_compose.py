@@ -238,3 +238,13 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
            if "=" in l and not l.lstrip().startswith("#")}
     secrets = set(re.findall(r"^\s*(?:echo\s+\"?)?([A-Z0-9_]+)=", (ROOT / "scripts" / "secrets.sh").read_text(), re.M))
     assert sorted(bare - env - secrets) == []
+
+
+def test_the_dashboard_healthcheck_asks_where_superset_listens(compose):
+    """Superset listens only on SUPERSET_BIND_ADDRESS (the Docker host address), so the image's own
+    check on localhost always failed and a working dashboard showed as unhealthy."""
+    q, cfg = compose
+    svc = cfg["services"]["dashboard"]
+    test = " ".join(svc.get("healthcheck", {}).get("test") or [])
+    assert "$${SUPERSET_BIND_ADDRESS}" in test or "${SUPERSET_BIND_ADDRESS}" in test, test
+    assert "localhost" not in test, test
