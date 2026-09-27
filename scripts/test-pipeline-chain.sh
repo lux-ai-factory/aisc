@@ -85,7 +85,6 @@ migrate_project_database() {
   db=$(tpg_project_db "$pid") || return 1
   (cd "$ROOT/apps/qualification" && \
      PROJECT_DATABASE_URL="postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification&connection_limit=2" \
-     FORM_LIBRARY_DATABASE_URL="$(tpg_dsn qualification_rw platform)?schema=form_library" \
      node scripts/migrate-projects.mjs) || return 1
   (cd "$ROOT/apps/controls" && \
      PROJECT_DATABASE_URL="postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls" \

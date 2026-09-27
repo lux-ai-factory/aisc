@@ -45,7 +45,8 @@ B = "b0000000-0000-4000-8000-00000000000b"
 #: I2.1: the template files every project database has after isolation.
 TEMPLATES = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004_inspector.sql",
              "0005_llm.sql", "0006_project_system.sql", "0007_qualification.sql",
-             "0008_control_objectives.sql", "0009_engine.sql", "0010_report_composer.sql"]
+             "0008_control_objectives.sql", "0009_engine.sql", "0010_report_composer.sql",
+             "0011_qualification_temporary.sql"]
 
 #: I1.1: module schema -> its role.
 MODULES = {
@@ -197,15 +198,13 @@ def migrate_modules(bed: IsoBed) -> None:
     _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
          {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls")},
          "controls migrate-projects.mjs")
-    # qualification (I3.6, I4.2): the library on platform, then every project database
+    # qualification (I3.6): every project database (no form library: forms are per project)
     q = ROOT / "apps/qualification/scripts/migrate-projects.mjs"
     if not q.exists():
         bed.problems["qualification"] = "I3.6 apps/qualification/scripts/migrate-projects.mjs missing"
     else:
         _run(bed, "qualification", ["node", str(q)], ROOT / "apps/qualification",
-             {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2"),
-              "FORM_LIBRARY_DATABASE_URL": bed.dsn("qualification_rw", "platform") + "?schema=form_library",
-              "DATABASE_URL": bed.dsn("qualification_rw", "platform") + "?schema=form_library"},
+             {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2")},
              "I3.6 qualification migrate-projects.mjs")
     # control objectives (I5.5)
     py = _python("apps/control-objectives")

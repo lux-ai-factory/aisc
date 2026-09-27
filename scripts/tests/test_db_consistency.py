@@ -536,11 +536,9 @@ def test_c7_a_project_database_never_provisioned(bed, cluster):
 
 LINT_PROJECT_DB = f"project_{ORPHAN_HEX}"
 LINT_PLATFORM = """
-CREATE SCHEMA core; CREATE SCHEMA form_library; CREATE SCHEMA report_library; CREATE SCHEMA catalogue;
+CREATE SCHEMA core; CREATE SCHEMA report_library; CREATE SCHEMA catalogue;
 CREATE TABLE core.project (pid uuid, created_at timestamptz);
 CREATE TABLE core.schema_migration (name text, "appliedAt" timestamp);
-CREATE TABLE form_library.form (id text, created_at timestamptz);
-CREATE TABLE form_library._prisma_migrations (id text, started_at timestamp);
 CREATE TABLE report_library.preset (id uuid, created_by text);
 CREATE TABLE catalogue.tool ("toolName" text, created_at timestamp);
 CREATE TABLE public.whatever ("camelCase" text);

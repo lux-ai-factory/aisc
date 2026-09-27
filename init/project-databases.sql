@@ -49,13 +49,10 @@ REVOKE ALL ON FUNCTION aisc_setup.apply_role_setting(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION aisc_setup.apply_role_setting(text) TO platform_rw;
 
 \connect platform
--- The two install-wide libraries (D3, D4), for a volume made before init/platform-db.sql made
--- them (the live one gets them here at cutover C5). A missing role is skipped.
+-- The install-wide library of report presets (D4), for a volume made before init/platform-db.sql
+-- made it. A missing role is skipped. (Forms are per project: there is no form library.)
 DO $libraries$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qualification_rw') THEN
-    CREATE SCHEMA IF NOT EXISTS form_library AUTHORIZATION qualification_rw;
-  END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'report_composer_rw') THEN
     CREATE SCHEMA IF NOT EXISTS report_library AUTHORIZATION report_composer_rw;
   END IF;

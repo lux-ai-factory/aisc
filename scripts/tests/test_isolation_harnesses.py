@@ -52,7 +52,8 @@ def test_i11_3_project_schemas_name_every_module():
 
 def test_i11_3_platform_schemas_are_the_shared_ones_only():
     labels = _server().PLATFORM_SCHEMAS
-    assert set(labels) == {"core", "catalogue", "form_library", "report_library"}, f"I11.3: {sorted(labels)}"
+    # (forms are per project since the user's decision of 2026-09-25: no form library in platform)
+    assert set(labels) == {"core", "catalogue", "report_library"}, f"I11.3: {sorted(labels)}"
     assert labels["core"][0] == "Projects and their members", f"I11.3: core label {labels['core'][0]!r}"
 
 

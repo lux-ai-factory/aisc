@@ -59,11 +59,12 @@ def test_i2_8_platform_db_sql_sets_no_module_search_path():
         "I2.8: dashboard_ro's platform search_path still names module schemas"
 
 
-@pytest.mark.parametrize("schema,owner", [("form_library", "qualification_rw"), ("report_library", "report_composer_rw")])
-def test_i2_8_platform_db_sql_creates_the_two_libraries(schema, owner):
+@pytest.mark.parametrize("schema,owner", [("report_library", "report_composer_rw")])
+def test_i2_8_platform_db_sql_creates_the_report_library(schema, owner):
+    """D4. There is no form library (forms are per project since the user's decision of 2026-09-25: no form library in platform)."""
     text = _sql(PLATFORM_DB_SQL)
     assert re.search(rf"CREATE SCHEMA\s+(IF NOT EXISTS\s+)?{schema}\b", text, re.I), \
-        f"I2.8, D3/D4: init/platform-db.sql does not create {schema}"
+        f"I2.8, D4: init/platform-db.sql does not create {schema}"
     assert re.search(rf"{schema}[^;]*{owner}|AUTHORIZATION\s+{owner}", text, re.S), \
         f"I2.8: {schema} is not owned by {owner}"
 
@@ -134,18 +135,18 @@ def test_i16_4_init_files_and_migrations_apply_on_a_fresh_volume(fresh):
 
 
 def test_i1_3_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
-    """I1.3, I16.2: `platform` holds core, catalogue, form_library, report_library and an empty public."""
+    """I1.3, I16.2: `platform` holds core, catalogue, report_library and an empty public (forms are per project since the user's decision of 2026-09-25: no form library in platform)."""
     fresh.require("init")
     schemas = {r["nspname"] for r in fresh.rows("platform", """
         SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'""")}
-    assert schemas == {"core", "catalogue", "form_library", "report_library", "public"}, f"I1.3: {sorted(schemas)}"
+    assert schemas == {"core", "catalogue", "report_library", "public"}, f"I1.3: {sorted(schemas)}"
     core = {r["relname"] for r in fresh.rows("platform", """
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'core' AND c.relkind = 'r'""")}
     assert core == {"project", "project_member", "schema_migration"}, f"I1.3, I16.2: core has {sorted(core)}"
 
 
-@pytest.mark.parametrize("schema,owner", [("form_library", "qualification_rw"), ("report_library", "report_composer_rw")])
+@pytest.mark.parametrize("schema,owner", [("report_library", "report_composer_rw")])
 def test_i1_4_library_schemas_are_owned_by_their_module(fresh, schema, owner):
     fresh.require("init")
     got = fresh.scalar("platform", f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '{schema}'")
@@ -193,3 +194,10 @@ def test_i16_4_post_projects_on_a_fresh_volume_yields_a_complete_project_databas
     assert names == ib.TEMPLATES
     for tracker in ib.TRACKERS.values():
         assert fresh.exists(db, tracker), f"I16.3: {db} lacks {tracker}"
+
+
+def test_no_form_library_on_a_fresh_volume(fresh):
+    """Forms are per project since the user's decision of 2026-09-25: neither the init files nor the migrations make form_library."""
+    fresh.require("init")
+    assert fresh.scalar("platform", "SELECT to_regnamespace('form_library') IS NULL") == "t", "form_library exists"
+    assert "form_library" not in _sql(PLATFORM_DB_SQL), "init/platform-db.sql still names form_library"

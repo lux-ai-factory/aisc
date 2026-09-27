@@ -54,11 +54,11 @@ def test_i3_8_qualification_gets_a_project_database_template(compose, name):  # 
 
 
 @pytest.mark.parametrize("name", ["qualification-web", "qualification-migrate"])
-def test_i3_8_qualification_reaches_platform_only_for_the_form_library(compose, name):  # noqa: F811
+def test_i3_8_qualification_has_no_platform_database(compose, name):  # noqa: F811
+    """I3.8 (forms are per project since the user's decision of 2026-09-25: no form library in platform): qualification's only database DSN is the project template."""
     q, cfg = compose
     env = _env(cfg, name)
-    assert _database(env.get("FORM_LIBRARY_DATABASE_URL", "")) == "platform", \
-        f"I3.8, I4.2: {name} FORM_LIBRARY_DATABASE_URL is not on platform"
+    assert "FORM_LIBRARY_DATABASE_URL" not in env, f"{name} still names a form library"
     assert "DATABASE_URL" not in env, f"I3.8: {name} still has DATABASE_URL"
 
 
@@ -158,12 +158,12 @@ def test_i10_2_dashboard_reads_memberships_over_a_plain_dsn_and_registers_no_pla
             "I10.2: dashboard AISC_MEMBERSHIP_DB_URI missing or not dashboard_ro on platform"
 
 
-# ── I16.4: the only platform DSNs are the membership and library ones ───────────
+# ── I16.4: the only platform DSNs are the membership and report library ones ────
 
 
 ALLOWED_PLATFORM = {
-    "qualification-web": {"FORM_LIBRARY_DATABASE_URL"},
-    "qualification-migrate": {"FORM_LIBRARY_DATABASE_URL"},
+    "qualification-web": set(),
+    "qualification-migrate": set(),
     "control-objectives": {"DATABASE_URL"},
     "control-objectives-migrate": {"DATABASE_URL"},
     "report-composer": {"REPORT_COMPOSER_DATABASE_URL"},

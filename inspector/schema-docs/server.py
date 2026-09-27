@@ -45,7 +45,6 @@ PROJECT_SCHEMAS = {
 PLATFORM_SCHEMAS = {
     "core": ("Projects and their members", "Every project, and who may work in it with which role."),
     "catalogue": ("Catalogue", "The public catalogue of tests and controls."),
-    "form_library": ("Form library", "The forms every project may use; a project keeps its own copy of each version it uses."),
     "report_library": ("Report presets", "Shared report presets, which hold no project data."),
 }
 SCHEMAS = "^(?!pg_|information_schema).*"

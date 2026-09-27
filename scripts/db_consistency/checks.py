@@ -3,7 +3,7 @@ means the check passed. Only SELECTs, on read-only connections (cluster.py).
 
 Isolation (2026-09-25, 01-specs.md I16.6): every module's tables and the card versions
 (project.system) live in the project's own database `project_<hex>`; `platform` keeps only
-core.project, core.project_member, core.schema_migration, the catalogue and the two libraries. So
+core.project, core.project_member, core.schema_migration, the catalogue and the report library. So
 C3, C4, C6 and C7 run per project database, and a reference that crosses projects cannot exist
 (foreign keys); what can still go wrong is a pid that does not resolve in its own database."""
 
@@ -22,7 +22,6 @@ ROOT = Path(__file__).resolve().parents[2]
 PROJECT_TEMPLATE = heads.PROJECT_TEMPLATE
 CONTROLS_MIGRATIONS = heads.CONTROLS_MIGRATIONS
 LIBRARY_MIGRATIONS = ROOT / "apps/report-composer/migrations/library"
-FORM_LIBRARY_MIGRATIONS = ROOT / "apps/qualification/prisma/library/migrations"
 PROJECT_DB = re.compile(r"^project_[0-9a-f]{32}$")
 
 
@@ -63,7 +62,7 @@ KNOWN_DATABASES = {"platform", "keycloak", "superset", "postgres", "control_obje
 #: someone decides to drop them.
 LEFTOVER_DATABASES = {"aisc", "controls", "qualification", "control_objectives"}
 #: I1.3: what stays in `platform`.
-KNOWN_PLATFORM_SCHEMAS = {"core", "catalogue", "form_library", "report_library", "public"}
+KNOWN_PLATFORM_SCHEMAS = {"core", "catalogue", "report_library", "public"}
 #: The module schemas the cutover retires (C9) and stage 7 drops (I15.2).
 RETIRED_PLATFORM_SCHEMAS = {"engine", "qualification", "control_objectives", "report_composer"}
 #: I1.3: core's tables after the drop step.
@@ -327,11 +326,6 @@ def _library_trackers() -> list[heads.Tracker]:
         out.append(heads.Tracker("report_library", "report_library.schema_migration",
                                  "SELECT name FROM report_library.schema_migration",
                                  tuple(sorted(p.name for p in LIBRARY_MIGRATIONS.glob("*.sql")))))
-    if FORM_LIBRARY_MIGRATIONS.is_dir():
-        out.append(heads.Tracker("form_library", "form_library._prisma_migrations",
-                                 "SELECT migration_name FROM form_library._prisma_migrations"
-                                 " WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL",
-                                 tuple(sorted(p.name for p in FORM_LIBRARY_MIGRATIONS.iterdir() if p.is_dir()))))
     return out
 
 
@@ -339,7 +333,7 @@ def c7_migrations(cl: Cluster) -> list[Finding]:
     """Every project database is at the head of every history it has: the platform template
     (provision.template_migration), qualification and controls (Prisma, finished and not rolled
     back), control objectives (alembic), the engine (Django) and the report composer; and in
-    `platform`, the two libraries when this tree has their migrations."""
+    `platform`, the report library when this tree has its migrations."""
     out = []
     trackers = heads.trackers()
     for db in project_databases(cl):
@@ -354,7 +348,7 @@ def c7_migrations(cl: Cluster) -> list[Finding]:
 # ── C8 ───────────────────────────────────────────────────────────────────────
 
 #: Schemas of the platform database that follow the convention (the catalogue is out of scope).
-LINTED_PLATFORM_SCHEMAS = ("core", "form_library", "report_library")
+LINTED_PLATFORM_SCHEMAS = ("core", "report_library")
 #: Schemas of a project database that follow it. engine is frozen, so it is not here.
 LINTED_PROJECT_SCHEMAS = ("project", "qualification", "control_objectives", "report_composer", "controls")
 #: The migration tools' own tables: their columns are the tool's, not ours.
@@ -389,8 +383,8 @@ def _in(schemas: tuple[str, ...]) -> str:
 
 
 def c8_naming(cl: Cluster) -> list[Finding]:
-    """snake_case columns and timestamptz, in the schemas that are not frozen: core and the two
-    libraries of `platform`; project, qualification, control_objectives, report_composer and
+    """snake_case columns and timestamptz, in the schemas that are not frozen: core and the report
+    library of `platform`; project, qualification, control_objectives, report_composer and
     controls of each project database; superset's aisc_* tables. Not engine (frozen), not the
     catalogue, not migration trackers. Each finding names its database."""
     out = _lint(cl, cl.platform_db, _in(LINTED_PLATFORM_SCHEMAS), cl.platform_db)

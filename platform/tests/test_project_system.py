@@ -573,8 +573,8 @@ def test_i2_8_a_fresh_platform_database_has_no_module_schema_and_no_core_system(
     assert not schemas & {"qualification", "control_objectives", "engine", "report_composer"}, \
         f"I2.8: platform-db.sql still makes module schemas: {sorted(schemas)}"
     assert core == {"project", "project_member", "schema_migration"}, f"I1.3: core has {sorted(core)}"
-    assert "form_library" in schemas and "report_library" in schemas, "I2.8: form_library and report_library exist"
-    assert owners.get("form_library") == "qualification_rw", "I1.4: qualification_rw owns form_library"
+    # (forms are per project since the user's decision of 2026-09-25: no form library in platform)
+    assert "form_library" not in schemas and "report_library" in schemas, "I2.8: report_library only"
     assert owners.get("report_library") == "report_composer_rw", "I1.4: report_composer_rw owns report_library"
 
 
@@ -604,7 +604,7 @@ def test_i1_4_a_module_role_reads_only_project_and_project_member_in_platform():
     with scratch_database() as (su, rw):
         _fresh_platform(su, rw)
         with psycopg.connect(su) as conn:
-            own = {"qualification_rw": "form_library", "report_composer_rw": "report_library"}
+            own = {"report_composer_rw": "report_library"}
             schemas = [r[0] for r in conn.execute(
                 "select nspname from pg_namespace where nspname !~ '^pg_'"
                 " and nspname not in ('information_schema', 'public')").fetchall()]

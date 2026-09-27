@@ -64,6 +64,21 @@ def test_nobody_but_the_listed_roles_may_connect(client, as_user, unique, dsn):
 
 
 @needs_database
+def test_qualification_may_make_temporary_tables_and_no_other_module_may(client, as_user, unique, dsn):
+    # qualification's two-level forms migration (20260925150000) keeps its bookkeeping in a
+    # temporary table (ON COMMIT DROP). The template revokes every database right from PUBLIC,
+    # so template 0011 gives TEMPORARY back to qualification_rw only.
+    created = client.post("/projects", json={"name": unique()}, headers=as_user("alice")).json()
+    name = projectdb.database_name(created["pid"])
+    with _as(dsn, "qualification_rw", name) as conn:
+        conn.execute("create temp table t (x int) on commit drop")
+    for role in ("controls_rw", "control_objectives_rw", "engine_rw", "report_composer_rw"):
+        with _as(dsn, role, name) as conn:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute("create temp table t (x int)")
+
+
+@needs_database
 def test_provisioning_twice_changes_nothing(client, as_user, unique, dsn):
     created = client.post("/projects", json={"name": unique()}, headers=as_user("alice")).json()
     assert projectdb.provision(dsn, created["pid"]) == projectdb.database_name(created["pid"])

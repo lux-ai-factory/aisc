@@ -42,8 +42,9 @@ DECLARE
         'controls.checklist', 'controls.checklist_question', 'controls.source', 'controls.submission',
         'controls.submission_answer',
         'qualification.qualification', 'qualification.qualification_answer', 'qualification.qualification_risk',
-        'qualification.knowledge_graph', 'qualification.card_component', 'qualification.form',
-        'qualification.form_version', 'qualification.form_question', 'qualification.form_version_question',
+        'qualification.knowledge_graph', 'qualification.card_component', 'qualification.question_set',
+        'qualification.question_set_version', 'qualification.question_set_version_item', 'qualification.question',
+        'qualification.questionnaire', 'qualification.questionnaire_version', 'qualification.questionnaire_version_item',
         'control_objectives.project', 'control_objectives.graph', 'control_objectives.risk',
         'control_objectives.mapped_objective', 'control_objectives.mapping_run']
         || ARRAY(SELECT 'engine.' || t FROM unnest(ARRAY[

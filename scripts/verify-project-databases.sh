@@ -117,9 +117,9 @@ PLATFORM_TABLES = {r: {("core.project", "SELECT"), ("core.project_member", "SELE
 PLATFORM_TABLES["dashboard_ro"] = {("core.project_member", "SELECT")}
 PLATFORM_TABLES["report_ro"] = {("core.project", "SELECT")}
 #: I1.4: the platform schema each of these roles holds by design (its owner, or made for it)
-HOLDS = {"qualification_rw": "form_library", "report_composer_rw": "report_library", "catalogue_rw": "catalogue"}
+HOLDS = {"report_composer_rw": "report_library", "catalogue_rw": "catalogue"}
 #: I1.3
-PLATFORM_SCHEMAS = {"core", "catalogue", "form_library", "report_library", "public"}
+PLATFORM_SCHEMAS = {"core", "catalogue", "report_library", "public"}
 CORE_TABLES = {"project", "project_member", "schema_migration"}
 #: I1.1: module schema of a project database -> its role
 MODULES = {"qualification": "qualification_rw", "control_objectives": "control_objectives_rw",
@@ -130,7 +130,8 @@ READER_TABLES = {
     "project": ["system"],
     "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
-                      "card_component", "form", "form_version", "form_question", "form_version_question"],
+                      "card_component", "question_set", "question_set_version", "question_set_version_item",
+                      "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],
     "control_objectives": ["project", "graph", "risk", "mapped_objective", "mapping_run"],
     "engine": ["project", "ai_system", "ai_component", "evaluation", "evaluation_plugin", "evaluation_input",
                "plugin", "observation", "measurement", "metric", "direct", "derived", "metric_category",
@@ -371,7 +372,7 @@ def i16_3(project_list, dbs):
 
 #: container -> the variables that may name `platform` (test_compose_isolation.py, I3.8 .. I10.2)
 CONTAINERS = {
-    "qualification-web": {"FORM_LIBRARY_DATABASE_URL"},
+    "qualification-web": set(),
     "control-objectives": {"DATABASE_URL"},
     "aisc-backend": {"DB_NAME"},
     "report-composer": {"REPORT_COMPOSER_DATABASE_URL"},

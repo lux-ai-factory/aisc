@@ -53,7 +53,8 @@ NEW_TEMPLATES = ("0006_project_system.sql", "0007_qualification.sql", "0008_cont
 READERS = {
     "project": ["system"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
-                      "card_component", "form", "form_version", "form_question", "form_version_question"],
+                      "card_component", "question_set", "question_set_version", "question_set_version_item",
+                      "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],
     "control_objectives": ["project", "graph", "risk", "mapped_objective", "mapping_run"],
     "engine": ["project", "ai_system", "ai_component", "evaluation", "evaluation_plugin", "evaluation_input",
                "plugin", "observation", "measurement", "metric", "direct", "derived", "metric_category",

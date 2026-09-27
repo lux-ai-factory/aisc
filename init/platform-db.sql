@@ -7,8 +7,9 @@
 -- (project_<pid without hyphens>, made by the platform service from platform/project-template/):
 -- the card versions (project.system), qualification, control objectives, controls, the engine and
 -- the report composer. What stays here is only what knows no project: the projects and who is in
--- them (core), the catalogue of tests and controls, the install-wide library of qualification
--- forms (form_library, D3) and of report presets (report_library, D4).
+-- them (core), the catalogue of tests and controls, and the install-wide library of report
+-- presets (report_library, D4). Qualification forms are kept in each project's own database
+-- (the user's decision of 2026-09-25, which replaced the form library of D3).
 --
 -- Why schemas and roles rather than trust. Each module reads the projects and their members and
 -- nothing else here; the grants below are the contract, and the isolation's verify script asserts
@@ -115,10 +116,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON SEQUENCES TO platform_rw;
 GRANT USAGE, CREATE ON SCHEMA catalogue TO catalogue_rw;
 ALTER ROLE catalogue_rw IN DATABASE platform SET search_path = catalogue, core;
 
--- The two install-wide libraries: they hold no project's data (D3, D4). Each is owned by the module
--- that migrates it; a project copies what it uses into its own database.
-CREATE SCHEMA form_library AUTHORIZATION qualification_rw;
-COMMENT ON SCHEMA form_library IS 'The install-wide library of qualification forms (D3): no project data.';
+-- The install-wide library of report presets: it holds no project's data (D4). It is owned by the
+-- module that migrates it; a project copies what it uses into its own database.
 CREATE SCHEMA report_library AUTHORIZATION report_composer_rw;
 COMMENT ON SCHEMA report_library IS 'The install-wide library of report presets (D4): no project data.';
 
