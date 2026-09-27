@@ -64,17 +64,7 @@ USER=$(token_for user user)
 [ -n "$ADMIN" ] && [ -n "$USER" ] || { echo "cannot go on without tokens"; exit 1; }
 
 echo
-echo "1. the catalogue: the engine runs what is listed there, so changing it is administrative"
-CAT=http://localhost:8000
-is "an ordinary account cannot add a tool"        403 "$(call catalogue-backend $CAT/tool/ POST "$USER" '{}')"
-is "an ordinary account cannot delete a tool"     403 "$(call catalogue-backend $CAT/tool/999999/ DELETE "$USER" '{}')"
-is "an ordinary account cannot add a tag"         403 "$(call catalogue-backend $CAT/tags/ POST "$USER" '{}')"
-is "an ordinary account cannot upload a package"  403 "$(call catalogue-backend $CAT/devpi/upload POST "$USER" '{}')"
-is "nor can an anonymous one"                     401 "$(call catalogue-backend $CAT/tool/ POST '' '{}')"
-isnot "an admin reaches the handler"          401 403 "$(call catalogue-backend $CAT/tool/ POST "$ADMIN" '{}')"
-is "reading the catalogue is open to anyone"      200 "$(call catalogue-backend $CAT/tool/ GET "$USER")"
-is "and filtering, which is a read spelled as a post" 404 \
-   "$(call catalogue-backend $CAT/tool/999999/methods/filter/ POST "$USER" '{}')"
+echo "1. the catalogue is the hosted one: none runs here, so it has nothing to check in this stack"
 
 echo
 echo "2. the engine: installing a plugin puts code on the server"
@@ -162,30 +152,6 @@ fi
 
 echo
 echo "5. what the audit found, staying fixed"
-# An upload does not get to say where it lands. The traversal is refused as
-# not-a-wheel either way; what is asserted is that nothing outside the staging
-# directory was touched, which the unit suite covers in full.
-is "a traversing filename does not reach the handler's file"  403 \
-   "$(call catalogue-backend $CAT/devpi/upload POST "$USER" '{}')"
-staged=$(docker exec -w /app catalogue-backend uv run python -c "
-import tempfile, pathlib, sys
-sys.path.insert(0, '/app')
-from devpi_api import staged_path
-d = pathlib.Path(tempfile.mkdtemp())
-bad = staged_path('../../app/main_api.py', d)
-print('contained' if bad.parent == d else 'escaped to ' + str(bad))
-" 2>/dev/null | tail -1)
-is "and a name that climbs stays in the staging directory" contained "$staged"
-
-# CORS: the wildcard echoed any origin back as soon as a cookie was present.
-origin=$(docker exec catalogue-backend python -c "
-import urllib.request
-req = urllib.request.Request('http://localhost:8000/health',
-      headers={'Origin': 'https://evil.example', 'Cookie': 'x=1'})
-print(urllib.request.urlopen(req, timeout=10).headers.get('access-control-allow-origin') or 'none')
-" 2>/dev/null | tail -1)
-is "an unknown origin is not echoed back"                    none "$origin"
-
 # The engine's routes addressed by a child object's id.
 is "an evaluation is not readable by id alone"               404 \
    "$(call aisc-backend $ENG/evaluations/00000000-0000-0000-0000-000000000000 GET "$USER")"

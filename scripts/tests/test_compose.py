@@ -142,14 +142,34 @@ def test_each_agent_gets_the_token_of_its_own_system_only(tmp_path):
     assert sorted(holders) == ["control-objectives", "platform", "qualification-agents"]
 
 
-def test_controls_fetches_packages_from_the_catalogue_the_launcher_opens(compose):
-    """The launcher opens the dev catalogue (localhost:3000, its API published on the host's
-    :8000). Its Install button sends the slug to controls, which fetches the package server-side:
-    from the same catalogue, reached through the host, not from the stack's own catalogue-backend
-    (2026-09-25: installs failed with "The catalogue is not answering" while it was stopped)."""
+HOSTED_CATALOGUE = "https://sandboxconfigurator.aifactory.lu/catalogue"
+HOSTED_CATALOGUE_API = "https://sandboxconfigurator.aifactory.lu/api/api"
+HOSTED_ORIGIN = "https://sandboxconfigurator.aifactory.lu"
+
+
+def test_controls_fetches_packages_from_the_hosted_catalogue(compose):
+    """The catalogue is the hosted one only (the user's decision of 2026-09-27): the launcher and
+    the engine open it, and controls fetch a control's package from its API server-side
+    (GET {CATALOGUE_URL}/control/{slug}/export); only that origin's install pages are trusted."""
     q, cfg = compose
-    svc = cfg["services"]["controls-web"]
-    assert (svc.get("environment") or {}).get("CATALOGUE_URL") == "http://host.docker.internal:8000/api"
-    assert "host.docker.internal:host-gateway" in _extra_hosts(svc)
+    env = cfg["services"]["controls-web"].get("environment") or {}
+    assert env.get("CATALOGUE_URL") == HOSTED_CATALOGUE_API
+    assert env.get("CATALOGUE_ORIGIN") == HOSTED_ORIGIN
+    webapp = cfg["services"]["aisc-webapp"].get("environment") or {}
+    assert webapp.get("APP_CATALOG_URL") == HOSTED_CATALOGUE
     launcher = (ROOT / "homepage" / "project.html").read_text()
-    assert 'id="catalogue-card"' in launcher and 'href="http://localhost:3000/"' in launcher
+    assert f'id="catalogue-card" data-engine="http://localhost/" href="{HOSTED_CATALOGUE}"' in launcher
+
+
+def test_no_local_catalogue_only_its_package_index(compose):
+    """No catalogue runs in the stack: no backend, frontend, migration or Caddy site for it, and no
+    host port. The package index (devpi) stays: tests are installed from it."""
+    q, cfg = compose
+    services = cfg["services"]
+    for gone in ("catalogue-backend", "catalogue-frontend", "catalogue-migrate"):
+        assert gone not in services, f"{gone} is still in the stack"
+    assert "devpi" in services and "plugin-publisher" in services
+    caddyfile = (ROOT / "Caddyfile").read_text()
+    assert "catalogue-backend" not in caddyfile and "catalogue-frontend" not in caddyfile
+    ports = [str(p) for p in (services["caddy"].get("ports") or [])]
+    assert not any("8007" in p for p in ports), f"caddy still publishes the catalogue listener: {ports}"

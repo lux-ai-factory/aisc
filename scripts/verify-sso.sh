@@ -46,7 +46,7 @@ for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
          "qualification|http://localhost/qualification/p/$PROJECT|qualification" \
          "controls|http://localhost/controls/p/$PROJECT/checklists|checklist" \
          "control objectives|http://localhost/control-objectives/p/$PROJECT/projects|objectives" \
-         "catalogue|http://localhost:8102/|AI Factory Sandbox Configurator"; do
+         "catalogue (hosted)|${CATALOGUE_EXTERNAL_URL:-https://sandboxconfigurator.aifactory.lu/catalogue}|AI Factory Sandbox"; do
   n=$(echo "$e" | cut -d'|' -f1); u=$(echo "$e" | cut -d'|' -f2); m=$(echo "$e" | cut -d'|' -f3)
   body=$(curl -s -b "$J" -c "$J" -L --max-time 30 "$u")
   eff=$(curl -s -b "$J" -c "$J" -L --max-time 30 -o /dev/null -w '%{url_effective}' "$u")
@@ -344,19 +344,18 @@ c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhos
 docker exec aisc-webapp sh -c 'grep -qoh "APP_CATALOG_URL" /usr/share/nginx/html/assets/*.js' 2>/dev/null \
   && no "the engine's catalogue link is still the unsubstituted placeholder" \
   || ok "the engine's catalogue link is substituted, not a placeholder"
-docker exec aisc-webapp sh -c "grep -qoh '${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}' /usr/share/nginx/html/assets/*.js" 2>/dev/null \
-  && ok "and it points at this install's catalogue" \
+docker exec aisc-webapp sh -c "grep -qoh '${CATALOGUE_EXTERNAL_URL:-https://sandboxconfigurator.aifactory.lu/catalogue}' /usr/share/nginx/html/assets/*.js" 2>/dev/null \
+  && ok "and it points at the hosted catalogue" \
   || no "the catalogue URL is not in the engine's bundle"
 
-# With an admin token, so the catalogue's own guard on writes is not what
-# answers: a 404 then means there is no such route, which is the point.
-c=$(curl -s -b "$J" -H "Authorization: Bearer $ADMIN_TOK" -o /dev/null -w '%{http_code}' --max-time 20 \
-      -X POST -H 'Content-Type: application/json' -d '{}' \
-      "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/v1/catalogue/install")
-[ "$c" = "404" ] && ok "the bespoke install door is gone (404)" || no "the old door still answers ($c)"
-info=$(curl -s -b "$J" -L --max-time 20 "${CATALOGUE_EXTERNAL_URL:-http://localhost:8102}/api/tool/langbite/install-info")
-printf '%s' "$info" | grep -c '"installable":true' >/dev/null \
-  && ok "the catalogue still resolves a test to an installable package" \
-  || no "install-info: ${info:0:90}"
+# The catalogue is the hosted one (no catalogue runs in this stack). Read-only checks, no
+# session sent to it: its API lists the tests, and answers the control export controls fetch.
+API="${CATALOGUE_API_URL:-https://sandboxconfigurator.aifactory.lu/api/api}"
+c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$API/tool/")
+[ "$c" = "200" ] && ok "the hosted catalogue lists its tests ($API/tool/, 200)" || no "hosted catalogue $API/tool/ -> $c"
+slug=$(curl -s --max-time 20 "$API/tool/" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((t["slug"] for t in d if "checklist" in t["slug"]), ""))' 2>/dev/null)
+c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$API/control/$slug/export")
+[ -n "$slug" ] && [ "$c" = "200" ] && ok "and exports a control the controls app installs ($slug, 200)" \
+  || no "hosted control export for '$slug' -> $c"
 
 echo; echo "passed: $pass  failed: $fail"; [ "$fail" -eq 0 ]
