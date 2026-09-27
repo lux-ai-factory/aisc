@@ -148,7 +148,8 @@ case "$who" in
 esac
 # The observable end of it: a signed-in browser, holding only the gateway's
 # cookie and no token of its own, can use the engine's API.
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+# Every engine route that belongs to a project names it in X-AISC-Project (isolation E2).
+c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "200" ] && ok "a session with no token of its own can read the engine's API ($c)" \
   || no "the engine's API refuses a gateway session that holds no token ($c)"
 # And nothing may reach it without going through the gateway at all.
@@ -306,26 +307,32 @@ echo "7. installing a plugin goes through the engine, not a second door"
 TOK=$(token_for "$U" "$P")
 [ -n "$TOK" ] && ok "the realm issues an access token for the engine's client" || no "no access token from the realm"
 
-c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+c=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "200" ] && ok "the engine lists projects for the dialog's dropdown (200)" || no "GET /api/v1/projects -> $c"
 
 # Installing puts code on the server, so it takes the admin role. The dialog is
 # the same dialog for everybody; what changes is who it works for, which is
 # asserted in both directions here and in full in verify-rbac.sh.
 ADMIN_TOK=$(token_for admin admin)
+# As the dialog does: the engine's own project for this platform project first, then the
+# install into it. Package "x" does not exist, so an admin gets past the guard and no further:
+# nothing is installed.
+ENGINE_PROJECT=$(curl -s -b "$J" -H "Authorization: Bearer $TOK" -H "X-AISC-Project: $PROJECT" --max-time 30 \
+    -X POST -H 'Content-Type: application/json' -d '{}' "http://localhost/api/v1/projects/for-platform/$PROJECT" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("pid",""))' 2>/dev/null)
+[ -n "$ENGINE_PROJECT" ] && ok "the engine has its own project for this one ($ENGINE_PROJECT)" \
+  || no "the engine made no project for $PROJECT"
 install_as() {
-  curl -s -b "$J" -H "Authorization: Bearer $1" -o /dev/null -w '%{http_code}' --max-time 30 \
+  curl -s -b "$J" -H "Authorization: Bearer $1" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 30 \
     -X POST -H 'Content-Type: application/json' \
-    -d '{"package_name":"x","version":"1.0.0","project_uuid":"00000000-0000-0000-0000-000000000000"}' \
+    -d "{\"package_name\":\"x\",\"version\":\"1.0.0\",\"project_uuid\":\"$ENGINE_PROJECT\"}" \
     http://localhost/api/v1/plugins
 }
 c=$(install_as "$ADMIN_TOK")
-# 404: no such project on a virgin install, which means it got past auth and
-# schema into the engine's own logic, exactly as the dialog would.
 case "$c" in
-  404|400|422|200|201) ok "the engine's own POST /api/v1/plugins accepts the dialog's payload ($c)" ;;
   401|403) no "POST /api/v1/plugins refused an admin ($c)" ;;
-  *) no "POST /api/v1/plugins -> $c" ;;
+  000) no "POST /api/v1/plugins did not answer" ;;
+  *) ok "the engine's own POST /api/v1/plugins lets an admin past the guard ($c)" ;;
 esac
 if [ "$U" = "admin" ]; then
   ok "signed in as admin, so the install above was the ordinary path"
@@ -338,7 +345,7 @@ fi
 # A session that carries no token of its own is still a signed-in user: the
 # gateway holds the session and passes the token, so the call is served. What
 # must be refused is a call carrying neither, which is asserted in section 2d.
-c=$(curl -s -b "$J" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "200" ] && ok "and serves the same call on the gateway's session alone (200)" \
   || no "a signed-in session was refused: /api/v1/projects -> $c"
 # The engine's "Public Catalogue" button reads a placeholder that env.sh

@@ -27,12 +27,14 @@ token_for() {
 # not published to the host: the gateway is the only door, and it carries a
 # cookie session rather than a token, so these go through a container that is
 # already on the network.
-call() {  # call <container> <url> <method> <token> [body]
-  docker exec -e U="$2" -e M="$3" -e T="$4" -e B="${5:-}" "$1" python -c '
+call() {  # call <container> <url> <method> <token> [body]   (XP=<platform pid> names the project)
+  docker exec -e U="$2" -e M="$3" -e T="$4" -e B="${5:-}" -e XP="${XP:-}" "$1" python -c '
 import os, urllib.request, urllib.error
 headers = {"Content-Type": "application/json"}
 if os.environ["T"]:
     headers["Authorization"] = "Bearer " + os.environ["T"]
+if os.environ["XP"]:
+    headers["X-AISC-Project"] = os.environ["XP"]
 body = os.environ["B"].encode() if os.environ["B"] else None
 req = urllib.request.Request(os.environ["U"], data=body, method=os.environ["M"], headers=headers)
 try:
@@ -66,17 +68,36 @@ USER=$(token_for user user)
 echo
 echo "1. the catalogue is the hosted one: none runs here, so it has nothing to check in this stack"
 
+# The engine keeps every project in its own database and its API names the project in
+# X-AISC-Project (isolation E2): the checks below act in the ordinary account's project,
+# and installs name the engine's own project for it, as the install dialog does.
+MINE=$(docker exec platform python -c "
+import json, urllib.request
+req = urllib.request.Request('http://localhost:8000/projects', headers={'Authorization':'Bearer $USER'})
+found = json.load(urllib.request.urlopen(req, timeout=20))
+print(found[0]['pid'] if found else '')
+" 2>/dev/null | tail -1)
+eng() { XP="$MINE" call aisc-backend "$@"; }
+
 echo
 echo "2. the engine: installing a plugin puts code on the server"
 ENG=http://localhost:8000/api/v1
-INSTALL='{"package_name":"nope","version":"1.0","project_uuid":"00000000-0000-0000-0000-000000000000"}'
-is "an ordinary account cannot install"        403 "$(call aisc-backend $ENG/plugins POST "$USER" "$INSTALL")"
-is "nor remove one"                            403 "$(call aisc-backend $ENG/plugins DELETE "$USER" "$INSTALL")"
-is "nor refresh one"                           403 "$(call aisc-backend $ENG/plugins/refresh POST "$USER" "$INSTALL")"
-isnot "an admin gets past the guard"       401 403 "$(call aisc-backend $ENG/plugins POST "$ADMIN" "$INSTALL")"
-is "reading the installed plugins is open to any account" 200 "$(call aisc-backend $ENG/plugins GET "$USER")"
-is "the audit log is for admins"               403 "$(call aisc-backend $ENG/audit GET "$USER")"
-isnot "and an admin may read it"           401 403 "$(call aisc-backend $ENG/audit GET "$ADMIN")"
+[ -n "$MINE" ] && ok "the ordinary account has a project to act in" || no "the ordinary account is in no project: create one first"
+ENGINE_PROJECT=$(docker exec -e T="$USER" -e XP="$MINE" aisc-backend python -c "
+import json, os, urllib.request
+req = urllib.request.Request('http://localhost:8000/api/v1/projects/for-platform/' + os.environ['XP'], data=b'{}', method='POST',
+    headers={'Authorization': 'Bearer ' + os.environ['T'], 'X-AISC-Project': os.environ['XP'], 'Content-Type': 'application/json'})
+print(json.load(urllib.request.urlopen(req, timeout=30)).get('pid', ''))
+" 2>/dev/null | tail -1)
+INSTALL="{\"package_name\":\"nope\",\"version\":\"1.0\",\"project_uuid\":\"$ENGINE_PROJECT\"}"
+is "an ordinary account cannot install"        403 "$(eng $ENG/plugins POST "$USER" "$INSTALL")"
+is "nor remove one"                            403 "$(eng $ENG/plugins DELETE "$USER" "$INSTALL")"
+is "nor refresh one"                           403 "$(eng $ENG/plugins/refresh POST "$USER" "$INSTALL")"
+isnot "an admin gets past the guard"       401 403 "$(eng $ENG/plugins POST "$ADMIN" "$INSTALL")"
+is "reading the installed plugins is open to any account" 200 "$(eng $ENG/plugins GET "$USER")"
+is "the audit log is for admins"               403 "$(eng $ENG/audit GET "$USER")"
+isnot "and an admin may read it"           401 403 "$(eng $ENG/audit GET "$ADMIN")"
+is "a call that names no project is refused before anything else" 400 "$(call aisc-backend $ENG/projects GET "$USER")"
 
 echo
 echo "3. the platform: a project belongs to the people in it"
@@ -126,7 +147,7 @@ if [ -n "$PROJECT" ]; then
   is "a project nobody is in is not found"       404 "$(call control-objectives http://localhost:8090/p/00000000-0000-0000-0000-000000000000 GET "$USER")"
   is "the catalogue of objectives is the same for everyone" 200 \
      "$(call control-objectives http://localhost:8090/objectives GET "$USER")"
-  is "the engine shows the project to a member"  200 "$(call aisc-backend $ENG/projects?platform_project_id=$PROJECT GET "$USER")"
+  is "the engine shows the project to a member"  200 "$(XP="$PROJECT" call aisc-backend $ENG/projects?platform_project_id=$PROJECT GET "$USER")"
   # The two Next apps, through the container rather than the gateway: their door
   # reads the same token, and the gateway wants a cookie session instead.
   page() {  # page <container:port/path> <token>
@@ -140,8 +161,8 @@ if [ -n "$PROJECT" ]; then
   is "and not for a project nobody is in"        404 "$(page qualification-web:3000/qualification/p/$NOBODY/qualifications "$USER")"
   CTRL="controls-web:3000/controls/p"
   is "a path that is not a project is not found"  404 "$(page $CTRL/abc/checklists "$USER")"
-  is "the install page previews for a member"     200 "$(page "$CTRL/$PROJECT/install?slug=accuracy-checklist" "$USER")"
-  is "and is not found for a project nobody is in" 404 "$(page "$CTRL/$NOBODY/install?slug=accuracy-checklist" "$USER")"
+  # A control is installed through one dialog (/controls/install, controls ca6d20f), which asks
+  # for the project; the per-project install page is gone, so it is not checked here.
   is "the project chooser opens for anyone signed in" 200 "$(page "controls-web:3000/controls/install?slug=accuracy-checklist" "$USER")"
   echo "the controls schema no longer lives in the shared database"
   left=$(docker exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select count(*) from pg_namespace where nspname = \$\$controls\$\$"')
@@ -154,11 +175,11 @@ echo
 echo "5. what the audit found, staying fixed"
 # The engine's routes addressed by a child object's id.
 is "an evaluation is not readable by id alone"               404 \
-   "$(call aisc-backend $ENG/evaluations/00000000-0000-0000-0000-000000000000 GET "$USER")"
+   "$(eng $ENG/evaluations/00000000-0000-0000-0000-000000000000 GET "$USER")"
 is "nor a stored file by its object name"                    404 \
-   "$(call aisc-backend $ENG/files/dataset/whatever.csv GET "$USER")"
+   "$(eng $ENG/files/dataset/whatever.csv GET "$USER")"
 is "nor a project's statistics by its pid"                   404 \
-   "$(call aisc-backend $ENG/stats/projects/00000000-0000-0000-0000-000000000000/overview GET "$USER")"
+   "$(eng $ENG/stats/projects/00000000-0000-0000-0000-000000000000/overview GET "$USER")"
 
 echo
 echo "6. the dashboard: a viewer looks and comments"
