@@ -96,12 +96,12 @@ def _project_with_version(conn, slug):
 
 def test_init_makes_core_system_unique_on_pid_and_project():
     """Before any migration: a module migrating first on a fresh volume finds it."""
-    with scratch_database() as (su, _rw):
+    with scratch_database(old_layout=True) as (su, _rw):
         assert _unique_def(su) == "UNIQUE (pid, project_id)"
 
 
 def test_0004_on_a_fresh_database_is_recorded_and_leaves_one_constraint():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
         ran = apply_platform_migrations(rw)
         assert M0004 in ran
@@ -117,18 +117,19 @@ def test_0004_on_a_fresh_database_is_recorded_and_leaves_one_constraint():
 
 
 def test_0004_adds_the_unique_where_init_did_not():
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         _drop_unique(su)
         give_core_system_to_platform(su)
         apply_platform_migrations(rw, upto="0003")
         assert _unique_def(rw) is None
-        assert apply_platform_migrations(rw) == [M0004]
+        # up to 0004: the isolation added 0005 (the composer reads members), which is not this test's
+        assert apply_platform_migrations(rw, upto="0004") == [M0004]
         assert _unique_def(rw) == "UNIQUE (pid, project_id)"
 
 
 def test_a_key_into_the_pair_refuses_a_version_of_another_project():
     """What the unique is for: a module row naming project A and a version of B fails."""
-    with scratch_database() as (su, rw):
+    with scratch_database(old_layout=True) as (su, rw):
         _drop_unique(su)
         give_core_system_to_platform(su)
         apply_platform_migrations(rw)
@@ -147,7 +148,7 @@ def test_a_key_into_the_pair_refuses_a_version_of_another_project():
 
 
 def test_project_databases_adds_the_unique_when_missing_and_is_idempotent():
-    with scratch_database() as (su, _rw):
+    with scratch_database(old_layout=True) as (su, _rw):
         _drop_unique(su)
         _run_project_databases(su, times=2)
         assert _unique_def(su) == "UNIQUE (pid, project_id)"
@@ -155,7 +156,7 @@ def test_project_databases_adds_the_unique_when_missing_and_is_idempotent():
 
 def test_project_databases_skips_module_tables_that_do_not_exist_yet():
     """On a fresh volume it runs before any module has migrated."""
-    with scratch_database() as (su, _rw):
+    with scratch_database(old_layout=True) as (su, _rw):
         _run_project_databases(su)
         assert _module_keys(su) == {}
 
@@ -163,7 +164,7 @@ def test_project_databases_skips_module_tables_that_do_not_exist_yet():
 def test_project_databases_adds_the_module_keys_a_module_migration_had_to_skip():
     """A module that migrated before the unique existed: the next start of postgres-setup
     adds its key, with the module's own name and ON DELETE."""
-    with scratch_database() as (su, _rw):
+    with scratch_database(old_layout=True) as (su, _rw):
         _drop_unique(su)
         with psycopg.connect(su, autocommit=True) as conn:
             conn.execute(STAND_INS)
@@ -184,7 +185,7 @@ def test_project_databases_adds_the_module_keys_a_module_migration_had_to_skip()
 
 
 def test_project_databases_leaves_a_key_the_module_already_made():
-    with scratch_database() as (su, _rw):
+    with scratch_database(old_layout=True) as (su, _rw):
         with psycopg.connect(su, autocommit=True) as conn:
             conn.execute(STAND_INS)
             conn.execute(

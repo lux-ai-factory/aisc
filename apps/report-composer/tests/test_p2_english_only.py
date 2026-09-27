@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import IDS, error_code, new_layout, some_template
+from conftest import IDS, error_code, new_layout, pdb_of, some_template
 from v2_fakes import clean_presets, client_v2, fake_v2, scalar_json, unique, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts", "clean_presets")]
@@ -37,7 +37,7 @@ def put(client, auth, layout, **changes):
 
 
 def row_language(bed, layout_id):
-    return bed.scalar("platform", f"SELECT language FROM report_composer.layout WHERE id = '{layout_id}'")
+    return bed.scalar(pdb_of("A"), f"SELECT language FROM report_composer.layout WHERE id = '{layout_id}'")
 
 
 # ── R2-D1.9 no Language control, no languages call ──────────────────────────
@@ -124,7 +124,7 @@ def test_r2_d1_11_a_new_row_gets_the_column_default(client_v2, auth, bed):
 
 def test_r2_d1_11_an_update_never_writes_the_language(client_v2, auth, bed):
     lay_ = lay(client_v2, auth)
-    bed.psql("platform", f"UPDATE report_composer.layout SET language = 'fr' WHERE id = '{lay_['id']}'")
+    bed.psql(pdb_of("A"), f"UPDATE report_composer.layout SET language = 'fr' WHERE id = '{lay_['id']}'")
     r = put(client_v2, auth, lay_, language="en")
     assert r.status_code == 200, r.text[:300]
     assert row_language(bed, lay_["id"]) == "fr"                  # untouched, and without effect
@@ -136,7 +136,7 @@ def test_r2_d1_11_a_saved_preset_stores_no_language(client_v2, auth, bed):
     r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/preset", json={"name": unique("Saved")},
                        headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
-    stored = bed.scalar("platform", f"SELECT coalesce(language, 'NULL') FROM report_composer.preset WHERE id = '{r.json()['id']}'")
+    stored = bed.scalar("platform", f"SELECT coalesce(language, 'NULL') FROM report_library.preset WHERE id = '{r.json()['id']}'")
     assert stored == "NULL"
 
 
@@ -151,7 +151,7 @@ def test_r2_d1_12_preview_and_generate_snapshots_carry_no_language(client_v2, au
         assert g.status_code == 201, g.text[:300]
         assert "language" not in fake_v2.snapshots[-1], fmt
         stored = scalar_json(bed, "SELECT snapshot::text FROM report_composer.generated_report"
-                                  f" WHERE id = '{g.json()['id']}'")
+                                  f" WHERE id = '{g.json()['id']}'", db=pdb_of("A"))
         assert "language" not in stored, fmt
 
 
@@ -197,7 +197,7 @@ def test_r2_d1_13_import_with_any_language_is_accepted_and_ignored(client_v2, au
 
 def test_r2_c_1_a_layout_row_holding_fr_previews_and_generates_without_a_language(client_v2, auth, fake_v2, bed):
     lay_ = lay(client_v2, auth)
-    bed.psql("platform", f"UPDATE report_composer.layout SET language = 'fr' WHERE id = '{lay_['id']}'")
+    bed.psql(pdb_of("A"), f"UPDATE report_composer.layout SET language = 'fr' WHERE id = '{lay_['id']}'")
     got = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("alice"))
     assert got.status_code == 200 and "language" not in got.json()
     p = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}/preview", headers=auth("alice"))
@@ -212,7 +212,7 @@ def test_r2_c_1_a_saved_preset_row_holding_fr_makes_an_english_layout(client_v2,
     src = lay(client_v2, auth)
     pid = client_v2.post(f"/api/p/alpha/layouts/{src['id']}/preset", json={"name": unique("Old French")},
                          headers=auth("alice")).json()["id"]
-    bed.psql("platform", f"UPDATE report_composer.preset SET language = 'fr' WHERE id = '{pid}'")
+    bed.psql("platform", f"UPDATE report_library.preset SET language = 'fr' WHERE id = '{pid}'")
     r = client_v2.post("/api/p/alpha/layouts", json={"name": unique("From fr"), "system_id": IDS["A_V2"],
                                                     "template_id": some_template(client_v2, auth), "preset": pid},
                        headers=auth("alice"))

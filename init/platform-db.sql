@@ -1,21 +1,23 @@
--- The platform database: one database, one core, one schema per module.
+-- The platform database: what every project shares, and nothing that belongs to one project.
 --
 -- Runs once on a fresh Postgres volume, before any app migrates.
 --
--- Why one database. Every module used to keep its own -- qualification,
--- controls, control_objectives, aisc -- and each had its own idea of what it
--- was working on. The same assessment could not be followed from step 1 to
--- step 6, and the same AI system appeared as a `systemName` string in one place
--- and a `model` row in another, with nothing connecting them.
+-- One database per project (isolation 2026-09-25, docs/superpowers/isolation-2026-09-25/01-specs.md
+-- I1.3, I1.4, I2.8). Every module keeps a project's data in that project's own database
+-- (project_<pid without hyphens>, made by the platform service from platform/project-template/):
+-- the card versions (project.system), qualification, control objectives, controls, the engine and
+-- the report composer. What stays here is only what knows no project: the projects and who is in
+-- them (core), the catalogue of tests and controls, the install-wide library of qualification
+-- forms (form_library, D3) and of report presets (report_library, D4).
 --
--- Why schemas and roles rather than trust. One database does not mean one
--- namespace and it does not mean everyone sees everything: each module owns a
--- schema, reads the core, and is refused the rest. The grants below are the
--- contract, and scripts/verify-db-access.sh asserts it by connecting as each
--- role and trying what it must and must not be able to do.
--- Created only if it is not already the bootstrap database: POSTGRES_DB is
--- `platform` now that every module lives here, and the image makes that one
--- itself before running this script.
+-- Why schemas and roles rather than trust. Each module reads the projects and their members and
+-- nothing else here; the grants below are the contract, and the isolation's verify script asserts
+-- it by role (has_*_privilege). The pre-isolation version of this file, which made core.system and
+-- the module schemas, is kept as a test fixture at
+-- scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql.
+--
+-- Created only if it is not already the bootstrap database: POSTGRES_DB is `platform`, and the
+-- image makes that one itself before running this script.
 SELECT 'CREATE DATABASE platform'
  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'platform')\gexec
 
@@ -27,12 +29,13 @@ SELECT 'CREATE DATABASE platform'
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------
--- core: what the whole platform shares. Written by the platform service only;
--- every module reads it and none may change it.
+-- core: the projects and their members. Written by the platform service only;
+-- every module reads it and none may change it. core.project_member and
+-- core.schema_migration are made by the platform's own migrations.
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA core;
 
--- An assessment.
+-- An assessment. Its pid names its database: project_<pid without hyphens>.
 CREATE TABLE core.project (
     pid         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name        text NOT NULL,
@@ -43,61 +46,23 @@ CREATE TABLE core.project (
 );
 CREATE INDEX project_created_at_idx ON core.project (created_at DESC);
 
--- The AI system under assessment: the thing qualification describes and the
--- thing the engine runs tests against. One row, referenced by both, so
--- "the system" means the same object in every module.
-CREATE TABLE core.system (
-    pid         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id  uuid NOT NULL REFERENCES core.project (pid) ON DELETE CASCADE,
-    name        text NOT NULL,
-    version     text,
-    provider    text,
-    description text,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    -- a system's name is unique inside its project, not globally: two projects
-    -- may legitimately assess systems with the same name
-    UNIQUE (project_id, name, version),
-    -- What the modules point at when their work is of one card version: the
-    -- pair, so a row cannot name the version of another project. pid alone is
-    -- already unique; this makes the pair a key. Here rather than only in
-    -- platform migration 0004 because on a fresh volume a module may migrate
-    -- before the platform has, and this file runs before any of them can connect.
-    CONSTRAINT system_pid_project_id_key UNIQUE (pid, project_id)
-);
--- An unversioned system stores NULL, and in a UNIQUE constraint NULLs are all
--- distinct, so the constraint above would let the same unversioned system be
--- registered twice. This index is what actually makes it one system. (NULLS NOT
--- DISTINCT would say it in one word; it needs Postgres 15.)
-CREATE UNIQUE INDEX system_identity_idx
-    ON core.system (project_id, name, coalesce(version, ''));
-CREATE INDEX system_project_idx ON core.system (project_id);
-
 COMMENT ON TABLE core.project IS 'An assessment, defined once for the whole platform.';
-COMMENT ON TABLE core.system  IS 'The AI system under assessment: qualification describes it, the engine tests it.';
 
 -- ---------------------------------------------------------------------------
--- one schema per module
+-- the catalogue: reference data, the same for every project
 -- ---------------------------------------------------------------------------
-CREATE SCHEMA qualification;
-CREATE SCHEMA control_objectives;
-CREATE SCHEMA engine;
 CREATE SCHEMA catalogue;
-
-COMMENT ON SCHEMA qualification      IS 'Step 1: qualifications and system cards.';
-COMMENT ON SCHEMA control_objectives IS 'Step 2: risks, mappings and their runs.';
-COMMENT ON SCHEMA engine             IS 'Step 4: datasets, models, plugins, evaluations, measurements.';
-COMMENT ON SCHEMA catalogue          IS 'Step 3: the registry of tests and controls. Reference data: the same for every project, so nothing in it belongs to one.';
+COMMENT ON SCHEMA catalogue IS 'Step 3: the registry of tests and controls. Reference data: the same for every project, so nothing in it belongs to one.';
 
 -- ---------------------------------------------------------------------------
--- roles: a module may write its own schema, read the core, and nothing else.
+-- roles: a module may connect here, read the projects and their members, and
+-- nothing else; everything it writes is in a project database.
 --
 -- Passwords are dev values, as everywhere else in this compose. Each app is
 -- given only its own role, so a mistake in one module cannot read another's
 -- data or rewrite the project it belongs to.
 -- ---------------------------------------------------------------------------
--- Roles are cluster-wide, so one may already exist (dashboard_ro is created by
--- init/dashboard-ro.sql for the engine's database). Creating them
+-- Roles are cluster-wide, so one may already exist. Creating them
 -- conditionally keeps this script runnable on a cluster that is not empty.
 DO $roles$
 DECLARE
@@ -110,9 +75,11 @@ BEGIN
         ('engine_rw'),
         -- the catalogue: the registry of tests and controls
         ('catalogue_rw'),
+        -- the report composer (init/report-roles.sql sets its real password on every start)
+        ('report_composer_rw'),
         -- the platform service: the only writer of the core
         ('platform_rw'),
-        -- the dashboard: reads everything, writes nothing
+        -- the dashboard: reads each project's database, and here only who is in which project
         ('dashboard_ro')
     ) AS t(role_name)
     LOOP
@@ -126,13 +93,16 @@ $roles$;
 -- everyone may connect, and see the core
 GRANT CONNECT ON DATABASE platform TO
     qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw,
-    platform_rw, dashboard_ro;
+    report_composer_rw, platform_rw, dashboard_ro;
 GRANT USAGE ON SCHEMA core TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, dashboard_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA core TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, dashboard_ro;
-ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT SELECT ON TABLES TO
-    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, dashboard_ro;
+    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw,
+    report_composer_rw, dashboard_ro;
+
+-- A module reads core.project to resolve the project it was entered inside (I1.4): SELECT only, no
+-- REFERENCES (no module table here points at it any more). dashboard_ro reads memberships only;
+-- core.project_member's SELECT comes from platform migrations 0001 and 0005, which make it.
+GRANT SELECT ON core.project TO
+    qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, report_composer_rw;
 
 -- the core belongs to the platform service
 GRANT USAGE, CREATE ON SCHEMA core TO platform_rw;
@@ -141,43 +111,16 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA core TO platform_rw;
 ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON TABLES TO platform_rw;
 ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON SEQUENCES TO platform_rw;
 
--- each module owns its schema: it migrates and writes there, and the dashboard
--- may read it
-DO $$
-DECLARE
-    m record;
-BEGIN
-    FOR m IN SELECT * FROM (VALUES
-        ('qualification',      'qualification_rw'),
-        ('control_objectives', 'control_objectives_rw'),
-        ('engine',             'engine_rw'),
-        -- the catalogue holds no project's data, but the rest of the contract
-        -- is the same: its own schema, its own role, readable by the dashboard
-        ('catalogue',          'catalogue_rw')
-    ) AS t(schema_name, role_name)
-    LOOP
-        EXECUTE format('GRANT USAGE, CREATE ON SCHEMA %I TO %I', m.schema_name, m.role_name);
-        -- A module may point AT the shared vocabulary: a foreign key into
-        -- core.project is how its rows say whose they are. REFERENCES is the
-        -- privilege that allows the key and nothing else; core stays
-        -- read-only to every module.
-        EXECUTE format('GRANT REFERENCES ON core.project TO %I', m.role_name);
-        EXECUTE format('GRANT REFERENCES ON core.system TO %I', m.role_name);
-        EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT ALL ON TABLES TO %I',
-                       m.role_name, m.schema_name, m.role_name);
-        EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT ALL ON SEQUENCES TO %I',
-                       m.role_name, m.schema_name, m.role_name);
-        -- the dashboard reads what the module creates, now and later
-        EXECUTE format('GRANT USAGE ON SCHEMA %I TO dashboard_ro', m.schema_name);
-        EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT ON TABLES TO dashboard_ro',
-                       m.role_name, m.schema_name);
-        -- a module's default search_path is its own schema, so an unqualified
-        -- CREATE TABLE from its migrations lands in the right place
-        EXECUTE format('ALTER ROLE %I IN DATABASE platform SET search_path = %I, core',
-                       m.role_name, m.schema_name);
-    END LOOP;
-END
-$$;
+-- the catalogue belongs to its module
+GRANT USAGE, CREATE ON SCHEMA catalogue TO catalogue_rw;
+ALTER ROLE catalogue_rw IN DATABASE platform SET search_path = catalogue, core;
+
+-- The two install-wide libraries: they hold no project's data (D3, D4). Each is owned by the module
+-- that migrates it; a project copies what it uses into its own database.
+CREATE SCHEMA form_library AUTHORIZATION qualification_rw;
+COMMENT ON SCHEMA form_library IS 'The install-wide library of qualification forms (D3): no project data.';
+CREATE SCHEMA report_library AUTHORIZATION report_composer_rw;
+COMMENT ON SCHEMA report_library IS 'The install-wide library of report presets (D4): no project data.';
 
 ALTER ROLE platform_rw  IN DATABASE platform SET search_path = core;
-ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core, qualification, control_objectives, engine;
+ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core;

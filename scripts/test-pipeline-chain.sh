@@ -7,10 +7,13 @@
 #
 # Links: qualification_fk, co_fk, engine_stamp, controls_stamp, card_component.
 #
-# One postgres:14-alpine container (scripts/lib/throwaway-pg.sh) with every migration at HEAD
-# (platform, qualification, engine, control-objectives) and, before step 5, the project's own
-# database with the platform template and the controls migrations. The container is removed on
-# exit. Never the host's 5432, never `docker compose`.
+# One postgres:14-alpine container (scripts/lib/throwaway-pg.sh) with the platform's init files
+# and migrations at HEAD. Since the isolation (I19.2) every module lives in the project's own
+# database: step 1 makes the project through the platform's API (which provisions project_<hex>),
+# then tpg_project_db tops its template up and every module's own migrate one-shot runs against
+# it (qualification, controls, control objectives, engine, report composer), exactly as
+# scripts/tests/isolation_bed.py does. The container is removed on exit. Never the host's 5432,
+# never `docker compose`.
 #
 # Each step runs the tests of one module that carry the chain tag, selected by name:
 #   pytest (platform, control-objectives):  -m chain -k chain_step<N>
@@ -36,7 +39,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-# the step that consumes each link
+# the step that consumes each link (qualification_fk and co_fk are broken after step 1, when the
+# project database and its tables exist)
 declare -A CONSUMER=([qualification_fk]=2 [card_component]=3 [co_fk]=3 [engine_stamp]=8 [controls_stamp]=8)
 if [ -n "$BREAK" ] && [ -z "${CONSUMER[$BREAK]:-}" ]; then
   echo "unknown link: $BREAK (one of: ${!CONSUMER[*]})" >&2; exit 2
@@ -67,32 +71,36 @@ chain_get() { # key -> its value in $CHAIN_JSON, empty when unset
 setup() {
   tpg_init_platform "$ROOT" || return 1
   local f
+  for f in inspector-role report-roles; do tpg_su platform -f - < "$ROOT/init/$f.sql" >/dev/null || return 1; done
   for f in $(ls "$ROOT/platform/migrations" | sort); do tpg_platform_migration platform "$ROOT/platform/migrations/$f" || return 1; done
-  (cd "$ROOT/apps/qualification" && DATABASE_URL="$(tpg_dsn qualification_rw platform)?schema=qualification" \
-     node_modules/.bin/prisma migrate deploy) || return 1
-  (cd "$BACKEND" && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
-     DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
-     PYTHONPATH="$SHARED_PYTHONPATH" .venv/bin/python manage.py migrate --noinput) || return 1
-  (cd "$ROOT/apps/control-objectives" && \
-     DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform" \
-     uv run --quiet alembic upgrade head) || return 1
 }
 
-# The project's own database, as the platform provisions it: made by platform_rw, the template
-# applied, then the controls migrations as controls_rw.
-project_database() {
-  local pid hex db f
+# The project's own database, after step 1 made it through the platform's API: its template
+# topped up (tpg_project_db, idempotent), then each module's migrate one-shot against {database},
+# as the stack's -migrate services run them.
+migrate_project_database() {
+  local pid db
   pid=$(chain_get project_pid)
   [ -n "$pid" ] || { echo "no project_pid in $CHAIN_JSON (step 1 writes it)"; return 1; }
-  hex=${pid//-/}; db=project_$hex
-  if [ -z "$(tpg_su postgres -tA -c "SELECT 1 FROM pg_database WHERE datname = '$db'")" ]; then
-    tpg_as postgres platform_rw -c "CREATE DATABASE \"$db\"" || return 1
-  fi
-  for f in $(ls "$ROOT/platform/project-template" | sort); do
-    tpg_as "$db" platform_rw -f - < "$ROOT/platform/project-template/$f" >/dev/null || return 1
-  done
-  (cd "$ROOT/apps/controls" && DATABASE_URL="$(tpg_dsn controls_rw "$db")?schema=controls" \
-     node_modules/.bin/prisma migrate deploy) || return 1
+  db=$(tpg_project_db "$pid") || return 1
+  (cd "$ROOT/apps/qualification" && \
+     PROJECT_DATABASE_URL="postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification&connection_limit=2" \
+     FORM_LIBRARY_DATABASE_URL="$(tpg_dsn qualification_rw platform)?schema=form_library" \
+     node scripts/migrate-projects.mjs) || return 1
+  (cd "$ROOT/apps/controls" && \
+     PROJECT_DATABASE_URL="postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls" \
+     node scripts/migrate-projects.mjs) || return 1
+  (cd "$ROOT/apps/control-objectives" && PYTHONPATH="$ROOT/apps/control-objectives/src" \
+     DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform" \
+     PROJECT_DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}" \
+     .venv/bin/python -m aisc_control_objectives.migrate_projects) || return 1
+  (cd "$BACKEND" && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
+     DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
+     PYTHONPATH="$SHARED_PYTHONPATH" .venv/bin/python manage.py migrate_projects) || return 1
+  (cd "$ROOT/apps/report-composer" && PYTHONPATH="$ROOT/apps/report-composer" \
+     REPORT_COMPOSER_DATABASE_URL="$(tpg_dsn report_composer_rw platform)" \
+     REPORT_COMPOSER_PROJECT_DATABASE_URL="postgresql://report_composer_rw:report_composer_rw@127.0.0.1:$PORT/{database}" \
+     .venv/bin/python -m report_composer.migrate) || return 1
   python3 -c "import json,sys; d=json.load(open(sys.argv[1])); d['project_db']=sys.argv[2]; json.dump(d, open(sys.argv[1],'w'))" "$CHAIN_JSON" "$db"
 }
 
@@ -103,9 +111,10 @@ step_cmd() {
   local ctrl="cd apps/controls && PROJECT_DATABASE_URL='postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls' npx vitest run -t chain_step$n"
   case $n in
     1|6) echo "$plat" ;;
-    2) echo "cd apps/qualification && DATABASE_URL='$(tpg_dsn qualification_rw platform)?schema=qualification' npx vitest run -t chain_step$n" ;;
-    3) echo "cd apps/control-objectives && CONTROL_OBJECTIVES_TEST_DATABASE_URL=postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform uv run pytest -q -p no:cacheprovider -m chain -k chain_step$n" ;;
-    4) echo "cd apps/backend && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend --tag chain -k chain_step$n" ;;
+    2) echo "cd apps/qualification && PROJECT_DATABASE_URL='postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification' npx vitest run -t chain_step$n" ;;
+    3) echo "cd apps/control-objectives && DATABASE_URL=postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform PROJECT_DATABASE_URL='postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}' uv run pytest -q -p no:cacheprovider -m chain -k chain_step$n" ;;
+    # N7: the label narrows the run to the chain module (the whole suite's other DB tests need a test database)
+    4) echo "cd apps/backend && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
     5|7) echo "$ctrl" ;;
     8) echo "uv run --quiet --no-project --with pytest python -m pytest -q -p no:cacheprovider scripts/pipeline_chain/test_dashboard_queries.py" ;;
   esac
@@ -125,15 +134,25 @@ judge() { # exit-status output
 }
 
 # break a link, at the moment it is made (see the header)
+# The foreign key of a module table into project.system, removed wherever its name.
+drop_fk_into_project_system() { # table
+  local db; db=$(chain_get project_db)
+  tpg_su "$db" -c "DO \$d\$ DECLARE c text; BEGIN
+      FOR c IN SELECT conname FROM pg_constraint WHERE contype = 'f' AND conrelid = '$1'::regclass
+                  AND confrelid = 'project.system'::regclass LOOP
+        EXECUTE format('ALTER TABLE $1 DROP CONSTRAINT %I', c);
+      END LOOP; END \$d\$"
+}
+
 apply_break() { # after-step
   [ -n "$BREAK" ] || return 0
+  local db; db=$(chain_get project_db)
   case "$BREAK:$1" in
-    qualification_fk:0) tpg_su platform -c "ALTER TABLE qualification.qualification DROP CONSTRAINT IF EXISTS qualification_system_id_fkey" ;;
-    co_fk:0)            tpg_su platform -c "ALTER TABLE control_objectives.project DROP CONSTRAINT IF EXISTS fk_project_system_id_core_system" ;;
-    card_component:2)   tpg_su platform -c "DELETE FROM qualification.card_component" ;;
-    engine_stamp:4)     tpg_su platform -c "UPDATE engine.evaluation SET system_id = NULL" ;;
-    controls_stamp:7)   local db; db=$(chain_get project_db)
-                        tpg_su "$db" -c "UPDATE controls.submission_answer SET system_version_pid = NULL, system_version_number = NULL" ;;
+    qualification_fk:1) drop_fk_into_project_system qualification.qualification ;;
+    co_fk:1)            drop_fk_into_project_system control_objectives.project ;;
+    card_component:2)   tpg_su "$db" -c "DELETE FROM qualification.card_component" ;;
+    engine_stamp:4)     tpg_su "$db" -c "UPDATE engine.evaluation SET system_id = NULL" ;;
+    controls_stamp:7)   tpg_su "$db" -c "UPDATE controls.submission_answer SET system_version_pid = NULL, system_version_number = NULL" ;;
   esac
 }
 
@@ -153,11 +172,7 @@ if ! setup > "$SCRATCH/setup.log" 2>&1; then
   echo "setup failed ($SCRATCH/setup.log):"; grep -m3 -iE 'error|exception' "$SCRATCH/setup.log"
   finish setup
 fi
-apply_break 0
 for n in 1 2 3 4 5 6 7 8; do
-  if [ "$n" = 5 ] && ! project_database > "$SCRATCH/project-db.log" 2>&1; then
-    echo "step 5: project database could not be prepared ($SCRATCH/project-db.log)"; finish 5
-  fi
   cmd=$(step_cmd $n)
   out=$(cd "$ROOT" && bash -c "$cmd" 2>&1); rc=$?
   printf '%s\n' "$out" > "$SCRATCH/step$n.log"
@@ -167,6 +182,9 @@ for n in 1 2 3 4 5 6 7 8; do
     missing) echo "step $n FAIL: MISSING chain test chain_step$n (${STEP_NAME[$n]}) ($SCRATCH/step$n.log)"; finish $n ;;
     failed)  echo "step $n FAIL (${STEP_NAME[$n]}) ($SCRATCH/step$n.log)"; printf '%s\n' "$out" | tail -8 | sed 's/^/    /'; finish $n ;;
   esac
+  if [ "$n" = 1 ] && ! migrate_project_database > "$SCRATCH/project-db.log" 2>&1; then
+    echo "step 1: the project database could not be migrated ($SCRATCH/project-db.log)"; finish 1
+  fi
   apply_break $n
 done
 finish 0

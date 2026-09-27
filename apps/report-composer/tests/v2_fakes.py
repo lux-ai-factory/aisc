@@ -310,9 +310,10 @@ def client_v2(make_client, fake_v2):
 
 @pytest.fixture
 def clean_presets(bed):
-    """Saved presets are platform wide: every test starts without any (the table may not exist yet)."""
-    bed.psql("platform", "DO $$ BEGIN IF to_regclass('report_composer.preset') IS NOT NULL THEN "
-                         "DELETE FROM report_composer.preset; END IF; END $$;", check=False)
+    """Saved presets are platform wide, in the library report_library (isolation D4): every test starts
+    without any (the table may not exist yet)."""
+    bed.psql("platform", "DO $$ BEGIN IF to_regclass('report_library.preset') IS NOT NULL THEN "
+                         "DELETE FROM report_library.preset; END IF; END $$;", check=False)
     yield
 
 
@@ -320,11 +321,12 @@ def unique(prefix: str) -> str:
     return f"{prefix} {time.monotonic_ns()}"
 
 
-def scalar_json(bed, sql: str):
-    """One JSON value from the bed (bed.rows() cannot parse psql's footer, see 05-report F1)."""
+def scalar_json(bed, sql: str, db: str = "platform"):
+    """One JSON value from the bed (bed.rows() cannot parse psql's footer, see 05-report F1); `db` is
+    the database to read (a project's database for its composer rows, isolation)."""
     import json
 
-    out = bed.scalar("platform", sql)
+    out = bed.scalar(db, sql)
     return json.loads(out) if out not in (None, "") else None
 
 

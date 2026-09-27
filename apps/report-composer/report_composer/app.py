@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -12,15 +13,21 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from . import api, db, errors, pages
-from .migrate import migrate
+from . import api, db, errors, migrate, pages
+from .projectdb import ProjectDatabases
 from .renderer_client import HttpRendererClient
 
 STATIC = Path(__file__).resolve().parent / "static"
+logger = logging.getLogger(__name__)
 
 
-def create_app(*, database_url=None, renderer=None, clock=None) -> FastAPI:
+def create_app(*, database_url=None, project_database_url=None, renderer=None, clock=None) -> FastAPI:
+    """database_url: REPORT_COMPOSER_DATABASE_URL, `platform` (core.project, core.project_member and the
+    library report_library). project_database_url: REPORT_COMPOSER_PROJECT_DATABASE_URL, the same kind of
+    DSN with `{database}` in place of the name, for everything of a project (I8.1). Nothing connects here."""
     database_url = database_url or os.environ.get("REPORT_COMPOSER_DATABASE_URL", "")
+    project_database_url = project_database_url or os.environ.get("REPORT_COMPOSER_PROJECT_DATABASE_URL", "")
+    projects = ProjectDatabases(project_database_url, database_url)
     if renderer is None:
         renderer = HttpRendererClient(os.environ.get("REPORT_RENDERER_URL", "http://report-renderer:8001"),
                                       os.environ.get("REPORT_SERVICE_TOKEN", ""))
@@ -28,8 +35,15 @@ def create_app(*, database_url=None, renderer=None, clock=None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app):
+        # the library first: a failure here is fatal, as before
         with db.connect(database_url) as conn:
-            migrate(conn)
+            migrate.migrate_library(conn)
+        # then every project database; one that fails is logged and migrated again on its first open
+        for name, result in migrate.migrate_everything(database_url, project_database_url, library=False).items():
+            if result == "ok":
+                projects.mark_migrated(name)
+            else:
+                logger.warning("project database %s not migrated at start (%s)", name, result)
         yield
 
     root_path = os.environ.get("REPORT_COMPOSER_ROOT_PATH", "")
@@ -37,6 +51,8 @@ def create_app(*, database_url=None, renderer=None, clock=None) -> FastAPI:
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(RestorePrefix, prefix=root_path)
     app.state.database_url = database_url
+    app.state.project_database_url = project_database_url
+    app.state.projects = projects
     app.state.renderer = renderer
     app.state.clock = clock
     errors.install(app)

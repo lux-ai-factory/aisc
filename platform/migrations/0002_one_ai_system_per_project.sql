@@ -66,15 +66,25 @@ CREATE TRIGGER ai_system_version_frozen
 INSERT INTO core.ai_system (project_id)
 SELECT pid FROM core.project;
 
-INSERT INTO core.ai_system_version
-    (pid, ai_system_id, number, name, release, provider, description, created_at,
-     frozen_at, frozen_reason)
-SELECT s.pid, a.pid,
-       row_number() OVER (PARTITION BY s.project_id ORDER BY s.created_at, s.pid),
-       s.name, s.version, s.provider, s.description, s.created_at,
-       now(), 'ai card (carried over from core.system)'
-  FROM core.system s
-  JOIN core.ai_system a ON a.project_id = s.project_id;
+--
+-- Isolation 2026-09-25 (03-coding-plan.md P1-D2): a volume made after the isolation has no
+-- core.system (card versions live in each project database), so the carry-over runs only when it
+-- exists; where it exists (every volume that already applied this file) it is the same statement.
+-- plpgsql plans lazily, so the branch may name a table that is absent.
+DO $$
+BEGIN
+  IF to_regclass('core.system') IS NOT NULL THEN
+    INSERT INTO core.ai_system_version
+        (pid, ai_system_id, number, name, release, provider, description, created_at,
+         frozen_at, frozen_reason)
+    SELECT s.pid, a.pid,
+           row_number() OVER (PARTITION BY s.project_id ORDER BY s.created_at, s.pid),
+           s.name, s.version, s.provider, s.description, s.created_at,
+           now(), 'ai card (carried over from core.system)'
+      FROM core.system s
+      JOIN core.ai_system a ON a.project_id = s.project_id;
+  END IF;
+END $$;
 
 -- A project that never named a system starts with a draft named after itself.
 INSERT INTO core.ai_system_version (ai_system_id, number, name)

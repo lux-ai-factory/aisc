@@ -2,7 +2,7 @@
 D13, R7.3.1). Database tests on the bed, with a fake renderer."""
 import pytest
 
-from conftest import DEFAULT_ORDER, IDS, blk, error_code, new_layout, put_layout
+from conftest import DEFAULT_ORDER, IDS, blk, error_code, new_layout, pdb_of, put_layout
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
@@ -10,8 +10,12 @@ pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 # R4.1.3, D13
 def test_r4_1_3_migrations_run_at_start(client, bed):
     client.get("/api/block-types")
-    assert bed.scalar("platform", "SELECT count(*) FROM report_composer.schema_migration") not in ("", "0")
-    owner = bed.scalar("platform", "SELECT nspowner::regrole FROM pg_namespace WHERE nspname = 'report_composer'")
+    # isolation S-D13: the project history is in each project's database; there the schema is the
+    # platform's (I1.2, D10) and the tables the composer's; the library schema in platform is the composer's
+    assert bed.scalar(pdb_of("A"), "SELECT count(*) FROM report_composer.schema_migration") not in ("", "0")
+    owner = bed.scalar(pdb_of("A"), "SELECT relowner::regrole FROM pg_class WHERE oid = 'report_composer.layout'::regclass")
+    assert owner == "report_composer_rw"
+    owner = bed.scalar("platform", "SELECT nspowner::regrole FROM pg_namespace WHERE nspname = 'report_library'")
     assert owner == "report_composer_rw"
 
 
@@ -145,7 +149,7 @@ def test_r3_9_changing_the_version_checks_references(client, auth):
 # R3.10
 def test_r3_10_a_block_type_that_went_away(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
-    bed.psql("platform", f"UPDATE report_composer.layout_block SET block_type = 'gone_type' "
+    bed.psql(pdb_of("A"), f"UPDATE report_composer.layout_block SET block_type = 'gone_type' "
                          f"WHERE layout_id = '{lay['id']}'")
     r = client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice"))
     assert r.status_code == 200 and r.json()["blocks"][0]["block_type"] == "gone_type"
@@ -177,7 +181,7 @@ def test_r3_13_deleting_a_layout_deletes_its_reports(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
     assert client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice")).status_code == 201
     assert client.delete(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 204
-    assert bed.scalar("platform", f"SELECT count(*) FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "0"
+    assert bed.scalar(pdb_of("A"), f"SELECT count(*) FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "0"
     assert client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 404
 
 

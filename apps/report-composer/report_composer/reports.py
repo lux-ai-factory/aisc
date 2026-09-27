@@ -88,7 +88,7 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf") -> tuple[str, d
     layout cannot both pass the running-report check.
     """
     clock = request.app.state.clock
-    layout = db.get_layout(conn, project["pid"], layout_id, for_update=True)
+    layout = db.get_layout(conn, layout_id, for_update=True)
     if layout is None:
         raise ApiError(404, "not_found", NO_LAYOUT)
     if not layout["blocks"]:
@@ -100,24 +100,25 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf") -> tuple[str, d
     if db.running_report(conn, layout["id"], clock() - timedelta(minutes=GENERATION_WINDOW_MINUTES)):
         raise ApiError(409, "generation_running", "A report of this layout is being generated.")
     # only what is saved is generated; without a template it is the platform look (R-U6.1)
-    template = template_of(conn, project["pid"], layout)
+    template = template_of(conn, layout)
     report_id = str(uuid.uuid4())
     snapshot = snapshot_of(project, layout, fmt, caller, template, document_id=report_id)
-    db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"], project_id=project["pid"],
+    db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
                      system_id=layout["system_id"], snapshot=snapshot, created_by=caller.subject, created_at=clock(),
                      fmt=fmt, report_id=report_id)
     return report_id, snapshot
 
 
 def generate(request, project, layout_id, caller, fmt="pdf") -> tuple[int, dict]:
-    """One generation at a time per layout; the snapshot is stored before the renderer runs."""
-    url, renderer, clock = request.app.state.database_url, request.app.state.renderer, request.app.state.clock
-    with db.connect(url) as conn:
+    """One generation at a time per layout; the snapshot is stored before the renderer runs. Every
+    read and write is in the project's own database."""
+    projects, renderer, clock = request.app.state.projects, request.app.state.renderer, request.app.state.clock
+    with projects.connect(project["pid"]) as conn:
         report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt)
 
     def failed(status, code, message, **extra):
         ref = _ref()
-        with db.connect(url) as conn:
+        with projects.connect(project["pid"]) as conn:
             db.finish_report(conn, report_id, status="failed", finished_at=clock(), error_ref=ref, error_code=code,
                              **extra)
         return status, _error(code, f"{message} (ref {ref})", [{"error_ref": ref, "report_id": report_id}])
@@ -138,7 +139,7 @@ def generate(request, project, layout_id, caller, fmt="pdf") -> tuple[int, dict]
         return failed(507, "pdf_too_large", "The document is larger than 25 MB and was not stored",
                       block_statuses=statuses)
     status = "partial" if any(s.get("status") == "error" for s in statuses) else "done"
-    with db.connect(url) as conn:
+    with projects.connect(project["pid"]) as conn:
         # the bytes of either format sit in the column named pdf
         db.finish_report(conn, report_id, status=status, finished_at=clock(), pdf=document,
                          sha256=hashlib.sha256(document).hexdigest(), size_bytes=len(document),

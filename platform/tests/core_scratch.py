@@ -29,6 +29,9 @@ from platform_service.migrate import MIGRATIONS, migrate
 
 REPO = Path(__file__).resolve().parents[2]
 PLATFORM_DB_SQL = REPO / "init" / "platform-db.sql"
+#: The pre-isolation init/platform-db.sql (f01288a), which still made core.system and the module
+#: schemas: the layout the migration tests of core.system pin (03-coding-plan.md G3).
+PRE_ISOLATION_PLATFORM_DB_SQL = REPO / "scripts" / "tests" / "fixtures" / "isolation" / "pre_isolation_platform_db.sql"
 PROJECT_DATABASES_SQL = REPO / "init" / "project-databases.sql"
 
 SUPERUSER_DSN = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
@@ -44,13 +47,14 @@ def _refuse_live(dsn: str) -> None:
         raise RuntimeError(f"refusing to run migration tests against port 5432 (live): {dsn!r}")
 
 
-def platform_db_sql_for(dbname: str) -> str:
-    """init/platform-db.sql, aimed at `dbname` instead of `platform`.
+def platform_db_sql_for(dbname: str, old_layout: bool = False) -> str:
+    """init/platform-db.sql (or, with old_layout, its pre-isolation version), aimed
+    at `dbname` instead of `platform`.
 
     Only the psql meta-commands (which psycopg cannot run) and the database
     name change; every statement that makes core and its grants is kept.
     """
-    text = PLATFORM_DB_SQL.read_text()
+    text = (PRE_ISOLATION_PLATFORM_DB_SQL if old_layout else PLATFORM_DB_SQL).read_text()
     text = re.sub(r"SELECT 'CREATE DATABASE platform'.*?\\gexec\n", "", text, flags=re.S)
     text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("\\"))
     return re.sub(r"DATABASE platform\b", f"DATABASE {dbname}", text)
@@ -74,9 +78,14 @@ def project_databases_platform_part() -> str:
 
 
 @contextmanager
-def scratch_database():
+def scratch_database(old_layout: bool = False):
     """A new database, prepared by init/platform-db.sql as the superuser.
-    Yields (superuser_dsn, platform_rw_dsn) for it; dropped afterwards."""
+    Yields (superuser_dsn, platform_rw_dsn) for it; dropped afterwards.
+
+    old_layout: prepared by the pre-isolation init/platform-db.sql instead, which
+    made core.system and the module schemas in the platform database. The tests of
+    the migrations of core.system pin that history, which exists only there
+    (isolation 2026-09-25: a fresh volume no longer makes core.system, I2.8)."""
     _refuse_live(SUPERUSER_DSN)
     name = f"pytest_core_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(SUPERUSER_DSN, autocommit=True) as conn:
@@ -85,7 +94,7 @@ def scratch_database():
     rw = make_conninfo(SUPERUSER_DSN, dbname=name, user="platform_rw", password="platform_rw")
     try:
         with psycopg.connect(su, autocommit=True) as conn:
-            conn.execute(platform_db_sql_for(name))
+            conn.execute(platform_db_sql_for(name, old_layout))
         yield su, rw
     finally:
         with psycopg.connect(SUPERUSER_DSN, autocommit=True) as conn:

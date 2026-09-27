@@ -1,16 +1,20 @@
 """Saved AI card versions of a project's one AI system, through the API.
 
-WP2 of pipeline-2026-09-23 (03-specs.md): core.system holds versions 1, 2, ...
-per project; only the latest may change; old ones are read-only. Runs against
-the shared test database after migration 0003 (the ownership line of
-init/project-databases.sql must have run on it, as section 0 prepares it).
+WP2 of pipeline-2026-09-23 (03-specs.md): the versions 1, 2, ... of a project;
+only the latest may change; old ones are read-only. Since the isolation
+(2026-09-25, 01-specs.md I2.2) they are rows of project.system in the project's
+own database, so the direct reads and writes below go there (S-D13: the rows
+moved, the assertions are the same). A project whose database is gone has no
+versions.
 """
 import threading
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.conninfo import make_conninfo
 
+from platform_service import projectdb
 from tests.conftest import needs_database
 
 pytestmark = needs_database
@@ -40,12 +44,19 @@ def save(client, as_user, project, who=ALICE, key="slug", **body):
     return client.post(f"/projects/{project[key]}/system-versions", json=body, headers=as_user(who))
 
 
+def in_project(dsn, project, **kwargs):
+    """The project's own database, where its versions are (project.system)."""
+    return psycopg.connect(make_conninfo(dsn, dbname=projectdb.database_name(project["pid"])), **kwargs)
+
+
 def rows(dsn, project):
     with psycopg.connect(dsn) as conn:
-        return conn.execute(
-            "select pid, number, name, version from core.system where project_id = %s order by number",
-            (project["pid"],),
-        ).fetchall()
+        gone = conn.execute("select 1 from pg_database where datname = %s",
+                            (projectdb.database_name(project["pid"]),)).fetchone() is None
+    if gone:
+        return []
+    with in_project(dsn, project) as conn:
+        return conn.execute("select pid, number, name, version from project.system order by number").fetchall()
 
 
 # ── S2.1 ────────────────────────────────────────────────────────────────────
@@ -151,10 +162,10 @@ def test_s2_3_concurrent_saves_get_1_and_2_without_duplicate_or_gap(client, as_u
 def test_s2_4_version_1_cannot_change_once_2_exists_and_2_can(client, as_user, project, dsn):
     v1 = save(client, as_user, project).json()
     v2 = save(client, as_user, project).json()
-    with psycopg.connect(dsn, autocommit=True) as conn:
+    with in_project(dsn, project, autocommit=True) as conn:
         with pytest.raises(psycopg.errors.RaiseException, match="is not the latest and cannot change"):
-            conn.execute("update core.system set description = 'sneaky' where pid = %s", (v1["pid"],))
-        conn.execute("update core.system set description = 'fine' where pid = %s", (v2["pid"],))
+            conn.execute("update project.system set description = 'sneaky' where pid = %s", (v1["pid"],))
+        conn.execute("update project.system set description = 'fine' where pid = %s", (v2["pid"],))
 
 
 # ── S2.5 ────────────────────────────────────────────────────────────────────
@@ -178,11 +189,8 @@ def test_s2_9_latest_is_the_highest_number(client, as_user, project, dsn):
         save(client, as_user, project)
     response = client.get(f"/projects/{project['slug']}/system-versions/latest", headers=as_user(ALICE))
     assert response.status_code == 200, response.text
-    with psycopg.connect(dsn) as conn:
-        expected = conn.execute(
-            "select pid from core.system where project_id = %s order by number desc limit 1",
-            (project["pid"],),
-        ).fetchone()[0]
+    with in_project(dsn, project) as conn:
+        expected = conn.execute("select pid from project.system order by number desc limit 1").fetchone()[0]
     assert response.json()["pid"] == str(expected)
     assert response.json()["number"] == 3
 

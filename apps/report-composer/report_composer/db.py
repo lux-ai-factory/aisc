@@ -1,7 +1,10 @@
-"""The composer's SQL.
+"""The composer's SQL (isolation 2026-09-25, 01-specs.md I8.1, I8.3).
 
-Every helper takes a connection first. It reads core.project, core.system and core.project_member
-and writes only its own schema report_composer. A malformed uuid argument finds nothing.
+Every helper takes a connection first. The version, layout, template and report helpers take a
+connection to ONE project's database (projectdb.ProjectDatabases.connect): the database is the project,
+so no row carries or filters by a project column; they read project.system and write only the schema
+report_composer. The preset helpers take a connection to `platform` and use the install-wide library
+report_library (D4). A malformed uuid argument finds nothing.
 """
 from __future__ import annotations
 
@@ -32,22 +35,20 @@ def _uuid(value) -> str | None:
 _SYSTEM = "pid::text AS pid, number, name, version AS release"
 
 
-def systems(conn, project_pid) -> list[dict]:
-    return conn.execute(f"SELECT {_SYSTEM} FROM core.system"
-                        " WHERE project_id = %s ORDER BY number DESC", (project_pid,)).fetchall()
+def systems(conn) -> list[dict]:
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.system ORDER BY number DESC").fetchall()
 
 
-def system_of_project(conn, project_pid, system_pid) -> dict | None:
+def system_of_project(conn, system_pid) -> dict | None:
+    """The version, when it is one of this database's project."""
     s = _uuid(system_pid)
     if s is None:
         return None
-    return conn.execute(f"SELECT {_SYSTEM} FROM core.system"
-                        " WHERE project_id = %s AND pid = %s", (project_pid, s)).fetchone()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.system WHERE pid = %s", (s,)).fetchone()
 
 
-def latest_system(conn, project_pid) -> dict | None:
-    return conn.execute(f"SELECT {_SYSTEM} FROM core.system"
-                        " WHERE project_id = %s ORDER BY number DESC LIMIT 1", (project_pid,)).fetchone()
+def latest_system(conn) -> dict | None:
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.system ORDER BY number DESC LIMIT 1").fetchone()
 
 
 # Layouts
@@ -56,33 +57,32 @@ def latest_system(conn, project_pid) -> dict | None:
 DEFAULT_SETTINGS = {"toc": "auto", "numbering": False, "coverage": []}
 
 
-def layout_names(conn, project_pid) -> set[str]:
-    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.layout WHERE project_id = %s",
-                                            (project_pid,)).fetchall()}
+def layout_names(conn) -> set[str]:
+    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.layout").fetchall()}
 
 
-def list_layouts(conn, project_pid) -> list[dict]:
+def list_layouts(conn) -> list[dict]:
     return conn.execute(
         "SELECT l.id::text AS id, l.name, l.description, l.system_id::text AS system_id, s.number AS system_number,"
         " l.revision, l.updated_at, lr.last_report, l.template_id::text AS template_id, t.name AS template_name"
-        " FROM report_composer.layout l JOIN core.system s ON s.pid = l.system_id"
+        " FROM report_composer.layout l JOIN project.system s ON s.pid = l.system_id"
         " LEFT JOIN report_composer.template t ON t.id = l.template_id"
         " LEFT JOIN LATERAL (SELECT json_build_object('id', r.id, 'created_at', r.created_at, 'status', r.status)"
         "                    AS last_report FROM report_composer.generated_report r WHERE r.layout_id = l.id"
         "                    ORDER BY r.created_at DESC LIMIT 1) lr ON true"
-        " WHERE l.project_id = %s ORDER BY l.name", (project_pid,)).fetchall()
+        " ORDER BY l.name").fetchall()
 
 
-def get_layout(conn, project_pid, layout_id, for_update=False) -> dict | None:
+def get_layout(conn, layout_id, for_update=False) -> dict | None:
     lid = _uuid(layout_id)
     if lid is None:
         return None
     row = conn.execute(
-        "SELECT l.id::text AS id, l.project_id::text AS project_id, l.name, l.description,"
+        "SELECT l.id::text AS id, l.name, l.description,"
         " l.system_id::text AS system_id, l.template_id::text AS template_id, l.revision, l.created_at,"
         " l.created_by, l.updated_at, l.updated_by, l.toc, l.numbering, l.coverage"
-        " FROM report_composer.layout l WHERE l.id = %s AND l.project_id = %s"
-        + (" FOR UPDATE" if for_update else ""), (lid, project_pid)).fetchone()
+        " FROM report_composer.layout l WHERE l.id = %s"
+        + (" FOR UPDATE" if for_update else ""), (lid,)).fetchone()
     if row is None:
         return None
     row["blocks"] = [dict(b) for b in conn.execute(
@@ -98,14 +98,14 @@ def _insert_blocks(conn, layout_id, blocks) -> None:
                      (layout_id, b["instance_id"], i, b["block_type"], Jsonb(b.get("options") or {})))
 
 
-def insert_layout(conn, *, project_pid, system_pid, template_id, name, description, blocks, who, now,
+def insert_layout(conn, *, system_pid, template_id, name, description, blocks, who, now,
                   settings=None) -> str:
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     row = conn.execute(
-        "INSERT INTO report_composer.layout (project_id, system_id, template_id, name, description, created_at,"
+        "INSERT INTO report_composer.layout (system_id, template_id, name, description, created_at,"
         " created_by, updated_at, updated_by, toc, numbering, coverage)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
-        (project_pid, system_pid, template_id, name, description, now, who, now, who, s["toc"],
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
+        (system_pid, template_id, name, description, now, who, now, who, s["toc"],
          s["numbering"], Jsonb(s["coverage"]))).fetchone()
     _insert_blocks(conn, row["id"], blocks)
     return row["id"]
@@ -126,12 +126,11 @@ def update_layout(conn, layout_id, *, based_on, name, description, system_pid, t
     return row["revision"]
 
 
-def delete_layout(conn, project_pid, layout_id) -> bool:
+def delete_layout(conn, layout_id) -> bool:
     lid = _uuid(layout_id)
     if lid is None:
         return False
-    return conn.execute("DELETE FROM report_composer.layout WHERE id = %s AND project_id = %s RETURNING id",
-                        (lid, project_pid)).fetchone() is not None
+    return conn.execute("DELETE FROM report_composer.layout WHERE id = %s RETURNING id", (lid,)).fetchone() is not None
 
 
 # Templates (a report's look)
@@ -141,23 +140,21 @@ _TEMPLATE = ("id::text AS id, name, font, font_size_pt::float8 AS font_size_pt, 
              " show_document_id")
 
 
-def list_templates(conn, project_pid) -> list[dict]:
-    return conn.execute(f"SELECT {_TEMPLATE} FROM report_composer.template WHERE project_id = %s ORDER BY name",
-                        (project_pid,)).fetchall()
+def list_templates(conn) -> list[dict]:
+    return conn.execute(f"SELECT {_TEMPLATE} FROM report_composer.template ORDER BY name").fetchall()
 
 
-def get_template(conn, project_pid, template_id, with_logo=False) -> dict | None:
+def get_template(conn, template_id, with_logo=False) -> dict | None:
     tid = _uuid(template_id)
     if tid is None:
         return None
     extra = ", logo_mime, logo" if with_logo else ""
-    return conn.execute(f"SELECT {_TEMPLATE}{extra} FROM report_composer.template WHERE id = %s AND project_id = %s",
-                        (tid, project_pid)).fetchone()
+    return conn.execute(f"SELECT {_TEMPLATE}{extra} FROM report_composer.template WHERE id = %s",
+                        (tid,)).fetchone()
 
 
-def template_names(conn, project_pid) -> set[str]:
-    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.template WHERE project_id = %s",
-                                            (project_pid,)).fetchall()}
+def template_names(conn) -> set[str]:
+    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.template").fetchall()}
 
 
 def _look_values(look) -> tuple:
@@ -166,31 +163,31 @@ def _look_values(look) -> tuple:
             bool(look.get("show_document_id", False)))
 
 
-def insert_template(conn, *, project_pid, look, logo, who, now) -> str:
+def insert_template(conn, *, look, logo, who, now) -> str:
     mime, raw = logo if logo else (None, None)
     return conn.execute(
-        "INSERT INTO report_composer.template (project_id, name, font, font_size_pt, primary_color, accent_color,"
+        "INSERT INTO report_composer.template (name, font, font_size_pt, primary_color, accent_color,"
         " header_text, footer_text, marking, show_document_id, logo_mime, logo, created_at, created_by, updated_at,"
-        " updated_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
-        (project_pid, *_look_values(look), mime, raw, now, who, now, who)).fetchone()["id"]
+        " updated_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
+        (*_look_values(look), mime, raw, now, who, now, who)).fetchone()["id"]
 
 
-def update_template(conn, project_pid, template_id, *, look, logo, who, now) -> bool:
+def update_template(conn, template_id, *, look, logo, who, now) -> bool:
     mime, raw = logo if logo else (None, None)
     return conn.execute(
         "UPDATE report_composer.template SET name = %s, font = %s, font_size_pt = %s, primary_color = %s,"
         " accent_color = %s, header_text = %s, footer_text = %s, marking = %s, show_document_id = %s,"
         " logo_mime = %s, logo = %s, updated_at = %s, updated_by = %s"
-        " WHERE id = %s AND project_id = %s RETURNING id",
-        (*_look_values(look), mime, raw, now, who, template_id, project_pid)).fetchone() is not None
+        " WHERE id = %s RETURNING id",
+        (*_look_values(look), mime, raw, now, who, template_id)).fetchone() is not None
 
 
-def delete_template(conn, project_pid, template_id) -> bool:
+def delete_template(conn, template_id) -> bool:
     tid = _uuid(template_id)
     if tid is None:
         return False
-    return conn.execute("DELETE FROM report_composer.template WHERE id = %s AND project_id = %s RETURNING id",
-                        (tid, project_pid)).fetchone() is not None
+    return conn.execute("DELETE FROM report_composer.template WHERE id = %s RETURNING id",
+                        (tid,)).fetchone() is not None
 
 
 # Generated reports
@@ -200,14 +197,14 @@ def running_report(conn, layout_id, since) -> bool:
                         " AND created_at > %s", (layout_id, since)).fetchone() is not None
 
 
-def insert_report(conn, *, layout_id, layout_revision, project_id, system_id, snapshot, created_by, created_at,
+def insert_report(conn, *, layout_id, layout_revision, system_id, snapshot, created_by, created_at,
                   fmt="pdf", report_id=None) -> str:
     return conn.execute(
-        "INSERT INTO report_composer.generated_report (id, layout_id, layout_revision, project_id, system_id,"
+        "INSERT INTO report_composer.generated_report (id, layout_id, layout_revision, system_id,"
         " snapshot, status, created_by, created_at, format)"
-        " VALUES (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, %s, 'running', %s, %s, %s)"
+        " VALUES (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, 'running', %s, %s, %s)"
         " RETURNING id::text AS id",
-        (report_id, layout_id, layout_revision, project_id, system_id, Jsonb(snapshot), created_by, created_at,
+        (report_id, layout_id, layout_revision, system_id, Jsonb(snapshot), created_by, created_at,
          fmt)).fetchone()["id"]
 
 
@@ -227,41 +224,41 @@ def list_reports(conn, layout_id) -> list[dict]:
                         (layout_id,)).fetchall()
 
 
-def get_report(conn, project_pid, report_id) -> dict | None:
+def get_report(conn, report_id) -> dict | None:
     rid = _uuid(report_id)
     if rid is None:
         return None
     return conn.execute(
         "SELECT r.id::text AS id, r.status, r.pdf, r.snapshot, r.created_at, s.number AS system_number, r.format"
-        " FROM report_composer.generated_report r JOIN report_composer.layout l ON l.id = r.layout_id"
-        " LEFT JOIN core.system s ON s.pid = r.system_id"
-        " WHERE r.id = %s AND l.project_id = %s", (rid, project_pid)).fetchone()
+        " FROM report_composer.generated_report r"
+        " LEFT JOIN project.system s ON s.pid = r.system_id"
+        " WHERE r.id = %s", (rid,)).fetchone()
 
 
-# Saved presets (platform wide)
+# Saved presets: the install-wide library, on a connection to `platform` (D4)
 
 _PRESET = ("id::text AS id, name, description, toc, numbering, blocks, source_project_id::text AS"
            " source_project_id, created_by, created_at")
 
 
 def list_presets(conn) -> list[dict]:
-    return conn.execute(f"SELECT {_PRESET} FROM report_composer.preset ORDER BY name").fetchall()
+    return conn.execute(f"SELECT {_PRESET} FROM report_library.preset ORDER BY name").fetchall()
 
 
 def get_preset(conn, preset_id) -> dict | None:
     pid = _uuid(preset_id)
     if pid is None:
         return None
-    return conn.execute(f"SELECT {_PRESET} FROM report_composer.preset WHERE id = %s", (pid,)).fetchone()
+    return conn.execute(f"SELECT {_PRESET} FROM report_library.preset WHERE id = %s", (pid,)).fetchone()
 
 
 def preset_names(conn) -> set[str]:
-    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.preset").fetchall()}
+    return {r["name"] for r in conn.execute("SELECT name FROM report_library.preset").fetchall()}
 
 
 def insert_preset(conn, *, name, description, toc, numbering, blocks, source_project_id, who, now) -> str:
     return conn.execute(
-        "INSERT INTO report_composer.preset (name, description, toc, numbering, blocks,"
+        "INSERT INTO report_library.preset (name, description, toc, numbering, blocks,"
         " source_project_id, created_by, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
         " RETURNING id::text AS id",
         (name, description, toc, numbering, Jsonb(blocks), source_project_id, who, now)).fetchone()["id"]
@@ -271,4 +268,4 @@ def delete_preset(conn, preset_id) -> bool:
     pid = _uuid(preset_id)
     if pid is None:
         return False
-    return conn.execute("DELETE FROM report_composer.preset WHERE id = %s RETURNING id", (pid,)).fetchone() is not None
+    return conn.execute("DELETE FROM report_library.preset WHERE id = %s RETURNING id", (pid,)).fetchone() is not None

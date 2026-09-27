@@ -1,5 +1,11 @@
 """The checks, C1 to C8. Each takes a Cluster and returns a list of findings; an empty list
-means the check passed. Only SELECTs, on read-only connections (cluster.py)."""
+means the check passed. Only SELECTs, on read-only connections (cluster.py).
+
+Isolation (2026-09-25, 01-specs.md I16.6): every module's tables and the card versions
+(project.system) live in the project's own database `project_<hex>`; `platform` keeps only
+core.project, core.project_member, core.schema_migration, the catalogue and the two libraries. So
+C3, C4, C6 and C7 run per project database, and a reference that crosses projects cannot exist
+(foreign keys); what can still go wrong is a pid that does not resolve in its own database."""
 
 from __future__ import annotations
 
@@ -8,12 +14,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from . import heads
 from .cluster import Cluster
 from .findings import Finding, fail, warn
 
 ROOT = Path(__file__).resolve().parents[2]
-PROJECT_TEMPLATE = ROOT / "platform/project-template"
-CONTROLS_MIGRATIONS = ROOT / "apps/controls/prisma/migrations"
+PROJECT_TEMPLATE = heads.PROJECT_TEMPLATE
+CONTROLS_MIGRATIONS = heads.CONTROLS_MIGRATIONS
+LIBRARY_MIGRATIONS = ROOT / "apps/report-composer/migrations/library"
+FORM_LIBRARY_MIGRATIONS = ROOT / "apps/qualification/prisma/library/migrations"
 PROJECT_DB = re.compile(r"^project_[0-9a-f]{32}$")
 
 
@@ -25,6 +34,13 @@ def core_projects(cl: Cluster) -> dict[str, tuple[str, str]]:
     """Every core.project: the database name it should have, to (pid, slug)."""
     rows = cl.rows(cl.platform_db, "SELECT pid::text, slug FROM core.project ORDER BY slug")
     return {"project_" + pid.replace("-", ""): (pid, slug) for pid, slug in rows}
+
+
+def _dbs(cl: Cluster) -> list[tuple[str, str, str]]:
+    """(database, pid, slug) of every project database that has its core.project row, by name.
+    A database without one is an orphan, which is C1's to report."""
+    projects = core_projects(cl)
+    return [(db, *projects[db]) for db in sorted(project_databases(cl)) if db in projects]
 
 
 # ── C1 ───────────────────────────────────────────────────────────────────────
@@ -46,8 +62,12 @@ KNOWN_DATABASES = {"platform", "keycloak", "superset", "postgres", "control_obje
 #: The standalone databases the modules used before the one platform database. Reported until
 #: someone decides to drop them.
 LEFTOVER_DATABASES = {"aisc", "controls", "qualification", "control_objectives"}
-KNOWN_PLATFORM_SCHEMAS = {"core", "engine", "qualification", "control_objectives", "report_composer",
-                          "catalogue", "public"}
+#: I1.3: what stays in `platform`.
+KNOWN_PLATFORM_SCHEMAS = {"core", "catalogue", "form_library", "report_library", "public"}
+#: The module schemas the cutover retires (C9) and stage 7 drops (I15.2).
+RETIRED_PLATFORM_SCHEMAS = {"engine", "qualification", "control_objectives", "report_composer"}
+#: I1.3: core's tables after the drop step.
+CORE_TABLES = {"project", "project_member", "schema_migration"}
 
 
 def out_of_scope(name: str) -> bool:
@@ -56,7 +76,8 @@ def out_of_scope(name: str) -> bool:
 
 
 def c2_unknown_databases_and_schemas(cl: Cluster) -> list[Finding]:
-    """No database, and no schema of the platform database, outside the known list."""
+    """No database, and no schema of the platform database, outside the known list. A retired
+    module schema, or a core table other than the three, is a WARN until the stage-7 drop."""
     out = []
     for db in cl.databases():
         if db in KNOWN_DATABASES or PROJECT_DB.match(db) or out_of_scope(db):
@@ -67,147 +88,146 @@ def c2_unknown_databases_and_schemas(cl: Cluster) -> list[Finding]:
             out.append(fail("C2", f"database {db} is not a known database"))
     schemas = cl.rows(cl.platform_db, "SELECT nspname FROM pg_namespace"
                       " WHERE nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema' ORDER BY 1")
-    out += [fail("C2", f"schema {s} in {cl.platform_db} is not a known schema")
-            for (s,) in schemas if s not in KNOWN_PLATFORM_SCHEMAS and not out_of_scope(s)]
+    for (s,) in schemas:
+        if s in KNOWN_PLATFORM_SCHEMAS or out_of_scope(s):
+            continue
+        if s in RETIRED_PLATFORM_SCHEMAS:
+            out.append(warn("C2", f"schema {s} in {cl.platform_db} is retired, pending the stage-7 drop"))
+        else:
+            out.append(fail("C2", f"schema {s} in {cl.platform_db} is not a known schema"))
+    for (t,) in cl.rows(cl.platform_db, "SELECT c.relname FROM pg_class c"
+                        " WHERE c.relnamespace = 'core'::regnamespace AND c.relkind IN ('r', 'p') ORDER BY 1"):
+        if t not in CORE_TABLES:
+            out.append(warn("C2", f"table core.{t} in {cl.platform_db} is not one of core's three tables,"
+                                  " pending the stage-7 drop"))
     return out
 
 
 # ── C3 ───────────────────────────────────────────────────────────────────────
 
-#: qualification.qualification column, the core.system column it repeats
+#: qualification.qualification column, the project.system column it repeats
 CARD_FIELDS = (("systemName", "name"), ("systemVersion", "version"), ("company", "provider"))
+_ASSESSMENT_NAME = "s.name || CASE WHEN coalesce(s.version, '') <> '' THEN ' ' || s.version ELSE '' END"
 
 
 def c3_system_identity(cl: Cluster) -> list[Finding]:
-    """A card version's name, version and provider read the same in core, qualification and
-    control objectives. core.system's NULL version or provider is the card's empty string; an
-    assessment is named "<name> <version>", or "<name>" when there is no version."""
+    """In each project database, a card version's name, version and provider read the same in
+    project.system, qualification and control objectives. A NULL version or provider is the card's
+    empty string; an assessment is named "<name> <version>", or "<name>" without a version."""
     out = []
-    db = cl.platform_db
-    if cl.exists(db, "qualification.qualification"):
-        rows = cl.rows(db, """
-            SELECT s.pid::text, p.slug, s.number, q.id,
-                   q."systemName", s.name, q."systemVersion", coalesce(s.version, ''),
-                   q.company, coalesce(s.provider, '')
-              FROM qualification.qualification q
-              JOIN core.system s ON s.pid = q.system_id
-              JOIN core.project p ON p.pid = s.project_id
-             ORDER BY p.slug, s.number""")
-        for pid, slug, number, qid, *values in rows:
-            for i, (qcol, scol) in enumerate(CARD_FIELDS):
-                card, core = values[2 * i], values[2 * i + 1]
-                if card != core:
-                    out.append(fail("C3", f"system {pid} ({slug} v{number}): qualification {qid} "
-                                          f"{qcol} is '{card}', core.system {scol} is '{core}'"))
-    if cl.exists(db, "control_objectives.project"):
-        rows = cl.rows(db, """
-            SELECT s.pid::text, p.slug, s.number, a.id, a.name,
-                   s.name || CASE WHEN coalesce(s.version, '') <> '' THEN ' ' || s.version ELSE '' END
-              FROM control_objectives.project a
-              JOIN core.system s ON s.pid = a.system_id
-              JOIN core.project p ON p.pid = s.project_id
-             WHERE a.name IS DISTINCT FROM
-                   s.name || CASE WHEN coalesce(s.version, '') <> '' THEN ' ' || s.version ELSE '' END
-             ORDER BY p.slug, s.number""")
-        out += [fail("C3", f"system {pid} ({slug} v{number}): control_objectives project {aid} is named "
-                           f"'{name}', core.system says '{want}'")
-                for pid, slug, number, aid, name, want in rows]
+    for db, _pid, slug in _dbs(cl):
+        if not cl.exists(db, "project.system"):
+            continue
+        if cl.exists(db, "qualification.qualification"):
+            rows = cl.rows(db, """
+                SELECT s.pid::text, s.number, q.id, q."systemName", s.name, q."systemVersion",
+                       coalesce(s.version, ''), q.company, coalesce(s.provider, '')
+                  FROM qualification.qualification q JOIN project.system s ON s.pid = q.system_id
+                 ORDER BY s.number, q.id""")
+            for spid, number, qid, *values in rows:
+                for i, (qcol, scol) in enumerate(CARD_FIELDS):
+                    card, version = values[2 * i], values[2 * i + 1]
+                    if card != version:
+                        out.append(fail("C3", f"{db} ({slug}) system {spid} v{number}: qualification {qid} "
+                                              f"{qcol} is '{card}', project.system {scol} is '{version}'"))
+        if cl.exists(db, "control_objectives.project"):
+            rows = cl.rows(db, f"""
+                SELECT s.pid::text, s.number, a.id, a.name, {_ASSESSMENT_NAME}
+                  FROM control_objectives.project a JOIN project.system s ON s.pid = a.system_id
+                 WHERE a.name IS DISTINCT FROM {_ASSESSMENT_NAME}
+                 ORDER BY s.number, a.id""")
+            out += [fail("C3", f"{db} ({slug}) system {spid} v{number}: control_objectives project {aid} is "
+                               f"named '{name}', project.system says '{want}'")
+                    for spid, number, aid, name, want in rows]
     return out
 
 
 # ── C4 ───────────────────────────────────────────────────────────────────────
 
-#: Tables that name both a project and a card version: the version must be of that project.
-PAIRED = ("qualification.qualification", "control_objectives.project",
-          "report_composer.layout", "report_composer.generated_report")
+#: (table, id column, version column): every module row that names a card version of its database.
+STAMPED = (("qualification.qualification", "id", "system_id"),
+           ("control_objectives.project", "id", "system_id"),
+           ("report_composer.layout", "id", "system_id"),
+           ("report_composer.generated_report", "id", "system_id"),
+           ("engine.evaluation", "pid", "system_id"),
+           ("controls.submission_answer", "id", "system_version_pid"))
 
 
-def _paired(cl: Cluster, table: str) -> list[Finding]:
-    rows = cl.rows(cl.platform_db, f"""
-        SELECT t.id::text, t.project_id::text, t.system_id::text, s.pid IS NULL, s.project_id::text
-          FROM {table} t LEFT JOIN core.system s ON s.pid = t.system_id
-         WHERE s.pid IS NULL OR s.project_id <> t.project_id
-         ORDER BY 1""")
-    return [fail("C4", f"{table} {rid}: system_id {sid} is not a core.system") if dangling else
-            fail("C4", f"{table} {rid}: system {sid} belongs to another project ({owner}) "
-                       f"than the row's project_id {pid}")
-            for rid, pid, sid, dangling, owner in rows]
+def _dangling(cl: Cluster, db: str, table: str, key: str, column: str) -> list[Finding]:
+    rows = cl.rows(db, f"""
+        SELECT t.{key}::text, t.{column}::text FROM {table} t
+          LEFT JOIN project.system s ON s.pid = t.{column}
+         WHERE t.{column} IS NOT NULL AND s.pid IS NULL ORDER BY 1""")
+    return [fail("C4", f"{db} {table} {rid}: {column} {sid} is not a project.system of this database")
+            for rid, sid in rows]
 
 
-def _engine(cl: Cluster) -> list[Finding]:
-    db, out = cl.platform_db, []
-    if cl.exists(db, "engine.project"):
-        for pid, name, project in cl.rows(db, """
-                SELECT e.pid::text, e.name, e.project_id::text FROM engine.project e
-                  LEFT JOIN core.project c ON c.pid = e.project_id
-                 WHERE c.pid IS NULL ORDER BY e.id"""):
-            if project is None:
-                out.append(warn("C4", f"engine.project {pid} ({name}) has no platform project (project_id is NULL)"))
-            else:
-                out.append(fail("C4", f"engine.project {pid} ({name}): project_id {project} is not a core.project"))
-    if cl.exists(db, "engine.evaluation"):
-        for pid, sid, dangling, owner, project in cl.rows(db, """
-                SELECT e.pid::text, e.system_id::text, s.pid IS NULL, s.project_id::text, ep.project_id::text
-                  FROM engine.evaluation e
-                  JOIN engine.project ep ON ep.id = e.project_id
-                  LEFT JOIN core.system s ON s.pid = e.system_id
-                 WHERE e.system_id IS NOT NULL
-                   AND (s.pid IS NULL OR s.project_id IS DISTINCT FROM ep.project_id)
-                 ORDER BY e.id"""):
-            if dangling:
-                out.append(fail("C4", f"engine.evaluation {pid}: system_id {sid} is not a core.system"))
-            else:
-                out.append(fail("C4", f"engine.evaluation {pid}: system {sid} belongs to another project "
-                                      f"({owner}) than its engine project's ({project})"))
-    return out
+def _answer_numbers(cl: Cluster, db: str) -> list[Finding]:
+    rows = cl.rows(db, """
+        SELECT a.id, a.system_version_pid::text, a.system_version_number, s.number
+          FROM controls.submission_answer a JOIN project.system s ON s.pid = a.system_version_pid
+         WHERE a.system_version_number IS DISTINCT FROM s.number ORDER BY 1""")
+    return [fail("C4", f"{db} controls.submission_answer {aid}: system_version_number {got} but version "
+                       f"{sv} is number {want}") for aid, sv, got, want in rows]
 
 
-def _reports_follow_their_layout(cl: Cluster) -> list[Finding]:
-    rows = cl.rows(cl.platform_db, """
-        SELECT g.id::text, g.layout_id::text, l.id IS NULL, g.project_id::text, g.system_id::text,
-               l.project_id::text, l.system_id::text
+def _reports_follow_their_layout(cl: Cluster, db: str) -> list[Finding]:
+    rows = cl.rows(db, """
+        SELECT g.id::text, g.layout_id::text, l.id IS NULL, g.system_id::text, l.system_id::text
           FROM report_composer.generated_report g
-          JOIN core.system s ON s.pid = g.system_id
+          JOIN project.system s ON s.pid = g.system_id
           LEFT JOIN report_composer.layout l ON l.id = g.layout_id
-         WHERE l.id IS NULL OR l.project_id <> g.project_id OR l.system_id <> g.system_id
+         WHERE l.id IS NULL OR l.system_id IS DISTINCT FROM g.system_id
          ORDER BY 1""")
-    return [fail("C4", f"report_composer.generated_report {rid}: layout_id {lid} is not a report_composer.layout")
-            if missing else
-            fail("C4", f"report_composer.generated_report {rid}: project {gp} system {gs}, but its layout {lid} "
-                       f"is of project {lp} system {ls}")
-            for rid, lid, missing, gp, gs, lp, ls in rows]
+    return [fail("C4", f"{db} report_composer.generated_report {rid}: layout_id {lid} is not a "
+                       "report_composer.layout of this database") if missing else
+            fail("C4", f"{db} report_composer.generated_report {rid}: system {gs}, but its layout {lid} "
+                       f"is of system {ls}")
+            for rid, lid, missing, gs, ls in rows]
 
 
-def _answers(cl: Cluster) -> list[Finding]:
-    """controls.submission_answer.system_version_pid, in each project database, is a version of
-    THAT project. Orphan databases are C1's."""
-    owner = dict(cl.rows(cl.platform_db, "SELECT pid::text, project_id::text FROM core.system"))
+def _engine_projects(cl: Cluster, db: str, pid: str) -> list[Finding]:
     out = []
-    projects = core_projects(cl)
-    for db in project_databases(cl):
-        if db not in projects or not cl.exists(db, "controls.submission_answer"):
-            continue
-        pid = projects[db][0]
-        for aid, sv in cl.rows(db, "SELECT id, system_version_pid::text FROM controls.submission_answer"
-                                   " WHERE system_version_pid IS NOT NULL ORDER BY id"):
-            if sv not in owner:
-                out.append(fail("C4", f"{db} controls.submission_answer {aid}: system_version_pid {sv} "
-                                      "is not a core.system"))
-            elif owner[sv] != pid:
-                out.append(fail("C4", f"{db} controls.submission_answer {aid}: version {sv} belongs to "
-                                      f"another project ({owner[sv]}) than the database's ({pid})"))
+    for epid, name, project in cl.rows(db, """
+            SELECT e.pid::text, e.name, e.project_id::text FROM engine.project e
+             WHERE e.project_id IS DISTINCT FROM %s::uuid ORDER BY e.id""", (pid,)):
+        if project is None:
+            out.append(warn("C4", f"{db} engine.project {epid} ({name}) has no platform project (project_id is NULL)"))
+        else:
+            out.append(fail("C4", f"{db} engine.project {epid} ({name}): project_id {project} is not "
+                                  f"this database's project {pid}"))
     return out
+
+
+def _card_components(cl: Cluster, db: str) -> list[Finding]:
+    """I16.6: a card's component is one of the engine's components of the same database."""
+    rows = cl.rows(db, """
+        SELECT c.id, c.component_pid::text FROM qualification.card_component c
+         WHERE NOT EXISTS (SELECT 1 FROM engine.ai_component a WHERE a.pid = c.component_pid)
+         ORDER BY 1""")
+    return [fail("C4", f"{db} qualification.card_component {cid}: component_pid {cp} is not an "
+                       "engine.ai_component of this database") for cid, cp in rows]
 
 
 def c4_references(cl: Cluster) -> list[Finding]:
-    """Every reference into core.project and core.system resolves, and to the right project."""
-    out = _engine(cl)
-    for table in PAIRED:
-        if cl.exists(cl.platform_db, table):
-            out += _paired(cl, table)
-    if cl.exists(cl.platform_db, "report_composer.generated_report"):
-        out += _reports_follow_their_layout(cl)
-    return out + _answers(cl)
+    """In each project database, every card-version pid resolves in its project.system, a stamped
+    answer carries its version's number, a report follows its layout, the engine's project is this
+    database's, and every card component is an engine component."""
+    out = []
+    for db, pid, _slug in _dbs(cl):
+        has_system = cl.exists(db, "project.system")
+        for table, key, column in STAMPED:
+            if has_system and cl.exists(db, table):
+                out += _dangling(cl, db, table, key, column)
+        if has_system and cl.exists(db, "controls.submission_answer"):
+            out += _answer_numbers(cl, db)
+        if has_system and cl.exists(db, "report_composer.generated_report"):
+            out += _reports_follow_their_layout(cl, db)
+        if cl.exists(db, "engine.project"):
+            out += _engine_projects(cl, db, pid)
+        if cl.exists(db, "qualification.card_component") and cl.exists(db, "engine.ai_component"):
+            out += _card_components(cl, db)
+    return out
 
 
 # ── C5 ───────────────────────────────────────────────────────────────────────
@@ -219,7 +239,7 @@ def _columns(cl: Cluster, db: str, where: str) -> list[tuple[str, str, str]]:
 
 
 def _subjects(cl: Cluster) -> dict[str, set[str]]:
-    """Every stored Keycloak subject, to where it was found (table.column)."""
+    """Every stored Keycloak subject, to where it was found ([database] table.column)."""
     found: dict[str, set[str]] = {}
 
     def collect(db: str, schema: str, table: str, column: str, label: str) -> None:
@@ -230,9 +250,10 @@ def _subjects(cl: Cluster) -> dict[str, set[str]]:
     db = cl.platform_db
     if cl.exists(db, "core.project_member"):
         collect(db, "core", "project_member", "subject", "core.project_member.subject")
-    for schema, table, column in _columns(cl, db, "table_schema = 'report_composer' AND column_name LIKE '%\\_by'"
-                                                  " AND table_name <> 'schema_migration'"):
-        collect(db, schema, table, column, f"{schema}.{table}.{column}")
+    for pdb, _pid, _slug in _dbs(cl):
+        for schema, table, column in _columns(cl, pdb, "table_schema = 'report_composer'"
+                                              " AND column_name LIKE '%\\_by' AND table_name <> 'schema_migration'"):
+            collect(pdb, schema, table, column, f"{pdb} {schema}.{table}.{column}")
     if cl.superset_db in cl.databases():
         for schema, table, column in _columns(cl, cl.superset_db, "table_schema = 'public'"
                                               " AND table_name LIKE 'aisc\\_%' AND column_name LIKE '%\\_sub'"):
@@ -256,66 +277,86 @@ def c5_users(cl: Cluster) -> list[Finding]:
 # ── C6 ───────────────────────────────────────────────────────────────────────
 
 def c6_stale_graph(cl: Cluster) -> list[Finding]:
-    """An assessment's graph (control_objectives.graph, step 2) is still its card's current
-    knowledge graph. The two digests are not comparable: qualification's comes from the
-    ontology builder, control objectives' is the sha256 of the bytes it was served. So the
-    comparison is by content, the sha256 of each side's jsonld."""
-    db = cl.platform_db
-    if not (cl.exists(db, "control_objectives.graph") and cl.exists(db, "qualification.knowledge_graph")):
-        return []
-    rows = cl.rows(db, """
-        SELECT a.id, a.system_id::text, q.id, k.id IS NULL,
-               encode(sha256(convert_to(g.jsonld, 'UTF8')), 'hex'),
-               encode(sha256(convert_to(k.jsonld, 'UTF8')), 'hex'), g.uploaded_at, k.built_at
-          FROM control_objectives.graph g
-          JOIN control_objectives.project a ON a.id = g.project_id
-          LEFT JOIN qualification.qualification q ON q.system_id = a.system_id
-          LEFT JOIN qualification.knowledge_graph k ON k."qualificationId" = q.id
-         ORDER BY a.id""")
+    """In each project database, an assessment's graph (control_objectives.graph, step 2) is
+    still its card's current knowledge graph. The two digests are not comparable: qualification's
+    comes from the ontology builder, control objectives' is the sha256 of the bytes it was served.
+    So the comparison is by content, the sha256 of each side's jsonld."""
     out = []
-    for aid, sid, qid, missing, assessed, current, uploaded, built in rows:
-        if missing:
-            out.append(warn("C6", f"control_objectives project {aid} (system {sid}): its card "
-                                  f"{qid or '(none)'} has no stored knowledge graph to compare with"))
-        elif assessed != current:
-            out.append(warn("C6", f"control_objectives project {aid} (system {sid}): its graph differs from "
-                                  f"card {qid}'s current knowledge graph, compared by content (sha256 of jsonld "
-                                  f"{assessed[:12]} vs {current[:12]}; uploaded {uploaded:%Y-%m-%d %H:%M}, "
-                                  f"card graph built {built:%Y-%m-%d %H:%M})"))
+    for db, _pid, _slug in _dbs(cl):
+        if not (cl.exists(db, "control_objectives.graph") and cl.exists(db, "qualification.knowledge_graph")):
+            continue
+        rows = cl.rows(db, """
+            SELECT a.id, a.system_id::text, q.id, k.id IS NULL,
+                   encode(sha256(convert_to(g.jsonld, 'UTF8')), 'hex'),
+                   encode(sha256(convert_to(k.jsonld, 'UTF8')), 'hex'), g.uploaded_at, k.built_at
+              FROM control_objectives.graph g
+              JOIN control_objectives.project a ON a.id = g.project_id
+              LEFT JOIN qualification.qualification q ON q.system_id = a.system_id
+              LEFT JOIN qualification.knowledge_graph k ON k."qualificationId" = q.id
+             ORDER BY a.id""")
+        for aid, sid, qid, missing, assessed, current, uploaded, built in rows:
+            if missing:
+                out.append(warn("C6", f"{db} control_objectives project {aid} (system {sid}): its card "
+                                      f"{qid or '(none)'} has no stored knowledge graph to compare with"))
+            elif assessed != current:
+                out.append(warn("C6", f"{db} control_objectives project {aid} (system {sid}): its graph differs "
+                                      f"from card {qid}'s current knowledge graph, compared by content (sha256 of "
+                                      f"jsonld {assessed[:12]} vs {current[:12]}; uploaded "
+                                      f"{uploaded:%Y-%m-%d %H:%M}, card graph built {built:%Y-%m-%d %H:%M})"))
     return out
 
 
 # ── C7 ───────────────────────────────────────────────────────────────────────
 
-def _behind(cl: Cluster, db: str, table: str, sql: str, wanted: list[str]) -> list[Finding]:
-    if not cl.exists(db, table):
-        return [fail("C7", f"{db}: {table} is missing, so none of its {len(wanted)} migrations is recorded")]
-    have = {r[0] for r in cl.rows(db, sql)}
-    lacking = [w for w in wanted if w not in have]
-    return [fail("C7", f"{db}: {table} lacks {', '.join(lacking)}")] if lacking else []
+def _behind(cl: Cluster, db: str, tracker: heads.Tracker) -> list[Finding]:
+    if not cl.exists(db, tracker.table):
+        return [fail("C7", f"{db}: {tracker.table} is missing, so none of its {len(tracker.wanted)} "
+                           "migrations is recorded")]
+    applied = {r[0] for r in cl.rows(db, tracker.sql)}
+    lacking = heads.behind(tracker, applied)
+    out = [fail("C7", f"{db}: {tracker.table} lacks {', '.join(lacking)}")] if lacking else []
+    stray = heads.extra(tracker, applied)
+    if stray:
+        out.append(fail("C7", f"{db}: {tracker.table} is at {', '.join(stray)}, not at the head"))
+    return out
+
+
+def _library_trackers() -> list[heads.Tracker]:
+    out = []
+    if LIBRARY_MIGRATIONS.is_dir():
+        out.append(heads.Tracker("report_library", "report_library.schema_migration",
+                                 "SELECT name FROM report_library.schema_migration",
+                                 tuple(sorted(p.name for p in LIBRARY_MIGRATIONS.glob("*.sql")))))
+    if FORM_LIBRARY_MIGRATIONS.is_dir():
+        out.append(heads.Tracker("form_library", "form_library._prisma_migrations",
+                                 "SELECT migration_name FROM form_library._prisma_migrations"
+                                 " WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL",
+                                 tuple(sorted(p.name for p in FORM_LIBRARY_MIGRATIONS.iterdir() if p.is_dir()))))
+    return out
 
 
 def c7_migrations(cl: Cluster) -> list[Finding]:
-    """Every project database has every platform/project-template/*.sql recorded in
-    provision.template_migration, and every apps/controls/prisma/migrations migration finished
-    (not rolled back) in controls._prisma_migrations."""
-    templates = sorted(p.name for p in PROJECT_TEMPLATE.glob("*.sql"))
-    controls = sorted(p.name for p in CONTROLS_MIGRATIONS.iterdir() if p.is_dir())
+    """Every project database is at the head of every history it has: the platform template
+    (provision.template_migration), qualification and controls (Prisma, finished and not rolled
+    back), control objectives (alembic), the engine (Django) and the report composer; and in
+    `platform`, the two libraries when this tree has their migrations."""
     out = []
+    trackers = heads.trackers()
     for db in project_databases(cl):
-        out += _behind(cl, db, "provision.template_migration",
-                       "SELECT name FROM provision.template_migration", templates)
-        out += _behind(cl, db, "controls._prisma_migrations",
-                       "SELECT migration_name FROM controls._prisma_migrations"
-                       " WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL", controls)
+        for tracker in trackers:
+            out += _behind(cl, db, tracker)
+    for tracker in _library_trackers():
+        if cl.rows(cl.platform_db, "SELECT to_regnamespace(%s) IS NOT NULL", (tracker.table.split(".")[0],))[0][0]:
+            out += _behind(cl, cl.platform_db, tracker)
     return out
 
 
 # ── C8 ───────────────────────────────────────────────────────────────────────
 
-#: Schemas of the platform database that follow the convention. engine is frozen and the
-#: catalogue out of scope, so neither is here.
-LINTED_PLATFORM_SCHEMAS = ("core", "qualification", "control_objectives", "report_composer")
+#: Schemas of the platform database that follow the convention (the catalogue is out of scope).
+LINTED_PLATFORM_SCHEMAS = ("core", "form_library", "report_library")
+#: Schemas of a project database that follow it. engine is frozen, so it is not here.
+LINTED_PROJECT_SCHEMAS = ("project", "qualification", "control_objectives", "report_composer", "controls")
 #: The migration tools' own tables: their columns are the tool's, not ours.
 MIGRATION_TRACKERS = ("schema_migration", "template_migration", "_prisma_migrations", "alembic_version")
 SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -343,14 +384,18 @@ def _lint(cl: Cluster, db: str, where: str, label: str) -> list[Finding]:
             + [warn("C8", f"{label} {t}: timestamp without time zone: {', '.join(c)}") for t, c in naive.items()])
 
 
+def _in(schemas: tuple[str, ...]) -> str:
+    return "c.table_schema IN (" + ", ".join(f"'{s}'" for s in schemas) + ")"
+
+
 def c8_naming(cl: Cluster) -> list[Finding]:
-    """snake_case columns and timestamptz, in the schemas that are not frozen: core,
-    qualification, control_objectives, report_composer, each project database's controls, and
-    superset's aisc_* tables. Not engine (frozen), not the catalogue, not migration trackers."""
-    schemas = ", ".join(f"'{s}'" for s in LINTED_PLATFORM_SCHEMAS)
-    out = _lint(cl, cl.platform_db, f"c.table_schema IN ({schemas})", cl.platform_db)
+    """snake_case columns and timestamptz, in the schemas that are not frozen: core and the two
+    libraries of `platform`; project, qualification, control_objectives, report_composer and
+    controls of each project database; superset's aisc_* tables. Not engine (frozen), not the
+    catalogue, not migration trackers. Each finding names its database."""
+    out = _lint(cl, cl.platform_db, _in(LINTED_PLATFORM_SCHEMAS), cl.platform_db)
     for db in project_databases(cl):
-        out += _lint(cl, db, "c.table_schema = 'controls'", db)
+        out += _lint(cl, db, _in(LINTED_PROJECT_SCHEMAS), db)
     if cl.superset_db in cl.databases():
         out += _lint(cl, cl.superset_db, "c.table_schema = 'public' AND c.table_name LIKE 'aisc\\_%'",
                      cl.superset_db)
@@ -376,12 +421,12 @@ DATA_CHECKS = [
           c2_unknown_databases_and_schemas),
     Check("C3", "system identity", "every card version has one name, version and provider",
           c3_system_identity),
-    Check("C4", "references resolve", "every reference into core.project and core.system resolves",
+    Check("C4", "references resolve", "every card version, stamp and component resolves in its own database",
           c4_references),
     Check("C5", "users resolve", "every stored subject is a Keycloak user", c5_users),
     Check("C6", "stale step-2 graph", "every assessment's graph is its card's current knowledge graph",
           c6_stale_graph),
-    Check("C7", "project database migrations", "no project database is behind on its migrations",
+    Check("C7", "migrations at head", "no database is behind on any of its migrations",
           c7_migrations),
 ]
 #: C8 is about the schemas, not the data: the clean data bed still has the real schemas' names.

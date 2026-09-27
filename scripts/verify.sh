@@ -32,7 +32,7 @@ run(){ # name | command
 
 if [ "$ONLY" != "--modules" ]; then
   line "the running stack"
-  for s in verify-db-access.sh verify-one-database.sh verify-sso.sh verify-rbac.sh verify-catalogue-mapping.sh; do
+  for s in verify-db-access.sh verify-project-databases.sh verify-sso.sh verify-rbac.sh verify-catalogue-mapping.sh; do
     if [ -x "scripts/$s" ]; then run "$s" "scripts/$s"; else skipped "$s" "not executable"; fi
   done
 fi
