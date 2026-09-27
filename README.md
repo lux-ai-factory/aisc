@@ -97,9 +97,11 @@ has no Install button. Tests are installed into the engine from the stack's own 
 index (`devpi`, filled from `def_plugins/` at start), through the engine's install dialog,
 which a link opens:
 
-    http://localhost/receiver?uri=web+aiscplugin://enable?package=<name>%26version=<version>
+    http://localhost/receiver?project=<project pid>&uri=web%2Baiscplugin%3A%2F%2Fenable%3Fpackage%3D<name>%26version%3D<version>
 
-The dialog lists your projects in a **dropdown** and posts your choice to its own
+`project` is the pid on the project's launcher page (its URL). It is needed because the engine
+remembers the current project per browser tab, and the link opens in a new one: without it the
+dialog has no project to offer. The dialog lists that project in a **dropdown** and posts your choice to its own
 `POST /api/v1/plugins`. Controls are installed from the hosted catalogue's API by
 controls itself (`/controls/install?slug=<control>`).
 
