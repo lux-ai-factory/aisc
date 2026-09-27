@@ -125,9 +125,10 @@ req = urllib.request.Request('http://localhost:8000/authz/projects/$STRANGER', h
 print(json.load(urllib.request.urlopen(req, timeout=20)).get('role'))
 " 2>/dev/null | tail -1)
   is "and says they are nothing to it"            None "$role"
-  docker exec postgres psql -U aisc-postgres-user -d platform -q -c \
-    "delete from core.project where slug = '$STRANGER'" >/dev/null 2>&1
-  ok "the scratch project was cleaned up"
+  # Through the platform, which drops the project's database too: deleting the row alone
+  # left a project_<hex> database behind on every run.
+  is "the scratch project is deleted by the platform" 204 \
+     "$(call platform $PLAT/projects/$STRANGER DELETE "$ADMIN" '{"confirm_name":"verify rbac scratch"}')"
 else
   no "could not make a project to be a stranger to"
 fi

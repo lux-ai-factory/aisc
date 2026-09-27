@@ -118,6 +118,14 @@ services:
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-eval-worker
+    # The image's check pings "celery@$$HOSTNAME", which in a Dockerfile is the shell's pid
+    # and the word HOSTNAME, and gives celery 3s: always unhealthy. The worker by its name, 20s.
+    healthcheck:
+      test: ["CMD-SHELL", "celery --app aisc_eval.celery_app inspect ping -t 20 -d \"celery@$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
@@ -169,10 +177,10 @@ services:
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
       && celery -A aisc_eval.celery_worker flower"
+    # flower answers for itself; pinging "celery@<flower's hostname>" asked for a worker that
+    # does not exist, so it was always unhealthy.
     healthcheck:
-      test:
-        - "CMD-SHELL"
-        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5555/$${FLOWER_URL_PREFIX}/healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5

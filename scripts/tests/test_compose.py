@@ -249,3 +249,16 @@ def test_the_dashboard_healthcheck_asks_where_superset_listens(compose):
     test = " ".join(svc.get("healthcheck", {}).get("test") or [])
     assert "$${SUPERSET_BIND_ADDRESS}" in test or "${SUPERSET_BIND_ADDRESS}" in test, test
     assert "localhost" not in test, test
+
+
+def test_the_eval_healthchecks_ask_the_right_node(compose):
+    """The worker's image check pinged "celery@$$HOSTNAME", which in a Dockerfile is the shell's
+    pid followed by the word HOSTNAME, and flower's pinged a worker named after flower's own
+    container: both were unhealthy while working. The worker pings itself by its real hostname,
+    with time to answer; flower answers its own /healthcheck."""
+    q, cfg = compose
+    worker = cfg["services"]["aisc-eval-worker"].get("healthcheck") or {}
+    flower = cfg["services"]["aisc-eval-flower"].get("healthcheck") or {}
+    wtest = " ".join(worker.get("test") or [])
+    assert ("celery@${HOSTNAME}" in wtest or "celery@$${HOSTNAME}" in wtest) and "-t " in wtest, wtest
+    assert "/healthcheck" in " ".join(flower.get("test") or []), flower
