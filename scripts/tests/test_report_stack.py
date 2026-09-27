@@ -273,12 +273,13 @@ def test_r5_4_1_caddy_never_routes_the_renderer():
 
 
 def test_r4_1_2_launcher_card_seven():
-    """R4.1.2, D11: homepage/project.html has card 7 (id report-composer-card) and an inProject
-    entry that rewrites it to /report-composer/p/{pid}."""
+    """R4.1.2, D11: homepage/project.html has the report card (id report-composer-card) and an inProject
+    entry that rewrites it to /report-composer/p/{pid}. It is step 6 since the launcher (2026-09-25)
+    shows controls and test execution as the two ways into one "Evidence" step (4)."""
     html = (ROOT / "homepage/project.html").read_text()
     m = re.search(r'<a class="card" id="report-composer-card"[^>]*>(.*?)</a>', html, re.S)
     assert m, "missing feature: no report-composer-card on the launcher"
-    assert re.search(r'<span class="n">7</span>', m.group(1))
+    assert re.search(r'<span class="n">6</span>', m.group(1))
     assert re.search(r"'report-composer-card':\s*'http://localhost/report-composer/p/'", html)
 
 

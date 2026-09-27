@@ -131,7 +131,7 @@
   .card{
     position:relative; overflow:hidden;
     display:flex; flex-direction:column;
-    padding:34px 34px 28px; min-height:290px;
+    padding:30px 34px 26px;
     border:1px solid var(--border); border-radius:var(--radius);
     background:var(--panel); color:inherit; text-decoration:none;
     transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
@@ -174,7 +174,7 @@
   .card p{margin:0; color:var(--muted); font-size:14.5px; max-width:38ch}
 
   .open{
-    margin-top:auto; padding-top:24px; display:flex; align-items:center; gap:7px;
+    margin-top:auto; padding-top:18px; display:flex; align-items:center; gap:7px;
     font-family:var(--mono); font-size:10.5px; font-weight:500;
     letter-spacing:.12em; text-transform:uppercase; color:var(--primary);
   }
@@ -182,6 +182,22 @@
   .open svg{width:13px; height:13px; stroke:currentColor; stroke-width:1.8; fill:none;
             transition:transform .16s ease}
   a.card:hover .open svg{transform:translateX(4px)}
+
+  /* a step with two ways in: the card holds a link for each, side by side */
+  .card.split{padding-bottom:22px}
+  .card.split > h2{margin-bottom:14px}
+  .card.split .links{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:auto}
+  a.sub{
+    position:relative; display:flex; flex-direction:column; gap:5px; padding:12px 14px 11px;
+    border:1px solid var(--border); color:inherit; text-decoration:none; background:var(--panel);
+    transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+  }
+  a.sub h3{margin:0; font-size:15px; white-space:nowrap; font-weight:600; letter-spacing:-.012em; line-height:1.25}
+  a.sub p{margin:0; color:var(--muted); font-size:13px; line-height:1.45}
+  a.sub .open{padding-top:6px}
+  a.sub:hover{border-color:var(--primary); box-shadow:0 8px 22px rgba(12,18,60,.08); transform:translateY(-2px)}
+  a.sub:hover .open svg{transform:translateX(4px)}
+  a.sub:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
 
   /* a module that is not part of this install: in the sequence, not a link */
   .card.off{border-style:dashed; background:transparent; cursor:default}
@@ -241,6 +257,7 @@
     main{padding:28px 18px 32px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
+    .card.split .links{grid-template-columns:1fr}
     .card .n{font-size:76px; top:4px}
     .arrow{height:34px}
     .arrow::before{top:0; bottom:0; left:50%; right:auto; border-top:0; border-left:1px solid var(--border-strong)}
@@ -302,6 +319,8 @@
   .titlerow{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap}
   /* Manage: the admin's menu, at the right end of the title row */
   .titlerow .manage{margin-left:0; margin-top:4px}
+  /* .panel a sets display, which would win over the hidden attribute */
+  .manage .panel [hidden]{display:none}
   .menu .panel .group{
     display:block; padding:8px 15px 4px; font-family:var(--mono); font-size:10px;
     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
@@ -368,13 +387,15 @@
         </summary>
         <div class="panel">
           <span class="group">Inspect database</span>
-          <a id="inspect-schema" target="_blank" rel="noopener">Schema diagrams: this project</a>
-          <!-- Qualification, control objectives and the engine keep their data here, for
-               every project together, rather than in the project's own database. -->
-          <a href="/inspect/schema/platform/" target="_blank" rel="noopener">Schema diagrams: shared platform</a>
-          <a href="/inspect/pgadmin/" target="_blank" rel="noopener">Browse &amp; query (pgAdmin)</a>
-          <span class="sep"></span>
-          <button type="button" class="danger" id="delete-open">Delete this project&hellip;</button>
+          <!-- Structure only, for every member: this project's database and the shared one on one page. -->
+          <a id="inspect-schema" target="_blank" rel="noopener">Database diagrams</a>
+          <!-- The data itself, across every project: an admin's only. -->
+          <a id="inspect-pgadmin" class="admin-only" hidden href="/inspect/pgadmin/" target="_blank" rel="noopener">Browse &amp; query (pgAdmin)</a>
+          <span class="sep admin-only" hidden></span>
+          <span class="group admin-only" hidden>Agentic systems</span>
+          <a id="llm-settings" class="admin-only" hidden>Models and API keys</a>
+          <span class="sep admin-only" hidden></span>
+          <button type="button" class="danger admin-only" hidden id="delete-open">Delete this project&hellip;</button>
         </div>
       </details>
     </div>
@@ -401,7 +422,7 @@
         Qualification
       </span>
       <h2>Qualify</h2>
-      <p>Qualify the AI system against the EU AI Act, Articles 10, 12, 13 and 14, and generate its system card.</p>
+      <p>Check the system against the EU AI Act and generate its system card.</p>
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
     <div class="arrow" aria-hidden="true"></div>
@@ -412,7 +433,7 @@
         Control objectives
       </span>
       <h2>Set control objectives</h2>
-      <p>Turn that qualification into the set of control objectives the system has to meet.</p>
+      <p>Derive the control objectives the system must meet.</p>
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
     <div class="arrow" aria-hidden="true"></div>
@@ -423,7 +444,7 @@
         Catalogue
       </span>
       <h2>Identify tests and controls</h2>
-      <p>Browse the registry of assessment tools and controls, and install a test into the engine in one click.</p>
+      <p>Pick tests and controls; install tests in one click.</p>
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
   </div>
@@ -431,51 +452,46 @@
   <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
 
   <div class="row">
-    <a class="card" id="engine-card" href="http://localhost/">
+    <div class="card split">
       <span class="n">4</span>
       <span class="svc">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16l14-8z"/></svg>
-        Execution engine
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="m9 13 2 2 4-4"/></svg>
+        Evidence
       </span>
-      <h2>Execute tests</h2>
-      <p>Register datasets and models, then run the selected evaluations against the system under test.</p>
-      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
-    </a>
-    <div class="arrow" aria-hidden="true"></div>
-    <a class="card" id="controls-card" href="http://localhost/controls">
-      <span class="n">5</span>
-      <span class="svc">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3 7-7 9-4-2-7-4-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
-        Controls engine
-      </span>
-      <h2>Address controls</h2>
-      <p>Work through the compliance checklists, score readiness from 1 to 5 and export the PDF report.</p>
-      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
-    </a>
+      <h2>Collect evidence</h2>
+      <div class="links">
+        <a class="sub" id="controls-card" href="http://localhost/controls">
+          <h3>Address controls</h3>
+          <p>Score the checklists.</p>
+          <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+        </a>
+        <a class="sub" id="engine-card" href="http://localhost/">
+          <h3>Execute tests</h3>
+          <p>Run evaluations on the system.</p>
+          <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+        </a>
+      </div>
+    </div>
     <div class="arrow" aria-hidden="true"></div>
     <a class="card" href="http://localhost:8188/">
-      <span class="n">6</span>
+      <span class="n">5</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20V11m5 9V5m5 15v-6"/></svg>
         Dashboard
       </span>
       <h2>Analyse results</h2>
-      <p>Read the assessment results, charts and shared commentary across runs.</p>
+      <p>Read results, charts and commentary.</p>
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
-  </div>
-
-  <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
-
-  <div class="row">
+    <div class="arrow" aria-hidden="true"></div>
     <a class="card" id="report-composer-card" href="http://localhost/report-composer/">
-      <span class="n">7</span>
+      <span class="n">6</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
         Report
       </span>
       <h2>Compose the report</h2>
-      <p>Assemble the assessment report from its blocks, preview it and generate the PDF.</p>
+      <p>Assemble, preview and export the PDF.</p>
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
   </div>
@@ -500,16 +516,18 @@
       fetch('/api/authz/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (a) {
-          if (!a || !a.admin) return;          // only an admin sees it at all
-          // The inspector opens on this project's own database: project_<pid without hyphens>.
-          document.getElementById('inspect-schema').href =
-            '/inspect/schema/project_' + String(p.pid).replace(/-/g, '') + '/';
+          if (!a || !(a.role || a.admin)) return;   // members see the menu, strangers nothing
+          // The diagrams open on one page for this project's database and the shared one.
+          document.getElementById('inspect-schema').href = '/inspect/schema/?project=' + encodeURIComponent(p.pid);
+          document.getElementById('manage').hidden = false;
+          if (!a.admin) return;                      // what follows is an admin's only
+          [].forEach.call(document.querySelectorAll('#manage .admin-only'), function (el) { el.hidden = false; });
+          document.getElementById('llm-settings').href = '/llm.html?project=' + encodeURIComponent(slug);
           var dlg = document.getElementById('delete-dialog');
           var input = document.getElementById('delete-input');
           var go = document.getElementById('delete-confirm');
           var err = document.getElementById('delete-err');
           document.getElementById('delete-name').textContent = p.name;
-          document.getElementById('manage').hidden = false;
           document.getElementById('delete-open').onclick = function () {
             document.getElementById('manage').open = false;
             input.value = ''; go.disabled = true; err.textContent = ''; dlg.showModal(); input.focus();
