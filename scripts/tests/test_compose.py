@@ -173,3 +173,16 @@ def test_no_local_catalogue_only_its_package_index(compose):
     assert "catalogue-backend" not in caddyfile and "catalogue-frontend" not in caddyfile
     ports = [str(p) for p in (services["caddy"].get("ports") or [])]
     assert not any("8007" in p for p in ports), f"caddy still publishes the catalogue listener: {ports}"
+
+
+def test_the_runtime_env_points_at_the_hosted_catalogue():
+    """scripts/secrets.sh builds env.runtime, what the stack runs on, from env.plugin_downloader:
+    that file must name the hosted catalogue too, and no local catalogue port."""
+    base = re.search(r"^cat (\S+) \"\$OUT\"", (ROOT / "scripts" / "secrets.sh").read_text(), re.M).group(1)
+    env = dict(l.split("=", 1) for l in (ROOT / base).read_text().splitlines()
+               if "=" in l and not l.lstrip().startswith("#"))
+    env = {k.strip(): v.strip() for k, v in env.items()}
+    assert env.get("CATALOGUE_EXTERNAL_URL") == HOSTED_CATALOGUE, base
+    assert env.get("CATALOGUE_API_URL") == HOSTED_CATALOGUE_API, base
+    assert env.get("CATALOGUE_ORIGIN") == HOSTED_ORIGIN, base
+    assert "CATALOGUE_PORT_EXTERNAL" not in env, base
