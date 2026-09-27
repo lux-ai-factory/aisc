@@ -1,0 +1,192 @@
+# Sean's engine, running on its own: no Configurator services (platform, its projects, the
+# Caddy gateway) and no AISC_DEPLOYMENT — absent, aisc_backend/deployment.py and
+# aisc_eval/deployment.py both default to standalone (one project, one database), which is
+# what the webapp's own image defaults APP_DEPLOYMENT to as well (apps/webapp/Dockerfile).
+#
+# The engine's own Dockerfile CMD already runs `manage.py migrate --noinput` before it serves,
+# so there is no separate migrate one-shot here (that split, and the per-project
+# migrate_projects command, are the Configurator's: see docker-compose.development.yml).
+#
+# Run: docker compose -f docker-compose.engine-standalone.yml up --build
+# The webapp is on http://localhost:8080, the API on http://localhost:8000.
+
+services:
+  aisc-backend:
+    build: apps/backend/
+    image: aisc-backend:${AISC_IMAGE_TAG:-latest}
+    container_name: aisc-backend-standalone
+    environment:
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: ${DB_NAME:-aisc}
+      DB_USER: ${DB_USER:-aisc}
+      DB_PASSWORD: ${DB_PASSWORD:-dev-password}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      S3_URL: http://minio:9000
+      S3_USER: ${S3_USER:-s3-user}
+      S3_PASSWORD: ${S3_PASSWORD:-dev-password}
+      S3_MODELS_BUCKET: ${S3_MODELS_BUCKET:-models}
+      S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET:-datasets}
+      S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET:-artifacts}
+      CELERY_BROKER_URL: amqp://${RABBITMQ_USERNAME:-rabbit-user}:${RABBITMQ_PASSWORD:-dev-password}@rabbitmq:5672//
+      REDIS_BACKEND_URL: redis://redis:6379
+      PLUGIN_PATH: ${PLUGIN_PATH:-./def_plugins}
+      PACKAGE_REGISTRY_URL: http://devpi:3141
+      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER:-root}
+      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD:-}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX:-root/public}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-change-me}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-secret-change-me}
+      BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+      BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS:-http://localhost:8080}
+      MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY:-True}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - ${PLUGIN_PATH:-./def_plugins}:/app/plugins:z
+    networks:
+      - engine-standalone
+
+  aisc-eval-worker:
+    platform: linux/amd64
+    build:
+      context: apps/eval/
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
+    container_name: aisc-eval-worker-standalone
+    environment:
+      API_URL: http://aisc-backend:8000
+      API_PREFIX: ${API_PREFIX:-/api/v1/internal}
+      REDIS_BACKEND_URL: redis://redis:6379
+      CELERY_BROKER_URL: amqp://${RABBITMQ_USERNAME:-rabbit-user}:${RABBITMQ_PASSWORD:-dev-password}@rabbitmq:5672//
+      CORS_ORIGINS: "*"
+      PLUGIN_PATH: ${PLUGIN_PATH:-./def_plugins}
+      PACKAGE_REGISTRY_URL: http://devpi:3141
+      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER:-root}
+      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD:-}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX:-root/public}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-secret-change-me}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-change-me}
+    depends_on:
+      - aisc-backend
+      - rabbitmq
+      - redis
+    volumes:
+      - ${PLUGIN_PATH:-./def_plugins}:/app/plugins:z
+    networks:
+      - engine-standalone
+
+  aisc-webapp:
+    build: apps/webapp/
+    image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
+    container_name: aisc-webapp-standalone
+    environment:
+      APP_API_URL: ${API_URL_EXTERNAL:-http://localhost:8000}
+      APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION:-true}
+    ports:
+      - "8080:80"
+    depends_on:
+      - aisc-backend
+    networks:
+      - engine-standalone
+
+  # ── Infrastructure (docker-compose-infra.yml on Sean's own master) ──
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio-standalone
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_USER:-s3-user}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD:-dev-password}
+    volumes:
+      - engine_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - engine-standalone
+
+  make_buckets:
+    image: quay.io/minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${S3_USER:-s3-user}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD:-dev-password}
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set minio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      /usr/bin/mc mb --ignore-existing minio/datasets;
+      /usr/bin/mc mb --ignore-existing minio/artifacts;
+      /usr/bin/mc mb --ignore-existing minio/models &&
+      exit 0;
+      "
+    networks:
+      - engine-standalone
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq-standalone
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-rabbit-user}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-dev-password}
+    volumes:
+      - engine_rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - engine-standalone
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-standalone
+    restart: unless-stopped
+    volumes:
+      - engine_redis_data:/data
+    networks:
+      - engine-standalone
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres-standalone
+    environment:
+      POSTGRES_USER: ${DB_USER:-aisc}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-password}
+      POSTGRES_DB: ${DB_NAME:-aisc}
+    volumes:
+      - engine_postgres_data:/var/lib/postgresql/data
+    networks:
+      - engine-standalone
+
+  # The package index a plugin is installed from (no catalogue runs here; see
+  # docker-compose.development.yml's own devpi service for the fuller comment).
+  devpi:
+    build: apps/catalogue/devpi
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
+    container_name: devpi-standalone
+    environment:
+      DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
+      DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+    volumes:
+      - engine_devpi_data:/data
+    networks:
+      - engine-standalone
+
+volumes:
+  engine_minio_data:
+  engine_rabbitmq_data:
+  engine_redis_data:
+  engine_postgres_data:
+  engine_devpi_data:
+
+networks:
+  engine-standalone:

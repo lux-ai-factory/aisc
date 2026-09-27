@@ -262,3 +262,71 @@ def test_the_eval_healthchecks_ask_the_right_node(compose):
     wtest = " ".join(worker.get("test") or [])
     assert ("celery@${HOSTNAME}" in wtest or "celery@$${HOSTNAME}" in wtest) and "-t " in wtest, wtest
     assert "/healthcheck" in " ".join(flower.get("test") or []), flower
+
+
+# ── Engine deployment modes (pipeline 2026-09-27, task 9: the Configurator wires the mode
+# and the platform list) ──────────────────────────────────────────────────────────────────
+
+def test_the_engine_runs_in_configurator_mode(compose):
+    """Ruling: the engine (backend, backend-migrate, eval worker, eval flower) is told it runs
+    inside the Configurator; the webapp gets the matching APP_DEPLOYMENT."""
+    q, cfg = compose
+    for name in ("aisc-backend", "aisc-backend-migrate", "aisc-eval-worker", "aisc-eval-flower"):
+        assert (cfg["services"][name].get("environment") or {}).get("AISC_DEPLOYMENT") == "configurator", name
+    assert cfg["services"]["aisc-webapp"]["environment"].get("APP_DEPLOYMENT") == "configurator"
+
+
+def test_the_engine_site_serves_the_callers_platform_projects_behind_the_gateway():
+    """Ruling 3: on the engine's own site (not the launcher's), GET /platform/api/projects is
+    protected then proxied to platform:8000, and it is placed before the catch-all handlers of
+    that site so it wins. GET only: no other method is routed to the platform this way."""
+    text = (ROOT / "Caddyfile").read_text()
+    block = text[text.index("{$CADDY_DOMAIN}:{$CADDY_PORT}"):text.index("{$CADDY_DOMAIN}:{$HOMEPAGE_PORT}")]
+    assert "/platform/api/projects" in block and "reverse_proxy platform:8000" in block
+
+    matcher = re.search(r"@platformProjects\s*\{([^}]*)\}", block)
+    assert matcher, "no @platformProjects matcher on the engine's site"
+    assert re.search(r"\bmethod\s+GET\b", matcher.group(1)), matcher.group(1)
+    assert "/platform/api/projects" in matcher.group(1)
+
+    handle_start = block.index("handle @platformProjects")
+    route = block[handle_start:]
+    assert route.index("import protect") < route.index("reverse_proxy platform:8000")
+
+    # It wins over the catch-all: it appears before every plain `handle {` of that site.
+    handle_platform = block.index("handle @platformProjects")
+    for m in re.finditer(r"\n  handle \{", block):
+        assert handle_platform < m.start(), "the platform route must come before the catch-all"
+
+
+def test_the_standalone_compose_names_no_configurator_setting():
+    """Ruling 4: the standalone compose never turns the Configurator on, never carries the
+    per-request project header, and never talks to the platform service."""
+    text = (ROOT / "docker-compose.engine-standalone.yml").read_text()
+    assert "AISC_DEPLOYMENT: configurator" not in text
+    assert "X-AISC-Project" not in text and "platform:8000" not in text
+
+
+def test_the_migrations_run_through_the_one_shot_not_the_long_running_service():
+    """Rulings 13/21: in the Configurator, the engine's schema is migrated by the compose
+    one-shot aisc-backend-migrate (migrate_projects, one database per project), never by a
+    plain `manage.py migrate` on the long-running aisc-backend service."""
+    text = (ROOT / "docker-compose.development.yml").read_text()
+    backend_start = text.index("\n  aisc-backend:\n")
+    backend_migrate_start = text.index("\n  aisc-backend-migrate:\n")
+    backend_block = text[backend_start:backend_migrate_start]
+    assert "manage.py migrate " not in backend_block and not backend_block.rstrip().endswith("manage.py migrate")
+    assert "migrate_projects" not in backend_block
+
+    next_service = re.search(r"\n  [a-zA-Z0-9_-]+:\n", text[backend_migrate_start + 1:])
+    migrate_block = text[backend_migrate_start:backend_migrate_start + 1 + next_service.start()] \
+        if next_service else text[backend_migrate_start:]
+    assert "migrate_projects" in migrate_block
+
+
+def test_the_webapp_gets_the_launcher_url(compose):
+    """Ruling 31: APP_LAUNCHER_URL must be set on aisc-webapp (where the project was chosen and
+    where the other five steps are), defaulting to the launcher's own external URL."""
+    q, cfg = compose
+    value = cfg["services"]["aisc-webapp"]["environment"].get("APP_LAUNCHER_URL")
+    assert value, "APP_LAUNCHER_URL is not set on aisc-webapp"

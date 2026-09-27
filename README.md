@@ -185,6 +185,40 @@ Steps 1, 2 and 5 need a model to be useful. Qualification's LiteLLM sidecar take
 local Ollama and takes `CONTROL_OBJECTIVES_LLM_PROVIDER` plus that provider's key
 for a hosted model instead.
 
+## Two deployment modes
+
+The execution engine (`apps/backend`, `apps/eval`, `apps/webapp`) can run standalone, on its
+own, or inside the Configurator, which is what this stack runs.
+
+`AISC_DEPLOYMENT` is the switch: `aisc-backend` and `aisc-eval-worker`/`aisc-eval-flower` read
+it once (`aisc_backend/deployment.py`, `aisc_eval/deployment.py`). Left unset, they default to
+**standalone**: one project, one database, no per-request project header. Set to
+`configurator`, they run **configurator** mode: one database per project (which needs
+PostgreSQL), and every request carries the caller's project. The webapp reads the matching
+`APP_DEPLOYMENT` the same way; its image defaults to `standalone` (`apps/webapp/Dockerfile`)
+and this stack sets it to `configurator` in `docker-compose.development.yml`.
+
+This repository's compose files set `AISC_DEPLOYMENT: configurator` (and
+`APP_DEPLOYMENT: configurator` on the webapp), so `docker compose ... up` here always runs the
+engine inside the Configurator: migrations run per project through the one-shot
+`aisc-backend-migrate` (`manage.py migrate_projects`), never a plain `manage.py migrate` on the
+long-running `aisc-backend` service, and the engine's Caddy site proxies
+`GET /platform/api/projects` (protected, then rewritten to `/projects`) to the platform, so it
+can list the caller's projects.
+
+To run the engine **on its own**, without the Configurator, the platform, or the gateway, use
+`docker-compose.engine-standalone.yml` instead:
+
+```bash
+docker compose -f docker-compose.engine-standalone.yml up --build
+```
+
+This starts `aisc-backend`, `aisc-eval-worker` and `aisc-webapp` with `AISC_DEPLOYMENT` unset,
+plus the infrastructure they need on their own (PostgreSQL, Redis, RabbitMQ, MinIO, and the
+package index plugins are installed from). The backend's own Dockerfile already runs
+`manage.py migrate` before it serves, so no separate migration step is needed here. The webapp
+is on http://localhost:8080, the API on http://localhost:8000.
+
 ## 📁 Repository Structure
 
 This repository consists of three main applications that work in tandem, along with shared libraries for plugin management:

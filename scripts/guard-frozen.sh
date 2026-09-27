@@ -223,7 +223,10 @@ build_candidate() {
   db=$(tpg_project_db "$MCAS_PID" "$WORK/cand/top/platform/project-template" 2>>"$OUT/cand.log") \
     || { echo "project database failed" >> "$OUT/candidate.errors"; db=project_${MCAS_PID//-/}; }
   prisma_deploy "$WORK/cand/qualification" "$db" >>"$OUT/cand.log" 2>&1 || echo "qualification migrations failed" >> "$OUT/candidate.errors"
-  (cd "$WORK/cand/backend" && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
+  # migrate_projects (aisc_backend/deployment.py) only migrates a database per project in
+  # configurator mode: the Configurator is what this guard checks, so it says so.
+  (cd "$WORK/cand/backend" && AISC_DEPLOYMENT=configurator \
+     DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
      DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
      PYTHONPATH="$SHARED_PYTHONPATH" "$PY" manage.py migrate_projects) >>"$OUT/cand.log" 2>&1 \
     || echo "engine migrate_projects failed" >> "$OUT/candidate.errors"

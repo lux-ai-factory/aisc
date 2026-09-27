@@ -122,6 +122,20 @@
     }
   }
 
+  # The engine (apps/backend), running in configurator mode, reads which projects the caller
+  # may enter from the platform. GET only: this route never creates, changes or deletes
+  # anything, so no other method reaches the platform through it. Before the catch-all so it
+  # wins over the frontend below.
+  @platformProjects {
+    method GET
+    path /platform/api/projects
+  }
+  handle @platformProjects {
+    import protect
+    rewrite * /projects
+    reverse_proxy platform:8000
+  }
+
   # Serve the JS frontend by default
   handle {
     import protect

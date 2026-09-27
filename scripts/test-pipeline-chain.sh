@@ -93,7 +93,10 @@ migrate_project_database() {
      DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform" \
      PROJECT_DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}" \
      .venv/bin/python -m aisc_control_objectives.migrate_projects) || return 1
-  (cd "$BACKEND" && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
+  # migrate_projects (aisc_backend/deployment.py) only migrates a database per project in
+  # configurator mode, which is what this chain runs the engine as.
+  (cd "$BACKEND" && AISC_DEPLOYMENT=configurator \
+     DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
      DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
      PYTHONPATH="$SHARED_PYTHONPATH" .venv/bin/python manage.py migrate_projects) || return 1
   (cd "$ROOT/apps/report-composer" && PYTHONPATH="$ROOT/apps/report-composer" \

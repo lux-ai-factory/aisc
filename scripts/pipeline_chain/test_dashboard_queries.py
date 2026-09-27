@@ -130,8 +130,10 @@ def _standalone() -> Ctx:
            role="platform_rw")
     t.psql(other, f"INSERT INTO project.system (pid, number, name) VALUES ('{w1}', 1, 'T')", role="platform_rw")
 
-    # the engine's tables in both databases, as its one-shot makes them (I7.6)
-    env = dict(os.environ, DB_ENGINE="django.db.backends.postgresql", DB_NAME="platform",
+    # the engine's tables in both databases, as its one-shot makes them (I7.6). migrate_projects
+    # (aisc_backend/deployment.py) only migrates a database per project in configurator mode.
+    env = dict(os.environ, AISC_DEPLOYMENT="configurator",
+               DB_ENGINE="django.db.backends.postgresql", DB_NAME="platform",
                DB_USER="engine_rw", DB_PASSWORD="engine_rw", DB_HOST="127.0.0.1",
                DB_PORT=str(t.port), DB_SCHEMA="engine", PYTHONPATH=SHARED_PYTHONPATH)
     subprocess.run([str(ROOT / "apps/backend/.venv/bin/python"), "manage.py", "migrate_projects"],

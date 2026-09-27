@@ -224,7 +224,10 @@ def migrate_modules(bed: IsoBed) -> None:
         bed.problems["engine"] = "no python environment for apps/backend"
     else:
         _run(bed, "engine", [py, "manage.py", "migrate_projects"], ROOT / "apps/backend",
-             {"DB_ENGINE": "django.db.backends.postgresql", "DB_NAME": "platform", "DB_USER": "engine_rw",
+             # migrate_projects (aisc_backend/deployment.py) only migrates a database per
+             # project in configurator mode, which is what this bed's engine runs as.
+             {"AISC_DEPLOYMENT": "configurator",
+              "DB_ENGINE": "django.db.backends.postgresql", "DB_NAME": "platform", "DB_USER": "engine_rw",
               "DB_PASSWORD": "engine_rw", "DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_SCHEMA": "engine",
               "PYTHONPATH": f"{ROOT}/shared/plugin-interface/src:{ROOT}/shared/plugin-manager/src"},
              "I7.6 manage.py migrate_projects")

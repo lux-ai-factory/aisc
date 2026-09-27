@@ -6,6 +6,9 @@ services:
     pull_policy: never
     container_name: aisc-webapp
     environment:
+      # The image defaults to standalone (apps/webapp/Dockerfile); this stack runs it inside
+      # the Configurator, so it is told so explicitly.
+      APP_DEPLOYMENT: configurator
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
       # Where the "Public Catalogue" button goes. The bundle ships the literal
@@ -27,6 +30,10 @@ services:
     # DB_NAME=platform is the engine's membership alias and the template its
     # per-project aliases are copied from (project_<hex>, search_path engine).
     environment: &backend-env
+      # This engine runs inside the Configurator: one database per project, and the platform's
+      # list of projects (aisc_backend/deployment.py). Sean's own container never sets this and
+      # defaults to standalone.
+      AISC_DEPLOYMENT: configurator
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
       S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
@@ -129,6 +136,9 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
+      # As above (aisc_eval/deployment.py): the run ticket and the project headers are the
+      # Configurator's, not Sean's standalone ones.
+      AISC_DEPLOYMENT: configurator
       API_URL: ${API_URL} # Address of api-backend
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -162,6 +172,7 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
+      AISC_DEPLOYMENT: configurator
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
