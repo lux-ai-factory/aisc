@@ -19,8 +19,9 @@ added on top as the `configurator` mode. Nothing Sean's standalone engine does t
 `AISC_DEPLOYMENT` = `standalone` | `configurator`, read by the backend, the eval worker and the web
 app (web app: `VITE_DEPLOYMENT=APP_DEPLOYMENT`, substituted by `env.sh` at start, like
 `APP_CATALOG_URL`). Default `standalone`, so Sean's repos deployed alone behave as today. Any
-other value, or a `configurator` without `PLATFORM_URL` and `PROJECT_DATABASE_TEMPLATE`, refuses
-to start with a message naming the variable.
+other value, or a `configurator` whose `DB_ENGINE` is not Postgres (it makes a database per
+project), refuses to start with a message naming the variable. The engine reaches the platform
+through its `platform` database alias, not over HTTP.
 
 ## What the switch decides
 

@@ -84,7 +84,7 @@ Expected: three files with counts. Every later task compares its standalone run 
 - Test: `aisc_backend/tests/test_deployment_mode.py`
 
 **Interfaces:**
-- Produces: `deployment.STANDALONE = "standalone"`, `deployment.CONFIGURATOR = "configurator"`, `deployment.mode(env: Mapping[str, str] = os.environ) -> str`, `deployment.is_configurator() -> bool`, `deployment.is_standalone() -> bool`, `deployment.check_environment(env) -> None` (raises `ImproperlyConfigured`), `settings.AISC_DEPLOYMENT: str`.
+- Produces: `deployment.STANDALONE = "standalone"`, `deployment.CONFIGURATOR = "configurator"`, `deployment.mode(env: Mapping[str, str] = os.environ) -> str`, `deployment.project_databases(env) -> bool`, `deployment.is_configurator() -> bool`, `deployment.is_standalone() -> bool`, `deployment.check_environment(env, testing=None) -> None` (raises `ImproperlyConfigured`), `settings.AISC_DEPLOYMENT: str`. The backend reaches the platform through its `platform` database alias (`DB_NAME`), not over HTTP: there is no `PLATFORM_URL` for the backend.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -112,17 +112,23 @@ class TheMode(SimpleTestCase):
             with self.assertRaisesRegex(ImproperlyConfigured, "AISC_DEPLOYMENT.*standalone.*configurator"):
                 deployment.mode({"AISC_DEPLOYMENT": bad})
 
-    def test_configurator_needs_the_platform_and_the_project_databases(self):
-        with self.assertRaisesRegex(ImproperlyConfigured, "PLATFORM_URL"):
-            deployment.check_environment({"AISC_DEPLOYMENT": "configurator", "PROJECT_DATABASE_TEMPLATE": "x"})
-        with self.assertRaisesRegex(ImproperlyConfigured, "PROJECT_DATABASE_TEMPLATE"):
-            deployment.check_environment({"AISC_DEPLOYMENT": "configurator", "PLATFORM_URL": "http://p"})
-        deployment.check_environment({"AISC_DEPLOYMENT": "configurator", "PLATFORM_URL": "http://p",
-                                      "PROJECT_DATABASE_TEMPLATE": "x"})
+    def test_configurator_needs_postgres_for_its_project_databases(self):
+        with self.assertRaisesRegex(ImproperlyConfigured, "DB_ENGINE.*postgresql"):
+            deployment.check_environment({"AISC_DEPLOYMENT": "configurator",
+                                          "DB_ENGINE": "django.db.backends.sqlite3"}, testing=False)
+        deployment.check_environment({"AISC_DEPLOYMENT": "configurator",
+                                      "DB_ENGINE": "django.db.backends.postgresql"}, testing=False)
 
-    def test_standalone_refuses_the_configurator_settings(self):
-        with self.assertRaisesRegex(ImproperlyConfigured, "PROJECT_DATABASE_TEMPLATE.*configurator"):
-            deployment.check_environment({"PROJECT_DATABASE_TEMPLATE": "x"})
+    def test_the_test_runner_may_run_configurator_on_one_sqlite_database(self):
+        deployment.check_environment({"AISC_DEPLOYMENT": "configurator",
+                                      "DB_ENGINE": "django.db.backends.sqlite3"}, testing=True)
+
+    def test_project_databases_only_in_configurator_on_postgres(self):
+        pg = "django.db.backends.postgresql"
+        self.assertFalse(deployment.project_databases({"DB_ENGINE": pg}))
+        self.assertTrue(deployment.project_databases({"AISC_DEPLOYMENT": "configurator", "DB_ENGINE": pg}))
+        self.assertFalse(deployment.project_databases({"AISC_DEPLOYMENT": "configurator",
+                                                       "DB_ENGINE": "django.db.backends.sqlite3"}))
 ```
 
 Note the empty string: `mode({"AISC_DEPLOYMENT": ""})` must raise (an empty variable is a mistake in a compose file, not a request for the default). Only an absent variable means standalone.
@@ -150,7 +156,6 @@ from django.core.exceptions import ImproperlyConfigured
 STANDALONE = "standalone"
 CONFIGURATOR = "configurator"
 MODES = (STANDALONE, CONFIGURATOR)
-_CONFIGURATOR_NEEDS = ("PLATFORM_URL", "PROJECT_DATABASE_TEMPLATE")
 
 
 def mode(env: Mapping[str, str] = os.environ) -> str:
@@ -163,14 +168,25 @@ def mode(env: Mapping[str, str] = os.environ) -> str:
     return value
 
 
-def check_environment(env: Mapping[str, str] = os.environ) -> None:
-    if mode(env) == CONFIGURATOR:
-        for name in _CONFIGURATOR_NEEDS:
-            if not env.get(name):
-                raise ImproperlyConfigured(f"{name} is required when AISC_DEPLOYMENT is {CONFIGURATOR}")
-    elif env.get("PROJECT_DATABASE_TEMPLATE"):
+def _postgres(env: Mapping[str, str]) -> bool:
+    return "postgresql" in env.get("DB_ENGINE", "django.db.backends.sqlite3")
+
+
+def project_databases(env: Mapping[str, str] = os.environ) -> bool:
+    """One database per project: the Configurator, on Postgres. Standalone is always one database."""
+    return mode(env) == CONFIGURATOR and _postgres(env)
+
+
+def check_environment(env: Mapping[str, str] = os.environ, testing: bool | None = None) -> None:
+    """The Configurator makes a database per project, which takes Postgres. The test runner alone may
+    run it on one sqlite database (the configurator unit tests do, as they did before the modes)."""
+    if testing is None:
+        import sys
+        testing = sys.argv[1:2] == ["test"]
+    if mode(env) == CONFIGURATOR and not _postgres(env) and not testing:
         raise ImproperlyConfigured(
-            f"PROJECT_DATABASE_TEMPLATE is set but AISC_DEPLOYMENT is not {CONFIGURATOR}: set it, or remove the template")
+            f"AISC_DEPLOYMENT is {CONFIGURATOR}: DB_ENGINE must be django.db.backends.postgresql "
+            "(one database per project)")
 
 
 def is_configurator() -> bool:
@@ -366,7 +382,7 @@ class TheDatabaseRemembersItsMode(TestCase):
                 deployment.assert_database_mode(connection)
 ```
 
-And the configurator half as its own settings module test, run with `DJANGO_SETTINGS_MODULE=config.settings` and `AISC_DEPLOYMENT=configurator PLATFORM_URL=http://platform PROJECT_DATABASE_TEMPLATE=project_{hex}`:
+And the configurator half as its own settings module test, run with `DJANGO_SETTINGS_MODULE=config.settings` and `AISC_DEPLOYMENT=configurator` on Postgres:
 
 ```python
 # aisc_backend/tests/test_configurator_settings.py
@@ -387,7 +403,7 @@ class TheConfiguratorStack(SimpleTestCase):
 - [ ] **Step 2: Run both and see them fail**
 
 Run (standalone): `DB_ENGINE=django.db.backends.sqlite3 DB_NAME=/tmp/t.db uv run python manage.py test aisc_backend.tests.test_deployment_mode`
-Run (configurator): the Postgres command of `docs/superpowers/isolation-2026-09-25/02-tests.md` row "backend isolation DB", with `AISC_DEPLOYMENT=configurator PLATFORM_URL=http://platform.invalid PROJECT_DATABASE_TEMPLATE=project_{hex}` added, on `aisc_backend.tests.test_configurator_settings`.
+Run (configurator): the Postgres command of `docs/superpowers/isolation-2026-09-25/02-tests.md` row "backend isolation DB", with `AISC_DEPLOYMENT=configurator` added, on `aisc_backend.tests.test_configurator_settings`. The configurator unit tests on sqlite: the standalone command with `AISC_DEPLOYMENT=configurator` added.
 Expected: FAIL (`assert_database_mode` missing; the configurator stack not wired).
 
 - [ ] **Step 3: Port the files and wire the configurator block**
@@ -409,11 +425,12 @@ if AISC_DEPLOYMENT == deployment.CONFIGURATOR:
     INSTALLED_APPS = [a for a in INSTALLED_APPS
                       if a != "django.contrib.admin" and not a.startswith(("allauth", "ninja_jwt"))]
     MIDDLEWARE = [m for m in MIDDLEWARE if "allauth" not in m] + ["aisc_backend.project_door.ProjectDoor"]
-    from aisc_backend.projectdb import configurator_databases  # the definitive branch's alias setup
-    DATABASES, DATABASE_ROUTERS = configurator_databases(env)
+    if deployment.project_databases():
+        from aisc_backend.projectdb import configurator_databases  # the definitive branch's alias setup
+        DATABASES, DATABASE_ROUTERS, PROJECT_DATABASE_TEMPLATE = configurator_databases(env)
 ```
 
-`configurator_databases` is the block `definitive/2026-09-27`'s `config/settings.py` computes inline today (the `platform` alias, the per-project template, the router): move that block, unchanged, into a function in `projectdb.py` returning `(DATABASES, DATABASE_ROUTERS)`, and call it here. Also move the `urls.py` admin/allauth paths under `if deployment.is_standalone():`.
+`configurator_databases` is the block `definitive/2026-09-27`'s `config/settings.py` computes inline today under `if PROJECT_DATABASES:` (the `platform` alias, `PROJECT_DATABASE_TEMPLATE`, the router): move that block, unchanged, into a function in `projectdb.py` returning `(DATABASES, DATABASE_ROUTERS, PROJECT_DATABASE_TEMPLATE)`, and call it here. `PROJECT_DATABASES` in settings becomes `deployment.project_databases()` (it was `"postgresql" in DB_ENGINE`), so a standalone engine on Postgres stays one database. Also move the `urls.py` admin/allauth paths under `if deployment.is_standalone():`.
 
 `deployment.assert_database_mode(connection)`: reads `engine_deployment.mode` (migration `0025_engine_deployment_marker` writes the current mode on first migrate), raises `ImproperlyConfigured(f"this database was made by a {made} engine; this engine is {now}")` when they differ; called from `aisc_backend/apps.py` `ready()` (skipped under `manage.py migrate` and tests that make their own databases).
 
@@ -783,7 +800,7 @@ git commit -m "Install from the catalogue in both modes: Sean's project list sta
 
 **Files (superproject `~/aisc-definitive`):**
 - Modify: `docker-compose.development.yml` (`AISC_DEPLOYMENT: configurator` on `aisc-backend`, `aisc-backend-migrate`, `aisc-eval-worker`, `aisc-eval-flower`; `APP_DEPLOYMENT: configurator` on `aisc-webapp`)
-- Modify: `Caddyfile` (on the engine's site: `handle_path /platform/api/projects* { import protect  reverse_proxy platform:8000 }`, rewriting to `/projects`)
+- Modify: `Caddyfile` (on the engine's site, GET only: `@platformProjects { method GET  path /platform/api/projects }` then `handle @platformProjects { import protect  rewrite * /projects  reverse_proxy platform:8000 }`)
 - Create: `docker-compose.engine-standalone.yml` (engine, eval, redis, rabbitmq, postgres, minio, devpi; `AISC_DEPLOYMENT` unset)
 - Modify: `scripts/tests/test_compose.py`, `README.md`, gitlinks of `apps/backend`, `apps/eval`, `apps/webapp` to `feat/deployment-modes`
 - Test: `scripts/tests/test_compose.py`
@@ -808,8 +825,8 @@ def test_the_engine_site_serves_the_callers_platform_projects_behind_the_gateway
 
 def test_the_standalone_compose_names_no_configurator_setting():
     text = (ROOT / "docker-compose.engine-standalone.yml").read_text()
-    for name in ("AISC_DEPLOYMENT: configurator", "PROJECT_DATABASE_TEMPLATE", "PLATFORM_URL"):
-        assert name not in text, name
+    assert "AISC_DEPLOYMENT: configurator" not in text
+    assert "X-AISC-Project" not in text and "platform:8000" not in text
 ```
 
 - [ ] **Step 2: Run**: `uv run --no-project --with pytest --with pyyaml python -m pytest -q scripts/tests/test_compose.py`. Expected: 3 FAIL.
