@@ -225,3 +225,16 @@ def test_keycloak_may_read_the_realm_secrets_sh_renders():
     uid 1000: without a read grant for that uid it fails with Permission denied at import."""
     text = (ROOT / "scripts" / "secrets.sh").read_text()
     assert re.search(r"setfacl -m u:1000:r\S* \"?\$RENDERED\"?", text), "no read grant for Keycloak's uid"
+
+
+def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
+    """A ${VAR} with no default in the compose files becomes an empty string when the env file lacks
+    it, which a strict parser refuses (2026-09-27: MODEL_LISTING_SSL_VERIFY='' stopped the engine's
+    migration, 'Not a valid boolean'). env.runtime is env.plugin_downloader plus the secrets."""
+    bare = set()
+    for f in FILES + ["docker-compose.plugin_downloader.yml"]:
+        bare |= set(re.findall(r"\$\{([A-Z0-9_]+)\}", (ROOT / f).read_text()))
+    env = {l.split("=", 1)[0].strip() for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
+           if "=" in l and not l.lstrip().startswith("#")}
+    secrets = set(re.findall(r"^\s*(?:echo\s+\"?)?([A-Z0-9_]+)=", (ROOT / "scripts" / "secrets.sh").read_text(), re.M))
+    assert sorted(bare - env - secrets) == []
