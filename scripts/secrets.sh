@@ -133,6 +133,14 @@ for name in ("GATEWAY_CLIENT_SECRET",):
 open(rendered, "w", encoding="utf-8").write(text)
 print(f"rendered {rendered} from {template}")
 PY
+# It holds a client secret, so it stays unreadable to others, except to Keycloak, which runs as
+# uid 1000 in its container and reads it at import (without this it fails: Permission denied).
+chmod 600 "$RENDERED"
+if command -v setfacl >/dev/null 2>&1; then
+  setfacl -m u:1000:r "$RENDERED"
+else
+  echo "setfacl is missing: let uid 1000 (Keycloak) read $RENDERED, or Keycloak will not start" >&2
+fi
 
 # compose takes one --env-file, so the settings and the secrets are combined
 # into one. Also git-ignored, also regenerated from its two sources.
@@ -142,5 +150,5 @@ chmod 600 "$COMBINED"
 echo "wrote $COMBINED (env.plugin_downloader + $OUT)"
 echo
 echo "run the stack with:"
-echo "  docker compose -p aisc --env-file $COMBINED \\"
+echo "  docker compose -p aisc --env-file $COMBINED -f docker-compose.plugin_downloader.yml \\"
 echo "    -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d"

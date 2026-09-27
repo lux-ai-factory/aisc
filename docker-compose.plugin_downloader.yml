@@ -25,5 +25,13 @@ services:
             git clone https://github.com/lux-ai-factory/$$repo.git
           fi
         done
+    # Into def_plugins, the folder plugin-publisher builds and uploads to the index the engine
+    # installs from (the engine no longer pre-loads plugins from PLUGIN_PATH).
     volumes:
-      - ${PLUGIN_PATH:?PLUGIN_PATH is required}:/downloads
+      - ./def_plugins:/downloads
+
+  # Publish only once the plugins are there.
+  plugin-publisher:
+    depends_on:
+      plugin-downloader:
+        condition: service_completed_successfully

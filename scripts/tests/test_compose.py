@@ -194,3 +194,34 @@ def test_the_report_renderer_has_every_build_context_its_dockerfile_copies_from(
     q, cfg = compose
     contexts = (cfg["services"]["report-renderer"].get("build") or {}).get("additional_contexts") or {}
     assert set(contexts) >= {"interface", "mlareject", "langbite", "strongreject", "promptfoo"}, sorted(contexts)
+
+
+def test_the_plugin_downloader_fills_what_the_publisher_publishes(tmp_path):
+    """With docker-compose.plugin_downloader.yml (the full run), the downloader clones the default
+    plugins into ./def_plugins, the folder plugin-publisher builds and uploads to the index, and the
+    publisher waits for it: on a fresh clone def_plugins holds only its README (2026-09-27: the
+    publisher found nothing to upload, so no test could be installed)."""
+    files = FILES + ["docker-compose.plugin_downloader.yml"]
+    args, required = [], set()
+    for f in files:
+        shutil.copy(ROOT / f, tmp_path / f)
+        args += ["-f", str(tmp_path / f)]
+        required |= set(re.findall(r"\$\{([A-Z0-9_]+):\?", (ROOT / f).read_text()))
+    env = {**os.environ, **{k: "dummy" for k in required}}
+    j = subprocess.run(["docker", "compose", "-p", "aisc-t-config", "--project-directory", str(ROOT),
+                        "--env-file", str(ROOT / "env.plugin_downloader"), *args, "config", "--format", "json"],
+                       env=env, capture_output=True, text=True)
+    assert j.returncode == 0, j.stderr[-2000:]
+    services = json.loads(j.stdout)["services"]
+    targets = [v["source"] for v in services["plugin-downloader"]["volumes"] if v["target"] == "/downloads"]
+    sources = [v["source"] for v in services["plugin-publisher"]["volumes"] if v["target"] == "/src"]
+    assert targets == sources == [str(ROOT / "def_plugins")], (targets, sources)
+    wait = services["plugin-publisher"].get("depends_on", {}).get("plugin-downloader", {})
+    assert wait.get("condition") == "service_completed_successfully"
+
+
+def test_keycloak_may_read_the_realm_secrets_sh_renders():
+    """scripts/secrets.sh writes the rendered realm (client secrets) mode 600, and Keycloak runs as
+    uid 1000: without a read grant for that uid it fails with Permission denied at import."""
+    text = (ROOT / "scripts" / "secrets.sh").read_text()
+    assert re.search(r"setfacl -m u:1000:r\S* \"?\$RENDERED\"?", text), "no read grant for Keycloak's uid"
