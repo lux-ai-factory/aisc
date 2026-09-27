@@ -37,6 +37,27 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
    ```bash
     GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package aisc-plugin-manager || :'
    ```
+
+2. **Clone the report generator next to it.** The report renderer is built from five
+   sibling folders, not from this repository: `../aisc-report-generator`,
+   `../aisc-report-plugin-interface`, `../aisc-report-mlareject`, `../aisc-report-langbite`,
+   `../aisc-report-strongreject` and `../aisc-report-promptfoo` (each overridable with
+   `REPORT_<NAME>_DIR`, see the `report-renderer` service).
+
+3. **Make the secrets, once.** None is committed; this writes `env.secrets`, combines it with
+   `env.plugin_downloader` into `env.runtime`, and renders the Keycloak realm:
+   ```bash
+   ./scripts/secrets.sh
+   ```
+
+4. **Start it.** The downloader fetches the default plugins into `def_plugins/`, and
+   `plugin-publisher` uploads them to the stack's own package index:
+   ```bash
+   docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \
+     -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d --build
+   ```
+   Then open http://localhost:8100, sign in (`user` / `user` or `admin` / `admin`) and create a
+   project. `./scripts/verify.sh --stack` checks the running stack once a project exists.
    
 ---
 
@@ -54,38 +75,38 @@ launcher's own origin at `/api/projects`, behind the same sign-in, and every
 account may see every project.
 
 > [!NOTE]
-> The modules are **not project-aware yet**. Qualification, controls, control
-> objectives, the engine and the dashboard each still keep their own records, so
-> opening a step from inside a project does not scope anything to it. The project
-> is the shared identity they will reference, one module at a time, and the
-> project page says so rather than implying otherwise.
+> **Every project has a database of its own**, `project_<pid without hyphens>`, made by the
+> platform when the project is made. Qualification (with its question sets and
+> questionnaires), control objectives, controls, the engine, the report composer and the
+> dashboard's data keep a project's records there and nowhere else. The shared `platform`
+> database holds only the projects and their members (`core`) and the report presets
+> (`report_library`). The built-in Annex IV forms are seeded into every project database;
+> a form made in one project is reused in another by exporting and importing it.
 
 | step | module | open |
 |---|---|---|
 | 1 | Qualification (`apps/qualification`) | http://localhost/qualification |
 | 2 | Control objectives (`apps/control-objectives`) | http://localhost/control-objectives |
-| 3 | Catalogue (`apps/catalogue`) | http://localhost:8102 |
+| 3 | Catalogue (hosted) | https://sandboxconfigurator.aifactory.lu/catalogue |
 | 4 | Execution engine (`apps/webapp` + `apps/backend` + `apps/eval`) | http://localhost/ |
 | 5 | Controls (`apps/controls`) | http://localhost/controls |
 | 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
 
-All six steps are wired in, and the catalogue installs a test into the engine:
+The catalogue is the hosted one; no catalogue runs in this stack. It is for browsing: it
+has no Install button. Tests are installed into the engine from the stack's own package
+index (`devpi`, filled from `def_plugins/` at start), through the engine's install dialog,
+which a link opens:
 
-1. Open the catalogue, either from the launcher's step 3 or with **Public
-   Catalogue** in the engine's top bar. Both attach the engine's address to the
-   link, which is how the catalogue learns where to send an install.
-2. Open a test and press Install.
-3. The catalogue hands the engine a `web+aiscplugin://enable?package=…&version=…`
-   link. The first time, the browser asks to register that protocol handler.
-4. The engine opens its install dialog, lists your projects in a **dropdown**,
-   and posts your choice to its own `POST /api/v1/plugins`.
+    http://localhost/receiver?uri=web+aiscplugin://enable?package=<name>%26version=<version>
+
+The dialog lists your projects in a **dropdown** and posts your choice to its own
+`POST /api/v1/plugins`. Controls are installed from the hosted catalogue's API by
+controls itself (`/controls/install?slug=<control>`).
 
 No token, no allowlist and no pasted UUID: the engine knows its own projects, so
 the install happens where that knowledge is. The endpoint predates the feature and
 is on the engine's `master`.
 
-Packages come from the `devpi` service, the platform's own index; the catalogue's
-`/api/tool/{slug}/install-info` resolves a test to a pinned package on it.
 
 > [!NOTE]
 > There is a second, unused implementation of this in the codebase: a token-guarded
@@ -126,8 +147,8 @@ the network does not.
 Internal traffic is unaffected: services call the backend directly on
 `http://aisc-backend:8000` rather than through Caddy.
 
-**Nothing bypasses the gateway.** Only five ports are published to the network:
-80, 8081 (Keycloak, which the browser must reach), 8100, 8102 and 8188, and every
+**Nothing bypasses the gateway.** Only four ports are published to the network:
+80, 8081 (Keycloak, which the browser must reach), 8100 and 8188, and every
 one of them answers an anonymous request with a redirect to Keycloak. The apps'
 own ports are not published, and Postgres, Redis, RabbitMQ, MinIO and immudb are
 bound to `127.0.0.1`, reachable from the host only because the dashboard runs with
