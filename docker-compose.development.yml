@@ -526,9 +526,9 @@ services:
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       PLATFORM_ORIGIN: ${PLATFORM_ORIGIN:-http://localhost}
       # membership (core.project, core.project_member) and the preset library
-      REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:-report_composer_rw}@postgres:5432/platform
+      REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # a template: {database} becomes project_<pid without hyphens>
-      REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:-report_composer_rw}@postgres:5432/{database}
+      REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
       REPORT_RENDERER_URL: http://report-renderer:8001
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
     depends_on:
@@ -585,9 +585,9 @@ services:
       - ./apps/qualification/src/data/airo_vocab.json:/data/airo_vocab.json:ro,z
       - ./apps/control-objectives/src/aisc_control_objectives/data/ai_act_control_objectives.csv:/data/ai_act_control_objectives.csv:ro,z
     environment:
-      REPORT_PLATFORM_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:-report_ro}@postgres:5432/platform
-      REPORT_SUPERSET_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:-report_ro}@postgres:5432/superset
-      REPORT_PROJECT_DB_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:-report_ro}@postgres:5432/{database}
+      REPORT_PLATFORM_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      REPORT_SUPERSET_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/superset
+      REPORT_PROJECT_DB_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
       REPORT_AIRO_VOCAB_PATH: /data/airo_vocab.json
       REPORT_OBJECTIVES_CSV_PATH: /data/ai_act_control_objectives.csv
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}

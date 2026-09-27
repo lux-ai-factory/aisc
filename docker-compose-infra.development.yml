@@ -146,8 +146,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB}
       # the report's role passwords (scripts/secrets.sh); the defaults are the role names
-      REPORT_RO_PASSWORD: ${REPORT_RO_PASSWORD:-report_ro}
-      REPORT_COMPOSER_PASSWORD: ${REPORT_COMPOSER_PASSWORD:-report_composer_rw}
+      REPORT_RO_PASSWORD: ${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}
+      REPORT_COMPOSER_PASSWORD: ${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}
       # the database inspector's (scripts/secrets.sh), required
       INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
     volumes:

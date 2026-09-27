@@ -262,9 +262,11 @@ for e in "control objectives|control-objectives|8090" "immudb console|immudb|808
     *) ok "$n publishes no port of its own" ;;
   esac
 done
+# The compose project is the one the running postgres belongs to: `aisc`, or whatever -p named it.
+STACK=$(docker inspect postgres --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
 for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672"; do
   n=${e%%|*}; port=${e#*|}
-  docker ps --filter "label=com.docker.compose.project=aisc" --format '{{.Ports}}' | grep -q "127.0.0.1:$port" \
+  docker ps --filter "label=com.docker.compose.project=${STACK:-aisc}" --format '{{.Ports}}' | grep -q "127.0.0.1:$port" \
     && ok "$n is bound to the loopback only" || no "$n is not loopback-bound on :$port"
 done
 
