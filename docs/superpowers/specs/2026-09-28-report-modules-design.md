@@ -1,6 +1,6 @@
 # Report composer: modules, layouts, reports (design)
 
-Date: 2026-09-28. Status: for review. Scope: `apps/report-composer`, the report renderer, and the
+Date: 2026-09-28. Status: approved 2026-09-28. Scope: `apps/report-composer`, the report renderer, and the
 results dashboard's comment table. Supersedes the "preset" and "layout pinned to a version" parts of
 report run v2.
 
@@ -269,17 +269,20 @@ Test first, as always.
 
 ## 10. Order and dependencies
 
-1. **Wait for** the engine adapt plan's table names and reader changes (Tasks 1 and 2) to land; build
-   on them in `~/aisc-definitive`.
+1. The engine adapt plan's table names and reader changes have landed (superproject `31e6c46`);
+   build on them in `~/aisc-definitive`.
 2. Bring today's uncommitted `~/aisc-modes` work (templates editor, projects page, Framework menu) into
    `~/aisc-definitive` first, so there is one source.
-3. The renderer copy to change must be decided with the other session: the running stack uses
-   `~/aisc-isolation-report-generator`, the engine plan targets `~/aisc-report-generator` (branch `dev`).
+3. The renderer to change is `~/aisc-report-generator`, branch `dev` (section 11).
 4. Then: composer schema and API, then the screens, then the renderer blocks, then comments (after the
    decision in 7.4).
 
-## 11. Open decisions
+## 11. Decisions
 
-1. Chart comments: A (default here), B or C (section 7.4).
-2. Dropping `report_library.preset` (section 7.3).
-3. Which renderer checkout is the one to change (section 10.3).
+Approved by the user on 2026-09-28 ("do it"), with the defaults of this spec:
+
+1. Chart comments: option A (section 7.4).
+2. Renderer to change: `~/aisc-report-generator`, branch `dev` (the isolation work was merged into it
+   on 2026-09-28, head `0ef838b`), in place of `~/aisc-isolation-report-generator`.
+3. Dropping `report_library.preset` (section 7.3): the plan's last task, run only after the user
+   confirms it at that point.
