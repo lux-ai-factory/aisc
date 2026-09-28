@@ -83,9 +83,10 @@ BEGIN
                 EXECUTE format('GRANT SELECT ON %s TO %I', rel, reader);
             END IF;
         END LOOP;
-        -- plugin_config.config may hold tool settings: only the columns that tie a run to its tool
+        -- plugin_config.config may hold tool settings: only the columns that tie a run to its tool,
+        -- and the configuration's name, which the report's Test runs block prints (2026-09-28)
         IF to_regclass('engine.aisc_backend_pluginconfig') IS NOT NULL THEN
-            EXECUTE format('GRANT SELECT (id, plugin_id) ON engine.aisc_backend_pluginconfig TO %I', reader);
+            EXECUTE format('GRANT SELECT (id, plugin_id, name) ON engine.aisc_backend_pluginconfig TO %I', reader);
         END IF;
     END LOOP;
     -- no reader right by a default privilege: it would also cover secrets and later tables (I2.6)

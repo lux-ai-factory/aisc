@@ -221,7 +221,7 @@ def _isolate_one(bed, pid, schemas, templates_applied) -> None:
                         if conn.execute("SELECT to_regclass(%s)", (f"{s}.{t}",)).fetchone()[0] is not None:
                             conn.execute(f"GRANT SELECT ON {s}.{t} TO {reader}")
                 if conn.execute("SELECT to_regclass('engine.aisc_backend_pluginconfig')").fetchone()[0] is not None:
-                    conn.execute(f"GRANT SELECT (id, plugin_id) ON engine.aisc_backend_pluginconfig TO {reader}")
+                    conn.execute(f"GRANT SELECT (id, plugin_id, name) ON engine.aisc_backend_pluginconfig TO {reader}")
 
 
 _CORE_FUNCTIONS: list | None = None

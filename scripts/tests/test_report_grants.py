@@ -130,6 +130,16 @@ def test_d6b_plugin_config_is_readable_by_column_only(bed):
     assert not ok(r) and "permission denied" in r.stderr
 
 
+def test_d6b_the_configuration_name_is_readable_its_settings_are_not(bed):
+    """Report modules 2026-09-28 (Task 4, user ruling "name only"): the Test runs block names each
+    tool's configuration; its settings stay unreadable."""
+    db = db_of("A")
+    r = as_ro(bed, db, "SELECT id, plugin_id, name FROM engine.aisc_backend_pluginconfig")
+    assert ok(r), r.stderr
+    r = as_ro(bed, db, "SELECT config FROM engine.aisc_backend_pluginconfig")
+    assert not ok(r) and "permission denied" in r.stderr
+
+
 @pytest.mark.parametrize("table", ENGINE_FORBIDDEN)
 def test_d6b_engine_tables_outside_the_list_are_refused(bed, table):
     """D6 (b): never auth_*, django_*, project_config, plugin_config_project_config, account_*.
