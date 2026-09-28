@@ -11,7 +11,7 @@ A *world* is:
   `platform` (`form_library.*`, I4.1/I4.2, and `report_library.preset`, I8.2/D4);
 - two projects A < B (pid order) with rows in every moving schema, chosen to exercise every rule of
   I12.3..I12.5: a self-reference (form_question.copied_from_id, ai_component.source_dataset_id), an
-  identifying child (engine.derived, engine.direct, form_version_question), shared "needed" rows
+  identifying child (engine.aisc_backend_derived, engine.aisc_backend_direct, form_version_question), shared "needed" rows
   (the default form, metric 1), a historical row a trigger would refuse (answers of card version 1),
   unowned rows (engine project with no platform project, its plugin, metric 4, metric category 2),
   sequences whose value differs from max(id), and value types that break naive text copies
@@ -509,50 +509,50 @@ def source_rows(w: World) -> list[tuple[str, dict]]:
         return kv
 
     for eid, pid in ((1, A), (2, B), (3, None)):
-        add("engine.project", **ent(id=eid, name=f"e{eid}", description="", status="active", project_id=pid))
-    add("engine.ai_system", **ent(id=1, name="s", description="", project_id=1))
-    add("engine.ai_system", **ent(id=2, name="s", description="", project_id=2))
-    add("engine.ai_component", **ent(id=1, name="data", description="", data="k1", file_size=10,
+        add("engine.aisc_backend_project", **ent(id=eid, name=f"e{eid}", description="", status="active", project_id=pid))
+    add("engine.aisc_backend_aisystem", **ent(id=1, name="s", description="", project_id=1))
+    add("engine.aisc_backend_aisystem", **ent(id=2, name="s", description="", project_id=2))
+    add("engine.aisc_backend_aicomponent", **ent(id=1, name="data", description="", data="k1", file_size=10,
                                      storage_container="c", component_type="dataset", json_value=Jsonb({}),
                                      source_dataset_id=None, system_id=1))
-    add("engine.ai_component", **ent(id=2, pid=i["compA2"], name="model", description="", data="k2",
+    add("engine.aisc_backend_aicomponent", **ent(id=2, pid=i["compA2"], name="model", description="", data="k2",
                                      file_size=None, storage_container="c", component_type="model",
                                      json_value=Jsonb({"x": 1}), source_dataset_id=1, system_id=1))
-    add("engine.ai_component", **ent(id=3, name="model", description="", data="k3", file_size=None,
+    add("engine.aisc_backend_aicomponent", **ent(id=3, name="model", description="", data="k3", file_size=None,
                                      storage_container="c", component_type="model", json_value=Jsonb({}),
                                      source_dataset_id=None, system_id=2))
     for pl, proj, cfg in ((1, 1, 1), (2, 2, None), (3, 3, None)):
-        add("engine.plugin", **ent(id=pl, name=f"p{pl}", description="", project_id=proj, current_config_id=cfg,
+        add("engine.aisc_backend_plugin", **ent(id=pl, name=f"p{pl}", description="", project_id=proj, current_config_id=cfg,
                                    package_name="pkg", version="1", display_name="P", enabled=True,
                                    catalogue_slug=None))
-    add("engine.plugin_config", **ent(id=1, config=Jsonb({"k": M}), plugin_id=1, description="", name="c"))
-    add("engine.plugin_config", **ent(id=2, config=Jsonb({}), plugin_id=2, description="", name="c"))
-    add("engine.project_config", **ent(id=1, name="k", description="", key="api", category="llm", updated_at=T0,
+    add("engine.aisc_backend_pluginconfig", **ent(id=1, config=Jsonb({"k": M}), plugin_id=1, description="", name="c"))
+    add("engine.aisc_backend_pluginconfig", **ent(id=2, config=Jsonb({}), plugin_id=2, description="", name="c"))
+    add("engine.aisc_backend_projectconfig", **ent(id=1, name="k", description="", key="api", category="llm", updated_at=T0,
                                        encrypted_value=f"enc-{M}", masked_value="***", json_value=Jsonb({}),
                                        project_id=1))
-    add("engine.plugin_config_project_config", **ent(id=1, name="n", description="", plugin_config_key="api",
+    add("engine.aisc_backend_pluginconfigprojectconfig", **ent(id=1, name="n", description="", plugin_config_key="api",
                                                      plugin_config_id=1, project_config_id=1))
-    add("engine.evaluation", **ent(id=1, status="done", task=None, project_id=1, system_id=i["sA2"]))
-    add("engine.evaluation", **ent(id=2, status="done", task=None, project_id=2, system_id=i["sB1"]))
-    add("engine.evaluation_plugin", **ent(id=1, name="ep", description="", evaluation_id=1, plugin_config_id=1,
+    add("engine.aisc_backend_evaluation", **ent(id=1, status="done", task=None, project_id=1, system_id=i["sA2"]))
+    add("engine.aisc_backend_evaluation", **ent(id=2, status="done", task=None, project_id=2, system_id=i["sB1"]))
+    add("engine.aisc_backend_evaluationplugin", **ent(id=1, name="ep", description="", evaluation_id=1, plugin_config_id=1,
                                           error_message="", finished_at=T0, started_at=T0, status="done"))
-    add("engine.evaluation_plugin", **ent(id=2, name="ep", description="", evaluation_id=2, plugin_config_id=2,
+    add("engine.aisc_backend_evaluationplugin", **ent(id=2, name="ep", description="", evaluation_id=2, plugin_config_id=2,
                                           error_message="", finished_at=None, started_at=None, status="done"))
-    add("engine.evaluation_input", **ent(id=1, name="i", description="", value=Jsonb({"v": 1}), component_id=1,
+    add("engine.aisc_backend_evaluationinput", **ent(id=1, name="i", description="", value=Jsonb({"v": 1}), component_id=1,
                                          evaluation_plugin_id=1))
-    add("engine.artifact", **ent(id=1, name="a", description="", data="art", storage_container="c",
+    add("engine.aisc_backend_artifact", **ent(id=1, name="a", description="", data="art", storage_container="c",
                                  evaluation_plugin_id=1, file_size=3))
-    add("engine.observation", **ent(id=1, name="o", description="", observer="o", tool="t", evaluation_id=1))
-    add("engine.observation", **ent(id=2, name="o", description="", observer="o", tool="t", evaluation_id=2))
+    add("engine.aisc_backend_observation", **ent(id=1, name="o", description="", observer="o", tool="t", evaluation_id=1))
+    add("engine.aisc_backend_observation", **ent(id=2, name="o", description="", observer="o", tool="t", evaluation_id=2))
     for mid, name in ((1, "acc"), (2, "f1"), (3, "f1x"), (4, "unused")):
-        add("engine.metric", **ent(id=mid, name=name, description="", type_spec="s"))
-    add("engine.direct", metric_ptr_id=1)
-    add("engine.derived", metric_ptr_id=3, expression="2*x", base_metric_id=2)
+        add("engine.aisc_backend_metric", **ent(id=mid, name=name, description="", type_spec="s"))
+    add("engine.aisc_backend_direct", metric_ptr_id=1)
+    add("engine.aisc_backend_derived", metric_ptr_id=3, expression="2*x", base_metric_id=2)
     for ms, obs, met, score in ((1, 1, 1, 0.1234567890123457), (2, 1, 3, 1e-300), (3, 2, 1, -0.5)):
-        add("engine.measurement", **ent(id=ms, name="m", description="", unit=None, time=T0, score=score,
+        add("engine.aisc_backend_measurement", **ent(id=ms, name="m", description="", unit=None, time=T0, score=score,
                                         error=None, uncertainty=0.0, metric_id=met, observation_id=obs,
                                         dimensions=Jsonb({"d": ms}), direction="higher"))
-    add("engine.metric_category", **ent(id=2, name="unused-cat", description=""))
+    add("engine.aisc_backend_metriccategory", **ent(id=2, name="unused-cat", description=""))
     add("engine.django_content_type", id=1, app_label="aisc_backend", model="project")
 
     add("report_composer.template", id=i["tA"], project_id=A, name="t", font="inter", font_size_pt=10.5,
@@ -588,12 +588,12 @@ def expected_placement(w: World) -> dict[str, dict[str, set]]:
         "control_objectives.risk": {1, 2},
         "control_objectives.mapping_run": {"co_a"},
         "control_objectives.mapped_objective": {1},
-        "engine.project": {1}, "engine.ai_system": {1}, "engine.ai_component": {1, 2},
-        "engine.plugin": {1}, "engine.plugin_config": {1}, "engine.project_config": {1},
-        "engine.plugin_config_project_config": {1}, "engine.evaluation": {1},
-        "engine.evaluation_plugin": {1}, "engine.evaluation_input": {1}, "engine.artifact": {1},
-        "engine.observation": {1}, "engine.metric": {1, 2, 3}, "engine.direct": {1},
-        "engine.derived": {3}, "engine.measurement": {1, 2}, "engine.metric_category": set(),
+        "engine.aisc_backend_project": {1}, "engine.aisc_backend_aisystem": {1}, "engine.aisc_backend_aicomponent": {1, 2},
+        "engine.aisc_backend_plugin": {1}, "engine.aisc_backend_pluginconfig": {1}, "engine.aisc_backend_projectconfig": {1},
+        "engine.aisc_backend_pluginconfigprojectconfig": {1}, "engine.aisc_backend_evaluation": {1},
+        "engine.aisc_backend_evaluationplugin": {1}, "engine.aisc_backend_evaluationinput": {1}, "engine.aisc_backend_artifact": {1},
+        "engine.aisc_backend_observation": {1}, "engine.aisc_backend_metric": {1, 2, 3}, "engine.aisc_backend_direct": {1},
+        "engine.aisc_backend_derived": {3}, "engine.aisc_backend_measurement": {1, 2}, "engine.aisc_backend_metriccategory": set(),
         "report_composer.template": {i["tA"]}, "report_composer.layout": {i["lA"]},
         "report_composer.generated_report": {i["gA"]},
     }
@@ -609,12 +609,12 @@ def expected_placement(w: World) -> dict[str, dict[str, set]]:
         "control_objectives.risk": {3},
         "control_objectives.mapping_run": set(),
         "control_objectives.mapped_objective": set(),
-        "engine.project": {2}, "engine.ai_system": {2}, "engine.ai_component": {3},
-        "engine.plugin": {2}, "engine.plugin_config": {2}, "engine.project_config": set(),
-        "engine.plugin_config_project_config": set(), "engine.evaluation": {2},
-        "engine.evaluation_plugin": {2}, "engine.evaluation_input": set(), "engine.artifact": set(),
-        "engine.observation": {2}, "engine.metric": {1}, "engine.direct": {1},
-        "engine.derived": set(), "engine.measurement": {3}, "engine.metric_category": set(),
+        "engine.aisc_backend_project": {2}, "engine.aisc_backend_aisystem": {2}, "engine.aisc_backend_aicomponent": {3},
+        "engine.aisc_backend_plugin": {2}, "engine.aisc_backend_pluginconfig": {2}, "engine.aisc_backend_projectconfig": set(),
+        "engine.aisc_backend_pluginconfigprojectconfig": set(), "engine.aisc_backend_evaluation": {2},
+        "engine.aisc_backend_evaluationplugin": {2}, "engine.aisc_backend_evaluationinput": set(), "engine.aisc_backend_artifact": set(),
+        "engine.aisc_backend_observation": {2}, "engine.aisc_backend_metric": {1}, "engine.aisc_backend_direct": {1},
+        "engine.aisc_backend_derived": set(), "engine.aisc_backend_measurement": {3}, "engine.aisc_backend_metriccategory": set(),
         "report_composer.template": set(), "report_composer.layout": {i["lB"]},
         "report_composer.generated_report": set(),
     }
@@ -630,7 +630,7 @@ def expected_placement(w: World) -> dict[str, dict[str, set]]:
     return {w.A: a, w.B: b}
 
 
-UNOWNED = {("engine.project", 3), ("engine.plugin", 3), ("engine.metric", 4), ("engine.metric_category", 2)}
+UNOWNED = {("engine.aisc_backend_project", 3), ("engine.aisc_backend_plugin", 3), ("engine.aisc_backend_metric", 4), ("engine.aisc_backend_metriccategory", 2)}
 
 
 def _bookkeeping_old(conn, forms: bool) -> None:

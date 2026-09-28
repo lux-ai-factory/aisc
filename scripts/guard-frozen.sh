@@ -166,9 +166,11 @@ engine_dump() { # db
 airo_dump() { # db
   tpg_dump "$1" --schema-only --no-privileges -t qualification.knowledge_graph -t qualification.qualification_risk
 }
-# The two differences isolation I7.9 makes in the engine's definitions (migration 0025): no foreign
-# key from engine.project(project_id) to core.project, and the evaluation's system_id key points
-# at project.system(pid) instead of core.system(pid), same ON DELETE.
+# The two differences isolation I7.9 makes in the engine's definitions (migration 0020, 0025 before
+# the adapt plan of 2026-09-28): no foreign key from the project table's project_id to core.project,
+# and the evaluation's system_id key points at project.system(pid) instead of core.system(pid), same
+# ON DELETE. The reference is e34fca3, whose project table is still engine.project (Sean's name,
+# engine.aisc_backend_project, holds from backend dcd38da on), so the pattern below keeps that name.
 normalise_reference() { # reference-dump -> stdout
   python3 - "$1" <<'NORM'
 import re, sys

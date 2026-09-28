@@ -65,17 +65,19 @@ READER_TABLES = {
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "form", "form_version", "form_question", "form_version_question"],
     "control_objectives": ["project", "graph", "risk", "mapped_objective", "mapping_run"],
-    "engine": ["project", "ai_system", "ai_component", "evaluation", "evaluation_plugin", "evaluation_input",
-               "plugin", "observation", "measurement", "metric", "direct", "derived", "metric_category",
-               "metric_category_metrics", "artifact"],
+    "engine": ["aisc_backend_project", "aisc_backend_aisystem", "aisc_backend_aicomponent", "aisc_backend_evaluation",
+               "aisc_backend_evaluationplugin", "aisc_backend_evaluationinput", "aisc_backend_plugin", "aisc_backend_observation",
+               "aisc_backend_measurement", "aisc_backend_metric", "aisc_backend_direct", "aisc_backend_derived",
+               "aisc_backend_metriccategory", "aisc_backend_metriccategory_metrics", "aisc_backend_artifact"],
     "report_composer": [],
     "llm": [],
     "provision": [],
 }
-#: I2.6: only these columns of engine.plugin_config.
+#: I2.6: only these columns of engine.aisc_backend_pluginconfig.
 PLUGIN_CONFIG_COLUMNS = ["id", "plugin_id"]
 #: I2.6: never readable by either reader.
-SECRETS = ["engine.project_config", "engine.plugin_config_project_config", "llm.provider", "llm.system_choice"]
+SECRETS = ["engine.aisc_backend_projectconfig", "engine.aisc_backend_pluginconfigprojectconfig", "llm.provider",
+           "llm.system_choice"]
 
 #: The migration trackers of every module (I16.3, I16.6 C7).
 TRACKERS = {

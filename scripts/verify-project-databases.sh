@@ -133,9 +133,10 @@ READER_TABLES = {
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
                       "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],
     "control_objectives": ["project", "graph", "risk", "mapped_objective", "mapping_run"],
-    "engine": ["project", "ai_system", "ai_component", "evaluation", "evaluation_plugin", "evaluation_input",
-               "plugin", "observation", "measurement", "metric", "direct", "derived", "metric_category",
-               "metric_category_metrics", "artifact"],
+    "engine": ["aisc_backend_project", "aisc_backend_aisystem", "aisc_backend_aicomponent", "aisc_backend_evaluation",
+               "aisc_backend_evaluationplugin", "aisc_backend_evaluationinput", "aisc_backend_plugin", "aisc_backend_observation",
+               "aisc_backend_measurement", "aisc_backend_metric", "aisc_backend_direct", "aisc_backend_derived",
+               "aisc_backend_metriccategory", "aisc_backend_metriccategory_metrics", "aisc_backend_artifact"],
     "report_composer": [], "llm": [], "provision": [],
 }
 PLUGIN_CONFIG_COLUMNS = ("id", "plugin_id")
@@ -145,7 +146,7 @@ WRITE_RIGHTS = ("INSERT", "UPDATE", "DELETE")
 #: (table, id column, version column): every module row that names a card version (I16.3)
 STAMPED = (("qualification.qualification", "id", "system_id"), ("control_objectives.project", "id", "system_id"),
            ("report_composer.layout", "id", "system_id"), ("report_composer.generated_report", "id", "system_id"),
-           ("engine.evaluation", "pid", "system_id"), ("controls.submission_answer", "id", "system_version_pid"))
+           ("engine.aisc_backend_evaluation", "pid", "system_id"), ("controls.submission_answer", "id", "system_version_pid"))
 
 
 def other_rights(db, role, where):
@@ -251,12 +252,12 @@ def i16_1_project(db, present):
             if exists(db, rel):
                 ok = False
                 say("FAIL", "I16.1", f"{db}: {reader} cannot read {rel} of the I2.6 list")
-        if exists(db, "engine.plugin_config"):
+        if exists(db, "engine.aisc_backend_pluginconfig"):
             for column, want in [*[(c, True) for c in PLUGIN_CONFIG_COLUMNS], ("config", False)]:
-                has = one(db, "SELECT has_column_privilege(%s, 'engine.plugin_config', %s, 'SELECT')", (reader, column))
+                has = one(db, "SELECT has_column_privilege(%s, 'engine.aisc_backend_pluginconfig', %s, 'SELECT')", (reader, column))
                 if has != want:
                     ok = False
-                    say("FAIL", "I16.1", f"{db}: {reader} {'cannot' if want else 'can'} read engine.plugin_config.{column}")
+                    say("FAIL", "I16.1", f"{db}: {reader} {'cannot' if want else 'can'} read engine.aisc_backend_pluginconfig.{column}")
         for owner, schema in rows(db, """
                 SELECT pg_get_userbyid(d.defaclrole), coalesce(d.defaclnamespace::regnamespace::text, '(all)')
                   FROM pg_default_acl d, aclexplode(d.defaclacl) a

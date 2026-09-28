@@ -37,13 +37,14 @@ PROJECTS = ["A", "B", "E"]
 
 QUALIFICATION = ["qualification", "card_component", "knowledge_graph", "qualification_risk"]
 CONTROL_OBJECTIVES = ["project", "risk", "mapped_objective", "mapping_run"]
-ENGINE = ["project", "evaluation", "evaluation_plugin", "evaluation_input", "plugin", "ai_component",
-          "observation", "measurement", "metric", "artifact"]
+ENGINE = ["aisc_backend_project", "aisc_backend_evaluation", "aisc_backend_evaluationplugin",
+          "aisc_backend_evaluationinput", "aisc_backend_plugin", "aisc_backend_aicomponent",
+          "aisc_backend_observation", "aisc_backend_measurement", "aisc_backend_metric", "aisc_backend_artifact"]
 SUPERSET = ["aisc_comment", "dashboards", "dashboard_roles", "ab_role", "dashboard_slices", "slices",
             "tables"]
 CONTROLS = ["checklist", "checklist_question", "submission", "submission_answer", "source"]
-ENGINE_FORBIDDEN = ["auth_user", "django_session", "project_config", "account_emailaddress",
-                    "plugin_config_project_config"]
+ENGINE_FORBIDDEN = ["auth_user", "django_session", "aisc_backend_projectconfig", "account_emailaddress",
+                    "aisc_backend_pluginconfigprojectconfig"]
 
 
 @pytest.fixture(scope="session")
@@ -123,9 +124,9 @@ def test_r6_1_report_ro_reads_the_listed_tables(bed, schema, table):
 def test_d6b_plugin_config_is_readable_by_column_only(bed):
     """D6 (b), I2.6: plugin_config.config may hold tool settings; report_ro gets (id, plugin_id) only."""
     db = db_of("A")
-    r = as_ro(bed, db, "SELECT id, plugin_id FROM engine.plugin_config")
+    r = as_ro(bed, db, "SELECT id, plugin_id FROM engine.aisc_backend_pluginconfig")
     assert ok(r), r.stderr
-    r = as_ro(bed, db, "SELECT config FROM engine.plugin_config")
+    r = as_ro(bed, db, "SELECT config FROM engine.aisc_backend_pluginconfig")
     assert not ok(r) and "permission denied" in r.stderr
 
 
@@ -178,7 +179,7 @@ def test_d6c_report_ro_reads_controls_of_each_project(bed, key):
 @pytest.mark.parametrize("where,sql", [
     ("platform", "INSERT INTO core.project (name, slug) VALUES ('x', 'report-ro-x')"),
     ("A", "UPDATE qualification.qualification SET description = 'x'"),
-    ("A", "DELETE FROM engine.measurement"),
+    ("A", "DELETE FROM engine.aisc_backend_measurement"),
     ("platform", "CREATE TABLE core.report_ro_probe (x int)"),
     ("A", "CREATE TABLE engine.report_ro_probe (x int)"),
     ("superset", "UPDATE aisc_comment SET body = 'x'"),
@@ -203,7 +204,7 @@ def test_r6_1_a_write_in_a_project_database_is_refused(bed):
 def test_r6_1_read_only_even_when_the_session_asks_otherwise(bed):
     """R6.1: turning read-only off in the session does not give write privileges."""
     for db, sql in (("platform", "INSERT INTO core.project (name, slug) VALUES ('x', 'report-ro-y')"),
-                    (db_of("A"), "DELETE FROM engine.measurement")):
+                    (db_of("A"), "DELETE FROM engine.aisc_backend_measurement")):
         assert ok(as_ro(bed, db, "SELECT 1")), "missing feature: report_ro cannot connect"
         r = as_ro(bed, db, "SET default_transaction_read_only = off;\n" + sql)
         assert not ok(r) and "permission denied" in r.stderr, (db, r.stderr)
@@ -216,8 +217,8 @@ def test_d6b_a_new_module_table_is_not_readable(bed):
     """D6 (b), I2.6: no default privileges, so a table engine_rw creates later in a project database is not
     readable by report_ro (while the listed ones are), not even after report-grants.sh repairs the list."""
     db = db_of("A")
-    assert ok(as_ro(bed, db, "SELECT 1 FROM engine.evaluation LIMIT 1")), \
-        "missing feature: report_ro cannot read engine.evaluation"
+    assert ok(as_ro(bed, db, "SELECT 1 FROM engine.aisc_backend_evaluation LIMIT 1")), \
+        "missing feature: report_ro cannot read engine.aisc_backend_evaluation"
     name = f"probe_{uuid.uuid4().hex[:8]}"
     r = bed.psql(db, f"CREATE TABLE engine.{name} (x int)", role="engine_rw", check=False)
     assert ok(r), r.stderr
@@ -322,7 +323,7 @@ def test_d13_composer_role_never_writes_core(bed):
     assert not ok(r) and "permission denied" in r.stderr
 
 
-@pytest.mark.parametrize("table", ["qualification.qualification", "engine.evaluation",
+@pytest.mark.parametrize("table", ["qualification.qualification", "engine.aisc_backend_evaluation",
                                    "control_objectives.project", "controls.submission_answer"])
 def test_r7_3_3_composer_never_reads_module_schemas(bed, table):
     """R7.3.3: the composer never reads module schemas; only the renderer does, as report_ro."""

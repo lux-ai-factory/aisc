@@ -136,11 +136,11 @@ def test_i16_passes_on_a_good_layout(bed):
 
 def test_i16_1_fails_on_a_planted_extra_reader_grant(bed):
     bed.require(*ALL)
-    with planted(bed, DB_A, "GRANT SELECT ON engine.project_config TO report_ro",
-                 "REVOKE SELECT ON engine.project_config FROM report_ro"):
+    with planted(bed, DB_A, "GRANT SELECT ON engine.aisc_backend_projectconfig TO report_ro",
+                 "REVOKE SELECT ON engine.aisc_backend_projectconfig FROM report_ro"):
         r = run(bed)
     assert r.returncode != 0, "I16.1: an extra grant to report_ro passed"
-    assert "engine.project_config" in r.stdout, "I16.1: the failure does not name engine.project_config"
+    assert "engine.aisc_backend_projectconfig" in r.stdout, "I16.1: the failure does not name engine.aisc_backend_projectconfig"
 
 
 def test_i16_1_fails_on_a_module_role_reaching_another_module(bed):

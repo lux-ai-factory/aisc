@@ -133,7 +133,7 @@ done
 echo "the engine has no project of its own to choose"
 # It is opened inside a project and works on it: one row per platform project,
 # named after it, made on the first visit and found every time after.
-dup=$(psql_ "insert into engine.project
+dup=$(psql_ "insert into engine.aisc_backend_project
                (pid,name,description,status,created_at,project_id)
              select gen_random_uuid(),'a second one','','Created',now(),pid
                from core.project limit 1" 2>&1)
@@ -142,14 +142,14 @@ case "$dup" in
   *"0 rows"*|"") no "a second project for the same platform project was accepted" ;;
   *) no "unexpected: $dup" ;;
 esac
-named=$(psql_ "select count(*) from engine.project p
+named=$(psql_ "select count(*) from engine.aisc_backend_project p
                  join core.project c on c.pid = p.project_id
                 where p.name <> c.name")
 [ "${named:-0}" = "0" ] && ok "and the ones there carry the platform's own name" \
   || no "$named engine project(s) are named something else"
 
 echo "the dashboard reads the whole database and writes none of it"
-for t in engine.project catalogue.tool \
+for t in engine.aisc_backend_project catalogue.tool \
          qualification.qualification control_objectives.project core.project; do
   n=$(docker exec postgres psql "postgresql://dashboard_ro:dashboard_ro@localhost:5432/$PGDB" \
         -At -c "select count(*) from $t" 2>&1 | tail -1)
@@ -159,7 +159,7 @@ for t in engine.project catalogue.tool \
   esac
 done
 w=$(docker exec postgres psql "postgresql://dashboard_ro:dashboard_ro@localhost:5432/$PGDB" \
-      -At -c "insert into engine.project (pid,name,description,status,created_at)
+      -At -c "insert into engine.aisc_backend_project (pid,name,description,status,created_at)
               values (gen_random_uuid(),'x','','Created',now())" 2>&1 | tail -1)
 case "$w" in
   *"permission denied"*) ok "and cannot write a row anywhere" ;;

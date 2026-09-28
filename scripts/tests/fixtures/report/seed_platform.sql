@@ -126,23 +126,23 @@ INSERT INTO control_objectives.mapping_run (project_id, findings, stops, stop, a
 
 -- ── engine (test results) ────────────────────────────────────────────────────
 
-INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id) VALUES
+INSERT INTO engine.aisc_backend_project (id, pid, name, description, status, created_at, project_id) VALUES
   (1, 'a0e00000-0000-4000-8000-000000000001', 'Alpha', '', 'active', now(), 'a0000000-0000-4000-8000-000000000001'),
   (2, 'b0e00000-0000-4000-8000-000000000001', 'Beta BETAMARK', '', 'active', now(), 'b0000000-0000-4000-8000-000000000001'),
   (5, 'e0e00000-0000-4000-8000-000000000001', 'Echo', '', 'active', now(), 'e0000000-0000-4000-8000-000000000001');
 
-INSERT INTO engine.ai_system (id, pid, name, description, created_at, project_id) VALUES
+INSERT INTO engine.aisc_backend_aisystem (id, pid, name, description, created_at, project_id) VALUES
   (1, 'a0e50000-0000-4000-8000-000000000001', 'Alpha', '', now(), 1),
   (2, 'b0e50000-0000-4000-8000-000000000001', 'Beta', '', now(), 2),
   (5, 'e0e50000-0000-4000-8000-000000000001', 'Echo', '', now(), 5);
 
-INSERT INTO engine.ai_component (id, pid, name, description, created_at, data, storage_container, component_type, json_value, system_id) VALUES
+INSERT INTO engine.aisc_backend_aicomponent (id, pid, name, description, created_at, data, storage_container, component_type, json_value, system_id) VALUES
   (1, 'a0ec0000-0000-4000-8000-000000000001', 'Scoring model endpoint', '', now(), '', '', 'model', '{}', 1),
   (2, 'a0ec0000-0000-4000-8000-000000000002', 'Holdout prompts', '', now(), '', '', 'dataset', '{}', 1),
   (3, 'b0ec0000-0000-4000-8000-000000000001', 'Beta endpoint BETAMARK', '', now(), '', '', 'model', '{}', 2),
   (5, 'e0ec0000-0000-4000-8000-000000000001', 'Echo endpoint', '', now(), '', '', 'model', '{}', 5);
 
-INSERT INTO engine.plugin (id, pid, name, description, project_id, package_name, version, display_name, created_at, enabled) VALUES
+INSERT INTO engine.aisc_backend_plugin (id, pid, name, description, project_id, package_name, version, display_name, created_at, enabled) VALUES
   (1, 'a0ef0000-0000-4000-8000-000000000001', 'MLARejectEvaluationPlugin', '', 1, 'aisc-plugin-mlareject', '1.0', 'MLA-Reject', now(), true),
   (2, 'a0ef0000-0000-4000-8000-000000000002', 'LangBiTeEvaluationPlugin', '', 1, 'aisc-plugin-langbite', '2.0', 'LangBiTe', now(), true),
   (3, 'a0ef0000-0000-4000-8000-000000000003', 'MysteryEvaluationPlugin', '', 1, 'aisc-plugin-mystery', '0.1', 'Mystery Tool', now(), true),
@@ -150,14 +150,14 @@ INSERT INTO engine.plugin (id, pid, name, description, project_id, package_name,
   (5, 'e0ef0000-0000-4000-8000-000000000001', 'LangBiTeEvaluationPlugin', '', 5, 'aisc-plugin-langbite', '2.0', 'LangBiTe', now(), true);
 
 -- plugin_config.config may hold tool settings; report_ro gets (id, plugin_id) only (D6)
-INSERT INTO engine.plugin_config (id, pid, config, created_at, plugin_id, description, name) VALUES
+INSERT INTO engine.aisc_backend_pluginconfig (id, pid, config, created_at, plugin_id, description, name) VALUES
   (1, 'a0eb0000-0000-4000-8000-000000000001', '{"api_key": "CONFIGSECRET"}', now(), 1, '', 'c1'),
   (2, 'a0eb0000-0000-4000-8000-000000000002', '{"api_key": "CONFIGSECRET"}', now(), 2, '', 'c2'),
   (3, 'a0eb0000-0000-4000-8000-000000000003', '{}', now(), 3, '', 'c3'),
   (4, 'b0eb0000-0000-4000-8000-000000000001', '{}', now(), 4, '', 'c4'),
   (5, 'e0eb0000-0000-4000-8000-000000000001', '{}', now(), 5, '', 'c5');
 
-INSERT INTO engine.metric (id, pid, name, description, type_spec, created_at) VALUES
+INSERT INTO engine.aisc_backend_metric (id, pid, name, description, type_spec, created_at) VALUES
   (1, 'a0e30000-0000-4000-8000-000000000001', 'score', '', 'float', now()),
   (2, 'a0e30000-0000-4000-8000-000000000002', 'bias_rate', '', 'float', now()),
   (3, 'a0e30000-0000-4000-8000-000000000003', 'mystery_metric', '', 'float', now()),
@@ -170,7 +170,7 @@ INSERT INTO engine.metric (id, pid, name, description, type_spec, created_at) VA
 
 -- evaluations: A v1 (Done, MLA-Reject + LangBiTe), A v2 (Done: LangBiTe + Mystery; and one Failed),
 -- A v3 (Done), A unversioned (Done), B v1 (Done), E v1 and E v2 (Done)
-INSERT INTO engine.evaluation (id, pid, status, project_id, system_id, created_at) VALUES
+INSERT INTO engine.aisc_backend_evaluation (id, pid, status, project_id, system_id, created_at) VALUES
   (11, 'a1e00000-0000-4000-8000-000000000011', 'Done',   1, 'a1000000-0000-4000-8000-000000000001', '2026-09-02 09:00+00'),
   (21, 'a2e00000-0000-4000-8000-000000000021', 'Done',   1, 'a2000000-0000-4000-8000-000000000002', '2026-09-10 09:00+00'),
   (22, 'a2e00000-0000-4000-8000-000000000022', 'Failed', 1, 'a2000000-0000-4000-8000-000000000002', '2026-09-11 09:00+00'),
@@ -182,7 +182,7 @@ INSERT INTO engine.evaluation (id, pid, status, project_id, system_id, created_a
   (61, 'e1e00000-0000-4000-8000-000000000061', 'Done',   5, 'e1000000-0000-4000-8000-000000000001', '2026-09-04 12:00+00'),
   (62, 'e2e00000-0000-4000-8000-000000000062', 'Done',   5, 'e2000000-0000-4000-8000-000000000002', '2026-09-05 12:00+00');
 
-INSERT INTO engine.evaluation_plugin (id, pid, name, description, evaluation_id, plugin_config_id, error_message, started_at, finished_at, status, created_at) VALUES
+INSERT INTO engine.aisc_backend_evaluationplugin (id, pid, name, description, evaluation_id, plugin_config_id, error_message, started_at, finished_at, status, created_at) VALUES
   (111, 'a1ea0000-0000-4000-8000-000000000111', 'MLARejectEvaluationPlugin', '', 11, 1, '', now(), now(), 'Done', now()),
   (112, 'a1ea0000-0000-4000-8000-000000000112', 'LangBiTeEvaluationPlugin', '', 11, 2, '', now(), now(), 'Done', now()),
   (211, 'a2ea0000-0000-4000-8000-000000000211', 'LangBiTeEvaluationPlugin', '', 21, 2, '', now(), now(), 'Done', now()),
@@ -197,7 +197,7 @@ INSERT INTO engine.evaluation_plugin (id, pid, name, description, evaluation_id,
   (621, 'e2ea0000-0000-4000-8000-000000000621', 'LangBiTeEvaluationPlugin', '', 62, 5, '', now(), now(), 'Done', now());
 
 -- several inputs per plugin run (D16): LangBiTe of v2 ran on the endpoint and the prompts
-INSERT INTO engine.evaluation_input (id, pid, name, description, created_at, value, component_id, evaluation_plugin_id) VALUES
+INSERT INTO engine.aisc_backend_evaluationinput (id, pid, name, description, created_at, value, component_id, evaluation_plugin_id) VALUES
   (1, 'a0ed0000-0000-4000-8000-000000000001', 'model', '', now(), '{}', 1, 111),
   (2, 'a0ed0000-0000-4000-8000-000000000002', 'model', '', now(), '{}', 1, 112),
   (3, 'a0ed0000-0000-4000-8000-000000000003', 'model', '', now(), '{}', 1, 211),
@@ -208,7 +208,7 @@ INSERT INTO engine.evaluation_input (id, pid, name, description, created_at, val
   (8, 'e0ed0000-0000-4000-8000-000000000002', 'model', '', now(), '{}', 5, 621);
 
 -- observation.tool = "{package_name}::{name} (v{version})" ties an observation to its plugin run (D8)
-INSERT INTO engine.observation (id, pid, name, description, observer, tool, evaluation_id, created_at) VALUES
+INSERT INTO engine.aisc_backend_observation (id, pid, name, description, observer, tool, evaluation_id, created_at) VALUES
   (1101, 'a1eb0000-0000-4000-8000-000000001101', 'mla', '', 'engine', 'aisc-plugin-mlareject::MLARejectEvaluationPlugin (v1.0)', 11, now()),
   (1102, 'a1eb0000-0000-4000-8000-000000001102', 'lb', '', 'engine', 'aisc-plugin-langbite::LangBiTeEvaluationPlugin (v2.0)', 11, now()),
   (2101, 'a2eb0000-0000-4000-8000-000000002101', 'lb', '', 'engine', 'aisc-plugin-langbite::LangBiTeEvaluationPlugin (v2.0)', 21, now()),
@@ -221,7 +221,7 @@ INSERT INTO engine.observation (id, pid, name, description, observer, tool, eval
   (6101, 'e1eb0000-0000-4000-8000-000000006101', 'lb', '', 'engine', 'aisc-plugin-langbite::LangBiTeEvaluationPlugin (v2.0)', 61, now()),
   (6201, 'e2eb0000-0000-4000-8000-000000006201', 'lb', '', 'engine', 'aisc-plugin-langbite::LangBiTeEvaluationPlugin (v2.0)', 62, now());
 
-INSERT INTO engine.measurement (id, pid, name, description, unit, "time", score, error, uncertainty, metric_id, observation_id, created_at, dimensions, direction) VALUES
+INSERT INTO engine.aisc_backend_measurement (id, pid, name, description, unit, "time", score, error, uncertainty, metric_id, observation_id, created_at, dimensions, direction) VALUES
   -- A v1, MLA-Reject: score per case, with language / jailbreak / category dimensions (D9)
   (1, gen_random_uuid(), 'score', '', NULL, now(), 4.0, NULL, 0, 1, 1101, now(), '{"language": "en", "jailbreak": "dan", "category": "hate"}', NULL),
   (2, gen_random_uuid(), 'score', '', NULL, now(), 1.0, NULL, 0, 1, 1101, now(), '{"language": "fr", "jailbreak": "aim", "category": "violence"}', NULL),
@@ -239,11 +239,11 @@ INSERT INTO engine.measurement (id, pid, name, description, unit, "time", score,
   (12, gen_random_uuid(), 'accuracy_E2MARK', '', NULL, now(), 0.222, NULL, 0, 6, 6201, now(), NULL, NULL);
 
 -- A v2, Mystery Tool (no renderer): 505 measurements, of which the generic renderer shows 500 (R7.2.3)
-INSERT INTO engine.measurement (id, pid, name, description, unit, "time", score, error, uncertainty, metric_id, observation_id, created_at, dimensions, direction)
+INSERT INTO engine.aisc_backend_measurement (id, pid, name, description, unit, "time", score, error, uncertainty, metric_id, observation_id, created_at, dimensions, direction)
 SELECT 1000 + i, gen_random_uuid(), 'mystery_metric', '', 'pt', now(), i, NULL, 0, 3, 2102, now(), NULL, NULL
   FROM generate_series(1, 505) AS i;
 
-INSERT INTO engine.artifact (id, pid, name, description, data, storage_container, evaluation_plugin_id, created_at, file_size) VALUES
+INSERT INTO engine.aisc_backend_artifact (id, pid, name, description, data, storage_container, evaluation_plugin_id, created_at, file_size) VALUES
   (1, gen_random_uuid(), 'langbite-report.csv', '', 'ARTIFACTCONTENT', 'bucket', 211, now(), 2048),
   (2, gen_random_uuid(), 'old-report V1MARK.csv', '', 'ARTIFACTCONTENT', 'bucket', 112, now(), 10);
 

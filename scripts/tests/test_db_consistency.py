@@ -80,9 +80,9 @@ INSERT INTO control_objectives.project (id, name, objectives_digest, created_at,
   ('coa2', 'Alpha scorer 1.0', 'd', now(), now(), '{A_V2}');
 INSERT INTO control_objectives.graph (project_id, jsonld, digest, risks, uploaded_at) VALUES
   ('coa2', '{JSONLD}', encode(sha256(convert_to('{JSONLD}', 'UTF8')), 'hex'), 0, now());
-INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id) VALUES
+INSERT INTO engine.aisc_backend_project (id, pid, name, description, status, created_at, project_id) VALUES
   (1, '{ENGINE_PROJECT}', 'Alpha project', '', 'active', now(), '{A}');
-INSERT INTO engine.evaluation (id, pid, status, project_id, system_id, created_at) VALUES
+INSERT INTO engine.aisc_backend_evaluation (id, pid, status, project_id, system_id, created_at) VALUES
   (1, 'a2e00000-0000-4000-8000-000000000021', 'done', 1, '{A_V2}', now()),
   (2, 'a0e00000-0000-4000-8000-000000000041', 'done', 1, NULL, now());
 INSERT INTO report_composer.layout (id, system_id, name, created_by, updated_by) VALUES
@@ -326,23 +326,23 @@ NOWHERE = "00000000-0000-4000-8000-00000000beef"
 EP = "b0e00000-0000-4000-8000-0000000000e2"
 C4_CASES = {
     "engine project with no platform project": (
-        f"INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id)"
+        f"INSERT INTO engine.aisc_backend_project (id, pid, name, description, status, created_at, project_id)"
         f" VALUES (2, '{EP}', 'Standalone', '', 'active', now(), NULL)",
-        "DELETE FROM engine.project WHERE id = 2",
-        "WARN", (DB_A, "engine.project", EP, "no platform project")),
+        "DELETE FROM engine.aisc_backend_project WHERE id = 2",
+        "WARN", (DB_A, "engine.aisc_backend_project", EP, "no platform project")),
     "engine project of another project": (
-        f"INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id)"
+        f"INSERT INTO engine.aisc_backend_project (id, pid, name, description, status, created_at, project_id)"
         f" VALUES (2, '{EP}', 'Ghost', '', 'active', now(), '{B}')",
-        "DELETE FROM engine.project WHERE id = 2",
-        "FAIL", (DB_A, "engine.project", EP, B)),
+        "DELETE FROM engine.aisc_backend_project WHERE id = 2",
+        "FAIL", (DB_A, "engine.aisc_backend_project", EP, B)),
     "evaluation of a system that does not exist": (
-        f"UPDATE engine.evaluation SET system_id = '{NOWHERE}' WHERE id = 1",
-        f"UPDATE engine.evaluation SET system_id = '{A_V2}' WHERE id = 1",
-        "FAIL", (DB_A, "engine.evaluation", NOWHERE)),
+        f"UPDATE engine.aisc_backend_evaluation SET system_id = '{NOWHERE}' WHERE id = 1",
+        f"UPDATE engine.aisc_backend_evaluation SET system_id = '{A_V2}' WHERE id = 1",
+        "FAIL", (DB_A, "engine.aisc_backend_evaluation", NOWHERE)),
     "evaluation stamped with a version of B": (
-        f"UPDATE engine.evaluation SET system_id = '{B_V1}' WHERE id = 1",
-        f"UPDATE engine.evaluation SET system_id = '{A_V2}' WHERE id = 1",
-        "FAIL", (DB_A, "engine.evaluation", B_V1, "not a project.system of this database")),
+        f"UPDATE engine.aisc_backend_evaluation SET system_id = '{B_V1}' WHERE id = 1",
+        f"UPDATE engine.aisc_backend_evaluation SET system_id = '{A_V2}' WHERE id = 1",
+        "FAIL", (DB_A, "engine.aisc_backend_evaluation", B_V1, "not a project.system of this database")),
     "card of a system that does not exist": (
         f"UPDATE qualification.qualification SET system_id = '{NOWHERE}' WHERE id = 'q-a1'",
         f"UPDATE qualification.qualification SET system_id = '{A_V1}' WHERE id = 'q-a1'",

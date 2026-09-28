@@ -29,7 +29,8 @@ def test_i3_7_i7_9_fixture_covers_every_moving_table_including_forms():
             "qualification.form", "qualification.form_version", "qualification.form_question",
             "qualification.form_version_question", "control_objectives.project", "control_objectives.graph",
             "control_objectives.risk", "control_objectives.mapping_run", "control_objectives.mapped_objective",
-            "engine.project", "engine.ai_system", "engine.evaluation", "engine.plugin_config",
+            "engine.aisc_backend_project", "engine.aisc_backend_aisystem", "engine.aisc_backend_evaluation",
+            "engine.aisc_backend_pluginconfig",
             "report_composer.layout", "report_composer.layout_block", "report_composer.template",
             "report_composer.generated_report"}
     assert want <= tables, f"fixture lacks {sorted(want - tables)}"

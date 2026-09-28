@@ -81,24 +81,24 @@ INSERT INTO control_objectives.mapping_run (project_id, findings, stops, stop, a
   ('cod1', '[]', '[]', 'clean', 1, '', 'm', '2026-09-06 12:00+00');
 
 -- ── engine: the three Mijke tools (Delta has no engine rows at all) ─────────
-INSERT INTO engine.project (id, pid, name, description, status, created_at, project_id) VALUES
+INSERT INTO engine.aisc_backend_project (id, pid, name, description, status, created_at, project_id) VALUES
   (6, 'f0e00000-0000-4000-8000-000000000001', 'Mike', '', 'active', now(), 'f0000000-0000-4000-8000-000000000001');
-INSERT INTO engine.ai_system (id, pid, name, description, created_at, project_id) VALUES
+INSERT INTO engine.aisc_backend_aisystem (id, pid, name, description, created_at, project_id) VALUES
   (6, 'f0e50000-0000-4000-8000-000000000001', 'Mike', '', now(), 6);
-INSERT INTO engine.ai_component (id, pid, name, description, created_at, data, storage_container, component_type, json_value, system_id) VALUES
+INSERT INTO engine.aisc_backend_aicomponent (id, pid, name, description, created_at, data, storage_container, component_type, json_value, system_id) VALUES
   (6, 'f0ec0000-0000-4000-8000-000000000001', 'Mijke endpoint', '', now(), '', '', 'model', '{}', 6);
 
-INSERT INTO engine.plugin (id, pid, name, description, project_id, package_name, version, display_name, created_at, enabled) VALUES
+INSERT INTO engine.aisc_backend_plugin (id, pid, name, description, project_id, package_name, version, display_name, created_at, enabled) VALUES
   (6, 'f0ef0000-0000-4000-8000-000000000006', 'LangBiteEvaluationPlugin', '', 6, 'aisc-plugin-langbite', '0.1.1', 'LangBiTe', now(), true),
   (7, 'f0ef0000-0000-4000-8000-000000000007', 'StrongRejectPlugin', '', 6, 'aisc-plugin-strongreject', '0.1.0', 'StrongREJECT', now(), true),
   (8, 'f0ef0000-0000-4000-8000-000000000008', 'PromptfooPlugin', '', 6, 'aisc-plugin-promptfoo', '0.1.0', 'Promptfoo', now(), true);
-INSERT INTO engine.plugin_config (id, pid, config, created_at, plugin_id, description, name) VALUES
+INSERT INTO engine.aisc_backend_pluginconfig (id, pid, config, created_at, plugin_id, description, name) VALUES
   (6, 'f0eb0000-0000-4000-8000-000000000006', '{}', now(), 6, '', 'lb'),
   (7, 'f0eb0000-0000-4000-8000-000000000007', '{}', now(), 7, '', 'sr'),
   (8, 'f0eb0000-0000-4000-8000-000000000008', '{}', now(), 8, '', 'pf');
 
--- one engine.metric per measurement name (the engine's rule, 01-specs.md 3.4)
-INSERT INTO engine.metric (id, pid, name, description, type_spec, created_at)
+-- one engine.aisc_backend_metric per measurement name (the engine's rule, 01-specs.md 3.4)
+INSERT INTO engine.aisc_backend_metric (id, pid, name, description, type_spec, created_at)
 SELECT 100 + n, ('f0e30000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, name, '', 'float', now()
   FROM (VALUES
     (1, 'LangBiTe Run Success'),
@@ -131,7 +131,7 @@ SELECT 100 + n, ('f0e30000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, na
 --   4 = 74 (11:00) Promptfoo with all six measurements
 --   5 = 75 (12:00) Failed: Promptfoo wrote nothing (R-V2.22)
 -- M_V1: 70 (2026-09-12) LangBiTe + StrongREJECT, smaller.
-INSERT INTO engine.evaluation (id, pid, status, project_id, system_id, created_at) VALUES
+INSERT INTO engine.aisc_backend_evaluation (id, pid, status, project_id, system_id, created_at) VALUES
   (70, 'f1e00000-0000-4000-8000-000000000070', 'Done',   6, 'f1000000-0000-4000-8000-000000000001', '2026-09-12 09:00+00'),
   (71, 'f2e00000-0000-4000-8000-000000000071', 'Done',   6, 'f2000000-0000-4000-8000-000000000002', '2026-09-19 08:00+00'),
   (72, 'f2e00000-0000-4000-8000-000000000072', 'Done',   6, 'f2000000-0000-4000-8000-000000000002', '2026-09-19 09:00+00'),
@@ -139,7 +139,7 @@ INSERT INTO engine.evaluation (id, pid, status, project_id, system_id, created_a
   (74, 'f2e00000-0000-4000-8000-000000000074', 'Done',   6, 'f2000000-0000-4000-8000-000000000002', '2026-09-19 11:00+00'),
   (75, 'f2e00000-0000-4000-8000-000000000075', 'Failed', 6, 'f2000000-0000-4000-8000-000000000002', '2026-09-19 12:00+00');
 
-INSERT INTO engine.evaluation_plugin (id, pid, name, description, evaluation_id, plugin_config_id, error_message, started_at, finished_at, status, created_at) VALUES
+INSERT INTO engine.aisc_backend_evaluationplugin (id, pid, name, description, evaluation_id, plugin_config_id, error_message, started_at, finished_at, status, created_at) VALUES
   (701, 'f1ea0000-0000-4000-8000-000000000701', 'LangBiteEvaluationPlugin', '', 70, 6, '', now(), now(), 'Done', '2026-09-12 09:00+00'),
   (702, 'f1ea0000-0000-4000-8000-000000000702', 'StrongRejectPlugin', '', 70, 7, '', now(), now(), 'Done', '2026-09-12 09:01+00'),
   (711, 'f2ea0000-0000-4000-8000-000000000711', 'StrongRejectPlugin', '', 71, 7, '', now(), now(), 'Done', '2026-09-19 08:00+00'),
@@ -149,7 +149,7 @@ INSERT INTO engine.evaluation_plugin (id, pid, name, description, evaluation_id,
   (741, 'f2ea0000-0000-4000-8000-000000000741', 'PromptfooPlugin', '', 74, 8, '', now(), now(), 'Done', '2026-09-19 11:00+00'),
   (751, 'f2ea0000-0000-4000-8000-000000000751', 'PromptfooPlugin', '', 75, 8, 'promptfoo exited with code 1', now(), now(), 'Failed', '2026-09-19 12:00+00');
 
-INSERT INTO engine.evaluation_input (id, pid, name, description, created_at, value, component_id, evaluation_plugin_id) VALUES
+INSERT INTO engine.aisc_backend_evaluationinput (id, pid, name, description, created_at, value, component_id, evaluation_plugin_id) VALUES
   (60, 'f0ed0000-0000-4000-8000-000000000060', 'model', '', now(), '{}', 6, 701),
   (61, 'f0ed0000-0000-4000-8000-000000000061', 'model', '', now(), '{}', 6, 702),
   (62, 'f0ed0000-0000-4000-8000-000000000062', 'model', '', now(), '{}', 6, 711),
@@ -160,7 +160,7 @@ INSERT INTO engine.evaluation_input (id, pid, name, description, created_at, val
   (67, 'f0ed0000-0000-4000-8000-000000000067', 'model', '', now(), '{}', 6, 751);
 
 -- observation.tool = "{package}::{Class} (v{version})" (D8)
-INSERT INTO engine.observation (id, pid, name, description, observer, tool, evaluation_id, created_at) VALUES
+INSERT INTO engine.aisc_backend_observation (id, pid, name, description, observer, tool, evaluation_id, created_at) VALUES
   (7001, 'f1eb0000-0000-4000-8000-000000007001', 'lb', '', 'engine', 'aisc-plugin-langbite::LangBiteEvaluationPlugin (v0.1.1)', 70, now()),
   (7002, 'f1eb0000-0000-4000-8000-000000007002', 'sr', '', 'engine', 'aisc-plugin-strongreject::StrongRejectPlugin (v0.1.0)', 70, now()),
   (7101, 'f2eb0000-0000-4000-8000-000000007101', 'sr', '', 'engine', 'aisc-plugin-strongreject::StrongRejectPlugin (v0.1.0)', 71, now()),
@@ -169,7 +169,7 @@ INSERT INTO engine.observation (id, pid, name, description, observer, tool, eval
   (7301, 'f2eb0000-0000-4000-8000-000000007301', 'pf', '', 'engine', 'aisc-plugin-promptfoo::PromptfooPlugin (v0.1.0)', 73, now()),
   (7401, 'f2eb0000-0000-4000-8000-000000007401', 'pf', '', 'engine', 'aisc-plugin-promptfoo::PromptfooPlugin (v0.1.0)', 74, now());
 
-INSERT INTO engine.measurement (id, pid, name, description, unit, "time", score, error, uncertainty, metric_id, observation_id, created_at, dimensions, direction) VALUES
+INSERT INTO engine.aisc_backend_measurement (id, pid, name, description, unit, "time", score, error, uncertainty, metric_id, observation_id, created_at, dimensions, direction) VALUES
   -- M_V1 LangBiTe (two groups)
   (7000, gen_random_uuid(), 'LangBiTe Run Success', 'LangBiTe execution finished', NULL, now(), 1.0, NULL, 0, 101, 7001, now(), NULL, NULL),
   (7003, gen_random_uuid(), 'gender | gpt-4o-mini | en_us | prompt | observational', 'Tolerance Evaluation: Failed | Tolerance: 0.8 | Passed: 7/10 | Failed: 3/10', NULL, now(), 0.7, NULL, 0, 102, 7001, now(), NULL, NULL),
@@ -218,7 +218,7 @@ INSERT INTO engine.measurement (id, pid, name, description, unit, "time", score,
   (7405, gen_random_uuid(), 'n_tests', 'Number of test cases run.', 'count', now(), 40, NULL, 0, 121, 7401, now(), NULL, NULL);
 
 -- artifacts named like the real ones; their content must never reach a report (R-V2.9)
-INSERT INTO engine.artifact (id, pid, name, description, data, storage_container, evaluation_plugin_id, created_at, file_size) VALUES
+INSERT INTO engine.aisc_backend_artifact (id, pid, name, description, data, storage_container, evaluation_plugin_id, created_at, file_size) VALUES
   (70, gen_random_uuid(), 'strongreject_per_prompt.csv', '', 'HARMFULPROMPTCONTENT', 'bucket', 722, now(), 4096),
   (71, gen_random_uuid(), 'promptfoo_results.json', '', 'HARMFULPROMPTCONTENT', 'bucket', 741, now(), 8192),
   (72, gen_random_uuid(), 'plugin_execution.log', '', 'HARMFULPROMPTCONTENT', 'bucket', 741, now(), 512);

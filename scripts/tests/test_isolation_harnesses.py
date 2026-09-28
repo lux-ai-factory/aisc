@@ -134,8 +134,8 @@ def test_i16_6_checks_no_longer_read_core_system():
 
 def test_i16_6_checks_cover_card_component_against_the_engine():
     code = CHECKS.read_text()
-    assert "card_component" in code and "engine.ai_component" in code, \
-        "I16.6: no check that card_component.component_pid exists in engine.ai_component"
+    assert "card_component" in code and "engine.aisc_backend_aicomponent" in code, \
+        "I16.6: no check that card_component.component_pid exists in engine.aisc_backend_aicomponent"
 
 
 @pytest.fixture(scope="module")
@@ -191,16 +191,16 @@ def test_i16_6_c7_every_module_tracker_is_checked(bed, cluster, module, tracker,
 
 
 def test_i16_6_c4_an_evaluation_stamp_that_does_not_resolve_in_the_same_database(bed, cluster):
-    """I16.6 C4: engine.evaluation.system_id must be a project.system of the same database."""
+    """I16.6 C4: engine.aisc_backend_evaluation.system_id must be a project.system of the same database."""
     bed.require(*ALL)
     ghost = "deadbeef-0000-4000-8000-00000000beef"
     sql = f"""SET session_replication_role = replica;
-      INSERT INTO engine.project (pid, name, description, status, created_at, project_id)
+      INSERT INTO engine.aisc_backend_project (pid, name, description, status, created_at, project_id)
         VALUES ('{ghost}', 'ghost', '', 'active', now(), '{ib.A}');
-      INSERT INTO engine.evaluation (pid, status, project_id, system_id, created_at)
-        SELECT '{ghost}', 'completed', id, '{ghost}', now() FROM engine.project WHERE pid = '{ghost}';"""
-    undo = f"""SET session_replication_role = replica; DELETE FROM engine.evaluation WHERE pid = '{ghost}';
-      DELETE FROM engine.project WHERE pid = '{ghost}';"""
+      INSERT INTO engine.aisc_backend_evaluation (pid, status, project_id, system_id, created_at)
+        SELECT '{ghost}', 'completed', id, '{ghost}', now() FROM engine.aisc_backend_project WHERE pid = '{ghost}';"""
+    undo = f"""SET session_replication_role = replica; DELETE FROM engine.aisc_backend_evaluation WHERE pid = '{ghost}';
+      DELETE FROM engine.aisc_backend_project WHERE pid = '{ghost}';"""
     with planted(bed, DB_A, sql, undo):
         hits = _findings(checks.c4_references(cluster), DB_A, ghost)
     assert hits, "I16.6 C4: an evaluation stamped with a version absent from project.system was not reported"
@@ -256,7 +256,7 @@ def test_i16_6_c4_a_controls_answer_naming_a_version_absent_from_its_database(be
 
 
 def test_i16_6_card_component_must_name_an_engine_component_of_the_same_database(bed, cluster):
-    """I16.6: qualification.card_component.component_pid exists in engine.ai_component of the same database."""
+    """I16.6: qualification.card_component.component_pid exists in engine.aisc_backend_aicomponent of the same database."""
     bed.require(*ALL)
     ghost = "7c7c7c7c-0000-4000-8000-00000000007c"
     sql = f"""SET session_replication_role = replica;
@@ -267,7 +267,7 @@ def test_i16_6_card_component_must_name_an_engine_component_of_the_same_database
     with planted(bed, DB_A, sql, undo):
         for check in checks.DATA_CHECKS:
             found += check.run(cluster)
-    assert _any(found, DB_A, ghost), "I16.6: a card_component naming no engine.ai_component was not reported"
+    assert _any(found, DB_A, ghost), "I16.6: a card_component naming no engine.aisc_backend_aicomponent was not reported"
 
 
 def test_i16_6_c6_a_stale_graph_is_reported_in_its_project_database(bed, cluster):

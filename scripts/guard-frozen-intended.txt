@@ -25,22 +25,12 @@ backend aisc_backend/migrations/0015_plugin_catalogue_slug.py T2: the Configurat
 backend aisc_backend/migrations/0016_evaluation_system_id_project_platform_project_id.py T2: evaluation.system_id and project.platform_project_id
 backend aisc_backend/migrations/0017_one_project_per_platform_project.py T2: one engine project per platform project
 backend aisc_backend/migrations/0018_alter_project_platform_project_id.py T2: platform_project_id column
-backend aisc_backend/migrations/0019_alter_artifact_table_alter_dataset_table_and_more.py T2: table names without the prefix
-backend aisc_backend/migrations/0020_alter_derived_table_alter_direct_table.py T2: table names without the prefix
-backend aisc_backend/migrations/0021_ai_system_tables_lose_the_prefix.py T2: AI system table names without the prefix
-backend aisc_backend/migrations/0022_parts_belong_to_a_version_of_the_one_system.py T2: the one-system migration (a no-op on this graph, Ruling 24)
-backend aisc_backend/migrations/0023_no_login_of_its_own.py T2: configurator drops the login tables (Ruling 11)
-backend aisc_backend/migrations/0024_the_database_is_the_project.py T2: the project database layout
-backend aisc_backend/migrations/0025_engine_deployment_marker.py T3: the database records its mode (Rulings 16, 17)
-backend aisc_backend/models/ai_system.py T2: db_table names of the one data model
-backend aisc_backend/models/artifact.py T2: db_table names of the one data model
-backend aisc_backend/models/evaluation.py T2: evaluation.system_id (the stamp's column) and db_table; the stamp itself is set in signals/
-backend aisc_backend/models/measure.py T2: db_table names of the one data model
-backend aisc_backend/models/metric.py T2: db_table names of the one data model
-backend aisc_backend/models/observation.py T2: db_table names of the one data model
-backend aisc_backend/models/plugin.py T2: plugin.catalogue_slug and db_table names
-backend aisc_backend/models/project.py T2: project.platform_project_id (column project_id) and db_table
-backend aisc_backend/models/project_config.py T2: db_table names of the one data model
+backend aisc_backend/migrations/0019_no_login_of_its_own.py T2: configurator drops the login tables (Ruling 11); 0023 before the adapt plan
+backend aisc_backend/migrations/0020_the_database_is_the_project.py T2: the project database layout; 0024 before the adapt plan
+backend aisc_backend/migrations/0021_engine_deployment_marker.py T3: the database records its mode (Rulings 16, 17); 0025 before the adapt plan
+backend aisc_backend/models/evaluation.py T2: evaluation.system_id (the stamp's column); the stamp itself is set in signals/
+backend aisc_backend/models/plugin.py T2: plugin.catalogue_slug
+backend aisc_backend/models/project.py T2: project.platform_project_id (column project_id) and its constraint
 backend aisc_backend/platform_projects.py T3: reads platform project names (configurator)
 backend aisc_backend/project_door.py T3: the door: admits a request to its project database (configurator)
 backend aisc_backend/projectdb.py T3: project database aliases (configurator)
@@ -79,6 +69,7 @@ backend aisc_backend/tests/test_isolation_result_route.py T3: ported isolation t
 backend aisc_backend/tests/test_migration_history.py T2, T3: the migration graph of the one data model
 backend aisc_backend/tests/test_modes_routes.py T4: routes by mode
 backend aisc_backend/tests/test_one_system_per_project.py T5: AI system with its components, ported tests (Ruling 24)
+backend aisc_backend/tests/test_seans_table_names.py T2: Sean's table names are kept, no migration renames his tables (adapt plan 2026-09-28, task 1)
 backend config/settings.py T1, T3: reads the mode; project databases and configurator apps only in configurator
 backend config/settings_single_database.py T3: single-database settings for tests
 backend config/urls.py T3: admin and allauth routes standalone only

@@ -6,8 +6,8 @@ latest when its evaluation started (v1), and a control answer read through
 
 Since the isolation (I10.1, I19.3) both datasets run on the project's own database, as dashboard_ro
 does through the project's "AISC Controls <slug>" connection: the engine dataset reads
-engine.measurement and project.system of that database and filters by nothing, since the database is
-the project. The engine query below is the dashboard's own SQL (aisc_ext.projects.engine_results_sql).
+engine.aisc_backend_measurement and project.system of that database and filters by nothing, since
+the database is the project. The engine query below is the dashboard's own SQL (aisc_ext.projects.engine_results_sql).
 
 Two modes.
 - Inside scripts/test-pipeline-chain.sh ($CHAIN_JSON names the container and the ids the
@@ -40,10 +40,10 @@ ENGINE_RESULTS_SQL = """
 SELECT m.pid, m.score, m.unit, m.time, m.dimensions, met.name AS metric,
        e.pid AS evaluation_pid, e.created_at AS evaluated_at,
        s.pid AS system_version_pid, s.number AS system_version
-  FROM engine.measurement m
-  JOIN engine.observation o ON o.id = m.observation_id
-  JOIN engine.evaluation e ON e.id = o.evaluation_id
-  JOIN engine.metric met ON met.id = m.metric_id
+  FROM engine.aisc_backend_measurement m
+  JOIN engine.aisc_backend_observation o ON o.id = m.observation_id
+  JOIN engine.aisc_backend_evaluation e ON e.id = o.evaluation_id
+  JOIN engine.aisc_backend_metric met ON met.id = m.metric_id
   LEFT JOIN project.system s ON s.pid = e.system_id
 """
 
@@ -98,15 +98,15 @@ def _project_database(t: Throwaway, pid: str) -> str:
 
 ENGINE_SEED = """
 SET search_path = engine;
-INSERT INTO project (pid, name, description, status, created_at, project_id)
+INSERT INTO aisc_backend_project (pid, name, description, status, created_at, project_id)
   VALUES (gen_random_uuid(), 'P', '', 'active', now(), '{project}');
-INSERT INTO metric (pid, name, description, type_spec, created_at) VALUES (gen_random_uuid(), 'accuracy', '', 'direct', now());
-INSERT INTO evaluation (pid, status, project_id, system_id, created_at)
-  SELECT gen_random_uuid(), 'completed', id, '{version}'::uuid, now() FROM project;
-INSERT INTO observation (pid, name, description, observer, tool, evaluation_id, created_at)
-  SELECT gen_random_uuid(), 'o', '', 'x', 'x', id, now() FROM evaluation;
-INSERT INTO measurement (pid, name, description, unit, time, score, uncertainty, metric_id, observation_id, created_at)
-  SELECT gen_random_uuid(), 'm', '', '%', now(), 0.9, 0, (SELECT id FROM metric LIMIT 1), id, now() FROM observation;
+INSERT INTO aisc_backend_metric (pid, name, description, type_spec, created_at) VALUES (gen_random_uuid(), 'accuracy', '', 'direct', now());
+INSERT INTO aisc_backend_evaluation (pid, status, project_id, system_id, created_at)
+  SELECT gen_random_uuid(), 'completed', id, '{version}'::uuid, now() FROM aisc_backend_project;
+INSERT INTO aisc_backend_observation (pid, name, description, observer, tool, evaluation_id, created_at)
+  SELECT gen_random_uuid(), 'o', '', 'x', 'x', id, now() FROM aisc_backend_evaluation;
+INSERT INTO aisc_backend_measurement (pid, name, description, unit, time, score, uncertainty, metric_id, observation_id, created_at)
+  SELECT gen_random_uuid(), 'm', '', '%', now(), 0.9, 0, (SELECT id FROM aisc_backend_metric LIMIT 1), id, now() FROM aisc_backend_observation;
 """
 
 

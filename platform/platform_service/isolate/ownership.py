@@ -197,7 +197,7 @@ def place(graph: RowGraph, tables: dict[str, Table], cls: Classification) -> Pla
             vals = graph.root_values.get(node)
             if table in cls.root and vals and any(v is not None and v not in projects for v in vals):
                 continue  # refused as unknown project
-            if table == "engine.project":
+            if table == "engine.aisc_backend_project":
                 reason = "engine project without platform project"
             elif table in cls.root or table in cls.owned:
                 reason = "no project"

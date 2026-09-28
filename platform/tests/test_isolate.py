@@ -137,15 +137,15 @@ def test_fixture_source_is_the_live_shape_with_the_synthetic_rows(make_world):
     w = make_world()
     with w.source() as c:
         tables = set(S.user_tables(c))
-        for t in ["core.system", "qualification.form_version_question", "engine.derived",
+        for t in ["core.system", "qualification.form_version_question", "engine.aisc_backend_derived",
                   "report_composer.preset", "form_library.form", "report_library.preset"]:
             assert t in tables, t
         count = lambda t: c.execute(sql.SQL("SELECT count(*) FROM {}").format(sql.SQL(t))).fetchone()[0]
         assert count("core.project") == 2
         assert count("core.system") == 3
         assert count("qualification.form") == 3 and count("form_library.form") == 1
-        assert count("engine.metric") == 4
-        assert count("engine.project") == 3
+        assert count("engine.aisc_backend_metric") == 4
+        assert count("engine.aisc_backend_project") == 3
         assert c.execute("SELECT last_value, is_called FROM control_objectives.risk_id_seq").fetchone() == (10, True)
         assert S.fk_orphans(c) == []
 
@@ -156,7 +156,7 @@ def test_fixture_targets_hold_only_the_seed_and_the_new_heads(make_world):
         with w.target(pid) as c:
             assert S.columns(c, "project.system")[:2] == ["pid", "number"]
             assert "project_id" not in S.columns(c, "qualification.qualification")
-            assert "project_id" in S.columns(c, "engine.project")  # I7.9: engine keeps it
+            assert "project_id" in S.columns(c, "engine.aisc_backend_project")  # I7.9: engine keeps it
             assert c.execute("SELECT count(*) FROM qualification.form").fetchone()[0] == 1
             assert c.execute("SELECT count(*) FROM qualification.qualification_answer").fetchone()[0] == 0
             names = {r[0] for r in c.execute("SELECT name FROM provision.template_migration")}
@@ -188,7 +188,7 @@ def test_I12_1_plan_classifies_every_table_of_the_live_shape_from_the_catalog(ma
             assert cls[t] != "unclassified", t
     for t in S.BOOKKEEPING:
         assert cls[t] == "bookkeeping", t
-    for t in ("qualification.qualification", "control_objectives.project", "engine.project",
+    for t in ("qualification.qualification", "control_objectives.project", "engine.aisc_backend_project",
               "report_composer.layout", "report_composer.template", "core.system"):
         assert cls[t] == "root", t
     assert cls["qualification.form_version_question"] in {"needed", "library"}
@@ -211,7 +211,7 @@ def test_I12_3_a_table_added_later_is_placed_by_its_foreign_keys_without_code(ma
     S.require_tool()
     w = make_world()
     ddl = ("CREATE TABLE engine.extra (id bigint PRIMARY KEY,"
-           " ai_system_id bigint NOT NULL REFERENCES engine.ai_system(id), note text)")
+           " ai_system_id bigint NOT NULL REFERENCES engine.aisc_backend_aisystem(id), note text)")
     with w.source() as c:
         c.execute(ddl)
         c.execute("INSERT INTO engine.extra VALUES (10, 1, 'a'), (20, 2, 'b')")
@@ -251,8 +251,8 @@ def test_I12_3_D14_self_references_identifying_children_and_historical_rows(make
         assert c.execute("SELECT count(*) FROM qualification.form_version_question"
                          " WHERE form_version_id='custom-v1'").fetchone()[0] == 2
     with w.target(w.A) as c:
-        assert c.execute("SELECT source_dataset_id FROM engine.ai_component WHERE id=2").fetchone() == (1,)
-        assert c.execute("SELECT base_metric_id FROM engine.derived WHERE metric_ptr_id=3").fetchone() == (2,)
+        assert c.execute("SELECT source_dataset_id FROM engine.aisc_backend_aicomponent WHERE id=2").fetchone() == (1,)
+        assert c.execute("SELECT base_metric_id FROM engine.aisc_backend_derived WHERE metric_ptr_id=3").fetchone() == (2,)
         assert c.execute("SELECT answer FROM qualification.qualification_answer WHERE id='ansA0'").fetchone() == ("old",)
         assert S.fk_orphans(c) == []
 
@@ -276,12 +276,12 @@ def test_I12_4_a_row_owned_by_two_projects_aborts_before_any_write(make_world, r
     with w.source() as c, c.transaction():
         c.execute("SET LOCAL session_replication_role = replica")
         # evaluation_plugin 1 is A's, component 3 is B's
-        c.execute("INSERT INTO engine.evaluation_input (id, pid, name, description, created_at, value,"
+        c.execute("INSERT INTO engine.aisc_backend_evaluationinput (id, pid, name, description, created_at, value,"
                   " component_id, evaluation_plugin_id) VALUES (2, gen_random_uuid(), 'i2', '', now(), '{}', 3, 1)")
     before = _snapshot(w)
     res = S.run(w, "copy", "--all", report=rpt())
     S.assert_refused(res, {"owned by two projects", "cross-project reference"},
-                     table="engine.evaluation_input", projects=(w.A, w.B))
+                     table="engine.aisc_backend_evaluationinput", projects=(w.A, w.B))
     _no_write_anywhere(w, before)
 
 
@@ -290,11 +290,11 @@ def test_I12_4_a_cross_project_stamp_aborts_before_any_write(make_world, rpt):
     w = make_world()
     with w.source() as c, c.transaction():
         c.execute("SET LOCAL session_replication_role = replica")
-        c.execute("UPDATE engine.evaluation SET system_id = %s WHERE id = 1", (w.ids["sB1"],))
+        c.execute("UPDATE engine.aisc_backend_evaluation SET system_id = %s WHERE id = 1", (w.ids["sB1"],))
     before = _snapshot(w)
     res = S.run(w, "copy", "--all", report=rpt())
     S.assert_refused(res, {"cross-project reference", "owned by two projects"},
-                     table="engine.evaluation", projects=(w.A, w.B))
+                     table="engine.aisc_backend_evaluation", projects=(w.A, w.B))
     _no_write_anywhere(w, before)
 
 
@@ -327,8 +327,8 @@ def test_I12_5_unowned_rows_are_reported_by_key_and_reason_and_not_moved(make_wo
     # the unused form is not unowned: it is in the library target (I12.5)
     assert not any(u["table"].startswith("qualification.form") for u in res.report["unowned"])
     for pid in w.pids:
-        assert 3 not in target_keys(w, pid, "engine.project")
-        assert 4 not in target_keys(w, pid, "engine.metric")
+        assert 3 not in target_keys(w, pid, "engine.aisc_backend_project")
+        assert 4 not in target_keys(w, pid, "engine.aisc_backend_metric")
 
 
 def test_I12_5_I12_6_a_project_without_a_database_is_reported_and_refuses_copy(make_world, rpt):
@@ -420,7 +420,7 @@ def test_I12_6_I13_4_a_module_session_refuses_copy(make_world, rpt, where):
 
 COVERAGE_BREAKS = {
     "a shared column missing in the target": "ALTER TABLE qualification.qualification_answer DROP COLUMN answer",
-    "a shared column of another type": "ALTER TABLE engine.metric ALTER COLUMN name TYPE text",
+    "a shared column of another type": "ALTER TABLE engine.aisc_backend_metric ALTER COLUMN name TYPE text",
     "a target-only column without a default": "ALTER TABLE control_objectives.risk ADD COLUMN extra text NOT NULL",
 }
 
@@ -458,7 +458,7 @@ def test_I12_7_values_survive_exactly_and_checksums_are_the_spec_formula(make_wo
     res = S.run(w, "copy", "--all", report=rpt())
     copied(w, res)
     cases = {
-        "engine.measurement": ("id", [1, 2]),
+        "engine.aisc_backend_measurement": ("id", [1, 2]),
         "report_composer.generated_report": ("id", [w.ids["gA"]]),
         "report_composer.template": ("id", [w.ids["tA"]]),
         "qualification.qualification": ("id", ["qA1", "qA2"]),
@@ -562,11 +562,11 @@ def test_I12_8_a_target_row_unknown_to_the_source_aborts_that_project(make_world
     S.require_tool()
     w = make_world()
     with w.target(w.A) as c:
-        c.execute("INSERT INTO engine.metric (id, pid, name, description, type_spec, created_at)"
+        c.execute("INSERT INTO engine.aisc_backend_metric (id, pid, name, description, type_spec, created_at)"
                   " VALUES (99, gen_random_uuid(), 'extra', '', 's', now())")
     a_before = S.digests(w.target_dsn(w.A))
     res = S.run(w, "copy", "--all", report=rpt())
-    S.assert_refused(res, "target not empty and not equal", table="engine.metric", projects=(w.A,))
+    S.assert_refused(res, "target not empty and not equal", table="engine.aisc_backend_metric", projects=(w.A,))
     assert S.digests(w.target_dsn(w.A)) == a_before
 
 
@@ -783,9 +783,9 @@ def test_I12_14_verify_dump_proves_the_stage_7_dump_row_by_row(make_world, rpt, 
     assert ok.returncode == 0, ok.output[-3000:]
     with w.target(w.A) as c, c.transaction():
         c.execute("SET LOCAL session_replication_role = replica")
-        c.execute("UPDATE engine.measurement SET score = 0.5 WHERE id = 1")
+        c.execute("UPDATE engine.aisc_backend_measurement SET score = 0.5 WHERE id = 1")
     bad = S.run(w, "verify-dump", "--all", str(schemas), str(system), report=rpt(), env=env)
-    S.assert_refused(bad, "checksum mismatch", table="engine.measurement", projects=(w.A,))
+    S.assert_refused(bad, "checksum mismatch", table="engine.aisc_backend_measurement", projects=(w.A,))
     assert databases() == dbs_before, "verify-dump left its restore database behind"
 
 
@@ -817,7 +817,7 @@ def test_I12_16_refusals_exit_non_zero_and_output_names_pids_and_counts_only(mak
     w = make_world()
     with w.source() as c, c.transaction():
         c.execute("SET LOCAL session_replication_role = replica")
-        c.execute("UPDATE engine.evaluation SET system_id = %s WHERE id = 1", (w.ids["sB1"],))
+        c.execute("UPDATE engine.aisc_backend_evaluation SET system_id = %s WHERE id = 1", (w.ids["sB1"],))
     res = S.run(w, "copy", "--all", report=rpt())  # S.run asserts no value/credential leaked
     assert res.returncode != 0
     for value in ("Scorer", "card sA", "alice", "Alpha"):
@@ -862,6 +862,6 @@ def test_I12_15_report_subcommand_summarises_without_writing(make_world, rpt):
     before = _snapshot(w)
     res = S.run(w, "report", "--all", report=rpt())
     assert res.returncode == 0, res.output[-3000:]
-    t = res.report["projects"][w.A]["tables"]["engine.measurement"]
+    t = res.report["projects"][w.A]["tables"]["engine.aisc_backend_measurement"]
     assert t["count"] == 2 and t["source_md5"] == t["target_md5"]
     _no_write_anywhere(w, before)

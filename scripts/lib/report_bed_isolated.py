@@ -56,9 +56,10 @@ READERS = {
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
                       "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],
     "control_objectives": ["project", "graph", "risk", "mapped_objective", "mapping_run"],
-    "engine": ["project", "ai_system", "ai_component", "evaluation", "evaluation_plugin", "evaluation_input",
-               "plugin", "observation", "measurement", "metric", "direct", "derived", "metric_category",
-               "metric_category_metrics", "artifact"],
+    "engine": ["aisc_backend_project", "aisc_backend_aisystem", "aisc_backend_aicomponent", "aisc_backend_evaluation",
+               "aisc_backend_evaluationplugin", "aisc_backend_evaluationinput", "aisc_backend_plugin", "aisc_backend_observation",
+               "aisc_backend_measurement", "aisc_backend_metric", "aisc_backend_direct", "aisc_backend_derived",
+               "aisc_backend_metriccategory", "aisc_backend_metriccategory_metrics", "aisc_backend_artifact"],
 }
 #: projects of the seed with no project database (report_bed's seed comment: gamma has none)
 NO_DATABASE = {IDS["C"]}
@@ -104,10 +105,10 @@ def _roles(conn) -> set[str]:
 
 def _prune_engine(conn, pid) -> None:
     """Rows of other projects out of engine: its FKs (Django) have no ON DELETE, so delete orphans to a fixpoint."""
-    if conn.execute("SELECT to_regclass('engine.project')").fetchone()[0] is None:
+    if conn.execute("SELECT to_regclass('engine.aisc_backend_project')").fetchone()[0] is None:
         return
     conn.execute("SET session_replication_role = replica")
-    conn.execute("DELETE FROM engine.project WHERE project_id IS DISTINCT FROM %s", (pid,))
+    conn.execute("DELETE FROM engine.aisc_backend_project WHERE project_id IS DISTINCT FROM %s", (pid,))
     fks = conn.execute(
         "SELECT c.conrelid::regclass::text, c.confrelid::regclass::text,"
         " array_agg(a.attname ORDER BY k.n), array_agg(fa.attname ORDER BY k.n)"
@@ -219,8 +220,8 @@ def _isolate_one(bed, pid, schemas, templates_applied) -> None:
                     for t in tables:
                         if conn.execute("SELECT to_regclass(%s)", (f"{s}.{t}",)).fetchone()[0] is not None:
                             conn.execute(f"GRANT SELECT ON {s}.{t} TO {reader}")
-                if conn.execute("SELECT to_regclass('engine.plugin_config')").fetchone()[0] is not None:
-                    conn.execute(f"GRANT SELECT (id, plugin_id) ON engine.plugin_config TO {reader}")
+                if conn.execute("SELECT to_regclass('engine.aisc_backend_pluginconfig')").fetchone()[0] is not None:
+                    conn.execute(f"GRANT SELECT (id, plugin_id) ON engine.aisc_backend_pluginconfig TO {reader}")
 
 
 _CORE_FUNCTIONS: list | None = None
@@ -292,7 +293,7 @@ if __name__ == "__main__":  # a smoke run: build, print counts, remove
         for key in ("A", "B", "E"):
             db = project_db(IDS[key])
             print(key, "versions", b.scalar(db, "SELECT count(*) FROM project.system"),
-                  "evaluations", b.scalar(db, "SELECT count(*) FROM engine.evaluation"),
+                  "evaluations", b.scalar(db, "SELECT count(*) FROM engine.aisc_backend_evaluation"),
                   "cards", b.scalar(db, "SELECT count(*) FROM qualification.qualification"))
         print("platform schemas:", b.scalar("platform", "SELECT string_agg(nspname, ',' ORDER BY nspname) FROM"
                                                         " pg_namespace WHERE nspname !~ '^pg_' AND nspname <>"

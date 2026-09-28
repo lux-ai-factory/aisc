@@ -148,7 +148,7 @@ STAMPED = (("qualification.qualification", "id", "system_id"),
            ("control_objectives.project", "id", "system_id"),
            ("report_composer.layout", "id", "system_id"),
            ("report_composer.generated_report", "id", "system_id"),
-           ("engine.evaluation", "pid", "system_id"),
+           ("engine.aisc_backend_evaluation", "pid", "system_id"),
            ("controls.submission_answer", "id", "system_version_pid"))
 
 
@@ -188,12 +188,13 @@ def _reports_follow_their_layout(cl: Cluster, db: str) -> list[Finding]:
 def _engine_projects(cl: Cluster, db: str, pid: str) -> list[Finding]:
     out = []
     for epid, name, project in cl.rows(db, """
-            SELECT e.pid::text, e.name, e.project_id::text FROM engine.project e
+            SELECT e.pid::text, e.name, e.project_id::text FROM engine.aisc_backend_project e
              WHERE e.project_id IS DISTINCT FROM %s::uuid ORDER BY e.id""", (pid,)):
         if project is None:
-            out.append(warn("C4", f"{db} engine.project {epid} ({name}) has no platform project (project_id is NULL)"))
+            out.append(warn("C4", f"{db} engine.aisc_backend_project {epid} ({name}) has no platform project"
+                                  " (project_id is NULL)"))
         else:
-            out.append(fail("C4", f"{db} engine.project {epid} ({name}): project_id {project} is not "
+            out.append(fail("C4", f"{db} engine.aisc_backend_project {epid} ({name}): project_id {project} is not "
                                   f"this database's project {pid}"))
     return out
 
@@ -202,10 +203,10 @@ def _card_components(cl: Cluster, db: str) -> list[Finding]:
     """I16.6: a card's component is one of the engine's components of the same database."""
     rows = cl.rows(db, """
         SELECT c.id, c.component_pid::text FROM qualification.card_component c
-         WHERE NOT EXISTS (SELECT 1 FROM engine.ai_component a WHERE a.pid = c.component_pid)
+         WHERE NOT EXISTS (SELECT 1 FROM engine.aisc_backend_aicomponent a WHERE a.pid = c.component_pid)
          ORDER BY 1""")
     return [fail("C4", f"{db} qualification.card_component {cid}: component_pid {cp} is not an "
-                       "engine.ai_component of this database") for cid, cp in rows]
+                       "engine.aisc_backend_aicomponent of this database") for cid, cp in rows]
 
 
 def c4_references(cl: Cluster) -> list[Finding]:
@@ -222,9 +223,9 @@ def c4_references(cl: Cluster) -> list[Finding]:
             out += _answer_numbers(cl, db)
         if has_system and cl.exists(db, "report_composer.generated_report"):
             out += _reports_follow_their_layout(cl, db)
-        if cl.exists(db, "engine.project"):
+        if cl.exists(db, "engine.aisc_backend_project"):
             out += _engine_projects(cl, db, pid)
-        if cl.exists(db, "qualification.card_component") and cl.exists(db, "engine.ai_component"):
+        if cl.exists(db, "qualification.card_component") and cl.exists(db, "engine.aisc_backend_aicomponent"):
             out += _card_components(cl, db)
     return out
 

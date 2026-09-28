@@ -289,7 +289,7 @@ if __name__ == "__main__":  # a smoke run: build, print a count, remove
     b = build("bed-smoke")
     try:
         print("applied:", b.applied)
-        print("evaluations:", b.scalar("platform", "SELECT count(*) FROM engine.evaluation"))
+        print("evaluations:", b.scalar("platform", "SELECT count(*) FROM engine.aisc_backend_evaluation"))
         print("answers A:", b.scalar(project_db(IDS["A"]), "SELECT count(*) FROM controls.submission_answer"))
         print("comments:", b.scalar("superset", "SELECT count(*) FROM aisc_comment"))
     finally:

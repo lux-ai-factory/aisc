@@ -48,9 +48,10 @@ DECLARE
         'control_objectives.project', 'control_objectives.graph', 'control_objectives.risk',
         'control_objectives.mapped_objective', 'control_objectives.mapping_run']
         || ARRAY(SELECT 'engine.' || t FROM unnest(ARRAY[
-            'project', 'ai_system', 'ai_component', 'evaluation', 'evaluation_plugin', 'evaluation_input',
-            'plugin', 'observation', 'measurement', 'metric', 'direct', 'derived', 'metric_category',
-            'metric_category_metrics', 'artifact']) AS t);
+            'aisc_backend_project', 'aisc_backend_aisystem', 'aisc_backend_aicomponent', 'aisc_backend_evaluation',
+            'aisc_backend_evaluationplugin', 'aisc_backend_evaluationinput', 'aisc_backend_plugin', 'aisc_backend_observation',
+            'aisc_backend_measurement', 'aisc_backend_metric', 'aisc_backend_direct', 'aisc_backend_derived',
+            'aisc_backend_metriccategory', 'aisc_backend_metriccategory_metrics', 'aisc_backend_artifact']) AS t);
     -- the schemas a reader may enter (report_composer: USAGE only, no table)
     schemas text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer'];
     -- the schemas whose other tables a reader must not read: the above, plus secrets and bookkeeping
@@ -83,8 +84,8 @@ BEGIN
             END IF;
         END LOOP;
         -- plugin_config.config may hold tool settings: only the columns that tie a run to its tool
-        IF to_regclass('engine.plugin_config') IS NOT NULL THEN
-            EXECUTE format('GRANT SELECT (id, plugin_id) ON engine.plugin_config TO %I', reader);
+        IF to_regclass('engine.aisc_backend_pluginconfig') IS NOT NULL THEN
+            EXECUTE format('GRANT SELECT (id, plugin_id) ON engine.aisc_backend_pluginconfig TO %I', reader);
         END IF;
     END LOOP;
     -- no reader right by a default privilege: it would also cover secrets and later tables (I2.6)

@@ -82,7 +82,7 @@ def test_i2_1_each_module_role_has_its_own_search_path_in_the_project_database(b
 @pytest.mark.parametrize("schema", sorted(ib.READER_TABLES))
 def test_i2_6_readers_see_exactly_the_listed_tables(bed, reader, schema):
     """I2.6, I10.3, I16.1: in every project database, SELECT for report_ro and dashboard_ro on exactly the
-    tables of the reader list, no more, no less (engine.plugin_config is checked by column below)."""
+    tables of the reader list, no more, no less (engine.aisc_backend_pluginconfig is checked by column below)."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         present = _tables(bed, db, schema)
@@ -91,7 +91,7 @@ def test_i2_6_readers_see_exactly_the_listed_tables(bed, reader, schema):
         assert not absent, f"I2.6: {db} lacks listed tables {schema}.{absent}"
         wrong = []
         for t in present:
-            if schema == "engine" and t == "plugin_config":
+            if schema == "engine" and t == "aisc_backend_pluginconfig":
                 continue
             want = t in listed
             got = _can(bed, db, reader, f"{schema}.{t}")
@@ -105,16 +105,18 @@ def test_i2_6_engine_plugin_config_only_its_id_and_plugin_id_columns(bed, reader
     """I2.6: `plugin_config (id, plugin_id)` columns only; `config` never."""
     bed.require("engine")
     for db in DBS:
-        assert not _can(bed, db, reader, "engine.plugin_config"), f"{db}: table-wide SELECT on plugin_config"
+        assert not _can(bed, db, reader, "engine.aisc_backend_pluginconfig"), f"{db}: table-wide SELECT on plugin_config"
         for col in ib.PLUGIN_CONFIG_COLUMNS:
-            assert bed.scalar(db, f"SELECT has_column_privilege('{reader}', 'engine.plugin_config', '{col}', 'SELECT')") == "t"
-        assert bed.scalar(db, f"SELECT has_column_privilege('{reader}', 'engine.plugin_config', 'config', 'SELECT')") == "f"
+            assert bed.scalar(db, f"SELECT has_column_privilege('{reader}', 'engine.aisc_backend_pluginconfig',"
+                                  f" '{col}', 'SELECT')") == "t"
+        assert bed.scalar(db, f"SELECT has_column_privilege('{reader}', 'engine.aisc_backend_pluginconfig',"
+                              " 'config', 'SELECT')") == "f"
 
 
 @pytest.mark.parametrize("reader", ib.READERS)
 @pytest.mark.parametrize("rel", ib.SECRETS)
 def test_i2_6_secrets_are_unreadable_by_readers(bed, reader, rel):
-    """I2.6, I18.5: engine.project_config, plugin_config_project_config and llm.* are never readable."""
+    """I2.6, I18.5: engine.aisc_backend_projectconfig, plugin_config_project_config and llm.* are never readable."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         assert bed.exists(db, rel), f"I2.6: {db} lacks {rel}"
@@ -216,7 +218,7 @@ GRANTS_SH = ROOT / "scripts/report-grants.sh"
 def test_i2_7_report_grants_has_no_platform_section_for_moved_schemas():
     """I2.7: the platform section for qualification, control_objectives, engine is dropped."""
     text = GRANTS_SH.read_text()
-    assert "engine.measurement" not in text, "I2.7: report-grants.sh still waits for platform engine.measurement"
+    assert "engine.aisc_backend_measurement" not in text, "I2.7: report-grants.sh still waits for platform engine.aisc_backend_measurement"
     assert "-d platform -f" not in text, "I2.7: report-grants.sh still applies report-ro-grants.sql to platform"
 
 
@@ -235,14 +237,14 @@ def test_i2_7_report_grants_repairs_a_revoked_grant_and_reruns_idempotently(bed)
     bed.require(*ALL_MODULES)
     db = DBS[0]
     bed.psql(db, "REVOKE SELECT ON qualification.qualification FROM report_ro, dashboard_ro;"
-                 "REVOKE SELECT ON engine.evaluation FROM report_ro, dashboard_ro")
+                 "REVOKE SELECT ON engine.aisc_backend_evaluation FROM report_ro, dashboard_ro")
     r = report_bed.run_report_grants(bed.t)
     assert r.returncode == 0, (r.stdout + r.stderr)[-1500:]
     assert bed.t.password not in r.stdout + r.stderr
     for reader in ib.READERS:
         assert _can(bed, db, reader, "qualification.qualification"), f"I2.7: {reader} not repaired"
-        assert _can(bed, db, reader, "engine.evaluation"), f"I2.7: {reader} not repaired"
-        assert not _can(bed, db, reader, "engine.project_config")
+        assert _can(bed, db, reader, "engine.aisc_backend_evaluation"), f"I2.7: {reader} not repaired"
+        assert not _can(bed, db, reader, "engine.aisc_backend_projectconfig")
     again = report_bed.run_report_grants(bed.t)
     assert again.returncode == 0, (again.stdout + again.stderr)[-1500:]
 

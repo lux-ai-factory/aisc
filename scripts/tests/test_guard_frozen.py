@@ -114,11 +114,11 @@ def test_s1_4_backend_part_of_g4_and_g5(guard_all):
 
 def test_s1_6_one_ai_system_per_engine_project(guard_all):
     """S1.6: the candidate engine schema (in a project database) keeps UNIQUE (project_id) on
-    engine.ai_system."""
+    engine.aisc_backend_aisystem (Sean's table name)."""
     r, out = guard_all
     dump = (out / "engine.candidate.sql").read_text()
-    assert re.search(r"ALTER TABLE ONLY engine\.ai_system\s+ADD CONSTRAINT \w+ UNIQUE \(project_id\);", dump), \
-        "engine.ai_system has no UNIQUE (project_id)"
+    assert re.search(r"ALTER TABLE ONLY engine\.aisc_backend_aisystem\s+ADD CONSTRAINT \w+ UNIQUE \(project_id\);",
+                     dump), "engine.aisc_backend_aisystem has no UNIQUE (project_id)"
 
 
 # --- the other guard checks ---------------------------------------------------------------------
