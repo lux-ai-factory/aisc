@@ -1,6 +1,6 @@
 """Fixtures of the composer tests (report run 2026-09-23, stage 3; 02 section 5).
 
-Database tests run on a throwaway postgres:14-alpine bed in the isolated layout
+Database tests run on a throwaway postgres:15-alpine bed in the isolated layout
 (scripts/lib/report_bed_isolated.py, isolation 2026-09-25): the core part of the seed (projects alpha,
 beta, gamma, echo; members) in `platform`, and one database per project holding its versions in
 project.system and the composer's schema. The composer connects as `report_composer_rw`. Never the

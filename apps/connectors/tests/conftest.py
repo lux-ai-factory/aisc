@@ -32,11 +32,11 @@ def database_url():
         assert ":5432/" not in given, "refusing a database on the live port 5432"
         yield given
         return
-    name = f"connectors-test-{uuid.uuid4().hex[:8]}"
+    name = f"aisc-t-connectors-{uuid.uuid4().hex[:8]}"
     port = _free_port()
     subprocess.run(
         ["docker", "run", "--rm", "-d", "--name", name, "-e", "POSTGRES_PASSWORD=pw",
-         "-e", "POSTGRES_DB=platform", "-p", f"127.0.0.1:{port}:5432", "postgres:14-alpine"],
+         "-e", "POSTGRES_DB=platform", "-p", f"127.0.0.1:{port}:5432", "postgres:15-alpine"],
         check=True, capture_output=True,
     )
     try:

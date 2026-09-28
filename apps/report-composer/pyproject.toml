@@ -36,6 +36,6 @@ testpaths = ["tests"]
 # aisc_identity is shared by every Python service, mounted from shared/ (as control-objectives)
 pythonpath = [".", "../../shared/identity"]
 markers = [
-    "db: needs the throwaway report bed (docker, postgres:14-alpine, never the host's 5432)",
+    "db: needs the throwaway report bed (docker, postgres:15-alpine, never the host's 5432)",
     "e2e: runs the real renderer from ../../../aisc-report-generator in a subprocess",
 ]

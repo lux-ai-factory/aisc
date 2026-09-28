@@ -765,7 +765,7 @@ def test_I12_12_plan_and_dry_run_compute_everything_and_write_nothing(make_world
 
 
 def _docker_pg(tmp_path: Path) -> Path:
-    """pg_dump/pg_restore of postgres:14-alpine on the host network (the host has no client)."""
+    """pg_dump/pg_restore of postgres:15-alpine on the host network (the host has no client)."""
     if not shutil.which("docker"):
         pytest.skip("docker is needed to run pg_dump/pg_restore for I12.14")
     bin_dir = tmp_path / "bin"
@@ -774,7 +774,7 @@ def _docker_pg(tmp_path: Path) -> Path:
         shim = bin_dir / tool
         shim.write_text(
             "#!/bin/sh\n"
-            f'exec docker run --rm -i --network host -v "{tmp_path}:{tmp_path}" postgres:14-alpine {tool} "$@"\n')
+            f'exec docker run --rm -i --network host -v "{tmp_path}:{tmp_path}" postgres:15-alpine {tool} "$@"\n')
         shim.chmod(0o755)
     return bin_dir
 
