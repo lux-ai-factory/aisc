@@ -93,11 +93,10 @@ account may see every project.
 | 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
 
 The catalogue is the hosted one; no catalogue runs in this stack. It is for browsing: it
-has no Install button. Tests are installed into the engine from the online package index the
-hosted catalogue lists, http://10.50.3.47/root/public/ (`PACKAGE_REGISTRY_URL` in
-`env.plugin_downloader`), through the engine's install dialog, which a link opens. Only tests
-published there can be installed. The stack still runs a local `devpi`, filled from
-`def_plugins/` at start, but the engine does not install from it:
+has no Install button. Tests are installed into the engine from the stack's own package index,
+the local `devpi` (`PACKAGE_REGISTRY_URL` in `env.plugin_downloader`), through the engine's
+install dialog, which a link opens. `plugin-publisher` fills that index at start from
+`def_plugins/`, with the packages and versions the hosted catalogue names:
 
     http://localhost/receiver?project=<project pid>&uri=web%2Baiscplugin%3A%2F%2Fenable%3Fpackage%3D<name>%26version%3D<version>
 

@@ -335,11 +335,15 @@ def test_the_webapp_gets_the_launcher_url(compose):
     assert value, "APP_LAUNCHER_URL is not set on aisc-webapp"
 
 
-# ── Méril's staging set (pipeline 2026-09-27, task 9b): the engine installs from the online
-# package index the hosted catalogue lists; postgres 15 (Ruling 38) ─────────────────────────
+# ── Where the engine installs from (pipeline 2026-09-27, task 9b; changed 2026-09-28) ──────
+# Ruling 43: the engine installs from the stack's own devpi, which plugin-publisher fills from
+# def_plugins/ with exactly the packages and versions the hosted catalogue names. Méril's online
+# index (10.50.3.47) held only langbite plus two stale packages the catalogue does not point to,
+# so six of the seven catalogue installs could not resolve there. The catalogue handoff is
+# unchanged: it sends a package name and version, and any index holding them works.
 
-ONLINE_INDEX = "http://10.50.3.47/"
-ONLINE_SIMPLE = "http://10.50.3.47/root/public/+simple/"
+LOCAL_INDEX = "http://devpi:3141"
+ONLINE_HOST = "10.50.3.47"
 
 
 def _runtime_env():
@@ -349,36 +353,31 @@ def _runtime_env():
     return base, {k.strip(): v.strip() for k, v in env.items()}
 
 
-def test_the_runtime_env_installs_from_the_online_index():
-    """env.runtime (built from env.plugin_downloader) names the online devpi as the registry:
+def test_the_runtime_env_installs_from_the_stacks_own_index():
+    """env.runtime (built from env.plugin_downloader) names the local devpi as the registry:
     PACKAGE_REGISTRY_URL alone decides where the engine installs from. Ruling 41:
     CATALOGUE_TRUSTED_INDEXES has no consumer; it is kept, saying it is not enforced."""
     base, env = _runtime_env()
-    assert env.get("PACKAGE_REGISTRY_URL") == ONLINE_INDEX, base
+    assert env.get("PACKAGE_REGISTRY_URL") == LOCAL_INDEX, base
     assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", base
     for f in ("env.plugin_downloader", "env.development"):
         text = (ROOT / f).read_text()
+        assert ONLINE_HOST not in text, f
         before = text[:text.index("CATALOGUE_TRUSTED_INDEXES=")].splitlines()[-1]
         assert "not enforced by the engine; PACKAGE_REGISTRY_URL decides where installs come from" in before, f
 
 
-def test_the_engine_installs_from_the_online_index(compose):
-    """The engine (backend and eval worker) gets the online devpi as its registry."""
+def test_the_engine_installs_from_the_index_the_publisher_fills(compose):
+    """The engine (backend, migrate, eval worker) installs from the very index plugin-publisher
+    uploads def_plugins/ to, so every package the catalogue names can be installed."""
     q, cfg = compose
-    for name in ("aisc-backend", "aisc-eval-worker"):
-        env = cfg["services"][name].get("environment") or {}
-        assert env.get("PACKAGE_REGISTRY_URL") == ONLINE_INDEX, name
-        assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", name
-
-
-def test_the_local_index_stays_but_only_the_publisher_uses_it(compose):
-    """Ruling 38: the local devpi stays in the stack; the publisher uploads there, never to the
-    online index."""
-    q, cfg = compose
-    assert "devpi" in cfg["services"]
     twine = (cfg["services"]["plugin-publisher"].get("environment") or {}).get("TWINE_REPOSITORY_URL", "")
-    assert twine.startswith("http://devpi:3141/"), twine
-    assert "10.50.3.47" not in twine
+    assert twine.startswith(LOCAL_INDEX + "/"), twine
+    for name in ("aisc-backend", "aisc-backend-migrate", "aisc-eval-worker"):
+        env = cfg["services"][name].get("environment") or {}
+        url, index = env.get("PACKAGE_REGISTRY_URL", ""), env.get("PACKAGE_REGISTRY_INDEX", "")
+        assert url.rstrip("/") == LOCAL_INDEX and index, (name, url, index)
+        assert twine.rstrip("/") == f"{LOCAL_INDEX}/{index}", (name, twine, index)
 
 
 def test_postgres_is_15(compose):
@@ -443,11 +442,12 @@ def test_the_standalone_compose_uses_seans_settings_names_pg15_and_the_mounted_p
 
 
 def test_the_readme_says_where_tests_install_from_and_what_pg15_needs():
-    """README: configurator installs from the online index, the local devpi is unused by the
-    engine; standalone is one database holding all projects; PG15 needs fresh volumes."""
+    """README: configurator installs from the stack's own devpi, which plugin-publisher fills;
+    standalone is one database holding all projects; PG15 needs fresh volumes."""
     readme = (ROOT / "README.md").read_text()
-    assert "http://10.50.3.47/root/public/" in readme
-    assert "filled from `def_plugins/` at start), through" not in readme
+    assert ONLINE_HOST not in readme
+    assert "the engine does not install from it" not in readme
+    assert "installed into the engine from the stack's own package index" in readme
     assert "one project, one database" not in readme
     assert "one database holding all projects" in readme
     assert "fresh volumes" in readme and "PostgreSQL 15" in readme
