@@ -97,7 +97,7 @@ belongs to a project; a duplicated layout can add them, with their comments.
 | 2 | **Management overview** | management, the provider's owner | What is the system, how risky, what is missing? |
 | 3 | **Assessment report** | the project team, the default | What did we assess, and what came out? |
 | 4 | **EU AI Act conformity** | the conformity file, a notified body | Can every claim be traced to its evidence? |
-| 5 | **Technical dossier** | auditors, engineers | Everything, down to each configuration and quote |
+| 5 | **Technical dossier** | auditors, engineers | Everything, down to each tool run and quote |
 
 **1. Summary**
 - Cover
@@ -204,7 +204,7 @@ engine adapt plan (`docs/superpowers/plans/2026-09-28-engine-adapt-to-master.md`
 | Control-objectives assessment of a version | `control_objectives.project` (unique `system_id`, foreign key) |
 | Control answers of a version | `controls.submission_answer.system_version_pid` (foreign key) |
 | Runs, their version and date | `engine.aisc_backend_evaluation`: `system_id` (foreign key, SET NULL on delete), `created_at` |
-| Tool runs, start and end, configuration | `engine.aisc_backend_evaluationplugin` (`started_at`, `finished_at`) to `engine.aisc_backend_pluginconfig.config` |
+| Tool runs, start and end, configuration name | `engine.aisc_backend_evaluationplugin` (`started_at`, `finished_at`) to `engine.aisc_backend_pluginconfig.name` |
 | Scores | `engine.aisc_backend_measurement` to `aisc_backend_observation` to `aisc_backend_evaluation` |
 
 A run belongs to the period when its `created_at` is inside it. A run whose version was deleted
