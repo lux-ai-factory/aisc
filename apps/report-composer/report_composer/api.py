@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import db, layouts, presets, preview_with, reports
+from . import builtin_layouts, db, layouts, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, project_guard, signed_in
@@ -296,9 +296,10 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
     body = body or {}
     pid = g.project["pid"]
     now = request.app.state.clock()
+    builtin = builtin_layouts.get(layout_id, block_types(request))
     try:
         with _project_db(request, g) as conn:
-            src = layout_or_404(conn, layout_id)
+            src = builtin if builtin is not None else layout_or_404(conn, layout_id)
             if body.get("name") is not None:
                 name = _text(body, "name", required=True, max_len=NAME_MAX)
             else:
@@ -318,6 +319,30 @@ def _preset_file_response(p: presets.Preset) -> Response:
     slug = reports._slugify(p.name)[:60]
     return Response(json.dumps(presets.export_doc(p), indent=2, ensure_ascii=False), media_type="application/json",
                     headers={"Content-Disposition": f'attachment; filename="report-preset-{slug}.json"'})
+
+
+@router.get("/p/{ref}/builtin-layouts")
+def get_builtin_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
+    """The five built-in layouts (report modules spec 2026-09-28, section 4.1), read-only."""
+    return builtin_layouts.all_layouts(block_types(request))
+
+
+def _builtin_or_404(request: Request, layout_id: str) -> dict:
+    found = builtin_layouts.get(layout_id, block_types(request))
+    if found is None:
+        raise ApiError(404, "not_found", NO_LAYOUT)
+    return found
+
+
+@router.get("/p/{ref}/builtin-layouts/{layout_id}")
+def get_builtin_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
+    return _builtin_or_404(request, layout_id)
+
+
+@router.get("/p/{ref}/builtin-layouts/{layout_id}/export")
+def export_builtin_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
+    return _preset_file_response(presets.from_layout(_builtin_or_404(request, layout_id), block_types(request),
+                                                     keep_text=True))
 
 
 @router.get("/p/{ref}/layouts/{layout_id}/export")

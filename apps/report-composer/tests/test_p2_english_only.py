@@ -126,7 +126,8 @@ def test_r2_d1_12_preview_and_generate_snapshots_carry_no_language(client_v2, au
 
 # ── R2-D1.13 presets carry no language ──────────────────────────────────────
 
-@pytest.mark.parametrize("preset_id", ["full-assessment", "eu-ai-act", "internal-audit", "executive-summary"])
+@pytest.mark.parametrize("preset_id", ["summary", "management-overview", "assessment-report", "eu-ai-act",
+                                       "technical-dossier"])
 def test_r2_d1_13_built_in_preset_files_have_no_language(preset_id):
     doc = json.loads((APP / "presets" / f"{preset_id}.json").read_text(encoding="utf-8"))
     assert "language" not in doc

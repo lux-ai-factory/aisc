@@ -1,10 +1,10 @@
-"""Presets: report structures without project data (report run v2, R-V1.1 to R-V1.12).
+"""Layout files: report structures without project data (report run v2, R-V1.1 to R-V1.12; report modules
+2026-09-28).
 
-A preset is an ordered list of {block_type, options} plus the document settings toc and numbering
-(reports are English only; a `language` in a file or row is ignored). Built-in presets are the JSON
-files of report_composer/presets/; saved presets sit in report_library.preset, the install-wide
-library in the platform database (isolation D4), and are seen by every signed-in user; a preset file carries a structure to another project or platform. A layout made from
-a preset keeps no link to it.
+A file is an ordered list of {block_type, options} plus the document settings show_index (version 1:
+toc) and numbering (reports are English only; a `language` in a file is ignored). It carries a structure
+to another project or platform; a layout made from it keeps no link to it. The built-in layouts are the
+files of report_composer/presets/ (builtin_layouts.py); the install-wide saved-preset library is gone.
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from .errors import ApiError
 from .prose import PLACEHOLDER  # noqa: F401  (the one placeholder text, pinned here by the tests)
 
 DIRECTORY = Path(__file__).resolve().parent / "presets"
-BUILT_IN_ORDER = ("full-assessment", "eu-ai-act", "internal-audit", "executive-summary")
 FILE_FORMAT = "aisc-report-preset"
 #: files written today; version 1 files (with toc auto/on/off, a language, run ids) are still read
 FILE_VERSION = 2
@@ -58,16 +57,6 @@ def _preset_of(doc: dict, *, built_in: bool, preset_id=None, created_by=None) ->
                   blocks=[{"block_type": b["block_type"], "options": dict(b.get("options") or {})}
                           for b in doc.get("blocks") or []],
                   built_in=built_in, created_by=created_by)
-
-
-def built_in() -> list[Preset]:
-    """The four built-in presets, in their fixed order."""
-    return [_preset_of(json.loads((DIRECTORY / f"{pid}.json").read_text(encoding="utf-8")), built_in=True)
-            for pid in BUILT_IN_ORDER]
-
-
-def built_in_by_id(preset_id) -> Preset | None:
-    return next((p for p in built_in() if p.id == preset_id), None)
 
 
 def from_row(row: dict) -> Preset:
@@ -217,17 +206,19 @@ def from_file(doc, block_types) -> Preset:
                   reset=sorted(retired + changed, key=lambda c: c[0]), **settings)
 
 
+def with_defaults(block: dict, block_types) -> dict:
+    """A block's options merged over its type's defaults (the block's own when the type is unknown)."""
+    t = _types(block_types).get(block["block_type"])
+    return {**copy.deepcopy((t or {}).get("default_options") or {}), **copy.deepcopy(block.get("options") or {})}
+
+
 def blocks_for_layout(preset: Preset, block_types) -> list[dict]:
     """The layout blocks of a preset: new instance ids, default options merged, references reset."""
     unknown_types_problem(preset.blocks, block_types)
     types = _types(block_types)
-    out = []
-    for b in preset.blocks:
-        t = types[b["block_type"]]
-        options = {**copy.deepcopy(t.get("default_options") or {}), **copy.deepcopy(b.get("options") or {})}
-        out.append({"instance_id": str(uuid.uuid4()), "block_type": b["block_type"],
-                    "options": _without_references(options, t)})
-    return out
+    return [{"instance_id": str(uuid.uuid4()), "block_type": b["block_type"],
+             "options": _without_references(with_defaults(b, block_types), types[b["block_type"]])}
+            for b in preset.blocks]
 
 
 def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:

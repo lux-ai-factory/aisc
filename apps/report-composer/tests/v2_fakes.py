@@ -206,6 +206,11 @@ def _v2_types() -> list[dict]:
     chapter["default_options"].update({"title": "Chapter", "page_break_before": True})
     out.append(chapter)
     out.append(_type("appendix", "Appendix", {}, {}, description="Everything after it is the appendix."))
+    # report modules 2026-09-28: the runs of the report's period
+    out.append(_type("test_runs", "Test runs", {
+        "detail": _p({"enum": ["summary", "full"]}, "Detail", "One line per run, or each tool.",
+                     **{"x-aisc-enum-labels": {"summary": "One line per run", "full": "Each tool"}}),
+    }, {"detail": "summary"}, description="The test runs in the report's period."))
     return out
 
 

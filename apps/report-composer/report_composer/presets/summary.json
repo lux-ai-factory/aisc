@@ -1,0 +1,40 @@
+{
+  "format": "aisc-report-preset",
+  "version": 2,
+  "id": "summary",
+  "name": "Summary",
+  "description": "Where the system stands, on one page: the key figures, what has no evidence yet and what changed.",
+  "show_index": false,
+  "numbering": false,
+  "blocks": [
+    {
+      "block_type": "cover",
+      "options": {}
+    },
+    {
+      "block_type": "key_figures",
+      "options": {
+        "figures": [
+          "version",
+          "risks",
+          "objectives",
+          "coverage",
+          "tests"
+        ]
+      }
+    },
+    {
+      "block_type": "summary_coverage",
+      "options": {
+        "show_uncovered_only": true
+      }
+    },
+    {
+      "block_type": "changes_since",
+      "options": {
+        "compare_to": "previous",
+        "show_unchanged": false
+      }
+    }
+  ]
+}

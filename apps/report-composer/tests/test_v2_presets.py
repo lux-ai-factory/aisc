@@ -10,24 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DEFAULT_ORDER, IDS, error_code, new_layout, some_template
+from conftest import IDS, error_code, new_layout, some_template
 from v2_fakes import clean_presets, client_v2, fake_v2, unique, scalar_json, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts", "clean_presets")]
 
 PRESETS_DIR = Path(__file__).resolve().parents[1] / "report_composer/presets"
-BUILT_IN = ["full-assessment", "eu-ai-act", "internal-audit", "executive-summary"]
-SEQUENCES = {
-    "full-assessment": DEFAULT_ORDER,
-    "eu-ai-act": ["cover", "key_figures", "chapter", "ai_card", "risk_classification", "chapter",
-                  "control_objectives", "summary_coverage", "chapter", "test_results", "control_answers",
-                  "appendix", "free_text"],
-    "internal-audit": ["cover", "free_text", "key_figures", "control_answers", "test_results", "summary_coverage",
-                       "free_text"],
-    "executive-summary": ["cover", "key_figures", "chart", "summary_coverage", "changes_since"],
-}
-
-
 def preset_file(blocks, name="Carried structure", **over):
     doc = {"format": "aisc-report-preset", "version": 1, "name": name, "description": "",
            "toc": "auto", "numbering": False, "blocks": blocks}
@@ -42,39 +30,7 @@ def create(client, auth, who="alice", slug="alpha", **body):
     return client.post(f"/api/p/{slug}/layouts", json=body, headers=auth(who))
 
 
-def _load(name):
-    path = PRESETS_DIR / f"{name}.json"
-    if not path.exists():
-        pytest.fail(f"missing feature: built-in preset file report_composer/presets/{name}.json", pytrace=False)
-    return json.loads(path.read_text())
-
-
-# ── R-V1.1 built-in presets ──────────────────────────────────────────────────
-
-@pytest.mark.parametrize("preset_id", BUILT_IN)
-def test_r_v1_1_built_in_preset_files_hold_the_block_sequence(preset_id):
-    doc = _load(preset_id)
-    assert [b["block_type"] for b in doc["blocks"]] == SEQUENCES[preset_id]
-    assert all(set(b) == {"block_type", "options"} for b in doc["blocks"])
-
-
-def test_r_v1_1_built_in_preset_document_settings():
-    full, eu, audit, ex = (_load(p) for p in BUILT_IN)
-    assert (full.get("toc"), full.get("numbering")) == ("auto", False)
-    assert all("language" not in d for d in (full, eu, audit, ex))       # R2-D1.13
-    assert (eu.get("toc"), eu.get("numbering")) == ("on", True)
-    assert (audit.get("toc"), audit.get("numbering")) == ("on", True)
-    assert ex.get("toc") == "off"
-    eu_co = next(b for b in eu["blocks"] if b["block_type"] == "control_objectives")
-    assert eu_co["options"].get("show_severity") is True
-    chapters = [b["options"].get("title") for b in eu["blocks"] if b["block_type"] == "chapter"]
-    assert chapters == ["System and risks", "Control objectives", "Evidence"]
-    assert next(b for b in eu["blocks"] if b["block_type"] == "free_text")["options"].get("title") == "Method"
-    assert [b["options"].get("title") for b in audit["blocks"] if b["block_type"] == "free_text"] == ["Scope", "Findings"]
-    assert next(b for b in audit["blocks"] if b["block_type"] == "summary_coverage")["options"].get("show_uncovered_only") is True
-    assert next(b for b in ex["blocks"] if b["block_type"] == "chart")["options"].get("dataset") == "coverage_status"
-    assert next(b for b in ex["blocks"] if b["block_type"] == "summary_coverage")["options"].get("show_uncovered_only") is True
-
+# ── R-V1.1 built-in presets: replaced by the five built-in layouts (test_rm_builtins.py) ──
 
 # ── R-V1.2, R-V1.3 creating a layout from a preset ───────────────────────────
 
