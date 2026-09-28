@@ -288,6 +288,9 @@ def test_the_engine_site_serves_the_callers_platform_projects_behind_the_gateway
     assert matcher, "no @platformProjects matcher on the engine's site"
     assert re.search(r"\bmethod\s+GET\b", matcher.group(1)), matcher.group(1)
     assert "/platform/api/projects" in matcher.group(1)
+    # the target is a constant, and nothing strips a /platform prefix onto another path
+    assert re.search(r"^\s*rewrite \* /projects\s*$", block, re.M), "no `rewrite * /projects`"
+    assert "handle_path /platform" not in text
 
     handle_start = block.index("handle @platformProjects")
     route = block[handle_start:]
@@ -347,26 +350,25 @@ def _runtime_env():
 
 
 def test_the_runtime_env_installs_from_the_online_index():
-    """env.runtime (built from env.plugin_downloader) names the online devpi as the registry and
-    trusts its simple index."""
+    """env.runtime (built from env.plugin_downloader) names the online devpi as the registry:
+    PACKAGE_REGISTRY_URL alone decides where the engine installs from. Ruling 41:
+    CATALOGUE_TRUSTED_INDEXES has no consumer; it is kept, saying it is not enforced."""
     base, env = _runtime_env()
     assert env.get("PACKAGE_REGISTRY_URL") == ONLINE_INDEX, base
     assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", base
-    assert ONLINE_SIMPLE in env.get("CATALOGUE_TRUSTED_INDEXES", "").split(","), base
+    for f in ("env.plugin_downloader", "env.development"):
+        text = (ROOT / f).read_text()
+        before = text[:text.index("CATALOGUE_TRUSTED_INDEXES=")].splitlines()[-1]
+        assert "not enforced by the engine; PACKAGE_REGISTRY_URL decides where installs come from" in before, f
 
 
 def test_the_engine_installs_from_the_online_index(compose):
-    """The engine (backend and eval worker) gets the online devpi as its registry;
-    env.development trusts its simple index."""
+    """The engine (backend and eval worker) gets the online devpi as its registry."""
     q, cfg = compose
     for name in ("aisc-backend", "aisc-eval-worker"):
         env = cfg["services"][name].get("environment") or {}
         assert env.get("PACKAGE_REGISTRY_URL") == ONLINE_INDEX, name
         assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", name
-    dev = dict(l.split("=", 1) for l in (ROOT / "env.development").read_text().splitlines()
-               if "=" in l and not l.lstrip().startswith("#"))
-    dev = {k.strip(): v.strip() for k, v in dev.items()}
-    assert ONLINE_SIMPLE in dev.get("CATALOGUE_TRUSTED_INDEXES", "").split(",")
 
 
 def test_the_local_index_stays_but_only_the_publisher_uses_it(compose):
@@ -384,3 +386,68 @@ def test_postgres_is_15(compose):
     q, cfg = compose
     image = cfg["services"]["postgres"]["image"]
     assert re.match(r"postgres:15(\D|$)", image), image
+
+
+
+# ── Task 9b fix round 1: the standalone compose (Rulings 41, 42) ─────────────────────────────
+
+SECRET_NAME = re.compile(r"PASSWORD|SECRET|KEY|TOKEN")
+# an empty default is no shipped secret: the registry is a public index read without login
+EMPTY_ALLOWED = {"PACKAGE_REGISTRY_USER", "PACKAGE_REGISTRY_PASSWORD"}
+
+
+def _standalone():
+    import yaml
+    text = (ROOT / "docker-compose.engine-standalone.yml").read_text()
+    return text, yaml.safe_load(text)["services"]
+
+
+def test_the_standalone_compose_ships_no_default_secret():
+    """Port 8000 is published with no gateway: a default INTERNAL_API_KEY would let anyone call
+    /api/v1/internal/*. Every PASSWORD/SECRET/KEY/TOKEN variable is required (`${VAR:?...}`)."""
+    text, _ = _standalone()
+    refs = re.findall(r"\$\{([A-Z0-9_]+)(:?[-?])?([^}]*)\}", text)
+    bad = [f"${{{v}{op}{rest}}}" for v, op, rest in refs if SECRET_NAME.search(v)
+           and op != ":?" and not (v in EMPTY_ALLOWED and op == ":-" and rest == "")]
+    assert bad == [], bad
+    for v in ("DB_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "DJANGO_SECRET_KEY", "INTERNAL_API_KEY"):
+        assert f"${{{v}:?" in text, v
+    readme = (ROOT / "README.md").read_text()
+    assert "--env-file" in readme and "INTERNAL_API_KEY" in readme
+
+
+def test_the_standalone_registry_user_is_empty_by_default():
+    """Sean's settings turn an empty password into None; a user without one makes DevpiClient
+    refuse to start the backend. The user is empty unless given."""
+    text, _ = _standalone()
+    assert "${PACKAGE_REGISTRY_USER:-root}" not in text
+    for f in ("env.plugin_downloader", "env.development"):
+        line = [l for l in (ROOT / f).read_text().splitlines() if l.replace(" ", "").startswith("PACKAGE_REGISTRY_USER=")]
+        assert line and line[0].split("=", 1)[1].strip() == "", f
+
+
+def test_the_standalone_compose_uses_seans_settings_names_pg15_and_the_mounted_plugins():
+    """Ruling 42: Sean's settings read BACKEND_CRSF_TRUSTED_ORIGINS (his spelling); postgres 15;
+    PLUGIN_PATH is where the service mounts the plugins."""
+    text, services = _standalone()
+    backend = services["aisc-backend"]["environment"]
+    assert "BACKEND_CRSF_TRUSTED_ORIGINS" in backend and "BACKEND_CSRF_TRUSTED_ORIGINS" not in backend
+    assert re.match(r"postgres:15(\D|$)", services["postgres"]["image"]), services["postgres"]["image"]
+    for name in ("aisc-backend", "aisc-eval-worker"):
+        svc = services[name]
+        targets = [m.group(1) for v in svc.get("volumes") or []
+                   if (m := re.search(r":(/[^:]+)(:[a-z,]+)?$", str(v)))]
+        assert svc["environment"]["PLUGIN_PATH"] == "/app/plugins" and "/app/plugins" in targets, name
+    assert "\u2014" not in text, "em dash in the standalone compose"
+    assert "one project, one database" not in text
+
+
+def test_the_readme_says_where_tests_install_from_and_what_pg15_needs():
+    """README: configurator installs from the online index, the local devpi is unused by the
+    engine; standalone is one database holding all projects; PG15 needs fresh volumes."""
+    readme = (ROOT / "README.md").read_text()
+    assert "http://10.50.3.47/root/public/" in readme
+    assert "filled from `def_plugins/` at start), through" not in readme
+    assert "one project, one database" not in readme
+    assert "one database holding all projects" in readme
+    assert "fresh volumes" in readme and "PostgreSQL 15" in readme

@@ -3,3 +3,4 @@ def_plugins/
 env.secrets
 keycloak/aisc-realm.local.json
 env.runtime
+env.engine-standalone

@@ -93,9 +93,11 @@ account may see every project.
 | 6 | Results dashboard (`apps/results-dashboard`) | http://localhost:8188 |
 
 The catalogue is the hosted one; no catalogue runs in this stack. It is for browsing: it
-has no Install button. Tests are installed into the engine from the stack's own package
-index (`devpi`, filled from `def_plugins/` at start), through the engine's install dialog,
-which a link opens:
+has no Install button. Tests are installed into the engine from the online package index the
+hosted catalogue lists, http://10.50.3.47/root/public/ (`PACKAGE_REGISTRY_URL` in
+`env.plugin_downloader`), through the engine's install dialog, which a link opens. Only tests
+published there can be installed. The stack still runs a local `devpi`, filled from
+`def_plugins/` at start, but the engine does not install from it:
 
     http://localhost/receiver?project=<project pid>&uri=web%2Baiscplugin%3A%2F%2Fenable%3Fpackage%3D<name>%26version%3D<version>
 
@@ -192,7 +194,8 @@ own, or inside the Configurator, which is what this stack runs.
 
 `AISC_DEPLOYMENT` is the switch: `aisc-backend` and `aisc-eval-worker`/`aisc-eval-flower` read
 it once (`aisc_backend/deployment.py`, `aisc_eval/deployment.py`). Left unset, they default to
-**standalone**: one project, one database, no per-request project header. Set to
+**standalone**: one database holding all projects (created in the engine), no per-request
+project header. Set to
 `configurator`, they run **configurator** mode: one database per project (which needs
 PostgreSQL), and every request carries the caller's project. The webapp reads the matching
 `APP_DEPLOYMENT` the same way; its image defaults to `standalone` (`apps/webapp/Dockerfile`)
@@ -210,14 +213,41 @@ To run the engine **on its own**, without the Configurator, the platform, or the
 `docker-compose.engine-standalone.yml` instead:
 
 ```bash
-docker compose -f docker-compose.engine-standalone.yml up --build
+docker compose --env-file env.engine-standalone -f docker-compose.engine-standalone.yml up --build
 ```
+
+(`env.engine-standalone` holds its secrets; see below.)
 
 This starts `aisc-backend`, `aisc-eval-worker` and `aisc-webapp` with `AISC_DEPLOYMENT` unset,
 plus the infrastructure they need on their own (PostgreSQL, Redis, RabbitMQ, MinIO, and the
 package index plugins are installed from). The backend's own Dockerfile already runs
 `manage.py migrate` before it serves, so no separate migration step is needed here. The webapp
 is on http://localhost:8080, the API on http://localhost:8000.
+
+The standalone compose ships no secrets: port 8000 is published with no gateway in front, so a
+default `INTERNAL_API_KEY` would let anyone call `/api/v1/internal/*`. Put them in an env file
+(not committed) and pass it with `--env-file`:
+
+```bash
+cat > env.engine-standalone <<'EOF_ENV'
+DB_PASSWORD=<choose one>
+S3_PASSWORD=<choose one>
+RABBITMQ_PASSWORD=<choose one>
+DJANGO_SECRET_KEY=<a long random string>
+INTERNAL_API_KEY=<a long random string>
+DEVPI_ROOT_PASSWORD=<choose one>
+EOF_ENV
+chmod 600 env.engine-standalone
+docker compose --env-file env.engine-standalone -f docker-compose.engine-standalone.yml up --build
+```
+
+Compose refuses to start while one of them is missing.
+
+### PostgreSQL 15
+
+Both stacks run PostgreSQL 15 (the backend requires it). A data directory made by PostgreSQL 14
+does not start under 15, so moving from 14 needs fresh volumes (for example
+`docker compose ... down -v`, which deletes the data); no data migration is provided.
 
 ## 📁 Repository Structure
 
