@@ -162,7 +162,7 @@ def _block_problems(b: dict, t: dict, choices_of, allow_missing_references: bool
     refs = reference_options(t)
     found = _option_problems(t["options_schema"], merged, iid, set(refs) if allow_missing_references else set(),
                              refs)
-    if found or not refs:
+    if found or not refs or choices_of is None:      # no choices: the shape only (report modules, 3.1)
         return found
     allowed = choices_of(t["type_id"])
     defaults = t.get("default_options") or {}
@@ -175,7 +175,8 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
     """Problems of a layout, layout-level first, as [{instance_id, code, pointer, message}].
 
     `choices(block_type)` answers the values each reference option may take (called at most once
-    per block type, and only for a block whose options are otherwise valid). With a non-empty
+    per block type, and only for a block whose options are otherwise valid); `choices=None` checks the
+    shape only, as a layout is saved without a version (report modules spec 2026-09-28, 3.1). With a non-empty
     `coverage` map, `coverage_choices()` answers what it may name (report run v2, R-U2.5).
     """
     types = {t["type_id"]: t for t in block_types}
@@ -203,7 +204,7 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
             problems.append(_problem(iid, "unknown_block_type", "/block_type",
                                      f"the block type {b.get('block_type')!r} is not available"))
             continue
-        problems.extend(_block_problems(b, t, choices_of, allow_missing_references))
+        problems.extend(_block_problems(b, t, choices_of if choices is not None else None, allow_missing_references))
     if coverage:
         problems.extend(coverage_map.reference_problems(coverage, coverage_choices() if callable(coverage_choices)
                                                         else (coverage_choices or {})))

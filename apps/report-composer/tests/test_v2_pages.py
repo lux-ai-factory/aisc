@@ -39,7 +39,7 @@ def soup(html):
 def editor(client, auth, blocks, who="alice", **body):
     body.setdefault("system_id", IDS["A_V2"])
     lay = new_layout(client, auth, name=unique("Page"), blocks=blocks, **body)
-    return lay, soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth(who)).text)
+    return lay, soup(client.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}", headers=auth(who)).text)
 
 
 def li_of(doc, iid):
@@ -80,7 +80,7 @@ def test_r_u4_3_a_stored_empty_list_shows_only_these_and_the_problem(client_v2, 
     lay, _ = editor(client_v2, auth, [tests])
     bed.psql(pdb_of("A"), "UPDATE report_composer.layout_block SET options = options || '{\"evaluations\": []}'"
                           f" WHERE instance_id = '{tests['instance_id']}'")
-    doc = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
+    doc = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}", headers=auth("alice")).text)
     field = li_of(doc, tests["instance_id"]).find(attrs={"data-field": "evaluations"})
     assert field.find_all("input", attrs={"type": "radio"})[1].has_attr("checked")
     assert "Pick at least one, or choose All." in li_of(doc, tests["instance_id"]).get_text()
@@ -210,7 +210,7 @@ MAP = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]
 def coverage_panel(client, auth, who="alice", system="A_V2", coverage=MAP, blocks=None):
     lay = new_layout(client, auth, name=unique("Map"), system_id=IDS[system],
                      blocks=blocks or [v2blk("summary_coverage")], coverage=coverage)
-    doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth(who)).text)
+    doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS[system]}", headers=auth(who)).text)
     return lay, doc, doc.find("details", attrs={"data-coverage-map": True})
 
 
@@ -241,7 +241,7 @@ def test_r_u1_2_no_objectives_for_the_version(client_v2, auth):
 def test_r_u1_2_no_tests_or_checklists_for_the_version(client_v2, auth):
     lay = new_layout(client_v2, auth, slug="gamma", name=unique("G"), system_id=IDS["C_V1"],
                      blocks=[v2blk("summary_coverage")])
-    doc = soup(client_v2.get(f"/p/gamma/layouts/{lay['id']}", headers=auth("alice")).text)
+    doc = soup(client_v2.get(f"/p/gamma/layouts/{lay['id']}?system_id={IDS['C_V1']}", headers=auth("alice")).text)
     panel = doc.find("details", attrs={"data-coverage-map": True})
     assert panel is not None and "No test results or checklists for version 1 yet." in panel.get_text(" ", strip=True)
 
@@ -252,7 +252,7 @@ def test_r_u1_3_entries_not_available_for_the_version(client_v2, auth, bed):
                               "'[{\"objective_id\": \"R3.1\", \"tests\": [\"Gone tool\"], \"checklists\": []}]'"
                               f" WHERE id = '{lay['id']}'", check=False)
     assert r.returncode == 0, "missing feature: column report_composer.layout.coverage"
-    panel = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text).find(
+    panel = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}", headers=auth("alice")).text).find(
         "details", attrs={"data-coverage-map": True})
     assert "Not available for this version" in panel.get_text(" ", strip=True)
     assert "R3.1" in panel.get_text(" ", strip=True)
@@ -325,7 +325,7 @@ def test_r_u6_4_a_deleted_template_shows_platform_default(client_v2, auth):
     lay = new_layout(client_v2, auth, name=unique("Orphan"), system_id=IDS["A_V2"], template_id=t["id"],
                      blocks=[v2blk("cover")])
     client_v2.delete(f"/api/p/alpha/templates/{t['id']}", headers=auth("alice"))
-    sel = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text).find(
+    sel = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}", headers=auth("alice")).text).find(
         attrs={"data-control": "template"})
     assert sel.find("option", selected=True).get_text(strip=True) == "Platform default"
 
@@ -374,19 +374,6 @@ def test_r_u7_4_leaving_with_unsaved_changes_asks_the_browser():
 # ── 2.3 presets on the layouts page ─────────────────────────────────────────
 
 @pytest.mark.usefixtures("clean_presets")
-def test_r_v1_screens_start_from_select(client_v2, auth):
-    src = new_layout(client_v2, auth, name=unique("Src"), system_id=IDS["A_V2"], blocks=[v2blk("cover")])
-    client_v2.post(f"/api/p/alpha/layouts/{src['id']}/preset", json={"name": "Saved one"}, headers=auth("alice"))
-    doc = soup(client_v2.get("/p/alpha/", headers=auth("alice")).text)
-    sel = doc.find(attrs={"data-control": "new-layout"}).find("select", attrs={"name": "preset"})
-    assert sel is not None
-    labels = [o.get_text(strip=True) for o in sel.find_all("option")]
-    assert labels[:4] == ["Full assessment", "EU AI Act conformity", "Internal audit", "Executive summary"]
-    assert labels[-1] == "Empty layout" and "Saved one" in labels[4:-1]
-    assert sel.find("option", selected=True).get_text(strip=True) == "Full assessment"
-    assert doc.find(attrs={"data-control": "import-preset"}) is not None
-
-
 def test_r_v1_screens_row_menu_editor_and_viewer(client_v2, auth):
     new_layout(client_v2, auth, name=unique("Row"), system_id=IDS["A_V2"], blocks=[v2blk("cover")])
     ed = soup(client_v2.get("/p/alpha/", headers=auth("alice")).text)
@@ -399,18 +386,6 @@ def test_r_v1_screens_row_menu_editor_and_viewer(client_v2, auth):
 
 
 @pytest.mark.usefixtures("clean_presets")
-def test_r_v1_screens_presets_section(client_v2, auth):
-    src = new_layout(client_v2, auth, name=unique("Src"), system_id=IDS["A_V2"], blocks=[v2blk("cover")])
-    client_v2.post(f"/api/p/alpha/layouts/{src['id']}/preset", json={"name": "Listed preset"}, headers=auth("alice"))
-    mine = soup(client_v2.get("/p/alpha/", headers=auth("alice")).text)
-    assert "Listed preset" in mine.get_text()
-    assert mine.find(attrs={"data-control": "export-preset"}) is not None
-    assert mine.find(attrs={"data-control": "delete-preset"}) is not None
-    other = soup(client_v2.get("/p/alpha/", headers=auth("olga")).text)       # an owner, not the creator
-    assert other.find(attrs={"data-control": "export-preset"}) is not None
-    assert other.find(attrs={"data-control": "delete-preset"}) is None
-
-
 # ── fix round 1 (05-verify note 6): the outline after a move comes from Python ──
 
 def test_fix_outline_route_gives_depth_and_empty_chapter_for_any_order(client_v2, auth):

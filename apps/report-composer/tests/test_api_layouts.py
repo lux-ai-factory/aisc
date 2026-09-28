@@ -2,7 +2,7 @@
 D13, R7.3.1). Database tests on the bed, with a fake renderer."""
 import pytest
 
-from conftest import DEFAULT_ORDER, IDS, blk, error_code, new_layout, pdb_of, put_layout
+from conftest import IDS, blk, error_code, new_layout, pdb_of, put_layout
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
@@ -44,11 +44,10 @@ def test_r7_3_1_choices_for_a_version_of_another_project_are_refused(client, aut
     assert all(c[1] != IDS["B_V1"] for c in fake_renderer.choice_calls)
 
 
-# R3.3, R3.4
-def test_r3_3_a_new_layout_gets_the_default_blocks_and_the_latest_version(client, auth):
+# R3.3, R3.4; report modules 2026-09-28: a new layout starts empty and holds no version
+def test_r3_3_a_new_layout_starts_empty_without_a_version(client, auth):
     lay = new_layout(client, auth, name="Default one")
-    assert [b["block_type"] for b in lay["blocks"]] == DEFAULT_ORDER
-    assert lay["system_id"] == IDS["A_V3"]
+    assert lay["blocks"] == [] and "system_id" not in lay
     assert lay["revision"] == 1
 
 
@@ -57,14 +56,9 @@ def test_r4_3_get_layout_shape(client, auth):
     r = client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("victor"))
     assert r.status_code == 200
     body = r.json()
-    assert set(body) >= {"id", "name", "description", "system_id", "revision", "blocks"}
+    assert set(body) >= {"id", "name", "description", "show_index", "revision", "blocks"}
+    assert "system_id" not in body
     assert body["blocks"][0]["block_type"] == "free_text" and body["blocks"][0]["options"]["text"] == "x"
-
-
-# R3.1
-def test_r3_1_the_version_must_belong_to_the_project(client, auth):
-    r = client.post("/api/p/alpha/layouts", json={"name": "x", "system_id": IDS["B_V1"]}, headers=auth("alice"))
-    assert r.status_code == 422 and error_code(r) == "system_not_in_project"
 
 
 def test_r3_1_names_are_unique_per_project(client, auth):
@@ -112,10 +106,11 @@ def test_r3_5_unknown_block_type_and_invalid_options(client, auth):
     assert set(r.json()["error"]) == {"code", "message", "details"}
 
 
-# R3.6, R7.3.1
+# R3.6, R7.3.1: checked against the chosen version when generating (report modules 2026-09-28, 3.1)
 def test_r3_6_a_reference_of_another_project_is_refused(client, auth):
     lay = new_layout(client, auth, system_id=IDS["A_V2"])
-    r = put_layout(client, auth, lay, blocks=[blk("test_results", evaluations=[IDS["EVAL_B_V1"]])])
+    assert put_layout(client, auth, lay, blocks=[blk("test_results", evaluations=[IDS["EVAL_B_V1"]])]).status_code == 200
+    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == "invalid_reference"
 
 
@@ -136,16 +131,6 @@ def test_r3_8_zero_blocks_saves(client, auth):
     assert put_layout(client, auth, lay, blocks=[]).status_code == 200
 
 
-# R3.9
-def test_r3_9_changing_the_version_checks_references(client, auth):
-    lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("test_results", evaluations=[IDS["EVAL_A_V2"]])])
-    r = put_layout(client, auth, lay, system_id=IDS["A_V3"])
-    assert r.status_code == 422 and error_code(r) == "invalid_reference"
-    r = put_layout(client, auth, lay, system_id=IDS["A_V3"], reset_invalid=True)
-    assert r.status_code == 200
-    assert r.json()["blocks"][0]["options"]["evaluations"] == "all" and r.json()["system_id"] == IDS["A_V3"]
-
-
 # R3.10
 def test_r3_10_a_block_type_that_went_away(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
@@ -156,7 +141,7 @@ def test_r3_10_a_block_type_that_went_away(client, auth, bed):
     page = client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice"))
     assert "unknown type" in page.text.lower()
     assert client.get(f"/api/p/alpha/layouts/{lay['id']}/preview", headers=auth("alice")).status_code == 200
-    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
+    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == "unknown_block_type"
 
 
@@ -172,14 +157,15 @@ def test_r4_3_list_fields(client, auth):
     new_layout(client, auth, name="Listed", system_id=IDS["A_V2"])
     rows = client.get("/api/p/alpha/layouts", headers=auth("victor")).json()
     row = next(r for r in rows if r["name"] == "Listed")
-    assert row["system_number"] == 2 and row["revision"] == 1
+    assert "system_number" not in row and row["revision"] == 1
     assert "updated_at" in row and "last_report" in row
 
 
 # R3.13
 def test_r3_13_deleting_a_layout_deletes_its_reports(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
-    assert client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice")).status_code == 201
+    assert client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]},
+                       headers=auth("alice")).status_code == 201
     assert client.delete(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 204
     assert bed.scalar(pdb_of("A"), f"SELECT count(*) FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "0"
     assert client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 404

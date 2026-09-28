@@ -12,10 +12,10 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import coverage_map, db, layouts, presets, reports
+from . import db, layouts, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on
-from .guards import Guarded, check_origin, project_guard, signed_in
+from .guards import Guarded, project_guard, signed_in
 from .records import NO_LAYOUT, NO_TEMPLATE, chosen_template, layout_or_404, template_of, template_or_404
 from .renderer_calls import (block_types, choices_for, coverage_choices_for, fonts, outline_block_types,
                              renderer_call)
@@ -33,16 +33,11 @@ def _project_db(request: Request, g: Guarded):
     return request.app.state.projects.connect(g.project["pid"])
 
 
-def _library(request: Request):
-    """`platform`, for the install-wide preset library report_library (D4)."""
-    return db.connect(request.app.state.database_url)
-
-
 def layout_view(layout: dict, project_pid: str) -> dict:
     """A layout as the API answers it; project_id is the guarded project's (the row has none)."""
     layout = {**layout, "project_id": project_pid}
-    return {k: layout[k] for k in ("id", "project_id", "name", "description", "system_id", "template_id", "revision",
-                                   "blocks", "created_at", "updated_at", "toc", "numbering", "coverage")}
+    return {k: layout[k] for k in ("id", "project_id", "name", "description", "template_id", "revision",
+                                   "blocks", "created_at", "updated_at", "show_index", "numbering", "coverage")}
 
 
 def _text(body: dict, name: str, *, required: bool, max_len: int) -> str:
@@ -69,10 +64,6 @@ def _revision(body: dict) -> int:
 
 def _layout_name_taken() -> ApiError:
     return ApiError(422, "name_taken", "A layout of this project already has this name.")
-
-
-def _system_not_in_project() -> ApiError:
-    return ApiError(422, "system_not_in_project", "The version is not one of this project.")
 
 
 def _blocks(body: dict) -> list:
@@ -115,84 +106,51 @@ def get_layouts(request: Request, g: Guarded = Depends(project_guard("viewer")))
         return db.list_layouts(conn)
 
 
-def _preset_named(request: Request, preset_id) -> presets.Preset:
-    """A built-in preset by id or a saved one by uuid (read from the library on `platform`), or 422
-    unknown_preset."""
-    found = presets.built_in_by_id(preset_id) if isinstance(preset_id, str) else None
-    if found is None and isinstance(preset_id, str):
-        with _library(request) as conn:
-            row = db.get_preset(conn, preset_id)
-        found = presets.from_row(row) if row else None
-    if found is None:
-        raise ApiError(422, "unknown_preset", "No such preset.", [{"pointer": "/preset", "message": "is not a preset"}])
-    return found
-
-
-def _preset_settings(preset: presets.Preset | None) -> dict:
-    """The document settings a preset starts a layout with: toc and numbering (R2-D1.13)."""
-    if preset is None:
-        return {}
-    return {k: v for k, v in (("toc", preset.toc), ("numbering", preset.numbering)) if v is not None}
-
-
 @router.post("/p/{ref}/layouts", status_code=201)
 def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
-    sources = [k for k in ("preset", "preset_file", "blocks") if body.get(k) is not None]
+    """A layout of this project: empty, from its blocks, or from a layout file (`file`; `preset_file` is the
+    older name). It holds no data: a version or a toc sent by an older client is ignored (report
+    modules spec 2026-09-28, section 7.2)."""
+    body = {**body, "file": body.get("file", body.get("preset_file"))}
+    sources = [k for k in ("file", "blocks") if body.get(k) is not None]
     if len(sources) > 1:
-        raise ApiError(422, "invalid_request", "Give at most one of preset, preset_file and blocks.",
+        raise ApiError(422, "invalid_request", "Give at most one of file and blocks.",
                        [{"pointer": "/" + k, "message": "only one source of blocks"} for k in sources])
     pid = g.project["pid"]
     types = block_types(request)
-    preset = None
+    imported = presets.from_file(body["file"], types) if body.get("file") is not None else None
     with _project_db(request, g) as conn:
-        system = _system_for_new_layout(conn, body.get("system_id"))
         template_id = chosen_template(conn, body.get("template_id"))
-        if body.get("preset") == "empty":
-            preset = presets.Preset(id="empty", name="Empty layout")
-        elif body.get("preset") is not None:
-            preset = _preset_named(request, body["preset"])
-        elif body.get("preset_file") is not None:
-            preset = presets.from_file(body["preset_file"], types)
         taken = db.layout_names(conn)
-    if body.get("name") is None and body.get("preset_file") is not None:
-        body = {**body, "name": looks.free_name(preset.name, taken)}
+    if body.get("name") is None and imported is not None:
+        body = {**body, "name": looks.free_name(imported.name, taken)}
     name, description = _name_and_description(body)
-    if preset is not None:
-        blocks = presets.blocks_for_layout(preset, types)
-    elif body.get("blocks") is not None:
-        blocks = _blocks(body)
+    if imported is not None:
+        blocks = presets.blocks_for_layout(imported, types)
+        start = {k: v for k, v in (("show_index", imported.show_index), ("numbering", imported.numbering))
+                 if v is not None}
     else:
-        blocks = layouts.default_blocks(types)
-    settings = document_settings(body, _preset_settings(preset))
-    fail_on(layouts.validate_layout(
-        blocks, block_types=types, choices=choices_for(request, pid, system["pid"]),
-        allow_missing_references=preset is not None, coverage=settings["coverage"],
-        coverage_choices=lambda: coverage_choices_for(request, pid, system["pid"])))
+        blocks = _blocks(body) if body.get("blocks") is not None else []
+        start = {}
+    settings = document_settings(body, start)
+    fail_on(_shape_problems(blocks, types))
     now = request.app.state.clock()
     try:
         with _project_db(request, g) as conn:
-            lid = db.insert_layout(conn, system_pid=system["pid"], template_id=template_id, name=name,
-                                   description=description, blocks=blocks, who=g.caller.subject, now=now,
-                                   settings=settings)
+            lid = db.insert_layout(conn, template_id=template_id, name=name, description=description, blocks=blocks,
+                                   who=g.caller.subject, now=now, settings=settings)
             view = layout_view(db.get_layout(conn, lid), pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
-    if body.get("preset_file") is not None:
-        view["notices"] = presets.reference_notices(preset.reset, "data that is not in this project")
+    if imported is not None:
+        view["notices"] = presets.reference_notices(imported.reset, "data that is not in this project")
     return view
 
 
-def _system_for_new_layout(conn, system_id) -> dict:
-    """The version asked for, or the project's latest when none is."""
-    if system_id is not None:
-        system = db.system_of_project(conn, system_id)
-        if system is None:
-            raise _system_not_in_project()
-        return system
-    system = db.latest_system(conn)
-    if system is None:
-        raise ApiError(422, "system_not_in_project", "This project has no system version yet.")
-    return system
+def _shape_problems(blocks, types) -> list[dict]:
+    """A saved layout's problems without its references: those are checked against a version, in the
+    preview and when a report is generated (report modules spec, section 3.1)."""
+    return layouts.validate_layout(blocks, block_types=types, choices=None, allow_missing_references=True)
 
 
 @router.get("/p/{ref}/layouts/{layout_id}")
@@ -213,19 +171,13 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
     revision = _revision(body)
     blocks = _blocks(body)
     with _project_db(request, g) as conn:
-        system = db.system_of_project(conn, body.get("system_id") or current["system_id"])
         template_id = chosen_template(conn, body.get("template_id"))
-    if system is None:
-        raise _system_not_in_project()
     settings = document_settings(body, current)
-    blocks, settings["coverage"] = _checked_blocks(
-        blocks, block_types(request), choices_for(request, pid, system["pid"]),
-        reset_invalid=bool(body.get("reset_invalid")), coverage=settings["coverage"],
-        coverage_choices=_once(lambda: coverage_choices_for(request, pid, system["pid"])))
+    fail_on(_shape_problems(blocks, block_types(request)))
     try:
         with _project_db(request, g) as conn:
             new = db.update_layout(conn, current["id"], based_on=revision, name=name, description=description,
-                                   system_pid=system["pid"], template_id=template_id, blocks=blocks,
+                                   template_id=template_id, blocks=blocks,
                                    who=g.caller.subject, now=request.app.state.clock(), settings=settings)
             if new is None:
                 latest = layout_or_404(conn, layout_id)
@@ -235,34 +187,6 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
             return layout_view(db.get_layout(conn, current["id"]), pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
-
-
-def _once(fn):
-    """fn called at most once, its answer kept."""
-    kept = []
-
-    def call():
-        if not kept:
-            kept.append(fn())
-        return kept[0]
-    return call
-
-
-def _checked_blocks(blocks, types, choices, *, reset_invalid: bool, coverage=(), coverage_choices=None):
-    """(blocks, coverage map), or a 422 naming their problems. With reset_invalid, a layout whose only
-    problems are invalid references has those options reset to their defaults, and the map loses
-    the values the version does not offer."""
-    coverage = list(coverage or [])
-    problems = layouts.validate_layout(blocks, block_types=types, choices=choices, coverage=coverage,
-                                       coverage_choices=coverage_choices)
-    if problems and reset_invalid and all(p["code"] == "invalid_reference" for p in problems):
-        blocks = layouts.reset_invalid(blocks, problems, types)
-        if coverage:
-            coverage = coverage_map.reset(coverage, coverage_choices())
-        problems = layouts.validate_layout(blocks, block_types=types, choices=choices, coverage=coverage,
-                                           coverage_choices=coverage_choices)
-    fail_on(problems)
-    return blocks, coverage
 
 
 @router.delete("/p/{ref}/layouts/{layout_id}", status_code=204)
@@ -277,12 +201,32 @@ def delete_layout(request: Request, layout_id: str, g: Guarded = Depends(project
 def validate(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer", origin_check=False))):
     with _project_db(request, g) as conn:
         layout = layout_or_404(conn, layout_id)
-    pid = g.project["pid"]
-    problems = layouts.validate_layout(
-        layout["blocks"], block_types=block_types(request), choices=choices_for(request, pid, layout["system_id"]),
-        coverage=layout.get("coverage"),
-        coverage_choices=lambda: coverage_choices_for(request, pid, layout["system_id"]))
+        pw = preview_with.parse(conn, None)
+    problems = _problems_for(request, g, layout["blocks"], layout.get("coverage"), pw)
     return {"valid": not problems, "problems": problems}
+
+
+def _problems_for(request: Request, g: Guarded, blocks, coverage, pw) -> list[dict]:
+    """A layout's problems with its references checked against the preview's version (none: shape only)."""
+    types = block_types(request)
+    if pw.system is None:
+        return _shape_problems(blocks, types)
+    pid, spid = g.project["pid"], pw.system["pid"]
+    return layouts.validate_layout(blocks, block_types=types, choices=choices_for(request, pid, spid),
+                                   coverage=coverage, coverage_choices=lambda: coverage_choices_for(request, pid, spid))
+
+
+NO_VERSION = "This project has no AI card version yet. Save the AI card in qualification first."
+
+
+def _render_preview(request: Request, g: Guarded, layout: dict, template, pw) -> dict:
+    """The renderer's preview of `layout` for the preview's version and period; with no version, a page
+    saying so, without calling the renderer."""
+    if pw.system is None:
+        return {"html": f"<!DOCTYPE html><html><body><p>{NO_VERSION}</p></body></html>", "block_statuses": []}
+    snapshot = reports.snapshot_of(g.project, layout, "preview", g.caller, template, system_id=pw.system["pid"],
+                                   selection=pw.selection)
+    return renderer_call(request.app.state.renderer.render, snapshot)
 
 
 @router.get("/p/{ref}/layouts/{layout_id}/preview")
@@ -290,8 +234,8 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
     with _project_db(request, g) as conn:
         layout = layout_or_404(conn, layout_id)
         template = template_of(conn, layout)
-    result = renderer_call(request.app.state.renderer.render,
-                           reports.snapshot_of(g.project, layout, "preview", g.caller, template))
+        pw = preview_with.parse(conn, dict(request.query_params))
+    result = _render_preview(request, g, layout, template, pw)
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
                                                  "X-Content-Type-Options": "nosniff"})
 
@@ -330,27 +274,21 @@ async def preview_draft(request: Request, layout_id: str, g: Guarded = Depends(p
 
 
 def _draft_preview(request: Request, g: Guarded, layout_id: str, body: dict) -> dict:
-    pid = g.project["pid"]
     with _project_db(request, g) as conn:
         current = layout_or_404(conn, layout_id)
-        system = db.system_of_project(conn, body.get("system_id") or current["system_id"])
-        if system is None:
-            raise _system_not_in_project()
         template_id = chosen_template(conn, body.get("template_id"))
         template = db.get_template(conn, template_id, with_logo=True) if template_id else None
+        pw = preview_with.parse(conn, body.get("preview_with") if isinstance(body.get("preview_with"), dict) else None)
     settings = document_settings(body, current)
     blocks = _blocks(body) if body.get("blocks") is not None else current["blocks"]
-    problems = layouts.validate_layout(
-        blocks, block_types=block_types(request), choices=choices_for(request, pid, system["pid"]),
-        coverage=settings["coverage"], coverage_choices=lambda: coverage_choices_for(request, pid, system["pid"]))
-    draft = {**current, **settings, "system_id": system["pid"], "blocks": blocks}
-    result = renderer_call(request.app.state.renderer.render,
-                           reports.snapshot_of(g.project, draft, "preview", g.caller, template))
+    problems = _problems_for(request, g, blocks, settings["coverage"], pw)
+    draft = {**current, **settings, "blocks": blocks}
+    result = _render_preview(request, g, draft, template, pw)
     return {"html": reports.with_csp_meta(result.get("html") or ""), "problems": problems,
             "block_statuses": list(result.get("block_statuses") or [])}
 
 
-# Duplicate, export and presets
+# Duplicate and export
 
 @router.post("/p/{ref}/layouts/{layout_id}/duplicate", status_code=201)
 def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(None),
@@ -367,8 +305,8 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
                 name = presets.copy_name(src["name"], db.layout_names(conn))
             blocks = [{"instance_id": str(uuid.uuid4()), "block_type": b["block_type"], "options": b["options"]}
                       for b in src["blocks"]]
-            settings = {k: src[k] for k in ("toc", "numbering", "coverage")}
-            lid = db.insert_layout(conn, system_pid=src["system_id"], template_id=src["template_id"],
+            settings = {k: src[k] for k in ("show_index", "numbering", "coverage")}
+            lid = db.insert_layout(conn, template_id=src["template_id"],
                                    name=name, description=src.get("description") or "", blocks=blocks,
                                    who=g.caller.subject, now=now, settings=settings)
             return layout_view(db.get_layout(conn, lid), pid)
@@ -390,94 +328,21 @@ def export_layout(request: Request, layout_id: str, keep_text: bool = False,
     return _preset_file_response(presets.from_layout(layout, block_types(request), keep_text=keep_text))
 
 
-def _insert_preset(conn, p: presets.Preset, *, source_project_id, who, now) -> str:
-    return db.insert_preset(conn, name=p.name, description=p.description, toc=p.toc, numbering=p.numbering,
-                            blocks=p.blocks, source_project_id=source_project_id, who=who, now=now)
-
-
-@router.post("/p/{ref}/layouts/{layout_id}/preset", status_code=201)
-def save_as_preset(request: Request, layout_id: str, body: dict = Body(...),
-                   g: Guarded = Depends(project_guard("editor"))):
-    name = presets.checked_name(body.get("name"))
-    description = _text(body, "description", required=False, max_len=DESCRIPTION_MAX)
-    # the layout is read in the project's database, the copy is written to the library on `platform`:
-    # two steps, not one transaction, which is fine for a copy (D4)
-    with _project_db(request, g) as conn:
-        layout = layout_or_404(conn, layout_id)
-    p = presets.from_layout(layout, block_types(request), keep_text=bool(body.get("keep_text")))
-    p.name, p.description = name, description
-    try:
-        with _library(request) as conn:
-            p.id = _insert_preset(conn, p, source_project_id=g.project["pid"], who=g.caller.subject,
-                                  now=request.app.state.clock())
-    except psycopg.errors.UniqueViolation:
-        raise ApiError(422, "name_taken", "A preset already has this name.") from None
-    return presets.summary(p)
-
-
-def _all_presets(conn) -> list[presets.Preset]:
-    return presets.built_in() + [presets.from_row(r) for r in db.list_presets(conn)]
-
-
-@router.get("/presets")
-def get_presets(request: Request, caller=Depends(signed_in)):
-    with _library(request) as conn:
-        return [presets.summary(p) for p in _all_presets(conn)]
-
-
-@router.post("/presets/import", status_code=201)
-def import_preset(request: Request, body=Body(...), caller=Depends(signed_in)):
-    check_origin(request)
-    p = presets.from_file(body, block_types(request))
-    with _library(request) as conn:
-        p.name = looks.free_name(p.name, db.preset_names(conn))
-        p.id = _insert_preset(conn, p, source_project_id=None, who=caller.subject, now=request.app.state.clock())
-    return {**presets.summary(p), "notices": presets.reference_notices(p.reset, "data of another project or platform")}
-
-
-def _preset_or_404(conn, preset_id) -> presets.Preset:
-    found = presets.built_in_by_id(preset_id)
-    if found is None:
-        row = db.get_preset(conn, preset_id)
-        found = presets.from_row(row) if row else None
-    if found is None:
-        raise ApiError(404, "not_found", "No such preset.")
-    return found
-
-
-@router.get("/presets/{preset_id}/export")
-def export_preset(request: Request, preset_id: str, caller=Depends(signed_in)):
-    with _library(request) as conn:
-        return _preset_file_response(_preset_or_404(conn, preset_id))
-
-
-def may_delete_preset(p: presets.Preset, caller) -> bool:
-    """A saved preset is deleted by its creator or a realm admin; a built-in one by nobody."""
-    return not p.built_in and (p.created_by == caller.subject or caller.has_role("admin"))
-
-
-@router.delete("/presets/{preset_id}", status_code=204)
-def delete_preset(request: Request, preset_id: str, caller=Depends(signed_in)):
-    check_origin(request)
-    with _library(request) as conn:
-        p = _preset_or_404(conn, preset_id)
-        if not may_delete_preset(p, caller):
-            raise ApiError(403, "forbidden", "Only its creator or an administrator deletes this preset."
-                           if not p.built_in else "A built-in preset cannot be deleted.")
-        db.delete_preset(conn, preset_id)
-    return Response(status_code=204)
-
-
 # Reports
 
 @router.post("/p/{ref}/layouts/{layout_id}/reports")
 def post_report(request: Request, layout_id: str, body: dict | None = Body(None),
                 g: Guarded = Depends(project_guard("editor"))):
-    fmt = (body or {}).get("format") or "pdf"
+    """A report of the layout for a chosen version, period, other-versions switch and compare version
+    (report modules spec 2026-09-28, section 6)."""
+    body = body or {}
+    fmt = body.get("format") or "pdf"
     if fmt not in reports.FORMATS:
         raise ApiError(422, "invalid_request", "format must be pdf or docx.",
                        [{"pointer": "/format", "message": "must be one of pdf, docx"}])
-    status, answer = reports.generate(request, g.project, layout_id, g.caller, fmt)
+    choice = {k: body.get(k) for k in ("system_id", "period_from", "period_to", "compare_to")}
+    choice["other_versions"] = body.get("other_versions") is True
+    status, answer = reports.generate(request, g.project, layout_id, g.caller, fmt, choice=choice)
     return JSONResponse(status_code=status, content=answer)
 
 
@@ -485,7 +350,7 @@ def post_report(request: Request, layout_id: str, body: dict | None = Body(None)
 def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
     with _project_db(request, g) as conn:
         layout = layout_or_404(conn, layout_id)
-        return db.list_reports(conn, layout["id"])
+        return [reports.report_row(r) for r in db.list_reports(conn, layout["id"])]
 
 
 def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool) -> Response:

@@ -153,7 +153,7 @@ def test_saving_changes_the_template(client, auth):
 
 def test_deleting_a_template_leaves_its_layouts_without_one(client, auth):
     t = new_template(client, auth, name="Going")
-    lay = new_layout(client, auth, name="Orphan", system_id=IDS["A_V2"], template_id=t["id"])
+    lay = new_layout(client, auth, name="Orphan", template_id=t["id"], blocks=[blk("cover")])
     assert client.delete(f"/api/p/alpha/templates/{t['id']}", headers=auth("alice")).status_code == 204
     assert client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).json()["template_id"] is None
 
@@ -165,7 +165,7 @@ def test_the_pdf_is_made_in_the_saved_templates_look(client, auth, fake_renderer
                      primary_color="#123456", accent_color="#abcdef", logo=LOGO)
     lay = new_layout(client, auth, name="Board pack", system_id=IDS["A_V2"], template_id=t["id"],
                      blocks=[blk("cover")])
-    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", headers=auth("alice"))
+    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code in (200, 201), r.text[:300]
     sent = fake_renderer.snapshots[-1]
     assert sent["mode"] == "pdf"
@@ -175,9 +175,9 @@ def test_the_pdf_is_made_in_the_saved_templates_look(client, auth, fake_renderer
 
 def test_a_layout_whose_template_was_deleted_is_generated_in_the_platform_look(client, auth, fake_renderer):
     t = new_template(client, auth, name="Going")
-    lay = new_layout(client, auth, name="Orphan", system_id=IDS["A_V2"], template_id=t["id"])
+    lay = new_layout(client, auth, name="Orphan", template_id=t["id"], blocks=[blk("cover")])
     client.delete(f"/api/p/alpha/templates/{t['id']}", headers=auth("alice"))
-    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", headers=auth("alice"))
+    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
     pdf = [s for s in fake_renderer.snapshots if s["mode"] == "pdf"]
     assert pdf and "style" not in pdf[-1]

@@ -135,15 +135,16 @@ def test_i8_4_start_migrates_the_library_and_every_project_database(iso_client, 
     for key in ("A", "B", "E"):
         db = pdb(IDS[key])
         assert _names(iso_bed, db, "SELECT string_agg(name, ',') FROM report_composer.schema_migration") \
-            == ["0001_project_database.sql"], key
+            == ["0001_project_database.sql", "0002_layouts_without_data.sql"], key
         for t in MODULE_TABLES:
             assert iso_bed.scalar(db, f"SELECT to_regclass('report_composer.{t}') IS NOT NULL") == "t", (key, t)
 
 
 @pytest.mark.db
 def test_i8_2_i1_7_the_project_tables_have_no_project_id_and_keys_on_project_system(iso_client, iso_bed):
-    """I8.2, I1.6, I1.7: no project_id in layout, template, generated_report; system_id keys reference
-    project.system(pid) with NO ACTION; layout_block and generated_report follow their layout."""
+    """I8.2, I1.6, I1.7: no project_id in layout, template, generated_report; the report's version keys
+    (system_id, compare_to) reference project.system(pid) with NO ACTION, and a layout has none (report
+    modules 2026-09-28); layout_block and generated_report follow their layout."""
     iso_client.get("/api/block-types")
     db = pdb(A)
     cols = _names(iso_bed, db, "SELECT string_agg(table_name || '.' || column_name, ',') FROM"
@@ -154,8 +155,7 @@ def test_i8_2_i1_7_the_project_tables_have_no_project_id_and_keys_on_project_sys
                               " || confdeltype, ',' ORDER BY 1) FROM pg_constraint WHERE contype = 'f'"
                               " AND connamespace = 'report_composer'::regnamespace"
                               " AND confrelid = 'project.system'::regclass")
-    assert set(keys.split(",")) == {"report_composer.layout>project.system:a",
-                                    "report_composer.generated_report>project.system:a"}, keys
+    assert set(keys.split(",")) == {"report_composer.generated_report>project.system:a"}, keys
 
 
 @pytest.mark.db
@@ -191,11 +191,8 @@ def test_i8_1_the_platform_connection_reads_only_core_and_the_library(iso_client
     lay = new_layout(iso_client, auth, slug="alpha", template_id=t["id"], system_id=IDS["A_V2"],
                      blocks=[v2blk("cover")])
     assert iso_client.get("/api/p/alpha/systems", headers=auth("alice")).status_code == 200
-    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
+    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code in (200, 201), r.text[:300]
-    assert iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/preset", json={"name": unique("Structure")},
-                           headers=auth("alice")).status_code == 201
-    assert iso_client.get("/api/presets", headers=auth("alice")).status_code == 200
     on_platform, on_alpha = set(), set()
     for db, sql in spy["sql"]:
         (on_platform if db == "platform" else on_alpha if db == pdb(A) else set()).update(tables_named(sql))
@@ -228,15 +225,17 @@ def test_i8_1_the_guard_decides_before_a_project_database_is_opened(iso_client, 
 @pytest.mark.db
 @pytest.mark.usefixtures("iso_clean")
 def test_i8_3_a_version_of_another_project_is_422_system_not_in_project(iso_client, auth):
-    """I8.3: every system_id names a row of project.system of the same database: Beta's version under Alpha
-    is 422 system_not_in_project on create and on save."""
+    """I8.3: every system_id names a row of project.system of the same database: Beta's version chosen for
+    an Alpha report (and as the version to compare with) is 422 (report modules 2026-09-28: the report,
+    not the layout, holds the version)."""
     t = new_template(iso_client, auth, slug="alpha", name=unique("Look"))
-    r = iso_client.post("/api/p/alpha/layouts", json={"name": unique("L"), "template_id": t["id"],
-                                                      "system_id": IDS["B_V1"]}, headers=auth("alice"))
+    lay = new_layout(iso_client, auth, slug="alpha", template_id=t["id"], blocks=[v2blk("cover")])
+    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["B_V1"]},
+                        headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == "system_not_in_project", r.text[:300]
-    lay = new_layout(iso_client, auth, slug="alpha", template_id=t["id"], system_id=IDS["A_V2"])
-    r = put_layout(iso_client, auth, lay, slug="alpha", system_id=IDS["B_V1"])
-    assert r.status_code == 422 and error_code(r) == "system_not_in_project", r.text[:300]
+    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports",
+                        json={"system_id": IDS["A_V2"], "compare_to": IDS["B_V1"]}, headers=auth("alice"))
+    assert r.status_code == 422, r.text[:300]
     r = iso_client.get(f"/api/p/alpha/choices?block_type=test_results&system_id={IDS['B_V1']}", headers=auth("alice"))
     assert r.status_code in (404, 422), r.text[:300]
 
@@ -255,7 +254,7 @@ def test_i8_3_the_versions_are_those_of_the_projects_database(iso_client, auth):
 def test_i8_3_a_generated_report_names_a_version_of_its_database(iso_client, iso_bed, auth):
     """I8.3: the report row is in alpha's database and its system_id resolves in the same database."""
     lay = new_layout(iso_client, auth, slug="alpha", system_id=IDS["A_V2"], blocks=[v2blk("cover")])
-    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
+    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code in (200, 201), r.text[:300]
     assert iso_bed.scalar(pdb(A), "SELECT count(*) FROM report_composer.generated_report r JOIN project.system s"
                                   f" ON s.pid = r.system_id WHERE s.pid = '{IDS['A_V2']}'") == "1"
@@ -268,8 +267,8 @@ def test_i8_4_a_project_made_after_start_is_migrated_on_first_open(iso_client, i
     db = new_project(iso_bed, "9b000000-0000-4000-8000-000000000001", "first-open")
     r = iso_client.get("/api/p/first-open/layouts", headers=auth("alice"))
     assert r.status_code == 200 and r.json() == [], r.text[:300]
-    assert iso_bed.scalar(db, "SELECT string_agg(name, ',') FROM report_composer.schema_migration") \
-        == "0001_project_database.sql"
+    assert iso_bed.scalar(db, "SELECT string_agg(name, ',' ORDER BY name) FROM report_composer.schema_migration") \
+        == "0001_project_database.sql,0002_layouts_without_data.sql"
 
 
 @pytest.mark.db
@@ -311,7 +310,7 @@ def test_i8_4_concurrent_first_opens_migrate_once(iso_client, iso_bed, auth):
     for th in threads:
         th.join(60)
     assert results == [200, 200]
-    assert iso_bed.scalar(db, "SELECT count(*) FROM report_composer.schema_migration") == "1"
+    assert iso_bed.scalar(db, "SELECT count(*) FROM report_composer.schema_migration") == "2"   # each file once
 
 
 @pytest.mark.db
@@ -341,20 +340,3 @@ def test_i2_5_a_dropped_project_database_is_404_not_500(iso_client, iso_bed, aut
         assert r.status_code == 404, (path, r.status_code, r.text[:300])
 
 
-# ── D4: presets are the install-wide library ────────────────────────────────
-
-
-@pytest.mark.db
-@pytest.mark.usefixtures("iso_clean")
-def test_d4_a_preset_saved_in_a_project_is_in_the_library_and_seen_from_another(iso_client, iso_bed, auth):
-    """D4, I8.1, I8.2: a structure saved from alpha is a row of platform.report_library.preset with its source
-    project, listed for a member of beta only; no project database has a preset table."""
-    lay = new_layout(iso_client, auth, slug="alpha", system_id=IDS["A_V2"], blocks=[v2blk("cover")])
-    name = unique("Structure")
-    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/preset", json={"name": name}, headers=auth("alice"))
-    assert r.status_code == 201, r.text[:300]
-    assert iso_bed.scalar("platform", f"SELECT source_project_id FROM report_library.preset WHERE name = '{name}'") == A
-    listed = iso_client.get("/api/presets", headers=auth("bob"))
-    assert listed.status_code == 200 and name in {p["name"] for p in listed.json()}
-    for key in ("A", "B", "E"):
-        assert iso_bed.scalar(pdb(IDS[key]), "SELECT to_regclass('report_composer.preset') IS NULL") == "t"

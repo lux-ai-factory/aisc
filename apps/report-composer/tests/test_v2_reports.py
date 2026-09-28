@@ -21,6 +21,7 @@ def layout(client, auth, **body):
 
 
 def generate(client, auth, lay, **body):
+    body.setdefault("system_id", IDS["A_V2"])
     return client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json=body, headers=auth("alice"))
 
 
@@ -37,7 +38,7 @@ def test_r_v8_14_absent_format_is_pdf(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
     assert generate(client_v2, auth, lay).status_code == 201
     assert fake_v2.snapshots[-1]["mode"] == "pdf"
-    assert fake_v2.snapshots[-1].get("snapshot_version") == 2
+    assert fake_v2.snapshots[-1].get("snapshot_version") == 3      # report modules 2026-09-28: with a selection
 
 
 def test_r_v8_14_an_unknown_format_is_refused(client_v2, auth):

@@ -8,12 +8,10 @@ beta (template_id, system_id) are 422 `*_not_in_project`.
 
 Route inventory (report_composer/api.py, pages.py, 2026-09-25), every route with an object id in its path:
   layouts/{id}: GET, PUT, DELETE; /validate POST; /preview GET and POST; /outline POST; /duplicate POST;
-  /export GET; /preset POST; /reports GET and POST
+  /export GET; /reports GET and POST (the /preset route and the preset library are gone, report modules 2026-09-28)
   reports/{id}: /pdf GET; /download GET
   templates/{id}: PUT, DELETE; /export GET; /logo GET
   page: GET /p/{ref}/layouts/{id}
-  presets/{id}: /export GET, DELETE: install-wide library (D4), not a project's object, so no cross-project
-  case exists; test_isolation_project_databases.py pins that a preset is in platform.report_library.
 """
 from __future__ import annotations
 
@@ -47,7 +45,7 @@ def _make_alphas(iso_client, auth):
     t = new_template(iso_client, auth, slug="alpha", name=unique("Look"), logo=LOGO)
     lay = new_layout(iso_client, auth, slug="alpha", template_id=t["id"], system_id=IDS["A_V2"],
                      blocks=[v2blk("cover"), v2blk("free_text", text="alpha text")])
-    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
+    r = iso_client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code in (200, 201), r.text[:300]
     rid = r.json().get("id") or r.json().get("report", {}).get("id")
     assert rid, r.json()
@@ -59,7 +57,7 @@ def _look(name):
 
 
 def _layout_body(lay):
-    return {"name": lay["name"], "description": "", "system_id": lay["system_id"], "revision": lay["revision"],
+    return {"name": lay["name"], "description": "", "revision": lay["revision"],
             "blocks": lay["blocks"], "template_id": lay.get("template_id")}
 
 
@@ -74,7 +72,6 @@ ROUTES = [
     ("post", "/api/p/{slug}/layouts/{lid}/outline", lambda w: {"blocks": w["layout"]["blocks"]}),
     ("post", "/api/p/{slug}/layouts/{lid}/duplicate", lambda w: {}),
     ("get", "/api/p/{slug}/layouts/{lid}/export", None),
-    ("post", "/api/p/{slug}/layouts/{lid}/preset", lambda w: {"name": unique("Stolen")}),
     ("get", "/api/p/{slug}/layouts/{lid}/reports", None),
     ("post", "/api/p/{slug}/layouts/{lid}/reports", lambda w: {}),
     ("get", "/api/p/{slug}/reports/{rid}/pdf", None),
@@ -133,9 +130,11 @@ def test_i8_3_alphas_template_named_in_a_beta_layout_is_422(iso_client, auth, al
     assert r.status_code == 422 and error_code(r) == "template_not_in_project", r.text[:300]
 
 
-def test_i8_3_alphas_version_named_in_a_beta_layout_is_422(iso_client, auth):
-    """I8.3: a version of alpha in beta's body is system_not_in_project."""
-    r = iso_client.post("/api/p/beta/layouts", json={"name": unique("L"), "system_id": IDS["A_V2"]},
+def test_i8_3_alphas_version_named_in_a_beta_report_is_422(iso_client, auth):
+    """I8.3: a version of alpha chosen for a beta report is system_not_in_project (a layout holds no
+    version since report modules 2026-09-28; the report does)."""
+    own = new_layout(iso_client, auth, slug="beta", blocks=[v2blk("cover")])
+    r = iso_client.post(f"/api/p/beta/layouts/{own['id']}/reports", json={"system_id": IDS["A_V2"]},
                         headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == "system_not_in_project", r.text[:300]
 

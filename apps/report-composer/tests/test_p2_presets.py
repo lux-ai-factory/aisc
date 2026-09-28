@@ -169,9 +169,10 @@ def label(type_id, option):
 @db
 @pytest.mark.usefixtures("clean_layouts", "clean_presets")
 def test_r2_d3_6_1_import_stores_no_reference_of_the_source(client_v2, auth):
-    r = client_v2.post("/api/presets/import", json=preset_file(FOREIGN), headers=auth("alice"))
+    # report modules 2026-09-28: a file is imported as a layout of the project (the preset library is gone)
+    r = client_v2.post("/api/p/alpha/layouts", json={"file": preset_file(FOREIGN)}, headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
-    exported = client_v2.get(f"/api/presets/{r.json()['id']}/export", headers=auth("alice")).json()
+    exported = client_v2.get(f"/api/p/alpha/layouts/{r.json()['id']}/export", headers=auth("alice")).json()
     chart, tests, changes = (b["options"] for b in exported["blocks"][1:])
     assert "chart_id" not in chart
     assert tests.get("evaluations", "all") == "all"
@@ -183,9 +184,9 @@ def test_r2_d3_6_1_import_stores_no_reference_of_the_source(client_v2, auth):
 @db
 @pytest.mark.usefixtures("clean_layouts", "clean_presets")
 def test_r2_d3_6_2_import_names_every_reset_reference(client_v2, auth):
-    r = client_v2.post("/api/presets/import", json=preset_file(FOREIGN), headers=auth("alice"))
+    r = client_v2.post("/api/p/alpha/layouts", json={"file": preset_file(FOREIGN)}, headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
-    tail = "pointed at data of another project or platform; it was reset to its default."
+    tail = "pointed at data that is not in this project; it was reset to its default."
     assert r.json().get("notices") == [
         {"pointer": "/blocks/1/chart_id", "message": f"The {label('dashboard_chart', 'chart_id')} of block 2 {tail}"},
         {"pointer": "/blocks/2/evaluations", "message": f"The {label('test_results', 'evaluations')} of block 3 {tail}"},
@@ -195,7 +196,7 @@ def test_r2_d3_6_2_import_names_every_reset_reference(client_v2, auth):
 @db
 @pytest.mark.usefixtures("clean_layouts", "clean_presets")
 def test_r2_d3_6_2_a_layout_from_a_preset_file_names_every_reset_reference(client_v2, auth):
-    body = {"name": unique("From file"), "system_id": IDS["A_V2"], "template_id": some_template(client_v2, auth),
+    body = {"name": unique("From file"), "template_id": some_template(client_v2, auth),
             "preset_file": preset_file(FOREIGN[:3])}
     r = client_v2.post("/api/p/alpha/layouts", json=body, headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
@@ -209,9 +210,9 @@ def test_r2_d3_6_2_a_layout_from_a_preset_file_names_every_reset_reference(clien
 @pytest.mark.usefixtures("clean_layouts", "clean_presets")
 def test_r2_d3_6_2_no_notice_when_nothing_was_reset(client_v2, auth):
     """Compatibility guard: a file without references gives no notice (passes today: no `notices` key)."""
-    r = client_v2.post("/api/presets/import", json=preset_file([{"block_type": "cover", "options": {}},
-                                                                {"block_type": "test_results",
-                                                                 "options": {"evaluations": "all"}}]),
+    r = client_v2.post("/api/p/alpha/layouts", json={"file": preset_file([{"block_type": "cover", "options": {}},
+                                                                          {"block_type": "test_results",
+                                                                           "options": {"tools": "all"}}])},
                        headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
     assert r.json().get("notices", []) == []

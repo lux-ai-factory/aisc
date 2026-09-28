@@ -1,8 +1,10 @@
 """Layout settings of report run v2 (01-specs.md; the language setting is gone in part 2, R2-D1.10 to
 R2-D1.12, see test_p2_english_only.py): document settings (R-V5.1 composer
 side), the coverage map (R-U2.1, R-U2.5), the optional template (R-U6.1, R-U6.4), the "pick at least one"
-rule (R-U4.3), compare_to after a version change (R-V7.11), API shapes (R-D.3, R-D.4, R-C.6) and the v2
-snapshot (R-S.3, R-V5.14). Database tests, v2 fake renderer.
+rule (R-U4.3), API shapes (R-D.3, R-D.4, R-C.6) and the snapshot (R-S.3, R-V5.14). Report modules
+2026-09-28: a layout holds no version, the index is on or off (show_index), and references (the coverage
+map's too) are checked against a version when previewing or generating, not when saving. Database tests,
+v2 fake renderer.
 """
 import pytest
 
@@ -17,13 +19,12 @@ MAP = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]},
 
 def lay(client, auth, **body):
     body.setdefault("name", unique("Layout"))
-    body.setdefault("system_id", IDS["A_V2"])
     body.setdefault("blocks", [v2blk("cover"), v2blk("summary_coverage")])
     return new_layout(client, auth, **body)
 
 
 def put(client, auth, layout, who="alice", **changes):
-    body = {k: layout[k] for k in ("name", "system_id", "template_id", "revision", "blocks")}
+    body = {k: layout[k] for k in ("name", "template_id", "revision", "blocks")}
     body.update(changes)
     return client.put(f"/api/p/alpha/layouts/{layout['id']}", json=body, headers=auth(who))
 
@@ -33,36 +34,36 @@ def put(client, auth, layout, who="alice", **changes):
 def test_r_c_6_new_fields_default_to_todays_behaviour(client_v2, auth):
     lay_ = lay(client_v2, auth)
     got = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("victor")).json()
-    assert {k: got.get(k) for k in ("toc", "numbering", "coverage")} == \
-        {"toc": "auto", "numbering": False, "coverage": []}
-    assert "language" not in got                          # R2-D1.10: views carry no language
+    assert {k: got.get(k) for k in ("show_index", "numbering", "coverage")} == \
+        {"show_index": True, "numbering": False, "coverage": []}
+    assert "language" not in got and "toc" not in got and "system_id" not in got
 
 
 def test_r_d_3_post_and_put_accept_the_new_fields(client_v2, auth):
-    # R2-D1.10: a language key is accepted and ignored (never 422, never stored, absent from the answer)
-    lay_ = lay(client_v2, auth, language="fr", toc="on", numbering=True, coverage=MAP[:1])
-    assert (lay_.get("toc"), lay_.get("numbering"), lay_.get("coverage")) == ("on", True, MAP[:1])
-    assert "language" not in lay_
-    r = put(client_v2, auth, lay_, language="de", toc="off", numbering=False, coverage=MAP)
+    # R2-D1.10: a language (and since report modules, a toc) key is accepted and ignored
+    lay_ = lay(client_v2, auth, language="fr", toc="on", show_index=False, numbering=True, coverage=MAP[:1])
+    assert (lay_.get("show_index"), lay_.get("numbering"), lay_.get("coverage")) == (False, True, MAP[:1])
+    assert "language" not in lay_ and "toc" not in lay_
+    r = put(client_v2, auth, lay_, language="de", show_index=True, numbering=False, coverage=MAP)
     assert r.status_code == 200, r.text[:300]
-    assert (r.json().get("toc"), r.json().get("numbering"), r.json().get("coverage")) == ("off", False, MAP)
+    assert (r.json().get("show_index"), r.json().get("numbering"), r.json().get("coverage")) == (True, False, MAP)
     assert "language" not in r.json()
 
 
 def test_r_d_3_absent_on_put_keeps_the_current_value(client_v2, auth):
     lay_ = lay(client_v2, auth)
-    first = put(client_v2, auth, lay_, toc="on", numbering=True, coverage=MAP)
+    first = put(client_v2, auth, lay_, show_index=False, numbering=True, coverage=MAP)
     assert first.status_code == 200, first.text[:300]
     second = put(client_v2, auth, first.json())       # an older client sends none of them
     assert second.status_code == 200
-    assert (second.json().get("toc"), second.json().get("numbering"), second.json().get("coverage")) == \
-        ("on", True, MAP)
+    assert (second.json().get("show_index"), second.json().get("numbering"), second.json().get("coverage")) == \
+        (False, True, MAP)
 
 
 # ── R-D.4 validation of the new fields ───────────────────────────────────────
 
 @pytest.mark.parametrize("change,code", [
-    ({"toc": "sometimes"}, "invalid_request"),
+    ({"show_index": "sometimes"}, "invalid_request"),
     ({"numbering": "yes"}, "invalid_request"),
 ])
 def test_r_d_4_bad_settings_are_refused(client_v2, auth, change, code):
@@ -96,66 +97,44 @@ def test_r_u2_1_map_shape_is_checked(client_v2, auth, coverage):
     ([{"objective_id": "R1.1", "tests": ["LangBiTe", "Nope"], "checklists": []}], "/coverage/0/tests/1"),
     ([{"objective_id": "R1.1", "tests": [], "checklists": ["cl-9"]}], "/coverage/0/checklists/0"),
 ])
-def test_r_u2_5_map_values_must_be_choices_of_the_version(client_v2, auth, bad, pointer):
+def test_r_u2_5_map_values_must_be_choices_of_the_chosen_version(client_v2, auth, bad, pointer):
     lay_ = lay(client_v2, auth)
-    r = put(client_v2, auth, lay_, coverage=bad)
+    assert put(client_v2, auth, lay_, coverage=bad).status_code == 200      # saved: checked with a version
+    r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={"system_id": IDS["A_V2"]},
+                       headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == "invalid_reference"
     detail = next(d for d in r.json()["error"]["details"] if d.get("pointer") == pointer)
     assert detail.get("instance_id") is None
-
-
-def test_r_u2_5_reset_invalid_cleans_the_map(client_v2, auth):
-    lay_ = lay(client_v2, auth)
-    saved = put(client_v2, auth, lay_, coverage=MAP).json()
-    # version 1 offers objective R3.1, tests MLA-Reject and LangBiTe, checklist cl-1
-    r = put(client_v2, auth, saved, system_id=IDS["A_V1"], coverage=MAP + [
-        {"objective_id": "R3.1", "tests": ["LangBiTe", "Mystery Tool"], "checklists": ["cl-1"]}])
-    assert r.status_code == 422 and error_code(r) == "invalid_reference"
-    r = put(client_v2, auth, saved, system_id=IDS["A_V1"], reset_invalid=True, coverage=MAP + [
-        {"objective_id": "R3.1", "tests": ["LangBiTe", "Mystery Tool"], "checklists": ["cl-1"]}])
-    assert r.status_code == 200, r.text[:300]
-    assert r.json().get("coverage") == [{"objective_id": "R3.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]
 
 
 # ── R-U4.3 "Only these" with nothing ticked ──────────────────────────────────
 
 def test_r_u4_3_an_empty_list_is_refused_with_pick_at_least_one(client_v2, auth):
     lay_ = lay(client_v2, auth)
-    tests = v2blk("test_results", evaluations=[])
+    tests = v2blk("test_results", tools=[])
     r = put(client_v2, auth, lay_, blocks=[tests])
     assert r.status_code == 422 and error_code(r) == "invalid_options"
-    d = next(d for d in r.json()["error"]["details"] if d.get("pointer") == "/evaluations")
+    d = next(d for d in r.json()["error"]["details"] if d.get("pointer") == "/tools")
     assert d["message"] == "Pick at least one, or choose All." and d["instance_id"] == tests["instance_id"]
-
-
-# ── R-V7.11 compare_to after a version change ───────────────────────────────
-
-def test_r_v7_11_compare_to_no_longer_lower_is_invalid_and_resets_to_previous(client_v2, auth):
-    block = v2blk("changes_since", compare_to=IDS["A_V2"])
-    lay_ = lay(client_v2, auth, system_id=IDS["A_V3"], blocks=[block])
-    r = put(client_v2, auth, lay_, system_id=IDS["A_V2"])
-    assert r.status_code == 422 and error_code(r) == "invalid_reference"
-    assert any(d.get("pointer") == "/compare_to" for d in r.json()["error"]["details"])
-    r = put(client_v2, auth, lay_, system_id=IDS["A_V2"], reset_invalid=True)
-    assert r.status_code == 200 and r.json()["blocks"][0]["options"]["compare_to"] == "previous"
 
 
 # ── R-U6.1, R-U6.4 no project template needed ────────────────────────────────
 
 def test_r_u6_1_a_layout_is_saved_and_generated_without_a_template(client_v2, auth, fake_v2):
-    r = client_v2.post("/api/p/alpha/layouts", json={"name": "Plain look", "system_id": IDS["A_V2"],
+    r = client_v2.post("/api/p/alpha/layouts", json={"name": "Plain look",
                                                     "template_id": None, "blocks": [v2blk("cover")]},
                        headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
     assert r.json()["template_id"] is None
-    g = client_v2.post(f"/api/p/alpha/layouts/{r.json()['id']}/reports", json={}, headers=auth("alice"))
+    g = client_v2.post(f"/api/p/alpha/layouts/{r.json()['id']}/reports", json={"system_id": IDS["A_V2"]},
+                       headers=auth("alice"))
     assert g.status_code == 201, g.text[:300]
     assert "style" not in fake_v2.snapshots[-1]
 
 
 def test_r_u6_1_template_of_another_project_still_refused(client_v2, auth):
     gamma_t = new_template(client_v2, auth, slug="gamma", name=unique("Gamma look"))
-    r = client_v2.post("/api/p/alpha/layouts", json={"name": "Wrong", "system_id": IDS["A_V2"],
+    r = client_v2.post("/api/p/alpha/layouts", json={"name": "Wrong",
                                                     "template_id": gamma_t["id"]}, headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == "template_not_in_project"
 
@@ -166,26 +145,28 @@ def test_r_u6_4_a_deleted_template_leaves_a_layout_that_saves_and_generates(clie
     assert client_v2.delete(f"/api/p/alpha/templates/{t['id']}", headers=auth("alice")).status_code == 204
     fresh = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("alice")).json()
     assert put(client_v2, auth, fresh).status_code == 200
-    g = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={}, headers=auth("alice"))
+    g = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={"system_id": IDS["A_V2"]},
+                       headers=auth("alice"))
     assert g.status_code == 201, g.text[:300]
     assert "style" not in fake_v2.snapshots[-1]
 
 
 # ── R-S.3, R-V5.14, R-U2.1: the v2 snapshot (no language, R2-D1.12) ───────────
 
-def test_r_s_3_the_stored_snapshot_is_version_2_with_the_new_keys(client_v2, auth, fake_v2, bed):
-    lay_ = lay(client_v2, auth, toc="on", numbering=True, coverage=MAP)
-    r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={}, headers=auth("alice"))
+def test_r_s_3_the_stored_snapshot_is_version_3_with_the_new_keys(client_v2, auth, fake_v2, bed):
+    lay_ = lay(client_v2, auth, show_index=True, numbering=True, coverage=MAP)
+    r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={"system_id": IDS["A_V2"]},
+                       headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
     rid = r.json()["id"]
     sent = fake_v2.snapshots[-1]
-    assert sent.get("snapshot_version") == 2 and "language" not in sent
+    assert sent.get("snapshot_version") == 3 and "language" not in sent and "selection" in sent
     assert sent.get("document") == {"id": rid, "toc": "on", "numbering": True}
     assert sent.get("coverage_links") == MAP
     import json
 
     stored = json.loads(bed.scalar(pdb_of("A"), f"SELECT snapshot::text FROM report_composer.generated_report WHERE id = '{rid}'"))
-    for key in ("snapshot_version", "document", "coverage_links"):
+    for key in ("snapshot_version", "document", "coverage_links", "selection"):
         assert stored.get(key) == sent[key], key
     assert "language" not in stored
 

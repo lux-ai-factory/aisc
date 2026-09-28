@@ -25,19 +25,14 @@ def soup(html):
 
 def lay(client, auth, **body):
     body.setdefault("name", unique("English"))
-    body.setdefault("system_id", IDS["A_V2"])
     body.setdefault("blocks", [v2blk("cover"), v2blk("ai_card")])
     return new_layout(client, auth, **body)
 
 
 def put(client, auth, layout, **changes):
-    body = {k: layout[k] for k in ("name", "system_id", "template_id", "revision", "blocks")}
+    body = {k: layout[k] for k in ("name", "template_id", "revision", "blocks")}
     body.update(changes)
     return client.put(f"/api/p/alpha/layouts/{layout['id']}", json=body, headers=auth("alice"))
-
-
-def row_language(bed, layout_id):
-    return bed.scalar(pdb_of("A"), f"SELECT language FROM report_composer.layout WHERE id = '{layout_id}'")
 
 
 # ── R2-D1.9 no Language control, no languages call ──────────────────────────
@@ -82,8 +77,7 @@ def test_r2_d1_10_put_accepts_and_ignores_a_language(client_v2, auth, value):
 
 def test_r2_d1_10_draft_preview_accepts_and_ignores_a_language(client_v2, auth, fake_v2):
     lay_ = lay(client_v2, auth)
-    body = {"system_id": lay_["system_id"], "template_id": lay_["template_id"], "language": "de",
-            "blocks": lay_["blocks"]}
+    body = {"template_id": lay_["template_id"], "language": "de", "blocks": lay_["blocks"]}
     r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/preview", json=body, headers=auth("alice"))
     assert r.status_code == 200, r.text[:300]
     assert "language" not in fake_v2.snapshots[-1]
@@ -114,32 +108,6 @@ def test_r2_d1_11_db_default_settings_have_no_language():
     assert "language" not in db.DEFAULT_SETTINGS
 
 
-def test_r2_d1_11_a_new_row_gets_the_column_default(client_v2, auth, bed):
-    body = {"name": unique("Default"), "system_id": IDS["A_V2"], "template_id": some_template(client_v2, auth),
-            "blocks": [v2blk("cover")], "language": "de"}
-    r = client_v2.post("/api/p/alpha/layouts", json=body, headers=auth("alice"))
-    assert r.status_code == 201, r.text[:300]
-    assert row_language(bed, r.json()["id"]) == "en"
-
-
-def test_r2_d1_11_an_update_never_writes_the_language(client_v2, auth, bed):
-    lay_ = lay(client_v2, auth)
-    bed.psql(pdb_of("A"), f"UPDATE report_composer.layout SET language = 'fr' WHERE id = '{lay_['id']}'")
-    r = put(client_v2, auth, lay_, language="en")
-    assert r.status_code == 200, r.text[:300]
-    assert row_language(bed, lay_["id"]) == "fr"                  # untouched, and without effect
-    assert "language" not in r.json()
-
-
-def test_r2_d1_11_a_saved_preset_stores_no_language(client_v2, auth, bed):
-    lay_ = lay(client_v2, auth)
-    r = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/preset", json={"name": unique("Saved")},
-                       headers=auth("alice"))
-    assert r.status_code == 201, r.text[:300]
-    stored = bed.scalar("platform", f"SELECT coalesce(language, 'NULL') FROM report_library.preset WHERE id = '{r.json()['id']}'")
-    assert stored == "NULL"
-
-
 # ── R2-D1.12 no snapshot carries a language ─────────────────────────────────
 
 def test_r2_d1_12_preview_and_generate_snapshots_carry_no_language(client_v2, auth, fake_v2, bed):
@@ -147,7 +115,8 @@ def test_r2_d1_12_preview_and_generate_snapshots_carry_no_language(client_v2, au
     client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}/preview", headers=auth("victor"))
     assert "language" not in fake_v2.snapshots[-1]
     for fmt in ("pdf", "docx"):
-        g = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={"format": fmt}, headers=auth("alice"))
+        g = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={"format": fmt, "system_id": IDS["A_V2"]},
+                           headers=auth("alice"))
         assert g.status_code == 201, g.text[:300]
         assert "language" not in fake_v2.snapshots[-1], fmt
         stored = scalar_json(bed, "SELECT snapshot::text FROM report_composer.generated_report"
@@ -166,57 +135,20 @@ def test_r2_d1_13_built_in_preset_files_have_no_language(preset_id):
 def test_r2_d1_13_exports_write_no_language(client_v2, auth):
     lay_ = lay(client_v2, auth)
     doc = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}/export", headers=auth("alice")).json()
-    assert set(doc) == {"format", "version", "name", "description", "toc", "numbering", "blocks"}
-    assert doc["version"] == 1
-    pid = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/preset", json={"name": unique("Exp")},
-                         headers=auth("alice")).json()["id"]
-    saved = client_v2.get(f"/api/presets/{pid}/export", headers=auth("alice")).json()
-    assert "language" not in saved
-    built_in = client_v2.get("/api/presets/eu-ai-act/export", headers=auth("alice")).json()
-    assert "language" not in built_in
+    assert set(doc) == {"format", "version", "name", "description", "show_index", "numbering", "blocks"}
+    assert doc["version"] == 2
 
 
 @pytest.mark.parametrize("value", ["fr", "de", "xx"])
 def test_r2_d1_13_import_with_any_language_is_accepted_and_ignored(client_v2, auth, value):
     doc = {"format": "aisc-report-preset", "version": 1, "name": unique("Imported"), "description": "",
            "language": value, "toc": "on", "numbering": True, "blocks": [{"block_type": "cover", "options": {}}]}
-    r = client_v2.post("/api/presets/import", json=doc, headers=auth("alice"))
-    assert r.status_code == 201, r.text[:300]
-    assert "language" not in json.dumps(r.json())
-    exported = client_v2.get(f"/api/presets/{r.json()['id']}/export", headers=auth("alice")).json()
-    assert "language" not in exported and (exported["toc"], exported["numbering"]) == ("on", True)
-    made = client_v2.post("/api/p/alpha/layouts", json={"system_id": IDS["A_V2"], "preset_file": doc,
-                                                       "name": unique("From file"),
+    made = client_v2.post("/api/p/alpha/layouts", json={"file": doc, "name": unique("From file"),
                                                        "template_id": some_template(client_v2, auth)},
                           headers=auth("alice"))
     assert made.status_code == 201, made.text[:300]
     assert "language" not in json.dumps(made.json())             # no language key, no language notice
+    exported = client_v2.get(f"/api/p/alpha/layouts/{made.json()['id']}/export", headers=auth("alice")).json()
+    assert "language" not in exported and (exported["show_index"], exported["numbering"]) == (True, True)
 
 
-# ── R2-C.1 rows and files that still hold "fr" load and render in English ────
-
-def test_r2_c_1_a_layout_row_holding_fr_previews_and_generates_without_a_language(client_v2, auth, fake_v2, bed):
-    lay_ = lay(client_v2, auth)
-    bed.psql(pdb_of("A"), f"UPDATE report_composer.layout SET language = 'fr' WHERE id = '{lay_['id']}'")
-    got = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("alice"))
-    assert got.status_code == 200 and "language" not in got.json()
-    p = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}/preview", headers=auth("alice"))
-    assert p.status_code == 200
-    assert "language" not in fake_v2.snapshots[-1]
-    g = client_v2.post(f"/api/p/alpha/layouts/{lay_['id']}/reports", json={}, headers=auth("alice"))
-    assert g.status_code == 201, g.text[:300]
-    assert "language" not in fake_v2.snapshots[-1]
-
-
-def test_r2_c_1_a_saved_preset_row_holding_fr_makes_an_english_layout(client_v2, auth, bed):
-    src = lay(client_v2, auth)
-    pid = client_v2.post(f"/api/p/alpha/layouts/{src['id']}/preset", json={"name": unique("Old French")},
-                         headers=auth("alice")).json()["id"]
-    bed.psql("platform", f"UPDATE report_library.preset SET language = 'fr' WHERE id = '{pid}'")
-    r = client_v2.post("/api/p/alpha/layouts", json={"name": unique("From fr"), "system_id": IDS["A_V2"],
-                                                    "template_id": some_template(client_v2, auth), "preset": pid},
-                       headers=auth("alice"))
-    assert r.status_code == 201, r.text[:300]
-    assert "language" not in json.dumps(r.json())
-    exported = client_v2.get(f"/api/presets/{pid}/export", headers=auth("alice")).json()
-    assert "language" not in exported

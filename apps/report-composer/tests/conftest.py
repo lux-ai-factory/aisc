@@ -338,8 +338,7 @@ def new_layout(client, auth, slug="alpha", who="alice", **body):
 
 def put_layout(client, auth, layout, slug="alpha", who="alice", **changes):
     body = {"name": layout["name"], "description": layout.get("description") or "",
-            "system_id": layout["system_id"], "revision": layout["revision"], "blocks": layout["blocks"],
-            "template_id": layout.get("template_id")}
+            "revision": layout["revision"], "blocks": layout["blocks"], "template_id": layout.get("template_id")}
     body.update(changes)
     return client.put(f"/api/p/{slug}/layouts/{layout['id']}", json=body, headers=auth(who))
 

@@ -54,7 +54,7 @@ def latest_system(conn) -> dict | None:
 # Layouts
 
 #: a layout's document settings and coverage map before anyone sets them (today's behaviour)
-DEFAULT_SETTINGS = {"toc": "auto", "numbering": False, "coverage": []}
+DEFAULT_SETTINGS = {"show_index": True, "numbering": False, "coverage": []}
 
 
 def layout_names(conn) -> set[str]:
@@ -63,9 +63,9 @@ def layout_names(conn) -> set[str]:
 
 def list_layouts(conn) -> list[dict]:
     return conn.execute(
-        "SELECT l.id::text AS id, l.name, l.description, l.system_id::text AS system_id, s.number AS system_number,"
+        "SELECT l.id::text AS id, l.name, l.description,"
         " l.revision, l.updated_at, lr.last_report, l.template_id::text AS template_id, t.name AS template_name"
-        " FROM report_composer.layout l JOIN project.system s ON s.pid = l.system_id"
+        " FROM report_composer.layout l"
         " LEFT JOIN report_composer.template t ON t.id = l.template_id"
         " LEFT JOIN LATERAL (SELECT json_build_object('id', r.id, 'created_at', r.created_at, 'status', r.status)"
         "                    AS last_report FROM report_composer.generated_report r WHERE r.layout_id = l.id"
@@ -79,8 +79,8 @@ def get_layout(conn, layout_id, for_update=False) -> dict | None:
         return None
     row = conn.execute(
         "SELECT l.id::text AS id, l.name, l.description,"
-        " l.system_id::text AS system_id, l.template_id::text AS template_id, l.revision, l.created_at,"
-        " l.created_by, l.updated_at, l.updated_by, l.toc, l.numbering, l.coverage"
+        " l.template_id::text AS template_id, l.revision, l.created_at,"
+        " l.created_by, l.updated_at, l.updated_by, l.show_index, l.numbering, l.coverage"
         " FROM report_composer.layout l WHERE l.id = %s"
         + (" FOR UPDATE" if for_update else ""), (lid,)).fetchone()
     if row is None:
@@ -98,26 +98,25 @@ def _insert_blocks(conn, layout_id, blocks) -> None:
                      (layout_id, b["instance_id"], i, b["block_type"], Jsonb(b.get("options") or {})))
 
 
-def insert_layout(conn, *, system_pid, template_id, name, description, blocks, who, now,
-                  settings=None) -> str:
+def insert_layout(conn, *, template_id, name, description, blocks, who, now, settings=None) -> str:
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     row = conn.execute(
-        "INSERT INTO report_composer.layout (system_id, template_id, name, description, created_at,"
-        " created_by, updated_at, updated_by, toc, numbering, coverage)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
-        (system_pid, template_id, name, description, now, who, now, who, s["toc"],
+        "INSERT INTO report_composer.layout (template_id, name, description, created_at,"
+        " created_by, updated_at, updated_by, show_index, numbering, coverage)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
+        (template_id, name, description, now, who, now, who, s["show_index"],
          s["numbering"], Jsonb(s["coverage"]))).fetchone()
     _insert_blocks(conn, row["id"], blocks)
     return row["id"]
 
 
-def update_layout(conn, layout_id, *, based_on, name, description, system_pid, template_id, blocks, who,
+def update_layout(conn, layout_id, *, based_on, name, description, template_id, blocks, who,
                   now, settings) -> int | None:
     row = conn.execute(
-        "UPDATE report_composer.layout SET revision = revision + 1, name = %s, description = %s, system_id = %s,"
-        " template_id = %s, updated_at = %s, updated_by = %s, toc = %s, numbering = %s,"
+        "UPDATE report_composer.layout SET revision = revision + 1, name = %s, description = %s,"
+        " template_id = %s, updated_at = %s, updated_by = %s, show_index = %s, numbering = %s,"
         " coverage = %s WHERE id = %s AND revision = %s RETURNING revision",
-        (name, description, system_pid, template_id, now, who, settings["toc"],
+        (name, description, template_id, now, who, settings["show_index"],
          settings["numbering"], Jsonb(settings["coverage"]), layout_id, based_on)).fetchone()
     if row is None:
         return None
@@ -198,14 +197,15 @@ def running_report(conn, layout_id, since) -> bool:
 
 
 def insert_report(conn, *, layout_id, layout_revision, system_id, snapshot, created_by, created_at,
-                  fmt="pdf", report_id=None) -> str:
+                  fmt="pdf", report_id=None, period_from=None, period_to=None, other_versions=False,
+                  compare_to=None) -> str:
     return conn.execute(
         "INSERT INTO report_composer.generated_report (id, layout_id, layout_revision, system_id,"
-        " snapshot, status, created_by, created_at, format)"
-        " VALUES (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, 'running', %s, %s, %s)"
+        " snapshot, status, created_by, created_at, format, period_from, period_to, other_versions, compare_to)"
+        " VALUES (coalesce(%s::uuid, gen_random_uuid()), %s, %s, %s, %s, 'running', %s, %s, %s, %s, %s, %s, %s)"
         " RETURNING id::text AS id",
         (report_id, layout_id, layout_revision, system_id, Jsonb(snapshot), created_by, created_at,
-         fmt)).fetchone()["id"]
+         fmt, period_from, period_to, other_versions, compare_to)).fetchone()["id"]
 
 
 def finish_report(conn, report_id, *, status, finished_at, pdf=None, sha256=None, size_bytes=None,
@@ -218,9 +218,13 @@ def finish_report(conn, report_id, *, status, finished_at, pdf=None, sha256=None
 
 
 def list_reports(conn, layout_id) -> list[dict]:
-    return conn.execute("SELECT id::text AS id, layout_revision, status, created_at, created_by, size_bytes,"
-                        " format, fingerprint, sha256"
-                        " FROM report_composer.generated_report WHERE layout_id = %s ORDER BY created_at DESC, id",
+    return conn.execute("SELECT r.id::text AS id, r.layout_revision, r.status, r.created_at, r.created_by,"
+                        " r.size_bytes, r.format, r.fingerprint, r.sha256, s.number AS system_number,"
+                        " r.period_from, r.period_to, r.other_versions, c.number AS compare_number"
+                        " FROM report_composer.generated_report r"
+                        " LEFT JOIN project.system s ON s.pid = r.system_id"
+                        " LEFT JOIN project.system c ON c.pid = r.compare_to"
+                        " WHERE r.layout_id = %s ORDER BY r.created_at DESC, r.id",
                         (layout_id,)).fetchall()
 
 

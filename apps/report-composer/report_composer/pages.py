@@ -11,9 +11,8 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import coverage_map, db, forms, layouts, presets, prose
+from . import coverage_map, db, forms, layouts, preview_with, prose
 from . import templates as looks
-from .api import may_delete_preset
 from .guards import guard
 from .jinja_env import env
 from .records import layout_or_404
@@ -69,12 +68,8 @@ def layouts_page(request: Request, ref: str):
         rows = db.list_layouts(conn)
         systems = db.systems(conn)
         templates = _templates(conn)
-    with db.connect(request.app.state.database_url) as conn:
-        saved = [presets.from_row(r) for r in db.list_presets(conn)]
-    saved_presets = [{**presets.summary(p), "may_delete": may_delete_preset(p, g.caller)} for p in saved]
     return _page("layouts.html.j2", request, project=g.project, layouts=rows, systems=systems,
-                 templates=templates, editor=g.access.may_write, built_in_presets=presets.built_in(),
-                 saved_presets=saved_presets)
+                 templates=templates, editor=g.access.may_write)
 
 
 def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
@@ -82,13 +77,13 @@ def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
     return forms.form_fields(block_type["options_schema"], values, choices)
 
 
-def _reference_choices(request: Request, project: dict, layout: dict, by_type: dict) -> dict[str, dict]:
+def _reference_choices(request: Request, project: dict, layout: dict, by_type: dict, system_pid) -> dict[str, dict]:
     """The values each reference option of the layout's block types may take, by block type."""
     renderer = request.app.state.renderer
     choices: dict[str, dict] = {}
     for t in {b["block_type"] for b in layout["blocks"]}:
         if t in by_type and layouts.reference_options(by_type[t]):
-            choices[t] = renderer_call(renderer.choices, project["pid"], layout["system_id"], t) or {}
+            choices[t] = renderer_call(renderer.choices, project["pid"], system_pid, t) or {} if system_pid else {}
     return choices
 
 
@@ -116,12 +111,14 @@ def editor_page(request: Request, ref: str, layout_id: str):
         systems = db.systems(conn)
         report_rows = db.list_reports(conn, layout["id"])
         templates = _templates(conn)
+        pw = preview_with.parse(conn, dict(request.query_params))
+    system_pid = pw.system["pid"] if pw.system else None
     editor = g.access.may_write
     pid = g.project["pid"]
     types = block_types(request)
     by_type = {t["type_id"]: t for t in types}
-    choices = _reference_choices(request, g.project, layout, by_type) if editor else {}
-    cover_choices = coverage_choices_for(request, pid, layout["system_id"])
+    choices = _reference_choices(request, g.project, layout, by_type, system_pid) if editor else {}
+    cover_choices = coverage_choices_for(request, pid, system_pid) if system_pid else {}
     problems = layouts.validate_layout(layout["blocks"], block_types=types, choices=lambda t: choices.get(t, {}),
                                        coverage=layout.get("coverage"), coverage_choices=cover_choices) \
         if editor else []
@@ -134,7 +131,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
               for b, (depth, empty) in zip(layout["blocks"], depths)]
     palette = [{"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
                 "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in types] if editor else []
-    number = next((s["number"] for s in systems if s["pid"] == layout["system_id"]), None)
+    number = pw.system["number"] if pw.system else None
     grid = coverage_map.grid(layout.get("coverage"), cover_choices, number)
     template_ids = {t["id"] for t in templates}
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,

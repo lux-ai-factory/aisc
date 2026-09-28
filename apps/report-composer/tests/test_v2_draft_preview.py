@@ -22,8 +22,9 @@ def layout(client, auth):
 
 
 def draft(lay, **over):
-    body = {"system_id": lay["system_id"], "template_id": lay["template_id"], "toc": "auto",
-            "numbering": False, "coverage": [], "blocks": lay["blocks"]}
+    body = {"template_id": lay["template_id"], "show_index": True,
+            "numbering": False, "coverage": [], "blocks": lay["blocks"],
+            "preview_with": {"system_id": IDS["A_V2"]}}
     body.update(over)
     return body
 
@@ -37,7 +38,7 @@ def post(client, auth, lay, body, who="alice", **kw):
 def test_r_u3_1_the_draft_is_rendered_and_nothing_is_stored(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
     blocks = [v2blk("ai_card"), v2blk("free_text", text="unsaved text")]
-    r = post(client_v2, auth, lay, draft(lay, blocks=blocks, language="fr", toc="on", numbering=True))
+    r = post(client_v2, auth, lay, draft(lay, blocks=blocks, language="fr", show_index=True, numbering=True))
     assert r.status_code == 200, r.text[:300]
     body = r.json()
     assert set(body) >= {"html", "problems", "block_statuses"}
@@ -72,10 +73,13 @@ def test_r_u3_1_a_draft_needs_the_same_origin(client_v2, auth):
 
 # ── R-U3.2 ──────────────────────────────────────────────────────────────────
 
-def test_r_u3_2_the_version_must_be_of_the_project(client_v2, auth):
+def test_r_u3_2_a_version_of_another_project_is_never_previewed(client_v2, auth, fake_v2):
+    """Report modules 2026-09-28: the preview's version is not stored; one that is not the project's
+    falls back to the project's latest, never to the other project's."""
     lay = layout(client_v2, auth)
-    r = post(client_v2, auth, lay, draft(lay, system_id=IDS["B_V1"]))
-    assert r.status_code == 422 and error_code(r) == "system_not_in_project"
+    r = post(client_v2, auth, lay, draft(lay, preview_with={"system_id": IDS["B_V1"]}))
+    assert r.status_code == 200, r.text[:300]
+    assert fake_v2.snapshots[-1]["system_id"] == IDS["A_V3"]
 
 
 def test_r_u3_2_the_template_must_be_of_the_project(client_v2, auth):
@@ -170,7 +174,7 @@ def test_r_u3_6_viewers_keep_the_get_preview_and_generate_uses_the_saved_revisio
     lay = layout(client_v2, auth)
     post(client_v2, auth, lay, draft(lay, blocks=[v2blk("ai_card")]))
     assert client_v2.get(f"/api/p/alpha/layouts/{lay['id']}/preview", headers=auth("victor")).status_code == 200
-    r = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
+    r = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert r.status_code == 201
     pdf_snaps = [s for s in fake_v2.snapshots if s["mode"] == "pdf"]
     assert [b["instance_id"] for b in pdf_snaps[-1]["blocks"]] == [b["instance_id"] for b in lay["blocks"]]

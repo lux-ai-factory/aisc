@@ -93,5 +93,5 @@ def test_r2_d3_8_3_a_hint_not_a_problem_save_and_generate_go_through(client_v2, 
     lay, _ = editor(client_v2, auth, [v2blk("cover"), free])
     v = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice")).json()
     assert v["valid"] is True
-    g = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={}, headers=auth("alice"))
+    g = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
     assert g.status_code == 201, g.text[:300]

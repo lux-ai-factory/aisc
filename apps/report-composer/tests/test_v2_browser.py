@@ -53,7 +53,7 @@ def live(client_v2, auth, token, fake_v2, bed, monkeypatch):
         monkeypatch.setenv("PLATFORM_ORIGIN", f"http://127.0.0.1:{port}")
         page = context.new_page()
         page.on("pageerror", lambda exc: errors.append(str(exc)))
-        page.goto(f"http://127.0.0.1:{port}/p/alpha/layouts/{lay['id']}")
+        page.goto(f"http://127.0.0.1:{port}/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}")
         page.wait_for_selector("main[data-api]")
         return page, lay
 

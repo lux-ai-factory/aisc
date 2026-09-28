@@ -126,10 +126,15 @@ def moved(mig, key):
         url = bed.dsn("report_composer_rw", "platform")
         template = bed.project_db_template("report_composer_rw")
         alpha = report_bed.project_db(IDS["A"])
-        from report_composer.migrate import migrate_project
+        import tempfile
 
-        with psycopg.connect(bed.dsn("report_composer_rw", alpha)) as conn:
-            migrate_project(conn)
+        from report_composer.migrate import PROJECT, PROJECT_TABLE, migrate
+
+        # the rows were moved at the isolation baseline (0001); later project migrations (0002, report
+        # modules 2026-09-28) run over them when the app starts, as on an install that has data
+        with tempfile.TemporaryDirectory() as baseline, psycopg.connect(bed.dsn("report_composer_rw", alpha)) as conn:
+            shutil.copy(PROJECT / "0001_project_database.sql", baseline)
+            migrate(conn, Path(baseline), PROJECT_TABLE, create_schema=False)
         with psycopg.connect(mig.su_dsn("platform")) as src, psycopg.connect(bed.su_dsn(alpha)) as dst:
             _register_text_json(src)
             _copy_project_rows(src, dst, IDS["A"])
@@ -266,20 +271,21 @@ def test_r_c_3_an_old_layout_previews_with_the_same_snapshot_apart_from_new_keys
     assert r.status_code == 200
     sent = renderer.snapshots[-1]
     assert sent.get("coverage_links") == LINKS_1, "missing feature: coverage_links from the moved map"
-    old = {"project_id": IDS["A"], "system_id": IDS["A_V2"],
+    # report modules 2026-09-28: the layout lost its version; a preview is drawn with the latest one
+    old = {"project_id": IDS["A"], "system_id": IDS["A_V3"],
            "layout": {"id": LAYOUT_1, "name": "Old layout", "revision": 7},
            "blocks": [{"instance_id": iid, "block_type": t, "options": o} for iid, _, t, o in BLOCKS_1],
            "mode": "preview", "requested_by": "alice",
            "style": {"font": "liberation-serif", "font_size_pt": 11, "primary_color": "#123456",
                      "accent_color": "#abcdef"}}
     old["blocks"][2]["options"] = {**old["blocks"][2]["options"], "links": []}     # moved to the map (R-U2.4)
-    new_keys = {"snapshot_version", "language", "document", "coverage_links"}
+    new_keys = {"snapshot_version", "language", "document", "coverage_links", "selection"}
     stripped = {k: v for k, v in sent.items() if k not in new_keys}
     stripped["style"] = {k: v for k, v in stripped["style"].items()
                          if k not in ("header_text", "footer_text", "marking", "show_document_id")}
     assert stripped == old
     assert sent.get("language", "en") == "en"
-    assert (sent.get("document") or {}).get("toc", "auto") == "auto"
+    assert (sent.get("document") or {}).get("toc") == "on"        # toc auto became show_index true (0002)
     assert (sent.get("document") or {}).get("numbering", False) is False
 
 
