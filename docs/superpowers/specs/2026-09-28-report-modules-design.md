@@ -99,6 +99,13 @@ belongs to a project; a duplicated layout can add them, with their comments.
 | 4 | **EU AI Act conformity** | the conformity file, a notified body | Can every claim be traced to its evidence? |
 | 5 | **Technical dossier** | auditors, engineers | Everything, down to each tool run and quote |
 
+**Charts in the built-ins (implementation note, 2026-09-28):** a chart of a metric ("metric by run",
+"metric by dimension") or of one tool needs that metric or tool named in its options, which is a project's
+data (section 3.1). So the built-ins use only the charts that need no name: coverage status and
+checklist scores. The metric and per-tool charts listed below for levels 3 to 5 are left out until the
+user decides: either add a chart value that means "every metric", or accept that a duplicated layout adds
+them itself.
+
 **1. Summary**
 - Cover
 - Key figures: version, risks, objectives, coverage, tests
