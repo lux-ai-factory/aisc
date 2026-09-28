@@ -148,12 +148,13 @@ def test_pgadmin_and_the_other_admin_tools_stay_admin_only():
 def test_a_member_sees_the_menu_and_a_stranger_does_not():
     _, script = menu_and_script()
     assert "if (!a || !(a.role || a.admin)) return;" in script
-    assert script.index("if (!a || !(a.role || a.admin)) return;") < script.index("getElementById('manage').hidden = false")
+    # one Manage menu since 2026-09-28: the member-only items are revealed after the check
+    assert script.index("if (!a || !(a.role || a.admin)) return;") < script.index("#manage .member-only")
 
 
 def test_hidden_menu_items_really_are_hidden():
     """.panel a sets display, which would override the hidden attribute."""
-    assert re.search(r"\.manage\s+\.panel\s+\[hidden\]\s*\{\s*display\s*:\s*none", PAGE.read_text())
+    assert re.search(r"\.menu\s+\.panel\s+\[hidden\]\s*\{\s*display\s*:\s*none", PAGE.read_text())
 
 
 # ── Caddy asks the platform which diagrams a caller may see ─────────────────
