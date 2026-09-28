@@ -1,10 +1,14 @@
 # Report composer (step 7)
 
-Assembles an assessment report of one project from **blocks**, saves it as a **layout**, previews
-it as HTML and generates the PDF. A layout is pinned to one system version: every block shows the
-data of that version only. A layout can be saved as a **template** (without project data) and
-reused by any project. The renderer (`aisc-report-generator`, service `report-renderer`) draws the
-blocks; the composer never reads a module's data itself.
+Assembles an assessment report of one project from **modules** (blocks), saves their order and a
+template as a **layout**, previews it as HTML and generates the PDF or Word document. A layout holds
+no data: the AI card version, the period of test runs, whether runs of other versions are included and
+the version Changes since compares with are chosen when a report is generated, and recorded on it
+(report modules spec, `docs/superpowers/specs/2026-09-28-report-modules-design.md`). Five built-in
+layouts (Summary, Management overview, Assessment report, EU AI Act conformity, Technical dossier) are
+shared by every project, read-only: open one to inspect it, duplicate it to adapt it. A layout moves
+between projects as a file (Export, Import). The renderer (`aisc-report-generator`, service
+`report-renderer`) draws the modules; the composer never reads a module's data itself.
 
 Behind the platform's sign-in (Caddy, oauth2-proxy, Keycloak) at `/report-composer/`. Rights come
 from the platform's project roles, read on every request: viewers read and preview, editors and
@@ -13,9 +17,15 @@ from the platform's origin.
 
 ## Screens
 
-- `/p/{slug}/`: the project's layouts (new layout, new from template, delete for editors)
-- `/p/{slug}/layouts/{id}`: the editor (palette, order, per-block options, version, save,
-  generate, save as template) with the preview beside it
+- `/p/{slug}/`: the layouts, built-in ones first; New layout and Import from file in the header;
+  Open, Duplicate and Export on each row
+- `/p/{slug}/layouts/{id}` (and `/layouts/new`, `/layouts/builtin-<slug>` read-only): the editor
+  (name, template, index, numbering, the grouped module palette, order, per-module options, Save,
+  Generate report, Delete) with the preview beside it, drawn with a version and period chosen in the
+  preview pane and never saved
+- `/p/{slug}/layouts/{id}/generate`: the Generate report form (version, period, other versions,
+  compare with, PDF or Word), handled in Python
+- `/p/{slug}/templates`: the templates (a report's look), one editor
 
 The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the only script is
 `static/composer.js`, which collects the form values and calls the API.
@@ -27,16 +37,18 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
 | `GET /p/{ref}/systems` | viewer |
 | `GET /block-types` | signed in |
 | `GET /p/{ref}/choices?block_type=&system_id=` | viewer |
-| `GET, POST /p/{ref}/layouts` | viewer, editor |
+| `GET, POST /p/{ref}/layouts` (POST: `{name, blocks?, template_id?, show_index?, numbering?, coverage?, file?}`) | viewer, editor |
 | `GET, PUT, DELETE /p/{ref}/layouts/{id}` | viewer, editor, editor |
 | `POST /p/{ref}/layouts/{id}/validate` | viewer |
-| `GET /p/{ref}/layouts/{id}/preview` | viewer |
-| `GET, POST /p/{ref}/layouts/{id}/reports` | viewer, editor |
-| `GET /p/{ref}/reports/{rid}/pdf` | viewer |
-| `POST /p/{ref}/layouts/{id}/template` | editor |
-| `GET /templates`, `DELETE /templates/{tid}` | signed in; the creator or an admin deletes |
+| `GET, POST /p/{ref}/layouts/{id}/preview` (the version and period: query or `preview_with`) | viewer, editor |
+| `POST /p/{ref}/layouts/{id}/duplicate` (also of a `builtin-<slug>` id) | editor |
+| `GET /p/{ref}/layouts/{id}/export` | viewer |
+| `GET /p/{ref}/builtin-layouts`, `GET .../{id}`, `.../{id}/preview`, `.../{id}/export` | viewer |
+| `GET, POST /p/{ref}/layouts/{id}/reports` (POST: `{system_id, period_from?, period_to?, other_versions?, compare_to?, format?}`) | viewer, editor |
+| `GET /p/{ref}/reports/{rid}/pdf`, `/download` | viewer |
+| `GET, POST /p/{ref}/templates`, `PUT, DELETE .../{tid}`, `POST .../import`, `GET .../{tid}/export`, `.../{tid}/logo` | viewer, editor |
 
-`{ref}` is the project's slug or pid. Errors are `{"error": {"code", "message", "details"}}`.
+A period is two dates, both included, in UTC. `{ref}` is the project's slug or pid. Errors are `{"error": {"code", "message", "details"}}`.
 
 ## Storage
 

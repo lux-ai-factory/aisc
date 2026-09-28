@@ -132,7 +132,7 @@ def test_e2e_compose_preview_and_generate(e2e_client, auth):
     assert "is newer" not in html
     assert "--l-aif-primary: #123456" in html and "Liberation Serif" in html      # the template's look
 
-    r = c.post(f"/api/p/echo/layouts/{lay['id']}/reports", json={}, headers=erin)
+    r = c.post(f"/api/p/echo/layouts/{lay['id']}/reports", json={"system_id": IDS["E_V2"]}, headers=erin)
     assert r.status_code == 201, r.text[:800]
     report = r.json()
     assert report["status"] in ("done", "partial")
@@ -153,7 +153,8 @@ def test_e2e_pinned_to_version_1(e2e_client, auth):
                                              "blocks": [b for b in blocks() if b["block_type"] != "summary_coverage"],
                                              "template_id": some_template(c, auth, slug="echo", who="erin")},
                  headers=erin).json()
-    html = c.get(f"/api/p/echo/layouts/{lay['id']}/preview", headers=erin).text
+    # report modules 2026-09-28: the layout holds no version; the preview is drawn with the one asked for
+    html = c.get(f"/api/p/echo/layouts/{lay['id']}/preview?system_id={IDS['E_V1']}", headers=erin).text
     assert "E2MARK" not in html
     assert "This report covers version 1. Version 2 is newer." in html
     assert "Newer results exist for version 2." in html

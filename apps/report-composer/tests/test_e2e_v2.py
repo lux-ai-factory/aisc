@@ -5,7 +5,7 @@ A full throwaway bed (aisc-t-e2e2-*), project Mike (seed_tools.sql: the three Mi
 The real renderer (aisc-report-generator via REPORT_GENERATOR_DIR, default ../../../aisc-report-generator)
 runs as a subprocess on a free port; the composer talks to it with HttpRendererClient.
 
-Mia (owner of Mike) starts a layout from the built-in preset "eu-ai-act" on the platform default look,
+Mia (owner of Mike) duplicates the built-in layout "eu-ai-act" on the platform default look,
 sends a French language (which an older client may still do; it is ignored, all reports are English) and a
 coverage map, previews a draft, generates a PDF and a DOCX and downloads both. The preset's unwritten free text
 ("Write this section.") is left out of both documents.
@@ -28,8 +28,7 @@ from conftest import FIXED_NOW, ISSUER, IDS, Missing, lazily, need, report_bed, 
 pytestmark = [pytest.mark.db, pytest.mark.e2e]
 GENERATOR = Path(os.environ.get("REPORT_GENERATOR_DIR", Path(__file__).resolve().parents[4] / "aisc-report-generator"))
 TOKEN = "e2e-v2-token-" + "0" * 24
-EU = ["cover", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives",
-      "summary_coverage", "chapter", "test_results", "control_answers", "appendix", "free_text"]
+EU = ["cover", "free_text", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives", "control_answers", "summary_coverage", "chapter", "test_runs", "test_results", "chart", "changes_since", "free_text", "appendix", "free_text"]      # the built-in layout eu-ai-act (report modules 2026-09-28)
 
 
 @pytest.fixture(scope="module")
@@ -100,13 +99,12 @@ def e2e(full_bed, renderer_url, make_client, monkeypatch):
 
 def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     c, mia = e2e, auth("mia")
-    r = c.post("/api/p/mike/layouts", json={"name": "Mijke conformity", "system_id": IDS["M_V2"],
-                                           "template_id": None, "preset": "eu-ai-act"}, headers=mia)
+    r = c.post("/api/p/mike/layouts/builtin-eu-ai-act/duplicate", json={"name": "Mijke conformity"}, headers=mia)
     assert r.status_code == 201, r.text[:800]
     lay = r.json()
     assert [b["block_type"] for b in lay["blocks"]] == EU
     coverage = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-m1"]}]
-    body = {k: lay[k] for k in ("name", "system_id", "template_id", "revision", "blocks")}
+    body = {k: lay[k] for k in ("name", "template_id", "revision", "blocks")}
     body.update(language="fr", coverage=coverage)
     saved = c.put(f"/api/p/mike/layouts/{lay['id']}", json=body, headers=mia)
     assert saved.status_code == 200, saved.text[:800]
@@ -118,17 +116,24 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
                                      "block_type": "free_text", "options": {"text": "Unsaved DRAFTMARK",
                                                                             "format": "markdown"}}]
     d = c.post(f"/api/p/mike/layouts/{lay['id']}/preview",
-               json={"system_id": lay["system_id"], "template_id": None, "language": "fr", "toc": lay["toc"],
-                     "numbering": lay["numbering"], "coverage": coverage, "blocks": draft_blocks}, headers=mia)
+               json={"preview_with": {"system_id": IDS["M_V2"]}, "template_id": None, "language": "fr",
+                     "show_index": lay["show_index"], "numbering": lay["numbering"], "coverage": coverage,
+                     "blocks": draft_blocks}, headers=mia)
     assert d.status_code == 200, d.text[:800]
     html = d.json()["html"]
     assert re.search(r'<html[^>]*\blang="en"', html)
     assert "DRAFTMARK" in html and "Content-Security-Policy" in html
     assert "gpt-4o-mini" in html                         # LangBiTe's group table, from the version's data
-    assert "M1MARK" not in html and "HARMFULPROMPTCONTENT" not in html
+    assert "HARMFULPROMPTCONTENT" not in html
+    # version 1's data shows only where the layout compares with it: its Changes since section
+    from bs4 import BeautifulSoup
+    doc = BeautifulSoup(html, "html.parser")
+    changes = next(b["instance_id"] for b in lay["blocks"] if b["block_type"] == "changes_since")
+    doc.find(id=f"block-{changes}").decompose()
+    assert "M1MARK" not in str(doc)
 
     # PDF
-    r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "pdf"}, headers=mia)
+    r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "pdf", "system_id": IDS["M_V2"]}, headers=mia)
     assert r.status_code == 201, r.text[:800]
     pdf_id = r.json()["id"]
     pdf = c.get(f"/api/p/mike/reports/{pdf_id}/download", headers=mia)
@@ -136,11 +141,11 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     from pypdf import PdfReader
 
     text = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
-    assert "System and risks" in text and "DRAFTMARK" not in text      # only the saved revision is generated
+    assert "The AI system" in text and "DRAFTMARK" not in text         # only the saved revision is generated
     assert "Write this section." not in text                           # R2-D3.8.4
 
     # DOCX
-    r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "docx"}, headers=mia)
+    r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "docx", "system_id": IDS["M_V2"]}, headers=mia)
     assert r.status_code == 201, r.text[:800]
     docx_id = r.json()["id"]
     docx = c.get(f"/api/p/mike/reports/{docx_id}/download", headers=mia)
@@ -148,7 +153,7 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     assert docx.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     with zipfile.ZipFile(io.BytesIO(docx.content)) as z:
         body_xml = z.read("word/document.xml").decode("utf-8")
-    assert "System and risks" in body_xml and "Evidence" in body_xml
+    assert "The AI system" in body_xml and "Evidence" in body_xml
     assert "Write this section." not in body_xml                       # R2-D3.8.4
 
     # what was stored: format, fingerprint, the v2 snapshot with the document id
@@ -159,7 +164,8 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
         assert stored["format"] == fmt
         assert re.fullmatch(r"[0-9a-f]{64}", stored["fingerprint"] or "")
         snap = stored["snapshot"]
-        assert snap["snapshot_version"] == 2 and "language" not in snap and snap["mode"] == fmt
+        assert snap["snapshot_version"] == 3 and "language" not in snap and snap["mode"] == fmt
+        assert snap["system_id"] == IDS["M_V2"] and snap["selection"]["other_versions"] is False
         assert snap["document"]["id"] == rid and snap["coverage_links"] == coverage
     listed = c.get(f"/api/p/mike/layouts/{lay['id']}/reports", headers=mia).json()
     assert sorted(x["format"] for x in listed) == ["docx", "pdf"]
