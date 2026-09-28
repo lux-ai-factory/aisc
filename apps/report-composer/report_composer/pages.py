@@ -182,11 +182,24 @@ def editor_page(request: Request, ref: str, layout_id: str):
                  template_known=layout.get("template_id") in template_ids)
 
 
-def generate_context(layout: dict, systems: list, error: str | None = None, form: dict | None = None) -> dict:
+def _problem_lines(details, layout: dict, types: list[dict]) -> list[str]:
+    """Each refused option as "<module title>: <option>: <message>", in the layout's order (final review I1)."""
+    titles = {t["type_id"]: t["title"] for t in types}
+    names = {b["instance_id"]: (b.get("options") or {}).get("title") or titles.get(b["block_type"], b["block_type"])
+             for b in layout["blocks"]}
+    order = {b["instance_id"]: i for i, b in enumerate(layout["blocks"])}
+    rows = [d for d in details if isinstance(d, dict) and d.get("message") and d.get("instance_id")]
+    rows.sort(key=lambda d: order.get(d.get("instance_id"), len(order)))
+    return [": ".join(x for x in (names.get(d.get("instance_id"), "Layout"), (d.get("pointer") or "").strip("/"),
+                                  d["message"]) if x) for d in rows]
+
+
+def generate_context(layout: dict, systems: list, error: str | None = None, form: dict | None = None,
+                     problems: list | None = None) -> dict:
     """What the Generate report page shows: the versions newest first, Compare with only when the layout
     compares versions, and the message of a project without a version (report modules spec, section 6)."""
     return {"systems": systems, "has_changes_since": any(b["block_type"] == "changes_since" for b in layout["blocks"]),
-            "message": None if systems else NO_VERSION, "error": error, "form": form or {}}
+            "message": None if systems else NO_VERSION, "error": error, "form": form or {}, "problems": problems or []}
 
 
 def _generate_page(request: Request, g, layout: dict, systems, status_code=200, **kw) -> HTMLResponse:
@@ -222,7 +235,10 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
     except ApiError as e:
         with request.app.state.projects.connect(g.project["pid"]) as conn:
             layout, systems = layout_or_404(conn, layout_id), db.systems(conn)
-        return _generate_page(request, g, layout, systems, status_code=e.status, error=e.message, form=typed)
+        problems = _problem_lines(e.details, layout, block_types(request))
+        return _generate_page(request, g, layout, systems, status_code=e.status,
+                              error="The report was not generated:" if problems else e.message, form=typed,
+                              problems=problems)
     if status >= 400:
         with request.app.state.projects.connect(g.project["pid"]) as conn:
             layout, systems = layout_or_404(conn, layout_id), db.systems(conn)

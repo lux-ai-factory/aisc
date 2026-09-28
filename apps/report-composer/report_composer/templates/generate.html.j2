@@ -14,7 +14,9 @@
   <p class="notice qf-section">{{ message }}</p>
   {% else %}
   <form method="post" class="qf-section generate-form" data-control="generate-report">
-    {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+    {% if error %}<div class="form-error" role="alert"><p>{{ error }}</p>
+      {% if problems %}<ul data-problems>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+      <p class="help">Open the layout, preview it with this version and change these options.</p>{% endif %}</div>{% endif %}
     <div class="field"><label>AI card version <select name="system_id" required>
       {% for s in systems %}<option value="{{ s.pid }}"{% if form.system_id == s.pid %} selected{% endif %}>Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}
     </select></label>

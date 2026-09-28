@@ -77,3 +77,16 @@ def test_without_a_version_generate_explains():
     from report_composer.pages import generate_context
     ctx = generate_context(layout={"blocks": []}, systems=[])
     assert ctx["message"] == "This project has no AI card version yet. Save the AI card in qualification first."
+
+
+def test_a_refused_generation_lists_every_problem_with_its_module(client_v2, auth):
+    """Final review I1: the page names each module whose option the chosen version does not offer."""
+    lay = new_layout(client_v2, auth, name="Refs", blocks=[v2blk("cover"),
+                                                           v2blk("control_answers", checklists=["no-such-list"]),
+                                                           v2blk("dashboard_chart", chart_id=999)])
+    r = client_v2.post(f"/p/alpha/layouts/{lay['id']}/generate", headers=auth("alice"),
+                       data={"system_id": IDS["A_V2"], "format": "pdf"})
+    assert r.status_code == 422
+    items = [li.get_text(" ", strip=True) for li in soup(r.text).select("[data-problems] li")]
+    assert len(items) == 2, items
+    assert items[0].startswith("Control answers") and items[1].startswith("Dashboard chart")
