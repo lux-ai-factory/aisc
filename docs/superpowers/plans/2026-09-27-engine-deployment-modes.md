@@ -844,6 +844,24 @@ git commit -m "The Configurator runs the engine in configurator mode, and serves
 
 ---
 
+### Task 9b: Méril's staging set (the install flow that works on his machine)
+
+Added 2026-09-28 at the user's request: the hosted catalogue works on Méril's machine because his engine installs from the same online package index the catalogue lists. His branches `feat/dev-catalogue-staging` (25 Sep) in eval, plugin-manager and the superproject are not in Sean's `master`.
+
+**Files:**
+- Engine eval (`~/engine-modes/apps/eval`, `feat/deployment-modes`): merge `origin/feat/dev-catalogue-staging` (7 commits: online install from the index, index always passed, cached registry plugins, 400 min task limits, placeholder API_KEY_OPENAI for local-model runs). Leave out his `env.development` `PLUGIN_PATH` (a path on his machine).
+- Superproject (`~/aisc-definitive`): `shared/plugin-manager` gitlink to `origin/feat/dev-catalogue-staging` (46e1867, public index without login); `docker-compose-infra.development.yml` postgres 14 to 15 (his commit: the backend requires PG15); `env.plugin_downloader` and `env.development`: `PACKAGE_REGISTRY_URL=http://10.50.3.47/`, `CATALOGUE_TRUSTED_INDEXES` including `http://10.50.3.47/root/public/+simple/`; the eval gitlink to the merge.
+- Not taken: his `CATALOG_URL` (the same catalogue we reach at https://sandboxconfigurator.aifactory.lu/catalogue), his Keycloak `/auth` path (his staging deployment's).
+- Tests: `scripts/tests/test_compose.py` (registry and trusted index are the online devpi, postgres 15); eval suite both modes (`uv run --with onnxruntime pytest -q --noconftest tests/test_deployment_mode.py tests/test_run_ticket.py`, plus any test his branch adds).
+
+- [ ] **Step 1: Write the failing compose tests** (registry URL, trusted index, postgres major 15 in the runtime env and infra compose).
+- [ ] **Step 2: Run them, see them fail.**
+- [ ] **Step 3: Merge Méril's eval branch into `feat/deployment-modes`, resolving `aisc_eval/celery_tasks.py` so both his install changes and Task 6's mode handling hold; run the eval tests in both modes.**
+- [ ] **Step 4: Superproject changes and gitlinks; run test_compose and the whole `scripts/tests` with the baseline command (`--with 'psycopg[binary]'`), compare failing ids with `scripts-tests-after-task9.log` in the plan workspace.**
+- [ ] **Step 5: Commit (eval repo and superproject).**
+
+---
+
 ### Task 10: Proof in both modes
 
 **Files:** none; results recorded in `docs/superpowers/plans/2026-09-27-engine-deployment-modes-results.md`.
