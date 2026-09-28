@@ -88,39 +88,23 @@ webapp .env.development T7: standalone mode and launcher URL for dev
 webapp .env.test T7: the mode for plain vitest runs (Ruling 30)
 webapp Dockerfile T7: ENV APP_DEPLOYMENT=standalone by default (Ruling 28)
 webapp src/DeploymentGate.tsx T7: error page for an unknown mode
-webapp src/MyApp.tsx T7: apiFetch; Tasks route standalone only
-webapp src/api/api.tsx T7: apiFetch (project header in configurator)
-webapp src/api/projectHeader.i7_4.test.ts T7, T8: every call names the project (I7.4)
-webapp src/api/projectHeader.ts T7, T8: apiFetch/apiAxios: the X-AISC-Project header in configurator
-webapp src/components/AISystemSettings.tsx T7: apiFetch
-webapp src/components/EvaluationProgressList.tsx T7: apiFetch
-webapp src/components/GenericTextDataGrid.tsx T7: apiFetch
-webapp src/components/LeftBar.tsx T7: apiFetch; Tasks link standalone only
+webapp src/MyApp.tsx T7: Tasks route standalone only
+webapp src/api/installProjectHeader.test.ts T7: the start-up wrapper names the project on fetch and axios (adapt plan 2026-09-28, task 5)
+webapp src/api/installProjectHeader.ts T7: installs the X-AISC-Project wrapper over fetch and axios at start, configurator only (adapt plan 2026-09-28, task 5)
+webapp src/api/projectHeader.i7_4.test.ts T7, T8: every call names the project (I7.4), through the start-up wrapper
+webapp src/api/projectHeader.ts T7, T8: projectFetch and the axios interceptor: the X-AISC-Project header in configurator
+webapp src/components/LeftBar.tsx T7: Tasks link standalone only
 webapp src/components/PluginInstallDialog.modes.test.tsx T8: the install dialog in both modes
 webapp src/components/PluginInstallDialog.tsx T8: install into the project you came from (configurator), Sean's list standalone
-webapp src/components/SummaryTable.tsx T7: apiFetch
 webapp src/components/TopBar.tsx T7: launcher's project in configurator, Sean's wizard standalone
-webapp src/components/UploadFileField.tsx T7: apiAxios
-webapp src/components/plugin/CSVDataGridChart.tsx T7: apiFetch
-webapp src/components/plugin/ConfigHistory.tsx T7: apiFetch
-webapp src/components/plugin/PluginConfigForm.tsx T7: apiFetch
-webapp src/components/plugin/PluginEvaluationForm.test.tsx T7: sets the tab's project (I7.4), no effect standalone
-webapp src/components/plugin/PluginEvaluationForm.tsx T7: apiFetch
 webapp src/context/AuthContext.tsx T7: the gateway's session in configurator, Sean's Keycloak login standalone
 webapp src/deployment.components.test.tsx T7: components by mode
 webapp src/deployment.test.ts T7: the mode switch
 webapp src/deployment.ts T7: APP_DEPLOYMENT read per call
-webapp src/main.tsx T7: DeploymentGate mounted (Ruling 30)
+webapp src/main.tsx T7: DeploymentGate mounted (Ruling 30); the project-header wrapper installed before render in configurator
 webapp src/pages/GlobalHome.tsx T7: the launcher's project in configurator
-webapp src/pages/PluginEvaluationMeasurements.tsx T7: apiFetch
-webapp src/pages/PluginEvaluations.tsx T7: apiFetch
-webapp src/pages/PluginEvaluationsTasks.tsx T7: apiFetch
-webapp src/pages/PluginStartEvaluation.test.tsx T7: sets the tab's project (I7.4), no effect standalone
-webapp src/pages/PluginStartEvaluation.tsx T7: apiFetch
-webapp src/pages/Plugins.tsx T7: apiFetch
-webapp src/pages/PluginsConfig.tsx T7: apiFetch
-webapp src/pages/Settings.tsx T7: apiFetch
-webapp src/pages/StartEvaluation.tsx T7: apiFetch
+webapp src/pages/Plugins.modes.test.tsx T8: the Plugins page by mode (configurator lists only the project's installed tests)
+webapp src/pages/Plugins.tsx T8: the catalogue is the only place tests are found in configurator; Sean's package index standalone
 webapp src/platform/currentProject.test.ts T7, T8: the tab's platform project
 webapp src/platform/currentProject.ts T7, T8: the tab's platform project (pid only)
 webapp src/platform/gatewaySession.test.ts T7: the gateway's session
@@ -128,3 +112,4 @@ webapp src/platform/gatewaySession.ts T7: the gateway's session
 webapp src/pluginCatalogue/PluginInstallContext.tsx T8: install target by mode
 webapp src/pluginCatalogue/installUri.ts T8: catalogue slug of an install link
 webapp src/pluginCatalogue/testing.tsx T8: test helpers without a new dependency (Ruling 34)
+webapp src/seansFilesUnchanged.test.ts T7: Sean's files the configurator no longer edits equal master (adapt plan 2026-09-28, task 5)
