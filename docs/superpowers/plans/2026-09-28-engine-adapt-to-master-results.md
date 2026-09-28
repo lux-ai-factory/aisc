@@ -136,16 +136,99 @@ touched for `fetch`/`axios`. Whether the other seven stay is a decision for the 
 
 ## Suites
 
-pending (Task 6b)
+Task 6 step 1, run by the controller at backend `a73695c`, eval `0302352`, webapp `0bc2844`,
+superproject `6341485`, against the Task 0 baselines (`~/engine-modes/baseline-adapt-*`):
+
+| Suite | Command (short) | Baseline (Task 0) | Task 6 | New failures |
+|---|---|---|---|---|
+| backend, sqlite, standalone | `manage.py test aisc_backend` | 242 ran, 3 failed, 4 errors, 121 skipped | 256 ran, the same 7 failing ids | 0 |
+| backend, sqlite, configurator | same, `AISC_DEPLOYMENT=configurator` | 242 ran, 3 failed, 4 errors, 49 skipped | 256 ran, the same 7 failing ids | 0 |
+| backend, Postgres 15 (throwaway) | `test_isolation_engine_db`, `test_isolation_result_route` | (new in this plan) | 34 OK | 0 |
+| eval, standalone | `pytest tests/test_deployment_mode.py tests/test_run_ticket.py tests/test_run_context.py` | 9 passed, 8 skipped | 16 passed, 8 skipped | 0 |
+| eval, configurator | same, `AISC_DEPLOYMENT=configurator` | (new) | 19 passed, 5 skipped | 0 |
+| webapp | `npx vitest run`; `npx tsc --noEmit -p tsconfig.app.json` | 75/75 | 81/81; type check clean | 0 |
+| results-dashboard | `pytest --continue-on-collection-errors` | 130 passed, 10 skipped, 1 collection error (test_sso_login needs Superset) | the same | 0 |
+| report renderer | `pytest -q` on the isolated bed | 642 passed | 673 passed (after Task 6d, `dev` at `ceb8eb5`) | 0 |
+| scripts/tests | `pytest scripts/tests` | 461 passed, 50 failed | 475 passed, 47 failed | 0 (3 fixed: G1 x2, `test_final_guard_frozen_passes`) |
+
+The 47 remaining scripts/tests failures and the 7 backend ids are the baseline's, none of them new.
+The counts after the final fix wave are in `.superpowers/sdd/2026-09-28-engine-adapt-to-master/final-fix-report.md`.
 
 ## Fresh stack
 
-pending (Task 6b)
+- A fresh clone, `~/aisc-adapt`, of superproject `9b7473d` with the local submodules and the report
+  renderer at `be70243`, built with `build --pull --no-cache` as compose project `aisc-adapt` on new
+  volumes. The old `aisc` stack was stopped with its volumes kept (10 volumes, for the user to decide).
+- Every container came up. The project Proof (`728ae880-58ee-44ef-8139-664b804de937`) was made through
+  the platform API as `user`.
+- `scripts/verify.sh --stack` gave only expected differences: I16.5 (known), verify-rbac's audit
+  answer 403 -> 401 (adapt item 3, Sean's 401), verify-sso's bundle grep (Sean's standalone Keycloak
+  client is in the one bundle, unconfigured in configurator), and report_composer not migrated for a
+  project made after its one-shot (existing lazy behaviour; after rerunning `report-composer-migrate`,
+  verify-project-databases reported I16.5 only).
+- Task 6c fixed the two verify expectations (`11d161e`); on the fresh stack verify-sso then gave
+  60 passed, 0 failed, and verify-rbac 40 passed, 0 failed.
+- Later the stack took `9926037` (secrets.sh added only `DASHBOARD_BRIDGE_TOKEN`, every existing value
+  unchanged, file mode 600; report renderer rebuilt; platform and dashboard recreated) and
+  results-dashboard `14b1fb1` (dashboard recreated).
 
 ## End to end
 
-pending (Task 6b)
+Evidence: `.superpowers/sdd/2026-09-28-engine-adapt-to-master/task-6b-e2e-report.md`. Calls were made
+from inside the network with `X-AISC-Project` of Proof and Keycloak tokens that were never printed or
+kept on disk.
+
+1. **Engine row, plugin install, project plugins: proven.** `POST /projects/for-platform/<Proof>` as
+   `user` made the engine project; `POST /plugins` as `admin` installed `data-monitor 0.3.1` (two
+   plugins, enabled; `catalogue_slug` null because the call was direct); two dataset components made.
+2. **Evaluation: proven.** After the host disk was freed (the first attempt stopped on MinIO's full
+   disk), both uploads answered 200, the plugin config was saved, and evaluation `c5d2385d` ran to
+   Done with 11 measurements.
+3. **Door and run headers: proven.** The worker's 11 internal calls for that evaluation all answered
+   200 or 201, with no 400, 401 or 403, through the chain run_evaluation -> install_package ->
+   run_plugin -> post_measurements -> finalize_evaluation; each task carried the `aisc_run` header
+   naming the platform pid and the evaluation.
+4. **Project database under Sean's table names: proven.** In `project_728ae880...`:
+   `engine.aisc_backend_*` hold 1 evaluation, 11 measurements, 1 observation, 8 metrics, 2 plugins and
+   2 components.
+5. **Dashboard and report: proven after fixes.** A second run, evaluation `675767d8`, was stamped with
+   card version 1. The composer made a layout and report `7e166004` (status done); its PDF (23,447
+   bytes) names the evaluation and lists the metric rows. Through the gateway, as the project's
+   member, the dashboard's chart data returned the metric rows of both evaluations (8 rows first, 16
+   after the second run), and the project dashboard is listed and opens (200).
+
+Defects found on the way:
+
+| Id | What | Status |
+|---|---|---|
+| D1 | The renderer built from report-generator `dev`, which lacked isolation/2026-09-25 and read `core.system`: every report call failed | fixed: isolation merged into `dev` locally (`ceb8eb5`, Task 6d, Ruling 11); not on GitHub yet |
+| D2 | `DASHBOARD_BRIDGE_TOKEN` never generated, so the dashboard bridge refused every project (401) | fixed: secrets.sh generates it and adds missing secrets to an existing env.secrets; compose requires it (`9926037`, Ruling 12) |
+| D3 | The per-project dashboard was created unpublished with no owners, so its member saw none | fixed: published on creation and re-registration (results-dashboard `14b1fb1`..`24a5d6d`, Ruling 13); proven for the member, a non-member not tried live |
+| D4 | The controls-answers dataset has 0 columns in Superset, so the controls chart errors | open, pre-existing, controls side (Ruling 14), for the user |
+| F1 | The eval worker's DEBUG log printed the run ticket | fixed in the final fix wave: the development compose runs the worker at `--loglevel=info` |
+| F2 | `GET /api/v1/evaluations/<pid>` without `?include=` answers 500 (SynchronousOnlyOperation) | open, Sean's master code, to report upstream; the web app always passes `include` |
+| F3 | The bridge's charts are saved without `query_context`, so the chart data GET route answers 400 | open, pre-existing, dashboard side (Ruling 14); the UI is unaffected |
+| F4 | No supported re-register of an existing project short of a platform restart | open, pre-existing (Ruling 14) |
 
 ## Standalone
 
-pending (Task 6b)
+Run as compose project `aisc-standalone` (the web app on 18080 through a scratchpad override, since
+8080 was taken), then stopped with its volumes kept.
+
+Proven:
+
+- The backend migrates Sean's chain, auth tables included; the database holds `aisc_backend_*`,
+  `auth_user` and `engine_deployment`.
+- With a bearer (Sean's `HttpBearer` wants the header even with `AUTH_ENABLED=False`, as on master):
+  `GET /projects` 200 `[]`, `POST /projects` made a project, `POST /plugins` enabled data-monitor from
+  Sean's local list, and `for-platform` answers 404 (not mounted).
+- The Celery message equals master's, by unit test (`test_celery_dispatch.py`) and by code
+  (`celery_service.py`).
+
+Not proven:
+
+- **No evaluation ran in standalone**: no standalone run crossed the worker.
+- **No Keycloak** in the standalone compose, so its web app cannot sign in (a design decision for the
+  user: add a realm, or document the bearer-only use).
+- **devpi-standalone** exits on a fresh volume (root login 401), so the worker could not install a
+  plugin there; see the final fix report, item 16.
