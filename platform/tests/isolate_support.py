@@ -127,7 +127,22 @@ OLD_CORE = [
 # New layout (I3.5, I5.4, I7.7, I8.2, controls head before I6.2's FK migration, C7/C8b).
 NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
-NEW_DJANGO = "0025_the_database_is_the_project"
+NEW_DJANGO = "0020_the_database_is_the_project"   # 0025 before the adapt plan of 2026-09-28
+# What migrate_projects records in a project database today: Sean's 0001..0014 (origin/master)
+# and ours 0015..0021. OLD_DJANGO above is the old chain on purpose (the source, an old install).
+NEW_DJANGO_CHAIN = [
+    "0001_initial", "0002_evaluationplugin_evaluation_config",
+    "0003_remove_evaluationplugin_evaluation_config_and_more",
+    "0004_remove_dataset_plugin_remove_evaluation_dataset_and_more", "0005_artifact",
+    "0006_plugin_package_name_plugin_version_and_more",
+    "0007_alter_plugin_unique_together_plugin_display_name", "0008_remove_datashape_dataset_and_more",
+    "0009_alter_measurement_dimensions", "0010_plugin_enabled",
+    "0011_artifact_file_size_dataset_file_size_model_file_size", "0012_measurement_direction",
+    "0013_projectsetting_pluginconfigsetting_and_more", "0014_ai_system_and_project_config_squashed",
+    "0015_plugin_catalogue_slug", "0016_evaluation_system_id_project_platform_project_id",
+    "0017_one_project_per_platform_project", "0018_alter_project_platform_project_id",
+    "0019_no_login_of_its_own", "0020_the_database_is_the_project", "0021_engine_deployment_marker",
+]
 NEW_COMPOSER = "0001_project_database.sql"
 CONTROLS_HEAD = [
     "20260923120000_project_database",
@@ -661,7 +676,7 @@ def _bookkeeping_new(conn, forms: bool) -> None:
                                       migration_name=name, logs=None, rolled_back_at=None, started_at=T0,
                                       applied_steps_count=1))
     _insert(conn, "control_objectives.alembic_version", dict(version_num=NEW_ALEMBIC))
-    for k, name in enumerate(OLD_DJANGO + [NEW_DJANGO], start=1):
+    for k, name in enumerate(NEW_DJANGO_CHAIN, start=1):
         _insert(conn, "engine.django_migrations", dict(id=k, app="aisc_backend", name=name, applied=T0))
     _insert(conn, "report_composer.schema_migration", dict(name=NEW_COMPOSER, applied_at=T0))
     for name in NEW_TEMPLATE:

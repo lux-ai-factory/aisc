@@ -29,6 +29,8 @@ OLD_QUALIFICATION = [
 ]
 FORMS_MIGRATIONS = ["20260925090000_forms_are_data", "20260925120000_the_default_form_is_fixed"]
 OLD_ALEMBIC = "7c3e5a9b1d24"
+# The OLD chain on purpose: an old install (the source) was migrated by the engine of before the
+# adapt plan (2026-09-28), whose 0024 dropped the login tables. Today's chain ends at 0021.
 OLD_DJANGO_HEAD = "0024_no_login_of_its_own"
 OLD_COMPOSER = [
     "0001_report_composer.sql", "0002_templates_are_looks.sql",
@@ -41,7 +43,9 @@ OLD_CORE = [
 ]
 NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
-NEW_DJANGO = "0025_the_database_is_the_project"
+# Today's chain (Sean's 0001..0014, ours 0015..0021): the project database layout (0025 before
+# the adapt plan of 2026-09-28).
+NEW_DJANGO = "0020_the_database_is_the_project"
 NEW_COMPOSER = "0001_project_database.sql"
 CONTROLS_HEAD = [
     "20260923120000_project_database",

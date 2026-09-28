@@ -15,7 +15,6 @@ base webapp ab9f19d
 
 # apps/backend
 backend aisc_backend/apps.py T3: the database-mode check at start (migrate refused in the other mode), the stamp signal loaded
-backend aisc_backend/auth/keycloak.py T4: router_auth / admin_in_configurator; the gateway's token header in configurator only
 backend aisc_backend/auth/membership.py T3: platform memberships, the configurator's per-project access check
 backend aisc_backend/deployment.py T1, T3: AISC_DEPLOYMENT (standalone by default, or configurator) and its start checks
 backend aisc_backend/management/__init__.py T3: package of migrate_projects
@@ -32,35 +31,25 @@ backend aisc_backend/models/evaluation.py T2: evaluation.system_id (the stamp's 
 backend aisc_backend/models/plugin.py T2: plugin.catalogue_slug
 backend aisc_backend/models/project.py T2: project.platform_project_id (column project_id) and its constraint
 backend aisc_backend/platform_projects.py T3: reads platform project names (configurator)
-backend aisc_backend/project_door.py T3: the door: admits a request to its project database (configurator)
+backend aisc_backend/project_door.py T3, T4: the door: admits a request to its project database and holds every configurator rule (membership, admin-only plugin routes; adapt plan 2026-09-28, task 3)
 backend aisc_backend/projectdb.py T3: project database aliases (configurator)
 backend aisc_backend/repositories/measurement_repository.py T4: vendor of the queryset's database, not default (isolation I7.1)
 backend aisc_backend/repositories/project_repository.py T4: create() takes platform_project_id
 backend aisc_backend/repositories/system_version_repository.py T3: latest card version, read by the stamp signal
-backend aisc_backend/routers/component.py T4: membership checks in configurator only
-backend aisc_backend/routers/evaluation.py T4: membership checks in configurator only (no stamp here, amendment A1)
-backend aisc_backend/routers/file.py T4: membership checks in configurator only
-backend aisc_backend/routers/plugin.py T4: membership checks, admin for install/refresh/remove in configurator (Ruling 19), catalogue_slug
-backend aisc_backend/routers/project.py T4, T5: projects follow the platform in configurator; Sean's create/list standalone
-backend aisc_backend/routers/project_config.py T4: membership checks in configurator only
-backend aisc_backend/routers/stats.py T4: membership checks in configurator only
-backend aisc_backend/routers/task.py T4: membership checks in configurator only
+backend aisc_backend/routers/platform_project.py T4: the engine's row for a platform project, moved verbatim out of Sean's routers/project.py, mounted in configurator only (adapt plan 2026-09-28, task 3)
+backend aisc_backend/routers/plugin.py T4: catalogue_slug recorded on install (the only change left to a router of Sean's; the membership and admin checks moved to the door, adapt plan 2026-09-28, task 3)
 backend aisc_backend/schemas/plugin.py T4: catalogue_slug in the plugin schema
-backend aisc_backend/services/celery_service.py T4: platform_pid and run ticket sent in configurator only (Ruling 27)
+backend aisc_backend/services/celery_service.py T4: Sean's run_evaluation(evaluation_pid) in both modes; configurator adds the run (project, evaluation, ticket) in the Celery headers (Ruling 27; adapt plan 2026-09-28, task 4)
 backend aisc_backend/signals/__init__.py T3: package of the stamp signal
 backend aisc_backend/signals/system_stamp.py T3: the WP9 stamp, outside Sean's files (amendment A1)
 backend aisc_backend/tests/isolation_support.py T3: test support for project databases
-backend aisc_backend/tests/keycloak/test_keycloak_auth.py T4: Sean's test expects 403 for a missing role (Ruling 22)
-backend aisc_backend/tests/routers/test_component_router.py T4: Sean's router test runs with router_auth
-backend aisc_backend/tests/routers/test_evaluation_inputs_template.py T4: Sean's router test runs with router_auth
 backend aisc_backend/tests/routers/test_plugin_admin_only.py T4: admin-only plugin routes in configurator
-backend aisc_backend/tests/routers/test_project_config_router.py T4: Sean's router test runs with router_auth
-backend aisc_backend/tests/routers/test_project_evaluations_serialization.py T4: Sean's router test runs with router_auth
 backend aisc_backend/tests/routers/test_project_membership.py T3: membership on project routes
-backend aisc_backend/tests/routers/test_project_router.py T4: Sean's router test runs with router_auth
+backend aisc_backend/tests/test_celery_dispatch.py T4: the worker is sent Sean's arguments in both modes, the run in the headers in configurator (adapt plan 2026-09-28, task 4)
 backend aisc_backend/tests/test_chain.py T9: follow-up, the pipeline chain's engine step 4, from definitive a5cd80e
 backend aisc_backend/tests/test_configurator_settings.py T3: configurator settings
 backend aisc_backend/tests/test_deployment_mode.py T1, T3: the mode switch and its checks
+backend aisc_backend/tests/test_door_owns_authorization.py T4: every configurator refusal happens in the door, before a database is opened (adapt plan 2026-09-28, task 3)
 backend aisc_backend/tests/test_every_project_route_is_guarded.py T4: every project route checks membership in configurator
 backend aisc_backend/tests/test_gateway_session.py T4: the gateway's token header
 backend aisc_backend/tests/test_isolation_engine.py T3, T4: ported isolation tests
@@ -69,18 +58,21 @@ backend aisc_backend/tests/test_isolation_result_route.py T3: ported isolation t
 backend aisc_backend/tests/test_migration_history.py T2, T3: the migration graph of the one data model
 backend aisc_backend/tests/test_modes_routes.py T4: routes by mode
 backend aisc_backend/tests/test_one_system_per_project.py T5: AI system with its components, ported tests (Ruling 24)
+backend aisc_backend/tests/test_seans_files_unchanged.py T4: Sean's routers, keycloak.py and settings the configurator no longer edits equal master (adapt plan 2026-09-28, task 3)
 backend aisc_backend/tests/test_seans_table_names.py T2: Sean's table names are kept, no migration renames his tables (adapt plan 2026-09-28, task 1)
-backend config/settings.py T1, T3: reads the mode; project databases and configurator apps only in configurator
-backend config/settings_single_database.py T3: single-database settings for tests
-backend config/urls.py T3: admin and allauth routes standalone only
+backend config/settings.py T1, T3: reads the mode; in configurator the door middleware, project databases and no login apps (0019 dropped their tables)
+backend config/urls.py T3: admin and allauth routes standalone only; the platform project router in configurator only (adapt plan 2026-09-28, task 3)
 
 # apps/eval
 eval aisc_eval/celery_app.py T9: Task 9b: Méril's feat/dev-catalogue-staging (Celery task limits 400/405 min for long first plugin runs)
-eval aisc_eval/celery_tasks.py T6, T9: the run ticket and project headers only in configurator; Task 9b: Méril's feat/dev-catalogue-staging (online install from the index, index always passed, placeholder API_KEY_OPENAI)
+eval aisc_eval/celery_tasks.py T6, T9: Task 9b: Méril's feat/dev-catalogue-staging (online install from the index, index always passed, placeholder API_KEY_OPENAI); one import that registers the run header handlers (adapt plan 2026-09-28, task 4)
 eval aisc_eval/deployment.py T6: AISC_DEPLOYMENT for the worker
-eval aisc_eval/service/api_client.py T6: project headers only in configurator
+eval aisc_eval/run_context.py T6: the run a task acts for, carried in the Celery headers so Sean's task signatures stay his (adapt plan 2026-09-28, task 4)
+eval aisc_eval/service/api_client.py T6: the door's project, evaluation and run headers in configurator only, read from the run context (adapt plan 2026-09-28, task 4)
 eval tests/test_deployment_mode.py T6: the worker's mode switch
-eval tests/test_run_ticket.py T6: the run ticket (configurator)
+eval tests/test_run_context.py T6: the run context is set from the header and cleared after the task (adapt plan 2026-09-28, task 4)
+eval tests/test_run_context_broker.py T6: the run header travels through a broker to every task published during a run (adapt plan 2026-09-28, task 4)
+eval tests/test_run_ticket.py T6: the run ticket and project headers (configurator), from the run context
 
 # apps/webapp
 webapp .env T7: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh

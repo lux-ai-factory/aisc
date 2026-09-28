@@ -95,13 +95,42 @@ def test_s0_3_scripts_never_target_the_hosts_5432():
 
 # --- WP1: engine undo ---------------------------------------------------------------------------
 
-def test_s1_1_engine_schema_equals_e34fca3(guard_all):
-    """S1.1 / G1: the engine migrations at HEAD, applied by migrate_projects in a project database
-    (isolation I7.12), give exactly the e34fca3 engine schema up to the two differences of I7.9;
-    the "0003 after" order is covered by S4.1, on the pre-isolation trees."""
+G1_PASS = "G1 PASS (engine schema equals Sean's master plus the listed additions)"
+
+
+def test_s1_1_engine_schema_equals_seans_master(guard_all):
+    """S1.1 / G1 (adapt plan 2026-09-28, Ruling 6): the engine migrations at HEAD, applied by
+    migrate_projects in a project database (isolation I7.12), give exactly the schema Sean's
+    origin/master makes, up to the additions the guard lists (and, in configurator, minus the
+    tables 0019 drops); the "0003 after" order is covered by S4.1, on the pre-isolation trees."""
     r, out = guard_all
     lines = verdict(r.stdout, "G1")
-    assert lines == ["G1 PASS (engine schema equals e34fca3)"], "\n".join(lines) or r.stdout[-3000:]
+    assert lines == [G1_PASS], "\n".join(lines) or r.stdout[-3000:]
+
+
+def _g1_list():
+    """The allowed differences of G1, as written in the script (between its two markers)."""
+    text = GUARD.read_text()
+    body = text.split("G1_ALLOWED_BEGIN\n", 1)[1].split("G1_ALLOWED_END", 1)[0]
+    return [l for l in body.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+
+
+def test_g1_a_difference_the_list_does_not_name_fails_g1_with_its_name(tmp_path):
+    """G1 bites: with two allowed differences left out of the list (an added column and a table
+    0019 drops), G1 fails and names each of them."""
+    allowed = _g1_list()
+    key = lambda l: l.split(" | ", 1)[0].strip()   # a line is `<+|-> <kind> <name>[ | <definition>]`
+    left_out = ["+ column aisc_backend_plugin.catalogue_slug", "- table auth_user"]
+    assert all(l in map(key, allowed) for l in left_out), allowed
+    short = tmp_path / "allowed.txt"
+    short.write_text("\n".join(l for l in allowed if key(l) not in left_out) + "\n")
+    r = run([str(GUARD), "--only", "G1"], env={**os.environ, "GUARD_OUT": str(tmp_path / "out"),
+                                               "GUARD_G1_ALLOWED": str(short)}, timeout=540)
+    g1 = verdict(r.stdout, "G1")
+    assert r.returncode == 1, r.stdout
+    assert len(g1) == 1 and g1[0].startswith("G1 FAIL"), "\n".join(g1)
+    for item in left_out:
+        assert item in g1[0], (item, g1)
 
 
 def test_s1_4_backend_part_of_g4_and_g5(guard_all):
@@ -175,8 +204,8 @@ def test_g4_the_list_names_every_change_of_feat_deployment_modes_with_its_reason
 
 def test_g4_a_change_the_list_does_not_name_fails_g4(tmp_path):
     """G4 bites: with one file of each engine repo left out of the list, G4 fails naming each."""
-    left_out = {"backend": "aisc_backend/routers/evaluation.py", "eval": "aisc_eval/deployment.py",
-                "webapp": "src/components/AISystemSettings.tsx"}
+    left_out = {"backend": "aisc_backend/routers/plugin.py", "eval": "aisc_eval/deployment.py",
+                "webapp": "src/pages/Plugins.tsx"}
     lines = [l for l in INTENDED.read_text().splitlines()
              if not any(l.startswith(f"{r} {f} ") for r, f in left_out.items())]
     short = tmp_path / "intended.txt"
@@ -242,10 +271,10 @@ def test_s9_1_seans_evaluation_files_change_only_as_listed_and_never_stamp(path)
     assert stamp == [], "\n".join(stamp)
 
 
-def test_s9_4_g1_and_g5_after_the_stamp(guard_all):
-    """S9.4: G1 and G5 still pass after WP9."""
+def test_s9_4_g1_equals_seans_master_and_g5_after_the_stamp(guard_all):
+    """S9.4: G1 (Sean's master plus the listed additions) and G5 still pass after WP9."""
     r, out = guard_all
-    assert verdict(r.stdout, "G1")[:1] == ["G1 PASS (engine schema equals e34fca3)"]
+    assert verdict(r.stdout, "G1")[:1] == [G1_PASS]
     assert verdict(r.stdout, "G5") == ["G5 PASS"]
 
 

@@ -379,7 +379,7 @@ NEW_HEAD_BREAKS = {
     "forms migration missing": ("target not at new head", "DELETE FROM qualification._prisma_migrations"
                                 " WHERE migration_name = '20260925090000_forms_are_data'"),
     "alembic baseline missing": ("target not at new head", "DELETE FROM control_objectives.alembic_version"),
-    "django 0025 missing": ("target not at new head",
+    "django 0020 missing": ("target not at new head",
                             f"DELETE FROM engine.django_migrations WHERE name = '{S.NEW_DJANGO}'"),
     "composer baseline missing": ("target not at new head", "DELETE FROM report_composer.schema_migration"),
     "controls head missing": ("target not at new head", "DELETE FROM controls._prisma_migrations"
