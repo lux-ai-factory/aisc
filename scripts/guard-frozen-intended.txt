@@ -1,0 +1,138 @@
+# G4 (scripts/guard-frozen.sh): the files feat/deployment-modes changes on top of Sean's
+# origin/master, one per line, each with the task of the engine-modes plan
+# (docs/superpowers/plans/2026-09-27-engine-deployment-modes.md) and why. Every file of the engine
+# repos that is not listed here must be byte-identical to its base (controller Ruling 36).
+#
+#   base <repo> <commit>          origin/master of the repo, the base of feat/deployment-modes
+#   <repo> <path> T<n>: <reason>  a file feat/deployment-modes adds or changes on purpose
+#
+# Derived with `git diff --name-only <base> HEAD` in apps/backend, apps/eval and apps/webapp.
+# A new change goes in here with its reason, in the same commit as the gitlink that brings it.
+
+base backend 1b1efe9
+base eval 511432b
+base webapp ab9f19d
+
+# apps/backend
+backend aisc_backend/apps.py T3: the database-mode check at start (migrate refused in the other mode), the stamp signal loaded
+backend aisc_backend/auth/keycloak.py T4: router_auth / admin_in_configurator; the gateway's token header in configurator only
+backend aisc_backend/auth/membership.py T3: platform memberships, the configurator's per-project access check
+backend aisc_backend/deployment.py T1, T3: AISC_DEPLOYMENT (standalone by default, or configurator) and its start checks
+backend aisc_backend/management/__init__.py T3: package of migrate_projects
+backend aisc_backend/management/commands/__init__.py T3: package of migrate_projects
+backend aisc_backend/management/commands/migrate_projects.py T3: migrates every project database (configurator only)
+backend aisc_backend/migrations/0015_plugin_catalogue_slug.py T2: the Configurator's migrations appended after Sean's 0014 (catalogue_slug)
+backend aisc_backend/migrations/0016_evaluation_system_id_project_platform_project_id.py T2: evaluation.system_id and project.platform_project_id
+backend aisc_backend/migrations/0017_one_project_per_platform_project.py T2: one engine project per platform project
+backend aisc_backend/migrations/0018_alter_project_platform_project_id.py T2: platform_project_id column
+backend aisc_backend/migrations/0019_alter_artifact_table_alter_dataset_table_and_more.py T2: table names without the prefix
+backend aisc_backend/migrations/0020_alter_derived_table_alter_direct_table.py T2: table names without the prefix
+backend aisc_backend/migrations/0021_ai_system_tables_lose_the_prefix.py T2: AI system table names without the prefix
+backend aisc_backend/migrations/0022_parts_belong_to_a_version_of_the_one_system.py T2: the one-system migration (a no-op on this graph, Ruling 24)
+backend aisc_backend/migrations/0023_no_login_of_its_own.py T2: configurator drops the login tables (Ruling 11)
+backend aisc_backend/migrations/0024_the_database_is_the_project.py T2: the project database layout
+backend aisc_backend/migrations/0025_engine_deployment_marker.py T3: the database records its mode (Rulings 16, 17)
+backend aisc_backend/models/ai_system.py T2: db_table names of the one data model
+backend aisc_backend/models/artifact.py T2: db_table names of the one data model
+backend aisc_backend/models/evaluation.py T2: evaluation.system_id (the stamp's column) and db_table; the stamp itself is set in signals/
+backend aisc_backend/models/measure.py T2: db_table names of the one data model
+backend aisc_backend/models/metric.py T2: db_table names of the one data model
+backend aisc_backend/models/observation.py T2: db_table names of the one data model
+backend aisc_backend/models/plugin.py T2: plugin.catalogue_slug and db_table names
+backend aisc_backend/models/project.py T2: project.platform_project_id (column project_id) and db_table
+backend aisc_backend/models/project_config.py T2: db_table names of the one data model
+backend aisc_backend/platform_projects.py T3: reads platform project names (configurator)
+backend aisc_backend/project_door.py T3: the door: admits a request to its project database (configurator)
+backend aisc_backend/projectdb.py T3: project database aliases (configurator)
+backend aisc_backend/repositories/measurement_repository.py T4: vendor of the queryset's database, not default (isolation I7.1)
+backend aisc_backend/repositories/project_repository.py T4: create() takes platform_project_id
+backend aisc_backend/repositories/system_version_repository.py T3: latest card version, read by the stamp signal
+backend aisc_backend/routers/component.py T4: membership checks in configurator only
+backend aisc_backend/routers/evaluation.py T4: membership checks in configurator only (no stamp here, amendment A1)
+backend aisc_backend/routers/file.py T4: membership checks in configurator only
+backend aisc_backend/routers/plugin.py T4: membership checks, admin for install/refresh/remove in configurator (Ruling 19), catalogue_slug
+backend aisc_backend/routers/project.py T4, T5: projects follow the platform in configurator; Sean's create/list standalone
+backend aisc_backend/routers/project_config.py T4: membership checks in configurator only
+backend aisc_backend/routers/stats.py T4: membership checks in configurator only
+backend aisc_backend/routers/task.py T4: membership checks in configurator only
+backend aisc_backend/schemas/plugin.py T4: catalogue_slug in the plugin schema
+backend aisc_backend/services/celery_service.py T4: platform_pid and run ticket sent in configurator only (Ruling 27)
+backend aisc_backend/signals/__init__.py T3: package of the stamp signal
+backend aisc_backend/signals/system_stamp.py T3: the WP9 stamp, outside Sean's files (amendment A1)
+backend aisc_backend/tests/isolation_support.py T3: test support for project databases
+backend aisc_backend/tests/keycloak/test_keycloak_auth.py T4: Sean's test expects 403 for a missing role (Ruling 22)
+backend aisc_backend/tests/routers/test_component_router.py T4: Sean's router test runs with router_auth
+backend aisc_backend/tests/routers/test_evaluation_inputs_template.py T4: Sean's router test runs with router_auth
+backend aisc_backend/tests/routers/test_plugin_admin_only.py T4: admin-only plugin routes in configurator
+backend aisc_backend/tests/routers/test_project_config_router.py T4: Sean's router test runs with router_auth
+backend aisc_backend/tests/routers/test_project_evaluations_serialization.py T4: Sean's router test runs with router_auth
+backend aisc_backend/tests/routers/test_project_membership.py T3: membership on project routes
+backend aisc_backend/tests/routers/test_project_router.py T4: Sean's router test runs with router_auth
+backend aisc_backend/tests/test_chain.py T9: follow-up, the pipeline chain's engine step 4, from definitive a5cd80e
+backend aisc_backend/tests/test_configurator_settings.py T3: configurator settings
+backend aisc_backend/tests/test_deployment_mode.py T1, T3: the mode switch and its checks
+backend aisc_backend/tests/test_every_project_route_is_guarded.py T4: every project route checks membership in configurator
+backend aisc_backend/tests/test_gateway_session.py T4: the gateway's token header
+backend aisc_backend/tests/test_isolation_engine.py T3, T4: ported isolation tests
+backend aisc_backend/tests/test_isolation_engine_db.py T3, T4: ported isolation tests on Postgres
+backend aisc_backend/tests/test_isolation_result_route.py T3: ported isolation test of the result route
+backend aisc_backend/tests/test_migration_history.py T2, T3: the migration graph of the one data model
+backend aisc_backend/tests/test_modes_routes.py T4: routes by mode
+backend aisc_backend/tests/test_one_system_per_project.py T5: AI system with its components, ported tests (Ruling 24)
+backend config/settings.py T1, T3: reads the mode; project databases and configurator apps only in configurator
+backend config/settings_single_database.py T3: single-database settings for tests
+backend config/urls.py T3: admin and allauth routes standalone only
+
+# apps/eval
+eval aisc_eval/celery_tasks.py T6: the run ticket and project headers only in configurator
+eval aisc_eval/deployment.py T6: AISC_DEPLOYMENT for the worker
+eval aisc_eval/service/api_client.py T6: project headers only in configurator
+eval tests/test_deployment_mode.py T6: the worker's mode switch
+eval tests/test_run_ticket.py T6: the run ticket (configurator)
+
+# apps/webapp
+webapp .env T7: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
+webapp .env.development T7: standalone mode and launcher URL for dev
+webapp .env.test T7: the mode for plain vitest runs (Ruling 30)
+webapp Dockerfile T7: ENV APP_DEPLOYMENT=standalone by default (Ruling 28)
+webapp src/DeploymentGate.tsx T7: error page for an unknown mode
+webapp src/MyApp.tsx T7: apiFetch; Tasks route standalone only
+webapp src/api/api.tsx T7: apiFetch (project header in configurator)
+webapp src/api/projectHeader.i7_4.test.ts T7, T8: every call names the project (I7.4)
+webapp src/api/projectHeader.ts T7, T8: apiFetch/apiAxios: the X-AISC-Project header in configurator
+webapp src/components/AISystemSettings.tsx T7: apiFetch
+webapp src/components/EvaluationProgressList.tsx T7: apiFetch
+webapp src/components/GenericTextDataGrid.tsx T7: apiFetch
+webapp src/components/LeftBar.tsx T7: apiFetch; Tasks link standalone only
+webapp src/components/PluginInstallDialog.modes.test.tsx T8: the install dialog in both modes
+webapp src/components/PluginInstallDialog.tsx T8: install into the project you came from (configurator), Sean's list standalone
+webapp src/components/SummaryTable.tsx T7: apiFetch
+webapp src/components/TopBar.tsx T7: launcher's project in configurator, Sean's wizard standalone
+webapp src/components/UploadFileField.tsx T7: apiAxios
+webapp src/components/plugin/CSVDataGridChart.tsx T7: apiFetch
+webapp src/components/plugin/ConfigHistory.tsx T7: apiFetch
+webapp src/components/plugin/PluginConfigForm.tsx T7: apiFetch
+webapp src/components/plugin/PluginEvaluationForm.test.tsx T7: sets the tab's project (I7.4), no effect standalone
+webapp src/components/plugin/PluginEvaluationForm.tsx T7: apiFetch
+webapp src/context/AuthContext.tsx T7: the gateway's session in configurator, Sean's Keycloak login standalone
+webapp src/deployment.components.test.tsx T7: components by mode
+webapp src/deployment.test.ts T7: the mode switch
+webapp src/deployment.ts T7: APP_DEPLOYMENT read per call
+webapp src/main.tsx T7: DeploymentGate mounted (Ruling 30)
+webapp src/pages/GlobalHome.tsx T7: the launcher's project in configurator
+webapp src/pages/PluginEvaluationMeasurements.tsx T7: apiFetch
+webapp src/pages/PluginEvaluations.tsx T7: apiFetch
+webapp src/pages/PluginEvaluationsTasks.tsx T7: apiFetch
+webapp src/pages/PluginStartEvaluation.test.tsx T7: sets the tab's project (I7.4), no effect standalone
+webapp src/pages/PluginStartEvaluation.tsx T7: apiFetch
+webapp src/pages/Plugins.tsx T7: apiFetch
+webapp src/pages/PluginsConfig.tsx T7: apiFetch
+webapp src/pages/Settings.tsx T7: apiFetch
+webapp src/pages/StartEvaluation.tsx T7: apiFetch
+webapp src/platform/currentProject.test.ts T7, T8: the tab's platform project
+webapp src/platform/currentProject.ts T7, T8: the tab's platform project (pid only)
+webapp src/platform/gatewaySession.test.ts T7: the gateway's session
+webapp src/platform/gatewaySession.ts T7: the gateway's session
+webapp src/pluginCatalogue/PluginInstallContext.tsx T8: install target by mode
+webapp src/pluginCatalogue/installUri.ts T8: catalogue slug of an install link
+webapp src/pluginCatalogue/testing.tsx T8: test helpers without a new dependency (Ruling 34)

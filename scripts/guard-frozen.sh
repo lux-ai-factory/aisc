@@ -11,9 +11,9 @@
 # G2  qualification.knowledge_graph and qualification.qualification_risk unchanged since e112001
 #     (the candidate's are made in a project database)
 # G3  the vendored AIRO/VAIR files hash as pinned
-# G4  Sean's files of 2026-09-23 byte-identical (backend e34fca3, webapp 429f62c, after the
-#     isolation's named edits are taken out), eval changed only in the isolation's worker files,
-#     plugin-interface without new commits, plugin-manager clean
+# G4  backend, eval and webapp byte-identical to Sean's origin/master (the base of
+#     feat/deployment-modes) but for the files scripts/guard-frozen-intended.txt names with their
+#     task and reason (Ruling 36); plugin-interface without new commits, plugin-manager clean
 # G5  engine models unchanged, makemigrations has nothing to make
 #
 # Every database is a throwaway postgres:14-alpine container (scripts/lib/throwaway-pg.sh) on a
@@ -65,10 +65,7 @@ SHARED_PYTHONPATH=$ROOT/shared/plugin-interface/src:$ROOT/shared/plugin-manager/
 # Pinned references
 ENGINE_REF=e34fca3          # backend: merge of Sean's work
 QUAL_REF=e112001            # qualification before the card-versions migration
-WEBAPP_REF=429f62c          # webapp: Sean's files
-EVAL_REF=e5b1b0a
-PI_REF=97eddea
-DOCKERFILE_COMMIT=dfe4120
+PI_REF=97eddea              # G4's engine references: scripts/guard-frozen-intended.txt
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679
@@ -290,99 +287,29 @@ changed_names() { # repo base paths...
   git -C "$repo" diff --name-only "$base" $(cand_head) -- "$@"
 }
 
-sean_backend_files() {
-  git -C "$BACKEND" log --author=seanblevins --since=2026-09-23T00:00 --until=2026-09-24T00:00 \
-    --name-only --format= "$ENGINE_REF" | sort -u | while read -r f; do
-      [ -n "$f" ] && git -C "$BACKEND" cat-file -e "$ENGINE_REF:$f" 2>/dev/null && echo "$f"
-    done
+# G4 (controller Ruling 36): since feat/deployment-modes the engine repos are Sean's
+# origin/master plus a configurator mode, so their reference is that base, and every file the
+# branch adds or changes is named, with its task and reason, in $INTENDED. Any other file that
+# differs from the base (added, changed or removed) fails G4.
+INTENDED=${GUARD_INTENDED:-$ROOT/scripts/guard-frozen-intended.txt}   # overridable so a test can leave a file out
+intended_base() { awk -v r="$1" '$1 == "base" && $2 == r { print $3 }' "$INTENDED"; }
+intended_listed() { # repo path
+  awk -v r="$1" -v f="$2" '$1 == r && $2 == f { found = 1 } END { exit !found }' "$INTENDED"
 }
-# Files the backend may add or change on top of $ENGINE_REF. Tests are checked separately:
-# Sean's must be identical, new ones are allowed. The isolation's files (E1, E2; I7.12) are
-# named one by one.
-backend_allowed() {
-  case "$1" in
-    aisc_backend/migrations/0022_parts_belong_to_a_version_of_the_one_system.py) return 0 ;;
-    aisc_backend/migrations/0023_*.py) return 0 ;;
-    aisc_backend/repositories/system_version_repository.py) return 0 ;;
-    aisc_backend/signals/*) return 0 ;;
-    aisc_backend/apps.py) return 0 ;;
-    aisc_backend/tests/*) return 0 ;;
-  esac
-  isolation_allowed "$1"
-}
-# The isolation's backend files (04-E1-notes.md and 04-E2-notes.md, "For V1").
-isolation_allowed() {
-  case "$1" in
-    config/settings.py|config/settings_single_database.py) return 0 ;;
-    aisc_backend/projectdb.py|aisc_backend/project_door.py) return 0 ;;
-    aisc_backend/management/__init__.py|aisc_backend/management/commands/__init__.py) return 0 ;;
-    aisc_backend/management/commands/migrate_projects.py) return 0 ;;
-    aisc_backend/migrations/0025_the_database_is_the_project.py) return 0 ;;
-    aisc_backend/auth/membership.py|aisc_backend/platform_projects.py) return 0 ;;
-    aisc_backend/repositories/measurement_repository.py) return 0 ;;
-    aisc_backend/services/celery_service.py) return 0 ;;
-  esac
-  return 1
-}
-# Sean's files the isolation may change (I7.12): the project database settings.
-SEAN_ISOLATION_FILES=" config/settings.py "
-# The isolation's worker files in apps/eval (E2: the run ticket).
-EVAL_ISOLATION_FILES=" aisc_eval/service/api_client.py aisc_eval/celery_tasks.py tests/test_run_ticket.py "
-
-# A file as the candidate has it (HEAD, or the working tree with GUARD_SOURCE=worktree).
-cand_file() { # repo path
-  if [ "$SOURCE" = worktree ]; then cat "$1/$2"; else git -C "$1" show "HEAD:$2"; fi
-}
-# Sean's webapp file with the isolation's edits taken out (E2, T7): apiFetch( back to fetch(, the
-# one import of projectHeader and every line tagged // I7.4 (isolation) removed.
-webapp_without_isolation() { # path
-  cand_file "$ROOT/apps/webapp" "$1" \
-    | sed -e 's/apiFetch(/fetch(/g' \
-    | grep -v -E '^import \{ apiFetch \} from "(\./|\.\./|\.\./\.\./)(api/)?projectHeader";$' \
-    | grep -v -E '// I7\.4 \(isolation\)$'
-}
-# The backend Dockerfile up to its CMD block (the block from "# Default command" on).
-before_cmd() { sed '/^# Default command/,$d'; }
 
 g4() {
-  local ok=1 f bad="" sean
-  # Sean's backend files: byte-identical to e34fca3 (including routers/evaluation.py and
-  # models/evaluation.py), except the ones the isolation must change
-  sean=$(sean_backend_files)
-  for f in $sean; do
-    case "$SEAN_ISOLATION_FILES" in *" $f "*) continue ;; esac
-    diff_quiet "$BACKEND" "$ENGINE_REF" "$f" || bad="$bad $f"
+  local ok=1 f bad repo base
+  for repo in backend eval webapp; do
+    base=$(intended_base "$repo")
+    if [ -z "$base" ] || ! git -C "$ROOT/apps/$repo" cat-file -e "$base^{commit}" 2>/dev/null; then
+      ok=0; fail G4 "$repo: no base commit in $INTENDED"; continue
+    fi
+    bad=""
+    for f in $(changed_names "$ROOT/apps/$repo" "$base"); do
+      intended_listed "$repo" "$f" || bad="$bad $f"
+    done
+    [ -z "$bad" ] || { ok=0; fail G4 "$repo: files not on the list differ from origin/master ($base):$bad"; }
   done
-  if [ -n "$bad" ]; then ok=0; fail G4 "backend: Sean's files differ from $ENGINE_REF:$bad"; fi
-  bad=""
-  for f in $(changed_names "$BACKEND" "$ENGINE_REF" aisc_backend config); do
-    backend_allowed "$f" || bad="$bad $f"
-  done
-  if [ -n "$bad" ]; then ok=0; fail G4 "backend: files outside the allowed set differ from $ENGINE_REF:$bad"; fi
-  # Dockerfile: exactly dfe4120's change up to the CMD block; the CMD block (isolation I7.6) runs
-  # no migration but migrate_projects
-  local want got cmd
-  want=$(git -C "$BACKEND" show "$DOCKERFILE_COMMIT:Dockerfile" | before_cmd)
-  got=$(cand_file "$BACKEND" Dockerfile | before_cmd)
-  if [ "$want" != "$got" ]; then ok=0; fail G4 "backend: Dockerfile differs from $ENGINE_REF by more than $DOCKERFILE_COMMIT"; fi
-  cmd=$(cand_file "$BACKEND" Dockerfile | sed -n '/^# Default command/,$p' | grep -v '^#')
-  if grep -qE 'manage\.py migrate($|[^_])' <<<"$cmd"; then ok=0; fail G4 "backend: the Dockerfile's CMD still migrates"; fi
-  # Webapp: Sean's files of 2026-09-23, after the isolation's named edits are taken out
-  local web=(src/api/api.tsx src/components/AISystemSettings.tsx src/components/plugin/PluginConfigForm.tsx
-    src/components/plugin/PluginEvaluationForm.tsx src/components/plugin/PluginEvaluationForm.test.tsx
-    src/models/models.tsx src/pages/PluginsConfig.tsx src/pages/PluginStartEvaluation.tsx
-    src/pages/PluginStartEvaluation.test.tsx src/pages/Settings.tsx)
-  bad=""
-  for f in "${web[@]}"; do
-    [ "$(webapp_without_isolation "$f")" = "$(git -C "$ROOT/apps/webapp" show "$WEBAPP_REF:$f")" ] || bad="$bad $f"
-  done
-  if [ -n "$bad" ]; then ok=0; fail G4 "webapp: Sean's files differ from $WEBAPP_REF:$bad"; fi
-  # apps/eval: only the isolation's worker files changed since $EVAL_REF
-  bad=""
-  for f in $(changed_names "$ROOT/apps/eval" "$EVAL_REF"); do
-    case "$EVAL_ISOLATION_FILES" in *" $f "*) ;; *) bad="$bad $f" ;; esac
-  done
-  [ -z "$bad" ] || { ok=0; fail G4 "apps/eval: files other than the isolation's differ from $EVAL_REF:$bad"; }
   local n
   n=$(git -C "$ROOT/shared/plugin-interface" rev-list --count "$PI_REF..HEAD")
   [ "$n" = 0 ] || { ok=0; fail G4 "shared/plugin-interface has $n commits after $PI_REF"; }

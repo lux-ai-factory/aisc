@@ -116,7 +116,8 @@ step_cmd() {
     2) echo "cd apps/qualification && PROJECT_DATABASE_URL='postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification' npx vitest run -t chain_step$n" ;;
     3) echo "cd apps/control-objectives && DATABASE_URL=postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform PROJECT_DATABASE_URL='postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}' uv run pytest -q -p no:cacheprovider -m chain -k chain_step$n" ;;
     # N7: the label narrows the run to the chain module (the whole suite's other DB tests need a test database)
-    4) echo "cd apps/backend && DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
+    # The engine runs in configurator mode, as the stack runs it (project databases, the door).
+    4) echo "cd apps/backend && AISC_DEPLOYMENT=configurator DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
     5|7) echo "$ctrl" ;;
     8) echo "uv run --quiet --no-project --with pytest python -m pytest -q -p no:cacheprovider scripts/pipeline_chain/test_dashboard_queries.py" ;;
   esac

@@ -136,28 +136,97 @@ def test_g3_vendored_airo_vair_files(guard_all):
         "\n".join(verdict(r.stdout, "G3"))
 
 
-def test_g4_webapp_seans_files_identical_to_429f62c(guard_all):
-    """G4 (webapp) / S13.2: Sean's webapp files of 2026-09-23 equal 429f62c."""
+INTENDED = ROOT / "scripts/guard-frozen-intended.txt"
+ENGINE_REPOS = ("backend", "eval", "webapp")
+
+
+def intended(path=INTENDED):
+    """(bases, changes): {repo: base commit}, {repo: {path: reason}} from the G4 list."""
+    bases, changes = {}, {r: {} for r in ENGINE_REPOS}
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        a, b, c = line.split(None, 2)
+        if a == "base":
+            bases[b] = c.strip()
+        else:
+            changes[a][b] = c.strip()
+    return bases, changes
+
+
+def test_g4_the_list_names_every_change_of_feat_deployment_modes_with_its_reason():
+    """G4 (Ruling 36): each engine repo is compared with origin/master, the base of
+    feat/deployment-modes; the list names exactly the files the branch changes, each with a task
+    and a reason."""
+    bases, changes = intended()
+    assert sorted(bases) == sorted(ENGINE_REPOS)
+    for repo in ENGINE_REPOS:
+        git = ["git", "-C", str(ROOT / "apps" / repo)]
+        base = subprocess.run(git + ["rev-parse", bases[repo]], capture_output=True, text=True).stdout.strip()
+        mb = subprocess.run(git + ["merge-base", "origin/master", "HEAD"], capture_output=True, text=True).stdout.strip()
+        assert base and base == mb, f"{repo}: base {bases[repo]} is not origin/master's merge-base with HEAD ({mb[:7]})"
+        changed = set(subprocess.run(git + ["diff", "--name-only", base, "HEAD"],
+                                     capture_output=True, text=True).stdout.split())
+        assert changed - set(changes[repo]) == set(), f"{repo}: changed but not listed"
+        assert set(changes[repo]) - changed == set(), f"{repo}: listed but not changed"
+        bad = [f for f, why in changes[repo].items() if not re.match(r"T\d+(, T\d+)*: \S", why)]
+        assert bad == [], f"{repo}: no task and reason: {bad}"
+
+
+def test_g4_a_change_the_list_does_not_name_fails_g4(tmp_path):
+    """G4 bites: with one file of each engine repo left out of the list, G4 fails naming each."""
+    left_out = {"backend": "aisc_backend/routers/evaluation.py", "eval": "aisc_eval/deployment.py",
+                "webapp": "src/components/AISystemSettings.tsx"}
+    lines = [l for l in INTENDED.read_text().splitlines()
+             if not any(l.startswith(f"{r} {f} ") for r, f in left_out.items())]
+    short = tmp_path / "intended.txt"
+    short.write_text("\n".join(lines) + "\n")
+    r = run([str(GUARD), "--only", "G4"], env={**os.environ, "GUARD_OUT": str(tmp_path / "out"),
+                                               "GUARD_INTENDED": str(short)}, timeout=300)
+    g4 = verdict(r.stdout, "G4")
+    assert r.returncode == 1, r.stdout
+    assert len(g4) == 3, "\n".join(g4)
+    for repo, f in left_out.items():
+        hit = [l for l in g4 if f" {repo}: " in l]
+        assert len(hit) == 1 and hit[0].split(":")[-1].split() == [f], (repo, f, g4)
+
+
+def test_g4_passes_on_the_engine_repos_as_listed(tmp_path):
+    """G4 alone (no container): the engine repos at their gitlinks, with the list, pass."""
+    r = run([str(GUARD), "--only", "G4"], env={**os.environ, "GUARD_OUT": str(tmp_path)}, timeout=300)
+    assert verdict(r.stdout, "G4") == ["G4 PASS"], r.stdout
+
+
+def test_g4_webapp_seans_files_identical_to_origin_master(guard_all):
+    """G4 (webapp) / S13.2 under Ruling 36: every webapp file not on the list equals origin/master."""
     r, out = guard_all
     web = [l for l in verdict(r.stdout, "G4") if "webapp" in l]
     assert web == [], "\n".join(web)
 
 
-def test_g4_eval_plugin_interface_plugin_manager_untouched(guard_all):
-    """G4: apps/eval and shared/plugin-interface have no new commits; plugin-manager is clean."""
+def test_g4_eval_as_listed_plugin_interface_plugin_manager_untouched(guard_all):
+    """G4: apps/eval equals origin/master but for the listed files; shared/plugin-interface has no
+    new commits; plugin-manager is clean."""
     r, out = guard_all
-    other = [l for l in verdict(r.stdout, "G4") if re.search(r"apps/eval|plugin-interface|plugin-manager", l)]
+    other = [l for l in verdict(r.stdout, "G4") if re.search(r"apps/eval|eval:|plugin-interface|plugin-manager", l)]
     assert other == [], "\n".join(other)
 
 
 # --- WP9 under amendment A1 ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("path", ["aisc_backend/routers/evaluation.py", "aisc_backend/models/evaluation.py"])
-def test_s9_1_seans_evaluation_files_are_byte_identical_to_e34fca3(path):
-    """S9.1 as amended by A1: the stamp is set outside Sean's files, which equal e34fca3."""
-    r = subprocess.run(["git", "diff", "--stat", "e34fca3", "HEAD", "--", path],
+def test_s9_1_seans_evaluation_files_change_only_as_listed_and_never_stamp(path):
+    """S9.1 as amended by A1, under Ruling 36: the stamp is set outside Sean's files. Each file
+    equals origin/master or is on the G4 list, and what it adds never sets the stamp."""
+    bases, changes = intended()
+    r = subprocess.run(["git", "diff", "-U0", bases["backend"], "HEAD", "--", path],
                        cwd=ROOT / "apps/backend", capture_output=True, text=True)
-    assert r.returncode == 0 and r.stdout == "", r.stdout
+    assert r.returncode == 0, r.stderr
+    if r.stdout:
+        assert path in changes["backend"], f"{path} differs from origin/master and is not listed"
+    added = [l[1:] for l in r.stdout.splitlines() if l.startswith("+") and not l.startswith("+++")]
+    stamp = [l for l in added if re.search(r"latest_system|system_version|pre_save|\.system_id\s*=", l)]
+    assert stamp == [], "\n".join(stamp)
 
 
 def test_s9_4_g1_and_g5_after_the_stamp(guard_all):
