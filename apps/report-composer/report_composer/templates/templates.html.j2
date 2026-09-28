@@ -3,11 +3,11 @@
 {% block title %}Templates: {{ project.name }}{% endblock %}
 {% macro look_fields(t=None) -%}
 <div class="look-fields">
-  <div class="field"><label>Name <input name="name" required maxlength="120" value="{{ t.name if t else '' }}"></label></div>
-  <div class="field"><label>Font <select name="font">{% for f in fonts %}<option value="{{ f.id }}"{% if t and t.font == f.id %} selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label></div>
-  <div class="field"><label>Font size (pt) <input name="font_size_pt" type="number" min="8" max="16" step="0.5" value="{{ t.font_size_pt if t else 10 }}"></label></div>
-  <div class="field"><label>Primary colour <input name="primary_color" type="color" value="{{ t.primary_color if t else '#000fdf' }}"></label></div>
-  <div class="field"><label>Accent colour <input name="accent_color" type="color" value="{{ t.accent_color if t else '#ff007e' }}"></label></div>
+  <div class="field"><label>Name <input name="name" required maxlength="120" value="{{ t.name if t else '' }}"{% if not t %} autofocus{% endif %}></label></div>
+  <div class="field half"><label>Font <select name="font">{% for f in fonts %}<option value="{{ f.id }}"{% if t and t.font == f.id %} selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label></div>
+  <div class="field half"><label>Font size (pt) <input name="font_size_pt" type="number" min="8" max="16" step="0.5" value="{{ t.font_size_pt if t else 10 }}"></label></div>
+  <div class="field half"><label>Primary colour <input name="primary_color" type="color" value="{{ t.primary_color if t else '#000fdf' }}"></label></div>
+  <div class="field half"><label>Accent colour <input name="accent_color" type="color" value="{{ t.accent_color if t else '#ff007e' }}"></label></div>
   <div class="field"><label>Logo (PNG, JPEG or SVG, up to 1 MB) <input name="logo" type="file" accept="image/png,image/jpeg,image/svg+xml"></label>
     {% if t and t.has_logo %}<label class="inline"><input type="checkbox" name="drop_logo"> Remove the current logo</label>{% endif %}</div>
   <div class="field"><label>Header text <input name="header_text" maxlength="120" value="{{ t.header_text if t and t.header_text else '' }}" placeholder="{project}, Version {version}"></label>
@@ -23,17 +23,32 @@
 </div>
 {%- endmacro %}
 {% block main %}
+{% set base = root ~ "/p/" ~ project.slug ~ "/templates" %}
+{% set open_editor = editing or creating %}
 <main data-api="{{ root }}/api/p/{{ project.slug }}" data-page="templates">
   {{ message_region() }}
   {% if editor %}{{ confirm_dialog() }}{% endif %}
-  <div class="rc-header">
-    <p class="rc-eyebrow">Step 7: the report</p>
-    <h1>Templates of {{ project.name }}</h1>
-    <p>A template is a report's look: its font, font size, colours, logo, header, footer and marking. A layout without a template uses the platform look. Export a template to use it in another project.</p>
+  <div class="rc-header rc-header-row">
+    <div>
+      <p class="rc-eyebrow">Step 7: the report</p>
+      <h1>Templates of {{ project.name }}</h1>
+      <p>A template is a report's look: its font, font size, colours, logo, header, footer and marking. A layout without a template uses the platform look. Export a template to use it in another project, and import it there.</p>
+    </div>
+    {% if editor %}
+    {# the page's two actions: both end with the template open in the one editor #}
+    <div class="page-actions">
+      <a class="btn" data-control="start-new-template" href="{{ base }}?new=1">New template</a>
+      <form data-control="import-template" class="import-action">
+        <label class="btn ghost" title="A file exported from another project's templates">Import from file
+          <input id="import-template-file" class="visually-hidden" name="file" type="file" accept="application/json,.json"></label>
+      </form>
+    </div>
+    {% endif %}
   </div>
-  <section class="looks">
+  <div class="templates-workspace{% if open_editor %} with-editor{% endif %}">
+  <section class="looks" aria-label="Templates">
   {% for t in templates %}
-    <article class="qf-section look" data-template="{{ t.id }}" style="--look-primary: {{ t.primary_color }}; --look-accent: {{ t.accent_color }}">
+    <article class="qf-section look{% if editing and editing.id == t.id %} editing{% endif %}" data-template="{{ t.id }}" style="--look-primary: {{ t.primary_color }}; --look-accent: {{ t.accent_color }}">
       <div class="look-sample">
         {% if t.has_logo %}<img src="{{ root }}/api/p/{{ project.slug }}/templates/{{ t.id }}/logo" alt="Logo of {{ t.name }}">{% endif %}
         <h2>{{ t.name }}</h2>
@@ -42,28 +57,43 @@
           <span class="swatch" style="background: {{ t.accent_color }}"></span>{{ t.accent_color }}</p>
       </div>
       <div class="look-actions">
+        {% if editor %}{% if editing and editing.id == t.id %}<span class="editing-badge" aria-current="true">Editing</span>{% else %}<a class="btn ghost small" data-control="open-template" href="{{ base }}?edit={{ t.id }}">Edit</a>{% endif %}{% endif %}
         <a class="btn ghost small" data-control="export-template" href="{{ root }}/api/p/{{ project.slug }}/templates/{{ t.id }}/export" download>Export</a>
-        {% if editor %}<button type="button" class="small danger" data-control="delete-template" data-template="{{ t.id }}" data-confirm-action="Delete template" data-confirm-text="Delete the template {{ t.name }}? Layouts using it switch to the platform look.">Delete</button>{% endif %}
       </div>
-      {% if editor %}
-      <details><summary>Edit</summary>
-        <form data-control="edit-template" data-template="{{ t.id }}">{{ look_fields(t) }}<button type="submit">Save template</button></form>
-      </details>
-      {% endif %}
     </article>
   {% else %}
-    <p class="qf-section muted">No template yet.{% if editor %} Create one below, or import one exported from another project.{% endif %}</p>
+    <div class="qf-section empty-state">
+      <h2>No templates yet</h2>
+      <p>Reports use the platform look until a layout picks a template.{% if editor and not open_editor %} Start one with New template, or import a file exported from another project.{% endif %}</p>
+    </div>
   {% endfor %}
   </section>
-  {% if editor %}
-  <section class="forms">
-    <form data-control="new-template" class="qf-section"><h2>New template</h2>{{ look_fields() }}<button type="submit">Create</button></form>
-    <form data-control="import-template" class="qf-section"><h2>Import a template</h2>
-      <p class="qf-help">A file exported from another project's templates.</p>
-      <div class="field"><label>File <input name="file" type="file" accept="application/json,.json" required></label></div>
-      <button type="submit">Import</button></form>
-  </section>
+  {% if open_editor %}
+  {# the one template editor: a new template, or the one ?edit= opened (reopened, just created, just imported) #}
+  <aside id="template-editor" class="qf-section template-editor" aria-label="Template editor">
+    {% if editing %}
+    <form data-control="edit-template" data-template="{{ editing.id }}">
+      <p class="rc-eyebrow">Editing template</p><h2>{{ editing.name }}</h2>
+      {{ look_fields(editing) }}
+      <div class="editor-actions">
+        <button type="submit">Save changes</button>
+        <a class="btn ghost" data-control="cancel-template" href="{{ base }}">Cancel</a>
+        <button type="button" class="danger" data-control="delete-template" data-template="{{ editing.id }}" data-confirm-action="Delete template" data-confirm-text="Delete the template {{ editing.name }}? Layouts using it switch to the platform look.">Delete</button>
+      </div>
+    </form>
+    {% else %}
+    <form data-control="new-template">
+      <p class="rc-eyebrow">New template</p><h2>New template</h2>
+      {{ look_fields() }}
+      <div class="editor-actions">
+        <button type="submit">Create template</button>
+        <a class="btn ghost" data-control="cancel-template" href="{{ base }}">Cancel</a>
+      </div>
+    </form>
+    {% endif %}
+  </aside>
   {% endif %}
+  </div>
 </main>
 {% endblock %}
 {% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}

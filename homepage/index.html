@@ -51,21 +51,21 @@
 
   /* ---- header: hairline, logo, product name, session ---- */
   .topbar{
-    display:flex; align-items:center; gap:22px;
-    padding:16px 32px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:26.4px;
+    padding:19.2px 38.4px; border-bottom:1px solid var(--border);
     background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
     position:sticky; top:0; z-index:10;
   }
-  .topbar img{height:32px; width:auto; display:block}
-  .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
+  .topbar img{height:38.4px; width:auto; display:block}
+  .topbar .rule{width:1px; height:33.6px; background:var(--border-strong)}
   .topbar h1{
-    margin:0; font-size:12px; font-weight:600; text-transform:uppercase;
+    margin:0; font-size:14.4px; font-weight:600; text-transform:uppercase;
     letter-spacing:.14em; color:var(--text);
   }
   .session{
-    margin-left:20px;
-    display:flex; align-items:center; gap:14px;
-    font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
+    margin-left:24px;
+    display:flex; align-items:center; gap:16.8px;
+    font-family:var(--mono); font-size:13.8px; color:var(--muted); white-space:nowrap;
   }
   .session b{color:var(--text); font-weight:500}
   .session a{
@@ -75,7 +75,7 @@
 
   main{
     max-width:1360px; margin:0 auto; padding:40px 32px 32px;
-    min-height:calc(100vh - 65px); display:flex; flex-direction:column; justify-content:center;
+    min-height:calc(100vh - 78px); display:flex; flex-direction:column; justify-content:center;
   }
 
   /* ---- the sequence ---- */
@@ -190,9 +190,9 @@
   /* ---- endpoints: in the header, out of the way until asked for ---- */
   .menu{position:relative; margin-left:auto}
   .menu summary{
-    list-style:none; cursor:pointer; display:flex; align-items:center; gap:7px;
-    padding:6px 10px; border:1px solid var(--border);
-    font-family:var(--mono); font-size:11px; font-weight:500;
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
+    padding:7.2px 12px; border:1px solid var(--border);
+    font-family:var(--mono); font-size:13.2px; font-weight:500;
     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
     transition:border-color .14s ease, color .14s ease;
   }
@@ -200,19 +200,19 @@
   .menu summary:hover{color:var(--primary); border-color:var(--border-strong)}
   .menu summary:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
   .menu summary svg{
-    width:11px; height:11px; stroke:currentColor; stroke-width:2; fill:none;
+    width:13.2px; height:13.2px; stroke:currentColor; stroke-width:2; fill:none;
     transition:transform .16s ease;
   }
   .menu[open] summary{color:var(--primary); border-color:var(--primary)}
   .menu[open] summary svg{transform:rotate(180deg)}
   .menu .panel{
-    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:218px;
-    padding:5px 0; background:var(--panel);
+    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:261.6px;
+    padding:6px 0; background:var(--panel);
     border:1px solid var(--border-strong); box-shadow:0 14px 34px rgba(12,18,60,.13);
   }
   .menu .panel a{
-    display:block; padding:9px 15px; text-decoration:none;
-    font-family:var(--mono); font-size:11.5px; color:var(--text);
+    display:block; padding:10.8px 18px; text-decoration:none;
+    font-family:var(--mono); font-size:13.8px; color:var(--text);
   }
   .menu .panel a:hover{background:#f2f4fb; color:var(--primary)}
   .menu .panel a:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
@@ -229,7 +229,7 @@
   }
 
   @media (max-width:820px){
-    .topbar{padding:12px 18px; gap:14px}
+    .topbar{padding:14.4px 21.6px; gap:16.8px}
     main{padding:28px 18px 32px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
@@ -247,25 +247,27 @@
     .wrap span{left:50%}
   }
 
-  /* ---- projects ---- */
-  .head{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:26px}
+  /* ---- projects: bigger cards, centred as one wrapped row, the heading over them ---- */
+  .stage{width:fit-content; max-width:100%; margin:0 auto}
+  .head{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:30px}
   .head h2{
-    margin:0; font-size:13px; font-weight:600; letter-spacing:.12em;
+    margin:0; font-size:16px; font-weight:600; letter-spacing:.12em;
     text-transform:uppercase; color:var(--muted);
   }
   .newbtn{
-    display:inline-flex; align-items:center; gap:8px; padding:10px 16px;
+    display:inline-flex; align-items:center; gap:8px; padding:13px 20px;
     border:1px solid var(--primary); background:var(--primary); color:#fff;
-    font-family:var(--mono); font-size:11.5px; font-weight:500;
+    font-family:var(--mono); font-size:14px; font-weight:500;
     letter-spacing:.1em; text-transform:uppercase; cursor:pointer;
   }
   .newbtn:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
   .newbtn.ghost{background:transparent; color:var(--primary)}
   .newbtn.ghost:hover{background:rgba(0,15,223,.06); color:var(--primary-hover)}
 
-  .projects{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:18px}
+  .projects{display:flex; flex-wrap:wrap; justify-content:center; gap:24px}
   a.project{
-    display:flex; flex-direction:column; gap:10px; padding:24px;
+    width:440px; max-width:100%;
+    display:flex; flex-direction:column; gap:12px; padding:34px; min-height:210px;
     border:1px solid var(--border); background:var(--panel); text-decoration:none; color:inherit;
     transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;
   }
@@ -274,17 +276,18 @@
     box-shadow:0 10px 26px rgba(12,18,60,.09);
   }
   a.project:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
-  a.project h3{margin:0; font-size:19px; font-weight:600; letter-spacing:-.015em}
+  a.project h3{margin:0; font-size:26px; font-weight:600; letter-spacing:-.015em}
   a.project .slug{
-    font-family:var(--mono); font-size:11px; color:var(--primary);
+    font-family:var(--mono); font-size:14px; color:var(--primary);
     letter-spacing:.04em;
   }
-  a.project p{margin:0; color:var(--muted); font-size:13.5px}
-  a.project time{font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:auto}
+  a.project p{margin:0; color:var(--muted); font-size:17px}
+  a.project time{font-family:var(--mono); font-size:14px; color:var(--faint); margin-top:auto}
 
   .empty{
-    padding:44px; border:1px dashed var(--border-strong); background:transparent;
-    color:var(--muted); font-size:14px; text-align:center;
+    width:560px; max-width:100%;
+    padding:52px; border:1px dashed var(--border-strong); background:transparent;
+    color:var(--muted); font-size:17px; text-align:center;
   }
   .note{
     margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);

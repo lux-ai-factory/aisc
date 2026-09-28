@@ -217,9 +217,52 @@ a.btn.small { padding: 6px 10px; font-size: 12px; font-weight: 700; }
 .swatch { width: 18px; height: 18px; border: 1px solid var(--border-strong); display: inline-block; }
 .swatch + .swatch, .swatches .swatch:nth-of-type(2) { margin-left: 10px; }
 .look-actions { display: flex; gap: 8px; }
-.look details { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
-.look summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em; }
-.look form { margin-top: 12px; }
+.look-actions a, .look-actions .editing-badge { min-width: 64px; }
+.editing-badge {
+  display: inline-block; padding: 6px 10px; font-size: 12px; font-weight: 700; text-align: center;
+  color: #ffffff; background: var(--look-primary, var(--primary));
+}
+.look.editing { box-shadow: 0 0 0 2px var(--look-primary, var(--primary)); }
+
+/* The templates screen: the page's actions beside its title; the one editor beside the list while it is used */
+.rc-header-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+.page-actions { display: flex; gap: 10px; flex-shrink: 0; margin-bottom: 24px; }
+.import-action { margin: 0; display: contents; }
+label.btn { cursor: pointer; }
+label.btn.ghost { background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 10px 17px; }
+label.btn.ghost:hover { background: var(--primary); color: #ffffff; }
+label.btn:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.templates-workspace.with-editor {
+  display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 28px; align-items: start;
+}
+.with-editor .looks { grid-template-columns: 1fr; }
+.template-editor { margin: 0; padding: 28px 32px; border-top: 4px solid var(--primary); }
+.template-editor form > h2 { margin: 0 0 22px; font-size: 24px; }
+.template-editor .look-fields { display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; }
+.template-editor .look-fields > * { grid-column: 1 / -1; }
+.template-editor .look-fields > .field.half { grid-column: auto; }
+.template-editor .editor-actions {
+  display: flex; gap: 10px; align-items: center;
+  margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border);
+}
+.template-editor .editor-actions .danger { margin-left: auto; }
+.empty-state {
+  grid-column: 1 / -1; text-align: center; padding: 48px 24px;
+  border: 1px dashed var(--border-strong); box-shadow: none; background: transparent;
+}
+.empty-state h2 { margin: 0 0 6px; font-size: 20px; }
+.empty-state p { margin: 0 auto; color: var(--muted); max-width: 52ch; }
+.with-editor .empty-state { padding: 28px 20px; }
+@media (max-width: 900px) {
+  .rc-header-row { flex-direction: column; align-items: stretch; gap: 0; }
+  .templates-workspace.with-editor { grid-template-columns: 1fr; }
+  .template-editor { order: -1; padding: 22px 20px; }
+  .template-editor .look-fields { grid-template-columns: 1fr; }
+}
 .field input[type="color"] { padding: 2px; height: 42px; }
 .field label.inline { flex-direction: row; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-weight: 600; margin-top: 8px; }
 

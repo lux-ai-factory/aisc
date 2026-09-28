@@ -113,19 +113,121 @@ def test_the_templates_screen(client, auth):
     assert page.status_code == 200
     doc = soup(page.text)
     assert "Bank X" in doc.get_text() and "#123456" in page.text
-    for control in ("new-template", "import-template", "export-template", "delete-template", "edit-template"):
+    for control in ("start-new-template", "import-template", "export-template", "open-template"):
         assert doc.find(attrs={"data-control": control}) is not None, control
+
+
+# 2026-09-28, the user: one editor for new templates, reopened ones and just-imported ones, laid out by
+# good practice: the page's actions in its header, the editor only while it is used, beside the list.
+def _editors(doc):
+    return doc.find_all("form", attrs={"data-control": ["new-template", "edit-template"]})
+
+
+def _page(client, auth, query="", who="alice"):
+    return soup(client.get(f"/p/alpha/templates{query}", headers=auth(who)).text)
+
+
+def test_new_and_import_are_the_pages_actions_in_its_header(client, auth):
+    doc = _page(client, auth)
+    actions = doc.find(class_="rc-header").find(class_="page-actions")
+    new = actions.find("a", attrs={"data-control": "start-new-template"})
+    assert new.get_text(strip=True) == "New template"
+    assert new["href"].endswith("/p/alpha/templates?new=1")
+    imp = actions.find("form", attrs={"data-control": "import-template"})
+    assert imp.find("input", attrs={"type": "file", "name": "file"}) is not None
+    assert "Import from file" in imp.get_text()
+    assert imp.find("button") is None                          # picking the file is the import
+
+
+def test_the_list_alone_has_no_editor(client, auth):
+    from conftest import new_template
+
+    new_template(client, auth, name="Bank X")
+    doc = _page(client, auth)
+    assert _editors(doc) == [] and doc.find(id="template-editor") is None
+    assert "with-editor" not in doc.find(class_="templates-workspace")["class"]
+
+
+def test_new_opens_the_one_editor_empty(client, auth):
+    from conftest import new_template
+
+    new_template(client, auth, name="Bank X")
+    doc = _page(client, auth, "?new=1")
+    editors = _editors(doc)
+    assert len(editors) == 1 and editors[0]["data-control"] == "new-template"
+    name = editors[0].find("input", attrs={"name": "name"})
+    assert name.get("value") == "" and name.has_attr("autofocus")       # a new template starts at its name
+    assert editors[0].find_parent(id="template-editor") is not None
+    assert "with-editor" in doc.find(class_="templates-workspace")["class"]
+    assert editors[0].find("button", attrs={"type": "submit"}).get_text(strip=True) == "Create template"
+    cancel = editors[0].find("a", attrs={"data-control": "cancel-template"})
+    assert cancel.get_text(strip=True) == "Cancel" and cancel["href"].endswith("/p/alpha/templates")
+    assert editors[0].find(attrs={"data-control": "delete-template"}) is None
+
+
+def test_edit_on_a_card_opens_that_template_in_the_one_editor(client, auth):
+    from conftest import new_template
+
+    x = new_template(client, auth, name="Bank X")
+    new_template(client, auth, name="Bank Y")
+    doc = _page(client, auth)
+    card = doc.find("article", attrs={"data-template": x["id"]})
+    link = card.find("a", attrs={"data-control": "open-template"})
+    assert link["href"].endswith(f"/p/alpha/templates?edit={x['id']}")
+    assert card.find("form") is None                           # no editor inside a card
+    assert card.find(attrs={"data-control": "delete-template"}) is None   # deleting is done in the editor
+
+    doc = _page(client, auth, f"?edit={x['id']}")
+    editors = _editors(doc)
+    assert len(editors) == 1
+    assert editors[0]["data-control"] == "edit-template" and editors[0]["data-template"] == x["id"]
+    assert editors[0].find("input", attrs={"name": "name"})["value"] == "Bank X"
+    assert not editors[0].find("input", attrs={"name": "name"}).has_attr("autofocus")
+    assert "Bank X" in doc.find(id="template-editor").find("h2").get_text()
+    assert editors[0].find("button", attrs={"type": "submit"}).get_text(strip=True) == "Save changes"
+    assert editors[0].find("a", attrs={"data-control": "cancel-template"}) is not None
+    delete = editors[0].find("button", attrs={"data-control": "delete-template"})
+    assert delete["data-template"] == x["id"] and delete["type"] == "button"
+    assert "editing" in doc.find("article", attrs={"data-template": x["id"]})["class"]
+
+
+def test_an_unknown_template_to_edit_opens_no_editor(client, auth):
+    assert _editors(_page(client, auth, "?edit=nope")) == []
+
+
+def test_no_templates_yet_points_to_the_two_actions_once(client, auth):
+    doc = _page(client, auth)
+    empty = doc.find(class_="empty-state")
+    assert empty is not None and "No templates yet" in empty.get_text()
+    assert "New template" in empty.get_text() and "import a file" in empty.get_text()
+    assert len(doc.find_all(attrs={"data-control": "start-new-template"})) == 1     # the header's, not twice
+    assert empty.find(["a", "button", "label"]) is None
+    empty = _page(client, auth, "?new=1").find(class_="empty-state")
+    assert "New template" not in empty.get_text()                  # while creating, no pointer to it
+
+
+def test_the_page_script_opens_created_and_imported_templates_and_leaves_after_delete():
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "report_composer/static/composer.js").read_text()
+    templates = js[js.index('if (main.dataset.page === "templates")'):js.index("// The editor")]
+    assert "openInEditor(res.data.id)" in templates
+    assert 'location.pathname + "?edit=" + encodeURIComponent(id)' in templates
+    assert "requestSubmit()" in templates                      # a picked file imports at once
+    assert "location.href = location.pathname" in templates     # after a delete, back to the list
 
 
 def test_a_viewer_sees_templates_but_cannot_change_them(client, auth):
     from conftest import new_template
 
     new_template(client, auth, name="Bank X")
-    doc = soup(client.get("/p/alpha/templates", headers=auth("victor")).text)
+    doc = _page(client, auth, who="victor")
     assert "Bank X" in doc.get_text()
     assert doc.find(attrs={"data-control": "export-template"}) is not None
-    for control in ("new-template", "import-template", "delete-template", "edit-template"):
+    for control in ("start-new-template", "new-template", "import-template", "delete-template", "edit-template",
+                    "open-template"):
         assert doc.find(attrs={"data-control": control}) is None, control
+    assert _editors(_page(client, auth, "?new=1", who="victor")) == []
 
 
 def test_the_header_links_the_templates(client, auth):

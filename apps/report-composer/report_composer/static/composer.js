@@ -162,6 +162,7 @@
 
   // The templates (a report's look)
   if (main.dataset.page === "templates") {
+    const openInEditor = function (id) { location.href = location.pathname + "?edit=" + encodeURIComponent(id); };
     async function lookOf(form) {
       const body = { name: form.name.value, font: form.font.value, font_size_pt: parseFloat(form.font_size_pt.value),
                      primary_color: form.primary_color.value, accent_color: form.accent_color.value,
@@ -182,23 +183,23 @@
       const form = ev.target;
       const what = form.dataset.control;
       if (!what) return;
-      ev.preventDefault();
-      let res;
+      ev.preventDefault(); let res;
       if (what === "new-template") res = await call("POST", "/templates", await lookOf(form));
       else if (what === "edit-template") res = await call("PUT", "/templates/" + form.dataset.template, await lookOf(form));
       else if (what === "import-template") {
-        const doc = await readJson(form.file.files[0]);
+        const doc = await readJson(form.file.files[0]); form.file.value = "";   // the same file may be picked again
         if (!doc) { say("This file is not a template."); return; }
         res = await call("POST", "/templates/import", doc);
       } else return;
-      if (res.ok) location.reload(); else say(errorText(res));
+      if (!res.ok) say(errorText(res)); else if (what === "edit-template") location.reload(); else openInEditor(res.data.id);
     });
     main.addEventListener("click", async function (ev) {
       const button = ev.target.closest('[data-control="delete-template"]');
       if (!button || !(await askFor(button))) return;
       const res = await call("DELETE", "/templates/" + button.dataset.template);
-      if (res.ok) location.reload(); else say(errorText(res));
+      if (res.ok) location.href = location.pathname; else say(errorText(res));
     });
+    main.addEventListener("change", function (ev) { if (ev.target.closest('[data-control="import-template"]')) ev.target.form.requestSubmit(); });
     return;
   }
 

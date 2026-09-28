@@ -79,7 +79,7 @@ def test_r_v5_10_import_accepts_version_2(client_v2, auth):
 
 
 def test_r_v5_17_the_template_form_has_the_new_fields(client_v2, auth):
-    doc = soup(client_v2.get("/p/alpha/templates", headers=auth("alice")).text)
+    doc = soup(client_v2.get("/p/alpha/templates?new=1", headers=auth("alice")).text)
     form = doc.find(attrs={"data-control": "new-template"})
     assert form is not None
     assert form.find("input", attrs={"name": "header_text"}) is not None

@@ -144,7 +144,10 @@ def editor_page(request: Request, ref: str, layout_id: str):
 
 
 @router.get("/p/{ref}/templates")
-def templates_page(request: Request, ref: str):
+def templates_page(request: Request, ref: str, new: str | None = None, edit: str | None = None):
+    """The templates list, and one template editor beside it while it is used: `?new=1` opens it empty
+    for a new template, `?edit=<id>` on that template (a card's Edit, and where Create and Import land).
+    Without either, or with an id that is not one of the project's templates, there is no editor."""
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, "/templates")
@@ -152,5 +155,7 @@ def templates_page(request: Request, ref: str):
         rows = _templates(conn)
     font_list = fonts(request)
     labels = {f["id"]: f["label"] for f in font_list}
+    editing = next((t for t in rows if t["id"] == edit), None) if g.access.may_write else None
+    creating = g.access.may_write and editing is None and new is not None
     return _page("templates.html.j2", request, project=g.project, templates=rows, fonts=font_list, labels=labels,
-                 editor=g.access.may_write, here="templates")
+                 editor=g.access.may_write, editing=editing, creating=creating, here="templates")
