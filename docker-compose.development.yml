@@ -756,7 +756,7 @@ services:
       # its own Keycloak login stays off: the gateway signs people in
       AISC_OAUTH: "0"
       # the shared secret the platform sends to /api/v1/aisc_project (the bridge)
-      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
+      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
       # where a project's own database is, as this host-network container sees it
       AISC_PROJECT_DB_HOSTPORT: localhost:5432
     depends_on:
@@ -829,7 +829,7 @@ services:
       # bridge checks; with none set, the bridge refuses every call.
       # straight to Superset, not through Caddy: the bridge has its own token and no session
       DASHBOARD_BRIDGE_URL: http://host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
-      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:-}
+      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
       # Per-project LLM keys (Manage, "Models and API keys"): encrypted at rest
       # with this Fernet key list (newest first), and handed to the two agents
       # only on the internal route, which this token guards.
