@@ -5,7 +5,7 @@
 [submodule "apps/eval"]
 	path = apps/eval
 	url = https://github.com/lux-ai-factory/aisc-eval.git
-	branch = master
+	branch = feat/unified-modules
 [submodule "apps/webapp"]
 	path = apps/webapp
 	url = https://github.com/lux-ai-factory/aisc-webapp.git
