@@ -43,9 +43,10 @@ OLD_CORE = [
 ]
 NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
-# Today's chain (Sean's 0001..0014, ours 0015..0021): the project database layout (0025 before
-# the adapt plan of 2026-09-28).
-NEW_DJANGO = "0020_the_database_is_the_project"
+# Today's chain (Sean's 0001..0014, ours 0015..0021) ends at the mode marker: only a target
+# with its last migration is at the new head (0020, the project database layout, was 0025 before
+# the adapt plan of 2026-09-28; a target at 0020 without 0021 stopped halfway).
+NEW_DJANGO = "0021_engine_deployment_marker"
 NEW_COMPOSER = "0001_project_database.sql"
 CONTROLS_HEAD = [
     "20260923120000_project_database",

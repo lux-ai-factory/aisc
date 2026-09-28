@@ -127,7 +127,7 @@ OLD_CORE = [
 # New layout (I3.5, I5.4, I7.7, I8.2, controls head before I6.2's FK migration, C7/C8b).
 NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
-NEW_DJANGO = "0020_the_database_is_the_project"   # 0025 before the adapt plan of 2026-09-28
+NEW_DJANGO = "0021_engine_deployment_marker"   # the last of today's chain (before the adapt plan this was 0025_the_database_is_the_project)
 # What migrate_projects records in a project database today: Sean's 0001..0014 (origin/master)
 # and ours 0015..0021. OLD_DJANGO above is the old chain on purpose (the source, an old install).
 NEW_DJANGO_CHAIN = [

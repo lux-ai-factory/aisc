@@ -21,6 +21,8 @@ def test_the_new_head_is_a_migration_of_todays_engine():
     chain = engine_chain()
     assert chain, f"no migrations in {MIGRATIONS}"
     assert P.NEW_DJANGO in chain, (P.NEW_DJANGO, chain[-4:])
+    # the head is the LAST migration: a target that stopped before it is not at the new head
+    assert P.NEW_DJANGO == chain[-1] == "0021_engine_deployment_marker", (P.NEW_DJANGO, chain[-4:])
     assert S.NEW_DJANGO == P.NEW_DJANGO
 
 

@@ -379,8 +379,9 @@ NEW_HEAD_BREAKS = {
     "forms migration missing": ("target not at new head", "DELETE FROM qualification._prisma_migrations"
                                 " WHERE migration_name = '20260925090000_forms_are_data'"),
     "alembic baseline missing": ("target not at new head", "DELETE FROM control_objectives.alembic_version"),
-    "django 0020 missing": ("target not at new head",
-                            f"DELETE FROM engine.django_migrations WHERE name = '{S.NEW_DJANGO}'"),
+    # a partial migrate_projects: at 0020, without today's head 0021 (adapt plan 2026-09-28)
+    "django 0021 missing": ("target not at new head",
+                            "DELETE FROM engine.django_migrations WHERE name = '0021_engine_deployment_marker'"),
     "composer baseline missing": ("target not at new head", "DELETE FROM report_composer.schema_migration"),
     "controls head missing": ("target not at new head", "DELETE FROM controls._prisma_migrations"
                               " WHERE migration_name = '20260923210100_dashboard_reads_controls'"),
@@ -400,6 +401,22 @@ def test_I12_6_target_not_at_its_new_head_refuses_copy(make_world, rpt, case):
     S.assert_refused(S.run(w, "copy", "--all", report=rpt()), {reason, "target not at new head"},
                      projects=(w.B,))
     _no_write_anywhere(w, before)
+
+
+def test_I12_6_the_engine_new_head_is_0021_not_0020(make_world):
+    """The precondition itself: a target whose engine chain reaches 0021_engine_deployment_marker
+    is at the new head; the same target at 0020 without 0021 (a partial migrate_projects) is not."""
+    S.require_tool()
+    from platform_service.isolate import preconditions as P
+    w = make_world()
+    engine = lambda refusals: [r for r in refusals if r["table"] == "engine.django_migrations"]
+    with w.target(w.B) as c:
+        names = {n for (n,) in c.execute("SELECT name FROM engine.django_migrations")}
+        assert {"0020_the_database_is_the_project", "0021_engine_deployment_marker"} <= names
+        assert engine(P.new_heads(c, w.B, w.forms, [])) == []
+        c.execute("DELETE FROM engine.django_migrations WHERE name = '0021_engine_deployment_marker'")
+        got = engine(P.new_heads(c, w.B, w.forms, []))
+        assert [r["reason"] for r in got] == ["target not at new head"], got
 
 
 @pytest.mark.parametrize("where", ["platform_rw on a target", "qualification_rw on the source"])
