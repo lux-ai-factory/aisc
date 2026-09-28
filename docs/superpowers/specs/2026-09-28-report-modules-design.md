@@ -128,7 +128,7 @@ belongs to a project; a duplicated layout can add them, with their comments.
   impact areas)
 - Chapter "Control objectives": Control objectives (with rationale and severity, unrated risks
   included), Control answers (with scores), Coverage (all objectives)
-- Chapter "Evidence": Test runs (with each tool's configuration summary), Test results (full),
+- Chapter "Evidence": Test runs (full: each tool with its times and configuration name), Test results (full),
   Chart: metric by run, Chart: checklist scores
 - Changes since the version before
 - Free text "Findings" (placeholder)
@@ -141,19 +141,17 @@ belongs to a project; a duplicated layout can add them, with their comments.
   - Test results of every status, not only completed runs
   - Chart: metric by dimension, Chart: per-tool chart
   - Changes since: unchanged items shown too
-- Appendix: Free text "Method", AI card knowledge-graph numbers, Test runs with the full configuration
-  of each tool
+- Appendix: Free text "Method", AI card knowledge-graph numbers
 
 The retired "Internal audit" preset's two free texts (scope and findings) live on in level 4.
 Today's "Executive summary" is closest to level 2, "Full assessment" to level 3, "EU AI Act
 conformity" to level 4.
 
 **The new Test runs module's options** (used above): `detail` "summary" (one line per run: date,
-version, status, tools) or "full" (one section per run, each tool with its start and end time),
-`configuration` "none", "summary" (the configuration's name and the options that differ from the
-tool's defaults) or "full" (the whole configuration). Defaults: summary, none. A configuration may hold credentials: every key
-whose name contains key, token, secret, password, passwd, credential or auth (any case) is printed as
-"(hidden)", at every level, in both summary and full (correction of 2026-09-28).
+version, status, tools) or "full" (one section per run, each tool with its start and end time and the
+name of its configuration). Default: summary. A configuration's settings are never shown: they may hold
+credentials, and the report login may read only a configuration's id, plugin and name (decision D6 (b),
+kept by the user on 2026-09-28; the `configuration` option of the first version of this spec is gone).
 
 ## 5. Layouts and the layout editor
 
