@@ -29,7 +29,7 @@
     position:relative; min-height:100vh;
     background:var(--bg); color:var(--text);
     font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    font-size:18px; line-height:1.5; -webkit-font-smoothing:antialiased;
   }
   /* blueprint grid, faded out towards the edges */
   body::before{
@@ -52,28 +52,28 @@
 
   /* ---- header: hairline, logo, product name, session ---- */
   .topbar{
-    display:flex; align-items:center; gap:22px;
-    padding:16px 32px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:26.4px;
+    padding:19.2px 38.4px; border-bottom:1px solid var(--border);
     background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
     position:sticky; top:0; z-index:10;
   }
-  .topbar img{height:32px; width:auto; display:block}
+  .topbar img{height:38.4px; width:auto; display:block}
   /* The way out of a project, where the way out of each tool is: at the top. */
   .topbar .back{
-    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    font-family:var(--mono); font-size:13.2px; letter-spacing:.08em; text-transform:uppercase;
     color:var(--primary); text-decoration:none; border:1px solid var(--border-strong);
-    padding:7px 11px; white-space:nowrap;
+    padding:8.4px 13.2px; white-space:nowrap;
   }
   .topbar .back:hover{background:var(--primary); color:#fff; border-color:var(--primary)}
-  .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
+  .topbar .rule{width:1px; height:33.6px; background:var(--border-strong)}
   .topbar h1{
-    margin:0; font-size:12px; font-weight:600; text-transform:uppercase;
+    margin:0; font-size:14.4px; font-weight:600; text-transform:uppercase;
     letter-spacing:.14em; color:var(--text);
   }
   .session{
-    margin-left:20px;
-    display:flex; align-items:center; gap:14px;
-    font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
+    margin-left:24px;
+    display:flex; align-items:center; gap:16.8px;
+    font-family:var(--mono); font-size:13.8px; color:var(--muted); white-space:nowrap;
   }
   .session b{color:var(--text); font-weight:500}
   .session a{
@@ -82,8 +82,8 @@
   .session a:hover{border-bottom-color:var(--primary)}
 
   main{
-    max-width:1360px; margin:0 auto; padding:40px 32px 32px;
-    min-height:calc(100vh - 65px); display:flex; flex-direction:column; justify-content:center;
+    max-width:1632px; margin:0 auto; padding:48px 38.4px 38.4px;
+    min-height:calc(100vh - 78px); display:flex; flex-direction:column; justify-content:center;
   }
 
   /* ---- the sequence ---- */
@@ -131,15 +131,15 @@
   .card{
     position:relative; overflow:hidden;
     display:flex; flex-direction:column;
-    padding:30px 34px 26px;
+    padding:36px 40.8px 31.2px;
     border:1px solid var(--border); border-radius:var(--radius);
     background:var(--panel); color:inherit; text-decoration:none;
     transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
   }
   /* the numeral belongs to the sheet, not to a badge */
   .card .n{
-    position:absolute; top:8px; right:18px;
-    font-family:var(--mono); font-weight:600; font-size:108px; line-height:1;
+    position:absolute; top:9.6px; right:21.6px;
+    font-family:var(--mono); font-weight:600; font-size:129.6px; line-height:1;
     color:rgba(0,15,223,.46); font-variant-numeric:tabular-nums;
     pointer-events:none; user-select:none;
   }
@@ -160,41 +160,41 @@
   a.card:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
 
   .svc{
-    display:flex; align-items:center; gap:9px;
-    font-family:var(--mono); font-size:11px; font-weight:500;
+    display:flex; align-items:center; gap:10.8px;
+    font-family:var(--mono); font-size:13.2px; font-weight:500;
     letter-spacing:.1em; text-transform:uppercase; color:var(--faint);
   }
-  .svc svg{width:17px; height:17px; flex:none; stroke:var(--primary); stroke-width:1.6; fill:none}
+  .svc svg{width:20.4px; height:20.4px; flex:none; stroke:var(--primary); stroke-width:1.6; fill:none}
   .row:last-of-type .card:last-child .svc svg{stroke:var(--accent)}
 
   .card h2{
-    margin:30px 0 10px; font-size:22px; font-weight:600;
+    margin:36px 0 12px; font-size:26.4px; font-weight:600;
     letter-spacing:-.018em; line-height:1.24;
   }
-  .card p{margin:0; color:var(--muted); font-size:14.5px; max-width:38ch}
+  .card p{margin:0; color:var(--muted); font-size:17.4px; max-width:38ch}
 
   .open{
-    margin-top:auto; padding-top:18px; display:flex; align-items:center; gap:7px;
-    font-family:var(--mono); font-size:10.5px; font-weight:500;
+    margin-top:auto; padding-top:21.6px; display:flex; align-items:center; gap:8.4px;
+    font-family:var(--mono); font-size:12.6px; font-weight:500;
     letter-spacing:.12em; text-transform:uppercase; color:var(--primary);
   }
   .row:last-of-type a.card:last-child .open{color:var(--accent)}
-  .open svg{width:13px; height:13px; stroke:currentColor; stroke-width:1.8; fill:none;
+  .open svg{width:15.6px; height:15.6px; stroke:currentColor; stroke-width:1.8; fill:none;
             transition:transform .16s ease}
   a.card:hover .open svg{transform:translateX(4px)}
 
   /* a step with two ways in: the card holds a link for each, side by side */
-  .card.split{padding-bottom:22px}
-  .card.split > h2{margin-bottom:14px}
-  .card.split .links{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:auto}
+  .card.split{padding-bottom:26.4px}
+  .card.split > h2{margin-bottom:16.8px}
+  .card.split .links{display:grid; grid-template-columns:1fr 1fr; gap:14.4px; margin-top:auto}
   a.sub{
-    position:relative; display:flex; flex-direction:column; gap:5px; padding:12px 14px 11px;
+    position:relative; display:flex; flex-direction:column; gap:6px; padding:14.4px 16.8px 13.2px;
     border:1px solid var(--border); color:inherit; text-decoration:none; background:var(--panel);
     transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
   }
-  a.sub h3{margin:0; font-size:15px; white-space:nowrap; font-weight:600; letter-spacing:-.012em; line-height:1.25}
-  a.sub p{margin:0; color:var(--muted); font-size:13px; line-height:1.45}
-  a.sub .open{padding-top:6px}
+  a.sub h3{margin:0; font-size:18px; white-space:nowrap; font-weight:600; letter-spacing:-.012em; line-height:1.25}
+  a.sub p{margin:0; color:var(--muted); font-size:15.6px; line-height:1.45}
+  a.sub .open{padding-top:7.2px}
   a.sub:hover{border-color:var(--primary); box-shadow:0 8px 22px rgba(12,18,60,.08); transform:translateY(-2px)}
   a.sub:hover .open svg{transform:translateX(4px)}
   a.sub:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
@@ -205,18 +205,18 @@
   .card.off .svc svg{stroke:var(--faint)}
   .card.off h2{color:var(--muted)}
   .card.off .tag{
-    margin-top:auto; margin-bottom:0; align-self:flex-start; padding:3px 8px;
+    margin-top:auto; margin-bottom:0; align-self:flex-start; padding:3.6px 9.6px;
     border:1px solid var(--border-strong); color:var(--faint);
-    font-family:var(--mono); font-size:10px; font-weight:500;
+    font-family:var(--mono); font-size:12px; font-weight:500;
     letter-spacing:.1em; text-transform:uppercase;
   }
 
   /* ---- endpoints: in the header, out of the way until asked for ---- */
   .menu{position:relative; margin-left:auto}
   .menu summary{
-    list-style:none; cursor:pointer; display:flex; align-items:center; gap:7px;
-    padding:6px 10px; border:1px solid var(--border);
-    font-family:var(--mono); font-size:11px; font-weight:500;
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
+    padding:7.2px 12px; border:1px solid var(--border);
+    font-family:var(--mono); font-size:13.2px; font-weight:500;
     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
     transition:border-color .14s ease, color .14s ease;
   }
@@ -224,19 +224,19 @@
   .menu summary:hover{color:var(--primary); border-color:var(--border-strong)}
   .menu summary:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
   .menu summary svg{
-    width:11px; height:11px; stroke:currentColor; stroke-width:2; fill:none;
+    width:13.2px; height:13.2px; stroke:currentColor; stroke-width:2; fill:none;
     transition:transform .16s ease;
   }
   .menu[open] summary{color:var(--primary); border-color:var(--primary)}
   .menu[open] summary svg{transform:rotate(180deg)}
   .menu .panel{
-    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:218px;
-    padding:5px 0; background:var(--panel);
+    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:261.6px;
+    padding:6px 0; background:var(--panel);
     border:1px solid var(--border-strong); box-shadow:0 14px 34px rgba(12,18,60,.13);
   }
   .menu .panel a{
-    display:block; padding:9px 15px; text-decoration:none;
-    font-family:var(--mono); font-size:11.5px; color:var(--text);
+    display:block; padding:10.8px 18px; text-decoration:none;
+    font-family:var(--mono); font-size:13.8px; color:var(--text);
   }
   .menu .panel a:hover{background:#f2f4fb; color:var(--primary)}
   .menu .panel a:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
@@ -253,12 +253,12 @@
   }
 
   @media (max-width:820px){
-    .topbar{padding:12px 18px; gap:14px}
-    main{padding:28px 18px 32px; min-height:0; display:block}
+    .topbar{padding:14.4px 21.6px; gap:16.8px}
+    main{padding:33.6px 21.6px 38.4px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
     .card.split .links{grid-template-columns:1fr}
-    .card .n{font-size:76px; top:4px}
+    .card .n{font-size:91.2px; top:4.8px}
     .arrow{height:34px}
     .arrow::before{top:0; bottom:0; left:50%; right:auto; border-top:0; border-left:1px solid var(--border-strong)}
     .arrow::after{
@@ -273,24 +273,24 @@
   }
 
   /* ---- projects ---- */
-  .head{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:26px}
+  .head{display:flex; align-items:flex-end; justify-content:space-between; gap:28.8px; margin-bottom:31.2px}
   .head h2{
-    margin:0; font-size:13px; font-weight:600; letter-spacing:.12em;
+    margin:0; font-size:15.6px; font-weight:600; letter-spacing:.12em;
     text-transform:uppercase; color:var(--muted);
   }
   .newbtn{
-    display:inline-flex; align-items:center; gap:8px; padding:10px 16px;
+    display:inline-flex; align-items:center; gap:9.6px; padding:12px 19.2px;
     border:1px solid var(--primary); background:var(--primary); color:#fff;
-    font-family:var(--mono); font-size:11.5px; font-weight:500;
+    font-family:var(--mono); font-size:13.8px; font-weight:500;
     letter-spacing:.1em; text-transform:uppercase; cursor:pointer;
   }
   .newbtn:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
   .newbtn.ghost{background:transparent; color:var(--primary)}
   .newbtn.ghost:hover{background:rgba(0,15,223,.06); color:var(--primary-hover)}
 
-  .projects{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:18px}
+  .projects{display:grid; grid-template-columns:repeat(auto-fill,minmax(384px,1fr)); gap:21.6px}
   a.project{
-    display:flex; flex-direction:column; gap:10px; padding:24px;
+    display:flex; flex-direction:column; gap:12px; padding:28.8px;
     border:1px solid var(--border); background:var(--panel); text-decoration:none; color:inherit;
     transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;
   }
@@ -299,60 +299,60 @@
     box-shadow:0 10px 26px rgba(12,18,60,.09);
   }
   a.project:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
-  a.project h3{margin:0; font-size:19px; font-weight:600; letter-spacing:-.015em}
+  a.project h3{margin:0; font-size:22.8px; font-weight:600; letter-spacing:-.015em}
   a.project .slug{
-    font-family:var(--mono); font-size:11px; color:var(--primary);
+    font-family:var(--mono); font-size:13.2px; color:var(--primary);
     letter-spacing:.04em;
   }
-  a.project p{margin:0; color:var(--muted); font-size:13.5px}
-  a.project time{font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:auto}
+  a.project p{margin:0; color:var(--muted); font-size:16.2px}
+  a.project time{font-family:var(--mono); font-size:13.2px; color:var(--faint); margin-top:auto}
 
   .empty{
-    padding:44px; border:1px dashed var(--border-strong); background:transparent;
-    color:var(--muted); font-size:14px; text-align:center;
+    padding:52.8px; border:1px dashed var(--border-strong); background:transparent;
+    color:var(--muted); font-size:16.8px; text-align:center;
   }
   .note{
-    margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);
-    color:var(--muted); font-size:13px; background:rgba(0,15,223,.02);
+    margin:0 0 26.4px; padding:14.4px 16.8px; border-left:3px solid var(--border-strong);
+    color:var(--muted); font-size:15.6px; background:rgba(0,15,223,.02);
   }
-  .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
-  .titlerow{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  .title{margin:0 0 4.8px; font-size:31.2px; font-weight:600; letter-spacing:-.02em}
+  .titlerow{display:flex; align-items:flex-start; justify-content:space-between; gap:19.2px; flex-wrap:wrap}
   /* Manage: the admin's menu, at the right end of the title row */
-  .titlerow .manage{margin-left:0; margin-top:4px}
+  .titlerow .manage{margin-left:0; margin-top:4.8px}
   /* .panel a sets display, which would win over the hidden attribute */
   .manage .panel [hidden]{display:none}
   .menu .panel .group{
-    display:block; padding:8px 15px 4px; font-family:var(--mono); font-size:10px;
+    display:block; padding:9.6px 18px 4.8px; font-family:var(--mono); font-size:12px;
     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
   }
-  .menu .panel .sep{display:block; height:1px; margin:5px 0; background:var(--border)}
+  .menu .panel .sep{display:block; height:1px; margin:6px 0; background:var(--border)}
   .menu .panel button.danger{
-    display:block; width:100%; padding:9px 15px; text-align:left; cursor:pointer;
-    background:none; border:0; font-family:var(--mono); font-size:11.5px; color:var(--error, #e30613);
+    display:block; width:100%; padding:10.8px 18px; text-align:left; cursor:pointer;
+    background:none; border:0; font-family:var(--mono); font-size:13.8px; color:var(--error, #e30613);
   }
   .menu .panel button.danger:hover{background:#fdecf2}
   .menu .panel button.danger:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
-  .subtitle{margin:0 0 30px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .subtitle{margin:0 0 36px; font-family:var(--mono); font-size:13.8px; color:var(--muted)}
 
   dialog.new{
     border:1px solid var(--border-strong); padding:0; background:var(--panel);
-    box-shadow:0 30px 70px rgba(12,18,60,.22); max-width:460px; width:92vw;
+    box-shadow:0 30px 70px rgba(12,18,60,.22); max-width:552px; width:92vw;
   }
   dialog.new::backdrop{background:rgba(12,18,60,.35)}
-  dialog.new form{display:flex; flex-direction:column; gap:14px; padding:26px}
-  dialog.new h3{margin:0; font-size:17px; font-weight:600}
+  dialog.new form{display:flex; flex-direction:column; gap:16.8px; padding:31.2px}
+  dialog.new h3{margin:0; font-size:20.4px; font-weight:600}
   dialog.new label{
-    display:flex; flex-direction:column; gap:6px;
-    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+    display:flex; flex-direction:column; gap:7.2px;
+    font-family:var(--mono); font-size:12.6px; letter-spacing:.1em;
     text-transform:uppercase; color:var(--muted);
   }
   dialog.new input, dialog.new textarea{
-    font:inherit; font-size:14px; padding:10px 12px; color:var(--text);
+    font:inherit; font-size:16.8px; padding:12px 14.4px; color:var(--text);
     border:1px solid var(--border-strong); background:#fff; border-radius:0;
   }
   dialog.new input:focus, dialog.new textarea:focus{outline:2px solid var(--primary); outline-offset:-1px}
-  dialog.new .row{display:flex; gap:10px; justify-content:flex-end; margin-top:4px}
-  dialog.new .err{color:#b3123c; font-size:12.5px; min-height:1em}
+  dialog.new .row{display:flex; gap:12px; justify-content:flex-end; margin-top:4.8px}
+  dialog.new .err{color:#b3123c; font-size:15px; min-height:1em}
 </style>
 </head>
 <body>
