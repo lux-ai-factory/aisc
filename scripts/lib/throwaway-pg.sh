@@ -10,10 +10,10 @@
 # port the kernel picks, removed on exit (trap on EXIT, INT, TERM). psql and
 # pg_dump run inside the container, since the host has neither.
 #
-# Same major version as the live stack (postgres:14-alpine), so pg_dump output
+# Same major version as the live stack (postgres:15-alpine), so pg_dump output
 # is comparable with a dump of the live DB.
 
-TPG_IMAGE=${TPG_IMAGE:-postgres:14-alpine}
+TPG_IMAGE=${TPG_IMAGE:-postgres:15-alpine}
 TPG_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 TPG_SU=aisc-postgres-user
 TPG_NAME=""

@@ -84,7 +84,8 @@ backend config/settings_single_database.py T3: single-database settings for test
 backend config/urls.py T3: admin and allauth routes standalone only
 
 # apps/eval
-eval aisc_eval/celery_tasks.py T6: the run ticket and project headers only in configurator
+eval aisc_eval/celery_app.py T9: Task 9b: Méril's feat/dev-catalogue-staging (Celery task limits 400/405 min for long first plugin runs)
+eval aisc_eval/celery_tasks.py T6, T9: the run ticket and project headers only in configurator; Task 9b: Méril's feat/dev-catalogue-staging (online install from the index, index always passed, placeholder API_KEY_OPENAI)
 eval aisc_eval/deployment.py T6: AISC_DEPLOYMENT for the worker
 eval aisc_eval/service/api_client.py T6: project headers only in configurator
 eval tests/test_deployment_mode.py T6: the worker's mode switch

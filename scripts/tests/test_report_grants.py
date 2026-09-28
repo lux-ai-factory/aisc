@@ -3,7 +3,7 @@ R7.3.3, R7.3.6; 02 D6 (a)(b)(c), D13), in the isolated layout (isolation 2026-09
 I2.7, I8.1).
 
 Rewritten by WP V1 (S-D13: the approved design moves every module table into the project's own
-database). The bed is scripts/lib/report_bed_isolated.py: a throwaway postgres:14-alpine container on a
+database). The bed is scripts/lib/report_bed_isolated.py: a throwaway postgres:15-alpine container on a
 free port, never the host's 5432, removed at session end, in the state the move tool and the stage-7 drop
 leave behind. What moved, and how the cases follow it:
 

@@ -7,7 +7,7 @@
 #
 # Links: qualification_fk, co_fk, engine_stamp, controls_stamp, card_component.
 #
-# One postgres:14-alpine container (scripts/lib/throwaway-pg.sh) with the platform's init files
+# One postgres:15-alpine container (scripts/lib/throwaway-pg.sh) with the platform's init files
 # and migrations at HEAD. Since the isolation (I19.2) every module lives in the project's own
 # database: step 1 makes the project through the platform's API (which provisions project_<hex>),
 # then tpg_project_db tops its template up and every module's own migrate one-shot runs against

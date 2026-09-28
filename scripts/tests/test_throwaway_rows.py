@@ -6,7 +6,7 @@ and non-ASCII text. psql's aligned output spreads json_agg over several lines an
 such as "(1 row)"; the helper must parse psql's whole tuples-only unaligned output as one JSON value and never
 read that footer. On a failing query it raises AssertionError with psql's message, as today.
 
-One throwaway postgres:14-alpine container (aisc-t-rows-<hex>, a kernel-chosen port, never the host's 5432),
+One throwaway postgres:15-alpine container (aisc-t-rows-<hex>, a kernel-chosen port, never the host's 5432),
 removed at the end of the module.
 
     uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider scripts/tests/test_throwaway_rows.py

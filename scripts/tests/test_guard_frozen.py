@@ -212,6 +212,19 @@ def test_g4_eval_as_listed_plugin_interface_plugin_manager_untouched(guard_all):
     assert other == [], "\n".join(other)
 
 
+
+def test_g4_plugin_manager_is_merils_staging_commit(tmp_path):
+    """G4 (Task 9b): shared/plugin-manager is pinned to 46e1867 (Méril's
+    origin/feat/dev-catalogue-staging, the public index without login), not master; the guard
+    records that reference with its reason and fails when the submodule is elsewhere."""
+    text = GUARD.read_text()
+    assert re.search(r"^PM_REF=46e1867\b.*Task 9b", text, re.M), "no PM_REF=46e1867 with its reason"
+    head = subprocess.run(["git", "-C", str(ROOT / "shared/plugin-manager"), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    assert head.startswith("46e1867"), head
+    assert '"$PM_REF"' in text or "$PM_REF" in text.split("g4()", 1)[1].split("g5()", 1)[0]
+
+
 # --- WP9 under amendment A1 ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("path", ["aisc_backend/routers/evaluation.py", "aisc_backend/models/evaluation.py"])

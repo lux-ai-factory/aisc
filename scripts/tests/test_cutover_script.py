@@ -179,7 +179,7 @@ def test_i15_1_rehearsal_script_exists():
 
 def test_i15_1_rehearsal_uses_a_throwaway_postgres_on_a_random_port():
     body = code(REHEARSE)
-    assert "postgres:14-alpine" in body or "throwaway-pg.sh" in body, "I15.1: not a postgres:14-alpine throwaway"
+    assert "postgres:15-alpine" in body or "throwaway-pg.sh" in body, "I15.1: not a postgres:15-alpine throwaway"
     assert "5432" in body and re.search(r"!=\s*\"?5432|=\s*\"?5432\"?\s*\]", body), \
         "I15.1: rehearse.sh does not refuse port 5432"
     assert re.search(r"docker rm -f|tpg_cleanup", body), "I15.1: the container is not removed"

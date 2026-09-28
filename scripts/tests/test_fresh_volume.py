@@ -1,6 +1,6 @@
 """A fresh volume, and init files that survive the drop step (01-specs.md I1.3, I1.4, I2.8, I16.3, I16.4).
 
-Throwaway postgres:14-alpine only (scripts/tests/isolation_bed.py), never the host's 5432.
+Throwaway postgres:15-alpine only (scripts/tests/isolation_bed.py), never the host's 5432.
 
     uv run --no-project --with pytest --with 'psycopg[binary]' python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_fresh_volume.py

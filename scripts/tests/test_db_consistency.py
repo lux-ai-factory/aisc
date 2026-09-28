@@ -5,7 +5,7 @@ Run from the repo root:
     uv run --no-project --with pytest --with psycopg[binary] python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_db_consistency.py
 
-Every database here is a throwaway postgres:14-alpine container, never the host's 5432. Since the
+Every database here is a throwaway postgres:15-alpine container, never the host's 5432. Since the
 isolation (2026-09-25, 01-specs.md I16.6; rewritten by WP V1 under S-D13, the approved design moves every
 module into the project's own database) the bed is scripts/tests/isolation_bed.py: three projects whose
 databases are made by the platform's own provision and migrated by every module's own migrate command, so

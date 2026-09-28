@@ -13,7 +13,7 @@ Two modes.
 - Inside scripts/test-pipeline-chain.sh ($CHAIN_JSON names the container and the ids the
   earlier steps wrote): only the queries run, on what the modules wrote.
 - Standalone (`uv run --no-project --with pytest python -m pytest scripts/pipeline_chain`): a
-  throwaway postgres:14-alpine is made with the platform's init files and migrations, two
+  throwaway postgres:15-alpine is made with the platform's init files and migrations, two
   projects P and Q get their databases (platform_rw with the project template, as
   tpg_project_db), `manage.py migrate_projects` makes the engine's tables in both, P is seeded
   with v1 and v2 in its project.system, an evaluation stamped v1 and an answer stamped v2, and Q

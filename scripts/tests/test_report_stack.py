@@ -179,10 +179,10 @@ def test_o1_no_superset_worker(compose):
 
 
 def test_d6_report_grants_one_shot(compose):
-    """D6 (b)(c): a postgres:14-alpine one-shot that runs /setup/report-grants.sh with both files
+    """D6 (b)(c): a postgres:15-alpine one-shot that runs /setup/report-grants.sh with both files
     mounted under /setup, after the three module migrations have completed."""
     svc = service(compose, "report-grants")
-    assert str(svc.get("image", "")).startswith("postgres:14")
+    assert str(svc.get("image", "")).startswith("postgres:15")
     assert str(svc.get("restart", "")) in ("no", '"no"')
     targets = {v.get("target") for v in volumes_of(svc)}
     assert {"/setup/report-grants.sh", "/setup/report-ro-grants.sql"} <= targets, targets

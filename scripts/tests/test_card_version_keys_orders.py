@@ -23,7 +23,7 @@ Run from the repo root:
     uv run --no-project --with pytest --with psycopg[binary] python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_card_version_keys_orders.py
 
-Every database is a throwaway postgres:14-alpine container, never the host's 5432.
+Every database is a throwaway postgres:15-alpine container, never the host's 5432.
 
 A historical regression since the isolation (2026-09-25, 03-coding-plan.md V1): the composite keys it
 pins exist only in the pre-isolation shared layout, which the current init files and module

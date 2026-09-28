@@ -1,7 +1,7 @@
 """Test harnesses, consistency checks and labels after isolation (01-specs.md I7.12, I11.3, I16.6, I18.7,
 I19.2, I19.3).
 
-Throwaway postgres:14-alpine only (scripts/tests/isolation_bed.py and scripts/lib/throwaway-pg.sh).
+Throwaway postgres:15-alpine only (scripts/tests/isolation_bed.py and scripts/lib/throwaway-pg.sh).
 
     uv run --no-project --with pytest --with 'psycopg[binary]' python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_isolation_harnesses.py

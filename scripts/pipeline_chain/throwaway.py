@@ -1,6 +1,6 @@
 """A throwaway Postgres for the pipeline tests, from Python.
 
-The same contract as scripts/lib/throwaway-pg.sh: postgres:14-alpine, a container named
+The same contract as scripts/lib/throwaway-pg.sh: postgres:15-alpine, a container named
 aisc-t-<label>-<hex> on a port the kernel picks on 127.0.0.1, psql run inside the container
 (the host has none), removed by `stop()`. Never the host's 5432.
 """
@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE = "postgres:14-alpine"
+IMAGE = "postgres:15-alpine"
 SU = "aisc-postgres-user"
 SHARED_PYTHONPATH = f"{ROOT}/shared/plugin-interface/src:{ROOT}/shared/plugin-manager/src"
 

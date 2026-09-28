@@ -6,7 +6,7 @@ stack tests (scripts/tests). Test infrastructure only: it builds data, it implem
 the report.
 
     from report_bed import build
-    bed = build("renderer")        # postgres:14-alpine, aisc-t-renderer-<hex>, a free port
+    bed = build("renderer")        # postgres:15-alpine, aisc-t-renderer-<hex>, a free port
     bed.dsn("report_ro", "platform")
     bed.stop()
 

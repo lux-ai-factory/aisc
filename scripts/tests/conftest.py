@@ -4,7 +4,7 @@ Run from the repo root:
 
     uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider scripts/tests
 
-They start throwaway postgres:14-alpine containers (never the host's 5432) through
+They start throwaway postgres:15-alpine containers (never the host's 5432) through
 scripts/guard-frozen.sh and scripts/test-pipeline-chain.sh, and read `docker compose config`
 of scratch copies of the compose files (never up, down or build).
 """

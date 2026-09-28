@@ -14,9 +14,10 @@
 # G4  backend, eval and webapp byte-identical to Sean's origin/master (the base of
 #     feat/deployment-modes) but for the files scripts/guard-frozen-intended.txt names with their
 #     task and reason (Ruling 36); plugin-interface without new commits, plugin-manager clean
+#     and at PM_REF (Task 9b: Méril's feat/dev-catalogue-staging, not master)
 # G5  engine models unchanged, makemigrations has nothing to make
 #
-# Every database is a throwaway postgres:14-alpine container (scripts/lib/throwaway-pg.sh) on a
+# Every database is a throwaway postgres:15-alpine container (scripts/lib/throwaway-pg.sh) on a
 # port the kernel picks, removed on exit. Since the isolation (2026-09-25, I7.12, I19.2) the
 # candidate's engine and qualification tables are made where the stack makes them: in a project
 # database (tpg_project_db, then manage.py migrate_projects and prisma migrate deploy there). The
@@ -66,6 +67,7 @@ SHARED_PYTHONPATH=$ROOT/shared/plugin-interface/src:$ROOT/shared/plugin-manager/
 ENGINE_REF=e34fca3          # backend: merge of Sean's work
 QUAL_REF=e112001            # qualification before the card-versions migration
 PI_REF=97eddea              # G4's engine references: scripts/guard-frozen-intended.txt
+PM_REF=46e1867              # plugin-manager: Task 9b, Méril's origin/feat/dev-catalogue-staging (public index without login), not master
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679
@@ -314,6 +316,8 @@ g4() {
   n=$(git -C "$ROOT/shared/plugin-interface" rev-list --count "$PI_REF..HEAD")
   [ "$n" = 0 ] || { ok=0; fail G4 "shared/plugin-interface has $n commits after $PI_REF"; }
   [ -z "$(git -C "$ROOT/shared/plugin-manager" status --porcelain)" ] || { ok=0; fail G4 "shared/plugin-manager is not clean"; }
+  [ "$(git -C "$ROOT/shared/plugin-manager" rev-parse HEAD)" = "$(git -C "$ROOT/shared/plugin-manager" rev-parse "$PM_REF^{commit}" 2>/dev/null)" ] \
+    || { ok=0; fail G4 "shared/plugin-manager is not at $PM_REF (Task 9b, Méril's feat/dev-catalogue-staging)"; }
   [ $ok = 1 ] && pass G4
 }
 
