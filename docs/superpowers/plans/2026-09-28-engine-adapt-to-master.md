@@ -638,6 +638,10 @@ Expected: FAIL (module missing; files differ; 22 files import `apiFetch`).
 - [ ] **Step 4: Run the whole suite and the type check**
 
 Run: `npx vitest run && npx tsc --noEmit -p .`
+
+> Note (final review, 2026-09-28): `-p .` reads `tsconfig.json`, which has `"files": []` and only
+> references, so it checks nothing. The type check of the web app is
+> `npx tsc --noEmit -p tsconfig.app.json` (0 errors at 0bc2844).
 Expected: all pass; tests that imported `apiFetch` now install the wrapper (or call `projectFetch`) and keep their assertions; no new failure against `baseline-adapt-webapp.txt`.
 
 - [ ] **Step 5: Commit**

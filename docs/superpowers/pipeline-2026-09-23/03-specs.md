@@ -37,6 +37,9 @@ compose`. The live DB (`postgres` container, port 5432) is never a target.
 | apps/catalogue/backend | `uv run pytest -q -p no:cacheprovider` | none (conftest sets sqlite `DATABASE_URL`) |
 | apps/results-dashboard | `PYTHONPATH=. .venv/bin/python -m pytest -q --ignore=tests/test_sso_login.py` | none for unit tests |
 
+> Note (2026-09-28): for apps/webapp, `npx tsc --noEmit` reads `tsconfig.json`, which has `"files": []`
+> and only references, so it checks nothing; use `npx tsc --noEmit -p tsconfig.app.json`.
+
 `scripts/verify.sh --modules` runs the same table; its `engine backend` line execs into the running
 `aisc-backend` container, so stage 4/5 use the local sqlite command above instead.
 
