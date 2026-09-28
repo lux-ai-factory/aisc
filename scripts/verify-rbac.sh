@@ -95,7 +95,11 @@ is "nor remove one"                            403 "$(eng $ENG/plugins DELETE "$
 is "nor refresh one"                           403 "$(eng $ENG/plugins/refresh POST "$USER" "$INSTALL")"
 isnot "an admin gets past the guard"       401 403 "$(eng $ENG/plugins POST "$ADMIN" "$INSTALL")"
 is "reading the installed plugins is open to any account" 200 "$(eng $ENG/plugins GET "$USER")"
-is "the audit log is for admins"               403 "$(eng $ENG/audit GET "$USER")"
+# Sean's answer for a verified token that lacks the role is 401, not 403
+# (aisc_backend/auth/keycloak.py is byte-identical to Sean's master, adapt plan
+# item 3). The check's intent still holds: an ordinary account gets no audit
+# log, exactly 401, not "401 or 403".
+is "the audit log is for admins"               401 "$(eng $ENG/audit GET "$USER")"
 isnot "and an admin may read it"           401 403 "$(eng $ENG/audit GET "$ADMIN")"
 is "a call that names no project is refused before anything else" 400 "$(call aisc-backend $ENG/projects GET "$USER")"
 

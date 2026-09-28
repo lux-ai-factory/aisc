@@ -202,13 +202,25 @@ else
 fi
 
 echo "3. the engine has no login of its own"
-# The webapp runs no Keycloak client of its own (no keycloak-js, no check-sso):
-# it asks the API who the gateway says this is, and signs in and out there.
+# The web app is one bundle for both modes (standalone and configurator), so Sean's
+# standalone Keycloak client (src/auth/keycloak.tsx, src/context/AuthContext.tsx) is
+# always compiled in: grepping for its markers (silent-check-sso, onTokenExpired,
+# aisc-webapp) finds them in every build and proves nothing. What proves "no login of
+# its own" here: the mode placeholder (.env: VITE_DEPLOYMENT=APP_DEPLOYMENT) was
+# substituted to "configurator" by env.sh, and the Keycloak client's own url: is still
+# the unsubstituted placeholder APP_KEYCLOAK_URL, so AuthContext's configurator branch
+# (which asks the gateway and returns before keycloak.init) is the one that runs.
 js=$(curl -s -b "$J" --max-time 20 http://localhost/ | grep -oE '/assets/[^"]+\.js' | head -1)
 bundle=$(curl -s -b "$J" --max-time 20 "http://localhost$js")
 case "$bundle" in
-  *silent-check-sso*|*onTokenExpired*|*aisc-webapp*) no "the engine's page still carries a Keycloak client of its own" ;;
-  *) ok "the engine's page has no Keycloak client of its own" ;;
+  *APP_DEPLOYMENT*) no "the engine's bundle still carries the unsubstituted mode placeholder (APP_DEPLOYMENT)" ;;
+  *'"configurator"'*) ok "the engine's bundle was substituted for configurator mode" ;;
+  *) no "the engine's bundle: no configurator mode literal found after substitution" ;;
+esac
+case "$bundle" in
+  *'url:"APP_KEYCLOAK_URL"'*) ok "the engine's Keycloak client has no usable URL: still the placeholder" ;;
+  *'clientId:"aisc-webapp"'*) no "the engine's Keycloak client has a substituted (usable) URL: it can sign in on its own" ;;
+  *) no "could not find the engine's Keycloak client (clientId aisc-webapp) in the bundle" ;;
 esac
 for path in /admin/ /_allauth/browser/v1/config; do
   c=$(docker exec caddy wget -qSO /dev/null "http://aisc-backend:8000$path" 2>&1 | grep -oE 'HTTP/[0-9.]+ [0-9]+' | tail -1)
