@@ -38,11 +38,17 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
     GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package aisc-plugin-manager || :'
    ```
 
-2. **Clone the report generator next to it.** The report renderer is built from five
+2. **Clone the report generator next to it.** The report renderer is built from six
    sibling folders, not from this repository: `../aisc-report-generator`,
    `../aisc-report-plugin-interface`, `../aisc-report-mlareject`, `../aisc-report-langbite`,
    `../aisc-report-strongreject` and `../aisc-report-promptfoo` (each overridable with
-   `REPORT_<NAME>_DIR`, see the `report-renderer` service).
+   `REPORT_<NAME>_DIR`, see the `report-renderer` service). The build takes whatever branch each
+   folder has checked out, so check out `dev` in all six (`aisc-report-generator` must be on `dev`:
+   it carries the per-project databases and Sean's engine table names; `main` has neither):
+   ```bash
+   for d in generator plugin-interface mlareject langbite strongreject promptfoo; do
+     git -C ../aisc-report-$d checkout dev; done
+   ```
 
 3. **Make the secrets, once.** None is committed; this writes `env.secrets`, combines it with
    `env.plugin_downloader` into `env.runtime`, and renders the Keycloak realm:
