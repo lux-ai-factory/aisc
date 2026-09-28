@@ -1,0 +1,47 @@
+{% extends "base.html.j2" %}
+{% set here = "layouts" %}
+{% block title %}Generate: {{ layout.name }}{% endblock %}
+{% block main %}
+{% set base = root ~ "/p/" ~ project.slug %}
+<main data-page="generate">
+  <a class="rc-back" href="{{ base }}/layouts/{{ layout.id }}">&larr; Back to {{ layout.name }}</a>
+  <div class="rc-header">
+    <p class="rc-eyebrow">Generate a report</p>
+    <h1>{{ layout.name }}</h1>
+    <p>Choose the data the report covers. The AI card version brings its control objectives and answers with it; the period chooses the test runs.</p>
+  </div>
+  {% if message %}
+  <p class="notice qf-section">{{ message }}</p>
+  {% else %}
+  <form method="post" class="qf-section generate-form" data-control="generate-report">
+    {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+    <div class="field"><label>AI card version <select name="system_id" required>
+      {% for s in systems %}<option value="{{ s.pid }}"{% if form.system_id == s.pid %} selected{% endif %}>Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}
+    </select></label>
+      <span class="help">The control objectives and control answers of this version are the report's.</span></div>
+    <div class="field-row">
+      <div class="field"><label>Test runs from <input type="date" name="period_from" value="{{ form.period_from or '' }}"></label></div>
+      <div class="field"><label>to <input type="date" name="period_to" value="{{ form.period_to or '' }}"></label></div>
+    </div>
+    <span class="help">Both days are included. Leave empty for every run of the version.</span>
+    <div class="field"><label class="inline"><input type="checkbox" name="other_versions"{% if form.other_versions %} checked{% endif %}> Include runs made against other versions</label>
+      <span class="help">Off: only runs made against the chosen version. On: every run in the period, each marked with its version, and the cover says so.</span></div>
+    {% if has_changes_since %}
+    <div class="field"><label>Compare with <select name="compare_to">
+      <option value="">The version before</option>
+      {% for s in systems %}<option value="{{ s.pid }}"{% if form.compare_to == s.pid %} selected{% endif %}>Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}
+    </select></label>
+      <span class="help">For the Changes since module: an earlier version than the one reported on.</span></div>
+    {% endif %}
+    <fieldset class="formats"><legend>Format</legend>
+      <label class="inline"><input type="radio" name="format" value="pdf"{% if form.format != "docx" %} checked{% endif %}> PDF</label>
+      <label class="inline"><input type="radio" name="format" value="docx"{% if form.format == "docx" %} checked{% endif %}> Word (DOCX)</label>
+    </fieldset>
+    <div class="editor-actions">
+      <button type="submit">Generate report</button>
+      <a class="btn ghost" href="{{ base }}/layouts/{{ layout.id }}">Cancel</a>
+    </div>
+  </form>
+  {% endif %}
+</main>
+{% endblock %}

@@ -190,11 +190,12 @@ def test_r_v5_8_an_empty_chapter_is_a_hint_not_an_error(client_v2, auth):
 
 # ── R-V8.14 two generate buttons (the language select is gone: R2-D1.9, test_p2_english_only.py) ──
 
-def test_r_v8_14_two_generate_buttons(client_v2, auth):
-    lay, doc = editor(client_v2, auth, [v2blk("cover")])
-    assert doc.find(attrs={"data-control": "generate"}).get_text(strip=True) == "Generate PDF"
-    docx = doc.find(attrs={"data-control": "generate-docx"})
-    assert docx is not None and docx.get_text(strip=True) == "Generate Word (DOCX)"
+def test_r_v8_14_pdf_or_word_on_the_generate_page(client_v2, auth):
+    """Report modules 2026-09-28: the two Generate buttons became a format choice on the Generate page."""
+    lay, _ = editor(client_v2, auth, [v2blk("cover")])
+    doc = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}/generate", headers=auth("alice")).text)
+    labels = [r.parent.get_text(strip=True) for r in doc.find_all("input", attrs={"name": "format"})]
+    assert labels == ["PDF", "Word (DOCX)"]
 
 
 def test_r_v8_16_the_composer_screens_stay_in_english(client_v2, auth):

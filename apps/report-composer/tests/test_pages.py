@@ -41,12 +41,13 @@ def test_r4_2_2_the_editor(client, auth):
     doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
     palette = doc.find(attrs={"data-control": "palette"})
     assert palette is not None and "free_text" in str(palette)
-    for control in ("save", "generate", "move-up", "move-down", "remove", "configure", "version", "template"):
+    for control in ("save", "open-generate", "move-up", "move-down", "remove", "configure", "template"):
         assert doc.find(attrs={"data-control": control}) is not None, control
     blocks = [el["data-instance-id"] for el in doc.find_all(attrs={"data-instance-id": True})]
     assert blocks == [b["instance_id"] for b in lay["blocks"]]
-    version = doc.find(attrs={"data-control": "version"})
-    assert [o.get_text(strip=True) for o in version.find_all("option")][:1] and "3" in version.get_text()
+    # report modules 2026-09-28: no version on the layout; the preview is drawn with one, newest first
+    version = doc.find("form", attrs={"data-control": "preview-with"}).find("select", attrs={"name": "system_id"})
+    assert "3" in version.find("option", selected=True).get_text()
     # the configure form of the chart block offers the project's charts (R1.13 via the renderer)
     assert "Bias rate by version" in str(doc)
 
@@ -228,12 +229,3 @@ def test_the_header_links_the_templates(client, auth):
 
 # Generate PDF: the feedback is next to the button and the finished PDF downloads at once
 # (it used to go to the "Generated reports" card below the preview, off screen, then reload)
-def test_generate_answers_next_to_the_button_and_downloads_the_pdf():
-    from pathlib import Path
-
-    js = (Path(__file__).resolve().parents[1] / "report_composer/static/composer.js").read_text()
-    start = js.index('what === "generate"')
-    handler = js[start:js.index("} else if", start + 1) if "} else if" in js[start + 1:] else len(js)]
-    assert "[data-state]" in handler or "state.textContent" in handler, "status must show next to the button"
-    assert '"/download"' in handler and ".download" in handler and ".click()" in handler, "a finished PDF must download"
-    assert "location.reload" not in handler

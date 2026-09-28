@@ -8,11 +8,15 @@ from __future__ import annotations
 import os
 import uuid
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import builtin_layouts, coverage_map, db, forms, layouts, preview_with, prose
+from . import builtin_layouts, coverage_map, db, forms, groups, layouts, preview_with, prose, reports
 from . import templates as looks
+from .errors import ApiError
 from .guards import guard
 from .jinja_env import env
 from .records import layout_or_404
@@ -99,27 +103,60 @@ def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: 
             if (block_type and editor) else []}
 
 
+NO_VERSION = "This project has no AI card version yet. Save the AI card in qualification first."
+EMPTY_LAYOUT = {"id": "", "name": "", "description": "", "revision": 0, "template_id": None, "show_index": True,
+                "numbering": False, "coverage": [], "blocks": []}
+
+
+def _report_view(row: dict) -> dict:
+    """A generated report as the editor lists it: what it covered, in words."""
+    last = reports.report_row(row)["last_day"]
+    start = row["period_from"].date().isoformat() if row.get("period_from") else None
+    if start or last:
+        period = f"{start or 'the start'} to {last or 'today'}"
+    else:
+        period = "All runs"
+    return {**row, "period": period, "other": "Yes" if row.get("other_versions") else "No",
+            "compare": f"Version {row['compare_number']}" if row.get("compare_number") else ""}
+
+
+def _preview_query(request: Request) -> dict:
+    q = request.query_params
+    return {k: q.get(k) for k in ("system_id", "period_from", "period_to", "other_versions") if q.get(k)}
+
+
 @router.get("/p/{ref}/layouts/{layout_id}")
 def editor_page(request: Request, ref: str, layout_id: str):
-    g = guard(request, ref, "viewer")
+    """One editor for a saved layout, a new one (`new`, nothing saved until Save) and a built-in one
+    (read-only); the preview is drawn with the version and period of `?system_id=&period_from=...`,
+    never saved (report modules spec 2026-09-28, section 5)."""
+    g = guard(request, ref, "editor" if layout_id == "new" else "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, f"/layouts/{layout_id}")
-    with request.app.state.projects.connect(g.project["pid"]) as conn:
-        layout = layout_or_404(conn, layout_id)
-        systems = db.systems(conn)
-        report_rows = db.list_reports(conn, layout["id"])
-        templates = _templates(conn)
-        pw = preview_with.parse(conn, dict(request.query_params))
-    system_pid = pw.system["pid"] if pw.system else None
-    editor = g.access.may_write
-    pid = g.project["pid"]
     types = block_types(request)
+    builtin = builtin_layouts.get(layout_id, types)
+    with request.app.state.projects.connect(g.project["pid"]) as conn:
+        if layout_id == "new":
+            layout, report_rows = dict(EMPTY_LAYOUT), []
+        elif builtin is not None:
+            layout, report_rows = builtin, []
+        else:
+            layout = layout_or_404(conn, layout_id)
+            report_rows = db.list_reports(conn, layout["id"])
+        systems = db.systems(conn)
+        templates = _templates(conn)
+        asked = _preview_query(request)
+        pw = preview_with.parse(conn, asked)
+    read_only = builtin is not None
+    editor = g.access.may_write and not read_only
+    system_pid = pw.system["pid"] if pw.system else None
+    pid = g.project["pid"]
     by_type = {t["type_id"]: t for t in types}
     choices = _reference_choices(request, g.project, layout, by_type, system_pid) if editor else {}
     cover_choices = coverage_choices_for(request, pid, system_pid) if system_pid else {}
     problems = layouts.validate_layout(layout["blocks"], block_types=types, choices=lambda t: choices.get(t, {}),
                                        coverage=layout.get("coverage"), coverage_choices=cover_choices) \
-        if editor else []
+        if editor and system_pid else []
     by_block: dict[str, list] = {}
     for p in problems:
         by_block.setdefault(p.get("instance_id"), []).append(p)
@@ -127,15 +164,71 @@ def editor_page(request: Request, ref: str, layout_id: str):
     blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor, depth, empty,
                              by_block.get(b["instance_id"], ()))
               for b, (depth, empty) in zip(layout["blocks"], depths)]
-    palette = [{"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
-                "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in types] if editor else []
+    palette = [{"label": grp["label"], "types": [
+        {"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
+         "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in grp["types"]]}
+        for grp in groups.palette(types)] if editor else []
     number = pw.system["number"] if pw.system else None
     grid = coverage_map.grid(layout.get("coverage"), cover_choices, number)
     template_ids = {t["id"] for t in templates}
+    shown = {**asked, "system_id": system_pid}
+    preview_src = (f"{_root(request)}/api/p/{g.project['slug']}/"
+                   + (f"builtin-layouts/{layout['id']}" if read_only else f"layouts/{layout['id']}") + "/preview"
+                   + ("?" + urlencode(shown) if system_pid else ""))
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,
-                 reports=report_rows, palette=palette, editor=editor, templates=templates,
-                 grid=grid, map_problems=by_block.get(None, []),
+                 reports=[_report_view(r) for r in report_rows], palette=palette, editor=editor, templates=templates,
+                 grid=grid, map_problems=by_block.get(None, []), is_new=layout_id == "new", read_only=read_only,
+                 may_write=g.access.may_write, preview_with=shown, preview_src=preview_src, no_version=NO_VERSION,
                  template_known=layout.get("template_id") in template_ids)
+
+
+def generate_context(layout: dict, systems: list, error: str | None = None, form: dict | None = None) -> dict:
+    """What the Generate report page shows: the versions newest first, Compare with only when the layout
+    compares versions, and the message of a project without a version (report modules spec, section 6)."""
+    return {"systems": systems, "has_changes_since": any(b["block_type"] == "changes_since" for b in layout["blocks"]),
+            "message": None if systems else NO_VERSION, "error": error, "form": form or {}}
+
+
+def _generate_page(request: Request, g, layout: dict, systems, status_code=200, **kw) -> HTMLResponse:
+    page = _page("generate.html.j2", request, project=g.project, layout=layout,
+                 **generate_context(layout, systems, **kw))
+    page.status_code = status_code
+    return page
+
+
+@router.get("/p/{ref}/layouts/{layout_id}/generate")
+def generate_page(request: Request, ref: str, layout_id: str):
+    g = guard(request, ref, "editor")
+    with request.app.state.projects.connect(g.project["pid"]) as conn:
+        layout = layout_or_404(conn, layout_id)
+        systems = db.systems(conn)
+    return _generate_page(request, g, layout, systems)
+
+
+@router.post("/p/{ref}/layouts/{layout_id}/generate")
+async def generate_submit(request: Request, ref: str, layout_id: str):
+    """The Generate form, handled in Python: the report is made, then the layout's page opens on its
+    reports; a refused choice draws the form again with the message and what was typed."""
+    g = guard(request, ref, "editor")                  # refuses a foreign Origin before anything is read
+    form = await request.form()
+    typed = {k: (form.get(k) or "") for k in ("system_id", "period_from", "period_to", "compare_to", "format")}
+    typed["other_versions"] = form.get("other_versions") == "on"
+    choice = {k: typed[k] or None for k in ("system_id", "period_from", "period_to", "compare_to")}
+    choice["other_versions"] = typed["other_versions"]
+    fmt = typed["format"] if typed["format"] in reports.FORMATS else "pdf"
+    try:
+        status, body = await run_in_threadpool(reports.generate, request, g.project, layout_id, g.caller, fmt,
+                                               choice=choice)
+    except ApiError as e:
+        with request.app.state.projects.connect(g.project["pid"]) as conn:
+            layout, systems = layout_or_404(conn, layout_id), db.systems(conn)
+        return _generate_page(request, g, layout, systems, status_code=e.status, error=e.message, form=typed)
+    if status >= 400:
+        with request.app.state.projects.connect(g.project["pid"]) as conn:
+            layout, systems = layout_or_404(conn, layout_id), db.systems(conn)
+        return _generate_page(request, g, layout, systems, status_code=status,
+                              error=body["error"]["message"], form=typed)
+    return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}#reports", status_code=303)
 
 
 @router.get("/p/{ref}/templates")

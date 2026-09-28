@@ -171,8 +171,16 @@
     return;
   }
 
-  // The editor
+  // The editor (a built-in one is read-only: its one action is Duplicate)
   showKeptNotices();
+  if (main.dataset.readOnly) {
+    main.addEventListener("click", async function (ev) {
+      const b = ev.target.closest('[data-control="duplicate"]'); if (!b) return;
+      const res = await call("POST", "/layouts/" + b.dataset.layout + "/duplicate", {});
+      if (res.ok) location.href = main.dataset.base + "/layouts/" + res.data.id; else say(errorText(res));
+    });
+    return;
+  }
   const list = document.getElementById("blocks");
   const state = main.querySelector("[data-state]");
   const layoutId = main.dataset.layout;
@@ -195,7 +203,7 @@
   let outlineAsked = 0, outlineTimer = null;             // the latest outline request; older answers are ignored
   async function redrawOutline() {
     const mine = ++outlineAsked;
-    const res = await call("POST", "/layouts/" + layoutId + "/outline", { blocks: collect() });
+    const res = await call("POST", "/layouts/" + (layoutId || "new") + "/outline", { blocks: collect() });
     if (mine !== outlineAsked) return;
     if (!res.ok) {                                       // R2-D3.3: no stale indentation, and a way to retry
       Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; });
@@ -273,11 +281,10 @@
     return order.map(function (id) { return byObjective[id]; });
   }
 
-  function editorState() {
-    const pick = function (name) { const c = control(name); return c ? c.value : undefined; };
-    const numbering = control("numbering");
-    return { system_id: pick("version"), template_id: pick("template") || null, toc: pick("toc"),
-             numbering: numbering ? numbering.checked : undefined, coverage: coverage(), blocks: collect() };
+  function editorState() {                            // what is saved: no version, no data (report modules)
+    const box = function (name) { const c = control(name); return c ? c.checked : undefined; };
+    return { template_id: (control("template") || {}).value || null, show_index: box("show_index"),
+             numbering: box("numbering"), coverage: coverage(), blocks: collect() };
   }
   function pickOneHints() {
     list.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
@@ -326,12 +333,13 @@
     timer = setTimeout(refresh, 1500);
   }
   async function refresh() {
-    if (!frame || !control("save")) return;
+    if (!frame || !control("save") || !layoutId) return;
     if (inFlight) { queued = true; return; }
     inFlight = true;
     const mine = ++sent;
     let res;
-    try { res = await call("POST", "/layouts/" + layoutId + "/preview", editorState()); }
+    const draft = Object.assign({ preview_with: JSON.parse(main.dataset.previewWith || "{}") }, editorState());
+    try { res = await call("POST", "/layouts/" + layoutId + "/preview", draft); }
     finally { inFlight = false; }                        // a failure never blocks later previews
     if (mine > shown) {                                  // an answer to an older state is ignored
       shown = mine;
@@ -341,24 +349,21 @@
     if (queued) { queued = false; refresh(); }
   }
 
-  async function save(resetInvalid) {
-    const body = Object.assign({ name: document.querySelector("h1").textContent.trim(), revision: revision },
+  async function save() {
+    const body = Object.assign({ name: main.querySelector('.toolbar input[name="name"]').value, revision: revision },
                                editorState());
-    if (resetInvalid) body.reset_invalid = true;
-    const res = await call("PUT", "/layouts/" + layoutId, body);
+    const res = await call(layoutId ? "PUT" : "POST", "/layouts/" + (layoutId || ""), body);
+    if (res.ok && !layoutId) { unsaved = false; location.href = main.dataset.base + "/layouts/" + res.data.id; return true; }
     if (res.ok) {
       revision = res.data.revision;
       unsaved = false;
       showProblems([]);
       if (state) state.textContent = "Saved (revision " + revision + ")";
       showSaved();
-      if (resetInvalid) location.reload(); else if (frame) frame.src = frame.src.split("?")[0] + "?r=" + revision;
+      if (frame && frame.src) { const u = new URL(frame.src); u.searchParams.set("r", revision); frame.src = u.toString(); }
       return true;
     }
     const err = res.data && res.data.error;
-    if (err && err.code === "invalid_reference" && !resetInvalid &&
-        await ask("Some options or coverage map entries name data this version does not have. Reset them and save?",
-                  "Reset and save")) return save(true);
     showProblems(err && err.details && err.details.length ? err.details : [{ message: errorText(res) }]);
     return false;
   }
@@ -385,37 +390,13 @@
     } else if (what === "remove" && li) {
       li.remove(); moved();
     } else if (what === "save") {
-      await save(false);
+      await save();
     } else if (what === "refresh-preview") {
       clearTimeout(timer); refresh();
-    } else if (what === "generate" || what === "generate-docx") {
-      // the answer goes next to the button, and a finished document downloads at once
-      const fmt = what === "generate-docx" ? "docx" : "pdf";
-      const name = fmt === "docx" ? "Word document" : "PDF";
-      const tell = function (text) { if (state) state.textContent = text; };
-      if (unsaved) { tell("Save first: only a saved layout is generated."); return; }
-      target.disabled = true;
-      tell("Generating the " + name + "...");
-      const res = await call("POST", "/layouts/" + layoutId + "/reports", { format: fmt });
-      target.disabled = false;
-      if (!res.ok) { tell(errorText(res)); return; }
-      const failed = res.data.block_statuses.filter(function (s) { return s.status === "error"; });
-      if (res.data.status === "failed") { tell("The " + name + " could not be made."); return; }
-      const file = api + "/reports/" + res.data.id + "/download";
-      tell(failed.length ? name + " ready, " + failed.length + " section(s) with errors: downloading."
-                         : name + " ready: downloading.");
-      const link = document.createElement("a");
-      link.href = file; link.download = ""; document.body.appendChild(link); link.click(); link.remove();
-      const reportsList = main.querySelector("[data-reports]");
-      if (reportsList) {
-        const item = document.createElement("li"), a = document.createElement("a");
-        a.href = file; a.textContent = "Download";
-        item.textContent = "Just now, revision " + revision + ", " + fmt.toUpperCase() + ", " + res.data.status + ": ";
-        item.appendChild(a);
-        const empty = reportsList.querySelector(".muted");
-        if (empty) empty.remove();
-        reportsList.prepend(item);
-      }
+    } else if (what === "delete-layout") {             // Delete is in the editor; the list is where it lands
+      if (!(await askFor(target))) return;
+      const res = await call("DELETE", "/layouts/" + layoutId);
+      if (res.ok) { unsaved = false; location.href = main.dataset.base + "/"; } else say(errorText(res));
     }
   });
 

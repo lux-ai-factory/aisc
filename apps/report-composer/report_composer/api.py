@@ -243,9 +243,11 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
 @router.post("/p/{ref}/layouts/{layout_id}/outline")
 def outline(request: Request, layout_id: str, body: dict = Body(...),
             g: Guarded = Depends(project_guard("editor"))):
-    """Indentation and empty-chapter hints for the editor's current block order; nothing is stored."""
-    with _project_db(request, g) as conn:
-        layout_or_404(conn, layout_id)
+    """Indentation and empty-chapter hints for the editor's current block order; nothing is stored. `new`
+    is the editor of a layout not saved yet."""
+    if layout_id != "new":
+        with _project_db(request, g) as conn:
+            layout_or_404(conn, layout_id)
     blocks = _blocks(body)
     if len(blocks) > layouts.MAX_BLOCKS:   # the limit of layout save (fix round 2, item 4)
         raise ApiError(422, "too_many_blocks", f"A layout holds at most {layouts.MAX_BLOCKS} blocks.",
@@ -337,6 +339,17 @@ def _builtin_or_404(request: Request, layout_id: str) -> dict:
 @router.get("/p/{ref}/builtin-layouts/{layout_id}")
 def get_builtin_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
     return _builtin_or_404(request, layout_id)
+
+
+@router.get("/p/{ref}/builtin-layouts/{layout_id}/preview")
+def preview_builtin_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
+    """A built-in layout drawn with this project's data, for the preview's version and period."""
+    layout = _builtin_or_404(request, layout_id)
+    with _project_db(request, g) as conn:
+        pw = preview_with.parse(conn, dict(request.query_params))
+    result = _render_preview(request, g, layout, None, pw)
+    return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
+                                                 "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/p/{ref}/builtin-layouts/{layout_id}/export")

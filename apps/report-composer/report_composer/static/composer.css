@@ -306,3 +306,21 @@ dialog[data-confirm]::backdrop { background: rgba(0, 0, 0, 0.3); }
 .row-help { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; margin-top: 3px; max-width: 70ch; }
 tr.built-in td { background: var(--panel-2); }
 .table-note { margin: 14px 0 0; }
+
+/* The layout editor's palette in groups, its preview choice, the reports table */
+.palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.palette-group h3 { margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.palette-group button { display: flex; width: 100%; max-width: none; margin-bottom: 6px; }
+.toolbar label.name input { min-width: 260px; }
+.preview-with { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 6px; font-size: 13px; }
+.preview-with label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; color: var(--muted); }
+.preview-with label.inline { flex-direction: row; align-items: center; }
+.preview-with select, .preview-with input[type="date"] { padding: 6px 8px; border: 1px solid var(--border); font: inherit; }
+.reports-table td { font-size: 13px; }
+
+/* The Generate report page */
+.generate-form { max-width: 720px; }
+.field-row { display: flex; gap: 16px; }
+.field-row .field { flex: 1; }
+.formats { margin: 12px 0 0; }
+.form-error { color: var(--error); font-weight: 700; margin: 0 0 14px; }
