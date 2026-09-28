@@ -317,10 +317,8 @@
   }
   .title{margin:0 0 4.8px; font-size:31.2px; font-weight:600; letter-spacing:-.02em}
   .titlerow{display:flex; align-items:flex-start; justify-content:space-between; gap:19.2px; flex-wrap:wrap}
-  /* Manage: the admin's menu, at the right end of the title row */
-  .titlerow .manage{margin-left:0; margin-top:4.8px}
   /* .panel a sets display, which would win over the hidden attribute */
-  .manage .panel [hidden]{display:none}
+  .menu .panel [hidden]{display:none}
   .menu .panel .group{
     display:block; padding:9.6px 18px 4.8px; font-family:var(--mono); font-size:12px;
     letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
@@ -363,14 +361,26 @@
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
-  <details class="menu">
+  <details class="menu" id="manage">
     <summary>
-      Endpoints
+      Manage
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     </summary>
     <div class="panel">
+      <span class="group">Endpoints</span>
       <a href="http://localhost/flower/">Flower</a>
       <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
+      <span class="sep member-only" hidden></span>
+      <span class="group member-only" hidden>Inspect database</span>
+      <!-- Structure only, for every member: this project's database and the shared one on one page. -->
+      <a id="inspect-schema" class="member-only" hidden target="_blank" rel="noopener">Database diagrams</a>
+      <!-- The data itself, across every project: an admin's only. -->
+      <a id="inspect-pgadmin" class="admin-only" hidden href="/inspect/pgadmin/" target="_blank" rel="noopener">Browse &amp; query (pgAdmin)</a>
+      <span class="sep admin-only" hidden></span>
+      <span class="group admin-only" hidden>Agentic systems</span>
+      <a id="llm-settings" class="admin-only" hidden>Models and API keys</a>
+      <span class="sep admin-only" hidden></span>
+      <button type="button" class="danger admin-only" hidden id="delete-open">Delete this project&hellip;</button>
     </div>
   </details>
   <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
@@ -380,24 +390,6 @@
   <div class="stage">
     <div class="titlerow">
       <h1 class="title" id="project-name">&hellip;</h1>
-      <details class="menu manage" id="manage" hidden>
-        <summary>
-          Manage
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </summary>
-        <div class="panel">
-          <span class="group">Inspect database</span>
-          <!-- Structure only, for every member: this project's database and the shared one on one page. -->
-          <a id="inspect-schema" target="_blank" rel="noopener">Database diagrams</a>
-          <!-- The data itself, across every project: an admin's only. -->
-          <a id="inspect-pgadmin" class="admin-only" hidden href="/inspect/pgadmin/" target="_blank" rel="noopener">Browse &amp; query (pgAdmin)</a>
-          <span class="sep admin-only" hidden></span>
-          <span class="group admin-only" hidden>Agentic systems</span>
-          <a id="llm-settings" class="admin-only" hidden>Models and API keys</a>
-          <span class="sep admin-only" hidden></span>
-          <button type="button" class="danger admin-only" hidden id="delete-open">Delete this project&hellip;</button>
-        </div>
-      </details>
     </div>
     <p class="subtitle" id="project-meta"></p>
     <dialog class="new" id="delete-dialog">
@@ -519,7 +511,7 @@
           if (!a || !(a.role || a.admin)) return;   // members see the menu, strangers nothing
           // The diagrams open on one page for this project's database and the shared one.
           document.getElementById('inspect-schema').href = '/inspect/schema/?project=' + encodeURIComponent(p.pid);
-          document.getElementById('manage').hidden = false;
+          [].forEach.call(document.querySelectorAll('#manage .member-only'), function (el) { el.hidden = false; });
           if (!a.admin) return;                      // what follows is an admin's only
           [].forEach.call(document.querySelectorAll('#manage .admin-only'), function (el) { el.hidden = false; });
           document.getElementById('llm-settings').href = '/llm.html?project=' + encodeURIComponent(slug);
