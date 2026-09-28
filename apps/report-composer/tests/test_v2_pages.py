@@ -313,11 +313,8 @@ def test_r_u6_2_template_select_starts_with_platform_default(client_v2, auth):
 
 def test_r_u6_3_create_is_never_disabled_for_lack_of_a_template(client_v2, auth):
     doc = soup(client_v2.get("/p/alpha/", headers=auth("alice")).text)     # clean_layouts: no template
-    form = doc.find(attrs={"data-control": "new-layout"})
-    assert not form.find("button", attrs={"type": "submit"}).has_attr("disabled")
-    assert "Reports use the platform look until you make a template." in form.get_text(" ", strip=True)
-    tsel = form.find("select", attrs={"name": "template_id"})
-    assert tsel.find("option")["value"] == "" and tsel.find("option", selected=True)["value"] == ""
+    new = doc.find(attrs={"data-control": "start-new-layout"})
+    assert new is not None and not new.has_attr("disabled") and not new.has_attr("aria-disabled")
 
 
 def test_r_u6_4_a_deleted_template_shows_platform_default(client_v2, auth):
@@ -351,17 +348,6 @@ def test_r_u7_2_every_page_has_one_message_region_first_in_main(client_v2, auth,
     assert doc.find("main").find(True) is r
 
 
-def test_r_u7_3_one_confirm_dialog_cancel_first(client_v2, auth):
-    new_layout(client_v2, auth, name=unique("Del"), system_id=IDS["A_V2"], blocks=[v2blk("cover")])
-    doc = soup(client_v2.get("/p/alpha/", headers=auth("alice")).text)
-    dialogs = doc.find_all("dialog", attrs={"data-confirm": True})
-    assert len(dialogs) == 1
-    buttons = dialogs[0].find_all("button")
-    assert buttons and buttons[0].get_text(strip=True) == "Cancel"
-    delete = doc.find(attrs={"data-control": "delete"})
-    assert delete is not None and delete.get("data-confirm-text")
-
-
 def test_r_u7_3_composer_js_uses_the_dialog():
     js = JS.read_text()
     assert "data-confirm" in js and ("showModal" in js or ".show(" in js)
@@ -377,12 +363,11 @@ def test_r_u7_4_leaving_with_unsaved_changes_asks_the_browser():
 def test_r_v1_screens_row_menu_editor_and_viewer(client_v2, auth):
     new_layout(client_v2, auth, name=unique("Row"), system_id=IDS["A_V2"], blocks=[v2blk("cover")])
     ed = soup(client_v2.get("/p/alpha/", headers=auth("alice")).text)
-    for control in ("duplicate", "export-structure", "save-preset", "delete"):
+    for control in ("open-layout", "duplicate", "export-structure"):
         assert ed.find(attrs={"data-control": control}) is not None, control
     vi = soup(client_v2.get("/p/alpha/", headers=auth("victor")).text)
     assert vi.find(attrs={"data-control": "export-structure"}) is not None
-    for control in ("duplicate", "save-preset", "delete"):
-        assert vi.find(attrs={"data-control": control}) is None, control
+    assert vi.find(attrs={"data-control": "duplicate"}) is None
 
 
 @pytest.mark.usefixtures("clean_presets")

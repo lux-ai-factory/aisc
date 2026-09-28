@@ -19,7 +19,7 @@ def test_r4_2_1_layouts_list(client, auth):
     page = client.get("/p/alpha/", headers=auth("alice"))
     assert page.status_code == 200
     t = page.text
-    assert "Board pack" in t and "New layout" in t and "Delete" in t
+    assert "Board pack" in t and "New layout" in t          # Delete is in the editor (report modules 2026-09-28)
     assert "New from template" not in t          # templates are looks now, not block recipes
 
 
@@ -94,15 +94,6 @@ def test_the_editor_offers_the_projects_templates_with_the_saved_one_selected(cl
     options = {o["value"]: o.get_text(strip=True) for o in select.find_all("option") if o.get("value")}
     assert options == {a["id"]: "Plain", b["id"]: "Bank X"}
     assert select.find("option", selected=True)["value"] == b["id"]
-
-
-def test_the_new_layout_form_asks_for_a_template(client, auth):
-    from conftest import new_template
-
-    new_template(client, auth, name="Plain")
-    doc = soup(client.get("/p/alpha/", headers=auth("alice")).text)
-    form = doc.find(attrs={"data-control": "new-layout"})
-    assert form.find("select", attrs={"name": "template_id"}) is not None
 
 
 def test_the_templates_screen(client, auth):

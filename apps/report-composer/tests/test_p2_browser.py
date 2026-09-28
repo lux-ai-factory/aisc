@@ -67,13 +67,12 @@ def test_r2_d3_6_2_the_composer_shows_notices_as_information(live):
     page, _ = live([v2blk("cover")])                        # any page of the served composer, to learn its address
     base = page.url.rsplit("/layouts/", 1)[0]
     page.goto(base + "/")
-    form = page.locator('form[data-control="import-preset"]')
-    form.locator('select[name="system_id"]').select_option(IDS["A_V2"])
-    form.locator('input[name="file"]').set_input_files(
-        files=[{"name": "preset.json", "mimeType": "application/json",
-                "buffer": json.dumps(preset_file(FOREIGN[:3])).encode()}])
+    # report modules 2026-09-28: Import from file in the page header; picking the file imports it
+    form = page.locator('.page-actions form[data-control="import-layout"]')
     with page.expect_navigation(url="**/layouts/*", timeout=10000):
-        form.get_by_role("button", name="Import").click()
+        form.locator('input[name="file"]').set_input_files(
+            files=[{"name": "preset.json", "mimeType": "application/json",
+                    "buffer": json.dumps(preset_file(FOREIGN[:3])).encode()}])
     page.wait_for_selector("main[data-api]")
     region = page.locator("main [data-message]")
     tail = "pointed at data that is not in this project; it was reset to its default."

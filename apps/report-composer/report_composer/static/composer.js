@@ -108,54 +108,22 @@
   // The layouts list
   if (main.dataset.page === "layouts") {
     const base = main.dataset.base;
-    const presetsApi = main.dataset.presetsApi;
-    const presetForm = main.querySelector('[data-control="save-preset-form"]');
-    main.addEventListener("submit", async function (ev) {
+    const open = function (res) { keepNotices(res.data.notices); location.href = base + "/layouts/" + res.data.id; };
+    main.addEventListener("change", function (ev) { if (ev.target.closest('[data-control="import-layout"]')) ev.target.form.requestSubmit(); });
+    main.addEventListener("submit", async function (ev) {       // a picked layout file is imported, then opened
       const form = ev.target;
-      const what = form.dataset.control;
-      if (!what) return;
+      if (form.dataset.control !== "import-layout") return;
       ev.preventDefault();
-      let res;
-      if (what === "new-layout") {
-        res = await call("POST", "/layouts", { name: form.name.value, system_id: form.system_id.value,
-                                               template_id: form.template_id.value || null, preset: form.preset.value });
-      } else if (what === "import-preset") {
-        const doc = await readJson(form.file.files[0]);
-        if (!doc) { say("This file is not a report preset."); return; }
-        res = await call("POST", "/layouts", { system_id: form.system_id.value, preset_file: doc });
-      } else if (what === "save-preset-form") {
-        res = await call("POST", "/layouts/" + form.dataset.layout + "/preset",
-                         { name: form.name.value, keep_text: form.keep_text.checked });
-        if (res.ok) { location.reload(); return; }
-      } else return;
-      if (res.ok) {
-        keepNotices(res.data.notices);
-        location.href = base + "/layouts/" + res.data.id;
-      } else say(errorText(res));
+      const doc = await readJson(form.file.files[0]); form.file.value = "";
+      if (!doc) { say("This file is not a layout file."); return; }
+      const res = await call("POST", "/layouts", { file: doc });
+      if (res.ok) open(res); else say(errorText(res));
     });
-    main.addEventListener("click", async function (ev) {
-      const button = ev.target.closest("button[data-control]");
+    main.addEventListener("click", async function (ev) {        // a copy is opened in the editor
+      const button = ev.target.closest('button[data-control="duplicate"]');
       if (!button) return;
-      const what = button.dataset.control;
-      let res = null;
-      if (what === "delete") {
-        if (!(await askFor(button))) return;
-        res = await call("DELETE", "/layouts/" + button.dataset.layout);
-      } else if (what === "duplicate") {
-        res = await call("POST", "/layouts/" + button.dataset.layout + "/duplicate", {});
-      } else if (what === "save-preset" && presetForm) {
-        presetForm.dataset.layout = button.dataset.layout;
-        presetForm.hidden = false;
-        presetForm.name.focus();
-        return;
-      } else if (what === "cancel-preset" && presetForm) {
-        presetForm.hidden = true;
-        return;
-      } else if (what === "delete-preset") {
-        if (!(await askFor(button))) return;
-        res = await call("DELETE", "/" + button.dataset.preset, undefined, presetsApi);
-      } else return;
-      if (res.ok) location.reload(); else say(errorText(res));
+      const res = await call("POST", "/layouts/" + button.dataset.layout + "/duplicate", {});
+      if (res.ok) open(res); else say(errorText(res));
     });
     return;
   }

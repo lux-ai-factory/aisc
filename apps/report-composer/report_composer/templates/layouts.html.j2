@@ -1,88 +1,63 @@
 {% extends "base.html.j2" %}
-{% from "_ui.html.j2" import message_region, confirm_dialog %}
+{% from "_ui.html.j2" import message_region %}
 {% set here = "layouts" %}
 {% block title %}Reports: {{ project.name }}{% endblock %}
 {% block main %}
-<main data-api="{{ root }}/api/p/{{ project.slug }}" data-presets-api="{{ root }}/api/presets" data-page="layouts" data-base="{{ root }}/p/{{ project.slug }}">
+{% set api = root ~ "/api/p/" ~ project.slug %}
+{% set base = root ~ "/p/" ~ project.slug %}
+<main data-api="{{ api }}" data-page="layouts" data-base="{{ base }}">
   {{ message_region() }}
-  {% if editor or saved_presets | selectattr("may_delete") | list %}{{ confirm_dialog() }}{% endif %}
-  <div class="rc-header">
-    <p class="rc-eyebrow">Step 7: the report</p>
-    <h1>Reports of {{ project.name }}</h1>
-    <p>A report is assembled from blocks, in the order you choose, for one version of the AI system. Open a layout to edit its blocks, preview it and generate the document.</p>
+  <div class="rc-header rc-header-row">
+    <div>
+      <p class="rc-eyebrow">Step 7: the report</p>
+      <h1>Reports of {{ project.name }}</h1>
+      <p>A layout is a report's structure: its modules, their order and its template. Open one to inspect it and preview it with a version of the AI system; the data is chosen when you generate the report. To adapt a built-in layout, duplicate it; or make your own.</p>
+    </div>
+    {% if editor %}
+    {# the page's two actions: both open the layout in the editor #}
+    <div class="page-actions">
+      <a class="btn" data-control="start-new-layout" href="{{ base }}/layouts/new">New layout</a>
+      <form data-control="import-layout" class="import-action">
+        <label class="btn ghost" title="A layout file exported from this or another project">Import from file
+          <input class="visually-hidden" name="file" type="file" accept="application/json,.json"></label>
+      </form>
+    </div>
+    {% endif %}
   </div>
   <section class="qf-section">
-    <h2>Layouts</h2>
     <table class="layouts">
-      <thead><tr><th>Layout</th><th>Version</th><th>Template</th><th>Revision</th><th>Updated</th><th>Last report</th><th></th></tr></thead>
+      <thead><tr><th>Layout</th><th>Template</th><th>Revision</th><th>Updated</th><th>Last report</th><th></th></tr></thead>
       <tbody>
+      {% for l in builtins %}
+        <tr data-layout="{{ l.id }}" class="built-in">
+          <td><a data-control="open-layout" href="{{ base }}/layouts/{{ l.id }}">{{ l.name }}</a> <span class="badge">Built-in</span>
+            <span class="row-help">{{ l.description }}</span></td>
+          <td class="muted">Platform default</td>
+          <td class="muted">built-in</td>
+          <td class="muted"></td>
+          <td class="muted"></td>
+          <td class="actions">
+            {% if editor %}<button type="button" class="small ghost" data-control="duplicate" data-layout="{{ l.id }}">Duplicate</button>{% endif %}
+            <a class="btn ghost small" data-control="export-structure" href="{{ api }}/builtin-layouts/{{ l.id }}/export" download>Export</a>
+          </td>
+        </tr>
+      {% endfor %}
       {% for l in layouts %}
         <tr data-layout="{{ l.id }}">
-          <td><a href="{{ root }}/p/{{ project.slug }}/layouts/{{ l.id }}">{{ l.name }}</a></td>
-          <td>Version {{ l.system_number }}</td>
+          <td><a data-control="open-layout" href="{{ base }}/layouts/{{ l.id }}">{{ l.name }}</a></td>
           <td class="muted">{{ l.template_name or "Platform default" }}</td>
           <td class="muted">revision {{ l.revision }}</td>
           <td class="muted">{{ l.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
           <td class="muted">{% if l.last_report %}{{ l.last_report.created_at[:16] | replace("T", " ") }} ({{ l.last_report.status }}){% endif %}</td>
           <td class="actions">
-            <a class="btn ghost small" data-control="export-structure" href="{{ root }}/api/p/{{ project.slug }}/layouts/{{ l.id }}/export" download>Export structure</a>
-            {% if editor %}
-            <button type="button" class="small ghost" data-control="duplicate" data-layout="{{ l.id }}">Duplicate</button>
-            <button type="button" class="small ghost" data-control="save-preset" data-layout="{{ l.id }}">Save as preset</button>
-            <button type="button" class="small danger" data-control="delete" data-layout="{{ l.id }}" data-confirm-action="Delete layout" data-confirm-text="Delete the layout {{ l.name }} and its generated reports?">Delete</button>
-            {% endif %}
+            {% if editor %}<button type="button" class="small ghost" data-control="duplicate" data-layout="{{ l.id }}">Duplicate</button>{% endif %}
+            <a class="btn ghost small" data-control="export-structure" href="{{ api }}/layouts/{{ l.id }}/export" download>Export</a>
           </td>
         </tr>
-      {% else %}
-        <tr><td colspan="7" class="muted">No layout yet.{% if editor %} Create one below.{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>
-  </section>
-  {% if editor %}
-  <section class="forms">
-    <form data-control="new-layout" class="qf-section">
-      <h2>New layout</h2>
-      <div class="field"><label>Name <input name="name" required maxlength="120"></label></div>
-      <div class="field"><label>Start from <select name="preset">
-        {% for p in built_in_presets %}<option value="{{ p.id }}"{% if loop.first %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
-        {% for p in saved_presets %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
-        <option value="empty">Empty layout</option>
-      </select></label></div>
-      <div class="field"><label>Version <select name="system_id">{% for s in systems %}<option value="{{ s.pid }}">Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}</select></label></div>
-      <div class="field"><label>Template <select name="template_id"><option value=""{% if not templates %} selected{% endif %}>Platform default</option>{% for x in templates %}<option value="{{ x.id }}"{% if loop.first %} selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
-        {% if not templates %}<span class="hint">Reports use the platform look until you make a template.</span>{% endif %}</div>
-      <button type="submit">Create</button>
-    </form>
-    <form data-control="import-preset" class="qf-section">
-      <h2>Import a preset file</h2>
-      <p class="qf-help">A report structure exported from this or another project. The layout takes its name from the file.</p>
-      <div class="field"><label>Version <select name="system_id">{% for s in systems %}<option value="{{ s.pid }}">Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}</select></label></div>
-      <div class="field"><label>File <input name="file" type="file" accept="application/json,.json" required></label></div>
-      <button type="submit">Import</button>
-    </form>
-    <form data-control="save-preset-form" class="qf-section" hidden>
-      <h2>Save as preset</h2>
-      <p class="qf-help">A preset keeps the blocks and their options, without this project's data. Every user of the platform can start from it.</p>
-      <div class="field"><label>Name <input name="name" required maxlength="120"></label></div>
-      <div class="field"><label class="inline"><input type="checkbox" name="keep_text"> Keep texts</label></div>
-      <button type="submit">Save preset</button> <button type="button" class="ghost" data-control="cancel-preset">Cancel</button>
-    </form>
-  </section>
-  {% endif %}
-  <section class="qf-section presets">
-    <h2>Presets</h2>
-    <p class="qf-help">Saved report structures, for every project of the platform.</p>
-    <ul>
-    {% for p in saved_presets %}
-      <li data-preset="{{ p.id }}"><strong>{{ p.name }}</strong>{% if p.description %} <span class="muted">{{ p.description }}</span>{% endif %}
-        <a class="btn ghost small" data-control="export-preset" href="{{ root }}/api/presets/{{ p.id }}/export" download>Export</a>
-        {% if p.may_delete %}<button type="button" class="small danger" data-control="delete-preset" data-preset="{{ p.id }}" data-confirm-action="Delete preset" data-confirm-text="Delete the preset {{ p.name }}? Layouts made from it stay as they are.">Delete</button>{% endif %}
-      </li>
-    {% else %}
-      <li class="muted">No saved preset yet.</li>
-    {% endfor %}
-    </ul>
+    {% if not layouts %}<p class="muted table-note">This project has no layout of its own yet.{% if editor %} Duplicate a built-in one, or start with New layout.{% endif %}</p>{% endif %}
   </section>
 </main>
 {% endblock %}

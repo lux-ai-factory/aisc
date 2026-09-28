@@ -296,3 +296,13 @@ dialog[data-confirm]::backdrop { background: rgba(0, 0, 0, 0.3); }
 .preview-label.error { color: var(--error); }
 .preview-controls { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
 .legacy-links { font-size: 13px; margin: 4px 0; }
+
+/* Layouts: the built-in ones first, marked */
+.badge {
+  display: inline-block; padding: 1px 7px; margin-left: 6px; vertical-align: middle;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--primary); border: 1px solid var(--primary);
+}
+.row-help { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; margin-top: 3px; max-width: 70ch; }
+tr.built-in td { background: var(--panel-2); }
+.table-note { margin: 14px 0 0; }

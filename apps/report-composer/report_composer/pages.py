@@ -11,7 +11,7 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import coverage_map, db, forms, layouts, preview_with, prose
+from . import builtin_layouts, coverage_map, db, forms, layouts, preview_with, prose
 from . import templates as looks
 from .guards import guard
 from .jinja_env import env
@@ -60,16 +60,14 @@ def layouts_page_without_slash(request: Request, ref: str):
 
 @router.get("/p/{ref}/")
 def layouts_page(request: Request, ref: str):
+    """The layouts: the five built-in ones, then the project's (report modules spec 2026-09-28, 4 and 5)."""
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, "/")
-    # the project's rows from its own database, the saved presets from the library on `platform` (D4)
     with request.app.state.projects.connect(g.project["pid"]) as conn:
         rows = db.list_layouts(conn)
-        systems = db.systems(conn)
-        templates = _templates(conn)
-    return _page("layouts.html.j2", request, project=g.project, layouts=rows, systems=systems,
-                 templates=templates, editor=g.access.may_write)
+    return _page("layouts.html.j2", request, project=g.project, layouts=rows,
+                 builtins=builtin_layouts.all_layouts(block_types(request)), editor=g.access.may_write)
 
 
 def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
