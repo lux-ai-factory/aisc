@@ -4,3 +4,7 @@ env.secrets
 keycloak/aisc-realm.local.json
 env.runtime
 env.engine-standalone
+
+# Python bytecode
+__pycache__/
+*.pyc
