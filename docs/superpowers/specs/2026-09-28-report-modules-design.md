@@ -62,6 +62,7 @@ A layout holds no data, so its options follow one rule:
     selection, optionally narrowed by tool and metric (both kept).
   - `changes_since.compare_to` keeps only "the version before". Picking a specific earlier version
     becomes part of the selection (section 6).
+  - `chart.runs` (run ids) is removed the same way: a chart shows the runs of the selection.
   - `summary_coverage`'s legacy "own links" and the layout-level `coverage` map, whose choices depend
     on a version, become a block option of Coverage that names objectives by id only.
 - Built-in layouts use "all" for every reference option, since they know no project.
@@ -71,8 +72,8 @@ against the rule above.
 
 ## 4. Built-in layouts (the former presets)
 
-- The four built-ins (EU AI Act conformity, Executive summary, Full assessment, Internal audit) stay
-  files in the composer (`report_composer/presets/*.json`), shared and read-only.
+- The built-ins are five files in the composer (`report_composer/presets/*.json`, section 4.1),
+  shared and read-only. They replace today's four.
 - They appear in the project's Layouts list, marked "Built-in", beside the project's own layouts.
 - Opening one shows it in the layout editor, read-only, with its preview. **Duplicate** makes an
   editable copy in the project.
@@ -80,6 +81,75 @@ against the rule above.
   projects is Export and Import of a layout file.
 - The file format stays `aisc-report-preset` version 1 for reading old files. Export writes version 2,
   which drops `system_id`, `language` and version-bound references.
+
+### 4.1 The five built-in layouts
+
+They replace today's four presets and form a ladder: each level answers a more detailed question than
+the one before, for a different reader. Only the options named below differ from a module's defaults;
+every reference option is "all" (section 3.1). No built-in holds a dashboard chart, since a chart
+belongs to a project; a duplicated layout can add them, with their comments.
+
+| Level | Name | For | Question it answers |
+|---|---|---|---|
+| 1 | **Summary** | board, a first look | Where do we stand, in one page? |
+| 2 | **Management overview** | management, the provider's owner | What is the system, how risky, what is missing? |
+| 3 | **Assessment report** | the project team, the default | What did we assess, and what came out? |
+| 4 | **EU AI Act conformity** | the conformity file, a notified body | Can every claim be traced to its evidence? |
+| 5 | **Technical dossier** | auditors, engineers | Everything, down to each configuration and quote |
+
+**1. Summary**
+- Cover
+- Key figures: version, risks, objectives, coverage, tests
+- Coverage: only objectives without evidence
+- Changes since the version before: all parts, changed items only
+
+**2. Management overview**
+- Cover
+- Key figures: all figures, with the tool headlines
+- AI card: no components, tags or graph numbers
+- Risk classification: the risk class and impact areas, without the risk chains
+- Chart: coverage status
+- Coverage: only objectives without evidence
+- Changes since the version before
+
+**3. Assessment report** (the default when a project has no layout)
+- Cover, Key figures (all)
+- Chapter "The AI system": AI card (with components), Risk classification (with risk chains)
+- Chapter "Control objectives": Control objectives (grouped by objective, with coverage status and
+  severity), Coverage (all objectives)
+- Chapter "Tests": Test runs (summary), Test results (summary), Chart: metric by run
+- Changes since the version before
+
+**4. EU AI Act conformity**
+- Cover, Free text "Scope" (placeholder), Key figures (all)
+- Chapter "The AI system": AI card (components and tags), Risk classification (risk chains and
+  impact areas)
+- Chapter "Control objectives": Control objectives (with rationale and severity, unrated risks
+  included), Control answers (with scores), Coverage (all objectives)
+- Chapter "Evidence": Test runs (with each tool's configuration summary), Test results (full),
+  Chart: metric by run, Chart: checklist scores
+- Changes since the version before
+- Free text "Findings" (placeholder)
+- Appendix: Free text "Method" (placeholder)
+
+**5. Technical dossier**
+- Everything in level 4, and:
+  - Control objectives grouped by risk, with quotes of the source text
+  - Control answers with unanswered questions and archived submissions
+  - Test results of every status, not only completed runs
+  - Chart: metric by dimension, Chart: per-tool chart
+  - Changes since: unchanged items shown too
+- Appendix: Free text "Method", AI card knowledge-graph numbers, Test runs with the full configuration
+  of each tool
+
+The retired "Internal audit" preset's two free texts (scope and findings) live on in level 4.
+Today's "Executive summary" is closest to level 2, "Full assessment" to level 3, "EU AI Act
+conformity" to level 4.
+
+**The new Test runs module's options** (used above): `detail` "summary" (one line per run: date,
+version, status, tools) or "full" (one section per run, each tool with its start and end time),
+`configuration` "none", "summary" (the configuration's name and the options that differ from the
+tool's defaults) or "full" (the whole configuration). Defaults: summary, none.
 
 ## 5. Layouts and the layout editor
 
