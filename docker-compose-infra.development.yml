@@ -102,7 +102,7 @@ services:
 
   # PostgreSQL database service
   postgres:
-    image: postgres:14-alpine
+    image: postgres:15-alpine   # the backend requires PG15 (Meril's 5a05f12); fresh volumes, no data migration
     container_name: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -138,7 +138,7 @@ services:
   # The same grants on a volume that already exists: initdb scripts only run on
   # an empty one. Idempotent, so it runs on every start and then exits.
   postgres-setup:
-    image: postgres:14-alpine
+    image: postgres:15-alpine
     container_name: postgres-setup
     environment:
       PGHOST: postgres

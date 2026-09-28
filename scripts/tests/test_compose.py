@@ -330,3 +330,57 @@ def test_the_webapp_gets_the_launcher_url(compose):
     q, cfg = compose
     value = cfg["services"]["aisc-webapp"]["environment"].get("APP_LAUNCHER_URL")
     assert value, "APP_LAUNCHER_URL is not set on aisc-webapp"
+
+
+# ── Méril's staging set (pipeline 2026-09-27, task 9b): the engine installs from the online
+# package index the hosted catalogue lists; postgres 15 (Ruling 38) ─────────────────────────
+
+ONLINE_INDEX = "http://10.50.3.47/"
+ONLINE_SIMPLE = "http://10.50.3.47/root/public/+simple/"
+
+
+def _runtime_env():
+    base = re.search(r"^cat (\S+) \"\$OUT\"", (ROOT / "scripts" / "secrets.sh").read_text(), re.M).group(1)
+    env = dict(l.split("=", 1) for l in (ROOT / base).read_text().splitlines()
+               if "=" in l and not l.lstrip().startswith("#"))
+    return base, {k.strip(): v.strip() for k, v in env.items()}
+
+
+def test_the_runtime_env_installs_from_the_online_index():
+    """env.runtime (built from env.plugin_downloader) names the online devpi as the registry and
+    trusts its simple index."""
+    base, env = _runtime_env()
+    assert env.get("PACKAGE_REGISTRY_URL") == ONLINE_INDEX, base
+    assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", base
+    assert ONLINE_SIMPLE in env.get("CATALOGUE_TRUSTED_INDEXES", "").split(","), base
+
+
+def test_the_engine_installs_from_the_online_index(compose):
+    """The engine (backend and eval worker) gets the online devpi as its registry;
+    env.development trusts its simple index."""
+    q, cfg = compose
+    for name in ("aisc-backend", "aisc-eval-worker"):
+        env = cfg["services"][name].get("environment") or {}
+        assert env.get("PACKAGE_REGISTRY_URL") == ONLINE_INDEX, name
+        assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", name
+    dev = dict(l.split("=", 1) for l in (ROOT / "env.development").read_text().splitlines()
+               if "=" in l and not l.lstrip().startswith("#"))
+    dev = {k.strip(): v.strip() for k, v in dev.items()}
+    assert ONLINE_SIMPLE in dev.get("CATALOGUE_TRUSTED_INDEXES", "").split(",")
+
+
+def test_the_local_index_stays_but_only_the_publisher_uses_it(compose):
+    """Ruling 38: the local devpi stays in the stack; the publisher uploads there, never to the
+    online index."""
+    q, cfg = compose
+    assert "devpi" in cfg["services"]
+    twine = (cfg["services"]["plugin-publisher"].get("environment") or {}).get("TWINE_REPOSITORY_URL", "")
+    assert twine.startswith("http://devpi:3141/"), twine
+    assert "10.50.3.47" not in twine
+
+
+def test_postgres_is_15(compose):
+    """The backend requires PG15 (Méril's commit 5a05f12); fresh volumes, no data migration."""
+    q, cfg = compose
+    image = cfg["services"]["postgres"]["image"]
+    assert re.match(r"postgres:15(\D|$)", image), image

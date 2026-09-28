@@ -625,7 +625,7 @@ services:
 
   # SELECT for report_ro on what the report reads, again on every start (02 D6 (b)(c))
   report-grants:
-    image: postgres:14-alpine
+    image: postgres:15-alpine
     container_name: report-grants
     environment:
       PGHOST: postgres
@@ -777,9 +777,10 @@ services:
     volumes:
       - ./def_plugins:/src:ro
     environment:
-      TWINE_USERNAME: ${PACKAGE_REGISTRY_USER:-root}
-      TWINE_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD:-}
-      TWINE_REPOSITORY_URL: ${PACKAGE_REGISTRY_URL:-http://devpi:3141}/${PACKAGE_REGISTRY_INDEX:-root/public}/
+      # the local devpi only: PACKAGE_REGISTRY_URL is the online index the engine installs from
+      TWINE_USERNAME: root
+      TWINE_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+      TWINE_REPOSITORY_URL: http://devpi:3141/${DEVPI_INDEX:-root/public}/
     entrypoint: ["/bin/sh", "-c"]
     command:
       - "pip install --quiet build twine && out=$$(mktemp -d) && for d in /src/*/; do [ -f \"$$d/pyproject.toml\" ] || continue; python -m build --outdir $$out \"$$d\" >/dev/null 2>&1 || { echo \"could not build $$d\"; continue; }; done && twine upload --non-interactive $$out/* && echo 'plugins published to the index'"
@@ -875,9 +876,10 @@ services:
 
   # ── The package index tests are installed from ──
   # Step 3's catalogue is the hosted one (https://sandboxconfigurator.aifactory.lu/catalogue);
-  # no catalogue runs here. The index stays local: plugin-publisher fills it from
-  # def_plugins at bring-up, and the engine installs only from it. Its image is
-  # built from the catalogue submodule's devpi folder.
+  # no catalogue runs here. The engine installs from the online index the hosted catalogue
+  # lists (PACKAGE_REGISTRY_URL, Ruling 38); this local index stays, filled by plugin-publisher
+  # from def_plugins at bring-up, unused by the engine. Its image is built from the catalogue
+  # submodule's devpi folder.
   devpi:
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
