@@ -275,7 +275,7 @@ fieldset legend { font-weight: 700; font-size: 13px; }
 .choices { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
 .choice-filter { display: block; margin: 6px 0; }
 .inline-problem, .problems { color: var(--error); }
-#blocks li[data-depth="1"] { margin-left: 28px; border-left: 3px solid var(--border-strong); padding-left: 10px; }
+#blocks li[data-depth="1"] { margin-left: 28px; border-left: 3px solid var(--border-strong); }   /* keeps the room of its number */
 .palette button { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; max-width: 240px; }
 .palette .description { font-weight: 400; font-size: 12px; color: var(--muted); }
 .coverage-map { margin-top: 16px; }
@@ -311,7 +311,16 @@ tr.built-in td { background: var(--panel-2); }
 .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
 .palette-group h3 { margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
 .palette-group button { display: flex; width: 100%; max-width: none; margin-bottom: 6px; }
-.toolbar label.name input { min-width: 260px; }
+.toolbar > label.name { min-width: 280px; }
+.toolbar label.name input {
+  background: #ffffff; border: 1px solid var(--border); padding: 10px 12px; font: inherit; font-size: 14px;
+  color: var(--text); text-transform: none; letter-spacing: 0; font-weight: 400;
+}
+.toolbar > label.inline {
+  flex-direction: row; align-items: center; gap: 8px; min-width: 0; align-self: center;
+  font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text);
+}
+.toolbar > label.inline input { width: 18px; height: 18px; accent-color: var(--primary); }
 .preview-with { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 6px; font-size: 13px; }
 .preview-with label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; color: var(--muted); }
 .preview-with label.inline { flex-direction: row; align-items: center; }
