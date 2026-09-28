@@ -162,7 +162,7 @@ services:
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=debug"
+      && celery -A aisc_eval.celery_worker worker --loglevel=info"
 
   aisc-eval-flower:
     platform: linux/amd64

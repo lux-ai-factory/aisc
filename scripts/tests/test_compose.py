@@ -387,6 +387,34 @@ def test_postgres_is_15(compose):
     assert re.match(r"postgres:15(\D|$)", image), image
 
 
+def test_every_compose_file_runs_postgres_15():
+    """Final review, old plan must-fix: staging and the plain infra file ran postgres:14, which
+    the backend does not support. Every compose file that runs a postgres image runs 15."""
+    import yaml
+    found = {}
+    for path in sorted(ROOT.glob("docker-compose*.yml")):
+        for name, svc in (yaml.safe_load(path.read_text()).get("services") or {}).items():
+            image = str((svc or {}).get("image") or "")
+            if image.startswith("postgres:"):
+                found[f"{path.name}:{name}"] = image
+    assert "docker-compose-infra.staging.yml:postgres" in found and "docker-compose-infra.yml:postgres" in found, found
+    assert {k: v for k, v in found.items() if not re.match(r"postgres:15(\D|$)", v)} == {}
+
+
+def test_the_readme_says_staging_needs_fresh_volumes_too():
+    readme = (ROOT / "README.md").read_text()
+    section = readme.split("### PostgreSQL 15", 1)[1].split("\n## ", 1)[0]
+    assert "staging" in section and "fresh volumes" in section, section
+
+
+def test_the_eval_worker_does_not_log_at_debug(compose):
+    """Final review I3: at debug the worker prints each message, run ticket included."""
+    q, cfg = compose
+    command = cfg["services"]["aisc-eval-worker"]["command"]
+    command = " ".join(command) if isinstance(command, list) else command
+    assert "--loglevel=info" in command and "debug" not in command, command
+
+
 
 # ── Task 9b fix round 1: the standalone compose (Rulings 41, 42) ─────────────────────────────
 

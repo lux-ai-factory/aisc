@@ -244,9 +244,11 @@ Compose refuses to start while one of them is missing.
 
 ### PostgreSQL 15
 
-Both stacks run PostgreSQL 15 (the backend requires it). A data directory made by PostgreSQL 14
-does not start under 15, so moving from 14 needs fresh volumes (for example
-`docker compose ... down -v`, which deletes the data); no data migration is provided.
+Every stack runs PostgreSQL 15 (the backend requires it): development, the standalone engine,
+`docker-compose-infra.yml` and staging (`docker-compose-infra.staging.yml`). A data directory
+made by PostgreSQL 14 does not start under 15, so moving from 14 needs fresh volumes on each of
+them, staging included (for example `docker compose ... down -v`, which deletes the data); no
+data migration is provided.
 
 ## 📁 Repository Structure
 
