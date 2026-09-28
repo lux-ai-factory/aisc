@@ -62,9 +62,11 @@ A layout holds no data, so its options follow one rule:
     selection, optionally narrowed by tool and metric (both kept).
   - `changes_since.compare_to` keeps only "the version before". Picking a specific earlier version
     becomes part of the selection (section 6).
-  - `chart.runs` (run ids) is removed the same way: a chart shows the runs of the selection.
-  - `summary_coverage`'s legacy "own links" and the layout-level `coverage` map, whose choices depend
-    on a version, become a block option of Coverage that names objectives by id only.
+  - The layout's coverage map (objective id to tool names and checklists) stays: it names only
+    project-level things. What changes is when it is checked: against the preview's version in the
+    editor, and against the chosen version when a report is generated (correction of 2026-09-28).
+  - Other reference options (checklists, objective ids, tools, metrics, dashboard charts) are checked
+    the same way: in the editor against the preview's version, at generation against the anchor.
 - Built-in layouts use "all" for every reference option, since they know no project.
 
 The renderer's `x-aisc-reference` marker already flags every such option; validation checks each one
@@ -149,7 +151,9 @@ conformity" to level 4.
 **The new Test runs module's options** (used above): `detail` "summary" (one line per run: date,
 version, status, tools) or "full" (one section per run, each tool with its start and end time),
 `configuration` "none", "summary" (the configuration's name and the options that differ from the
-tool's defaults) or "full" (the whole configuration). Defaults: summary, none.
+tool's defaults) or "full" (the whole configuration). Defaults: summary, none. A configuration may hold credentials: every key
+whose name contains key, token, secret, password, passwd, credential or auth (any case) is printed as
+"(hidden)", at every level, in both summary and full (correction of 2026-09-28).
 
 ## 5. Layouts and the layout editor
 
@@ -168,7 +172,8 @@ Same interaction rules as the templates screen:
 
 ## 6. Generating a report
 
-A **Generate report** dialog, opened from a layout (editor or list):
+A **Generate report** page, opened from a layout (editor or list): a plain form drawn and handled in
+Python, no browser script (the composer's one script is capped at 500 lines):
 
 1. **AI card version** (required). The anchor: the control-objectives assessment and the control
    answers of that version follow from it. There is no separate control-objectives version: the
@@ -209,7 +214,7 @@ A run belongs to the period when its `created_at` is inside it. A run whose vers
 
 ### 7.2 Report composer schema (migration in `report_composer`, project database)
 
-- `layout`: drop `system_id`, `language`, `coverage`. `toc` (`auto`, `on`, `off`) becomes
+- `layout`: drop `system_id` and `language`; `coverage` stays (section 3.1). `toc` (`auto`, `on`, `off`) becomes
   `show_index boolean NOT NULL DEFAULT true`: `off` maps to false, `on` and `auto` to true.
   `numbering` stays.
 - `generated_report`: keep `system_id` (the anchor); add `period_from timestamptz NULL`,
@@ -224,21 +229,21 @@ A run belongs to the period when its `created_at` is inside it. A run whose vers
 
 `report_library.preset` (0 rows) is dropped with its schema migration. **Needs the user's yes.**
 
-### 7.4 Chart comments (decision needed)
+### 7.4 Chart comments (option A, corrected 2026-09-28)
 
-Today `aisc_comment` (superset database, results-dashboard extension) holds dashboard id, chart id,
-author, text and date, with no project, version or run. Comments can only be filtered by chart and date.
+Findings while planning: each project has its own dashboard, datasets and charts (the results
+dashboard's `register_project`), and the renderer already reads only the comments of the project's
+dashboards (through the `AiscProject_<hex>` role). A dashboard chart plots every version at once, so
+"the version a chart showed" does not exist. So the dashboard's comment table does **not** change:
 
-Default in this spec (option A, not yet chosen by the user): the comment table gains
-`project_id uuid NULL` and `system_id uuid NULL`, filled by the dashboard when a comment is written
-(the project and version the chart showed). A Chart module prints the comments of its chart for the
-report's project and version, inside the period. Old comments without a project are not printed.
-Alternatives: B, comments stored in the composer next to the layout; C, dashboard comments filtered by
-chart and date only.
+- Project: a comment belongs to the chart's project (already enforced by the renderer's query).
+- Version: a comment is about the AI card version that was current when it was written: the newest
+  `project.system` row with `created_at <= comment.created_at`. This is the rule the engine uses for
+  runs (a run records the version current at its start).
+- The report's rules then apply as for runs: comments of the anchor version, inside the period; with
+  "other versions" on, all of them, each marked with its version.
 
-On this install the dashboard has 0 datasets, 0 charts and 0 comments: `dashboard_chart` has no
-source until the dashboard's datasets are set up. The renderer's own `chart` block (drawn from the
-scores) has no comments; it gets none in this design.
+The renderer's own `chart` block (drawn from the scores) has no comments.
 
 ### 7.5 Not available, out of scope
 
