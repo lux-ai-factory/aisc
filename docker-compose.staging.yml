@@ -8,6 +8,8 @@ services:
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
+      # Auth toggle injected into the built JS at container start (env.sh replaces APP_AUTH_ENABLED).
+      APP_AUTH_ENABLED: ${AUTH_ENABLED}
       # Keycloak URL injected into the built webapp JS at container start (env.sh replaces APP_KEYCLOAK_URL).
       APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
       # Public catalogue URL injected into the built webapp JS at container start (env.sh replaces APP_CATALOG_URL).
