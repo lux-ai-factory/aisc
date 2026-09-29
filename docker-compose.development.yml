@@ -137,10 +137,10 @@ services:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
       # Manage -> Connections: a plugin process inherits these and resolves the connection it was
-      # given through the platform's internal route (aisc_plugin_interface.connections)
+      # given through the platform's internal route (aisc_plugin_interface.connections); the
+      # answer carries the project's network rule too, so the worker has no allowlist of its own
       PLATFORM_URL: http://platform:8000
       PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
-      CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}
       # As above (aisc_eval/deployment.py): the run ticket and the project headers are the
       # Configurator's, not Sean's standalone ones.
       AISC_DEPLOYMENT: configurator
@@ -845,7 +845,8 @@ services:
       PLATFORM_OLLAMA_BASE_URL: ${PLATFORM_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       # Manage -> Connections: the token the plugin-side client resolves a connection with; the
       # engine the platform makes each connection's component in (with the admin's own token); and
-      # the internal hosts a connection may call (host or host:port, comma list; empty: none).
+      # the internal hosts every project's connections may call, on top of what each project allows
+      # under Manage -> Connections (host or host:port, comma list; empty: none).
       PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
       ENGINE_URL: http://aisc-backend:8000
       CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}

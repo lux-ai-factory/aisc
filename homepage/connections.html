@@ -95,6 +95,11 @@
   td.name small{display:block; font-family:var(--mono); font-size:11px; font-weight:400; color:var(--faint)}
   td.state{font-family:var(--mono); font-size:11.5px; color:var(--muted)}
   td.state .ok{color:var(--primary)} td.state .bad{color:var(--error)}
+  #allowlist{margin-top:34px}
+  #allowlist td.note{color:var(--muted)} #allowlist td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
+  #allowlist .denied{display:block; color:var(--error); font-size:12px}
+  form.inline{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
+  form.inline input{flex:1}
   .fields{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
   input, select, textarea{
     font:inherit; font-size:13.5px; padding:8px 10px; color:var(--text);
@@ -211,6 +216,24 @@
       </form>
     </section>
   </div>
+
+  <section id="allowlist" hidden>
+    <h2>Allowed internal hosts</h2>
+    <p>A connection may call any public address. An internal one (a private network, the Docker
+       host, a machine on your LAN) is refused unless it is listed here, as a host or host:port.
+       Changes apply to the next call, with no restart. The services of this deployment, loopback
+       (the platform itself) and cloud metadata addresses are never allowed here.</p>
+    <table>
+      <thead><tr><th>Host</th><th>Note</th><th>Changed</th><th></th></tr></thead>
+      <tbody id="allow-rows"></tbody>
+    </table>
+    <form id="allow-form" class="inline" autocomplete="off">
+      <input id="f-allow-host" type="text" placeholder="host.docker.internal:8500"/>
+      <input id="f-allow-note" type="text" placeholder="note, e.g. MCAS-lite on the Docker host"/>
+      <button type="submit" id="allow-add">Allow</button>
+    </form>
+    <span class="msg" id="allow-msg"></span>
+  </section>
 </main>
 
 </div>
@@ -264,14 +287,23 @@
         return api('/api/authz/projects/' + enc(slug)).then(function (res) { return res.ok ? res.json() : null; });
       })
       .then(function (a) {
-        if (!a || !a.admin) {
+        if (!a || !(a.admin || a.role === 'owner')) {
           $('who').textContent = 'signed in';
           if ($('page-message').hidden) show('gate');
           return;
         }
-        $('who').textContent = 'admin';
-        show('settings');
-        reload();
+        // an owner decides which internal hosts the project's connections may reach; managing the
+        // connections themselves is a platform admin's
+        show('allowlist');
+        reloadAllowlist();
+        if (a.admin) {
+          $('who').textContent = 'admin';
+          show('settings');
+          reload();
+        } else {
+          $('who').textContent = 'owner';
+          show('gate', 'Connections are managed by a platform admin; as an owner you decide which internal hosts they may reach.');
+        }
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
   }
@@ -465,6 +497,72 @@
   $('cancel').addEventListener('click', function () { $('edit').hidden = true; editing = null; $('f-secret').value = ''; });
   $('f-kind').addEventListener('change', kindShown);
   $('editor').addEventListener('submit', submit);
+
+  // ── allowed internal hosts: an owner's or an admin's ──
+
+  function allowBase() { return '/api/projects/' + enc(slug) + '/allowed-hosts'; }
+
+  function allowRow(host, note, when, removable, denied) {
+    var tr = el('tr');
+    var cell = el('td', 'name', host);
+    if (denied) cell.appendChild(el('span', 'denied', denied));
+    tr.appendChild(cell);
+    tr.appendChild(el('td', 'note', note || ''));
+    tr.appendChild(el('td', 'when', when));
+    var act = el('td');
+    if (removable) {
+      var b = el('button', 'ghost', 'Remove');
+      b.type = 'button';
+      b.addEventListener('click', function () {
+        say($('allow-msg'), 'Removing...');
+        api(allowBase() + '/' + enc(host), {method: 'DELETE'}).then(function (res) {
+          if (res.ok) { say($('allow-msg'), ''); reloadAllowlist(); return; }
+          return bodyOf(res).then(function (d) { say($('allow-msg'), refusal(res, d), true); });
+        }).catch(function () { say($('allow-msg'), NOT_ANSWERING, true); });
+      });
+      act.appendChild(b);
+    }
+    tr.appendChild(act);
+    return tr;
+  }
+
+  function reloadAllowlist() {
+    return api(allowBase())
+      .then(function (res) {
+        return bodyOf(res).then(function (d) {
+          if (!res.ok) { say($('allow-msg'), refusal(res, d), true); return; }
+          var rows = $('allow-rows');
+          rows.replaceChildren();
+          (d.floor || []).forEach(function (h) { rows.appendChild(allowRow(h, 'set by the deployment', '', false, null)); });
+          (d.entries || []).forEach(function (e) {
+            var when = e.updated_at ? String(e.updated_at).slice(0, 16).replace('T', ' ') + ' by ' + e.updated_by : '';
+            rows.appendChild(allowRow(e.host, e.note, when, true, e.denied));
+          });
+          if (!(d.floor || []).length && !(d.entries || []).length) {
+            var tr0 = el('tr'); var td0 = el('td', '', 'No internal host allowed.'); td0.colSpan = 4;
+            tr0.appendChild(td0); rows.appendChild(tr0);
+          }
+        });
+      })
+      .catch(function () { say($('allow-msg'), NOT_ANSWERING, true); });
+  }
+
+  $('allow-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var host = $('f-allow-host').value.trim();
+    if (!host) { say($('allow-msg'), 'Enter a host or host:port.', true); return; }
+    say($('allow-msg'), 'Saving...');
+    api(allowBase() + '/' + enc(host), {method: 'PUT', body: {note: $('f-allow-note').value.trim() || null}})
+      .then(function (res) {
+        return bodyOf(res).then(function (d) {
+          if (!res.ok) { say($('allow-msg'), refusal(res, d), true); return; }
+          $('f-allow-host').value = ''; $('f-allow-note').value = '';
+          say($('allow-msg'), 'Allowed ' + d.host + '.');
+          reloadAllowlist();
+        });
+      })
+      .catch(function () { say($('allow-msg'), NOT_ANSWERING, true); });
+  });
 
   boot();
 </script>

@@ -187,10 +187,15 @@ admin registers the AI systems the project assesses through their API (an OpenAI
 endpoint, an A2A agent, an Open Inference Protocol model server, or any REST API with a request
 template), tests each with one probe, and an evaluation then picks one as its system under test.
 A plugin whose tool speaks OpenAI, A2A or OIP reaches any connection through the platform, which
-translates (see `shared/plugin-interface/PLUGIN_DEVELOPER_GUIDE.md`, section 13). Calls to internal addresses (loopback, private ranges,
-the stack's own services) are refused unless listed in `CONNECTIONS_ALLOWED_HOSTS` (host or
-host:port, comma list), e.g. `CONNECTIONS_ALLOWED_HOSTS=host.docker.internal:8500` for a system
-running on the Docker host.
+translates (see `shared/plugin-interface/PLUGIN_DEVELOPER_GUIDE.md`, section 13).
+
+Calls to internal addresses (private ranges, the Docker host, your LAN) are refused unless allowed.
+A project's owners and platform admins allow them on the same page, under **Allowed internal
+hosts** (host or host:port, e.g. `host.docker.internal:8500` for a system on the Docker host);
+changes apply to the next call, with no restart. The deployment can add hosts for every project
+with `CONNECTIONS_ALLOWED_HOSTS` on the `platform` service (comma list), shown read-only on the
+page. The stack's own services, loopback and cloud metadata addresses are never allowed from the
+page; only that variable can allow them.
 
 Steps 1, 2 and 5 need a model to be useful. Qualification's LiteLLM sidecar takes
 `MISTRAL_API_KEY` or `ANTHROPIC_API_KEY`; control objectives defaults to a keyless

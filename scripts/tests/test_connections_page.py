@@ -23,18 +23,21 @@ def markup_of(html):
 
 # ── H1 the Manage entry ─────────────────────────────────────────────────────
 
-def test_h1_the_manage_menu_links_the_page_for_admins_only():
+def test_h1_the_manage_menu_links_the_page_for_owners_and_admins():
+    # allowlist task 2026-09-29: an owner manages the project's allowed internal hosts there, so the
+    # link shows for owners too; managing the connections themselves stays a platform admin's
     html = read(PROJECT_PAGE)
     manage = re.search(r'<details[^>]*id="manage".*?</details>', html, re.S).group(0)
     link = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>(.*?)</a>', manage, re.S)
     assert link and link.group(1).strip() == "Connections"
     tag = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>', manage).group(0)
-    assert "admin-only" in tag and "hidden" in tag, tag
+    assert "owner-only" in tag and "hidden" in tag, tag
     script = script_of(html)
-    gate = script.find("a.admin")
+    gate = re.search(r"if \(a\.admin \|\| a\.role === 'owner'\)", script)
     wiring = re.search(r"getElementById\('connections-settings'\)\.href\s*=\s*'/connections\.html\?project='\s*\+\s*"
                        r"encodeURIComponent\(slug\)", script)
-    assert wiring and gate != -1 and wiring.start() > gate, "the href is not set inside the admin-only block"
+    assert gate and wiring and wiring.start() > gate.start(), "the href is not set inside the owner block"
+    assert script.find("if (!a.admin) return;") > wiring.start(), "the link must not wait for the admin-only part"
 
 
 # ── H2 what the page does ───────────────────────────────────────────────────
@@ -155,3 +158,38 @@ def test_h5_the_key_row_is_the_field_and_its_remove_box_side_by_side():
     assert re.search(r'input\[type="?checkbox"?\]\s*\{[^}]*min-width:\s*0', css)
     check = re.search(r"form#editor label\.check\s*\{([^}]*)\}", css)
     assert check and "text-transform:none" in check.group(1).replace(" ", "")
+
+
+# ── H6 the allowed internal hosts (allowlist task 2026-09-29) ──────────────
+
+def test_h6_the_page_has_an_allowlist_section_outside_the_admins_part():
+    html = markup_of(read(PAGE))
+    section = re.search(r'<section id="allowlist" hidden>.*?</section>', html, re.S)
+    assert section, "no allowlist section"
+    settings = re.search(r'<div id="settings" hidden>.*?</div>\s*(?=<section id="allowlist")', html, re.S)
+    assert settings, "the allowlist section must sit outside the admins' part, so owners see it"
+    assert "Allowed internal hosts" in section.group(0)
+    for needed in ('id="f-allow-host"', 'id="f-allow-note"', 'id="allow-add"', 'id="allow-rows"', 'id="allow-msg"'):
+        assert needed in section.group(0), needed
+
+
+def test_h6_an_owner_gets_the_allowlist_and_an_admin_gets_everything():
+    script = script_of(read(PAGE))
+    assert re.search(r"a\.admin\s*\|\|\s*a\.role === 'owner'", script)
+    assert "show('allowlist')" in script and "show('settings')" in script
+    assert script.index("show('settings')") > script.index("if (a.admin)")
+
+
+def test_h6_it_lists_adds_and_removes_through_the_platform():
+    script = script_of(read(PAGE))
+    assert "'/api/projects/' + enc(slug) + '/allowed-hosts'" in script
+    assert re.search(r"allowBase\(\) \+ '/' \+ enc\(host\)", script), "the entry must be URL-encoded"
+    assert "'PUT'" in script and "'DELETE'" in script
+
+
+def test_h6_the_deployments_entries_are_shown_read_only_and_denials_are_said():
+    html = read(PAGE)
+    script = script_of(html)
+    assert ".floor" in script and "set by the deployment" in html
+    assert ".denied" in script
+    assert "never" in html.lower() and "loopback" in html

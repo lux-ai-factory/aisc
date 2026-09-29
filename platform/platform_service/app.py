@@ -32,7 +32,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.headers import token_from_headers
 
-from platform_service import (connection_engine, connection_facade, connection_store, dashboard_bridge, db, llm_catalogue, llm_store,
+from platform_service import (connection_allowlist, connection_engine, connection_facade, connection_store, dashboard_bridge, db, llm_catalogue, llm_store,
                               projectdb)
 from platform_service.membership import (
     InvalidMembership,
@@ -867,7 +867,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     except llm_store.KeyUnreadable as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     try:
-        answer = client.call(descriptor, body.input, allowed_hosts=client.allowed_hosts_from_env(), waits=())
+        answer = client.call(descriptor, body.input, waits=(), **connection_allowlist.rule(pid))
     except client.EndpointError as exc:
         error = next((code for cls, code in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
         message = str(exc).replace(descriptor.secret, "***") if descriptor.secret else str(exc)
@@ -913,8 +913,84 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
         return _internal(409, {"detail": str(exc)})
+    # the network rule of the project, now: the run's own environment opens nothing
+    out.update(connection_allowlist.rule(pid))
     logger.info("connection %s of project %s resolved for a run", name, pid)
     return _internal(200, out)
+
+
+# ── Allowed internal hosts (allowlist task 2026-09-29) ─────────────────────────
+# Per project; its owners and platform admins edit it. The deployment's CONNECTIONS_ALLOWED_HOSTS
+# is a floor shown read-only; the stack's own services, loopback and metadata are never allowed
+# here (connection_allowlist).
+
+class AllowedHostIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: StrictStr | None = None
+
+
+def owner_project(slug: str, caller: Caller) -> str:
+    """The project's pid, for an owner or a platform admin; a stranger gets 404, a lesser member 403."""
+    role_or_404(slug, caller, "owner")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    return found["pid"]
+
+
+def _allowed_view(row: dict) -> dict:
+    return {"host": row["host"], "note": row["note"], "updated_by": row["updated_by"],
+            "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+            "denied": connection_allowlist.why_denied(row["host"])}
+
+
+def _entry_or_422(entry: str) -> str:
+    try:
+        return connection_allowlist.normalise(entry)
+    except connection_allowlist.InvalidEntry as exc:
+        raise HTTPException(status_code=422, detail=f"{entry!r}: {exc}") from None
+
+
+def _not_the_floor(host: str) -> None:
+    if host in {connection_allowlist.normalise(h) for h in connection_allowlist.floor()
+                if connection_allowlist._valid(h)}:
+        raise HTTPException(status_code=409, detail=f"{host} is allowed by the deployment (CONNECTIONS_ALLOWED_HOSTS)"
+                                                    " and is changed there, not here")
+
+
+@app.get("/projects/{slug}/allowed-hosts")
+def list_allowed_hosts(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    pid = owner_project(slug, caller)
+    return {"floor": connection_allowlist.floor(),
+            "entries": [_allowed_view(r) for r in connection_allowlist.entries(pid)]}
+
+
+@app.put("/projects/{slug}/allowed-hosts/{entry}")
+def put_allowed_host(slug: str, entry: str, body: AllowedHostIn,
+                     caller: Caller = Depends(caller_dependency)) -> dict:
+    pid = owner_project(slug, caller)
+    host = _entry_or_422(entry)
+    _not_the_floor(host)
+    note = (body.note or "").strip() or None
+    if note is not None and len(note) > 200:
+        raise HTTPException(status_code=422, detail="note: up to 200 characters")
+    try:
+        row = connection_allowlist.put(pid, host, note, caller.username or caller.subject)
+    except connection_allowlist.DeniedEntry as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    logger.info("project %s allows %s for its connections", pid, host)
+    return _allowed_view(row)
+
+
+@app.delete("/projects/{slug}/allowed-hosts/{entry}", status_code=204)
+def delete_allowed_host(slug: str, entry: str, caller: Caller = Depends(caller_dependency)) -> Response:
+    pid = owner_project(slug, caller)
+    host = _entry_or_422(entry)
+    _not_the_floor(host)
+    if not connection_allowlist.remove(pid, host):
+        raise HTTPException(status_code=404, detail=f"{host} is not allowed in this project")
+    logger.info("project %s no longer allows %s", pid, host)
+    return Response(status_code=204)
 
 
 # ── Protocol endpoints in front of a connection (connections plan, revision 3) ──────
@@ -986,11 +1062,11 @@ def _facade_open(pid: str, name: str, request: Request):
         return None, (503, str(exc))
 
 
-def _facade_call(descriptor, input, history=None):
+def _facade_call(pid, descriptor, input, history=None):
     """(answer, None), or (None, error code) when the connection failed. The key is never in it."""
     from aisc_plugin_interface import connections as client
     try:
-        return client.call(descriptor, input, history, allowed_hosts=client.allowed_hosts_from_env()), None
+        return client.call(descriptor, input, history, **connection_allowlist.rule(pid)), None
     except client.EndpointError as exc:
         code = next((c for cls, c in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
         logger.info("connection %s failed behind a protocol endpoint: %s", descriptor.name, code)
@@ -1013,7 +1089,7 @@ async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse
     body = await _json_body(request)
     if body is None or "input" not in body or not isinstance(body.get("history", []), list):
         return _internal(400, {"detail": "{input, history?: [{role, content}]}"})
-    answer, failed = _facade_call(descriptor, body["input"], body.get("history") or None)
+    answer, failed = _facade_call(pid, descriptor, body["input"], body.get("history") or None)
     if failed:
         return _internal(502, {"error": failed})
     return _internal(200, {"output": answer.text, "refused": answer.refused, "refusal_reason": answer.refusal_reason,
@@ -1031,7 +1107,7 @@ async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONRespo
         input, history = connection_facade.openai_to_core(body or {})
     except connection_facade.BadRequest as exc:
         return _internal(400, connection_facade.openai_error(str(exc)))
-    answer, failed = _facade_call(descriptor, input, history or None)
+    answer, failed = _facade_call(pid, descriptor, input, history or None)
     if failed:
         return _internal(502, connection_facade.openai_error(f"the system under test failed: {failed}", "api_error", failed))
     return _internal(200, connection_facade.core_to_openai(name, answer))
@@ -1069,7 +1145,7 @@ async def facade_a2a_rpc(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32601, f"method not found: {body.get('method')}"))
     except connection_facade.BadRequest as exc:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32602, str(exc)))
-    answer, failed = _facade_call(descriptor, input)
+    answer, failed = _facade_call(pid, descriptor, input)
     if failed:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32603, f"the system under test failed: {failed}"))
     return _internal(200, connection_facade.jsonrpc_result(rid, connection_facade.core_to_a2a(dialect, answer)))
@@ -1121,7 +1197,7 @@ async def facade_oip_infer(pid: str, name: str, model: str, request: Request) ->
         return _internal(400, {"error": str(exc)})
     answers = []
     for item in inputs:
-        answer, failed = _facade_call(descriptor, item)
+        answer, failed = _facade_call(pid, descriptor, item)
         if failed:
             return _internal(502, {"error": f"the system under test failed: {failed}"})
         answers.append(answer)

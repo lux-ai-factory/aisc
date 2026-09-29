@@ -101,11 +101,37 @@ def test_r4_the_eval_worker_gets_the_platform_url_the_token_and_the_allowlist():
     env = services["aisc-eval-worker"]["environment"]
     assert env["PLATFORM_URL"] == "http://platform:8000"
     assert env["PLATFORM_CONNECTIONS_TOKEN"] == "dummy"
-    assert "CONNECTIONS_ALLOWED_HOSTS" in env
-    assert services["platform"]["environment"]["CONNECTIONS_ALLOWED_HOSTS"] == env["CONNECTIONS_ALLOWED_HOSTS"]
+    # allowlist task 2026-09-29: the platform hands a run its project's rule in the resolve
+    # response, so the worker has no allowlist of its own that could drift or open more
+    assert "CONNECTIONS_ALLOWED_HOSTS" not in env
+    assert "CONNECTIONS_ALLOWED_HOSTS" in services["platform"]["environment"]
 
 
 def test_r4_the_platform_the_backend_and_the_worker_share_a_network():
     services, _ = config()
     nets = {s: set(services[s].get("networks", {})) for s in ("platform", "aisc-backend", "aisc-eval-worker")}
     assert nets["platform"] & nets["aisc-backend"] and nets["platform"] & nets["aisc-eval-worker"], nets
+
+
+def test_r6_every_name_a_stack_service_answers_to_is_on_the_deny_list():
+    """The UI may never allow the stack's own services: every service, container and alias name of
+    the compose files is in connection_allowlist.STACK_SERVICES."""
+    import ast
+    import yaml
+
+    src = (ROOT / "platform/platform_service/connection_allowlist.py").read_text()
+    node = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Assign)
+                and any(getattr(t, "id", None) == "STACK_SERVICES" for t in n.targets))
+    listed = set(ast.literal_eval(node.value.args[0]))
+    names = set()
+    for f in ROOT.glob("docker-compose*.yml"):
+        for name, spec in ((yaml.safe_load(f.read_text()) or {}).get("services") or {}).items():
+            names.add(name)
+            if (spec or {}).get("container_name"):
+                names.add(spec["container_name"])
+            nets = (spec or {}).get("networks")
+            if isinstance(nets, dict):
+                for v in nets.values():
+                    names |= set((v or {}).get("aliases") or [])
+    missing = sorted(n for n in names if "${" not in n and n not in listed)
+    assert not missing, f"stack names the UI could allow: {missing}"

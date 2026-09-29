@@ -46,7 +46,8 @@ B = "b0000000-0000-4000-8000-00000000000b"
 TEMPLATES = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004_inspector.sql",
              "0005_llm.sql", "0006_project_system.sql", "0007_qualification.sql",
              "0008_control_objectives.sql", "0009_engine.sql", "0010_report_composer.sql",
-             "0011_qualification_temporary.sql", "0012_connection.sql"]
+             "0011_qualification_temporary.sql", "0012_connection.sql",
+             "0013_connection_allowlist.sql"]
 
 #: I1.1: module schema -> its role.
 MODULES = {

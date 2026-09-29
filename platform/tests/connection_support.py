@@ -20,7 +20,7 @@ def new_secret() -> str:
 
 
 class Stub:
-    def __init__(self):
+    def __init__(self, bind: str = "127.0.0.1"):
         self.routes, self.seen = {}, []
         stub = self
 
@@ -44,10 +44,10 @@ class Stub:
 
             do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _serve
 
-        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.server = http.server.ThreadingHTTPServer((bind, 0), H)
         self.port = self.server.server_address[1]
-        self.base = f"http://127.0.0.1:{self.port}"
-        self.host = f"127.0.0.1:{self.port}"
+        self.base = f"http://{bind}:{self.port}"
+        self.host = f"{bind}:{self.port}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def route(self, method, path, *responses):
@@ -68,3 +68,21 @@ def engine_component(stub: Stub, pid: str):
                                 "json_value": r["json"]["json_value"]}))
     stub.route("PATCH", f"/api/v1/components/{made['pid']}", (200, lambda r: {"pid": made["pid"], **r["json"]}))
     return made
+
+
+def private_address() -> str | None:
+    """This machine's own private, non-loopback IPv4 address (the one it would send from), or None.
+    For stubs that must look like an internal system rather than the platform's own loopback."""
+    import ipaddress
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))           # TEST-NET: nothing is sent, it only picks a route
+        ip = probe.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        probe.close()
+    parsed = ipaddress.ip_address(ip)
+    return ip if parsed.is_private and not parsed.is_loopback else None
