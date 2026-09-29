@@ -180,6 +180,14 @@ The dashboard has a port of its own because Superset needs the site root and doe
 not work under a path prefix. It reads the platform database through a read-only
 role, so it can chart results but never write to them.
 
+**Systems under test over the network.** Under the project page's **Manage → Connections**, an
+admin registers the AI systems the project assesses through their API (an OpenAI-compatible
+endpoint, or any REST API with a request template), tests each with one probe, and an evaluation
+then picks one as its system under test. Calls to internal addresses (loopback, private ranges,
+the stack's own services) are refused unless listed in `CONNECTIONS_ALLOWED_HOSTS` (host or
+host:port, comma list), e.g. `CONNECTIONS_ALLOWED_HOSTS=host.docker.internal:8500` for a system
+running on the Docker host.
+
 Steps 1, 2 and 5 need a model to be useful. Qualification's LiteLLM sidecar takes
 `MISTRAL_API_KEY` or `ANTHROPIC_API_KEY`; control objectives defaults to a keyless
 local Ollama and takes `CONTROL_OBJECTIVES_LLM_PROVIDER` plus that provider's key

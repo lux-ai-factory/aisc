@@ -46,7 +46,7 @@ B = "b0000000-0000-4000-8000-00000000000b"
 TEMPLATES = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004_inspector.sql",
              "0005_llm.sql", "0006_project_system.sql", "0007_qualification.sql",
              "0008_control_objectives.sql", "0009_engine.sql", "0010_report_composer.sql",
-             "0011_qualification_temporary.sql"]
+             "0011_qualification_temporary.sql", "0012_connection.sql"]
 
 #: I1.1: module schema -> its role.
 MODULES = {
@@ -71,13 +71,14 @@ READER_TABLES = {
                "aisc_backend_metriccategory", "aisc_backend_metriccategory_metrics", "aisc_backend_artifact"],
     "report_composer": [],
     "llm": [],
+    "connection": [],
     "provision": [],
 }
 #: I2.6: only these columns of engine.aisc_backend_pluginconfig.
 PLUGIN_CONFIG_COLUMNS = ["id", "plugin_id"]
 #: I2.6: never readable by either reader.
 SECRETS = ["engine.aisc_backend_projectconfig", "engine.aisc_backend_pluginconfigprojectconfig", "llm.provider",
-           "llm.system_choice"]
+           "llm.system_choice", "connection.endpoint"]
 
 #: The migration trackers of every module (I16.3, I16.6 C7).
 TRACKERS = {

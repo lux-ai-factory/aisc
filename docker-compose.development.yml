@@ -136,6 +136,11 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
+      # Manage -> Connections: a plugin process inherits these and resolves the connection it was
+      # given through the platform's internal route (aisc_plugin_interface.connections)
+      PLATFORM_URL: http://platform:8000
+      PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
+      CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}
       # As above (aisc_eval/deployment.py): the run ticket and the project headers are the
       # Configurator's, not Sean's standalone ones.
       AISC_DEPLOYMENT: configurator
@@ -803,13 +808,15 @@ services:
       # aisc_identity: who is calling, answered the same way by every Python
       # service. Mounted rather than copied, so one fix reaches all of them.
       - ./shared/identity:/app/shared/identity:ro,z
+      # Manage -> Connections tests a connection with the same client the plugins use
+      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
       # core is this service's to migrate, and the files are read at startup.
       - ./platform/migrations:/app/migrations:ro,z
       # what every new project database starts with, one file per module
       - ./platform/project-template:/app/project-template:ro,z
     environment:
       PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://platform_rw:platform_rw@postgres:5432/platform}
-      PYTHONPATH: /app/shared/identity
+      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
       # A project belongs to the people in it, so this service has to know who
       # is asking. Verified here rather than taken on the gateway's word.
       AUTH_ENABLED: "true"
@@ -836,6 +843,12 @@ services:
       PLATFORM_RISK_MAPPER_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
       # where a project's ollama choice is reached unless it stored its own URL
       PLATFORM_OLLAMA_BASE_URL: ${PLATFORM_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Manage -> Connections: the token the plugin-side client resolves a connection with; the
+      # engine the platform makes each connection's component in (with the admin's own token); and
+      # the internal hosts a connection may call (host or host:port, comma list; empty: none).
+      PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
+      ENGINE_URL: http://aisc-backend:8000
+      CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

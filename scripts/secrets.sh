@@ -58,6 +58,8 @@ INSPECTOR_PASSWORD=rand
 # One token per agentic system, so each agent resolves only its own choice and key.
 PLATFORM_CARD_AGENT_TOKEN=rand
 PLATFORM_RISK_MAPPER_TOKEN=rand
+# the plugin-side client of Manage -> Connections resolves a connection with it (platform, eval worker)
+PLATFORM_CONNECTIONS_TOKEN=rand
 # One token per caller edge of the service-only APIs (API auth, 2026-09-25): each
 # is held by its caller and its callee only, so no service can call another with
 # a token it was not given.

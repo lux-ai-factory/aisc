@@ -71,13 +71,14 @@ for pair in qualification:qualification_rw control_objectives:control_objectives
   deny_in  "$r" "insert into project.system (number, name) values (99, 'probe')" "cannot write project.system"
 done
 
-echo "4. and cannot reach another module's schema, llm or provision"
+echo "4. and cannot reach another module's schema, llm, connection or provision"
 deny_in qualification_rw      "create table engine.probe_$$ (x int)"            "cannot create in the engine's schema"
 deny_in engine_rw             "create table qualification.probe_$$ (x int)"     "cannot create in qualification's schema"
 deny_in control_objectives_rw "create table controls.probe_$$ (x int)"          "cannot create in the controls schema"
 deny_in report_composer_rw    "create table control_objectives.probe_$$ (x int)" "cannot create in control objectives' schema"
 for r in qualification_rw control_objectives_rw controls_rw engine_rw report_composer_rw; do
   deny_in "$r" "select count(*) from llm.provider"              "cannot read the LLM keys"
+  deny_in "$r" "select count(*) from connection.endpoint"       "cannot read the connections"
   deny_in "$r" "select count(*) from provision.template_migration" "cannot read provisioning"
 done
 
@@ -87,6 +88,7 @@ for r in dashboard_ro report_ro; do
   deny_in  "$r" "insert into project.system (number, name) values (98, 'probe')" "cannot write project.system"
   deny_in  "$r" "create table project.sneaky (x int)" "cannot create tables"
   deny_in  "$r" "select count(*) from llm.provider"   "cannot read the LLM keys"
+  deny_in  "$r" "select count(*) from connection.endpoint" "cannot read the connections"
 done
 deny dashboard_ro "insert into core.project (name, slug) values ('x','y')"  "cannot write core"
 deny dashboard_ro "create table core.sneaky (x int)"                        "cannot create tables in platform"

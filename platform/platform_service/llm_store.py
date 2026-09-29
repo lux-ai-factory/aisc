@@ -194,12 +194,18 @@ def rotate_all(base_dsn: str) -> dict[str, int]:
             counts["unreachable"] += 1
             continue
         with conn:
+            # the connection keys (Manage → Connections) are made with the same key list
+            from platform_service import connection_store
+            rotated_here, unreadable = connection_store.rotate(conn, multi)
+            counts["unreadable"] += unreadable
             if conn.execute("SELECT to_regclass('llm.provider')").fetchone()[0] is None:
                 counts["without_llm"] += 1
+                conn.commit()
+                counts["rotated"] += rotated_here
+                counts["projects"] += bool(rotated_here)
                 continue
             rows = conn.execute("SELECT provider, ciphertext FROM llm.provider"
                                 " WHERE ciphertext IS NOT NULL").fetchall()
-            rotated_here = 0
             for provider, token in rows:
                 try:
                     fresh = multi.rotate(token.encode()).decode()

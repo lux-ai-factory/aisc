@@ -159,7 +159,7 @@ def test_i16_1_a_module_role_has_rights_only_on_its_own_schema(bed, schema, role
     for db in DBS:
         assert bed.scalar(db, f"SELECT has_schema_privilege('{role}', '{schema}', 'USAGE')") == "t"
         assert bed.scalar(db, f"SELECT has_schema_privilege('{role}', 'project', 'USAGE')") == "t"
-        for other in [*ib.MODULES, "llm", "provision"]:
+        for other in [*ib.MODULES, "llm", "connection", "provision"]:
             if other == schema:
                 continue
             for priv in ("USAGE", "CREATE"):

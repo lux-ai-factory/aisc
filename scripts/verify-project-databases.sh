@@ -137,7 +137,7 @@ READER_TABLES = {
                "aisc_backend_evaluationplugin", "aisc_backend_evaluationinput", "aisc_backend_plugin", "aisc_backend_observation",
                "aisc_backend_measurement", "aisc_backend_metric", "aisc_backend_direct", "aisc_backend_derived",
                "aisc_backend_metriccategory", "aisc_backend_metriccategory_metrics", "aisc_backend_artifact"],
-    "report_composer": [], "llm": [], "provision": [],
+    "report_composer": [], "llm": [], "connection": [], "provision": [],
 }
 PLUGIN_CONFIG_COLUMNS = ("id", "plugin_id")
 #: table-level rights has_table_privilege is asked about; the rest are read with aclexplode
@@ -228,7 +228,7 @@ def i16_1_project(db, present):
                 if right not in ("SELECT", "REFERENCES"):
                     ok = False
                     say("FAIL", "I16.1", f"{db}: {role} has {right} on {rel}; only platform_rw writes it")
-        for other in [*MODULES, "llm", "provision"]:
+        for other in [*MODULES, "llm", "connection", "provision"]:
             if other == schema or other not in schemas:
                 continue
             for right in ("USAGE", "CREATE"):

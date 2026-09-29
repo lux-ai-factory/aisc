@@ -28,8 +28,10 @@ from pydantic import BaseModel, ConfigDict, StrictStr
 
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
+from aisc_identity.headers import token_from_headers
 
-from platform_service import dashboard_bridge, db, llm_catalogue, llm_store, projectdb
+from platform_service import (connection_engine, connection_store, dashboard_bridge, db, llm_catalogue, llm_store,
+                              projectdb)
 from platform_service.membership import (
     InvalidMembership,
     at_least,
@@ -670,6 +672,243 @@ def resolve_llm(pid: str, system: str, request: Request) -> JSONResponse:
                 return _internal(409, {"detail": str(exc)})
     return _internal(200, {"configured": True, "provider": provider, "model": choice["model"],
                            "base_url": base_url, "api_key": api_key})
+
+
+# ── Manage → Connections (connections plan 2026-09-29) ─────────────────────────
+# The systems a project assesses over the network. An admin registers, tests and deletes them;
+# the engine sees each as a `resource` component `connection:<pid>/<name>`; the plugin-side
+# client (aisc_plugin_interface.connections) resolves one on the internal route below.
+
+CONNECTION_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_HEADER_NAME = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+_SECRET_HEADERS = {"authorization", "proxy-authorization", "cookie", "x-api-key"}
+
+
+class ConnectionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: StrictStr
+    kind: StrictStr
+    base_url: StrictStr
+    method: StrictStr = "POST"
+    path: StrictStr = ""
+    headers: dict[str, StrictStr] = {}
+    secret_header: StrictStr | None = None
+    body_template: object | None = None
+    response_path: StrictStr | None = None
+    refusal: dict | None = None
+    model: StrictStr | None = None
+    timeout_s: int = 60
+    secret: StrictStr | None = None
+
+
+class ProbeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input: StrictStr = "ping"
+
+
+def _invalid_connection(detail: str) -> HTTPException:
+    return HTTPException(status_code=422, detail=detail)
+
+
+def connection_fields(body: ConnectionIn) -> dict:
+    """The columns to store, after every check; nothing is written when one fails."""
+    label = body.label.strip()
+    if not 1 <= len(label) <= 120:
+        raise _invalid_connection("label: 1 to 120 characters")
+    if body.kind not in ("openai", "rest"):
+        raise _invalid_connection("kind: openai or rest")
+    parts = urlsplit(body.base_url.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise _invalid_connection("base_url: an http(s) URL with a host")
+    method = body.method.upper()
+    if method not in ("GET", "POST", "PUT"):
+        raise _invalid_connection("method: GET, POST or PUT")
+    for name in body.headers:
+        if not _HEADER_NAME.match(name):
+            raise _invalid_connection(f"headers: {name!r} is not a header name")
+        if name.lower() in _SECRET_HEADERS:
+            raise _invalid_connection(f"headers: {name} carries a credential; put it in secret_header")
+    if body.secret_header is not None:
+        name, sep, value = body.secret_header.partition(":")
+        if not sep or not _HEADER_NAME.match(name.strip()) or "{{secret}}" not in value:
+            raise _invalid_connection("secret_header: 'Name: ...{{secret}}...'")
+    if not 1 <= body.timeout_s <= 600:
+        raise _invalid_connection("timeout_s: 1 to 600")
+    if body.refusal is not None:
+        status = body.refusal.get("status")
+        if (not isinstance(status, list) or not status
+                or not all(isinstance(x, int) and 100 <= x <= 599 for x in status)
+                or not isinstance(body.refusal.get("path", ""), str)
+                or not isinstance(body.refusal.get("match", {}), dict)
+                or set(body.refusal) - {"status", "path", "match"}):
+            raise _invalid_connection("refusal: {status: [codes], path?: str, match?: {path: value}}")
+    if body.kind == "rest":
+        if not (body.response_path or "").strip():
+            raise _invalid_connection("response_path: where the answer is in the response")
+        if body.body_template is None and method != "GET":
+            raise _invalid_connection("body_template: the request body, with {{input}}")
+    if body.kind == "openai" and not (body.model or "").strip():
+        raise _invalid_connection("model: the model the endpoint serves")
+    return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": method,
+            "path": body.path.strip(), "headers": dict(body.headers), "secret_header": body.secret_header,
+            "body_template": body.body_template, "response_path": body.response_path,
+            "refusal": body.refusal, "model": body.model, "timeout_s": body.timeout_s}
+
+
+def connection_view(row: dict) -> dict:
+    out = {k: row.get(k) for k in connection_store.PUBLIC}
+    for k in ("updated_at", "last_test_at"):
+        out[k] = row[k].isoformat() if row.get(k) else None
+    out["engine_component"] = str(row["engine_component"]) if row.get("engine_component") else None
+    out["has_secret"] = bool(row.get("has_secret"))
+    out["engine_linked"] = out["engine_component"] is not None
+    return out
+
+
+def admin_connection(slug: str, caller: Caller, name: str) -> str:
+    pid = admin_project(slug, caller)["pid"]
+    if not CONNECTION_NAME.match(name):
+        raise HTTPException(status_code=422, detail="name: lower-case letters, digits and hyphens, up to 63")
+    return pid
+
+
+def link_to_engine(pid: str, name: str, row: dict, request: Request, previous_label: str | None) -> dict:
+    """Make or rename the engine's component; on failure the connection stays, unlinked."""
+    token = token_from_headers(request.headers) or ""
+    try:
+        if row.get("engine_component") is None:
+            component = connection_engine.create(pid, name, row["label"], token)
+            connection_store.set_engine_component(pid, name, component)
+            row = {**row, "engine_component": component}
+        elif previous_label is not None and previous_label != row["label"]:
+            connection_engine.rename(pid, str(row["engine_component"]), row["label"], token)
+    except connection_engine.EngineUnavailable as exc:
+        logger.warning("connection %s of project %s not linked to the engine: %s", name, pid, exc)
+    return row
+
+
+@app.get("/projects/{slug}/connections")
+def list_connections(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    pid = admin_project(slug, caller)["pid"]
+    return {"connections": [connection_view(r) for r in connection_store.list_connections(pid)]}
+
+
+@app.put("/projects/{slug}/connections/{name}")
+def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
+                    caller: Caller = Depends(caller_dependency)) -> JSONResponse:
+    """Create, update or revive a connection. `secret` absent keeps the stored key, "" removes it."""
+    pid = admin_connection(slug, caller, name)
+    fields = connection_fields(body)
+    ciphertext = connection_store.KEEP
+    if "secret" in body.model_fields_set:
+        try:
+            ciphertext = llm_store.encrypt(body.secret) if body.secret else None
+        except llm_store.SecretsKeyError as exc:
+            raise secrets_unavailable(exc) from None
+    before = connection_store.get(pid, name, with_deleted=True)
+    row = connection_store.save(pid, name, fields, ciphertext=ciphertext, subject=caller.username or caller.subject)
+    row = link_to_engine(pid, name, row, request, before["label"] if before else None)
+    view = connection_view(row)
+    return JSONResponse(status_code=200 if view["engine_linked"] else 207, content=view)
+
+
+@app.post("/projects/{slug}/connections/{name}/link")
+def link_connection(slug: str, name: str, request: Request, caller: Caller = Depends(caller_dependency)) -> JSONResponse:
+    """Try again to make the engine's component of a connection that is not linked yet."""
+    pid = admin_connection(slug, caller, name)
+    row = connection_store.get(pid, name)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no connection {name!r}")
+    view = connection_view(link_to_engine(pid, name, row, request, None))
+    return JSONResponse(status_code=200 if view["engine_linked"] else 207, content=view)
+
+
+@app.delete("/projects/{slug}/connections/{name}", status_code=204)
+def delete_connection(slug: str, name: str, caller: Caller = Depends(caller_dependency)) -> Response:
+    """Mark it deleted. The engine's component stays, so past evaluations keep what they used."""
+    pid = admin_connection(slug, caller, name)
+    if not connection_store.delete(pid, name):
+        raise HTTPException(status_code=404, detail=f"no connection {name!r}")
+    return Response(status_code=204)
+
+
+def descriptor_of(row: dict) -> dict:
+    """What the plugin-side client needs, the key decrypted."""
+    out = {k: row.get(k) for k in connection_store.PUBLIC if k not in ("engine_component", "last_test_at",
+                                                                       "last_test_ok", "last_test_detail")}
+    out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
+    out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
+    return out
+
+
+_PROBE_ERRORS = (("BlockedAddress", "blocked"), ("EndpointAuthError", "auth"), ("EndpointNotFound", "not_found"),
+                 ("EndpointTimeout", "timeout"), ("EndpointBadResponse", "bad_response"))
+
+
+@app.post("/projects/{slug}/connections/{name}/test")
+def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """One probe, without retries, through the same client the plugins use; the result is stored."""
+    from aisc_plugin_interface import connections as client
+
+    pid = admin_connection(slug, caller, name)
+    row = connection_store.descriptor(pid, name)
+    if row is None or row["deleted_at"] is not None:
+        raise HTTPException(status_code=404, detail=f"no connection {name!r}")
+    try:
+        descriptor = client.Descriptor.from_dict(descriptor_of(row))
+    except llm_store.SecretsKeyError as exc:
+        raise secrets_unavailable(exc) from None
+    except llm_store.KeyUnreadable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    try:
+        answer = client.call(descriptor, body.input, allowed_hosts=client.allowed_hosts_from_env(), waits=())
+    except client.EndpointError as exc:
+        error = next((code for cls, code in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
+        message = str(exc).replace(descriptor.secret, "***") if descriptor.secret else str(exc)
+        connection_store.record_test(pid, name, False, message)
+        return {"ok": False, "error": error, "detail": message}
+    if answer.refused:
+        connection_store.record_test(pid, name, True, f"refused: {answer.refusal_reason}")
+        return {"ok": True, "refused": True, "refusal_reason": answer.refusal_reason, "status": answer.status,
+                "latency_ms": answer.latency_ms}
+    text = str(answer.text)
+    connection_store.record_test(pid, name, True, text)
+    return {"ok": True, "refused": False, "answer": text[:500], "status": answer.status,
+            "latency_ms": answer.latency_ms}
+
+
+@app.get("/internal/projects/{pid}/connections/{name}")
+def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
+    """A connection with its decrypted key, for the plugin-side client of an evaluation run.
+
+    Same guards as the LLM resolve route: not through the gateway (404), closed without
+    PLATFORM_CONNECTIONS_TOKEN (503), the token in X-AISC-Service-Token compared in constant time
+    (401). A deleted connection is 410. The key is never logged."""
+    if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
+        return _internal(404, {"detail": "not here"})
+    expected = os.environ.get("PLATFORM_CONNECTIONS_TOKEN") or ""
+    if not expected:
+        return _internal(503, {"detail": "the internal route is closed: PLATFORM_CONNECTIONS_TOKEN is not set"})
+    given = request.headers.get("x-aisc-service-token", "")
+    if not hmac.compare_digest(given.encode(), expected.encode()):
+        return _internal(401, {"detail": "a service token is needed"})
+    if not looks_like_pid(pid) or db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    if not CONNECTION_NAME.match(name):
+        return _internal(404, {"detail": f"no connection {name!r}"})
+    row = connection_store.descriptor(pid, name)
+    if row is None:
+        return _internal(404, {"detail": f"no connection {name!r}"})
+    if row["deleted_at"] is not None:
+        return _internal(410, {"detail": f"connection {name!r} was deleted"})
+    try:
+        out = descriptor_of(row)
+    except llm_store.SecretsKeyError as exc:
+        return _internal(503, {"detail": str(exc)})
+    except llm_store.KeyUnreadable as exc:
+        return _internal(409, {"detail": str(exc)})
+    logger.info("connection %s of project %s resolved for a run", name, pid)
+    return _internal(200, out)
 
 
 @app.exception_handler(RequestValidationError)

@@ -380,6 +380,9 @@
       <span class="group admin-only" hidden>Agentic systems</span>
       <a id="llm-settings" class="admin-only" hidden>Models and API keys</a>
       <span class="sep admin-only" hidden></span>
+      <span class="group admin-only" hidden>Systems under test</span>
+      <a id="connections-settings" class="admin-only" hidden>Connections</a>
+      <span class="sep admin-only" hidden></span>
       <button type="button" class="danger admin-only" hidden id="delete-open">Delete this project&hellip;</button>
     </div>
   </details>
@@ -515,6 +518,7 @@
           if (!a.admin) return;                      // what follows is an admin's only
           [].forEach.call(document.querySelectorAll('#manage .admin-only'), function (el) { el.hidden = false; });
           document.getElementById('llm-settings').href = '/llm.html?project=' + encodeURIComponent(slug);
+          document.getElementById('connections-settings').href = '/connections.html?project=' + encodeURIComponent(slug);
           var dlg = document.getElementById('delete-dialog');
           var input = document.getElementById('delete-input');
           var go = document.getElementById('delete-confirm');

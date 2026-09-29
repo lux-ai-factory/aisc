@@ -56,7 +56,7 @@ DECLARE
     schemas text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer'];
     -- the schemas whose other tables a reader must not read: the above, plus secrets and bookkeeping
     guarded text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer',
-                            'llm', 'provision'];
+                            'llm', 'connection', 'provision'];
     reader text;
     s text;
     rel text;

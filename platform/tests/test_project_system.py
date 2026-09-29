@@ -324,7 +324,7 @@ def test_i1_2_a_module_role_connects_and_has_its_own_schema_only(project, dsn, r
             " where nspname = %s", (own,)).fetchone() or (None, None)
         assert owner == "platform_rw", f"I1.2: schema {own} owned by platform_rw (D10), got {owner}"
         assert comment, f"I2.1: schema {own} has a comment"
-        for schema in ["controls", "llm", "provision", *MODULE_SCHEMAS.values()]:
+        for schema in ["controls", "llm", "connection", "provision", *MODULE_SCHEMAS.values()]:
             if conn.execute("select 1 from pg_namespace where nspname = %s", (schema,)).fetchone() is None:
                 continue
             usage = conn.execute("select has_schema_privilege(%s, %s, 'USAGE')", (role, schema)).fetchone()[0]
@@ -370,7 +370,7 @@ def test_i2_1_readers_get_usage_on_every_module_schema(project, dsn):
             for schema in [*MODULE_SCHEMAS.values(), "project"]:
                 usage = conn.execute("select has_schema_privilege(%s, %s, 'USAGE')", (reader, schema)).fetchone()[0]
                 assert usage, f"I2.1: {reader} has USAGE on {schema}"
-            for schema in ("llm", "provision"):
+            for schema in ("llm", "connection", "provision"):
                 usage = conn.execute("select has_schema_privilege(%s, %s, 'USAGE')", (reader, schema)).fetchone()[0]
                 assert not usage, f"I2.6: {reader} has USAGE on {schema}"
 

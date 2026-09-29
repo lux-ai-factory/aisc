@@ -46,7 +46,7 @@ def _server():
 def test_i11_3_project_schemas_name_every_module():
     labels = _server().PROJECT_SCHEMAS
     for schema in ("project", "qualification", "control_objectives", "engine", "report_composer",
-                   "controls", "llm", "provision"):
+                   "controls", "llm", "connection", "provision"):
         assert schema in labels, f"I11.3: PROJECT_SCHEMAS lacks {schema}"
 
 
