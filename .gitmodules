@@ -38,3 +38,11 @@
 	path = apps/catalogue
 	url = https://github.com/lux-ai-factory/catalogue.git
 	branch = feat/unified-modules
+[submodule "apps/report-generator"]
+	path = apps/report-generator
+	url = https://github.com/lux-ai-factory/aisc-report-generator.git
+	branch = feat/unified-modules
+[submodule "shared/report-plugin-interface"]
+	path = shared/report-plugin-interface
+	url = https://github.com/lux-ai-factory/aisc-report-plugin-interface.git
+	branch = feat/unified-modules

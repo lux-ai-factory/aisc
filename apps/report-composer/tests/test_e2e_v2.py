@@ -2,7 +2,7 @@
 R-V8.14, R-V8.15, R-U2.1, R-U3.1, R-V5.14, R-V5.15, R-S.3; part 2: R2-C.1, R2-D1.10, R2-D1.12, R2-D3.8.4).
 
 A full throwaway bed (aisc-t-e2e2-*), project Mike (seed_tools.sql: the three Mijke tools on version 2).
-The real renderer (aisc-report-generator via REPORT_GENERATOR_DIR, default ../../../aisc-report-generator)
+The real renderer (aisc-report-generator via REPORT_GENERATOR_DIR, default the apps/report-generator submodule)
 runs as a subprocess on a free port; the composer talks to it with HttpRendererClient.
 
 Mia (owner of Mike) duplicates the built-in layout "eu-ai-act" on the platform default look,
@@ -26,7 +26,7 @@ import pytest
 from conftest import FIXED_NOW, ISSUER, IDS, Missing, lazily, need, report_bed, report_bed_isolated
 
 pytestmark = [pytest.mark.db, pytest.mark.e2e]
-GENERATOR = Path(os.environ.get("REPORT_GENERATOR_DIR", Path(__file__).resolve().parents[4] / "aisc-report-generator"))
+GENERATOR = Path(os.environ.get("REPORT_GENERATOR_DIR", Path(__file__).resolve().parents[2] / "report-generator"))
 TOKEN = "e2e-v2-token-" + "0" * 24
 EU = ["cover", "free_text", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives", "control_answers", "summary_coverage", "chapter", "test_runs", "test_results", "chart", "changes_since", "free_text", "appendix", "free_text"]      # the built-in layout eu-ai-act (report modules 2026-09-28)
 

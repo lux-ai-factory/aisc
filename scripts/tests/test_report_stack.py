@@ -154,14 +154,15 @@ def test_d3_renderer_mounts_vocab_and_objectives_read_only(compose):
         assert e.get(var) == hit[0]["target"], f"{var} must point at {hit[0]['target']}"
 
 
-def test_d10_renderer_builds_with_interface_and_mlareject(compose):
-    """D10: the renderer image is built with additional_contexts `interface` and `mlareject`."""
+def test_d10_renderer_builds_with_the_interface_only(compose):
+    """D10, revised 2026-09-29: the renderer image is built from the report-generator submodule with one
+    additional context, the report plugin interface; no evaluation tool's report plugin."""
     svc = service(compose, "report-renderer")
     b = svc.get("build")
     assert isinstance(b, dict), "the renderer must have a build section"
     ctxs = b.get("additional_contexts") or {}
-    assert {"interface", "mlareject"} <= set(ctxs), ctxs
-    assert str(b.get("context", "")).rstrip("/").endswith("aisc-report-generator")
+    assert set(ctxs) == {"interface"}, ctxs
+    assert str(b.get("context", "")).rstrip("/").endswith("apps/report-generator")
 
 
 def test_o1_chart_images_off_tonight(compose):

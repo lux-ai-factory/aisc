@@ -189,11 +189,12 @@ def test_the_runtime_env_points_at_the_hosted_catalogue():
 
 
 def test_the_report_renderer_has_every_build_context_its_dockerfile_copies_from(compose):
-    """The renderer's Dockerfile (aisc-report-generator) copies from five named contexts; compose
-    must give all five, or `up --build` fails on a fresh machine (it did on 2026-09-27: promptfoo)."""
+    """The renderer's Dockerfile (apps/report-generator) copies from named contexts; compose must give
+    each one, or `up --build` fails on a fresh machine (it did on 2026-09-27: promptfoo). Since
+    2026-09-29 the only one is the report plugin interface (test_report_submodules.py)."""
     q, cfg = compose
     contexts = (cfg["services"]["report-renderer"].get("build") or {}).get("additional_contexts") or {}
-    assert set(contexts) >= {"interface", "mlareject", "langbite", "strongreject", "promptfoo"}, sorted(contexts)
+    assert set(contexts) == {"interface"}, sorted(contexts)
 
 
 def test_the_plugin_downloader_fills_what_the_publisher_publishes(tmp_path):

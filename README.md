@@ -18,8 +18,13 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
 
    `feat/unified-modules` is the branch to ask for. Submodules are pinned by the
    clone above, so it is the only branch name you need; each one otherwise tracks
-   its own `main` or `master`, except `apps/results-dashboard`, which carries a
-   commit that is not on its `main` yet and so tracks this branch name too.
+   its own `main` or `master`, except `apps/results-dashboard`, `apps/report-generator`
+   and `shared/report-plugin-interface`, which carry commits that are not on their
+   `main` yet and so track this branch name too.
+
+   The PDF report renderer is built from two of these submodules: `apps/report-generator`
+   and `shared/report-plugin-interface`. No evaluation tool needs a report plugin of its own:
+   a tool without one gets its results in the report's generic results table.
 
    > [!NOTE]
    > `git submodule update --remote --recursive` moves each submodule to the tip of
@@ -38,25 +43,13 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
     GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach 'uv sync --upgrade-package aisc-plugin-manager || :'
    ```
 
-2. **Clone the report generator next to it.** The report renderer is built from six
-   sibling folders, not from this repository: `../aisc-report-generator`,
-   `../aisc-report-plugin-interface`, `../aisc-report-mlareject`, `../aisc-report-langbite`,
-   `../aisc-report-strongreject` and `../aisc-report-promptfoo` (each overridable with
-   `REPORT_<NAME>_DIR`, see the `report-renderer` service). The build takes whatever branch each
-   folder has checked out, so check out `dev` in all six (`aisc-report-generator` must be on `dev`:
-   it carries the per-project databases and Sean's engine table names; `main` has neither):
-   ```bash
-   for d in generator plugin-interface mlareject langbite strongreject promptfoo; do
-     git -C ../aisc-report-$d checkout dev; done
-   ```
-
-3. **Make the secrets, once.** None is committed; this writes `env.secrets`, combines it with
+2. **Make the secrets, once.** None is committed; this writes `env.secrets`, combines it with
    `env.plugin_downloader` into `env.runtime`, and renders the Keycloak realm:
    ```bash
    ./scripts/secrets.sh
    ```
 
-4. **Start it.** The downloader fetches the default plugins into `def_plugins/`, and
+3. **Start it.** The downloader fetches the default plugins into `def_plugins/`, and
    `plugin-publisher` uploads them to the stack's own package index:
    ```bash
    docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \

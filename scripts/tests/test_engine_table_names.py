@@ -19,7 +19,7 @@ READERS = [
     "scripts/lib/report_bed.py",
     "scripts/test-pipeline-chain.sh",
 ]
-REPORT = Path.home() / "aisc-report-generator" / "report_renderer" / "data" / "engine.py"
+REPORT = ROOT / "apps" / "report-generator" / "report_renderer" / "data" / "engine.py"
 
 
 def test_no_reader_names_a_short_engine_table():
