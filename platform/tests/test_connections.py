@@ -326,35 +326,21 @@ def test_p8_the_key_never_appears_in_the_service_log(client, admin, project, stu
 
 # ── P10 the engine sees it as a resource component ──────────────────────────
 
-def test_p10_create_makes_the_engine_component_with_the_admins_token(client, admin, project, stub, dsn):
-    made = engine_component(stub, project["pid"])
+# Targets plan v2 (O1): a connection is the endpoint of an assessment target, and evaluations pick
+# the target's engine component; a connection no longer makes one of its own
+# (test_connection_targets.py, TG9, covers the legacy rename).
+
+def test_p10_saving_a_connection_makes_no_engine_component(client, admin, project, stub, dsn):
     r = put(client, project, "mcas-chat", admin, rest_body(stub))
-    assert r.status_code == 200 and r.json()["engine_linked"] is True
-    call = stub.requests("POST", "/api/v1/projects/")[-1]
-    assert call["headers"]["authorization"] == admin["Authorization"]
-    assert call["headers"]["x-aisc-project"] == project["pid"]
-    assert call["json"] == {"name": "MCAS chat", "component_type": "resource",
-                            "json_value": {"value": f"connection:{project['pid']}/mcas-chat"}}
-    assert one(dsn, project, "select engine_component::text from connection.endpoint where name = 'mcas-chat'") == (made["pid"],)
+    assert r.status_code == 200
+    assert not stub.requests("POST", "/api/v1/projects/")
+    assert one(dsn, project, "select engine_component from connection.endpoint where name = 'mcas-chat'") == (None,)
 
 
-def test_p10_a_new_label_renames_the_engine_component_and_an_update_does_not_duplicate_it(client, admin, project, stub):
-    made = engine_component(stub, project["pid"])
-    put(client, project, "mcas-chat", admin, rest_body(stub))
-    put(client, project, "mcas-chat", admin, rest_body(stub, label="MCAS assistant"))
-    assert len(stub.requests("POST", "/api/v1/projects/")) == 1
-    patch = stub.requests("PATCH", f"/api/v1/components/{made['pid']}")[-1]
-    assert patch["json"] == {"name": "MCAS assistant"}
-
-
-def test_p10_an_engine_failure_keeps_the_connection_unlinked_and_link_retries(client, admin, project, stub):
-    stub.route("POST", f"/api/v1/projects/{project['pid']}/components", (503, {"detail": "down"}))
-    r = put(client, project, "mcas-chat", admin, rest_body(stub))
-    assert r.status_code == 207 and r.json()["engine_linked"] is False
-    assert [c["name"] for c in client.get(base(project), headers=admin).json()["connections"]] == ["mcas-chat"]
-    engine_component(stub, project["pid"])
-    again = client.post(f"{base(project)}/mcas-chat/link", headers=admin)
-    assert again.status_code == 200 and again.json()["engine_linked"] is True
+def test_p10_an_engine_that_does_not_answer_does_not_matter_to_saving(client, admin, project, stub):
+    stub.route("POST", f"/api/v1/projects/for-platform/{project['pid']}", (503, {"detail": "down"}))
+    assert put(client, project, "mcas-chat", admin, rest_body(stub)).status_code == 200
+    assert client.post(f"{base(project)}/mcas-chat/link", headers=admin).status_code == 200
 
 
 def test_p10_deleting_keeps_the_engine_component(client, admin, project, stub):

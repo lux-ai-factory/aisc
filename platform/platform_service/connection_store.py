@@ -16,7 +16,7 @@ KEEP = llm_store.KEEP
 #: every column a response may carry (never secret_ciphertext)
 PUBLIC = ("name", "label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
           "response_path", "refusal", "model", "timeout_s", "protocol_version", "engine_component", "updated_at",
-          "updated_by", "last_test_at", "last_test_ok", "last_test_detail")
+          "updated_by", "last_test_at", "last_test_ok", "last_test_detail", "target_key")
 _SELECT = ", ".join(PUBLIC) + ", secret_ciphertext IS NOT NULL AS has_secret"
 _JSON = ("headers", "body_template", "refusal")
 
@@ -54,6 +54,21 @@ def save(pid, name: str, fields: dict, *, ciphertext=KEEP, subject: str | None) 
             "                      ELSE connection.endpoint.secret_ciphertext END,"
             "  updated_at = now(), updated_by = EXCLUDED.updated_by, deleted_at = NULL"
             f" RETURNING {_SELECT}", params).fetchone()
+
+
+def holder_of(pid, target_key: str) -> str | None:
+    """The connection in use that is the endpoint of this target, if any."""
+    with connect(pid) as conn:
+        row = conn.execute("SELECT name FROM connection.endpoint WHERE target_key = %s AND deleted_at IS NULL",
+                           (target_key,)).fetchone()
+    return row["name"] if row else None
+
+
+def endpoints_by_target(pid) -> dict[str, dict]:
+    with connect(pid) as conn:
+        rows = conn.execute("SELECT target_key, name, label, kind FROM connection.endpoint"
+                            " WHERE target_key IS NOT NULL AND deleted_at IS NULL").fetchall()
+    return {r["target_key"]: {"name": r["name"], "label": r["label"], "kind": r["kind"]} for r in rows}
 
 
 def set_engine_component(pid, name: str, component: str) -> None:

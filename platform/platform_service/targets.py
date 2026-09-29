@@ -151,10 +151,20 @@ def sync(pid, token: str) -> dict:
 
 
 def view(pid, latest_card: int | None) -> list[dict]:
+    from platform_service import connection_store
+
     rows = target_store.all_targets(pid)
+    endpoints = connection_store.endpoints_by_target(pid)
     return [{
         "key": r["key"], "kind": r["kind"], "component_kind": r["component_kind"], "label": r["label"],
         "first_card_number": r["first_card_number"], "last_card_number": r["last_card_number"],
         "status": status(r, latest_card),
         "engine_component": str(r["engine_component"]) if r["engine_component"] else None,
+        "endpoint": endpoints.get(r["key"]),
     } for r in rows]
+
+
+def is_key(key: str) -> bool:
+    import re
+
+    return key == "system" or re.fullmatch(r"component:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", key) is not None

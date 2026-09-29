@@ -32,7 +32,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.headers import token_from_headers
 
-from platform_service import (connection_allowlist, connection_engine, connection_facade, connection_store, targets, dashboard_bridge, db, llm_catalogue, llm_store,
+from platform_service import (connection_allowlist, connection_facade, connection_store, target_store, targets, dashboard_bridge, db, llm_catalogue, llm_store,
                               projectdb)
 from platform_service.membership import (
     InvalidMembership,
@@ -710,6 +710,8 @@ class ConnectionIn(BaseModel):
     timeout_s: int = 60
     protocol_version: StrictStr | None = None
     secret: StrictStr | None = None
+    #: the assessment target this is the endpoint of ('system' or 'component:<key>'); set once
+    target: StrictStr | None = None
 
 
 class ProbeIn(BaseModel):
@@ -775,7 +777,9 @@ def connection_view(row: dict) -> dict:
         out[k] = row[k].isoformat() if row.get(k) else None
     out["engine_component"] = str(row["engine_component"]) if row.get("engine_component") else None
     out["has_secret"] = bool(row.get("has_secret"))
-    out["engine_linked"] = out["engine_component"] is not None
+    target = target_store.get(row["pid"], row["target_key"]) if row.get("target_key") and row.get("pid") else None
+    out["target"] = {"key": target["key"], "kind": target["kind"], "label": target["label"]} if target else None
+    out.pop("target_key", None)
     return out
 
 
@@ -786,25 +790,32 @@ def admin_connection(slug: str, caller: Caller, name: str) -> str:
     return pid
 
 
-def link_to_engine(pid: str, name: str, row: dict, request: Request, previous_label: str | None) -> dict:
-    """Make or rename the engine's component; on failure the connection stays, unlinked."""
-    token = token_from_headers(request.headers) or ""
+LEGACY_MIRROR = "Legacy connection: {label}, pick its target instead"
+
+
+def retire_engine_component(pid: str, row: dict, request: Request) -> None:
+    """A connection made before targets had an engine component of its own; evaluations now pick
+    the target's instead (O1). The old one is kept, for the evaluations that used it, and renamed
+    so the evaluation form says what to pick instead."""
+    if row.get("engine_component") is None:
+        return
+    from platform_service import engine_components
     try:
-        if row.get("engine_component") is None:
-            component = connection_engine.create(pid, name, row["label"], token)
-            connection_store.set_engine_component(pid, name, component)
-            row = {**row, "engine_component": component}
-        elif previous_label is not None and previous_label != row["label"]:
-            connection_engine.rename(pid, str(row["engine_component"]), row["label"], token)
-    except connection_engine.EngineUnavailable as exc:
-        logger.warning("connection %s of project %s not linked to the engine: %s", name, pid, exc)
-    return row
+        engine_components.rename(pid, token_from_headers(request.headers) or "", str(row["engine_component"]),
+                                 LEGACY_MIRROR.format(label=row["label"]))
+    except engine_components.EngineUnavailable as exc:
+        logger.warning("legacy engine component of connection %s (project %s) not renamed: %s",
+                       row["name"], pid, exc)
+
+
+def _with_pid(pid: str, row: dict | None) -> dict | None:
+    return {**row, "pid": pid} if row else row
 
 
 @app.get("/projects/{slug}/connections")
 def list_connections(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
     pid = admin_project(slug, caller)["pid"]
-    return {"connections": [connection_view(r) for r in connection_store.list_connections(pid)]}
+    return {"connections": [connection_view(_with_pid(pid, r)) for r in connection_store.list_connections(pid)]}
 
 
 @app.put("/projects/{slug}/connections/{name}")
@@ -820,21 +831,34 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
         except llm_store.SecretsKeyError as exc:
             raise secrets_unavailable(exc) from None
     before = connection_store.get(pid, name, with_deleted=True)
-    row = connection_store.save(pid, name, fields, ciphertext=ciphertext, subject=caller.username or caller.subject)
-    row = link_to_engine(pid, name, row, request, before["label"] if before else None)
-    view = connection_view(row)
-    return JSONResponse(status_code=200 if view["engine_linked"] else 207, content=view)
+    if "target" in body.model_fields_set and body.target is not None:
+        if not targets.is_key(body.target) or target_store.get(pid, body.target) is None:
+            raise HTTPException(status_code=422, detail=f"target: {body.target!r} is not a target of this project")
+        if before and before.get("target_key") and before["target_key"] != body.target:
+            raise HTTPException(status_code=422, detail="target: an endpoint's target is set once; make a new "
+                                                        "connection for another target")
+        holder = connection_store.holder_of(pid, body.target)
+        if holder is not None and holder != name:
+            raise HTTPException(status_code=409, detail=f"target: {body.target} already has an endpoint, {holder}")
+        fields["target_key"] = body.target
+    try:
+        row = connection_store.save(pid, name, fields, ciphertext=ciphertext, subject=caller.username or caller.subject)
+    except errors.UniqueViolation:
+        raise HTTPException(status_code=409, detail=f"target: {body.target} already has an endpoint") from None
+    retire_engine_component(pid, row, request)
+    return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
 
 
 @app.post("/projects/{slug}/connections/{name}/link")
 def link_connection(slug: str, name: str, request: Request, caller: Caller = Depends(caller_dependency)) -> JSONResponse:
-    """Try again to make the engine's component of a connection that is not linked yet."""
+    """Connections are no engine components any more (targets plan v2, O1): an older one's is
+    renamed legacy, kept for the evaluations that used it; evaluations pick the target."""
     pid = admin_connection(slug, caller, name)
     row = connection_store.get(pid, name)
     if row is None:
         raise HTTPException(status_code=404, detail=f"no connection {name!r}")
-    view = connection_view(link_to_engine(pid, name, row, request, None))
-    return JSONResponse(status_code=200 if view["engine_linked"] else 207, content=view)
+    retire_engine_component(pid, row, request)
+    return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
 
 
 @app.delete("/projects/{slug}/connections/{name}", status_code=204)
@@ -846,12 +870,15 @@ def delete_connection(slug: str, name: str, caller: Caller = Depends(caller_depe
     return Response(status_code=204)
 
 
-def descriptor_of(row: dict) -> dict:
-    """What the plugin-side client needs, the key decrypted."""
+def descriptor_of(row: dict, pid: str | None = None) -> dict:
+    """What the plugin-side client needs, the key decrypted, and the target it is the endpoint of
+    (part of what the connection is, so of its fingerprint)."""
     out = {k: row.get(k) for k in connection_store.PUBLIC if k not in ("engine_component", "last_test_at",
-                                                                       "last_test_ok", "last_test_detail")}
+                                                                       "last_test_ok", "last_test_detail",
+                                                                       "target_key")}
     out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
     out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
+    out["target"] = _target_of(pid, row) if pid else None
     return out
 
 
@@ -869,7 +896,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     if row is None or row["deleted_at"] is not None:
         raise HTTPException(status_code=404, detail=f"no connection {name!r}")
     try:
-        descriptor = client.Descriptor.from_dict(descriptor_of(row))
+        descriptor = client.Descriptor.from_dict(descriptor_of(row, pid))
     except llm_store.SecretsKeyError as exc:
         raise secrets_unavailable(exc) from None
     except llm_store.KeyUnreadable as exc:
@@ -889,6 +916,61 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     connection_store.record_test(pid, name, True, text)
     return {"ok": True, "refused": False, "answer": text[:500], "status": answer.status,
             "latency_ms": answer.latency_ms}
+
+
+def _internal_gate(pid: str, request: Request) -> JSONResponse | None:
+    """The internal routes' guards: not through the gateway, closed without the token, the token
+    compared in constant time, a known project."""
+    if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
+        return _internal(404, {"detail": "not here"})
+    expected = os.environ.get("PLATFORM_CONNECTIONS_TOKEN") or ""
+    if not expected:
+        return _internal(503, {"detail": "the internal route is closed: PLATFORM_CONNECTIONS_TOKEN is not set"})
+    if not hmac.compare_digest(request.headers.get("x-aisc-service-token", "").encode(), expected.encode()):
+        return _internal(401, {"detail": "a service token is needed"})
+    if not looks_like_pid(pid) or db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    return None
+
+
+def _endpoint_of_target(pid: str, key: str) -> tuple[str | None, JSONResponse | None]:
+    """The name of the connection that is this target's endpoint, or the answer why there is none."""
+    target = target_store.get(pid, key) if targets.is_key(key) else None
+    if target is None:
+        return None, _internal(404, {"detail": f"no target {key!r}"})
+    name = connection_store.holder_of(pid, key)
+    if name is None:
+        return None, _internal(404, {"detail": f"{target['label']} has no endpoint: set one under Manage,"
+                                               " Targets and endpoints"})
+    return name, None
+
+
+def _target_of(pid: str, row: dict) -> dict | None:
+    target = target_store.get(pid, row["target_key"]) if row.get("target_key") else None
+    if target is None:
+        return None
+    return {"key": target["key"], "kind": target["kind"], "component_kind": target["component_kind"],
+            "label": target["label"], "last_card_number": target["last_card_number"]}
+
+
+@app.get("/internal/projects/{pid}/targets/{key}/connection")
+def resolve_target_connection(pid: str, key: str, request: Request) -> JSONResponse:
+    """The endpoint of an assessment target, as resolve_connection gives a connection by name."""
+    refused = _internal_gate(pid, request)
+    if refused:
+        return refused
+    name, missing = _endpoint_of_target(pid, key)
+    return missing or resolve_connection(pid, name, request)
+
+
+@app.post("/internal/projects/{pid}/targets/{key}/run-keys")
+def issue_target_run_key(pid: str, key: str, request: Request) -> JSONResponse:
+    """A run key for the endpoint of an assessment target."""
+    refused = _internal_gate(pid, request)
+    if refused:
+        return refused
+    name, missing = _endpoint_of_target(pid, key)
+    return missing or issue_run_key(pid, name, request)
 
 
 @app.get("/internal/projects/{pid}/connections/{name}")
@@ -916,7 +998,7 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
     if row["deleted_at"] is not None:
         return _internal(410, {"detail": f"connection {name!r} was deleted"})
     try:
-        out = descriptor_of(row)
+        out = descriptor_of(row, pid)
     except llm_store.SecretsKeyError as exc:
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
@@ -1068,7 +1150,7 @@ def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(404, {"detail": f"no connection {name!r}"})
     from aisc_plugin_interface import connections as client
     try:
-        fingerprint = client.Descriptor.from_dict(descriptor_of(row)).fingerprint()
+        fingerprint = client.Descriptor.from_dict(descriptor_of(row, pid)).fingerprint()
     except llm_store.SecretsKeyError as exc:
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
@@ -1078,7 +1160,8 @@ def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
     expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
     root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
     logger.info("run key issued for connection %s of project %s", name, pid)
-    return _internal(201, {"key": key, "expires_at": expires.isoformat(), "endpoints": {
+    return _internal(201, {"key": key, "expires_at": expires.isoformat(), "connection": name,
+                           "target": _target_of(pid, row), "endpoints": {
         "aisc": {"ask_url": f"{root}/aisc/ask"},
         "openai": {"base_url": f"{root}/openai/v1", "model": name},
         "a2a": {"agent_card_url": f"{root}/a2a/.well-known/agent-card.json", "rpc_url": f"{root}/a2a"},
@@ -1101,7 +1184,7 @@ def _facade_open(pid: str, name: str, request: Request):
         return None, (410, f"connection {name!r} was deleted")
     from aisc_plugin_interface import connections as client
     try:
-        return client.Descriptor.from_dict(descriptor_of(row)), None
+        return client.Descriptor.from_dict(descriptor_of(row, pid)), None
     except (llm_store.SecretsKeyError, llm_store.KeyUnreadable) as exc:
         return None, (503, str(exc))
 
