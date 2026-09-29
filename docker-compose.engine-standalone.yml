@@ -105,7 +105,10 @@ services:
 
   # ── Infrastructure (docker-compose-infra.yml on Sean's own master) ──
   minio:
-    image: quay.io/minio/minio
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     container_name: minio-standalone
     command: server /data --console-address ":9001"
     environment:
@@ -122,7 +125,10 @@ services:
       - engine-standalone
 
   make_buckets:
-    image: quay.io/minio/mc
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     depends_on:
       minio:
         condition: service_healthy

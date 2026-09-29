@@ -3,7 +3,10 @@ services:
 
   # MinIO object storage service
   minio:
-    image: quay.io/minio/minio
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     container_name: minio
     ports:
       - "9100:9000"  # S3 API port
@@ -22,7 +25,10 @@ services:
 
   # MinIO bucket initialization service
   make_buckets:
-    image: quay.io/minio/mc
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     depends_on:
       minio:
         condition: service_healthy  # Wait for MinIO to be ready

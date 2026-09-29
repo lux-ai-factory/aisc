@@ -55,6 +55,8 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
    docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \
      -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d --build
    ```
+   The first start also compiles MinIO (object storage) from source, a few minutes: MinIO no
+   longer publishes community images, so `infra/minio/Dockerfile` builds its last release.
    Then open http://localhost:8100, sign in (`user` / `user` or `admin` / `admin`) and create a
    project. `./scripts/verify.sh --stack` checks the running stack once a project exists.
    
