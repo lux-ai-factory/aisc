@@ -29,7 +29,7 @@ def test_h1_the_manage_menu_links_the_page_for_owners_and_admins():
     html = read(PROJECT_PAGE)
     manage = re.search(r'<details[^>]*id="manage".*?</details>', html, re.S).group(0)
     link = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>(.*?)</a>', manage, re.S)
-    assert link and link.group(1).strip() == "Connections"
+    assert link and link.group(1).strip() == "Targets and endpoints"
     tag = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>', manage).group(0)
     assert "owner-only" in tag and "hidden" in tag, tag
     script = script_of(html)
@@ -62,7 +62,8 @@ def test_h2_non_admins_are_told_and_nothing_is_asked_before_the_role_is_known():
 def test_h2_it_lists_saves_tests_links_and_deletes_through_the_platform():
     script = script_of(read(PAGE))
     assert "'/api/projects/' + enc(slug) + '/connections'" in script
-    for needle in ("'PUT'", "'DELETE'", "/test'", "/link'"):
+    # no engine link any more (targets plan v2, O1): evaluations pick the target
+    for needle in ("'PUT'", "'DELETE'", "/test'"):
         assert needle in script, needle
     for field in ("label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
                   "response_path", "refusal", "model", "timeout_s"):
@@ -70,10 +71,11 @@ def test_h2_it_lists_saves_tests_links_and_deletes_through_the_platform():
     assert "'openai'" in script and "'rest'" in script
 
 
-def test_h2_it_shows_the_engine_link_and_offers_the_retry():
+def test_h2_connections_are_no_engine_components_any_more_so_the_page_offers_no_engine_link():
+    # targets plan v2 (O1): evaluations pick the target, never a connection
     html = read(PAGE)
-    assert "engine_linked" in script_of(html)
-    assert "Link to the engine" in html and "not linked to the engine" in html
+    assert "engine_linked" not in script_of(html)
+    assert "Link to the engine" not in html and "not linked to the engine" not in html
 
 
 def test_h2_it_shows_an_answer_a_refusal_or_the_error_of_a_test():
@@ -193,3 +195,41 @@ def test_h6_the_deployments_entries_are_shown_read_only_and_denials_are_said():
     assert ".floor" in script and "set by the deployment" in html
     assert ".denied" in script
     assert "never" in html.lower() and "loopback" in html
+
+
+# ── H8 targets and their endpoints (targets plan v2) ───────────────────────
+
+def test_h8_the_page_is_named_targets_and_endpoints():
+    html = read(PAGE)
+    assert "<title>Targets and endpoints" in html
+    assert re.search(r'<section id="targets" hidden>.*?<h2>Targets</h2>', markup_of(html), re.S)
+
+
+def test_h8_it_lists_the_targets_and_refreshes_them_from_the_card():
+    html = read(PAGE)
+    script = script_of(html)
+    assert "'/api/projects/' + enc(slug) + '/targets'" in script
+    assert "'/targets/sync'" in script and "Refresh from the card" in html
+    for field in (".status", ".first_card_number", ".last_card_number", ".endpoint", ".component_kind", ".reason"):
+        assert field in script, field
+    assert "not in card v" in script and "no endpoint" in script
+
+
+def test_h8_the_targets_are_shown_to_owners_and_admins_alike():
+    script = script_of(read(PAGE))
+    gate = script.index("if (!a || !(a.admin || a.role === 'owner'))")
+    assert script.index("show('targets')") > gate
+    assert script.index("show('targets')") < script.index("if (a.admin) {")
+
+
+def test_h8_a_new_connection_names_its_target_and_a_taken_one_is_not_offered():
+    html = read(PAGE)
+    script = script_of(html)
+    assert re.search(r'<select id="f-target"[^>]*required', html)
+    assert "body.target" in script and ".disabled = true" in script
+    assert "Endpoint of" in html
+
+
+def test_h8_each_connection_says_what_it_is_the_endpoint_of():
+    script = script_of(read(PAGE))
+    assert "c.target" in script and "no target" in script

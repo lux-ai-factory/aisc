@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Connections - AI Assessment Sandbox Configurator</title>
+<title>Targets and endpoints - AI Assessment Sandbox Configurator</title>
 <link rel="icon" href="/assets/laif-logo.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -154,17 +154,30 @@
 
 <main>
   <h1 class="title" id="project-name">&hellip;</h1>
-  <p class="subtitle">Connections</p>
+  <p class="subtitle">Targets and endpoints</p>
   <p class="note" id="gate" hidden>Only a platform admin manages connections.</p>
   <p class="note" id="page-message" hidden></p>
 
+  <section id="targets" hidden>
+    <h2>Targets</h2>
+    <p>What an assessment can be about: the system, and each component its AI card lists (models,
+       rule engines, the data it is trained on, ...). Every evaluation picks one as its target, and
+       every result says which. A component the latest card no longer lists stays, marked, with its
+       results. Components are added on the AI card, under Qualification.</p>
+    <table>
+      <thead><tr><th>Target</th><th>Status</th><th>In card versions</th><th>Endpoint</th></tr></thead>
+      <tbody id="target-rows"></tbody>
+    </table>
+    <p><button type="button" class="ghost" id="targets-sync">Refresh from the card</button>
+       <span class="msg" id="targets-msg"></span></p>
+  </section>
+
   <div id="settings" hidden>
     <section id="list">
-      <h2>Systems under test</h2>
-      <p>The AI systems this project assesses over the network. An evaluation picks one as its
-         system under test, like a dataset; every test that supports it calls the system through
-         this connection. A key is stored encrypted for this project only and is never shown again.
-         A connection that is not linked to the engine cannot be picked yet: use Link to the engine.</p>
+      <h2>Endpoints</h2>
+      <p>How a target is reached over the network, when an assessment calls it: at most one endpoint
+         per target. A test that calls a system reaches the endpoint of its evaluation's target. A key
+         is stored encrypted for this project only and is never shown again.</p>
       <table>
         <thead><tr><th>Connection</th><th>Status</th><th>Test</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
@@ -180,6 +193,9 @@
         <p class="help">Lower-case letters, digits and hyphens. It identifies the connection and cannot change.</p>
         <label for="f-label">Label</label>
         <input id="f-label" type="text" placeholder="e.g. MCAS chat assistant"/>
+        <label for="f-target">Endpoint of</label>
+        <select id="f-target" required></select>
+        <p class="help">The target this is how to reach. Set once: an endpoint for another target is a new connection.</p>
         <label for="f-kind">Kind</label>
         <select id="f-kind"><option value="rest">REST API</option><option value="openai">OpenAI-compatible</option><option value="a2a">A2A agent</option><option value="oip">Open Inference Protocol model server</option></select>
         <label for="f-base">Base URL</label>
@@ -283,7 +299,7 @@
       .then(function (p) {
         if (!p) return null;
         $('project-name').textContent = p.name;
-        document.title = p.name + ' - Connections';
+        document.title = p.name + ' - Targets and endpoints';
         return api('/api/authz/projects/' + enc(slug)).then(function (res) { return res.ok ? res.json() : null; });
       })
       .then(function (a) {
@@ -294,6 +310,8 @@
         }
         // an owner decides which internal hosts the project's connections may reach; managing the
         // connections themselves is a platform admin's
+        show('targets');
+        reloadTargets(false);
         show('allowlist');
         reloadAllowlist();
         if (a.admin) {
@@ -337,7 +355,8 @@
 
       var state = el('td', 'state');
       state.appendChild(el('div', c.has_secret ? 'ok' : '', c.has_secret ? 'key stored' : 'no key'));
-      state.appendChild(el('div', c.engine_linked ? 'ok' : 'bad', c.engine_linked ? 'linked to the engine' : 'not linked to the engine'));
+      state.appendChild(c.target ? el('div', 'ok', 'endpoint of ' + c.target.label)
+                                 : el('div', 'bad', 'no target: edit it to name one'));
       if (c.last_test_at) state.appendChild(el('div', c.last_test_ok ? 'ok' : 'bad',
         'last test ' + String(c.last_test_at).slice(0, 16).replace('T', ' ') + (c.last_test_ok ? ': ok' : ': failed')));
       tr.appendChild(state);
@@ -358,11 +377,6 @@
       edit.addEventListener('click', function () { openEditor(c); });
       af.appendChild(edit);
       var msg = el('span', 'msg');
-      if (!c.engine_linked) {
-        var link = el('button', 'ghost', 'Link to the engine'); link.type = 'button';
-        link.addEventListener('click', function () { write('POST', base() + '/' + enc(c.name) + '/link', null, msg); });
-        af.appendChild(link);
-      }
       var del = el('button', 'danger', 'Delete'); del.type = 'button';
       del.addEventListener('click', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); });
       af.appendChild(del);
@@ -393,7 +407,6 @@
       .then(function (res) {
         return bodyOf(res).then(function (d) {
           if (!res.ok) { say(msg, refusal(res, d), true); return false; }
-          if (res.status === 207) say(msg, 'Saved, but not linked to the engine: ' + 'use Link to the engine.', true);
           reload();
           return true;
         });
@@ -424,6 +437,7 @@
     $('edit-title').textContent = c ? 'Edit ' + c.label : 'New connection';
     $('f-name').value = c ? c.name : ''; $('f-name').disabled = !!c;
     $('f-label').value = c ? c.label : '';
+    fillTargets(c);
     $('f-kind').value = c ? c.kind : 'rest';
     $('f-base').value = c ? c.base_url : '';
     $('f-model').value = c && c.model ? c.model : '';
@@ -462,6 +476,10 @@
     var kind = $('f-kind').value;
     var body = {label: $('f-label').value.trim(), kind: kind, base_url: $('f-base').value.trim(),
                 timeout_s: parseInt($('f-timeout').value, 10) || 60};
+    if (!$('f-target').disabled) {
+      if (!$('f-target').value) { say(msg, 'Pick the target this is the endpoint of.', true); return; }
+      body.target = $('f-target').value;
+    }
     var headers = parsed('f-headers', 'Headers');
     if (headers.error) { say(msg, headers.error, true); return; }
     body.headers = headers.value || {};
@@ -497,6 +515,73 @@
   $('cancel').addEventListener('click', function () { $('edit').hidden = true; editing = null; $('f-secret').value = ''; });
   $('f-kind').addEventListener('change', kindShown);
   $('editor').addEventListener('submit', submit);
+
+  // ── targets: what an assessment can be about ──
+
+  var knownTargets = [];
+
+  var KIND_LABELS = {model: 'model', rule_engine: 'rule engine', llm: 'LLM', training_data: 'training data',
+                     validation_data: 'validation data', other_data: 'data', pipeline: 'pipeline',
+                     interface: 'interface', other: 'component'};
+
+  function targetName(t) {
+    if (t.kind === 'system') return 'System: ' + t.label;
+    return t.label + (t.component_kind ? ' (' + (KIND_LABELS[t.component_kind] || t.component_kind) + ')' : '');
+  }
+
+  function renderTargets(d) {
+    knownTargets = d.targets || [];
+    var rows = $('target-rows');
+    rows.replaceChildren();
+    knownTargets.forEach(function (t) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'name', targetName(t)));
+      var st = el('td', 'state');
+      st.appendChild(el('div', t.status === 'stale' ? 'bad' : 'ok', t.status === 'stale' ? 'not in card v' + d.latest_card : 'current'));
+      tr.appendChild(st);
+      tr.appendChild(el('td', 'when', t.first_card_number ? 'v' + t.first_card_number +
+        (t.last_card_number && t.last_card_number !== t.first_card_number ? ' to v' + t.last_card_number : '') : ''));
+      tr.appendChild(el('td', '', t.endpoint ? t.endpoint.label + ' (' + t.endpoint.name + ')' : 'no endpoint'));
+      rows.appendChild(tr);
+    });
+    if (knownTargets.length < 2) {
+      var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the card, under Qualification, then refresh.');
+      td0.colSpan = 4; tr0.appendChild(td0); rows.appendChild(tr0);
+    }
+    say($('targets-msg'), d.reason ? 'Not everything could be brought up to date: ' + d.reason : '', !!d.reason);
+  }
+
+  function reloadTargets(sync) {
+    return api(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
+               sync ? {method: 'POST', body: {}} : undefined)
+      .then(function (res) {
+        return bodyOf(res).then(function (d) {
+          if (!res.ok) { say($('targets-msg'), refusal(res, d), true); return; }
+          renderTargets(d);
+        });
+      })
+      .catch(function () { say($('targets-msg'), NOT_ANSWERING, true); });
+  }
+
+  /** The editor's "Endpoint of": every target, those that have an endpoint already not offered. */
+  function fillTargets(c) {
+    var select = $('f-target');
+    select.replaceChildren();
+    var none = el('option', '', 'Choose…'); none.value = ''; select.appendChild(none);
+    knownTargets.forEach(function (t) {
+      var o = el('option', '', targetName(t) + (t.endpoint && (!c || t.endpoint.name !== c.name) ? ' (endpoint: ' + t.endpoint.name + ')' : ''));
+      o.value = t.key;
+      if (t.endpoint && (!c || t.endpoint.name !== c.name)) o.disabled = true;
+      select.appendChild(o);
+    });
+    select.value = c && c.target ? c.target.key : '';
+    select.disabled = !!(c && c.target);
+  }
+
+  $('targets-sync').addEventListener('click', function () {
+    say($('targets-msg'), 'Refreshing...');
+    reloadTargets(true);
+  });
 
   // ── allowed internal hosts: an owner's or an admin's ──
 
