@@ -3,7 +3,7 @@
 }
 
 (tls-staging) {
-  tls /etc/caddy/aisctest.uni.lux.cert /etc/caddy/aisctest.uni.lux.key
+  tls /etc/caddy/aforstest.uni.lux.cert /etc/caddy/aforstest.uni.lux.key
 }
 
 
