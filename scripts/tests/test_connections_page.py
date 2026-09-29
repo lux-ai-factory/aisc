@@ -110,3 +110,24 @@ def test_h3_csp_and_injection_safe():
     calls = re.findall(r"fetch\(\s*([^,)]+)", script)
     assert calls and all(not re.search(r"https?:", a) for a in calls)
     assert script.count("credentials: 'same-origin'") >= len(calls)
+
+
+# ── H4 the a2a and oip kinds (connections plan, revision 3) ─────────────────
+
+def test_h4_the_kind_menu_offers_a2a_and_oip():
+    html = read(PAGE)
+    kinds = re.search(r'<select id="f-kind">(.*?)</select>', html, re.S).group(1)
+    assert set(re.findall(r'value="([a-z0-9]+)"', kinds)) == {"rest", "openai", "a2a", "oip"}
+
+
+def test_h4_an_a2a_connection_sends_its_path_and_protocol_version_and_oip_its_model():
+    html = read(PAGE)
+    script = script_of(html)
+    assert re.search(r'<select id="f-version">.*value="1\.0".*value="0\.3".*</select>', html, re.S)
+    assert "protocol_version" in script and "'a2a'" in script and "'oip'" in script
+    assert re.search(r"kind === 'openai' \|\| kind === 'oip'", script), "oip sends the model like openai"
+
+
+def test_h4_the_list_says_what_an_a2a_or_oip_connection_is():
+    script = script_of(read(PAGE))
+    assert "A2A agent" in script and "Open Inference Protocol" in script

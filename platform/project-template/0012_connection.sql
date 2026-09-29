@@ -9,7 +9,7 @@ COMMENT ON SCHEMA connection IS 'The systems this project assesses over the netw
 CREATE TABLE IF NOT EXISTS connection.endpoint (
     name              text PRIMARY KEY CHECK (name ~ '^[a-z0-9][a-z0-9-]{0,62}$'),
     label             text NOT NULL CHECK (length(label) BETWEEN 1 AND 120),
-    kind              text NOT NULL CHECK (kind IN ('openai', 'rest')),
+    kind              text NOT NULL CHECK (kind IN ('openai', 'rest', 'a2a', 'oip')),
     base_url          text NOT NULL,
     method            text NOT NULL DEFAULT 'POST' CHECK (method IN ('GET', 'POST', 'PUT')),
     path              text NOT NULL DEFAULT '',
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS connection.endpoint (
     refusal           jsonb NULL,
     model             text NULL,
     timeout_s         integer NOT NULL DEFAULT 60 CHECK (timeout_s BETWEEN 1 AND 600),
+    protocol_version  text NULL CHECK (protocol_version IN ('1.0', '0.3')),
     secret_ciphertext text NULL,
     engine_component  uuid NULL,
     updated_at        timestamptz NOT NULL DEFAULT now(),
@@ -28,6 +29,19 @@ CREATE TABLE IF NOT EXISTS connection.endpoint (
     last_test_ok      boolean NULL,
     last_test_detail  text NULL,
     deleted_at        timestamptz NULL
+);
+
+-- A key issued to one evaluation run to reach one connection through the platform's protocol
+-- endpoints (AISC-native, OpenAI-compatible, A2A, Open Inference Protocol). Only its sha256 is kept,
+-- with the connection's fingerprint at issue: the record of what that run could call.
+CREATE TABLE IF NOT EXISTS connection.run_key (
+    key_hash     text PRIMARY KEY CHECK (key_hash ~ '^[0-9a-f]{64}$'),
+    name         text NOT NULL REFERENCES connection.endpoint (name) ON DELETE CASCADE,
+    fingerprint  text NOT NULL,
+    issued_at    timestamptz NOT NULL DEFAULT now(),
+    expires_at   timestamptz NOT NULL,
+    uses         integer NOT NULL DEFAULT 0,
+    last_used_at timestamptz NULL
 );
 
 REVOKE ALL ON ALL TABLES IN SCHEMA connection FROM PUBLIC;

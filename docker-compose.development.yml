@@ -849,6 +849,10 @@ services:
       PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
       ENGINE_URL: http://aisc-backend:8000
       CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}
+      # The protocol endpoints a run reaches a connection through (AISC, OpenAI-compatible, A2A,
+      # Open Inference Protocol) are announced at this internal URL; a run's key lasts this long.
+      PLATFORM_INTERNAL_URL: http://platform:8000
+      CONNECTIONS_RUN_KEY_TTL_S: ${CONNECTIONS_RUN_KEY_TTL_S:-43200}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -15,8 +15,8 @@ from platform_service import llm_store
 KEEP = llm_store.KEEP
 #: every column a response may carry (never secret_ciphertext)
 PUBLIC = ("name", "label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
-          "response_path", "refusal", "model", "timeout_s", "engine_component", "updated_at", "updated_by",
-          "last_test_at", "last_test_ok", "last_test_detail")
+          "response_path", "refusal", "model", "timeout_s", "protocol_version", "engine_component", "updated_at",
+          "updated_by", "last_test_at", "last_test_ok", "last_test_detail")
 _SELECT = ", ".join(PUBLIC) + ", secret_ciphertext IS NOT NULL AS has_secret"
 _JSON = ("headers", "body_template", "refusal")
 
@@ -96,3 +96,21 @@ def rotate(conn: psycopg.Connection, multi) -> tuple[int, int]:
         conn.execute("UPDATE connection.endpoint SET secret_ciphertext = %s WHERE name = %s", (fresh, name))
         rotated += 1
     return rotated, unreadable
+
+
+# ── run keys ─────────────────────────────────────────────────────────────────
+
+def issue_run_key(pid, name: str, key_hash: str, fingerprint: str, ttl_s: int):
+    """Store a run key's hash; returns its expiry."""
+    with connect(pid) as conn:
+        return conn.execute("INSERT INTO connection.run_key (key_hash, name, fingerprint, expires_at)"
+                            " VALUES (%s, %s, %s, now() + make_interval(secs => %s)) RETURNING expires_at",
+                            (key_hash, name, fingerprint, ttl_s)).fetchone()["expires_at"]
+
+
+def use_run_key(pid, name: str, key_hash: str) -> bool:
+    """Count one use of a live key of this connection; False when it is not one."""
+    with connect(pid) as conn:
+        return conn.execute("UPDATE connection.run_key SET uses = uses + 1, last_used_at = now()"
+                            " WHERE key_hash = %s AND name = %s AND expires_at > now() RETURNING key_hash",
+                            (key_hash, name)).fetchone() is not None

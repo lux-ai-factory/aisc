@@ -89,6 +89,13 @@ def test_r4_the_platform_gets_the_token_the_engine_url_the_allowlist_and_the_cli
     assert "/app/shared/identity" in env["PYTHONPATH"].split(":")
 
 
+def test_r5_the_platform_names_its_internal_url_for_the_protocol_endpoints_and_the_run_key_ttl():
+    services, _ = config()
+    env = services["platform"]["environment"]
+    assert env["PLATFORM_INTERNAL_URL"] == "http://platform:8000"
+    assert int(env["CONNECTIONS_RUN_KEY_TTL_S"]) == 43200
+
+
 def test_r4_the_eval_worker_gets_the_platform_url_the_token_and_the_allowlist():
     services, _ = config()
     env = services["aisc-eval-worker"]["environment"]

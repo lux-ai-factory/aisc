@@ -11,11 +11,13 @@ often the name of a customer, and 403 would confirm it exists.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import re
 import uuid
 import logging
 import os
+import secrets
 import unicodedata
 from urllib.parse import parse_qs, urlsplit
 
@@ -30,7 +32,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.headers import token_from_headers
 
-from platform_service import (connection_engine, connection_store, dashboard_bridge, db, llm_catalogue, llm_store,
+from platform_service import (connection_engine, connection_facade, connection_store, dashboard_bridge, db, llm_catalogue, llm_store,
                               projectdb)
 from platform_service.membership import (
     InvalidMembership,
@@ -698,6 +700,7 @@ class ConnectionIn(BaseModel):
     refusal: dict | None = None
     model: StrictStr | None = None
     timeout_s: int = 60
+    protocol_version: StrictStr | None = None
     secret: StrictStr | None = None
 
 
@@ -715,8 +718,8 @@ def connection_fields(body: ConnectionIn) -> dict:
     label = body.label.strip()
     if not 1 <= len(label) <= 120:
         raise _invalid_connection("label: 1 to 120 characters")
-    if body.kind not in ("openai", "rest"):
-        raise _invalid_connection("kind: openai or rest")
+    if body.kind not in ("openai", "rest", "a2a", "oip"):
+        raise _invalid_connection("kind: openai, rest, a2a or oip")
     parts = urlsplit(body.base_url.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise _invalid_connection("base_url: an http(s) URL with a host")
@@ -747,12 +750,15 @@ def connection_fields(body: ConnectionIn) -> dict:
             raise _invalid_connection("response_path: where the answer is in the response")
         if body.body_template is None and method != "GET":
             raise _invalid_connection("body_template: the request body, with {{input}}")
-    if body.kind == "openai" and not (body.model or "").strip():
+    if body.kind in ("openai", "oip") and not (body.model or "").strip():
         raise _invalid_connection("model: the model the endpoint serves")
+    if body.protocol_version is not None and (body.kind != "a2a" or body.protocol_version not in ("1.0", "0.3")):
+        raise _invalid_connection("protocol_version: 1.0 or 0.3, for an a2a connection")
     return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": method,
             "path": body.path.strip(), "headers": dict(body.headers), "secret_header": body.secret_header,
             "body_template": body.body_template, "response_path": body.response_path,
-            "refusal": body.refusal, "model": body.model, "timeout_s": body.timeout_s}
+            "refusal": body.refusal, "model": body.model, "timeout_s": body.timeout_s,
+            "protocol_version": body.protocol_version}
 
 
 def connection_view(row: dict) -> dict:
@@ -909,6 +915,217 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(409, {"detail": str(exc)})
     logger.info("connection %s of project %s resolved for a run", name, pid)
     return _internal(200, out)
+
+
+# ── Protocol endpoints in front of a connection (connections plan, revision 3) ──────
+# A run gets a key for one connection and the URLs of four doors to it: AISC's own (input and
+# history in, answer or refusal out), OpenAI Chat Completions, A2A and the Open Inference Protocol.
+# The doors translate (connection_facade) and call the connection with the same client the plugins
+# use; inside the network only, like the resolve route.
+
+RUN_KEY_PREFIX = "aisc-run-"
+
+
+def _key_hash(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+@app.post("/internal/projects/{pid}/connections/{name}/run-keys")
+def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
+    """A key for one evaluation run to reach one connection through the protocol endpoints; only its
+    hash is stored. Guarded like the resolve route. Valid CONNECTIONS_RUN_KEY_TTL_S (12 h)."""
+    if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
+        return _internal(404, {"detail": "not here"})
+    expected = os.environ.get("PLATFORM_CONNECTIONS_TOKEN") or ""
+    if not expected:
+        return _internal(503, {"detail": "the internal route is closed: PLATFORM_CONNECTIONS_TOKEN is not set"})
+    if not hmac.compare_digest(request.headers.get("x-aisc-service-token", "").encode(), expected.encode()):
+        return _internal(401, {"detail": "a service token is needed"})
+    if not looks_like_pid(pid) or db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    row = connection_store.descriptor(pid, name) if CONNECTION_NAME.match(name) else None
+    if row is None or row["deleted_at"] is not None:
+        return _internal(404, {"detail": f"no connection {name!r}"})
+    from aisc_plugin_interface import connections as client
+    try:
+        fingerprint = client.Descriptor.from_dict(descriptor_of(row)).fingerprint()
+    except llm_store.SecretsKeyError as exc:
+        return _internal(503, {"detail": str(exc)})
+    except llm_store.KeyUnreadable as exc:
+        return _internal(409, {"detail": str(exc)})
+    key = RUN_KEY_PREFIX + secrets.token_hex(32)
+    ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
+    expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
+    root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
+    logger.info("run key issued for connection %s of project %s", name, pid)
+    return _internal(201, {"key": key, "expires_at": expires.isoformat(), "endpoints": {
+        "aisc": {"ask_url": f"{root}/aisc/ask"},
+        "openai": {"base_url": f"{root}/openai/v1", "model": name},
+        "a2a": {"agent_card_url": f"{root}/a2a/.well-known/agent-card.json", "rpc_url": f"{root}/a2a"},
+        "oip": {"base_url": f"{root}/oip", "model": name}}})
+
+
+def _facade_open(pid: str, name: str, request: Request):
+    """(descriptor, None) for a live key of this connection, or (None, (status, message))."""
+    if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
+        return None, (404, "not here")
+    if not looks_like_pid(pid) or not CONNECTION_NAME.match(name):
+        return None, (404, "no such connection")
+    scheme, _, key = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not key.startswith(RUN_KEY_PREFIX) or db.get_project(pid) is None:
+        return None, (401, "a run key is needed")
+    if not connection_store.use_run_key(pid, name, _key_hash(key.strip())):
+        return None, (401, "a run key is needed")
+    row = connection_store.descriptor(pid, name)
+    if row is None or row["deleted_at"] is not None:
+        return None, (410, f"connection {name!r} was deleted")
+    from aisc_plugin_interface import connections as client
+    try:
+        return client.Descriptor.from_dict(descriptor_of(row)), None
+    except (llm_store.SecretsKeyError, llm_store.KeyUnreadable) as exc:
+        return None, (503, str(exc))
+
+
+def _facade_call(descriptor, input, history=None):
+    """(answer, None), or (None, error code) when the connection failed. The key is never in it."""
+    from aisc_plugin_interface import connections as client
+    try:
+        return client.call(descriptor, input, history, allowed_hosts=client.allowed_hosts_from_env()), None
+    except client.EndpointError as exc:
+        code = next((c for cls, c in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
+        logger.info("connection %s failed behind a protocol endpoint: %s", descriptor.name, code)
+        return None, code
+
+
+async def _json_body(request: Request):
+    try:
+        body = await request.json()
+    except ValueError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+@app.post("/internal/facade/{pid}/{name}/aisc/ask")
+async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse:
+    descriptor, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"detail": err[1]})
+    body = await _json_body(request)
+    if body is None or "input" not in body or not isinstance(body.get("history", []), list):
+        return _internal(400, {"detail": "{input, history?: [{role, content}]}"})
+    answer, failed = _facade_call(descriptor, body["input"], body.get("history") or None)
+    if failed:
+        return _internal(502, {"error": failed})
+    return _internal(200, {"output": answer.text, "refused": answer.refused, "refusal_reason": answer.refusal_reason,
+                           "status": answer.status, "latency_ms": answer.latency_ms})
+
+
+@app.post("/internal/facade/{pid}/{name}/openai/v1/chat/completions")
+async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONResponse:
+    descriptor, err = _facade_open(pid, name, request)
+    if err:
+        kind = "authentication_error" if err[0] == 401 else "invalid_request_error"
+        return _internal(err[0], connection_facade.openai_error(err[1], kind))
+    body = await _json_body(request)
+    try:
+        input, history = connection_facade.openai_to_core(body or {})
+    except connection_facade.BadRequest as exc:
+        return _internal(400, connection_facade.openai_error(str(exc)))
+    answer, failed = _facade_call(descriptor, input, history or None)
+    if failed:
+        return _internal(502, connection_facade.openai_error(f"the system under test failed: {failed}", "api_error", failed))
+    return _internal(200, connection_facade.core_to_openai(name, answer))
+
+
+@app.get("/internal/facade/{pid}/{name}/openai/v1/models")
+def facade_openai_models(pid: str, name: str, request: Request) -> JSONResponse:
+    _, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], connection_facade.openai_error(err[1], "authentication_error"))
+    return _internal(200, connection_facade.openai_models(name))
+
+
+@app.get("/internal/facade/{pid}/{name}/a2a/.well-known/agent-card.json")
+def facade_a2a_card(pid: str, name: str, request: Request) -> JSONResponse:
+    descriptor, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"detail": err[1]})
+    root = os.environ.get("PLATFORM_INTERNAL_URL", "http://platform:8000").rstrip("/")
+    return _internal(200, connection_facade.a2a_card(descriptor.label or name, f"{root}/internal/facade/{pid}/{name}/a2a"))
+
+
+@app.post("/internal/facade/{pid}/{name}/a2a")
+async def facade_a2a_rpc(pid: str, name: str, request: Request) -> JSONResponse:
+    descriptor, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"detail": err[1]})
+    body = await _json_body(request)
+    if body is None:
+        return _internal(200, connection_facade.jsonrpc_error(None, -32700, "parse error"))
+    rid = body.get("id")
+    try:
+        dialect, input = connection_facade.a2a_to_core(body)
+    except KeyError:
+        return _internal(200, connection_facade.jsonrpc_error(rid, -32601, f"method not found: {body.get('method')}"))
+    except connection_facade.BadRequest as exc:
+        return _internal(200, connection_facade.jsonrpc_error(rid, -32602, str(exc)))
+    answer, failed = _facade_call(descriptor, input)
+    if failed:
+        return _internal(200, connection_facade.jsonrpc_error(rid, -32603, f"the system under test failed: {failed}"))
+    return _internal(200, connection_facade.jsonrpc_result(rid, connection_facade.core_to_a2a(dialect, answer)))
+
+
+@app.get("/internal/facade/{pid}/{name}/oip/v2")
+def facade_oip_server(pid: str, name: str, request: Request) -> JSONResponse:
+    _, err = _facade_open(pid, name, request)
+    return _internal(err[0], {"error": err[1]}) if err else _internal(200, connection_facade.oip_server())
+
+
+@app.get("/internal/facade/{pid}/{name}/oip/v2/health/{which}")
+def facade_oip_health(pid: str, name: str, which: str, request: Request) -> JSONResponse:
+    _, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"error": err[1]})
+    return _internal(200, {}) if which in ("live", "ready") else _internal(404, {"error": "not found"})
+
+
+@app.get("/internal/facade/{pid}/{name}/oip/v2/models/{model}")
+def facade_oip_model(pid: str, name: str, model: str, request: Request) -> JSONResponse:
+    _, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"error": err[1]})
+    if model != name:
+        return _internal(404, {"error": f"no model {model!r}; this endpoint serves {name!r}"})
+    return _internal(200, connection_facade.oip_model(name))
+
+
+@app.get("/internal/facade/{pid}/{name}/oip/v2/models/{model}/ready")
+def facade_oip_model_ready(pid: str, name: str, model: str, request: Request) -> JSONResponse:
+    _, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"error": err[1]})
+    return _internal(200, {}) if model == name else _internal(404, {"error": f"no model {model!r}"})
+
+
+@app.post("/internal/facade/{pid}/{name}/oip/v2/models/{model}/infer")
+async def facade_oip_infer(pid: str, name: str, model: str, request: Request) -> JSONResponse:
+    descriptor, err = _facade_open(pid, name, request)
+    if err:
+        return _internal(err[0], {"error": err[1]})
+    if model != name:
+        return _internal(404, {"error": f"no model {model!r}; this endpoint serves {name!r}"})
+    body = await _json_body(request)
+    try:
+        inputs = connection_facade.oip_to_core(body or {})
+    except connection_facade.BadRequest as exc:
+        return _internal(400, {"error": str(exc)})
+    answers = []
+    for item in inputs:
+        answer, failed = _facade_call(descriptor, item)
+        if failed:
+            return _internal(502, {"error": f"the system under test failed: {failed}"})
+        answers.append(answer)
+    return _internal(200, connection_facade.core_to_oip(name, (body or {}).get("id"), answers))
 
 
 @app.exception_handler(RequestValidationError)

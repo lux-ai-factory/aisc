@@ -169,11 +169,15 @@
         <label for="f-label">Label</label>
         <input id="f-label" type="text" placeholder="e.g. MCAS chat assistant"/>
         <label for="f-kind">Kind</label>
-        <select id="f-kind"><option value="rest">REST API</option><option value="openai">OpenAI-compatible</option></select>
+        <select id="f-kind"><option value="rest">REST API</option><option value="openai">OpenAI-compatible</option><option value="a2a">A2A agent</option><option value="oip">Open Inference Protocol model server</option></select>
         <label for="f-base">Base URL</label>
         <input id="f-base" type="url" placeholder="https://system.example.com"/>
-        <label class="openai" for="f-model">Model</label>
-        <input class="openai" id="f-model" type="text" placeholder="e.g. gpt-4o-mini"/>
+        <label class="model" for="f-model">Model</label>
+        <input class="model" id="f-model" type="text" placeholder="e.g. gpt-4o-mini, or the served model's name"/>
+        <label class="a2a" for="f-version">A2A version and path</label>
+        <div class="a2a fields"><select id="f-version"><option value="1.0">1.0</option><option value="0.3">0.3</option></select>
+          <input id="f-a2a-path" type="text" placeholder="the agent's JSON-RPC path, e.g. /a2a"/></div>
+        <p class="help a2a">The URL of the agent's JSON-RPC interface (its agent card's url) is the base URL plus this path.</p>
         <label class="rest" for="f-method">Method and path</label>
         <div class="rest fields"><select id="f-method"><option>POST</option><option>GET</option><option>PUT</option></select>
           <input id="f-path" type="text" placeholder="/chat"/></div>
@@ -189,7 +193,7 @@
         <textarea id="f-headers" placeholder='{"X-Client": "aisc"}'></textarea>
         <label for="f-secret-header">Key header</label>
         <input id="f-secret-header" type="text" placeholder="Authorization: Bearer {{secret}}"/>
-        <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible: leave empty for Authorization: Bearer.</p>
+        <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible, A2A and OIP: leave empty for Authorization: Bearer.</p>
         <label for="f-secret">Key</label>
         <div><input id="f-secret" autocomplete="new-password"/>
           <label><input id="f-secret-remove" type="checkbox"/> remove the stored key</label></div>
@@ -289,7 +293,7 @@
     connections.forEach(function (c) {
       var tr = el('tr');
       var name = el('td', 'name', c.label);
-      name.appendChild(el('small', '', c.name + ' · ' + (c.kind === 'openai' ? 'OpenAI-compatible, ' + c.model : c.method + ' ' + c.path) + ' · ' + c.base_url));
+      name.appendChild(el('small', '', c.name + ' · ' + describe(c) + ' · ' + c.base_url));
       tr.appendChild(name);
 
       var state = el('td', 'state');
@@ -360,12 +364,20 @@
 
   // ── the editor ──
 
+  function describe(c) {
+    if (c.kind === 'openai') return 'OpenAI-compatible, ' + c.model;
+    if (c.kind === 'oip') return 'Open Inference Protocol, ' + c.model;
+    if (c.kind === 'a2a') return 'A2A agent ' + (c.protocol_version || '1.0') + (c.path ? ', ' + c.path : '');
+    return c.method + ' ' + c.path;
+  }
+
   function jsonText(v) { return v === null || v === undefined ? '' : JSON.stringify(v, null, 2); }
 
   function kindShown() {
     var kind = $('f-kind').value;
     [].forEach.call(document.querySelectorAll('#editor .rest'), function (n) { n.hidden = kind !== 'rest'; });
-    [].forEach.call(document.querySelectorAll('#editor .openai'), function (n) { n.hidden = kind !== 'openai'; });
+    [].forEach.call(document.querySelectorAll('#editor .model'), function (n) { n.hidden = !(kind === 'openai' || kind === 'oip'); });
+    [].forEach.call(document.querySelectorAll('#editor .a2a'), function (n) { n.hidden = kind !== 'a2a'; });
   }
 
   function openEditor(c) {
@@ -376,6 +388,8 @@
     $('f-kind').value = c ? c.kind : 'rest';
     $('f-base').value = c ? c.base_url : '';
     $('f-model').value = c && c.model ? c.model : '';
+    $('f-version').value = c && c.protocol_version ? c.protocol_version : '1.0';
+    $('f-a2a-path').value = c && c.kind === 'a2a' ? c.path : '';
     $('f-method').value = c ? c.method : 'POST';
     $('f-path').value = c ? c.path : '';
     $('f-body').value = c ? jsonText(c.body_template) : '';
@@ -414,8 +428,11 @@
     body.headers = headers.value || {};
     var sh = $('f-secret-header').value.trim();
     body.secret_header = sh || null;
-    if (kind === 'openai') {
+    if (kind === 'openai' || kind === 'oip') {
       body.model = $('f-model').value.trim();
+    } else if (kind === 'a2a') {
+      body.path = $('f-a2a-path').value.trim();
+      body.protocol_version = $('f-version').value;
     } else {
       var tpl = parsed('f-body', 'The request body');
       var ref = parsed('f-refusal', 'The refusal');

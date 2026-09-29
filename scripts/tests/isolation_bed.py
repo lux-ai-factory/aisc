@@ -78,7 +78,7 @@ READER_TABLES = {
 PLUGIN_CONFIG_COLUMNS = ["id", "plugin_id"]
 #: I2.6: never readable by either reader.
 SECRETS = ["engine.aisc_backend_projectconfig", "engine.aisc_backend_pluginconfigprojectconfig", "llm.provider",
-           "llm.system_choice", "connection.endpoint"]
+           "llm.system_choice", "connection.endpoint", "connection.run_key"]
 
 #: The migration trackers of every module (I16.3, I16.6 C7).
 TRACKERS = {

@@ -182,8 +182,10 @@ role, so it can chart results but never write to them.
 
 **Systems under test over the network.** Under the project page's **Manage → Connections**, an
 admin registers the AI systems the project assesses through their API (an OpenAI-compatible
-endpoint, or any REST API with a request template), tests each with one probe, and an evaluation
-then picks one as its system under test. Calls to internal addresses (loopback, private ranges,
+endpoint, an A2A agent, an Open Inference Protocol model server, or any REST API with a request
+template), tests each with one probe, and an evaluation then picks one as its system under test.
+A plugin whose tool speaks OpenAI, A2A or OIP reaches any connection through the platform, which
+translates (see `shared/plugin-interface/PLUGIN_DEVELOPER_GUIDE.md`, section 13). Calls to internal addresses (loopback, private ranges,
 the stack's own services) are refused unless listed in `CONNECTIONS_ALLOWED_HOSTS` (host or
 host:port, comma list), e.g. `CONNECTIONS_ALLOWED_HOSTS=host.docker.internal:8500` for a system
 running on the Docker host.
