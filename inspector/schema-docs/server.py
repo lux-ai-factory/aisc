@@ -40,6 +40,7 @@ PROJECT_SCHEMAS = {
     "engine": ("Execution engine", "Systems, components, test plugins, evaluations and their results."),
     "report_composer": ("Reports", "Report layouts, templates and the reports generated from them."),
     "llm": ("LLM keys and models", "LLM keys (stored encrypted, never readable) and the provider and model each agentic system uses."),
+    "target": ("Assessment targets", "What each assessment is about: the system, or one of the components its AI card lists."),
     "connection": ("Connections", "The systems this project assesses over the network, and their keys (stored encrypted, never readable)."),
     "provision": ("Provisioning", "Bookkeeping: which template migrations this database has had."),
 }

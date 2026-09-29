@@ -86,3 +86,35 @@ def private_address() -> str | None:
         probe.close()
     parsed = ipaddress.ip_address(ip)
     return ip if parsed.is_private and not parsed.is_loopback else None
+
+
+class EngineFake:
+    """The engine's component API as the platform uses it (targets plan v2): the engine project
+    of a platform project (made on first use, POST /api/v1/projects/for-platform/<pid>, whose pid
+    is the engine's own), its components (GET .../aisystem), creating one and renaming one."""
+
+    def __init__(self, stub: Stub, platform_pid: str):
+        self.stub, self.platform_pid = stub, str(platform_pid)
+        self.engine_pid = str(uuid.uuid4())
+        self.components: list[dict] = []
+        stub.route("POST", f"/api/v1/projects/for-platform/{self.platform_pid}",
+                   (200, lambda r: {"pid": self.engine_pid, "name": "project"}))
+        stub.route("GET", f"/api/v1/projects/{self.engine_pid}/aisystem",
+                   (200, lambda r: {"pid": str(uuid.uuid4()), "components": [dict(c) for c in self.components]}))
+        stub.route("POST", f"/api/v1/projects/{self.engine_pid}/components", (200, self._create))
+
+    def _create(self, request):
+        comp = {"pid": str(uuid.uuid4()), "name": request["json"]["name"],
+                "component_type": request["json"]["component_type"], "json_value": request["json"].get("json_value")}
+        self.components.append(comp)
+        self.stub.route("PATCH", f"/api/v1/components/{comp['pid']}", (200, lambda r, c=comp: self._rename(c, r)))
+        return comp
+
+    @staticmethod
+    def _rename(comp, request):
+        comp.update(request["json"])
+        return comp
+
+    def named(self, value: str) -> dict | None:
+        """The component whose json_value is `value`, if the engine has one."""
+        return next((c for c in self.components if (c.get("json_value") or {}).get("value") == value), None)

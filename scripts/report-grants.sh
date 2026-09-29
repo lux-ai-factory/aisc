@@ -39,6 +39,7 @@ DECLARE
     -- I2.6, exhaustive: the one reader list, for report_ro and dashboard_ro.
     listed text[] := ARRAY[
         'project.system',
+        'target.target',
         'controls.checklist', 'controls.checklist_question', 'controls.source', 'controls.submission',
         'controls.submission_answer',
         'qualification.qualification', 'qualification.qualification_answer', 'qualification.qualification_risk',
@@ -53,10 +54,10 @@ DECLARE
             'aisc_backend_measurement', 'aisc_backend_metric', 'aisc_backend_direct', 'aisc_backend_derived',
             'aisc_backend_metriccategory', 'aisc_backend_metriccategory_metrics', 'aisc_backend_artifact']) AS t);
     -- the schemas a reader may enter (report_composer: USAGE only, no table)
-    schemas text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer'];
+    schemas text[] := ARRAY['project', 'target', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer'];
     -- the schemas whose other tables a reader must not read: the above, plus secrets and bookkeeping
-    guarded text[] := ARRAY['project', 'controls', 'qualification', 'control_objectives', 'engine', 'report_composer',
-                            'llm', 'connection', 'provision'];
+    guarded text[] := ARRAY['project', 'target', 'controls', 'qualification', 'control_objectives', 'engine',
+                            'report_composer', 'llm', 'connection', 'provision'];
     reader text;
     s text;
     rel text;

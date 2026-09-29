@@ -32,7 +32,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.headers import token_from_headers
 
-from platform_service import (connection_allowlist, connection_engine, connection_facade, connection_store, dashboard_bridge, db, llm_catalogue, llm_store,
+from platform_service import (connection_allowlist, connection_engine, connection_facade, connection_store, targets, dashboard_bridge, db, llm_catalogue, llm_store,
                               projectdb)
 from platform_service.membership import (
     InvalidMembership,
@@ -150,6 +150,14 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
     except errors.UniqueViolation:
         raise HTTPException(status_code=409, detail=f"a project {slug!r} already exists")
     provision_or_undo(created["pid"])
+    # every evaluation names a target: the system's exists from the start (targets plan v2);
+    # its engine mirror follows on the first pass that has a caller's token and an engine project
+    try:
+        targets.ensure_system(created["pid"], created["name"])
+    except Exception:
+        # never a reason to refuse the project: the targets list, every sync and the engine's
+        # evaluation form ensure it again
+        logger.exception("the system target of project %s was not made at creation", created["pid"])
     if not dashboard_bridge.register(created["pid"], created["slug"], created["name"]):
         db.remember_unregistered(created["pid"])
     return created
@@ -917,6 +925,42 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
     out.update(connection_allowlist.rule(pid))
     logger.info("connection %s of project %s resolved for a run", name, pid)
     return _internal(200, out)
+
+
+# ── Assessment targets (targets plan v2, 2026-09-29) ──────────────────────────
+# What each evaluation is about: the system, or one component of its AI card. Any member reads
+# them; an editor refreshes them from the card (the card's own editors add components); the
+# qualification app calls the refresh after every card save. Every call to another module is made
+# with the caller's own token.
+
+def _targets_answer(pid: str, synced: dict | None = None) -> dict:
+    from platform_service import db as _db
+
+    _exists, latest = _db.latest_version(str(pid))
+    number = latest["number"] if latest else None
+    return {"targets": targets.view(pid, number), "latest_card": number,
+            "reason": (synced or {}).get("reason")}
+
+
+@app.get("/projects/{slug}/targets")
+def list_targets(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    targets.ensure_system(found["pid"], found["name"])
+    return _targets_answer(found["pid"])
+
+
+@app.post("/projects/{slug}/targets/sync")
+def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    role_or_404(slug, caller, "editor")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    targets.ensure_system(found["pid"], found["name"])
+    synced = targets.sync(found["pid"], token_from_headers(request.headers) or "")
+    return _targets_answer(found["pid"], synced)
 
 
 # ── Allowed internal hosts (allowlist task 2026-09-29) ─────────────────────────

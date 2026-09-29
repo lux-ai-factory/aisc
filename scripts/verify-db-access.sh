@@ -79,6 +79,7 @@ deny_in report_composer_rw    "create table control_objectives.probe_$$ (x int)"
 for r in qualification_rw control_objectives_rw controls_rw engine_rw report_composer_rw; do
   deny_in "$r" "select count(*) from llm.provider"              "cannot read the LLM keys"
   deny_in "$r" "select count(*) from connection.endpoint"       "cannot read the connections"
+  deny_in "$r" "select count(*) from target.target"             "cannot read the assessment targets"
   deny_in "$r" "select count(*) from provision.template_migration" "cannot read provisioning"
 done
 

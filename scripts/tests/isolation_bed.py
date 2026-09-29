@@ -47,7 +47,7 @@ TEMPLATES = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004
              "0005_llm.sql", "0006_project_system.sql", "0007_qualification.sql",
              "0008_control_objectives.sql", "0009_engine.sql", "0010_report_composer.sql",
              "0011_qualification_temporary.sql", "0012_connection.sql",
-             "0013_connection_allowlist.sql"]
+             "0013_connection_allowlist.sql", "0014_target.sql"]
 
 #: I1.1: module schema -> its role.
 MODULES = {
@@ -62,6 +62,8 @@ MODULES = {
 READERS = ("report_ro", "dashboard_ro")
 READER_TABLES = {
     "project": ["system"],
+    # what each assessment is about (targets plan v2): no secret, the readers show it with results
+    "target": ["target"],
     "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "form", "form_version", "form_question", "form_version_question"],
