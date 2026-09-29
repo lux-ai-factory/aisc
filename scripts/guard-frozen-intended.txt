@@ -37,6 +37,8 @@ backend aisc_backend/repositories/measurement_repository.py T4: vendor of the qu
 backend aisc_backend/repositories/project_repository.py T4: create() takes platform_project_id
 backend aisc_backend/repositories/system_version_repository.py T3: latest card version, read by the stamp signal
 backend aisc_backend/routers/platform_project.py T4: the engine's row for a platform project, moved verbatim out of Sean's routers/project.py, mounted in configurator only (adapt plan 2026-09-28, task 3)
+backend aisc_backend/routers/target_input.py T4: (targets plan v2 of 2026-09-29, step 4, not the engine-modes plan) every evaluation form asks for its target; the frozen input-definitions handler is reused, not changed; configurator only
+backend aisc_backend/tests/test_target_input.py T4: (targets plan v2 of 2026-09-29, step 4, not the engine-modes plan) tests of the target input route (EN1, EN2, EN4)
 backend aisc_backend/routers/plugin.py T4: catalogue_slug recorded on install (the only change left to a router of Sean's; the membership and admin checks moved to the door, adapt plan 2026-09-28, task 3)
 backend aisc_backend/schemas/plugin.py T4: catalogue_slug in the plugin schema
 backend aisc_backend/services/celery_service.py T4: Sean's run_evaluation(evaluation_pid) in both modes; configurator adds the run (project, evaluation, ticket) in the Celery headers (Ruling 27; adapt plan 2026-09-28, task 4)
@@ -61,7 +63,7 @@ backend aisc_backend/tests/test_one_system_per_project.py T5: AI system with its
 backend aisc_backend/tests/test_seans_files_unchanged.py T4: Sean's routers, keycloak.py and settings the configurator no longer edits equal master (adapt plan 2026-09-28, task 3)
 backend aisc_backend/tests/test_seans_table_names.py T2: Sean's table names are kept, no migration renames his tables (adapt plan 2026-09-28, task 1)
 backend config/settings.py T1, T3: reads the mode; in configurator the door middleware, project databases and no login apps (0019 dropped their tables)
-backend config/urls.py T3: admin and allauth routes standalone only; the platform project router in configurator only (adapt plan 2026-09-28, task 3)
+backend config/urls.py T3: admin and allauth routes standalone only; the platform project router in configurator only (adapt plan 2026-09-28, task 3); the target input router in front of /plugins, configurator only (targets plan v2, 2026-09-29, step 4)
 
 # apps/eval
 eval aisc_eval/celery_app.py T9: Task 9b: Méril's feat/dev-catalogue-staging (Celery task limits 400/405 min for long first plugin runs)
