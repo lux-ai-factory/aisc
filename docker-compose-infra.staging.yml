@@ -11,7 +11,7 @@ services:
       - /home/deployer/data/caddy:/data
     environment:
       LOG_FILE: "/data/access.log"
-      CADDY_DOMAIN: "aisctest.uni.lux"
+      CADDY_DOMAIN: "https://aforstest.uni.lux"
       CADDY_PORT: "8005"
       CADDY_ENVIRONMENT: "staging"
       # Keycloak on the same origin as the app, under /auth (no DNS/cert for a
