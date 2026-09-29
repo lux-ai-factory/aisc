@@ -131,3 +131,27 @@ def test_h4_an_a2a_connection_sends_its_path_and_protocol_version_and_oip_its_mo
 def test_h4_the_list_says_what_an_a2a_or_oip_connection_is():
     script = script_of(read(PAGE))
     assert "A2A agent" in script and "Open Inference Protocol" in script
+
+
+# ── H5 the layout: hidden rows really hide; the key row reads as one control ─
+
+def style_of(html):
+    return "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", html, re.S | re.I))
+
+
+def test_h5_a_hidden_row_is_hidden_even_when_its_class_sets_display():
+    # .fields sets display:flex, which beats the browser's [hidden] rule: a hidden kind's row stayed
+    # in the two-column grid and shifted every later label and field by one cell
+    css = style_of(read(PAGE))
+    assert re.search(r"form#editor \[hidden\]\s*\{\s*display:\s*none\s*!important", css)
+
+
+def test_h5_the_key_row_is_the_field_and_its_remove_box_side_by_side():
+    html = read(PAGE)
+    css = style_of(html)
+    row = re.search(r'<label for="f-secret">Key</label>\s*<div class="([^"]*)">(.*?)</div>', html, re.S)
+    assert row and "fields" in row.group(1).split()
+    assert re.search(r'<label class="check">\s*<input id="f-secret-remove" type="checkbox"', row.group(2))
+    assert re.search(r'input\[type="?checkbox"?\]\s*\{[^}]*min-width:\s*0', css)
+    check = re.search(r"form#editor label\.check\s*\{([^}]*)\}", css)
+    assert check and "text-transform:none" in check.group(1).replace(" ", "")

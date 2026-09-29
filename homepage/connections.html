@@ -119,6 +119,13 @@
                     color:var(--muted); padding-top:9px}
   form#editor .help{grid-column:2; margin:-6px 0 0; font-size:12px; color:var(--faint)}
   form#editor .actions{grid-column:2; display:flex; gap:10px}
+  /* .fields and .help set display, which would win over the hidden attribute: a hidden kind's row
+     would stay in the grid and shift every later label and field by one cell */
+  form#editor [hidden]{display:none !important}
+  form#editor .fields input[type="text"], form#editor .fields input[type="password"], form#editor .fields input:not([type]){flex:1}
+  input[type="checkbox"]{min-width:0; width:auto; margin:0}
+  form#editor label.check{display:inline-flex; align-items:center; gap:6px; padding-top:0;
+                          font-family:inherit; font-size:12.5px; letter-spacing:0; text-transform:none}
 
   @media (max-width:820px){
     .topbar{padding:12px 18px; gap:14px}
@@ -195,8 +202,8 @@
         <input id="f-secret-header" type="text" placeholder="Authorization: Bearer {{secret}}"/>
         <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible, A2A and OIP: leave empty for Authorization: Bearer.</p>
         <label for="f-secret">Key</label>
-        <div><input id="f-secret" autocomplete="new-password"/>
-          <label><input id="f-secret-remove" type="checkbox"/> remove the stored key</label></div>
+        <div class="fields"><input id="f-secret" autocomplete="new-password"/>
+          <label class="check"><input id="f-secret-remove" type="checkbox"/> remove the stored key</label></div>
         <label for="f-timeout">Timeout (seconds)</label>
         <input id="f-timeout" type="number" min="1" max="600" value="60"/>
         <div class="actions"><button type="submit">Save</button><button type="button" class="ghost" id="cancel">Cancel</button></div>
