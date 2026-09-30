@@ -89,3 +89,32 @@ objectives, not every mapped one.
 5. Live check on the MCAS project: select objectives, link LangBiTe and one checklist, render a report.
 
 Nothing is pushed without naming the repos first.
+
+## Built (2026-09-30, local commits, nothing pushed, not deployed)
+
+| Repo | Commit | What |
+|---|---|---|
+| apps/control-objectives | c5487ce | `objective_selection` table (revision `20261001000000_selection`), D1/D2 rule, checkboxes + `POST .../selection`, backfill of already-mapped assessments |
+| aisc | 8c00ef6 | template `0016_evidence.sql`, `platform_service/evidence.py`, `GET /projects/{slug}/evidence`, `PUT .../evidence/links`, `homepage/evidence.html`, step 4 card, compose env |
+| apps/report-generator | b0fc8e4 | objective blocks list the selection (mapped ones when there is none); links match a plugin by package name |
+| aisc | 30d8c06 | composer: snapshots carry `evidence.link` as `coverage_links`; coverage map, its validation and the legacy links widget removed |
+
+Deviations from the design above:
+
+- **D4, how the platform reads.** It reads as `report_ro` (`EVIDENCE_READER_DATABASE_URL`, like the report's
+  `REPORT_PROJECT_DB_URL`), which already reads the engine's plugins and the controls' checklists. So the engine and
+  controls apps are untouched and `platform_rw` gets no new grants.
+- **Objective titles** come from the control-objectives public catalogue, fetched by the platform on the internal
+  network (`CONTROL_OBJECTIVES_URL`, default `http://control-objectives:8090`): the page is on the launcher's origin
+  and could not call it.
+- **D1 for existing data.** The migration ticks the mapped objectives of every assessment already mapped.
+- **D5, old reports.** The renderer still reads a Summary block's own links for a snapshot **without**
+  `coverage_links` (reports issued before the map existed), so old reports render as before. New snapshots always
+  carry `coverage_links` and the composer no longer sends a block's own links.
+- **`layout.coverage` column** is left in place, unread and unwritten. Dropping it is a migration that needs a yes.
+- **Report without a selection.** An assessment with no selection row lists its mapped objectives.
+
+Suites: control-objectives 386 passed; platform 470 passed (one pre-existing flake,
+`test_tg2_the_callers_token_goes_to_qualification_both_ways`, tokens a second apart); renderer 737 passed;
+composer 507 passed (pre-existing: `test_i8_2_i1_7...` failing, 2 `test_e2e.py` errors on a missing file, same on
+the pre-change commit); page tests 9 passed.
