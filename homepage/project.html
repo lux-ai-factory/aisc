@@ -183,22 +183,6 @@
             transition:transform .16s ease}
   a.card:hover .open svg{transform:translateX(4px)}
 
-  /* a step with two ways in: the card holds a link for each, side by side */
-  .card.split{padding-bottom:26.4px}
-  .card.split > h2{margin-bottom:16.8px}
-  .card.split .links{display:grid; grid-template-columns:1fr 1fr; gap:14.4px; margin-top:auto}
-  a.sub{
-    position:relative; display:flex; flex-direction:column; gap:6px; padding:14.4px 16.8px 13.2px;
-    border:1px solid var(--border); color:inherit; text-decoration:none; background:var(--panel);
-    transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
-  }
-  a.sub h3{margin:0; font-size:18px; white-space:nowrap; font-weight:600; letter-spacing:-.012em; line-height:1.25}
-  a.sub p{margin:0; color:var(--muted); font-size:15.6px; line-height:1.45}
-  a.sub .open{padding-top:7.2px}
-  a.sub:hover{border-color:var(--primary); box-shadow:0 8px 22px rgba(12,18,60,.08); transform:translateY(-2px)}
-  a.sub:hover .open svg{transform:translateX(4px)}
-  a.sub:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
-
   /* a module that is not part of this install: in the sequence, not a link */
   .card.off{border-style:dashed; background:transparent; cursor:default}
   .card.off .n{color:rgba(0,0,0,.26)}
@@ -257,7 +241,6 @@
     main{padding:33.6px 21.6px 38.4px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
-    .card.split .links{grid-template-columns:1fr}
     .card .n{font-size:91.2px; top:4.8px}
     .arrow{height:34px}
     .arrow::before{top:0; bottom:0; left:50%; right:auto; border-top:0; border-left:1px solid var(--border-strong)}
@@ -447,26 +430,16 @@
   <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
 
   <div class="row">
-    <div class="card split">
+    <a class="card" id="evidence-card" href="/evidence.html" data-controls="http://localhost/controls">
       <span class="n">4</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="m9 13 2 2 4-4"/></svg>
         Evidence
       </span>
       <h2>Collect evidence</h2>
-      <div class="links">
-        <a class="sub" id="controls-card" href="http://localhost/controls">
-          <h3>Address controls</h3>
-          <p>Score the checklists.</p>
-          <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
-        </a>
-        <a class="sub" id="engine-card" href="http://localhost/">
-          <h3>Execute tests</h3>
-          <p>Run evaluations on the system.</p>
-          <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
-        </a>
-      </div>
-    </div>
+      <p>Link tests and controls to the objectives, then run the tests and score the checklists.</p>
+      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
+    </a>
     <div class="arrow" aria-hidden="true"></div>
     <a class="card" href="http://localhost:8188/">
       <span class="n">5</span>
@@ -555,7 +528,6 @@
       // that lists anything says whose it is.
       var inProject = {
         'control-objectives-card': 'http://localhost/control-objectives/p/',
-        'controls-card': 'http://localhost/controls/p/',
         'qualification-card': 'http://localhost/qualification/p/',
         'report-composer-card': 'http://localhost/report-composer/p/'
       };
@@ -563,10 +535,9 @@
         var card = document.getElementById(id);
         if (card) card.href = inProject[id] + encodeURIComponent(p.pid);
       });
-      // The execution engine is a single-page app with its own project
-      // switcher, so it takes the project as a query and remembers it.
-      var engine = document.getElementById('engine-card');
-      if (engine) engine.href = 'http://localhost/?project=' + encodeURIComponent(p.pid);
+      // Step 4 is a page of the launcher: it links the evidence and leads on to
+      // the engine and the controls app.
+      document.getElementById('evidence-card').href = '/evidence.html?project=' + encodeURIComponent(slug);
     })
     .catch(function () {
       document.getElementById('project-name').textContent = 'Unknown project';
@@ -584,15 +555,12 @@
     if (e.key === 'Escape') document.querySelectorAll('.menu').forEach(function (menu) { menu.open = false; });
   });
 
-  // Where this platform's controls app is, from the controls card itself, so
-  // there is one place to change it: the card is rewritten to .../p/{pid} once
-  // the project is known, and the app is what comes before that.
+  // Where this platform's controls app is, from the step 4 card, so there is one
+  // place to change it.
   function controlsBase() {
     var fallback = 'http://localhost/controls';
-    var controls = document.getElementById('controls-card');
-    var href = controls && controls.href; // absolute, as the browser resolved it
-    if (!href) return fallback;
-    var base = String(href).replace(/[?#].*$/, '').replace(/\/p\/[^/]*\/?$/, '').replace(/\/+$/, '');
+    var card = document.getElementById('evidence-card');
+    var base = String((card && card.dataset.controls) || '').replace(/\/+$/, '');
     return /^https?:\/\/[^/]/.test(base) ? base : fallback;
   }
 

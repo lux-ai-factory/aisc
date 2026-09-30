@@ -32,7 +32,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.headers import token_from_headers
 
-from platform_service import (connection_allowlist, connection_facade, connection_store, target_store, targets, dashboard_bridge, db, llm_catalogue, llm_store,
+from platform_service import (connection_allowlist, connection_facade, connection_store, target_store, targets, dashboard_bridge, db, evidence, llm_catalogue, llm_store,
                               projectdb)
 from platform_service.membership import (
     InvalidMembership,
@@ -1043,6 +1043,59 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
     targets.ensure_system(found["pid"], found["name"])
     synced = targets.sync(found["pid"], token_from_headers(request.headers) or "")
     return _targets_answer(found["pid"], synced)
+
+
+# ── Collect evidence (evidence links plan 2026-09-30) ──────────────────────────
+# Members read; editors and owners change the links (D6). What may be linked is read from steps 2
+# and 3 as report_ro (evidence.py).
+
+class EvidenceLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    objective_id: StrictStr
+    kind: StrictStr
+    key: StrictStr
+
+
+class EvidenceLinksIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    links: list[EvidenceLinkIn]
+
+
+def _evidence_answer(pid, role: str) -> dict:
+    try:
+        answer = evidence.view(pid)
+    except evidence.NotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    answer["can_edit"] = at_least(role, "editor")
+    return answer
+
+
+@app.get("/projects/{slug}/evidence")
+def get_evidence(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    role = role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    return _evidence_answer(found["pid"], role)
+
+
+@app.put("/projects/{slug}/evidence/links")
+def put_evidence_links(slug: str, body: EvidenceLinksIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    role = role_or_404(slug, caller, "editor")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    if len(body.links) > 5000:
+        raise HTTPException(status_code=422, detail="links: at most 5000")
+    try:
+        evidence.replace(found["pid"], [(l.objective_id, l.kind, l.key) for l in body.links],
+                         caller.subject)
+    except evidence.Refused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except evidence.NotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    logger.info("project %s: %d evidence links saved", found["pid"], len(body.links))
+    return _evidence_answer(found["pid"], role)
 
 
 # ── Allowed internal hosts (allowlist task 2026-09-29) ─────────────────────────
