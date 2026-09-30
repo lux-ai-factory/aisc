@@ -382,3 +382,16 @@ ALTER TABLE ONLY qualification.qualification
 --
 
 
+
+--
+-- The form speaks VAIR (apps/qualification migration 20260930000000_vair_terms): nullable columns only.
+-- Added by hand: refresh_schema.sh dumps `platform`, which no longer holds the qualification schema.
+--
+
+ALTER TABLE qualification.qualification ADD COLUMN system_type text NULL;
+ALTER TABLE qualification.qualification ADD COLUMN purpose text NULL;
+ALTER TABLE qualification.qualification_risk ADD COLUMN source_term text NULL;
+ALTER TABLE qualification.qualification_risk ADD COLUMN consequence_term text NULL;
+ALTER TABLE qualification.qualification_risk ADD COLUMN impact_term text NULL;
+ALTER TABLE qualification.qualification_risk ADD COLUMN control_term text NULL;
+ALTER TABLE qualification.qualification_risk ADD COLUMN follow_up_control_term text NULL;

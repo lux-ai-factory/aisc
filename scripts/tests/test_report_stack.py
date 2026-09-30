@@ -146,6 +146,8 @@ def test_d3_renderer_mounts_vocab_and_objectives_read_only(compose):
     e = env_of(svc)
     vols = volumes_of(svc)
     for src_end, var in (("apps/qualification/src/data/airo_vocab.json", "REPORT_AIRO_VOCAB_PATH"),
+                         # the form speaks VAIR (2026-09-30): the labels of its terms
+                         ("apps/qualification/src/data/vair_vocab.json", "REPORT_VAIR_VOCAB_PATH"),
                          ("aisc_control_objectives/data/ai_act_control_objectives.csv",
                           "REPORT_OBJECTIVES_CSV_PATH")):
         hit = [v for v in vols if str(v.get("source", "")).endswith(src_end)]

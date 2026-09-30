@@ -152,10 +152,40 @@ def test_s1_6_one_ai_system_per_engine_project(guard_all):
 
 # --- the other guard checks ---------------------------------------------------------------------
 
-def test_g2_airo_tables_unchanged(guard_all):
-    """G2: qualification.knowledge_graph and qualification_risk unchanged since e112001."""
-    r, out = guard_all
-    assert verdict(r.stdout, "G2") == ["G2 PASS"], "\n".join(verdict(r.stdout, "G2"))
+# 2026-09-30: the freeze is there so we never diverge from the originals: the authors' AIRO and VAIR
+# files, and Sean's code. knowledge_graph and qualification_risk are our own tables (the VAIR form added
+# columns to the second), and airo_vocab.json is our own list, so G2 is retired and G3 hashes only the
+# two vendored files.
+
+def test_g2_is_retired():
+    r = subprocess.run([str(GUARD), "--only", "G2"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 2
+    assert "G2 is retired" in r.stderr
+
+
+def test_g3_hashes_the_authors_files_and_nothing_of_ours(tmp_path):
+    r = subprocess.run([str(GUARD), "--only", "G3"], capture_output=True, text=True, timeout=120,
+                       env={**os.environ, "GUARD_OUT": str(tmp_path), "GUARD_G3_PYTEST": "0"})
+    assert verdict(r.stdout, "G3") == ["G3 PASS (hashes)"], r.stdout + r.stderr
+    assert "airo_vocab.json" not in GUARD.read_text().split("g3() {", 1)[1].split("\n}", 1)[0]
+
+
+def test_g3_still_fails_when_an_authors_file_changes(tmp_path):
+    """A copy of the guard over a copy of the two files, one byte of vair.ttl changed."""
+    import shutil
+
+    tree = tmp_path / "tree"
+    for rel in ("scripts/guard-frozen.sh", "scripts/lib/throwaway-pg.sh", "scripts/guard-frozen-intended.txt",
+                "apps/qualification/services/ontology/airo/airo.ttl",
+                "apps/qualification/services/ontology/airo/vair.ttl"):
+        (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, tree / rel)
+    vair = tree / "apps/qualification/services/ontology/airo/vair.ttl"
+    vair.write_text(vair.read_text() + "\n# edited\n")
+    r = subprocess.run([str(tree / "scripts/guard-frozen.sh"), "--only", "G3"], capture_output=True, text=True,
+                       timeout=120, env={**os.environ, "GUARD_OUT": str(tmp_path / "out"), "GUARD_G3_PYTEST": "0"})
+    [line] = verdict(r.stdout, "G3")
+    assert line.startswith("G3 FAIL") and "vair.ttl" in line, r.stdout
 
 
 def test_g3_vendored_airo_vair_files(guard_all):

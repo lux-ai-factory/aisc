@@ -602,14 +602,17 @@ services:
     pull_policy: never
     container_name: report-renderer
     volumes:
-      # read-only, never copied (02 D3; airo_vocab.json is pinned by the guard)
+      # read-only, never copied (02 D3)
       - ./apps/qualification/src/data/airo_vocab.json:/data/airo_vocab.json:ro,z
+      # the form speaks VAIR (2026-09-30): the labels of the terms its tables hold, generated from vair.ttl
+      - ./apps/qualification/src/data/vair_vocab.json:/data/vair_vocab.json:ro,z
       - ./apps/control-objectives/src/aisc_control_objectives/data/ai_act_control_objectives.csv:/data/ai_act_control_objectives.csv:ro,z
     environment:
       REPORT_PLATFORM_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       REPORT_SUPERSET_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/superset
       REPORT_PROJECT_DB_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
       REPORT_AIRO_VOCAB_PATH: /data/airo_vocab.json
+      REPORT_VAIR_VOCAB_PATH: /data/vair_vocab.json
       REPORT_OBJECTIVES_CSV_PATH: /data/ai_act_control_objectives.csv
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
       # O1: chart images stay off until Superset screenshots are enabled (set to superset then)

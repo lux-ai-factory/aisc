@@ -11,9 +11,10 @@
 #     schema Sean's origin/master makes up to exactly the differences g1_allowed lists (adapt plan
 #     2026-09-28, Ruling 6): our three columns with their indexes and keys, the mode marker table,
 #     and in configurator minus the login tables 0019 drops
-# G2  qualification.knowledge_graph and qualification.qualification_risk unchanged since e112001
-#     (the candidate's are made in a project database)
-# G3  the vendored AIRO/VAIR files hash as pinned
+# G2  retired 2026-09-30: it froze qualification.knowledge_graph and qualification_risk, which are
+#     our own tables (the VAIR form added columns to the second). The freeze is there so we never
+#     diverge from the originals: the authors' AIRO/VAIR files (G3) and Sean's code (G1, G4, G5).
+# G3  the vendored AIRO/VAIR files, as their authors published them, hash as pinned
 # G4  backend, eval and webapp byte-identical to Sean's origin/master (the base of
 #     feat/deployment-modes) but for the files scripts/guard-frozen-intended.txt names with their
 #     task and reason (Ruling 36); plugin-interface without new commits, plugin-manager clean
@@ -41,12 +42,13 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TPG_OWN_TRAP=1
 . "$ROOT/scripts/lib/throwaway-pg.sh"
 
-MODE=all; ONLY="G1,G2,G3,G4,G5"
+MODE=all; ONLY="G1,G3,G4,G5"
 while [ $# -gt 0 ]; do
   case "$1" in
     --reference-only) MODE=reference ;;
     --orders) MODE=orders ;;
-    --only) ONLY=$2; shift ;;
+    --only) ONLY=$2; shift
+            case ",$ONLY," in *,G2,*) echo "G2 is retired (2026-09-30): knowledge_graph and qualification_risk are our own tables; see the header" >&2; exit 2 ;; esac ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -175,9 +177,6 @@ platform_migrations() { # tree [names...]; default every file
 engine_dump() { # db
   tpg_dump "$1" --schema-only --schema=engine --no-privileges \
     | grep -v -E '^(CREATE SCHEMA|ALTER SCHEMA|COMMENT ON SCHEMA) |^-- Name: (SCHEMA )?engine; Type: (SCHEMA|COMMENT); Schema: -; Owner: '
-}
-airo_dump() { # db
-  tpg_dump "$1" --schema-only --no-privileges -t qualification.knowledge_graph -t qualification.qualification_risk
 }
 # G1's allowed differences (adapt plan 2026-09-28, Ruling 6): what the candidate, migrated by
 # migrate_projects into a project database (configurator), may add to or lack from the schema
@@ -331,7 +330,6 @@ build_reference() { # [rev tree]: the engine of rev (default $ENGINE_REF, Sean's
   ref_py=$(reference_python "$rev" "$src" 2>>"$OUT/ref.log") || return 1
   PGOPTIONS="-c search_path=engine" ENGINE_PY=$ref_py engine_migrate "$src" >>"$OUT/ref.log" 2>&1 || return 1
   engine_dump platform > "$OUT/engine.reference.sql"
-  airo_dump platform > "$OUT/airo.reference.sql"
   echo "reference dump: $OUT/engine.reference.sql"
 }
 
@@ -357,7 +355,6 @@ build_candidate() {
      PYTHONPATH="$SHARED_PYTHONPATH" "$PY" manage.py migrate_projects) >>"$OUT/cand.log" 2>&1 \
     || echo "engine migrate_projects failed" >> "$OUT/candidate.errors"
   engine_dump "$db" > "$OUT/engine.candidate.sql"
-  airo_dump "$db" > "$OUT/airo.candidate.sql"
 }
 
 why() { # summary of missing pieces and failed steps
@@ -376,25 +373,10 @@ g1() {
   fi
 }
 
-model_block() { sed -n "/^model $2 {/,/^}/p" <<<"$1"; }
-g2() {
-  local ok=1 old new m
-  if ! diff -u "$OUT/airo.reference.sql" "$OUT/airo.candidate.sql" > "$OUT/g2.diff"; then
-    ok=0; fail G2 "knowledge_graph/qualification_risk dump differs ($OUT/g2.diff)"
-  fi
-  old=$(git -C "$QUAL" show "$QUAL_REF:prisma/schema.prisma")
-  if [ "$SOURCE" = worktree ]; then new=$(cat "$QUAL/prisma/schema.prisma"); else new=$(git -C "$QUAL" show HEAD:prisma/schema.prisma); fi
-  for m in QualificationRisk KnowledgeGraph; do
-    if [ "$(model_block "$old" $m)" != "$(model_block "$new" $m)" ]; then ok=0; fail G2 "model $m changed in schema.prisma"; fi
-  done
-  [ $ok = 1 ] && pass G2
-}
-
 g3() {
   if (cd "$ROOT" && sha256sum -c --quiet - <<'SUMS'
 6274d2d8711e046cf38f1b5b2980188094d4aa87b5af79804005a06468fd8469  apps/qualification/services/ontology/airo/airo.ttl
 6b42323726e7a82a5c4782a6d9398fc44db21bd4e0ca9fd4807558190c173605  apps/qualification/services/ontology/airo/vair.ttl
-a41460bdb536f2073b9ce43e499e817a5fe9032001603c23a5f6adbd0e782b59  apps/qualification/src/data/airo_vocab.json
 SUMS
   ) > "$OUT/g3.log" 2>&1; then pass G3 "(hashes)"; else fail G3 "vendored AIRO/VAIR files changed: $(tr '\n' ' ' < "$OUT/g3.log")"; fi
   if [ "${GUARD_G3_PYTEST:-1}" = 1 ]; then
@@ -576,12 +558,11 @@ case "$MODE" in
   orders)
     orders ;;
   all)
-    if selected G1 || selected G2; then
+    if selected G1; then
       prepare_trees; start_db
       if build_reference > /dev/null; then
         build_candidate
         selected G1 && g1
-        selected G2 && g2
       else
         fail G1 "reference build failed ($OUT/ref.log)"
       fi
