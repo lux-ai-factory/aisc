@@ -66,12 +66,6 @@ services:
         condition: service_started
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
-      - ./shared:/app/shared:z
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && uv run manage.py migrate --noinput 
-      && uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-access-log"
-
 
   aisc-eval-worker:
     image: ghcr.io/lux-ai-factory/aisc-eval:v1.3.0
@@ -91,14 +85,10 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:ro
-      - ./shared:/app/shared:z
     depends_on:
       - aisc-backend
       - rabbitmq
       - redis
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker"
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -125,11 +115,7 @@ services:
       - redis
     volumes:
       - ${PLUGIN_PATH}:/app/plugins
-      - ./shared:/app/shared
       - flower_data:/data
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker flower --db=/data/flower.db --persistent=True"
     healthcheck:
       test:
         - "CMD-SHELL"
