@@ -115,8 +115,7 @@ services:
     volumes:
       - ${PLUGIN_PATH}:/app/plugins
       - flower_data:/data
-    command: >
-      celery -A aisc_eval.celery_worker flower --db=/data/flower.db --persistent=True"
+    command: "celery -A aisc_eval.celery_worker flower --db=/data/flower.db --persistent=True"
     healthcheck:
       test:
         - "CMD-SHELL"
