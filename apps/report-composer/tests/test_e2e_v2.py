@@ -6,8 +6,9 @@ The real renderer (aisc-report-generator via REPORT_GENERATOR_DIR, default the a
 runs as a subprocess on a free port; the composer talks to it with HttpRendererClient.
 
 Mia (owner of Mike) duplicates the built-in layout "eu-ai-act" on the platform default look,
-sends a French language (which an older client may still do; it is ignored, all reports are English) and a
-coverage map, previews a draft, generates a PDF and a DOCX and downloads both. The preset's unwritten free text
+sends a French language and a coverage map (which an older client may still do; both are ignored: all reports
+are English, and the links come from step 4, evidence links 2026-09-30), previews a draft, generates a PDF and
+a DOCX and downloads both. The preset's unwritten free text
 ("Write this section.") is left out of both documents.
 """
 import io
@@ -104,12 +105,17 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     lay = r.json()
     assert [b["block_type"] for b in lay["blocks"]] == EU
     coverage = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-m1"]}]
+    # the project's step 4 links, as the platform's Collect evidence page saves them
+    full_bed.psql(report_bed.project_db(IDS["M"]),
+                  "DELETE FROM evidence.link; INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
+                  " VALUES ('R1.1', 'test', 'aisc-plugin-langbite', 'mia'), ('R1.1', 'control', 'cl-m1', 'mia')")
+    links = [{"objective_id": "R1.1", "tests": ["aisc-plugin-langbite"], "checklists": ["cl-m1"]}]
     body = {k: lay[k] for k in ("name", "template_id", "revision", "blocks")}
     body.update(language="fr", coverage=coverage)
     saved = c.put(f"/api/p/mike/layouts/{lay['id']}", json=body, headers=mia)
     assert saved.status_code == 200, saved.text[:800]
     lay = saved.json()
-    assert "language" not in lay and lay["coverage"] == coverage
+    assert "language" not in lay and "coverage" not in lay
 
     # a draft preview: the saved blocks plus an unsaved free text
     draft_blocks = lay["blocks"] + [{"instance_id": "40000000-0000-4000-8000-000000000001",
@@ -166,6 +172,6 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
         snap = stored["snapshot"]
         assert snap["snapshot_version"] == 3 and "language" not in snap and snap["mode"] == fmt
         assert snap["system_id"] == IDS["M_V2"] and snap["selection"]["other_versions"] is False
-        assert snap["document"]["id"] == rid and snap["coverage_links"] == coverage
+        assert snap["document"]["id"] == rid and snap["coverage_links"] == links
     listed = c.get(f"/api/p/mike/layouts/{lay['id']}/reports", headers=mia).json()
     assert sorted(x["format"] for x in listed) == ["docx", "pdf"]

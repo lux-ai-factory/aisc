@@ -275,16 +275,10 @@ fieldset legend { font-weight: 700; font-size: 13px; }
 .choices { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
 .choice-filter { display: block; margin: 6px 0; }
 .inline-problem, .problems { color: var(--error); }
+[data-coverage-note] { margin-top: 16px; }
 #blocks li[data-depth="1"] { margin-left: 28px; border-left: 3px solid var(--border-strong); }   /* keeps the room of its number */
 .palette button { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; max-width: 240px; }
 .palette .description { font-weight: 400; font-size: 12px; color: var(--muted); }
-.coverage-map { margin-top: 16px; }
-.coverage-map > summary { cursor: pointer; font-weight: 700; }
-.coverage-scroll { overflow-x: auto; max-width: 100%; }
-.coverage-map table.coverage th.objective { position: sticky; left: 0; background: var(--panel); z-index: 1; min-width: 220px; }
-.coverage tr.group th { background: var(--panel-2); text-transform: none; font-size: 13px; color: var(--text); }
-.coverage .kind { display: block; font-weight: 400; text-transform: none; }
-.coverage td { text-align: center; }
 [data-message] { background: var(--pink-soft); border-left: 4px solid var(--accent); padding: 10px 14px; margin-bottom: 18px;
   display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 [data-message][hidden] { display: none; }
@@ -295,7 +289,6 @@ dialog[data-confirm]::backdrop { background: rgba(0, 0, 0, 0.3); }
 .preview-label { font-size: 13px; color: var(--muted); margin: 0 0 6px; }
 .preview-label.error { color: var(--error); }
 .preview-controls { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
-.legacy-links { font-size: 13px; margin: 4px 0; }
 
 /* Layouts: the built-in ones first, marked */
 .badge {

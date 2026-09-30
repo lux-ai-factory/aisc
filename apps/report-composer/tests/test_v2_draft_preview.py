@@ -53,11 +53,12 @@ def test_r_u3_1_the_draft_is_rendered_and_nothing_is_stored(client_v2, auth, fak
 def test_r_u3_1_problems_are_returned_but_do_not_stop_the_preview(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
     bad = v2blk("dashboard_chart", width=5)
+    # an old client's coverage map is ignored (evidence links 2026-09-30, D5), so it raises no problem
     r = post(client_v2, auth, lay, draft(lay, blocks=[bad], coverage=[{"objective_id": "R9.9", "tests": [],
                                                                         "checklists": ["cl-1"]}]))
     assert r.status_code == 200
     pointers = {p["pointer"] for p in r.json()["problems"]}
-    assert "/width" in pointers and "/coverage/0/objective_id" in pointers
+    assert "/width" in pointers and not any(p.startswith("/coverage") for p in pointers)
     assert fake_v2.snapshots[-1]["blocks"][0]["instance_id"] == bad["instance_id"]
 
 

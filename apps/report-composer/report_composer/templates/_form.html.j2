@@ -27,12 +27,6 @@
     {% endfor %}</div>
     {{ help(f) }}
   </fieldset>
-  {% elif f.widget == "legacy-links" %}
-  <div data-option="{{ f.name }}" data-kind="json" data-value='{{ f.value | tojson }}'>
-    <p class="hint">This block uses its own links, set before the coverage map existed.</p>
-    <ul class="legacy-links">{% for l in f.options %}<li>{{ l.objective_id }}: {{ (l.tests or []) | join(", ") }}{% if l.checklists %} | {{ l.checklists | join(", ") }}{% endif %}</li>{% endfor %}</ul>
-    <label class="inline"><input type="checkbox" data-control="use-coverage-map"> Use the layout's coverage map instead</label>
-  </div>
   {% else %}
   <label>{{ f.label }}{% if f.required %} *{% endif %}
   {% if f.widget == "checkbox" %}

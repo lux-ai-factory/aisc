@@ -37,7 +37,7 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
 | `GET /p/{ref}/systems` | viewer |
 | `GET /block-types` | signed in |
 | `GET /p/{ref}/choices?block_type=&system_id=` | viewer |
-| `GET, POST /p/{ref}/layouts` (POST: `{name, blocks?, template_id?, show_index?, numbering?, coverage?, file?}`) | viewer, editor |
+| `GET, POST /p/{ref}/layouts` (POST: `{name, blocks?, template_id?, show_index?, numbering?, file?}`) | viewer, editor |
 | `GET, PUT, DELETE /p/{ref}/layouts/{id}` | viewer, editor, editor |
 | `POST /p/{ref}/layouts/{id}/validate` | viewer |
 | `GET, POST /p/{ref}/layouts/{id}/preview` (the version and period: query or `preview_with`) | viewer, editor |
@@ -49,6 +49,12 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
 | `GET, POST /p/{ref}/templates`, `PUT, DELETE .../{tid}`, `POST .../import`, `GET .../{tid}/export`, `.../{tid}/logo` | viewer, editor |
 
 A period is two dates, both included, in UTC. `{ref}` is the project's slug or pid. Errors are `{"error": {"code", "message", "details"}}`.
+
+**Coverage.** Which tests and controls give evidence for each control objective is set once per project on the
+platform's Collect evidence page (step 4), in `evidence.link` of the project's database. Every preview and report
+snapshot carries those links as `coverage_links`, so a generated report keeps the links it was made with. A layout
+has no coverage map any more; a `coverage` sent by an older client is ignored, and the old `layout.coverage` column
+is left unread.
 
 ## Storage
 

@@ -41,18 +41,6 @@ def choices_for(request: Request, project_pid: str, system_pid: str):
     return lambda block_type: renderer_call(renderer.choices, project_pid, system_pid, block_type)
 
 
-NO_COVERAGE_CHOICES = {"objectives": [], "tests": [], "checklists": []}
-
-
-def coverage_choices_for(request: Request, project_pid: str, system_pid: str) -> dict:
-    """What the coverage map may name for the version: objectives, tests, checklists."""
-    renderer = request.app.state.renderer
-    if not hasattr(renderer, "coverage_choices"):
-        return {k: [] for k in NO_COVERAGE_CHOICES}
-    got = renderer_call(renderer.coverage_choices, project_pid, system_pid) or {}
-    return {k: list(got.get(k) or []) for k in NO_COVERAGE_CHOICES}
-
-
 class BlockTypesCache:
     """The renderer's block types for the outline route, kept for `ttl` seconds. They change only when the
     renderer restarts, and `put` stores any fresher answer. A failure gives [] (the outline then uses the fixed

@@ -53,8 +53,9 @@ def latest_system(conn) -> dict | None:
 
 # Layouts
 
-#: a layout's document settings and coverage map before anyone sets them (today's behaviour)
-DEFAULT_SETTINGS = {"show_index": True, "numbering": False, "coverage": []}
+#: a layout's document settings before anyone sets them (today's behaviour). The layout's coverage column
+#: is no longer read or written (evidence links 2026-09-30, D5): the links are set in step 4.
+DEFAULT_SETTINGS = {"show_index": True, "numbering": False}
 
 
 def layout_names(conn) -> set[str]:
@@ -80,7 +81,7 @@ def get_layout(conn, layout_id, for_update=False) -> dict | None:
     row = conn.execute(
         "SELECT l.id::text AS id, l.name, l.description,"
         " l.template_id::text AS template_id, l.revision, l.created_at,"
-        " l.created_by, l.updated_at, l.updated_by, l.show_index, l.numbering, l.coverage"
+        " l.created_by, l.updated_at, l.updated_by, l.show_index, l.numbering"
         " FROM report_composer.layout l WHERE l.id = %s"
         + (" FOR UPDATE" if for_update else ""), (lid,)).fetchone()
     if row is None:
@@ -102,10 +103,10 @@ def insert_layout(conn, *, template_id, name, description, blocks, who, now, set
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     row = conn.execute(
         "INSERT INTO report_composer.layout (template_id, name, description, created_at,"
-        " created_by, updated_at, updated_by, show_index, numbering, coverage)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
+        " created_by, updated_at, updated_by, show_index, numbering)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
         (template_id, name, description, now, who, now, who, s["show_index"],
-         s["numbering"], Jsonb(s["coverage"]))).fetchone()
+         s["numbering"])).fetchone()
     _insert_blocks(conn, row["id"], blocks)
     return row["id"]
 
@@ -114,10 +115,10 @@ def update_layout(conn, layout_id, *, based_on, name, description, template_id, 
                   now, settings) -> int | None:
     row = conn.execute(
         "UPDATE report_composer.layout SET revision = revision + 1, name = %s, description = %s,"
-        " template_id = %s, updated_at = %s, updated_by = %s, show_index = %s, numbering = %s,"
-        " coverage = %s WHERE id = %s AND revision = %s RETURNING revision",
+        " template_id = %s, updated_at = %s, updated_by = %s, show_index = %s, numbering = %s"
+        " WHERE id = %s AND revision = %s RETURNING revision",
         (name, description, template_id, now, who, settings["show_index"],
-         settings["numbering"], Jsonb(settings["coverage"]), layout_id, based_on)).fetchone()
+         settings["numbering"], layout_id, based_on)).fetchone()
     if row is None:
         return None
     conn.execute("DELETE FROM report_composer.layout_block WHERE layout_id = %s", (layout_id,))

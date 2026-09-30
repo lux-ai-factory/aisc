@@ -61,10 +61,8 @@ def _field(name: str, prop: dict, values: dict, choices: dict, required: set) ->
     if name == "commentary":
         field.update(widget="commentary", kind="str", light=True)
     elif "array" in types and items.get("type") == "object":
-        # the Summary block's own links, from before the coverage map: shown read only (R-U2.6)
-        if not value:
-            return None
-        field.update(widget="legacy-links", kind="json", options=list(value))
+        # the Summary block's own links, from before step 4: not shown, and not sent (evidence links, D5)
+        return None
     elif is_all_or_list(prop):
         inner = _array_of(prop)
         options = list(choices.get(name) or _enum_options(inner.get("enum") or [],

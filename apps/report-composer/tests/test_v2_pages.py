@@ -1,9 +1,7 @@
 """Screens of report run v2, drawn in Python (01-specs.md sections 2.3, 4.4, 6.3, 9.3, 11 to 15).
 
 Markup hooks these tests assume (stage 4 implements them; documented in 02-tests.md):
-- coverage map: `details[data-coverage-map]`, summary "Coverage map: {m} of {n} objectives linked",
-  a table whose group rows carry the requirement group, checkboxes `input[type=checkbox][data-objective]
-  [data-kind=tests|checklists][data-value]`
+- the coverage map is gone (evidence links 2026-09-30, D5): test_evidence_links.py pins its absence
 - editor toolbar (no language control since part 2, R2-D1.9): buttons `[data-control=generate]` "Generate PDF" and
   `[data-control=generate-docx]` "Generate Word (DOCX)"
 - outline: `li[data-instance-id][data-depth]` (1 inside a chapter, 0 otherwise)
@@ -201,106 +199,6 @@ def test_r_v8_14_pdf_or_word_on_the_generate_page(client_v2, auth):
 def test_r_v8_16_the_composer_screens_stay_in_english(client_v2, auth):
     lay, doc = editor(client_v2, auth, [v2blk("cover")])
     assert doc.find("html").get("lang") == "en"
-
-
-# ── R-U1 the coverage map ───────────────────────────────────────────────────
-
-MAP = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]
-
-
-def coverage_panel(client, auth, who="alice", system="A_V2", coverage=MAP, blocks=None):
-    lay = new_layout(client, auth, name=unique("Map"), system_id=IDS[system],
-                     blocks=blocks or [v2blk("summary_coverage")], coverage=coverage)
-    doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS[system]}", headers=auth(who)).text)
-    return lay, doc, doc.find("details", attrs={"data-coverage-map": True})
-
-
-def test_r_u1_1_the_grid(client_v2, auth):
-    lay, doc, panel = coverage_panel(client_v2, auth)
-    assert panel is not None and not panel.has_attr("open")
-    assert panel.find("summary").get_text(" ", strip=True) == "Coverage map: 1 of 4 objectives linked"
-    text = panel.get_text(" ", strip=True)
-    for group in ("R1 Human Agency and Oversight", "R2 Data Governance", "R4 Accuracy", "R5 Transparency"):
-        assert group in text
-    boxes = panel.find_all("input", attrs={"type": "checkbox", "data-objective": True})
-    assert len(boxes) == 4 * 4                          # 4 objectives x (2 tests + 2 checklists)
-    ticked = {(b["data-objective"], b["data-kind"], b["data-value"]) for b in boxes if b.has_attr("checked")}
-    assert ticked == {("R1.1", "tests", "LangBiTe"), ("R1.1", "checklists", "cl-1")}
-
-
-def test_r_u1_1_the_first_column_stays_visible():
-    css = CSS.read_text()
-    assert re.search(r"coverage[^{}]*\{[^}]*position:\s*sticky", css), "missing feature: sticky first column of the map"
-
-
-def test_r_u1_2_no_objectives_for_the_version(client_v2, auth):
-    lay, doc, panel = coverage_panel(client_v2, auth, system="A_V3", coverage=[])
-    assert panel is not None
-    assert "No control objectives for version 3, so there is nothing to link." in panel.get_text(" ", strip=True)
-
-
-def test_r_u1_2_no_tests_or_checklists_for_the_version(client_v2, auth):
-    lay = new_layout(client_v2, auth, slug="gamma", name=unique("G"), system_id=IDS["C_V1"],
-                     blocks=[v2blk("summary_coverage")])
-    doc = soup(client_v2.get(f"/p/gamma/layouts/{lay['id']}?system_id={IDS['C_V1']}", headers=auth("alice")).text)
-    panel = doc.find("details", attrs={"data-coverage-map": True})
-    assert panel is not None and "No test results or checklists for version 1 yet." in panel.get_text(" ", strip=True)
-
-
-def test_r_u1_3_entries_not_available_for_the_version(client_v2, auth, bed):
-    lay, _, _ = coverage_panel(client_v2, auth)
-    r = bed.psql(pdb_of("A"), "UPDATE report_composer.layout SET coverage = "
-                              "'[{\"objective_id\": \"R3.1\", \"tests\": [\"Gone tool\"], \"checklists\": []}]'"
-                              f" WHERE id = '{lay['id']}'", check=False)
-    assert r.returncode == 0, "missing feature: column report_composer.layout.coverage"
-    panel = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}", headers=auth("alice")).text).find(
-        "details", attrs={"data-coverage-map": True})
-    assert "Not available for this version" in panel.get_text(" ", strip=True)
-    assert "R3.1" in panel.get_text(" ", strip=True)
-
-
-def test_r_u1_4_the_typed_links_textarea_is_gone(client_v2, auth):
-    lay, doc, panel = coverage_panel(client_v2, auth, coverage=[])
-    assert doc.find(attrs={"data-kind": "links"}) is None
-    assert "objective: tests | checklists" not in str(doc)
-
-
-def test_r_u1_5_viewers_see_the_grid_read_only(client_v2, auth):
-    lay, doc, panel = coverage_panel(client_v2, auth, who="victor")
-    assert panel is not None
-    boxes = panel.find_all("input", attrs={"type": "checkbox"})
-    assert boxes and all(b.has_attr("disabled") for b in boxes)
-
-
-def test_r_u1_1_python_computes_the_grid_and_js_only_collects(live):
-    """In the browser: the script sends exactly the ticked boxes on save and computes nothing itself; the
-    summary line changes only when Python draws the page again (05-verify.md note 11: was a word check)."""
-    page, lay = live([v2blk("summary_coverage")], coverage=MAP)
-    summary = page.locator("details[data-coverage-map] > summary")
-    assert summary.inner_text().strip() == "Coverage map: 1 of 4 objectives linked"
-    summary.click()
-    page.check('input[data-objective="R2.1"][data-kind="tests"][data-value="LangBiTe"]')
-    assert summary.inner_text().strip() == "Coverage map: 1 of 4 objectives linked"     # no count in the script
-    with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith(f"/layouts/{lay['id']}")) as resp:
-        page.click('[data-control="save"]')
-    assert resp.value.status == 200
-    sent = resp.value.request
-    assert sent.post_data_json["coverage"] == [
-        {"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]},
-        {"objective_id": "R2.1", "tests": ["LangBiTe"], "checklists": []}]
-    page.reload()
-    assert page.locator("details[data-coverage-map] > summary").inner_text().strip() == \
-        "Coverage map: 2 of 4 objectives linked"
-
-
-def test_r_u2_6_legacy_links_are_read_only_with_a_switch(client_v2, auth):
-    legacy = v2blk("summary_coverage", links=MAP)
-    lay, doc = editor(client_v2, auth, [legacy])
-    li = li_of(doc, legacy["instance_id"])
-    assert "This block uses its own links, set before the coverage map existed." in li.get_text(" ", strip=True)
-    switch = li.find("input", attrs={"type": "checkbox", "data-control": "use-coverage-map"})
-    assert switch is not None
-    assert "Use the layout's coverage map instead" in switch.find_parent("label").get_text(" ", strip=True)
 
 
 # ── R-U6.2, R-U6.3, R-U6.4 the platform default look ────────────────────────

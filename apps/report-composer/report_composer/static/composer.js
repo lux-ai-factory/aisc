@@ -186,7 +186,6 @@
   const layoutId = main.dataset.layout;
   const frame = main.querySelector("iframe");
   const label = main.querySelector("[data-preview-label]");
-  const coverageMap = main.querySelector("details[data-coverage-map]");
   const control = function (name) { return main.querySelector('[data-control="' + name + '"]'); };
   let revision = parseInt(main.dataset.revision, 10);
   let unsaved = false;
@@ -235,8 +234,7 @@
     if (kind === "int-or-null") return input.value === "" ? null : parseInt(input.value, 10);
     if (kind === "json") {
       if (input.tagName === "SELECT") return input.value === "" ? null : parse(input.value, true);
-      const useMap = input.querySelector('[data-control="use-coverage-map"]');
-      return useMap && useMap.checked ? [] : parse(input.dataset.value, true);
+      return parse(input.dataset.value, true);
     }
     if (kind === "all-or-list") {
       const all = input.querySelector('input[data-choice="all"]');
@@ -269,22 +267,10 @@
     });
   }
 
-  // The coverage map: the ticked boxes, one entry per objective (Python computed the grid)
-  function coverage() {
-    if (!coverageMap) return undefined;
-    const byObjective = {}, order = [];
-    coverageMap.querySelectorAll("input[data-objective]:checked").forEach(function (box) {
-      const id = box.dataset.objective;
-      if (!byObjective[id]) { byObjective[id] = { objective_id: id, tests: [], checklists: [] }; order.push(id); }
-      byObjective[id][box.dataset.kind].push(box.dataset.value);
-    });
-    return order.map(function (id) { return byObjective[id]; });
-  }
-
   function editorState() {                            // what is saved: no version, no data (report modules)
     const box = function (name) { const c = control(name); return c ? c.checked : undefined; };
     return { template_id: (control("template") || {}).value || null, show_index: box("show_index"),
-             numbering: box("numbering"), coverage: coverage(), blocks: collect() };
+             numbering: box("numbering"), blocks: collect() };
   }
   function pickOneHints() {
     list.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
@@ -294,15 +280,12 @@
   }
   function showProblems(problems) {
     list.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
-    const mapBox = main.querySelector("[data-map-problems]");
-    if (mapBox) mapBox.textContent = "";
     const loose = [];
     (problems || []).forEach(function (p) {
       const text = (p.pointer ? p.pointer + ": " : "") + p.message + " ";
       const li = p.instance_id && list.querySelector('[data-instance-id="' + p.instance_id + '"]');
       const target = li ? li.querySelector("[data-problems]") : null;
       if (target) target.textContent += text;
-      else if (mapBox && (p.pointer || "").indexOf("/coverage") === 0) mapBox.textContent += text;
       else loose.push(text);
     });
     say(loose.join(" "));
@@ -410,7 +393,7 @@
     const li = ev.target.closest("li");
     if (li) { applyShowIf(li); pickOneHints(); }
     if (ev.target.closest("#blocks")) edited();
-    else if (ev.target.closest(".toolbar, details[data-coverage-map]")) dirty();
+    else if (ev.target.closest(".toolbar")) dirty();
   });
   main.addEventListener("input", function (ev) {
     const filter = ev.target.closest("[data-filter]");

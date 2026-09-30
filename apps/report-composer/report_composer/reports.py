@@ -1,6 +1,6 @@
 """Generated reports: the snapshot sent to the renderer, the document's filename and the generation itself.
 
-Report run v2: snapshots are version 2 (document settings, coverage map; no language, reports are
+Report run v2: snapshots are version 2 (document settings, coverage links from step 4; no language, reports are
 English), a report is a PDF or a Word document (DOCX), and the renderer's fingerprint is stored with it.
 """
 from __future__ import annotations
@@ -13,12 +13,12 @@ import unicodedata
 import uuid
 from datetime import timedelta
 
-from . import db, layouts
+from . import db, evidence_links, layouts
 from . import selection as data_selection
 from . import templates as looks
 from .errors import ApiError, fail_on
 from .records import NO_LAYOUT, template_of
-from .renderer_calls import block_types, choices_for, coverage_choices_for
+from .renderer_calls import block_types, choices_for
 from .renderer_client import RendererTimeout
 from .settings import snapshot_document
 
@@ -59,18 +59,27 @@ def requested_by(caller) -> str:
     return caller.username or caller.email or caller.subject
 
 
+def _sent_options(block: dict) -> dict:
+    """A block's options as sent: a Summary block's own links from before step 4 are left out (D5)."""
+    options = dict(block["options"] or {})
+    if block["block_type"] == "summary_coverage":
+        options.pop("links", None)
+    return options
+
+
 def snapshot_of(project, layout, mode, caller, template=None, *, system_id, selection=None,
-                document_id=None) -> dict:
+                document_id=None, coverage_links=()) -> dict:
     """What the renderer is sent: the layout, and the data it covers (the anchor version and the
     selection, report modules spec 2026-09-28, section 6); `template` (read with its logo) gives the
-    report its look, and none means the platform look."""
+    report its look, and none means the platform look. `coverage_links` are the project's step 4 links
+    (evidence_links.coverage_links)."""
     snap = {"snapshot_version": 3, "project_id": project["pid"], "system_id": system_id,
             "layout": {"id": layout["id"], "name": layout["name"], "revision": layout["revision"]},
-            "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": b["options"]}
+            "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": _sent_options(b)}
                        for b in layout["blocks"]],
             "mode": mode, "requested_by": requested_by(caller),
             "document": snapshot_document(layout, document_id),
-            "coverage_links": list(layout.get("coverage") or []),
+            "coverage_links": list(coverage_links),
             "selection": selection or data_selection.for_snapshot(data_selection.parse_dates(None, None, False, None))}
     if template is not None:
         snap["style"] = looks.style(template)
@@ -125,15 +134,15 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None) ->
     system, sel = check_choice(conn, choice or {})
     fail_on(layouts.validate_layout(
         layout["blocks"], block_types=block_types(request),
-        choices=choices_for(request, project["pid"], system["pid"]), coverage=layout.get("coverage"),
-        coverage_choices=lambda: coverage_choices_for(request, project["pid"], system["pid"])))
+        choices=choices_for(request, project["pid"], system["pid"])))
     if db.running_report(conn, layout["id"], clock() - timedelta(minutes=GENERATION_WINDOW_MINUTES)):
         raise ApiError(409, "generation_running", "A report of this layout is being generated.")
     # only what is saved is generated; without a template it is the platform look (R-U6.1)
     template = template_of(conn, layout)
     report_id = str(uuid.uuid4())
     snapshot = snapshot_of(project, layout, fmt, caller, template, system_id=system["pid"],
-                           selection=data_selection.for_snapshot(sel), document_id=report_id)
+                           selection=data_selection.for_snapshot(sel), document_id=report_id,
+                           coverage_links=evidence_links.coverage_links(conn))
     db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
                      system_id=system["pid"], snapshot=snapshot, created_by=caller.subject, created_at=clock(),
                      fmt=fmt, report_id=report_id, period_from=sel.period_from, period_to=sel.period_to,

@@ -14,13 +14,13 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import builtin_layouts, coverage_map, db, forms, groups, layouts, preview_with, prose, reports
+from . import builtin_layouts, db, forms, groups, layouts, preview_with, prose, reports
 from . import templates as looks
 from .errors import ApiError
 from .guards import guard
 from .jinja_env import env
 from .records import layout_or_404
-from .renderer_calls import block_types, coverage_choices_for, fonts, renderer_call
+from .renderer_calls import block_types, fonts, renderer_call
 
 router = APIRouter()
 
@@ -105,7 +105,7 @@ def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: 
 
 NO_VERSION = "This project has no AI card version yet. Save the AI card in qualification first."
 EMPTY_LAYOUT = {"id": "", "name": "", "description": "", "revision": 0, "template_id": None, "show_index": True,
-                "numbering": False, "coverage": [], "blocks": []}
+                "numbering": False, "blocks": []}
 
 
 def _report_view(row: dict) -> dict:
@@ -150,12 +150,9 @@ def editor_page(request: Request, ref: str, layout_id: str):
     read_only = builtin is not None
     editor = g.access.may_write and not read_only
     system_pid = pw.system["pid"] if pw.system else None
-    pid = g.project["pid"]
     by_type = {t["type_id"]: t for t in types}
     choices = _reference_choices(request, g.project, layout, by_type, system_pid) if editor else {}
-    cover_choices = coverage_choices_for(request, pid, system_pid) if system_pid else {}
-    problems = layouts.validate_layout(layout["blocks"], block_types=types, choices=lambda t: choices.get(t, {}),
-                                       coverage=layout.get("coverage"), coverage_choices=cover_choices) \
+    problems = layouts.validate_layout(layout["blocks"], block_types=types, choices=lambda t: choices.get(t, {})) \
         if editor and system_pid else []
     by_block: dict[str, list] = {}
     for p in problems:
@@ -168,8 +165,6 @@ def editor_page(request: Request, ref: str, layout_id: str):
         {"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
          "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in grp["types"]]}
         for grp in groups.palette(types)] if editor else []
-    number = pw.system["number"] if pw.system else None
-    grid = coverage_map.grid(layout.get("coverage"), cover_choices, number)
     template_ids = {t["id"] for t in templates}
     shown = {**asked, "system_id": system_pid}
     preview_src = (f"{_root(request)}/api/p/{g.project['slug']}/"
@@ -177,7 +172,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
                    + ("?" + urlencode(shown) if system_pid else ""))
     return _page("editor.html.j2", request, project=g.project, layout=layout, blocks=blocks, systems=systems,
                  reports=[_report_view(r) for r in report_rows], palette=palette, editor=editor, templates=templates,
-                 grid=grid, map_problems=by_block.get(None, []), is_new=layout_id == "new", read_only=read_only,
+                 layout_problems=by_block.get(None, []), is_new=layout_id == "new", read_only=read_only,
                  may_write=g.access.may_write, preview_with=shown, preview_src=preview_src, no_version=NO_VERSION,
                  template_known=layout.get("template_id") in template_ids)
 

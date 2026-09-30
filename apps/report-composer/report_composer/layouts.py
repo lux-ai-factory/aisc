@@ -11,7 +11,7 @@ import uuid
 
 from jsonschema import Draft202012Validator
 
-from . import coverage_map, prose
+from . import prose
 
 DEFAULT_ORDER = ["cover", "ai_card", "risk_classification", "control_objectives", "test_results",
                  "control_answers", "summary_coverage"]
@@ -170,14 +170,12 @@ def _block_problems(b: dict, t: dict, choices_of, allow_missing_references: bool
             for p in _reference_problems(name, merged.get(name), allowed, iid, defaults.get(name))]
 
 
-def validate_layout(blocks, *, block_types, choices, allow_missing_references=False, coverage=None,
-                    coverage_choices=None) -> list[dict]:
+def validate_layout(blocks, *, block_types, choices, allow_missing_references=False) -> list[dict]:
     """Problems of a layout, layout-level first, as [{instance_id, code, pointer, message}].
 
     `choices(block_type)` answers the values each reference option may take (called at most once
     per block type, and only for a block whose options are otherwise valid); `choices=None` checks the
-    shape only, as a layout is saved without a version (report modules spec 2026-09-28, 3.1). With a non-empty
-    `coverage` map, `coverage_choices()` answers what it may name (report run v2, R-U2.5).
+    shape only, as a layout is saved without a version (report modules spec 2026-09-28, 3.1).
     """
     types = {t["type_id"]: t for t in block_types}
     problems = _layout_problems(blocks)
@@ -205,9 +203,6 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
                                      f"the block type {b.get('block_type')!r} is not available"))
             continue
         problems.extend(_block_problems(b, t, choices_of if choices is not None else None, allow_missing_references))
-    if coverage:
-        problems.extend(coverage_map.reference_problems(coverage, coverage_choices() if callable(coverage_choices)
-                                                        else (coverage_choices or {})))
     return problems
 
 

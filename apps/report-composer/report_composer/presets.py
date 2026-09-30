@@ -224,7 +224,7 @@ def blocks_for_layout(preset: Preset, block_types) -> list[dict]:
 def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
     """A layout's structure as a preset (R-V1.7, R-V1.9): references stripped, every prose option (found
     from the block type's schema by prose.strip_options, R2-D3.7.3) becomes the placeholder, null or empty
-    unless kept, the coverage map left behind. Titles, cover title and subtitle stay."""
+    unless kept. Titles, cover title and subtitle stay."""
     types = _types(block_types)
     blocks = []
     for b in layout["blocks"]:

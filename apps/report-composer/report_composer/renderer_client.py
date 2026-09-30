@@ -117,9 +117,5 @@ class HttpRendererClient:
         return self._call("POST", "/v1/choices", {"project_id": str(project_id), "system_id": str(system_id),
                                                   "block_type": block_type})
 
-    def coverage_choices(self, project_id, system_id) -> dict:
-        return self._call("POST", "/v1/coverage-choices", {"project_id": str(project_id),
-                                                           "system_id": str(system_id)})
-
     def render(self, snapshot) -> dict:
         return self._call("POST", "/v1/render", snapshot)

@@ -83,34 +83,9 @@
         </li>
       {% endfor %}
       </ol>
-      <details class="coverage-map" data-coverage-map>
-        <summary>Coverage map: {{ grid.linked }} of {{ grid.total }} objectives linked</summary>
-        {% if grid.message %}<p class="hint">{{ grid.message }}</p>{% endif %}
-        {% if grid.groups and grid.columns or grid.unavailable %}
-        <div class="coverage-scroll">
-        <table class="coverage">
-          <thead><tr><th class="objective">Objective</th>{% for c in grid.columns %}<th>{{ c.label }}<span class="kind">{{ "test" if c.kind == "tests" else "checklist" }}</span></th>{% endfor %}</tr></thead>
-          <tbody>
-          {% if grid.columns %}
-          {% for g in grid.groups %}
-            <tr class="group"><th class="objective" colspan="{{ grid.columns | length + 1 }}">{{ g.group }}</th></tr>
-            {% for r in g.rows %}
-            <tr><th class="objective">{{ r.label }}</th>{% for cell in r.cells %}<td><input type="checkbox" data-objective="{{ r.objective_id }}" data-kind="{{ cell.kind }}" data-value="{{ cell.value }}" aria-label="{{ r.objective_id }}: {{ cell.value }}"{% if cell.checked %} checked{% endif %}{% if not editor %} disabled{% endif %}></td>{% endfor %}</tr>
-            {% endfor %}
-          {% endfor %}
-          {% endif %}
-          {% if grid.unavailable %}
-            <tr class="group"><th class="objective" colspan="{{ grid.columns | length + 1 }}">Not available for this version</th></tr>
-            {% for u in grid.unavailable %}
-            <tr><th class="objective">{{ u.objective_id }}</th><td colspan="{{ grid.columns | length or 1 }}">{% for cell in u.cells %}<label class="inline"><input type="checkbox" data-objective="{{ u.objective_id }}" data-kind="{{ cell.kind }}" data-value="{{ cell.value }}" checked{% if not editor %} disabled{% endif %}> {{ cell.value }}</label> {% endfor %}</td></tr>
-            {% endfor %}
-          {% endif %}
-          </tbody>
-        </table>
-        </div>
-        {% endif %}
-        <p class="problems" data-map-problems>{% for p in map_problems %}{{ p.pointer }}: {{ p.message }} {% endfor %}</p>
-      </details>
+      <p class="hint" data-coverage-note>Which tests and controls give evidence for each control objective is set
+        once for the project, in step 4, Collect evidence. Every report uses those links.</p>
+      {% if layout_problems %}<p class="problems" data-layout-problems>{% for p in layout_problems %}{{ p.pointer }}: {{ p.message }} {% endfor %}</p>{% endif %}
     </section>
     <section class="preview qf-section">
       <h2>Preview</h2>

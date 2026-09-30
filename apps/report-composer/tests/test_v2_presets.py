@@ -99,8 +99,7 @@ def test_r_v1_6_duplicate_names_copy_then_copy_2(client_v2, auth):
 def test_r_v1_6_a_copy_keeps_everything_but_ids_revision_and_reports(client_v2, auth):
     lay = create(client_v2, auth, name="Original", show_index=False, numbering=True,
                  blocks=[v2blk("cover"), v2blk("chapter", title="C"), v2blk("ai_card")]).json()
-    body = {**{k: lay[k] for k in ("name", "template_id", "revision", "blocks")},
-            "coverage": [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]}
+    body = {k: lay[k] for k in ("name", "template_id", "revision", "blocks")}
     saved = client_v2.put(f"/api/p/alpha/layouts/{lay['id']}", json=body, headers=auth("alice"))
     assert saved.status_code == 200, saved.text[:300]
     client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice"))
@@ -109,8 +108,9 @@ def test_r_v1_6_a_copy_keeps_everything_but_ids_revision_and_reports(client_v2, 
     copy_ = r.json()
     src = saved.json()
     assert copy_["id"] != src["id"] and copy_["revision"] == 1
-    for key in ("template_id", "show_index", "numbering", "coverage"):
+    for key in ("template_id", "show_index", "numbering"):
         assert copy_[key] == src[key], key
+    assert "coverage" not in copy_                                       # evidence links, D5
     assert "language" not in copy_                                       # R2-D1.13: no language copied
     assert [b["options"] for b in copy_["blocks"]] == [b["options"] for b in src["blocks"]]
     assert not {b["instance_id"] for b in copy_["blocks"]} & {b["instance_id"] for b in src["blocks"]}

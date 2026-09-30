@@ -270,7 +270,9 @@ def test_r_c_3_an_old_layout_previews_with_the_same_snapshot_apart_from_new_keys
     r = client.get(f"/api/p/alpha/layouts/{LAYOUT_1}/preview", headers=auth("alice"))
     assert r.status_code == 200
     sent = renderer.snapshots[-1]
-    assert sent.get("coverage_links") == LINKS_1, "missing feature: coverage_links from the moved map"
+    # evidence links 2026-09-30 (D5): the links come from step 4, not from the map 0005 moved into the
+    # layout row, and a Summary block's own links are not sent (this project has no step 4 links)
+    assert sent.get("coverage_links") == []
     # report modules 2026-09-28: the layout lost its version; a preview is drawn with the latest one
     old = {"project_id": IDS["A"], "system_id": IDS["A_V3"],
            "layout": {"id": LAYOUT_1, "name": "Old layout", "revision": 7},
@@ -278,7 +280,9 @@ def test_r_c_3_an_old_layout_previews_with_the_same_snapshot_apart_from_new_keys
            "mode": "preview", "requested_by": "alice",
            "style": {"font": "liberation-serif", "font_size_pt": 11, "primary_color": "#123456",
                      "accent_color": "#abcdef"}}
-    old["blocks"][2]["options"] = {**old["blocks"][2]["options"], "links": []}     # moved to the map (R-U2.4)
+    for b in old["blocks"]:                   # a Summary block's own links are not sent (D5)
+        if b["block_type"] == "summary_coverage":
+            b["options"] = {k: v for k, v in b["options"].items() if k != "links"}
     new_keys = {"snapshot_version", "language", "document", "coverage_links", "selection"}
     stripped = {k: v for k, v in sent.items() if k not in new_keys}
     stripped["style"] = {k: v for k, v in stripped["style"].items()

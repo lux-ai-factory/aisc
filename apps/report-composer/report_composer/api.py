@@ -12,13 +12,12 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import builtin_layouts, db, layouts, presets, preview_with, reports
+from . import builtin_layouts, db, evidence_links, layouts, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, project_guard, signed_in
 from .records import NO_LAYOUT, NO_TEMPLATE, chosen_template, layout_or_404, template_of, template_or_404
-from .renderer_calls import (block_types, choices_for, coverage_choices_for, fonts, outline_block_types,
-                             renderer_call)
+from .renderer_calls import block_types, choices_for, fonts, outline_block_types, renderer_call
 from .settings import document_settings
 
 router = APIRouter(prefix="/api")
@@ -37,7 +36,7 @@ def layout_view(layout: dict, project_pid: str) -> dict:
     """A layout as the API answers it; project_id is the guarded project's (the row has none)."""
     layout = {**layout, "project_id": project_pid}
     return {k: layout[k] for k in ("id", "project_id", "name", "description", "template_id", "revision",
-                                   "blocks", "created_at", "updated_at", "show_index", "numbering", "coverage")}
+                                   "blocks", "created_at", "updated_at", "show_index", "numbering")}
 
 
 def _text(body: dict, name: str, *, required: bool, max_len: int) -> str:
@@ -202,30 +201,29 @@ def validate(request: Request, layout_id: str, g: Guarded = Depends(project_guar
     with _project_db(request, g) as conn:
         layout = layout_or_404(conn, layout_id)
         pw = preview_with.parse(conn, None)
-    problems = _problems_for(request, g, layout["blocks"], layout.get("coverage"), pw)
+    problems = _problems_for(request, g, layout["blocks"], pw)
     return {"valid": not problems, "problems": problems}
 
 
-def _problems_for(request: Request, g: Guarded, blocks, coverage, pw) -> list[dict]:
+def _problems_for(request: Request, g: Guarded, blocks, pw) -> list[dict]:
     """A layout's problems with its references checked against the preview's version (none: shape only)."""
     types = block_types(request)
     if pw.system is None:
         return _shape_problems(blocks, types)
     pid, spid = g.project["pid"], pw.system["pid"]
-    return layouts.validate_layout(blocks, block_types=types, choices=choices_for(request, pid, spid),
-                                   coverage=coverage, coverage_choices=lambda: coverage_choices_for(request, pid, spid))
+    return layouts.validate_layout(blocks, block_types=types, choices=choices_for(request, pid, spid))
 
 
 NO_VERSION = "This project has no AI card version yet. Save the AI card in qualification first."
 
 
-def _render_preview(request: Request, g: Guarded, layout: dict, template, pw) -> dict:
-    """The renderer's preview of `layout` for the preview's version and period; with no version, a page
-    saying so, without calling the renderer."""
+def _render_preview(request: Request, g: Guarded, layout: dict, template, pw, links) -> dict:
+    """The renderer's preview of `layout` for the preview's version and period, with the project's step 4
+    `links`; with no version, a page saying so, without calling the renderer."""
     if pw.system is None:
         return {"html": f"<!DOCTYPE html><html><body><p>{NO_VERSION}</p></body></html>", "block_statuses": []}
     snapshot = reports.snapshot_of(g.project, layout, "preview", g.caller, template, system_id=pw.system["pid"],
-                                   selection=pw.selection)
+                                   selection=pw.selection, coverage_links=links)
     return renderer_call(request.app.state.renderer.render, snapshot)
 
 
@@ -235,7 +233,8 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
         layout = layout_or_404(conn, layout_id)
         template = template_of(conn, layout)
         pw = preview_with.parse(conn, dict(request.query_params))
-    result = _render_preview(request, g, layout, template, pw)
+        links = evidence_links.coverage_links(conn)
+    result = _render_preview(request, g, layout, template, pw, links)
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
                                                  "X-Content-Type-Options": "nosniff"})
 
@@ -281,11 +280,12 @@ def _draft_preview(request: Request, g: Guarded, layout_id: str, body: dict) -> 
         template_id = chosen_template(conn, body.get("template_id"))
         template = db.get_template(conn, template_id, with_logo=True) if template_id else None
         pw = preview_with.parse(conn, body.get("preview_with") if isinstance(body.get("preview_with"), dict) else None)
+        links = evidence_links.coverage_links(conn)
     settings = document_settings(body, current)
     blocks = _blocks(body) if body.get("blocks") is not None else current["blocks"]
-    problems = _problems_for(request, g, blocks, settings["coverage"], pw)
+    problems = _problems_for(request, g, blocks, pw)
     draft = {**current, **settings, "blocks": blocks}
-    result = _render_preview(request, g, draft, template, pw)
+    result = _render_preview(request, g, draft, template, pw, links)
     return {"html": reports.with_csp_meta(result.get("html") or ""), "problems": problems,
             "block_statuses": list(result.get("block_statuses") or [])}
 
@@ -308,7 +308,7 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
                 name = presets.copy_name(src["name"], db.layout_names(conn))
             blocks = [{"instance_id": str(uuid.uuid4()), "block_type": b["block_type"], "options": b["options"]}
                       for b in src["blocks"]]
-            settings = {k: src[k] for k in ("show_index", "numbering", "coverage")}
+            settings = {k: src[k] for k in ("show_index", "numbering")}
             lid = db.insert_layout(conn, template_id=src["template_id"],
                                    name=name, description=src.get("description") or "", blocks=blocks,
                                    who=g.caller.subject, now=now, settings=settings)
@@ -347,7 +347,8 @@ def preview_builtin_layout(request: Request, layout_id: str, g: Guarded = Depend
     layout = _builtin_or_404(request, layout_id)
     with _project_db(request, g) as conn:
         pw = preview_with.parse(conn, dict(request.query_params))
-    result = _render_preview(request, g, layout, None, pw)
+        links = evidence_links.coverage_links(conn)
+    result = _render_preview(request, g, layout, None, pw, links)
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
                                                  "X-Content-Type-Options": "nosniff"})
 
