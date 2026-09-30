@@ -2,12 +2,11 @@ services:
   # # Frontend development staging
   aisc-webapp:
     image: ghcr.io/lux-ai-factory/aisc-webapp:v1.3.0
-    ports:
-      - "5173:80" # Development server port
     container_name: aisc-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
+      APP_SHOW_CELERY_TASKS: ${SHOW_CELERY_TASKS}
       # Keycloak URL injected into the built webapp JS at container start (env.sh replaces APP_KEYCLOAK_URL).
       APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
       # Public catalogue URL injected into the built webapp JS at container start (env.sh replaces APP_CATALOG_URL).
