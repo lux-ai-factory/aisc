@@ -187,6 +187,8 @@ services:
   qualification-migrate:
     image: ghcr.io/lux-ai-factory/qualification:staging
     container_name: qualification-migrate
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/qualification?schema=public"
     command: >
       sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
     depends_on:
