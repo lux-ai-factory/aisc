@@ -151,7 +151,7 @@ services:
       - backend
 
   controls-web:
-    image: ghcr.io/lux-ai-factory/controls:staging
+    image: ghcr.io/lux-ai-factory/controls-web:staging
     container_name: controls-web
     environment:
       AISC_BACKEND_URL: http://aisc-backend:8000
@@ -198,7 +198,7 @@ services:
       - backend
 
   qualification-web:
-    image: ghcr.io/lux-ai-factory/qualification:staging
+    image: ghcr.io/lux-ai-factory/qualification-web:staging
     container_name: qualification-web
     command: ["npx", "next", "start", "-p", "3000"]
     environment:
