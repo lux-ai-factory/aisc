@@ -38,7 +38,13 @@ CREATE TABLE IF NOT EXISTS engine.aisc_backend_plugin (
     id serial PRIMARY KEY, package_name text NOT NULL, version text NOT NULL, display_name text NOT NULL,
     catalogue_slug text, enabled boolean NOT NULL DEFAULT true);
 CREATE TABLE IF NOT EXISTS controls.checklist (id text PRIMARY KEY, "catalogueId" text, title text NOT NULL);
+CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version (
+    id varchar(32) PRIMARY KEY, set_id varchar(32) NOT NULL, number int NOT NULL);
+CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version_item (
+    set_version_id varchar(32) NOT NULL, objective_id text NOT NULL, label text NOT NULL, dimension text NOT NULL,
+    PRIMARY KEY (set_version_id, objective_id));
 GRANT SELECT ON control_objectives.project, control_objectives.objective_selection,
+    control_objectives.objective_set_version, control_objectives.objective_set_version_item,
     engine.aisc_backend_plugin, controls.checklist TO report_ro;
 """
 
@@ -390,3 +396,47 @@ def test_template_0017_renames_old_ids_and_takes_only_new_ones(project, dsn):
     # running it again changes nothing
     sql(dsn, pid, template)
     assert sql(dsn, pid, "SELECT count(*) FROM evidence.link") == [(2,)]
+
+
+
+# ── the project's own objective sets (2026-10-01) ───────────────────────────
+
+def _own_set(dsn, pid):
+    """Set BNK: version 1 names BNK1 "Old wording"; version 2 names BNK1 "Sign-off" (R1), BNK9 and BNK10 (R6)."""
+    sql(dsn, pid, "INSERT INTO control_objectives.objective_set_version VALUES ('v1', 's', 1), ('v2', 's', 2)")
+    sql(dsn, pid, "INSERT INTO control_objectives.objective_set_version_item VALUES"
+                  " ('v1', 'BNK1', 'Old wording', 'R1'), ('v2', 'BNK1', 'Sign-off', 'R1'),"
+                  " ('v2', 'BNK9', 'Ninth', 'R6'), ('v2', 'BNK10', 'Tenth', 'R6')")
+    sql(dsn, pid, "UPDATE control_objectives.objective_selection SET objective_ids = '{BNK10,O24,BNK1,BNK9,O1}'"
+                  " WHERE project_id = 'a2'")
+
+
+def test_the_projects_own_objectives_are_named_from_its_database(client, as_user, project, dsn):
+    _own_set(dsn, project["pid"])
+    body = get(client, as_user, project).json()
+    assert [(o["id"], o["title"], o["dimension"]) for o in body["objectives"]] == [
+        ("O1", "Risk management system", "R1"), ("O24", "Human oversight", "R6"),
+        ("BNK1", "Sign-off", "R1"), ("BNK9", "Ninth", "R6"), ("BNK10", "Tenth", "R6")]
+
+
+def test_an_own_objective_takes_links_in_its_dimension_only(client, as_user, project, dsn):
+    _own_set(dsn, project["pid"])
+    ok = put(client, as_user, project, [{"objective_id": "BNK9", "kind": "control", "key": "ck1"}])
+    assert ok.status_code == 200, ok.text
+    refused = put(client, as_user, project, [{"objective_id": "BNK1", "kind": "control", "key": "ck1"}])
+    assert refused.status_code == 422 and "not in R1" in refused.text
+
+
+def test_template_0018_takes_any_sets_ids(project, dsn):
+    from pathlib import Path
+
+    template = (Path(evidence.__file__).resolve().parent.parent / "project-template"
+                / "0018_objective_set_ids.sql").read_text()
+    pid = project["pid"]
+    sql(dsn, pid, template)
+    sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
+                  " VALUES ('BNK12', 'test', 'x', 'a'), ('O3', 'test', 'x', 'a')")
+    for bad in ("bnk1", "B1", "BNK0", "R1.1"):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
+                          " VALUES (%s, 'test', 'y', 'a')", (bad,))

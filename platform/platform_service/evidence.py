@@ -29,7 +29,7 @@ import os
 import re
 import time
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import psycopg
 from psycopg.rows import dict_row
@@ -71,6 +71,13 @@ _SELECTED = (
 _PLUGINS = ("SELECT package_name, display_name, enabled, catalogue_slug FROM engine.aisc_backend_plugin"
             " ORDER BY display_name, package_name")
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
+#: The project's own objectives (objective sets, 2026-10-01), each as its latest published version words it.
+_OWN_OBJECTIVES = (
+    "SELECT DISTINCT ON (i.objective_id) i.objective_id, i.label, i.dimension"
+    " FROM control_objectives.objective_set_version_item i"
+    " JOIN control_objectives.objective_set_version v ON v.id = i.set_version_id"
+    " ORDER BY i.objective_id, v.number DESC"
+)
 
 
 class NotConfigured(RuntimeError):
@@ -94,6 +101,8 @@ class Choices:
     plugin_slugs: dict[str, str | None]
     #: checklist id -> catalogue slug
     checklist_slugs: dict[str, str | None]
+    #: the project's own objectives: id -> (label, dimension)
+    own: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def _reader(pid) -> psycopg.Connection:
@@ -117,20 +126,25 @@ def choices(pid) -> Choices:
         selected = _rows(conn, _SELECTED)
         plugins = _rows(conn, _PLUGINS)
         checklists = _rows(conn, _CHECKLISTS)
+        own = _rows(conn, _OWN_OBJECTIVES)
     return Choices(
         selected=sorted(selected[0]["objective_ids"], key=_objective_order) if selected else [],
         plugins={r["package_name"]: (r["display_name"] or r["package_name"], r["enabled"]) for r in plugins},
         checklists={r["id"]: r["title"] for r in checklists},
         plugin_slugs={r["package_name"]: r["catalogue_slug"] for r in plugins},
         checklist_slugs={r["id"]: r["catalogueId"] for r in checklists},
+        own={r["objective_id"]: (r["label"], r["dimension"]) for r in own},
     )
 
 
 def _objective_order(objective_id: str) -> tuple:
-    """Catalogue order: O9 before O10; anything else (an old id left behind) after."""
-    if re.fullmatch(r"O[1-9][0-9]*", objective_id):
-        return (0, int(objective_id[1:]), "")
-    return (1, 0, objective_id)
+    """The built-in set first, then each of the project's sets by code, by number within a set (O9
+    before O10, BNK9 before BNK10); anything else (an old id left behind) after."""
+    found = re.fullmatch(r"(O|[A-Z]{2,6})([1-9][0-9]*)", objective_id)
+    if found is None:
+        return (2, "", 0, objective_id)
+    code, number = found.groups()
+    return (0 if code == "O" else 1, code, int(number), "")
 
 
 def forget_titles() -> None:
@@ -262,8 +276,8 @@ def view(pid) -> dict:
         item["dimensions"] = item_dimensions(found, catalogue, "test", item["key"])
     for item in controls:
         item["dimensions"] = item_dimensions(found, catalogue, "control", item["key"])
-    names = titles()
-    dims = objective_dimensions()
+    names = {**titles(), **{oid: label for oid, (label, _) in found.own.items()}}
+    dims = {**objective_dimensions(), **{oid: dim for oid, (_, dim) in found.own.items()}}
     dim_titles = dimension_titles()
     return {
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
@@ -286,7 +300,7 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str) -> None:
     to a test or control that can take it (Refused otherwise, and nothing is changed)."""
     found = choices(pid)
     catalogue = tool_dimensions()
-    dims = objective_dimensions()
+    dims = {**objective_dimensions(), **{oid: dim for oid, (_, dim) in found.own.items()}}
     wanted_set = set(wanted)
     with connection_store.connect(pid) as conn:
         with conn.transaction():

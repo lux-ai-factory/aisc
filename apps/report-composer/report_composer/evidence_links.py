@@ -14,10 +14,13 @@ import psycopg
 
 
 def _objective_order(objective_id: str) -> tuple:
-    """Catalogue order (2026-10-01): O9 before O10; an id from before the rename (R1.1) after."""
-    if re.fullmatch(r"O[1-9][0-9]*", objective_id):
-        return (0, int(objective_id[1:]), "")
-    return (1, 0, objective_id)
+    """The built-in set first (O9 before O10), then the project's own sets by code, by number
+    (2026-10-01); an id from before the rename (R1.1) after."""
+    found = re.fullmatch(r"(O|[A-Z]{2,6})([1-9][0-9]*)", objective_id)
+    if found is None:
+        return (2, "", 0, objective_id)
+    code, number = found.groups()
+    return (0 if code == "O" else 1, code, int(number), "")
 
 
 def coverage_links(conn) -> list[dict]:
