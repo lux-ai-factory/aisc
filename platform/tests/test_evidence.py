@@ -55,8 +55,11 @@ def catalogue(monkeypatch):
     """The control-objectives service's public catalogue, which names the objectives."""
     stub = Stub()
     stub.route("GET", "/api/control-objectives", (200, [
-        {"id": "R1.1", "sub_requirement_label": "Risk management system"},
-        {"id": "R6.1", "sub_requirement_label": "Human oversight"}]))
+        {"id": "O1", "sub_requirement_label": "Risk management system", "macro_id": "R1"},
+        {"id": "O7", "sub_requirement_label": "Security incidents", "macro_id": "R2"},
+        {"id": "O9", "sub_requirement_label": "Calibration", "macro_id": "R2"},
+        {"id": "O10", "sub_requirement_label": "Safe state", "macro_id": "R2"},
+        {"id": "O24", "sub_requirement_label": "Human oversight", "macro_id": "R6"}]))
     monkeypatch.setenv("CONTROL_OBJECTIVES_URL", stub.base)
     evidence.forget_titles()
     yield stub
@@ -73,7 +76,7 @@ def sql(dsn, pid, statement, params=()):
 @pytest.fixture
 def project(client, as_user, unique, dsn):
     """A project with Bob as editor and Vera as viewer, whose steps 2 and 3 have made their choices:
-    v1 selected R1.1 and R2.3, v2 (the latest) selects R1.1 and R6.1; LangBiTe and Promptfoo are
+    v1 selected O1 and O7, v2 (the latest) selects O1 and O24; LangBiTe and Promptfoo are
     installed (Promptfoo disabled); one checklist is installed."""
     made = client.post("/projects", json={"name": unique("evd")}, headers=as_user(ALICE))
     assert made.status_code == 201, made.text
@@ -88,7 +91,7 @@ def project(client, as_user, unique, dsn):
     sql(dsn, pid, "INSERT INTO project.system (pid, number, name) VALUES (%s, 1, 'S'), (%s, 2, 'S')", (v1, v2))
     sql(dsn, pid, "INSERT INTO control_objectives.project VALUES ('a1', %s), ('a2', %s)", (v1, v2))
     sql(dsn, pid, "INSERT INTO control_objectives.objective_selection (project_id, objective_ids) VALUES"
-                  " ('a1', '{R1.1,R2.3}'), ('a2', '{R1.1,R6.1}')")
+                  " ('a1', '{O1,O7}'), ('a2', '{O1,O24}')")
     sql(dsn, pid, "INSERT INTO engine.aisc_backend_plugin (package_name, version, display_name, enabled) VALUES"
                   " ('aisc-plugin-langbite', '1.0', 'LangBiTe', true),"
                   " ('aisc-plugin-promptfoo', '1.0', 'Promptfoo', false)")
@@ -105,8 +108,8 @@ def put(client, as_user, project, links, who=ALICE):
                       headers=as_user(who))
 
 
-LB = {"objective_id": "R1.1", "kind": "test", "key": "aisc-plugin-langbite"}
-GOV = {"objective_id": "R6.1", "kind": "control", "key": "ck1"}
+LB = {"objective_id": "O1", "kind": "test", "key": "aisc-plugin-langbite"}
+GOV = {"objective_id": "O24", "kind": "control", "key": "ck1"}
 
 
 # ── the table ───────────────────────────────────────────────────────────────
@@ -127,14 +130,14 @@ def test_the_evidence_schema_is_made_and_the_readers_read_it(project, dsn):
 def test_a_link_is_one_objective_one_item(project, dsn):
     with pytest.raises(psycopg.errors.CheckViolation):
         sql(dsn, project["pid"], "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                                 " VALUES ('R1.1', 'model', 'x', 'a')")
+                                 " VALUES ('O1', 'model', 'x', 'a')")
 
 
 # ── what the page lists ─────────────────────────────────────────────────────
 
 def test_the_page_lists_the_latest_selection_the_plugins_and_the_checklists(client, as_user, project):
     body = get(client, as_user, project).json()
-    assert [(o["id"], o["stale"]) for o in body["objectives"]] == [("R1.1", None), ("R6.1", None)]
+    assert [(o["id"], o["stale"]) for o in body["objectives"]] == [("O1", None), ("O24", None)]
     assert [(t["key"], t["label"], t["stale"]) for t in body["tests"]] == [
         ("aisc-plugin-langbite", "LangBiTe", None), ("aisc-plugin-promptfoo", "Promptfoo", "disabled")]
     assert [(c["key"], c["label"], c["stale"]) for c in body["controls"]] == [("ck1", "Governance", None)]
@@ -162,7 +165,7 @@ def test_a_stranger_gets_404(client, as_user, project):
 def test_the_objectives_are_named_from_the_catalogue(client, as_user, project):
     body = get(client, as_user, project).json()
     assert [(o["id"], o["title"]) for o in body["objectives"]] == [
-        ("R1.1", "Risk management system"), ("R6.1", "Human oversight")]
+        ("O1", "Risk management system"), ("O24", "Human oversight")]
 
 
 def test_a_catalogue_that_is_down_leaves_the_names_empty(client, as_user, project, catalogue, monkeypatch):
@@ -175,11 +178,11 @@ def test_a_catalogue_that_is_down_leaves_the_names_empty(client, as_user, projec
 # ── linking (many to many) ──────────────────────────────────────────────────
 
 def test_an_editor_links_tests_and_controls_to_objectives(client, as_user, project, dsn):
-    both = {"objective_id": "R6.1", "kind": "test", "key": "aisc-plugin-langbite"}
+    both = {"objective_id": "O24", "kind": "test", "key": "aisc-plugin-langbite"}
     r = put(client, as_user, project, [LB, GOV, both], BOB)
     assert r.status_code == 200, r.text
     assert sorted((l["objective_id"], l["kind"], l["key"]) for l in r.json()["links"]) == [
-        ("R1.1", "test", "aisc-plugin-langbite"), ("R6.1", "control", "ck1"), ("R6.1", "test", "aisc-plugin-langbite")]
+        ("O1", "test", "aisc-plugin-langbite"), ("O24", "control", "ck1"), ("O24", "test", "aisc-plugin-langbite")]
     assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link") == [(3,)]
     assert sql(dsn, project["pid"], "SELECT DISTINCT created_by FROM evidence.link") == [(BOB,)]
 
@@ -187,16 +190,16 @@ def test_an_editor_links_tests_and_controls_to_objectives(client, as_user, proje
 def test_saving_replaces_the_links_and_keeps_who_made_the_old_ones(client, as_user, project, dsn):
     put(client, as_user, project, [LB, GOV], BOB)
     r = put(client, as_user, project, [LB], ALICE)
-    assert [(l["objective_id"], l["key"]) for l in r.json()["links"]] == [("R1.1", "aisc-plugin-langbite")]
+    assert [(l["objective_id"], l["key"]) for l in r.json()["links"]] == [("O1", "aisc-plugin-langbite")]
     assert sql(dsn, project["pid"], "SELECT created_by FROM evidence.link") == [(BOB,)]
 
 
 @pytest.mark.parametrize("link, why", [
-    ({"objective_id": "R2.3", "kind": "test", "key": "aisc-plugin-langbite"}, "R2.3 is not selected"),
-    ({"objective_id": "R1.1", "kind": "test", "key": "aisc-plugin-promptfoo"}, "disabled"),
-    ({"objective_id": "R1.1", "kind": "test", "key": "aisc-plugin-nothing"}, "not installed"),
-    ({"objective_id": "R1.1", "kind": "control", "key": "ck9"}, "not installed"),
-    ({"objective_id": "R1.1", "kind": "model", "key": "ck1"}, "kind"),
+    ({"objective_id": "O7", "kind": "test", "key": "aisc-plugin-langbite"}, "O7 is not selected"),
+    ({"objective_id": "O1", "kind": "test", "key": "aisc-plugin-promptfoo"}, "disabled"),
+    ({"objective_id": "O1", "kind": "test", "key": "aisc-plugin-nothing"}, "not installed"),
+    ({"objective_id": "O1", "kind": "control", "key": "ck9"}, "not installed"),
+    ({"objective_id": "O1", "kind": "model", "key": "ck1"}, "kind"),
 ])
 def test_a_new_link_to_something_not_there_is_refused(client, as_user, project, link, why, dsn):
     r = put(client, as_user, project, [LB, link])
@@ -207,21 +210,21 @@ def test_a_new_link_to_something_not_there_is_refused(client, as_user, project, 
 # ── stale (D7) ──────────────────────────────────────────────────────────────
 
 def test_links_that_went_stale_are_kept_and_shown_with_their_reason(client, as_user, project, dsn):
-    promptfoo_on_r6 = {"objective_id": "R6.1", "kind": "test", "key": "aisc-plugin-promptfoo"}
+    promptfoo_on_r6 = {"objective_id": "O24", "kind": "test", "key": "aisc-plugin-promptfoo"}
     sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = true")
     put(client, as_user, project, [LB, GOV, promptfoo_on_r6])
-    # step 2 unselects R6.1, the engine disables Promptfoo, the checklist is deleted
-    sql(dsn, project["pid"], "UPDATE control_objectives.objective_selection SET objective_ids = '{R1.1}'"
+    # step 2 unselects O24, the engine disables Promptfoo, the checklist is deleted
+    sql(dsn, project["pid"], "UPDATE control_objectives.objective_selection SET objective_ids = '{O1}'"
                              " WHERE project_id = 'a2'")
     sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = false"
                              " WHERE package_name = 'aisc-plugin-promptfoo'")
     sql(dsn, project["pid"], "DELETE FROM controls.checklist")
     body = get(client, as_user, project).json()
-    assert [(o["id"], o["stale"]) for o in body["objectives"]] == [("R1.1", None), ("R6.1", "not selected")]
+    assert [(o["id"], o["stale"]) for o in body["objectives"]] == [("O1", None), ("O24", "not selected")]
     assert [(c["key"], c["label"], c["stale"]) for c in body["controls"]] == [("ck1", "ck1", "deleted")]
     stale = {(l["objective_id"], l["key"]): l["stale"] for l in body["links"]}
-    assert stale == {("R1.1", "aisc-plugin-langbite"): None, ("R6.1", "ck1"): "not selected",
-                     ("R6.1", "aisc-plugin-promptfoo"): "not selected"}
+    assert stale == {("O1", "aisc-plugin-langbite"): None, ("O24", "ck1"): "not selected",
+                     ("O24", "aisc-plugin-promptfoo"): "not selected"}
     # saving the page as it is keeps the stale links
     r = put(client, as_user, project, [{k: l[k] for k in ("objective_id", "kind", "key")} for l in body["links"]])
     assert r.status_code == 200, r.text
@@ -237,7 +240,7 @@ def test_a_removed_plugin_is_listed_as_removed_while_a_link_names_it(client, as_
 
 
 # ── trustworthiness dimensions (2026-10-01) ─────────────────────────────────
-# Each objective belongs to the dimension of its macro-requirement (R2.3 -> R2). Each test and
+# Each objective belongs to the dimension of its macro-requirement (O7 -> R2). Each test and
 # control takes its dimensions from its tags in the tools catalogue; a sub-dimension tag counts as
 # its parent dimension. A link may only join an objective and an item of the same dimension.
 
@@ -285,7 +288,7 @@ def test_the_page_lists_the_eleven_dimensions_in_order(client, as_user, project)
 
 def test_an_objective_is_in_the_dimension_of_its_requirement(client, as_user, project):
     body = get(client, as_user, project).json()
-    assert [(o["id"], o["dimension"]) for o in body["objectives"]] == [("R1.1", "R1"), ("R6.1", "R6")]
+    assert [(o["id"], o["dimension"]) for o in body["objectives"]] == [("O1", "R1"), ("O24", "R6")]
 
 
 def test_tests_and_controls_take_their_dimensions_from_the_catalogue(client, as_user, project, tools):
@@ -315,16 +318,16 @@ def test_an_item_with_no_dimension_in_the_catalogue_has_none(client, as_user, pr
 
 def test_a_link_across_dimensions_is_refused(client, as_user, project, dsn):
     sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = true")
-    r = put(client, as_user, project, [LB, {"objective_id": "R1.1", "kind": "control", "key": "ck1"}])
+    r = put(client, as_user, project, [LB, {"objective_id": "O1", "kind": "control", "key": "ck1"}])
     assert r.status_code == 422 and "control ck1 is not in R1 Human Agency and Oversight" in r.text, r.text
-    r = put(client, as_user, project, [{"objective_id": "R1.1", "kind": "test", "key": "aisc-plugin-promptfoo"}])
+    r = put(client, as_user, project, [{"objective_id": "O1", "kind": "test", "key": "aisc-plugin-promptfoo"}])
     assert r.status_code == 422 and "not in R1" in r.text, r.text
     assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link") == [(0,)]
 
 
 def test_a_link_within_a_dimension_reached_through_a_sub_dimension_is_kept(client, as_user, project, dsn):
     sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = true")
-    r = put(client, as_user, project, [{"objective_id": "R6.1", "kind": "test", "key": "aisc-plugin-promptfoo"}])
+    r = put(client, as_user, project, [{"objective_id": "O24", "kind": "test", "key": "aisc-plugin-promptfoo"}])
     assert r.status_code == 200, r.text
 
 
@@ -335,16 +338,55 @@ def test_a_catalogue_that_is_down_leaves_the_dimensions_unknown_and_refuses_noth
     body = get(client, as_user, project).json()
     assert body["dimensions_known"] is False
     assert {t["dimensions"] for t in body["tests"]} == {None}
-    r = put(client, as_user, project, [{"objective_id": "R1.1", "kind": "control", "key": "ck1"}])
+    r = put(client, as_user, project, [{"objective_id": "O1", "kind": "control", "key": "ck1"}])
     assert r.status_code == 200, r.text
 
 
 def test_the_dimensions_are_named_as_in_the_objectives_catalogue(client, as_user, project, catalogue):
     catalogue.route("GET", "/api/control-objectives", (200, [
-        {"id": "R1.1", "sub_requirement_label": "x", "macro_id": "R1", "macro_title": "Human Agency and Oversight"},
-        {"id": "R5.1", "sub_requirement_label": "y", "macro_id": "R5", "macro_title": "Fairness"}]))
+        {"id": "O1", "sub_requirement_label": "x", "macro_id": "R1", "macro_title": "Human Agency and Oversight"},
+        {"id": "O21", "sub_requirement_label": "y", "macro_id": "R5", "macro_title": "Fairness"}]))
     evidence.forget_titles()
     titles = {d["id"]: d["title"] for d in get(client, as_user, project).json()["dimensions"]}
     assert titles["R5"] == "Fairness" and titles["R1"] == "Human Agency and Oversight"
     # one the catalogue does not name keeps the paper's name
     assert titles["R11"] == "Record-keeping and Documentation Retention"
+
+
+
+# ── objective ids O1 ... O50 (2026-10-01) ───────────────────────────────────
+
+def test_the_objectives_are_listed_in_catalogue_order_not_string_order(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "UPDATE control_objectives.objective_selection SET objective_ids = '{O10,O9,O24}'"
+                             " WHERE project_id = 'a2'")
+    body = get(client, as_user, project).json()
+    assert [o["id"] for o in body["objectives"]] == ["O9", "O10", "O24"]
+
+
+def test_an_objectives_dimension_is_unknown_when_its_catalogue_does_not_answer(
+        client, as_user, project, monkeypatch):
+    monkeypatch.setenv("CONTROL_OBJECTIVES_URL", "http://127.0.0.1:9")
+    evidence.forget_titles()
+    body = get(client, as_user, project).json()
+    assert {o["dimension"] for o in body["objectives"]} == {None}
+    assert body["dimensions_known"] is False
+
+
+def test_template_0017_renames_old_ids_and_takes_only_new_ones(project, dsn):
+    from pathlib import Path
+
+    template = (Path(evidence.__file__).resolve().parent.parent / "project-template"
+                / "0017_objective_ids.sql").read_text()
+    pid = project["pid"]
+    # a link stored before the rename, with the old check
+    sql(dsn, pid, "ALTER TABLE evidence.link DROP CONSTRAINT IF EXISTS link_objective_id_check")
+    sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
+                  " VALUES ('R6.1', 'control', 'ck1', 'a'), ('R11.4', 'test', 'x', 'a')")
+    sql(dsn, pid, template)
+    assert sql(dsn, pid, "SELECT objective_id FROM evidence.link ORDER BY objective_id") == [("O24",), ("O50",)]
+    with pytest.raises(psycopg.errors.CheckViolation):
+        sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
+                      " VALUES ('R1.1', 'test', 'y', 'a')")
+    # running it again changes nothing
+    sql(dsn, pid, template)
+    assert sql(dsn, pid, "SELECT count(*) FROM evidence.link") == [(2,)]

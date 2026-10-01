@@ -104,12 +104,12 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     assert r.status_code == 201, r.text[:800]
     lay = r.json()
     assert [b["block_type"] for b in lay["blocks"]] == EU
-    coverage = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-m1"]}]
+    coverage = [{"objective_id": "O1", "tests": ["LangBiTe"], "checklists": ["cl-m1"]}]
     # the project's step 4 links, as the platform's Collect evidence page saves them
     full_bed.psql(report_bed.project_db(IDS["M"]),
                   "DELETE FROM evidence.link; INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                  " VALUES ('R1.1', 'test', 'aisc-plugin-langbite', 'mia'), ('R1.1', 'control', 'cl-m1', 'mia')")
-    links = [{"objective_id": "R1.1", "tests": ["aisc-plugin-langbite"], "checklists": ["cl-m1"]}]
+                  " VALUES ('O1', 'test', 'aisc-plugin-langbite', 'mia'), ('O1', 'control', 'cl-m1', 'mia')")
+    links = [{"objective_id": "O1", "tests": ["aisc-plugin-langbite"], "checklists": ["cl-m1"]}]
     body = {k: lay[k] for k in ("name", "template_id", "revision", "blocks")}
     body.update(language="fr", coverage=coverage)
     saved = c.put(f"/api/p/mike/layouts/{lay['id']}", json=body, headers=mia)

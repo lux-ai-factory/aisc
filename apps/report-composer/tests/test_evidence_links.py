@@ -16,9 +16,9 @@ from v2_fakes import client_v2, fake_v2, unique, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
-OLD_MAP = [{"objective_id": "R1.1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]
-EXPECTED = [{"objective_id": "R1.1", "tests": ["aisc-plugin-langbite"], "checklists": ["cl-1"]},
-            {"objective_id": "R2.1", "tests": ["aisc-plugin-langbite", "aisc-plugin-promptfoo"], "checklists": []}]
+OLD_MAP = [{"objective_id": "O1", "tests": ["LangBiTe"], "checklists": ["cl-1"]}]
+EXPECTED = [{"objective_id": "O1", "tests": ["aisc-plugin-langbite"], "checklists": ["cl-1"]},
+            {"objective_id": "O5", "tests": ["aisc-plugin-langbite", "aisc-plugin-promptfoo"], "checklists": []}]
 
 
 @pytest.fixture
@@ -26,8 +26,8 @@ def links(bed):
     db = pdb_of("A")
     bed.psql(db, "DELETE FROM evidence.link")
     bed.psql(db, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by) VALUES"
-                 " ('R1.1', 'test', 'aisc-plugin-langbite', 'alice'), ('R1.1', 'control', 'cl-1', 'alice'),"
-                 " ('R2.1', 'test', 'aisc-plugin-promptfoo', 'alice'), ('R2.1', 'test', 'aisc-plugin-langbite', 'bob')")
+                 " ('O1', 'test', 'aisc-plugin-langbite', 'alice'), ('O1', 'control', 'cl-1', 'alice'),"
+                 " ('O5', 'test', 'aisc-plugin-promptfoo', 'alice'), ('O5', 'test', 'aisc-plugin-langbite', 'bob')")
     yield
     bed.psql(db, "DELETE FROM evidence.link")
 

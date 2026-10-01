@@ -8,15 +8,16 @@ keeps the links it was made with. A database made before the template reads as n
 """
 from __future__ import annotations
 
+import re
+
 import psycopg
 
 
 def _objective_order(objective_id: str) -> tuple:
-    """R9.9 before R10.1."""
-    try:
-        return tuple(int(p) for p in objective_id.lstrip("R").split("."))
-    except ValueError:
-        return (10**6, objective_id)
+    """Catalogue order (2026-10-01): O9 before O10; an id from before the rename (R1.1) after."""
+    if re.fullmatch(r"O[1-9][0-9]*", objective_id):
+        return (0, int(objective_id[1:]), "")
+    return (1, 0, objective_id)
 
 
 def coverage_links(conn) -> list[dict]:

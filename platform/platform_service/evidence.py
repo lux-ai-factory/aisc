@@ -10,8 +10,9 @@ The objectives are named from the control-objectives service's public catalogue
 (CONTROL_OBJECTIVES_URL, on the internal network), kept for a while; when it does not answer they
 are listed by id alone.
 
-Dimensions (2026-10-01): each objective is in the trustworthiness dimension of its macro-requirement
-(R2.3 is in R2); each test and control is in the dimensions its tags name in the tools catalogue
+Dimensions (2026-10-01): each objective is in the trustworthiness dimension of its macro-requirement,
+the `macro_id` the objectives catalogue gives it (O7 is in R2); unknown when that catalogue does not
+answer; each test and control is in the dimensions its tags name in the tools catalogue
 (CATALOGUE_URL, the catalogue's API), a sub-dimension counting as its parent. A new link must join an
 objective and an item of the same dimension. When the catalogue does not answer, the items'
 dimensions are unknown (None) and no link is refused for them.
@@ -25,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -39,7 +41,7 @@ logger = logging.getLogger(__name__)
 KINDS = ("test", "control")
 DEFAULT_CATALOGUE = "http://control-objectives:8090"
 TITLES_TTL_S = 600
-_titles: dict = {"at": 0.0, "by_id": {}, "macros": {}}
+_titles: dict = {"at": 0.0, "by_id": {}, "macros": {}, "dims": {}}
 _tools: dict = {"at": 0.0, "by_slug": {}, "by_package": {}}
 
 #: The eleven macro-requirements of the control-objectives paper, each a dimension of the catalogue.
@@ -124,16 +126,15 @@ def choices(pid) -> Choices:
     )
 
 
-def _objective_order(objective_id: str) -> tuple[int, ...]:
-    """R9.9 before R10.1."""
-    try:
-        return tuple(int(part) for part in objective_id.lstrip("R").split("."))
-    except ValueError:
-        return (10**6,)
+def _objective_order(objective_id: str) -> tuple:
+    """Catalogue order: O9 before O10; anything else (an old id left behind) after."""
+    if re.fullmatch(r"O[1-9][0-9]*", objective_id):
+        return (0, int(objective_id[1:]), "")
+    return (1, 0, objective_id)
 
 
 def forget_titles() -> None:
-    _titles.update(at=0.0, by_id={}, macros={})
+    _titles.update(at=0.0, by_id={}, macros={}, dims={})
 
 
 def titles() -> dict[str, str]:
@@ -146,22 +147,23 @@ def titles() -> dict[str, str]:
             listed = json.loads(res.read())
         by_id = {o["id"]: o.get("sub_requirement_label") or "" for o in listed}
         macros = {o["macro_id"]: o["macro_title"] for o in listed if o.get("macro_id") and o.get("macro_title")}
+        dims = {o["id"]: o["macro_id"] for o in listed if o.get("macro_id")}
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("the control objectives catalogue did not answer: %s", exc)
         return {}
-    _titles.update(at=time.monotonic(), by_id=by_id, macros=macros)
+    _titles.update(at=time.monotonic(), by_id=by_id, macros=macros, dims=dims)
     return by_id
+
+
+def objective_dimensions() -> dict[str, str]:
+    """objective id -> its dimension (R1 ... R11); {} when the catalogue does not answer."""
+    return _titles["dims"] if titles() else {}
 
 
 def dimension_titles() -> dict[str, str]:
     """R-id -> the dimension's name: the objectives catalogue's, else the paper's."""
     titles()
     return {**_TITLE, **_titles["macros"]}
-
-
-def objective_dimension(objective_id: str) -> str:
-    """R2.3 -> R2."""
-    return objective_id.split(".")[0]
 
 
 def forget_dimensions() -> None:
@@ -261,11 +263,12 @@ def view(pid) -> dict:
     for item in controls:
         item["dimensions"] = item_dimensions(found, catalogue, "control", item["key"])
     names = titles()
+    dims = objective_dimensions()
     dim_titles = dimension_titles()
     return {
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
-        "dimensions_known": catalogue is not None,
-        "objectives": [{"id": o, "title": names.get(o, ""), "dimension": objective_dimension(o),
+        "dimensions_known": catalogue is not None and bool(dims),
+        "objectives": [{"id": o, "title": names.get(o, ""), "dimension": dims.get(o),
                         "stale": None if o in found.selected else "not selected"}
                        for o in objectives],
         "tests": tests,
@@ -283,6 +286,7 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str) -> None:
     to a test or control that can take it (Refused otherwise, and nothing is changed)."""
     found = choices(pid)
     catalogue = tool_dimensions()
+    dims = objective_dimensions()
     wanted_set = set(wanted)
     with connection_store.connect(pid) as conn:
         with conn.transaction():
@@ -297,8 +301,9 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str) -> None:
                 elif (why := item_stale(found, kind, key)) is not None:
                     reason = "not installed" if why in ("removed", "deleted") else why
                     problems.append(f"{kind} {key} is {reason}")
-                elif (dims := item_dimensions(found, catalogue, kind, key)) is not None \
-                        and (rid := objective_dimension(objective_id)) not in dims:
+                elif (rid := dims.get(objective_id)) is not None \
+                        and (item_dims := item_dimensions(found, catalogue, kind, key)) is not None \
+                        and rid not in item_dims:
                     problems.append(f"{kind} {key} is not in {rid} {dimension_titles().get(rid, '')}".rstrip())
             if problems:
                 raise Refused("; ".join(problems))
