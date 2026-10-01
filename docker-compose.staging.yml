@@ -153,7 +153,6 @@ services:
   controls-web:
     image: ghcr.io/lux-ai-factory/controls:staging
     container_name: controls-web
-    env_file: apps/controls/env.development
     environment:
       AISC_BACKEND_URL: http://aisc-backend:8000
     depends_on:
