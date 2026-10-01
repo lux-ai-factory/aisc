@@ -202,7 +202,7 @@ services:
     container_name: qualification-web
     command: ["npx", "next", "start", "-p", "3000"]
     environment:
-      DATABASE_URL: "postgresql://${DB_USER:}${DB_PASSWORD}@postgres:5432/qualification?schema=public"
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/qualification?schema=public"
       AISC_BACKEND_URL: http://aisc-backend:8000
       LLM_SERVICE_URL: "http://qualification-llm:4000"
       SYSTEM_CARD_RENDERER_URL: "http://qualification-pdf:8005"
