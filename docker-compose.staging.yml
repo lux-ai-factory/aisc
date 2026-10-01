@@ -126,5 +126,100 @@ services:
     networks:
       - backend
 
+ # ── AI-compliance checklists app (apps/controls submodule) ──
+  controls-pdf:
+    image: ghcr.io/lux-ai-factory/controls:staging
+    container_name: controls-pdf
+    restart: unless-stopped
+    networks:
+      - backend
+
+  controls-migrate:
+    image: ghcr.io/lux-ai-factory/controls:staging
+    container_name: controls-migrate
+    command: >
+      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done && npx prisma db seed"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/controls?schema=public"
+      PDF_RENDERER_URL: http://controls-pdf:8005
+      AISC_ENABLE_TEMPLATE_EDITOR: false
+      AISC_PLATFORM: true
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
+  controls-web:
+    image: ghcr.io/lux-ai-factory/controls:staging
+    container_name: controls-web
+    env_file: apps/controls/env.development
+    environment:
+      AISC_BACKEND_URL: http://aisc-backend:8000
+    depends_on:
+      controls-migrate:
+        condition: service_completed_successfully
+      controls-pdf:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  qualification-llm:
+    image: ghcr.io/lux-ai-factory/qualification-llm:staging
+    container_name: qualification-llm
+    environment:
+      QUALIFICATION_LLM_MODEL: deepseek-v4-flash-vllm
+      QUALIFICATION_LLM_API_BASE: https://rsfllm.uni.lux/litellm/
+      QUALIFICATION_LLM_API_KEY: ${QUALIFICATION_LLM_API_KEY}
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # System-card PDF renderer sidecar.
+  qualification-pdf:
+    image: ghcr.io/lux-ai-factory/qualification-renderer:staging
+    container_name: qualification-pdf
+    restart: unless-stopped
+    networks:
+      - backend
+
+  qualification-migrate:
+    image: ghcr.io/lux-ai-factory/qualification:staging
+    container_name: qualification-migrate
+    command: >
+      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
+    env_file: apps/qualification/env.development
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
+  qualification-web:
+    image: ghcr.io/lux-ai-factory/qualification:staging
+    container_name: qualification-web
+    command: ["npx", "next", "start", "-p", "3000"]
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:}${DB_PASSWORD}@postgres:5432/qualification?schema=public"
+      AISC_BACKEND_URL: http://aisc-backend:8000
+      LLM_SERVICE_URL: "http://qualification-llm:4000"
+      SYSTEM_CARD_RENDERER_URL: "http://qualification-pdf:8005"
+      ONTOLOGY_SERVICE_URL: "http://qualification-ontology:8011"
+    depends_on:
+      qualification-migrate:
+        condition: service_completed_successfully
+      qualification-llm:
+        condition: service_started
+      qualification-pdf:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+
+
 volumes:
   flower_data:
