@@ -155,6 +155,10 @@ services:
     container_name: controls-web
     environment:
       AISC_BACKEND_URL: http://aisc-backend:8000
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/controls?schema=public"
+      PDF_RENDERER_URL: http://controls-pdf:8005
+      AISC_ENABLE_TEMPLATE_EDITOR: false
+      AISC_PLATFORM: true
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
