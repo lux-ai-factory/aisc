@@ -190,7 +190,6 @@ services:
     container_name: qualification-migrate
     command: >
       sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
-    env_file: apps/qualification/env.development
     depends_on:
       - postgres
     restart: "no"
