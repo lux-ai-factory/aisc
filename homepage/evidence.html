@@ -94,22 +94,60 @@
   }
   a.way:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
   a.way small{font-family:"Inter",sans-serif; font-size:12px; letter-spacing:0; text-transform:none; opacity:.85}
-  .grid-wrap{overflow-x:auto; border:1px solid var(--border); background:var(--panel)}
-  table{border-collapse:collapse; min-width:100%}
+  /* the grid: objectives frozen on the left, header rows frozen on top, columns scroll under them */
+  .grid-wrap{--obj-w:320px; --group-h:32px; overflow:auto; max-height:72vh; width:fit-content; max-width:100%;
+             border:1px solid var(--border); background:var(--panel)}
+  .grid-wrap.more{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent);
+                  mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent)}
+  table{border-collapse:separate; border-spacing:0}
+  table th:last-child, table td:last-child{border-right:0}
   th, td{padding:9px 12px; border-bottom:1px solid var(--border); border-right:1px solid var(--border);
-         text-align:left; vertical-align:middle}
+         text-align:left; vertical-align:middle; background:var(--panel)}
   thead th{
+    position:sticky; z-index:2;
     font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.06em;
     color:var(--muted); background:#f7f8fc; white-space:nowrap;
   }
-  thead tr.groups th{text-transform:uppercase; letter-spacing:.12em; color:var(--faint); text-align:center}
-  thead th.item{writing-mode:vertical-rl; transform:rotate(180deg); max-height:180px; text-align:left}
-  th.objective{min-width:280px; max-width:420px; font-weight:400; background:var(--panel)}
+  thead tr.groups th{top:0; height:var(--group-h); box-sizing:border-box;
+                     text-transform:uppercase; letter-spacing:.12em; color:var(--faint)}
+  thead tr.groups th span{position:sticky; left:calc(var(--obj-w) + 12px); display:inline-block}
+  thead tr.heads th{top:var(--group-h); vertical-align:bottom}
+  thead th.item{white-space:normal; width:148px; min-width:148px; max-width:148px; line-height:1.35}
+  th.item .label{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden}
+  th.item .stale{margin:4px 0 0}
+  .frozen{position:sticky; left:0; z-index:1; background:var(--panel);
+          width:var(--obj-w); min-width:var(--obj-w); max-width:var(--obj-w); box-sizing:border-box}
+  thead th.frozen{z-index:3; background:#f7f8fc}
+  .grid-wrap.scrolled .frozen{box-shadow:8px 0 10px -8px rgba(20,24,60,.28)}
+  th.objective{font-weight:400}
   th.objective b{font-family:var(--mono); font-size:12px; margin-right:8px}
   th.objective .title{color:var(--text); font-size:13.5px}
   th.objective .count{display:block; font-family:var(--mono); font-size:11px; color:var(--faint)}
   th.objective .count.none{color:var(--error)}
+  tbody tr:hover > *, .col-hover{background:#f3f5ff}
+  tbody tr:hover > th.frozen{background:#eef1ff}
   td.cell{text-align:center}
+  /* one block per trustworthiness dimension, tagged in the catalogue's colours as in step 2 */
+  .dim-block{margin-top:26px}
+  .dim-block:first-child{margin-top:4px}
+  .dim-head{display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:0 0 10px}
+  .dim-n{font-family:var(--mono); font-size:11px; color:var(--faint)}
+  .dim-tag{display:inline-block; padding:3px 10px; border-radius:999px; border:1px solid;
+           font-size:12.5px; font-weight:600; white-space:nowrap}
+  .dim-tag.r1{background:#fff3e0; border-color:#ffd8a8; color:#a33a00}
+  .dim-tag.r2{background:#e7f0ff; border-color:#bcd0fb; color:#2f4bb8}
+  .dim-tag.r3{background:#e8f5e9; border-color:#b9dfbd; color:#256b29}
+  .dim-tag.r4{background:#e0f7fa; border-color:#a8e3ea; color:#00695c}
+  .dim-tag.r5{background:#fce4ec; border-color:#f5b8cb; color:#b02424}
+  .dim-tag.r6{background:#f3e5f5; border-color:#ddbde3; color:#6a1b9a}
+  .dim-tag.r7{background:#fff8e1; border-color:#f2dc95; color:#7a4a00}
+  .dim-tag.r8{background:#e8eaf6; border-color:#c3c8ea; color:#283593}
+  .dim-tag.r9{background:#efebe9; border-color:#d5cbc6; color:#4e342e}
+  .dim-tag.r10{background:#eceff1; border-color:#cbd3d8; color:#37474f}
+  .dim-tag.r11{background:#f4f4f4; border-color:#d6d6d6; color:#424242}
+  .dim-empty{padding:14px 16px; border:1px dashed var(--border-strong); color:var(--muted); font-size:13.5px}
+  .unclassified{margin-top:22px; font-size:13px; color:var(--muted)}
+  .unclassified b{font-weight:600; color:var(--text)}
   .stale{display:inline-block; margin-left:6px; padding:1px 6px; font-family:var(--mono); font-size:10px;
          letter-spacing:.06em; text-transform:uppercase; color:var(--error); border:1px solid var(--error)}
   tr.is-stale th.objective, .item.is-stale{opacity:.6}
@@ -130,7 +168,7 @@
   @media (max-width:820px){
     .topbar{padding:12px 18px; gap:14px}
     main{padding:28px 18px 40px}
-    th.objective{min-width:200px}
+    .grid-wrap{--obj-w:200px}
   }
 </style>
 </head>
@@ -161,12 +199,13 @@
 
   <section id="links" hidden>
     <h2>Link tests and controls to the control objectives</h2>
-    <p>Tick a box when that test or control gives evidence for that objective. The rows are the
-       objectives selected in step 2; the columns are the tests and controls installed from the
-       catalogue in step 3. A greyed row or column is kept because a link names it: its old links
-       stay, and it takes no new ones.</p>
+    <p>One table per trustworthiness dimension. Tick a box when that test or control gives evidence
+       for that objective. The rows are the objectives selected in step 2 in that dimension; the
+       columns are the tests and controls installed in step 3 that the catalogue tags with it. A
+       greyed row or column is kept because a link names it: its old links stay, and it takes no
+       new ones.</p>
     <p class="note" id="viewer-note" hidden>You can read the links; an editor or owner changes them.</p>
-    <div class="grid-wrap" id="grid"></div>
+    <div class="grids" id="grid"></div>
     <div class="actions">
       <button type="button" id="save" hidden>Save links</button>
       <span class="msg" id="save-msg"></span>
@@ -210,8 +249,8 @@
 
   // every item, tests then controls, as {kind, key, label, stale}
   function items() {
-    return data.tests.map(function (t) { return {kind: 'test', key: t.key, label: t.label, stale: t.stale}; })
-      .concat(data.controls.map(function (c) { return {kind: 'control', key: c.key, label: c.label, stale: c.stale}; }));
+    return data.tests.map(function (t) { return {kind: 'test', key: t.key, label: t.label, stale: t.stale, dimensions: t.dimensions}; })
+      .concat(data.controls.map(function (c) { return {kind: 'control', key: c.key, label: c.label, stale: c.stale, dimensions: c.dimensions}; }));
   }
 
   function countLabel(node, n) {
@@ -232,24 +271,74 @@
     }
     var linked = {};
     data.links.forEach(function (l) { linked[linkId(l.objective_id, l.kind, l.key)] = true; });
+    function linkedIn(it, rows) {
+      return rows.some(function (o) { return linked[linkId(o.id, it.kind, it.key)]; });
+    }
 
-    var table = el('table'), thead = el('thead'), groups = el('tr', 'groups'), heads = el('tr');
-    groups.appendChild(el('th'));
-    if (data.tests.length) { var g1 = el('th', null, 'Tests'); g1.colSpan = data.tests.length; groups.appendChild(g1); }
-    if (data.controls.length) { var g2 = el('th', null, 'Controls'); g2.colSpan = data.controls.length; groups.appendChild(g2); }
-    heads.appendChild(el('th', null, 'Objective'));
-    all.forEach(function (it) {
-      var th = el('th', 'item' + (it.stale ? ' is-stale' : ''), it.label);
-      th.title = it.key;
+    if (!data.dimensions_known || !data.dimensions) {
+      grid.appendChild(el('p', 'note', 'The catalogue did not answer, so the tests and controls are not sorted by ' +
+        'dimension: every objective is shown against every test and control.'));
+      grid.appendChild(table(data.objectives, all, linked));
+    } else {
+      var shown = {};
+      data.dimensions.forEach(function (d) {
+        var rows = data.objectives.filter(function (o) { return o.dimension === d.id; });
+        if (!rows.length) return;
+        var cols = all.filter(function (it) {
+          return (it.dimensions || []).indexOf(d.id) >= 0 || linkedIn(it, rows);
+        });
+        cols.forEach(function (it) { shown[it.kind + '|' + it.key] = true; });
+        var block = el('div', 'dim-block'), head = el('div', 'dim-head');
+        head.appendChild(el('span', 'dim-tag ' + d.id.toLowerCase(), d.id + ' · ' + d.title));
+        var tests = cols.filter(function (it) { return it.kind === 'test'; }).length;
+        head.appendChild(el('span', 'dim-n', plural(rows.length, 'objective') + ' · ' +
+          plural(tests, 'test') + ' · ' + plural(cols.length - tests, 'control')));
+        block.appendChild(head);
+        block.appendChild(cols.length ? table(rows, cols, linked)
+          : el('p', 'dim-empty', 'Nothing installed for this dimension: pick tests and controls tagged with it ' +
+                                 'in step 3, the catalogue.'));
+        grid.appendChild(block);
+      });
+      var loose = all.filter(function (it) {
+        return !shown[it.kind + '|' + it.key] && (it.dimensions || []).length === 0;
+      });
+      if (loose.length) {
+        var note = el('p', 'unclassified');
+        note.appendChild(el('b', null, 'Not classified in the catalogue, so they cannot be linked: '));
+        note.appendChild(document.createTextNode(loose.map(function (it) { return it.label; }).join(', ') + '.'));
+        grid.appendChild(note);
+      }
+    }
+    grid.querySelectorAll('.grid-wrap').forEach(edges);
+    $('save').hidden = !data.can_edit;
+    $('viewer-note').hidden = data.can_edit;
+  }
+
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+
+  // one grid: the objectives frozen on the left, the tests then the controls scrolling under them
+  function table(rows, cols, linked) {
+    var wrap = el('div', 'grid-wrap');
+    var table = el('table'), thead = el('thead'), groups = el('tr', 'groups'), heads = el('tr', 'heads');
+    var tests = cols.filter(function (it) { return it.kind === 'test'; }).length;
+    groups.appendChild(el('th', 'corner frozen'));
+    function group(name, span) { var g = el('th'); g.colSpan = span; g.appendChild(el('span', null, name)); groups.appendChild(g); }
+    if (tests) group('Tests', tests);
+    if (cols.length - tests) group('Controls', cols.length - tests);
+    heads.appendChild(el('th', 'corner frozen', 'Objective'));
+    cols.forEach(function (it) {
+      var th = el('th', 'item' + (it.stale ? ' is-stale' : ''));
+      th.appendChild(el('span', 'label', it.label));
+      th.title = it.label + (it.label === it.key ? '' : '\n' + it.key);
       if (it.stale) th.appendChild(staleTag(it.stale));
       heads.appendChild(th);
     });
     thead.appendChild(groups); thead.appendChild(heads); table.appendChild(thead);
 
     var tbody = el('tbody');
-    data.objectives.forEach(function (o) {
+    rows.forEach(function (o) {
       var tr = el('tr', o.stale ? 'is-stale' : null);
-      var th = el('th', 'objective');
+      var th = el('th', 'objective frozen');
       th.scope = 'row';
       th.appendChild(el('b', null, o.id));
       th.appendChild(el('span', 'title', o.title || ''));
@@ -258,13 +347,15 @@
       th.appendChild(count);
       tr.appendChild(th);
       var ticked = 0;
-      all.forEach(function (it) {
+      cols.forEach(function (it) {
         var td = el('td', 'cell'), box = document.createElement('input');
         box.type = 'checkbox';
         box.dataset.objective = o.id; box.dataset.kind = it.kind; box.dataset.key = it.key;
         box.checked = !!linked[linkId(o.id, it.kind, it.key)];
         box.setAttribute('aria-label', o.id + ': ' + it.label);
-        var stale = !!(o.stale || it.stale);
+        var inDimension = !data.dimensions_known || it.dimensions === null ||
+          (it.dimensions || []).indexOf(o.dimension) >= 0;
+        var stale = !!(o.stale || it.stale || !inDimension);
         box.disabled = !data.can_edit || (stale && !box.checked);
         if (box.checked && !stale) ticked++;
         box.addEventListener('change', function () {
@@ -283,9 +374,27 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
-    grid.appendChild(table);
-    $('save').hidden = !data.can_edit;
-    $('viewer-note').hidden = data.can_edit;
+    table.addEventListener('mouseover', function (e) {
+      var cell = e.target.closest('td, th.item');
+      table.querySelectorAll('.col-hover').forEach(function (c) { c.classList.remove('col-hover'); });
+      if (!cell) return;
+      var i = cell.cellIndex;
+      table.querySelectorAll('tr.heads, tbody tr').forEach(function (row) {
+        if (row.cells[i]) row.cells[i].classList.add('col-hover');
+      });
+    });
+    table.addEventListener('mouseleave', function () {
+      table.querySelectorAll('.col-hover').forEach(function (c) { c.classList.remove('col-hover'); });
+    });
+    wrap.appendChild(table);
+    wrap.addEventListener('scroll', function () { edges(wrap); });
+    return wrap;
+  }
+
+  // the shadow on the frozen column once scrolled, the fade while more columns hide on the right
+  function edges(g) {
+    g.classList.toggle('scrolled', g.scrollLeft > 0);
+    g.classList.toggle('more', g.scrollLeft + g.clientWidth < g.scrollWidth - 1);
   }
 
   function load() {
@@ -317,6 +426,8 @@
       })
       .catch(function () { $('save').disabled = false; say(NOT_ANSWERING, 'err'); });
   }
+
+  window.addEventListener('resize', function () { $('grid').querySelectorAll('.grid-wrap').forEach(edges); });
 
   function boot() {
     $('back').href = '/p/' + enc(slug);

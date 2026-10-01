@@ -860,6 +860,8 @@ services:
       # Collect evidence: what steps 2 and 3 selected is read from each project database as the
       # report's read-only role ({database} is the project's database; evidence links 2026-09-30).
       EVIDENCE_READER_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
+      # The dimension of each test and control comes from its tags in the tools catalogue (2026-10-01).
+      CATALOGUE_URL: ${CATALOGUE_API_URL:-https://sandboxconfigurator.aifactory.lu/api/api}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

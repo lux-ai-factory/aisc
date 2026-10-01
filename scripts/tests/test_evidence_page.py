@@ -95,3 +95,125 @@ def test_a_stale_cell_takes_no_new_link_but_keeps_an_old_one():
 
 def test_an_objective_with_nothing_linked_says_not_covered():
     assert "not covered" in script_of(read(PAGE))
+
+
+# ── the grid reads left to right: frozen objectives, columns scroll under them ──
+
+def style_of(html):
+    return "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", html, re.S | re.I))
+
+
+def rule(css, selector):
+    m = re.search(r"(?:^|[}\s])" + re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert m, f"no CSS rule for {selector}"
+    return m.group(1)
+
+
+def test_no_header_is_turned_on_its_side():
+    css = style_of(read(PAGE))
+    assert "writing-mode" not in css
+    assert not re.search(r"thead[^{]*\{[^}]*rotate\(", css)
+
+
+def test_column_names_wrap_at_one_even_width():
+    css = style_of(read(PAGE))
+    item = rule(css, "thead th.item")
+    assert re.search(r"white-space\s*:\s*normal", item)
+    assert re.search(r"(?<![-\w])width\s*:\s*\d+px", item)
+    label = rule(css, "th.item .label")
+    assert "-webkit-line-clamp" in label
+    script = script_of(read(PAGE))
+    assert "el('span', 'label', it.label)" in script
+    assert re.search(r"th\.title\s*=\s*it\.label", script)
+
+
+def test_the_objective_column_is_frozen_on_the_left():
+    css = style_of(read(PAGE))
+    col = rule(css, ".frozen")
+    assert re.search(r"position\s*:\s*sticky", col) and re.search(r"left\s*:\s*0", col)
+    assert re.search(r"background\s*:", col)
+    script = script_of(read(PAGE))
+    assert "el('th', 'objective frozen')" in script
+    assert "el('th', 'corner frozen'" in script
+
+
+def test_the_header_rows_stay_on_top_when_scrolling_down():
+    css = style_of(read(PAGE))
+    assert re.search(r"max-height\s*:", rule(css, ".grid-wrap"))
+    assert re.search(r"position\s*:\s*sticky", rule(css, "thead th"))
+    assert re.search(r"top\s*:", rule(css, "thead tr.groups th"))
+    assert re.search(r"top\s*:", rule(css, "thead tr.heads th"))
+
+
+def test_sticky_cells_keep_their_borders():
+    # with border-collapse:collapse the borders stay behind while sticky cells move
+    css = style_of(read(PAGE))
+    table = rule(css, "table")
+    assert re.search(r"border-collapse\s*:\s*separate", table)
+    assert re.search(r"border-spacing\s*:\s*0", table)
+
+
+def test_the_grid_shows_there_is_more_to_the_right():
+    html = read(PAGE)
+    css, script = style_of(html), script_of(html)
+    assert ".grid-wrap.scrolled" in css and ".grid-wrap.more" in css
+    assert "addEventListener('scroll'" in script
+    assert "classList.toggle('scrolled'" in script and "classList.toggle('more'" in script
+
+
+def test_the_group_names_follow_the_scroll():
+    css = style_of(read(PAGE))
+    assert re.search(r"position\s*:\s*sticky", rule(css, "thead tr.groups th span"))
+
+
+def test_the_platform_knows_the_tools_catalogue_for_the_dimensions():
+    compose = (ROOT / "docker-compose.development.yml").read_text()
+    platform = re.search(r"\n  platform:\n(.*?)\n  [a-z][\w-]*:\n", compose, re.S).group(1)
+    assert re.search(r"CATALOGUE_URL: \$\{CATALOGUE_API_URL:-https://sandboxconfigurator\.aifactory\.lu/api/api\}",
+                     platform)
+
+
+# ── one table per trustworthiness dimension (2026-10-01) ────────────────────
+
+def test_there_is_one_table_per_dimension_with_its_own_objectives_and_items():
+    script = script_of(read(PAGE))
+    assert "data.dimensions.forEach" in script
+    assert "o.dimension === d.id" in script
+    assert "(it.dimensions || []).indexOf(d.id) >= 0" in script
+
+
+def test_a_column_stays_while_a_link_names_it_even_outside_its_dimension():
+    # an old link must stay visible (and untickable) in the table of its objective
+    script = script_of(read(PAGE))
+    assert "linkedIn(it, rows)" in script
+
+
+def test_a_dimension_with_objectives_but_nothing_installed_says_so():
+    assert "Nothing installed for this dimension" in script_of(read(PAGE))
+
+
+def test_items_with_no_dimension_are_listed_as_unlinkable():
+    assert "Not classified in the catalogue, so they cannot be linked" in script_of(read(PAGE))
+
+
+def test_without_the_catalogue_the_page_falls_back_to_one_grid():
+    script = script_of(read(PAGE))
+    assert "!data.dimensions_known" in script
+    assert "The catalogue did not answer" in script
+
+
+def test_each_dimension_has_its_colour_like_step_2():
+    css = style_of(read(PAGE))
+    for n in range(1, 12):
+        assert f".dim-tag.r{n}" in css, n
+
+
+def test_every_grid_scrolls_on_its_own():
+    script = script_of(read(PAGE))
+    assert "querySelectorAll('.grid-wrap')" in script
+
+
+def test_the_columns_keep_the_dimensions_the_platform_gave_them():
+    script = script_of(read(PAGE))
+    body = re.search(r"function items\(\) \{(.*?)\n  \}", script, re.S).group(1)
+    assert body.count("dimensions: t.dimensions") == 1 and body.count("dimensions: c.dimensions") == 1

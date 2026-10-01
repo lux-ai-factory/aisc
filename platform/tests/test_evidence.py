@@ -234,3 +234,117 @@ def test_a_removed_plugin_is_listed_as_removed_while_a_link_names_it(client, as_
     body = get(client, as_user, project).json()
     assert ("aisc-plugin-langbite", "removed") in [(t["key"], t["stale"]) for t in body["tests"]]
     assert body["links"][0]["stale"] == "removed"
+
+
+# ── trustworthiness dimensions (2026-10-01) ─────────────────────────────────
+# Each objective belongs to the dimension of its macro-requirement (R2.3 -> R2). Each test and
+# control takes its dimensions from its tags in the tools catalogue; a sub-dimension tag counts as
+# its parent dimension. A link may only join an objective and an item of the same dimension.
+
+def dim(slug):
+    return {"slug": slug, "section": "dimension", "parent_dimension_slug": None}
+
+
+def subdim(slug, parent):
+    return {"slug": slug, "section": "testing_subdim", "parent_dimension_slug": parent}
+
+
+TOOLS = [
+    # in R1 directly and in R6 directly
+    {"slug": "langbite", "package_name": "aisc-plugin-langbite",
+     "tags": [{"slug": "test", "section": "type", "parent_dimension_slug": None},
+              dim("human-agency-oversight"), dim("societal-environmental-wellbeing")]},
+    # in R6 only through a sub-dimension
+    {"slug": "promptfoo", "package_name": "aisc-plugin-promptfoo",
+     "tags": [subdim("energy-use", "societal-environmental-wellbeing")]},
+    # the checklist's catalogue entry, in R6
+    {"slug": "gov", "package_name": None, "tags": [dim("societal-environmental-wellbeing")]},
+    {"slug": "untagged", "package_name": "aisc-plugin-untagged", "tags": []},
+]
+
+
+@pytest.fixture(autouse=True)
+def tools(monkeypatch):
+    """The tools catalogue (the catalogue's API), which tags tests and controls with dimensions."""
+    stub = Stub()
+    stub.route("GET", "/tool/", (200, TOOLS))
+    monkeypatch.setenv("CATALOGUE_URL", stub.base)
+    evidence.forget_dimensions()
+    yield stub
+    stub.stop()
+    evidence.forget_dimensions()
+
+
+def test_the_page_lists_the_eleven_dimensions_in_order(client, as_user, project):
+    body = get(client, as_user, project).json()
+    assert [d["id"] for d in body["dimensions"]] == [f"R{n}" for n in range(1, 12)]
+    assert body["dimensions"][0]["title"] == "Human Agency and Oversight"
+    assert body["dimensions"][4]["title"] == "Diversity, Non-Discrimination and Fairness"
+    assert body["dimensions_known"] is True
+
+
+def test_an_objective_is_in_the_dimension_of_its_requirement(client, as_user, project):
+    body = get(client, as_user, project).json()
+    assert [(o["id"], o["dimension"]) for o in body["objectives"]] == [("R1.1", "R1"), ("R6.1", "R6")]
+
+
+def test_tests_and_controls_take_their_dimensions_from_the_catalogue(client, as_user, project, tools):
+    body = get(client, as_user, project).json()
+    # LangBiTe has no catalogue slug stored here: it is found by its package name
+    assert {t["key"]: t["dimensions"] for t in body["tests"]} == {
+        "aisc-plugin-langbite": ["R1", "R6"], "aisc-plugin-promptfoo": ["R6"]}
+    # the checklist is found by its catalogue id
+    assert {c["key"]: c["dimensions"] for c in body["controls"]} == {"ck1": ["R6"]}
+    assert tools.requests("GET", "/tool/")[0]["path"] == "/tool/?detailed=true"
+
+
+def test_a_stored_catalogue_slug_wins_over_the_package_name(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET catalogue_slug = 'gov'"
+                             " WHERE package_name = 'aisc-plugin-langbite'")
+    body = get(client, as_user, project).json()
+    assert {t["key"]: t["dimensions"] for t in body["tests"]}["aisc-plugin-langbite"] == ["R6"]
+
+
+def test_an_item_with_no_dimension_in_the_catalogue_has_none(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "INSERT INTO engine.aisc_backend_plugin (package_name, version, display_name)"
+                             " VALUES ('aisc-plugin-untagged', '1.0', 'Untagged'), ('aisc-plugin-local', '1.0', 'Local')")
+    body = get(client, as_user, project).json()
+    found = {t["key"]: t["dimensions"] for t in body["tests"]}
+    assert found["aisc-plugin-untagged"] == [] and found["aisc-plugin-local"] == []
+
+
+def test_a_link_across_dimensions_is_refused(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = true")
+    r = put(client, as_user, project, [LB, {"objective_id": "R1.1", "kind": "control", "key": "ck1"}])
+    assert r.status_code == 422 and "control ck1 is not in R1 Human Agency and Oversight" in r.text, r.text
+    r = put(client, as_user, project, [{"objective_id": "R1.1", "kind": "test", "key": "aisc-plugin-promptfoo"}])
+    assert r.status_code == 422 and "not in R1" in r.text, r.text
+    assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link") == [(0,)]
+
+
+def test_a_link_within_a_dimension_reached_through_a_sub_dimension_is_kept(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = true")
+    r = put(client, as_user, project, [{"objective_id": "R6.1", "kind": "test", "key": "aisc-plugin-promptfoo"}])
+    assert r.status_code == 200, r.text
+
+
+def test_a_catalogue_that_is_down_leaves_the_dimensions_unknown_and_refuses_nothing_for_them(
+        client, as_user, project, monkeypatch):
+    monkeypatch.setenv("CATALOGUE_URL", "http://127.0.0.1:9")
+    evidence.forget_dimensions()
+    body = get(client, as_user, project).json()
+    assert body["dimensions_known"] is False
+    assert {t["dimensions"] for t in body["tests"]} == {None}
+    r = put(client, as_user, project, [{"objective_id": "R1.1", "kind": "control", "key": "ck1"}])
+    assert r.status_code == 200, r.text
+
+
+def test_the_dimensions_are_named_as_in_the_objectives_catalogue(client, as_user, project, catalogue):
+    catalogue.route("GET", "/api/control-objectives", (200, [
+        {"id": "R1.1", "sub_requirement_label": "x", "macro_id": "R1", "macro_title": "Human Agency and Oversight"},
+        {"id": "R5.1", "sub_requirement_label": "y", "macro_id": "R5", "macro_title": "Fairness"}]))
+    evidence.forget_titles()
+    titles = {d["id"]: d["title"] for d in get(client, as_user, project).json()["dimensions"]}
+    assert titles["R5"] == "Fairness" and titles["R1"] == "Human Agency and Oversight"
+    # one the catalogue does not name keeps the paper's name
+    assert titles["R11"] == "Record-keeping and Documentation Retention"
