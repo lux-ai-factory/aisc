@@ -129,13 +129,13 @@ def test_i8_4_start_migrates_the_library_and_every_project_database(iso_client, 
     gets no report_composer schema (I1.3)."""
     iso_client.get("/api/block-types")
     assert _names(iso_bed, "platform", "SELECT string_agg(name, ',') FROM report_library.schema_migration") \
-        == ["0001_presets.sql"]
+        == ["0001_presets.sql", "0002_presets_numbered.sql"]
     assert iso_bed.scalar("platform", "SELECT to_regclass('report_library.preset') IS NOT NULL") == "t"
     assert iso_bed.scalar("platform", "SELECT count(*) FROM pg_namespace WHERE nspname = 'report_composer'") == "0"
     for key in ("A", "B", "E"):
         db = pdb(IDS[key])
         assert _names(iso_bed, db, "SELECT string_agg(name, ',') FROM report_composer.schema_migration") \
-            == ["0001_project_database.sql", "0002_layouts_without_data.sql"], key
+            == ["0001_project_database.sql", "0002_layouts_without_data.sql", "0003_numbering_on.sql"], key
         for t in MODULE_TABLES:
             assert iso_bed.scalar(db, f"SELECT to_regclass('report_composer.{t}') IS NOT NULL") == "t", (key, t)
 
@@ -268,7 +268,7 @@ def test_i8_4_a_project_made_after_start_is_migrated_on_first_open(iso_client, i
     r = iso_client.get("/api/p/first-open/layouts", headers=auth("alice"))
     assert r.status_code == 200 and r.json() == [], r.text[:300]
     assert iso_bed.scalar(db, "SELECT string_agg(name, ',' ORDER BY name) FROM report_composer.schema_migration") \
-        == "0001_project_database.sql,0002_layouts_without_data.sql"
+        == "0001_project_database.sql,0002_layouts_without_data.sql,0003_numbering_on.sql"
 
 
 @pytest.mark.db
@@ -310,7 +310,7 @@ def test_i8_4_concurrent_first_opens_migrate_once(iso_client, iso_bed, auth):
     for th in threads:
         th.join(60)
     assert results == [200, 200]
-    assert iso_bed.scalar(db, "SELECT count(*) FROM report_composer.schema_migration") == "2"   # each file once
+    assert iso_bed.scalar(db, "SELECT count(*) FROM report_composer.schema_migration") == "3"   # each file once
 
 
 @pytest.mark.db

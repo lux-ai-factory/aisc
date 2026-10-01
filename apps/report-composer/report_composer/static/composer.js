@@ -198,14 +198,14 @@
     schedule();
   }
 
-  // Indentation, the empty-chapter and the not-written hints, as Python computes them (R-V5.8, R-V5.9, R2-D3.8.3)
+  // Indentation, numbers, the empty-chapter and the not-written hints, as Python computes them (R-V5.8, R-V5.9, R2-D3.8.3)
   let outlineAsked = 0, outlineTimer = null;             // the latest outline request; older answers are ignored
   async function redrawOutline() {
     const mine = ++outlineAsked;
-    const res = await call("POST", "/layouts/" + (layoutId || "new") + "/outline", { blocks: collect() });
+    const res = await call("POST", "/layouts/" + (layoutId || "new") + "/outline", { blocks: collect(), numbering: !!(control("numbering") || {}).checked });
     if (mine !== outlineAsked) return;
     if (!res.ok) {                                       // R2-D3.3: no stale indentation, and a way to retry
-      Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; });
+      Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; li.dataset.number = ""; });
       list.querySelectorAll("[data-empty-chapter], [data-unwritten]").forEach(function (p) { p.remove(); });
       say(OUTLINE_FAILED, false, { label: "Try again", run: redrawOutline });
       return;
@@ -215,6 +215,7 @@
       const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
       if (!li) return;
       li.dataset.depth = String(o.depth);
+      li.dataset.number = o.number || "";
       const before = li.querySelector("details, [data-problems]");
       hint(li, "data-empty-chapter", o.empty_chapter ? EMPTY_CHAPTER : "", "hint", before);
       hint(li, "data-unwritten", o.unwritten_hint || "", "hint", li.querySelector("details, [data-problems]"));
@@ -393,6 +394,7 @@
     const li = ev.target.closest("li");
     if (li) { applyShowIf(li); pickOneHints(); }
     if (ev.target.closest("#blocks")) edited();
+    else if (ev.target.closest('[data-control="numbering"]')) { dirty(); redrawOutline(); }
     else if (ev.target.closest(".toolbar")) dirty();
   });
   main.addEventListener("input", function (ev) {

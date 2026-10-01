@@ -21,7 +21,7 @@ def _view(slug: str, block_types) -> dict:
               for i, b in enumerate(doc["blocks"])]
     return {"id": PREFIX + slug, "name": doc["name"], "description": doc.get("description", ""), "built_in": True,
             "revision": 0, "template_id": None, "show_index": doc.get("show_index", True),
-            "numbering": doc.get("numbering", False), "blocks": blocks}
+            "numbering": doc.get("numbering", True), "blocks": blocks}
 
 
 def all_layouts(block_types) -> list[dict]:

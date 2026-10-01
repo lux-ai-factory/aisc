@@ -53,9 +53,10 @@ def latest_system(conn) -> dict | None:
 
 # Layouts
 
-#: a layout's document settings before anyone sets them (today's behaviour). The layout's coverage column
-#: is no longer read or written (evidence links 2026-09-30, D5): the links are set in step 4.
-DEFAULT_SETTINGS = {"show_index": True, "numbering": False}
+#: a layout's document settings before anyone sets them; numbering is on (2026-10-01, retroactive: project
+#: migration 0003). The layout's coverage column is no longer read or written (evidence links 2026-09-30, D5):
+#: the links are set in step 4.
+DEFAULT_SETTINGS = {"show_index": True, "numbering": True}
 
 
 def layout_names(conn) -> set[str]:

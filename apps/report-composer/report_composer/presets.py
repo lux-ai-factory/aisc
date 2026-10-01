@@ -237,13 +237,13 @@ def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
         blocks.append({"block_type": b["block_type"], "options": options})
     return Preset(id=None, name=layout["name"], description=layout.get("description") or "",
                   show_index=bool(layout.get("show_index", True)),
-                  numbering=bool(layout.get("numbering")), blocks=blocks)
+                  numbering=bool(layout.get("numbering", True)), blocks=blocks)
 
 
 def export_doc(p: Preset) -> dict:
     """The preset file (R-V1.7)."""
     return {"format": FILE_FORMAT, "version": FILE_VERSION, "name": p.name, "description": p.description,
-            "show_index": True if p.show_index is None else bool(p.show_index), "numbering": bool(p.numbering),
+            "show_index": True if p.show_index is None else bool(p.show_index), "numbering": True if p.numbering is None else bool(p.numbering),
             "blocks": [{"block_type": b["block_type"], "options": copy.deepcopy(b["options"])} for b in p.blocks]}
 
 

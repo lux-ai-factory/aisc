@@ -90,13 +90,13 @@ def _reference_choices(request: Request, project: dict, layout: dict, by_type: d
 
 
 def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, depth: int = 0,
-                   empty_chapter: bool = False, problems=()) -> dict:
+                   empty_chapter: bool = False, problems=(), number: str = "") -> dict:
     """A block as the editor's outline draws it; an editor also gets its configure form. A block still
     holding the placeholder in a prose option gets the unwritten hint (R2-D3.8.3)."""
     unwritten = prose.unwritten(block["block_type"], block["options"] or {}, block_type)
     return {"instance_id": block["instance_id"], "block_type": block["block_type"],
             "title": (block["options"] or {}).get("title") or (block_type["title"] if block_type else None),
-            "known": block_type is not None, "depth": depth, "empty_chapter": empty_chapter,
+            "known": block_type is not None, "depth": depth, "empty_chapter": empty_chapter, "number": number,
             "unwritten_hint": prose.unwritten_hint(block["block_type"], unwritten),
             "problems": [p["message"] for p in problems],
             "fields": _form_for(block_type, block["options"], choices.get(block["block_type"], {}))
@@ -105,7 +105,7 @@ def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: 
 
 NO_VERSION = "This project has no AI card version yet. Save the AI card in qualification first."
 EMPTY_LAYOUT = {"id": "", "name": "", "description": "", "revision": 0, "template_id": None, "show_index": True,
-                "numbering": False, "blocks": []}
+                "numbering": True, "blocks": []}
 
 
 def _report_view(row: dict) -> dict:
@@ -158,9 +158,10 @@ def editor_page(request: Request, ref: str, layout_id: str):
     for p in problems:
         by_block.setdefault(p.get("instance_id"), []).append(p)
     depths = layouts.outline_depths(layout["blocks"])
+    numbers = layouts.outline_numbers(layout["blocks"], bool(layout.get("numbering")))
     blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor, depth, empty,
-                             by_block.get(b["instance_id"], ()))
-              for b, (depth, empty) in zip(layout["blocks"], depths)]
+                             by_block.get(b["instance_id"], ()), number)
+              for b, (depth, empty), number in zip(layout["blocks"], depths, numbers)]
     palette = [{"label": grp["label"], "types": [
         {"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
          "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in grp["types"]]}

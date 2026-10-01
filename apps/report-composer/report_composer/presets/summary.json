@@ -5,7 +5,7 @@
   "name": "Summary",
   "description": "Where the system stands, on one page: the key figures, what has no evidence yet and what changed.",
   "show_index": false,
-  "numbering": false,
+  "numbering": true,
   "blocks": [
     {
       "block_type": "cover",

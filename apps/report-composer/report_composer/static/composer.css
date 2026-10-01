@@ -141,17 +141,17 @@ button.danger:hover { background: var(--error); color: #ffffff; }
 .palette button::before { content: "+ "; color: var(--primary); font-weight: 900; }
 .palette button:hover { background: var(--info-soft); border-color: #99d6ff; color: #00337a; }
 
-/* Editor: outline and preview */
+/* Editor: outline and preview; a block shows the number the report gives it (data-number, from Python) */
 .columns { display: grid; grid-template-columns: minmax(340px, 1fr) 1.6fr; gap: 20px; align-items: start; }
 .columns > .qf-section { margin-bottom: 0; }
-#blocks { list-style: none; counter-reset: block; padding: 0; margin: 0; }
+#blocks { list-style: none; padding: 0; margin: 0; }
 #blocks li {
-  counter-increment: block; position: relative;
+  position: relative;
   background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--primary);
   margin: 0 0 10px; padding: 12px 14px 12px 44px;
 }
 #blocks li::before {
-  content: counter(block); position: absolute; left: 12px; top: 12px;
+  content: attr(data-number); position: absolute; left: 12px; top: 12px;
   font-size: 13px; font-weight: 900; color: var(--primary);
 }
 #blocks li[draggable="true"] { cursor: grab; }

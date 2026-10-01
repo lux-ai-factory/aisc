@@ -290,7 +290,7 @@ def test_r_c_3_an_old_layout_previews_with_the_same_snapshot_apart_from_new_keys
     assert stripped == old
     assert sent.get("language", "en") == "en"
     assert (sent.get("document") or {}).get("toc") == "on"        # toc auto became show_index true (0002)
-    assert (sent.get("document") or {}).get("numbering", False) is False
+    assert (sent.get("document") or {}).get("numbering") is True   # numbered retroactively (0003, 2026-10-01)
 
 
 def test_r_c_3_templates_keep_their_look(moved, auth):

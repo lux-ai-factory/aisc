@@ -27,10 +27,11 @@ def test_a_report_records_its_selection(client, bed):
     assert {"system_id", "period_from", "period_to", "other_versions", "compare_to"} <= cols, cols
 
 
-def test_the_settings_default_to_an_index_and_no_numbering():
+def test_the_settings_default_to_an_index_and_numbering():
+    """2026-10-01: numbering is on by default (test_numbering_on_by_default.py)."""
     from report_composer.settings import document_settings, snapshot_document
     s = document_settings({}, None)
-    assert (s["show_index"], s["numbering"]) == (True, False)
+    assert (s["show_index"], s["numbering"]) == (True, True)
     assert snapshot_document({**s, "show_index": False}, None)["toc"] == "off"
     assert snapshot_document(s, None)["toc"] == "on"
     with pytest.raises(Exception):

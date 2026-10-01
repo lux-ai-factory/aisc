@@ -35,4 +35,4 @@ def snapshot_document(layout: dict, report_id: str | None) -> dict:
     """The snapshot's `document` object: the generated report's id (None in a preview) and the settings;
     the renderer still speaks toc on/off."""
     return {"id": report_id, "toc": "on" if layout.get("show_index", True) else "off",
-            "numbering": bool(layout.get("numbering"))}
+            "numbering": bool(layout.get("numbering", True))}

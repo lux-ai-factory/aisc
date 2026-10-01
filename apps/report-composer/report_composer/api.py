@@ -242,7 +242,7 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
 @router.post("/p/{ref}/layouts/{layout_id}/outline")
 def outline(request: Request, layout_id: str, body: dict = Body(...),
             g: Guarded = Depends(project_guard("editor"))):
-    """Indentation and empty-chapter hints for the editor's current block order; nothing is stored. `new`
+    """Indentation, numbers and empty-chapter hints for the editor's current block order; nothing is stored. `new`
     is the editor of a layout not saved yet."""
     if layout_id != "new":
         with _project_db(request, g) as conn:
@@ -254,9 +254,13 @@ def outline(request: Request, layout_id: str, body: dict = Body(...),
     if not all(isinstance(b["block_type"], str) for b in blocks):
         raise ApiError(422, "invalid_request", "Every block needs a block_type.",
                        [{"pointer": "/blocks", "message": "is not valid"}])
+    numbering = body.get("numbering", False)
+    if not isinstance(numbering, bool):
+        raise ApiError(422, "invalid_request", "numbering must be true or false.",
+                       [{"pointer": "/numbering", "message": "is not valid"}])
     # cached block types, short timeout, [] when the renderer fails: the outline then uses the fixed prose
     # list (DV12-6), so indentation keeps working without the renderer
-    return {"outline": layouts.outline(blocks, outline_block_types(request))}
+    return {"outline": layouts.outline(blocks, outline_block_types(request), numbering=numbering)}
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/preview")

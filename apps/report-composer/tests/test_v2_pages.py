@@ -282,11 +282,11 @@ def test_fix_outline_route_gives_depth_and_empty_chapter_for_any_order(client_v2
     assert r.status_code == 200, r.text[:300]
     assert r.json() == {"outline": [
         {"instance_id": cover["instance_id"], "depth": 0, "empty_chapter": False, "unwritten": [],
-         "unwritten_hint": None},
+         "unwritten_hint": None, "number": ""},
         {"instance_id": card["instance_id"], "depth": 0, "empty_chapter": False, "unwritten": [],
-         "unwritten_hint": None},
+         "unwritten_hint": None, "number": ""},
         {"instance_id": chapter["instance_id"], "depth": 0, "empty_chapter": True, "unwritten": [],
-         "unwritten_hint": None}]}
+         "unwritten_hint": None, "number": ""}]}
 
 
 def test_fix_outline_route_is_for_editors_and_checks_its_input(client_v2, auth):
@@ -309,3 +309,31 @@ def test_fix_r2_4_outline_route_refuses_more_blocks_than_a_layout_holds(client_v
     assert r.json()["error"]["details"][0]["pointer"] == "/blocks"
     r = client_v2.post(url, json={"blocks": blocks[:50]}, headers=auth("alice"))
     assert r.status_code == 200 and len(r.json()["outline"]) == 50
+
+
+# ── 2026-10-01: the outline shows the report's numbers (1, 1.1, A), not the block's position ──
+
+def test_outline_route_gives_the_report_number_when_numbering_is_on(client_v2, auth):
+    cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
+    lay, _ = editor(client_v2, auth, [cover, chapter, card])
+    url = f"/api/p/alpha/layouts/{lay['id']}/outline"
+    blocks = [{"instance_id": b["instance_id"], "block_type": b["block_type"]} for b in (cover, chapter, card)]
+    on = client_v2.post(url, json={"blocks": blocks, "numbering": True}, headers=auth("alice")).json()
+    assert [o["number"] for o in on["outline"]] == ["", "1", "1.1"]
+    off = client_v2.post(url, json={"blocks": blocks, "numbering": False}, headers=auth("alice")).json()
+    assert [o["number"] for o in off["outline"]] == ["", "", ""]
+    assert client_v2.post(url, json={"blocks": blocks, "numbering": "yes"}, headers=auth("alice")).status_code == 422
+
+
+def test_editor_page_draws_the_report_numbers(client_v2, auth):
+    blocks = [v2blk("cover"), v2blk("chapter", title="System"), v2blk("ai_card"), v2blk("appendix"),
+              v2blk("free_text", text="x")]
+    lay, doc = editor(client_v2, auth, blocks, numbering=True)
+    assert [li_of(doc, b["instance_id"]).get("data-number") for b in blocks] == ["", "1", "1.1", "", "A"]
+    lay, doc = editor(client_v2, auth, blocks, numbering=False)
+    assert [li_of(doc, b["instance_id"]).get("data-number") for b in blocks] == [""] * 5
+
+
+def test_the_outline_no_longer_counts_blocks_in_css():
+    css = CSS.read_text(encoding="utf-8")
+    assert "counter(block)" not in css and "attr(data-number)" in css

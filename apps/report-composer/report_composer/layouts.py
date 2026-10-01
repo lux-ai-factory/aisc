@@ -255,16 +255,55 @@ def outline_depths(blocks: list[dict]) -> list[tuple[int, bool]]:
     return out
 
 
-def outline(blocks: list[dict], block_types=()) -> list[dict]:
-    """The editor's outline for any block order: {instance_id, depth, empty_chapter, unwritten, unwritten_hint}
-    per block (fix round 1: the editor redraws indentation and hints from this after a move or an edit).
-    `unwritten` names the options still holding the placeholder (R2-D3.8.3); a block type the renderer
-    does not describe uses the fixed list."""
+def _letters(n: int) -> str:
+    """1 -> A, 26 -> Z, 27 -> AA, as the renderer labels the appendix."""
+    out = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        out = chr(ord("A") + rem) + out
+    return out
+
+
+def outline_numbers(blocks: list[dict], numbering: bool = False) -> list[str]:
+    """The report's section number per block ("" for none), so the editor shows what the report prints:
+    the renderer's structure.plan rule (chapters 1, 2, their blocks 1.1, 1.2, the appendix A, B; no number
+    for the cover or the appendix heading). An unwritten free text is left out of the report and takes no
+    number (renderer document.py, R2-D3.8.1). Nothing is numbered when numbering is off."""
+    out = []
+    top = sub = 0
+    in_appendix, chapter = False, None
+    for b in blocks:
+        t = b["block_type"]
+        options = b.get("options") if isinstance(b.get("options"), dict) else {}
+        if not numbering or t == "cover" or (t == "free_text" and prose.is_placeholder(options.get("text"))):
+            out.append("")
+        elif t == "appendix":
+            in_appendix, top, chapter = True, 0, None
+            out.append("")
+        elif t == "chapter":
+            top, sub = top + 1, 0
+            chapter = _letters(top) if in_appendix else str(top)
+            out.append(chapter)
+        elif chapter is not None:
+            sub += 1
+            out.append(f"{chapter}.{sub}")
+        else:
+            top += 1
+            out.append(_letters(top) if in_appendix else str(top))
+    return out
+
+
+def outline(blocks: list[dict], block_types=(), numbering: bool = False) -> list[dict]:
+    """The editor's outline for any block order: {instance_id, depth, empty_chapter, unwritten, unwritten_hint,
+    number} per block (fix round 1: the editor redraws indentation, hints and numbers from this after a move
+    or an edit). `unwritten` names the options still holding the placeholder (R2-D3.8.3); a block type the
+    renderer does not describe uses the fixed list."""
     by_type = {t["type_id"]: t for t in block_types or ()}
     out = []
-    for b, (depth, empty) in zip(blocks, outline_depths(blocks)):
+    for b, (depth, empty), number in zip(blocks, outline_depths(blocks), outline_numbers(blocks, numbering)):
         options = b.get("options") if isinstance(b.get("options"), dict) else {}
         names = prose.unwritten(b["block_type"], options, by_type.get(b["block_type"]))
         out.append({"instance_id": b.get("instance_id"), "depth": depth, "empty_chapter": empty,
-                    "unwritten": names, "unwritten_hint": prose.unwritten_hint(b["block_type"], names)})
+                    "unwritten": names, "unwritten_hint": prose.unwritten_hint(b["block_type"], names),
+                    "number": number})
     return out

@@ -143,3 +143,24 @@ def test_fix_r2_5_an_older_outline_answer_arriving_last_is_ignored(live):
     page.wait_for_timeout(300)
     assert card_li.get_attribute("data-depth") == "1"
     assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
+
+
+def test_numbers_follow_a_move_and_the_numbering_box(live):
+    """2026-10-01: the outline's numbers are the report's, redrawn after a move and when Numbering changes."""
+    cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
+    page, lay = live([cover, chapter, card], numbering=True)
+
+    def number_is(b, want):
+        page.wait_for_function(
+            f"""() => document.querySelector('#blocks li[data-instance-id="{b['instance_id']}"]').dataset.number === "{want}" """,
+            timeout=5000)
+
+    number_is(card, "1.1")
+    _li(page, card["instance_id"]).locator('[data-control="move-up"]').click()
+    number_is(card, "1")
+    number_is(chapter, "2")
+    page.locator('[data-control="numbering"]').uncheck()
+    number_is(card, "")
+    number_is(chapter, "")
+    page.locator('[data-control="numbering"]').check()
+    number_is(card, "1")

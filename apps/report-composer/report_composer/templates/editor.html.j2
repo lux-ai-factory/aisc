@@ -56,7 +56,7 @@
   </section>
   {% for grp in palette %}{% for t in grp.types %}
   <template data-block-template="{{ t.type_id }}">
-    <li data-block-type="{{ t.type_id }}" data-depth="0" draggable="true">
+    <li data-block-type="{{ t.type_id }}" data-depth="0" data-number="" draggable="true">
       {{ block_controls() }}
       <strong>{{ t.title }}</strong> <span class="type">{{ t.type_id }}</span>
       <details data-control="configure" open><summary>Options</summary>{{ render_form(t.fields) }}</details>
@@ -72,7 +72,7 @@
       <h2>Blocks, in order</h2>
       <ol id="blocks">
       {% for b in blocks %}
-        <li data-instance-id="{{ b.instance_id }}" data-block-type="{{ b.block_type }}" data-depth="{{ b.depth }}"{% if editor %} draggable="true"{% endif %}>
+        <li data-instance-id="{{ b.instance_id }}" data-block-type="{{ b.block_type }}" data-depth="{{ b.depth }}" data-number="{{ b.number }}"{% if editor %} draggable="true"{% endif %}>
           {% if editor %}{{ block_controls() }}{% endif %}
           {% if b.known %}<strong>{{ b.title }}</strong> <span class="type">{{ b.block_type }}</span>{% else %}<strong>Unknown type: {{ b.block_type }}</strong>{% endif %}
           {% if b.empty_chapter %}<p class="hint" data-empty-chapter>This chapter is empty.</p>{% endif %}

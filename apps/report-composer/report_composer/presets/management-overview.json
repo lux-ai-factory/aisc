@@ -5,7 +5,7 @@
   "name": "Management overview",
   "description": "What the system is, how risky it is and what is missing, for management.",
   "show_index": true,
-  "numbering": false,
+  "numbering": true,
   "blocks": [
     {
       "block_type": "cover",

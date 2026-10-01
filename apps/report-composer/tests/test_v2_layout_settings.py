@@ -34,7 +34,7 @@ def put(client, auth, layout, who="alice", **changes):
 def test_r_c_6_new_fields_default_to_todays_behaviour(client_v2, auth):
     lay_ = lay(client_v2, auth)
     got = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("victor")).json()
-    assert {k: got.get(k) for k in ("show_index", "numbering")} == {"show_index": True, "numbering": False}
+    assert {k: got.get(k) for k in ("show_index", "numbering")} == {"show_index": True, "numbering": True}
     # the coverage map is gone (evidence links 2026-09-30, D5): step 4 holds the links
     assert "language" not in got and "toc" not in got and "system_id" not in got and "coverage" not in got
 

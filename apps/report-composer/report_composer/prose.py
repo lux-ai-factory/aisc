@@ -178,8 +178,11 @@ def strip_options(type_id: str, options: dict, block_type: dict | None) -> dict:
     return out
 
 
-def _is_placeholder(text) -> bool:
+def is_placeholder(text) -> bool:
     return isinstance(text, str) and text.strip() == PLACEHOLDER
+
+
+_is_placeholder = is_placeholder
 
 
 def unwritten(type_id: str, options: dict, block_type: dict | None) -> list[str]:
