@@ -23,6 +23,7 @@ ENGINE_TOKEN = "test-engine-token-0123456789"
 def _tokens(monkeypatch, mode):
     monkeypatch.setenv("PLATFORM_LEDGER_AGENTS_TOKEN", AGENTS_TOKEN)
     monkeypatch.setenv("PLATFORM_LEDGER_ENGINE_TOKEN", ENGINE_TOKEN)
+    monkeypatch.setenv("PLATFORM_LEDGER_DASHBOARD_TOKEN", "test-dashboard-token-0123456789")
     mode("enforce")
 
 
@@ -68,12 +69,15 @@ def test_an_ai_event_names_the_program_the_model_and_the_person_who_started_the_
     assert person(project["pid"], e.on_behalf_of_ref) == (MEMBER, "bob") and e.run_id == run[1]
 
 
-@pytest.mark.parametrize("token, status", [(None, 401), ("wrong", 401)])
-def test_the_route_needs_the_callers_own_token(client, project, run, token, status):
-    assert post(client, project["pid"], ai_event(*run), token=token).status_code == status
+@pytest.mark.parametrize("given, status", [(None, 401), ("wrong", 401)])
+def test_the_route_needs_the_callers_own_token(client, project, run, given, status):
+    """(`given`, not `token`: a parameter named like the `token` fixture replaces it for `client`.)"""
+    assert post(client, project["pid"], ai_event(*run), token=given).status_code == status
 
 
 def test_an_unset_token_is_503(client, project, run, monkeypatch):
+    """While a caller's token is unset, an unknown token may be that caller's: 503 says "not configured",
+    not "wrong token". With every token set, an unknown one is 401 (above)."""
     monkeypatch.delenv("PLATFORM_LEDGER_AGENTS_TOKEN")
     assert post(client, project["pid"], ai_event(*run)).status_code == 503
 
@@ -92,19 +96,34 @@ def test_an_ai_event_without_a_start_event_is_rejected(client, project, memory_l
 
 
 def test_an_ai_event_after_the_run_window_is_rejected(client, project, memory_ledger, run, settings):
-    from tests.ledger.test_ledger_outbox import as_superuser
+    """The AI event comes RUN_WINDOW + 1 h after its start. (Moving the start back instead would make the
+    start itself early for its request, and reject it as `early_event`.)"""
+    import psycopg
 
-    as_superuser(project["pid"], "UPDATE ledger.outbox SET occurred_at = occurred_at - %s WHERE run_id = %s",
-                 (settings.RUN_WINDOW + timedelta(hours=1), run[1]))
-    post(client, project["pid"], ai_event(*run))
+    from tests.conftest import DSN
+
+    relay_all(project["pid"])                                         # the start event, accepted
+    event = ai_event(*run)
+    assert post(client, project["pid"], event).status_code == 202
+    with psycopg.connect(DSN) as conn:
+        conn.execute("UPDATE core.outbox SET occurred_at = occurred_at + %s WHERE event_id = %s",
+                     (settings.RUN_WINDOW + timedelta(hours=1), event["event_id"]))
     relay_all(project["pid"])
-    assert "run_window" in reasons(memory_ledger, project["pid"])
+    assert trusted(memory_ledger, project["pid"]) == [] and reasons(memory_ledger, project["pid"]) == ["run_window"]
 
 
 def test_an_action_the_run_does_not_produce_is_rejected(client, project, memory_ledger, run):
-    post(client, project["pid"], ai_event(*run, action="ai.mapping.completed", item_type="assessment"))
-    relay_all(project["pid"])
-    assert "run" in reasons(memory_ledger, project["pid"])
+    """An action the agents may emit, but not one this run produces. Every agents action today belongs to
+    the refinement run, so the test adds one (ai.mapping.completed is the risk mapper's: `emitter`)."""
+    from dataclasses import replace
+
+    from platform_service.ledger import registry
+
+    other = replace(registry.REGISTRY["agent.run_started"], name="agent.other_run_step")
+    with registry.override({"agent.other_run_step": other}):
+        post(client, project["pid"], ai_event(*run, action="agent.other_run_step", item_type="agent_run"))
+        relay_all(project["pid"])
+    assert reasons(memory_ledger, project["pid"]) == ["run"]
 
 
 def test_a_token_may_emit_only_its_own_apps_actions(client, project, memory_ledger, run):

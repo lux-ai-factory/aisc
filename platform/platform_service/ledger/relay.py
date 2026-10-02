@@ -309,6 +309,9 @@ def _judge_run(ev, app, action, log) -> dict:
     """An AI or worker event (spec 4.4): its run's start event, accepted, citing the same request."""
     if not ev["request_id"] or not ev["run_id"]:
         raise _Rejected("run")
+    w = _witness(ev["request_id"])
+    if w is not None and (str(w["project_pid"]) if w["project_pid"] else None) != ev["project_pid"]:
+        raise _Rejected("project_mismatch")                           # a run cites its own project's request
     with _db().pool().connection() as conn:
         start = conn.execute(
             "SELECT action, actor_ref, occurred_at FROM ledger.event_index WHERE log = %s AND run_id = %s"
@@ -412,13 +415,14 @@ def _index(log: str, seq: int, entry: dict, pid, reason: str | None = None, row_
         conn.execute(
             "INSERT INTO ledger.event_index (log, seq, event_id, project_pid, action, actor_ref, step, source_app,"
             " item_type, item_id, card_version, outcome, occurred_at, request_id, run_id, before_sha256,"
-            " after_sha256, reason, row_digest)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            " after_sha256, reason, row_digest, actor_kind)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             " ON CONFLICT DO NOTHING",
             (log, seq, entry["event_id"], pid, entry["action"], entry.get("actor_ref"), entry.get("step"),
              entry.get("source_app"), entry.get("item_type"), entry.get("item_id"), entry.get("card_version"),
              entry.get("outcome"), entry.get("occurred_at"), _uuid(entry.get("request_id")),
-             _uuid(entry.get("run_id")), entry.get("before_sha256"), entry.get("after_sha256"), reason, row_digest))
+             _uuid(entry.get("run_id")), entry.get("before_sha256"), entry.get("after_sha256"), reason, row_digest,
+             entry.get("actor_kind")))
 
 
 def _uuid(value):

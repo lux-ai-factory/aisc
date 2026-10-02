@@ -40,6 +40,14 @@ class MemoryStateStore:
             self._states[db] = state
 
 
+def _forget_memory(self, db: str) -> None:
+    with self._lock:
+        self._states.pop(db, None)
+
+
+MemoryStateStore.forget = _forget_memory
+
+
 class PostgresStateStore:
     """`ledger.state` in the platform database (migration 0006)."""
 
@@ -78,3 +86,7 @@ class PostgresStateStore:
                      expected.signature)).rowcount
             if done != 1:
                 raise ValueError(f"the verified state of {db} changed meanwhile")
+
+    def forget(self, db: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM ledger.state WHERE db = %s", (db,))

@@ -211,6 +211,29 @@ class MemoryLedger:
             data[field] = value
             d["rows"][seq - 1] = canonical(data)
 
+    def export_head(self, db: str, seq: int, chain: str) -> dict:
+        """The head an export ends with, signed by this store's key (P-256, over the canonical head)."""
+        import base64
+
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        with self._lock:
+            d = self._db(db)
+            if not 0 <= seq < len(d["chain"]) or d["chain"][seq].hex() != chain:
+                raise TamperAlarm("the export's chain is not this store's: nothing is signed")
+        head = {"log": db, "seq": seq, "chain": chain}
+        signature = self._signing_key().sign(canonical(head), ec.ECDSA(hashes.SHA256()))
+        return {**head, "signature": base64.b64encode(signature).decode()}
+
+    def reanchor(self, db: str) -> tuple:
+        """After a restore: trust what the store holds now (spec T21). Returns (old, new) verified seq."""
+        with self._lock:
+            d = self._dbs[db]
+            old = d["verified"]
+            d["verified"] = len(d["rows"])
+            return old, d["verified"]
+
     def public_key_pem(self) -> str:
         from cryptography.hazmat.primitives import serialization
 
@@ -426,6 +449,20 @@ class ImmudbLedger:
 
     def set_state(self, db: str, state: State) -> None:
         self._states.put(db, state, expected=self._states.get(db))
+
+    def export_head(self, db: str, seq: int, chain: str) -> dict:
+        """Not yet (open item S9): an immudb export must carry immudb's own inclusion proofs and its
+        server-signed state, which the offline checker verifies; the platform holds no signing key."""
+        raise NotImplementedError("exports from immudb need its inclusion proofs (open item S9)")
+
+    def reanchor(self, db: str) -> tuple:
+        """After a restore: forget the saved state, so the next read anchors on the server (spec T21)."""
+        old = self._states.get(db)
+        if hasattr(self._states, "forget"):
+            self._states.forget(db)
+        with self._lock:
+            self._clients.pop(db, None)
+        return (old.tx_id if old else 0), 0
 
 
 class _Taken(Exception):

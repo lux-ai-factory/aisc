@@ -19,19 +19,20 @@ current_request: contextvars.ContextVar[str | None] = contextvars.ContextVar("le
 def emit(conn, action: str, *, project_pid, item_type: str, item_id, details: dict | None = None,
          content=None, before=None, after=None, item_version=None, card_version=None,
          request_id: str | None = None, emitter: str = "platform", run_id=None, model=None,
-         event_id: str | None = None) -> str | None:
+         event_id: str | None = None, outcome: str = "ok", extra: dict | None = None) -> str | None:
     """Queue one event on `conn` (inside the caller's transaction). None while the ledger is off."""
     if witness.mode() == "off":
         return None
     event_id = event_id or str(uuid.uuid4())
     conn.execute(
         "INSERT INTO core.outbox (event_id, emitter, project_pid, request_id, run_id, action, item_type, item_id,"
-        " item_version, card_version, content, before, after, details, model)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        " item_version, card_version, content, before, after, details, model, outcome, extra)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (event_id, emitter, str(project_pid) if project_pid else None, request_id or current_request.get(),
          run_id, action, item_type, str(item_id) if item_id is not None else None,
          str(item_version) if item_version is not None else None, card_version,
-         _json(content), _json(before), _json(after), json.dumps(details or {}), model))
+         _json(content), _json(before), _json(after), json.dumps(details or {}), model, outcome,
+         json.dumps(extra or {})))
     return event_id
 
 

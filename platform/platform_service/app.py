@@ -1494,6 +1494,354 @@ async def facade_oip_infer(pid: str, name: str, model: str, request: Request) ->
     return _internal(200, connection_facade.core_to_oip(name, (body or {}).get("id"), answers))
 
 
+# ── the ledger: reading, export, admin, internal events, beacon (spec 6.3, 3.5, 4.4) ─────────────────
+
+#: The index columns that must say what the verified entry says (an edited index row is an alarm, I4).
+_INDEXED = ("event_id", "action", "actor_ref", "step", "source_app", "item_type", "item_id", "card_version",
+            "outcome", "request_id", "run_id", "before_sha256", "after_sha256")
+_EVENT_FILTERS = {"step": "step", "app": "source_app", "action": "action", "item_type": "item_type",
+                  "item_id": "item_id", "card_version": "card_version", "outcome": "outcome"}
+_PAGE = 100
+
+
+def _ledger_project(slug: str, caller: Caller) -> tuple[dict, str, str]:
+    """(project, role, its log) for a member; a stranger gets 404, and so does a project with no log."""
+    from platform_service.ledger import provision
+
+    role = role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    log = provision.database_for(str(found["pid"]))
+    if log is None:
+        raise HTTPException(status_code=404, detail="this project has no ledger yet")
+    return found, role, log
+
+
+def _ledger_unavailable(exc) -> HTTPException:
+    return HTTPException(status_code=503, detail=f"the ledger can't be read now: {exc.__class__.__name__}")
+
+
+def _person(pid: str, ref: str | None) -> dict | None:
+    from platform_service.ledger import actors
+
+    if not ref:
+        return None
+    try:
+        who = actors.resolve(pid, ref)
+    except actors.MappingAlarm:
+        return {"ref": ref, "sub": None, "name": None, "alarm": "mapping"}
+    if who is None:
+        return {"ref": ref, "sub": None, "name": None, "erased": True}
+    return {"ref": ref, "sub": who[0], "name": who[1]}
+
+
+def _shown(pid: str, entry) -> dict:
+    data = entry.as_dict()
+    data["actor"] = {"kind": entry.actor_kind, **(_person(pid, entry.actor_ref) or {"ref": None})}
+    if data.get("on_behalf_of_ref"):
+        data["on_behalf_of"] = _person(pid, data["on_behalf_of_ref"])
+    data["verified"] = True
+    return data
+
+
+def _verified_entry(log: str, seq: int):
+    from platform_service import ledger
+    from platform_service.ledger.store import LedgerUnavailable, TamperAlarm
+
+    try:
+        return ledger.current().get(log, seq)
+    except TamperAlarm as exc:
+        logger.error("ledger %s: entry %s failed verification: %s", log, seq, exc)
+        raise HTTPException(status_code=409, detail=f"tamper alarm: entry {seq} doesn't verify") from None
+    except LedgerUnavailable as exc:
+        raise _ledger_unavailable(exc) from None
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no entry {seq}") from None
+
+
+def _same(indexed, logged) -> bool:
+    if indexed is None or logged is None:
+        return indexed is None and logged is None
+    return str(indexed) == str(logged)
+
+
+@app.get("/projects/{slug}/ledger/events")
+def ledger_events(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    """The project's entries, newest first, filtered on the read index, each verified against the store
+    before it is shown. `actor` is a subject; `ai=true` keeps AI actions; `from`/`to` bound occurred_at;
+    `cursor` is the last seq of the previous page."""
+    from platform_service.ledger import actors
+
+    found, _, log = _ledger_project(slug, caller)
+    pid = str(found["pid"])
+    q = request.query_params
+    where, args = ["log = %s"], [log]
+    for name, column in _EVENT_FILTERS.items():
+        if q.get(name):
+            where.append(f"{column} = %s")
+            args.append(int(q[name]) if name == "step" and q[name].isdigit() else q[name])
+    if q.get("actor"):
+        ref = actors.ref_of(pid, q["actor"])
+        if ref is None:
+            return {"events": [], "next": None}
+        where.append("actor_ref = %s")
+        args.append(ref)
+    if q.get("ai") in ("1", "true"):
+        where.append("actor_kind = 'ai'")
+    for name, op in (("from", ">="), ("to", "<=")):
+        if q.get(name):
+            where.append(f"occurred_at {op} %s")
+            args.append(q[name])
+    if q.get("cursor", "").isdigit():
+        where.append("seq < %s")
+        args.append(int(q["cursor"]))
+    with db.pool().connection() as conn:
+        rows = conn.execute(f"SELECT * FROM ledger.event_index WHERE {' AND '.join(where)}"
+                            f" ORDER BY seq DESC LIMIT {_PAGE}", args).fetchall()
+    events = []
+    for row in rows:
+        entry = _verified_entry(log, row["seq"])
+        logged = entry.as_dict()
+        if any(not _same(row[c], logged.get(c)) for c in _INDEXED):
+            logger.error("ledger %s: index row %s disagrees with the log", log, row["seq"])
+            raise HTTPException(status_code=409, detail=f"index alarm: row {row['seq']} disagrees with the log")
+        events.append(_shown(pid, entry))
+    return {"events": events, "next": rows[-1]["seq"] if len(rows) == _PAGE else None}
+
+
+@app.get("/projects/{slug}/ledger/events/{seq}")
+def ledger_event(slug: str, seq: int, caller: Caller = Depends(caller_dependency)) -> dict:
+    found, _, log = _ledger_project(slug, caller)
+    return _shown(str(found["pid"]), _verified_entry(log, seq))
+
+
+@app.get("/projects/{slug}/ledger/export")
+def ledger_export(slug: str, caller: Caller = Depends(caller_dependency)) -> Response:
+    """The whole log as JSON lines, for scripts/verify-ledger-export.py (EXPORT_ROLES only)."""
+    import json as _json
+
+    from platform_service.ledger import export, settings as ledger_settings
+    from platform_service.ledger.store import LedgerUnavailable, TamperAlarm
+
+    found, role, _ = _ledger_project(slug, caller)
+    if role not in ledger_settings.EXPORT_ROLES:
+        raise HTTPException(status_code=403, detail="the export is for the project's owners")
+    try:
+        lines = export.lines(str(found["pid"]))
+    except TamperAlarm as exc:
+        raise HTTPException(status_code=409, detail=f"tamper alarm: {exc}") from None
+    except LedgerUnavailable as exc:
+        raise _ledger_unavailable(exc) from None
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from None
+    logger.info("project %s: ledger exported by %s (%d entries)", found["pid"], caller.subject, len(lines) - 1)
+    body = "\n".join(_json.dumps(line, separators=(",", ":"), ensure_ascii=False) for line in lines) + "\n"
+    return Response(body, media_type="application/x-ndjson",
+                    headers={"Content-Disposition": f'attachment; filename="ledger-{found["slug"]}.jsonl"',
+                             "Cache-Control": "no-store"})
+
+
+@app.get("/ledger/projects")
+def ledger_projects(caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> dict:
+    """Every project's log and head, for a platform admin."""
+    from platform_service import ledger
+    from platform_service.ledger import provision
+    from platform_service.ledger.store import LedgerError
+
+    store = ledger.current()
+    out = []
+    for p in db.list_projects():
+        pid = str(p["pid"])
+        log = provision.database_for(pid)
+        row = {"pid": pid, "slug": p["slug"], "log": log, "head": None}
+        if log is not None:
+            try:
+                head = store.head(log)
+                row["head"] = {"seq": head.seq, "state_hash": head.state_hash}
+            except LedgerError as exc:
+                row["error"] = exc.__class__.__name__
+        out.append(row)
+    return {"projects": out}
+
+
+class ReanchorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pid: StrictStr
+
+
+@app.post("/ledger/reanchor")
+def ledger_reanchor(body: ReanchorIn, caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> dict:
+    """After an immudb restore (runbook ledger-restore.md): trust the store's current state for this log.
+    Recorded in the platform log directly, whatever LEDGER_MODE says: it changes what the ledger trusts."""
+    from datetime import datetime, timezone
+
+    from platform_service import ledger
+    from platform_service.ledger import actors, outbox, provision, registry, relay
+    from platform_service.ledger.naming import PLATFORM_DB
+    from platform_service.ledger.store import LedgerError
+
+    if not looks_like_pid(body.pid) or db.get_project(body.pid) is None:
+        raise no_project(body.pid)
+    log = provision.database_for(body.pid)
+    if log is None:
+        raise HTTPException(status_code=404, detail="this project has no ledger")
+    store = ledger.current()
+    try:
+        old, new = store.reanchor(log)
+        head = store.head(log)
+    except LedgerError as exc:
+        raise _ledger_unavailable(exc) from None
+    entry = {"event_id": str(uuid.uuid4()), "occurred_at": relay._iso(datetime.now(timezone.utc)), "project_pid": None, "step": 0, "source_app": "platform",
+             "action": "ledger.reanchored", "actor_kind": "user",
+             "actor_ref": actors.ref_for(None, caller.subject, caller.username or caller.subject),
+             "request_id": outbox.current_request.get(), "item_type": "ledger", "item_id": log, "outcome": "ok",
+             "details": {"old_head": old, "new_head": new, "project": body.pid}, "verified": True,
+             "registry_version": registry.VERSION}
+    with relay._log_lock(PLATFORM_DB):
+        seq = store.append(PLATFORM_DB, entry)
+        relay._index(PLATFORM_DB, seq, entry, None)
+    logger.warning("ledger %s re-anchored by %s: %s -> %s", log, caller.subject, old, new)
+    return {"log": log, "old_head": old, "new_head": new, "head": head.seq, "recorded": seq}
+
+
+# The internal route: callers without an outbox (spec 4.4, I2, T17). Each caller has its own token and
+# is the event's emitter; the relay checks it may emit that action and that the run is real.
+LEDGER_CALLERS = {"qualification_agents": "PLATFORM_LEDGER_AGENTS_TOKEN", "engine": "PLATFORM_LEDGER_ENGINE_TOKEN",
+                  "dashboard": "PLATFORM_LEDGER_DASHBOARD_TOKEN"}
+_INTERNAL_COLUMNS = ("event_id", "request_id", "run_id", "action", "item_type", "item_id", "item_version",
+                     "card_version", "content", "before", "after", "details", "outcome", "model")
+
+
+def _ledger_caller(request: Request) -> tuple[str | None, JSONResponse | None]:
+    if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
+        return None, _internal(404, {"detail": "not here"})
+    given = request.headers.get("x-aisc-service-token", "")
+    tokens = {caller: os.environ[name] for caller, name in LEDGER_CALLERS.items() if os.environ.get(name)}
+    found = system_of_token(given, tokens) if given else None
+    if found:
+        return found, None
+    if not given:
+        return None, _internal(401, {"detail": "a service token is needed"})
+    if len(tokens) < len(LEDGER_CALLERS):                             # maybe a caller this platform wasn't given
+        return None, _internal(503, {"detail": "the ledger's internal route isn't configured for every caller"})
+    return None, _internal(401, {"detail": "a service token is needed"})
+
+
+def _malformed(event) -> str | None:
+    from platform_service.ledger import registry
+
+    if not isinstance(event, dict):
+        return "the body must be one event object"
+    for field in ("event_id", "request_id"):
+        try:
+            uuid.UUID(str(event.get(field)))
+        except ValueError:
+            return f"{field}: a UUID is needed"
+    if not isinstance(event.get("action"), str) or not event["action"]:
+        return "action: needed"
+    if not isinstance(event.get("details", {}), dict):
+        return "details: an object"
+    action = registry.REGISTRY.get(event["action"])
+    if action is not None and {"ai", "worker"} & set(action.actor_kinds) and "user" not in action.actor_kinds:
+        try:
+            uuid.UUID(str(event.get("run_id")))
+        except ValueError:
+            return "run_id: an AI or worker event belongs to a run"
+        if "ai" in action.actor_kinds and not (isinstance(event.get("model"), str) and event["model"]):
+            return "model: an AI event names its model"
+    return None
+
+
+@app.post("/internal/projects/{pid}/ledger/events", status_code=202)
+async def ledger_internal_event(pid: str, request: Request) -> JSONResponse:
+    """Queue one event in core.outbox, its emitter the caller; accepted or rejected by the relay (202)."""
+    from starlette.concurrency import run_in_threadpool
+
+    caller, refused = _ledger_caller(request)
+    if refused:
+        return refused
+    if not looks_like_pid(pid):
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    try:
+        event = await request.json()
+    except ValueError:
+        return _internal(422, {"detail": "the body must be JSON"})
+    problem = _malformed(event)
+    if problem:
+        return _internal(422, {"detail": problem})
+    return await run_in_threadpool(_queue_internal, pid, caller, event)
+
+
+def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
+    from platform_service.ledger import outbox
+
+    if db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS}
+    with db.pool().connection() as conn:
+        exists = conn.execute("SELECT 1 FROM core.outbox WHERE event_id = %s", (event["event_id"],)).fetchone()
+        if not exists:
+            outbox.emit(conn, event["action"], project_pid=pid, item_type=event.get("item_type"),
+                        item_id=event.get("item_id"), details=event.get("details") or {}, content=event.get("content"),
+                        before=event.get("before"), after=event.get("after"), item_version=event.get("item_version"),
+                        card_version=event.get("card_version"), request_id=event["request_id"], emitter=caller,
+                        run_id=event.get("run_id"), model=event.get("model"), event_id=event["event_id"],
+                        outcome=event.get("outcome") or "ok", extra=extra)
+    return _internal(202, {"queued": event["event_id"]})
+
+
+# The beacon (spec 3.5, D10): what only the browser knows. Witnessed, small, best effort, kept outside
+# immudb for PAGE_VIEW_RETENTION, every row marked as the browser's word.
+BEACON_MAX_BYTES = 2048
+
+
+@app.post("/ledger/beacon", status_code=204)
+async def ledger_beacon(request: Request, caller: Caller = Depends(caller_dependency)) -> Response:
+    import json as _json
+
+    from starlette.concurrency import run_in_threadpool
+
+    from platform_service.ledger import witness as ledger_witness
+
+    raw = await request.body()
+    if len(raw) > BEACON_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"a beacon is at most {BEACON_MAX_BYTES} bytes")
+    if ledger_witness.mode() == "off":
+        return Response(status_code=204)
+    request_id = request.headers.get("x-aisc-request-id")
+    problem = await run_in_threadpool(_ledger_presented, request, request_id)
+    if problem:                                                       # in record mode too: the beacon is only
+        raise HTTPException(status_code=401, detail=problem)          # worth what its witness is worth
+    try:
+        body = _json.loads(raw)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="the beacon is one JSON object") from None
+    if not isinstance(body, dict) or not isinstance(body.get("project"), str):
+        raise HTTPException(status_code=422, detail="project: needed")
+    action, details = body.get("action"), body.get("details") or {}
+    if not isinstance(action, str) or not action.startswith("page.") or not isinstance(details, dict):
+        raise HTTPException(status_code=422, detail="only page.* moments come through the beacon")
+    await run_in_threadpool(_keep_beacon, body["project"], caller, action, details, request_id)
+    return Response(status_code=204)
+
+
+def _keep_beacon(project: str, caller: Caller, action: str, details: dict, request_id: str) -> None:
+    from datetime import timedelta
+
+    from platform_service.ledger import actors, pageviews, registry, settings as ledger_settings
+
+    if action not in registry.REGISTRY or registry.REGISTRY[action].origin != "browser":
+        raise HTTPException(status_code=422, detail=f"{action} isn't a beacon moment")
+    role_or_404(project, caller)
+    found = db.get_project(project)
+    pid = str(found["pid"])
+    ref = actors.ref_of(pid, caller.subject) or actors.ref_for(pid, caller.subject, caller.username or caller.subject)
+    if pageviews.count_recent(ref, timedelta(minutes=1)) >= ledger_settings.BEACON_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="too many beacons")
+    pageviews.record(pid, ref, action, details, request_id)
+
+
 @app.exception_handler(RequestValidationError)
 def validation_without_values(_request, exc: RequestValidationError) -> JSONResponse:
     """422 for a malformed request, without pydantic's `input` and `ctx`: the value

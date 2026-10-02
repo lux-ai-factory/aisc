@@ -100,6 +100,14 @@ def ref_for(pid, sub: str, name: str) -> str:
         raise RuntimeError("could not make an actor reference")
 
 
+def ref_of(pid, sub: str) -> str | None:
+    """The person's reference in this scope if they have one; never makes one (the read filters)."""
+    with _connect() as conn:
+        row = conn.execute("SELECT actor_ref FROM identity.actor WHERE scope = %s AND sub = %s",
+                           (_scope(pid), sub)).fetchone()
+    return row["actor_ref"] if row else None
+
+
 def resolve(pid, actor_ref) -> tuple[str, str] | None:
     """(sub, name) behind a reference, or None once erased; MappingAlarm if the row was edited."""
     if not actor_ref:

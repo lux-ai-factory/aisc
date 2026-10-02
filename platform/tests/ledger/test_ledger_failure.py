@@ -40,7 +40,8 @@ def test_an_internal_event_is_queued_when_immudb_is_down(client, project, witnes
     mode("enforce")
     monkeypatch.setenv("PLATFORM_LEDGER_ENGINE_TOKEN", "engine-token-0123456789")
     memory_ledger.down = True
-    request_id = witnessed(MEMBER, "POST", "engine", "/api/v1/evaluation/", project_header=project["pid"])
+    request_id = witnessed(MEMBER, "POST", "engine", "/api/v1/evaluations/task",   # config/urls.py + evaluation.py
+                           project_header=project["pid"])
     r = client.post(f"/internal/projects/{project['pid']}/ledger/events",
                     json={"event_id": str(uuid.uuid4()), "request_id": request_id,
                           "action": "engine.evaluation.run_requested", "item_type": "evaluation", "item_id": "ev1",
