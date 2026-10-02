@@ -42,7 +42,7 @@ phases 0b to 4 and the coverage, Caddy and credential tests are written and red.
 | 7 | Step 4 controls app | emitter, checklist versions, soft deletes | K1-K3, C4[controls] | question review with closed submissions |
 | 8 | Engine and workers | the one registered forwarding module (D3), engine backend holds the token, never the worker | E1-E2, credentials suite | a plugin trying to read a ledger token |
 | 9 | Steps 5 and 6 | dashboard events and soft deletes, admin views; composer layout revisions, no cascade, report anchoring | D1-D2, M1-M3, C4[dashboard], C4[report_composer] | a report verified offline |
-| 10 | Keycloak logins, evidence bucket with lock, published heads, verifier | | V1-V4 | a row changed directly in Postgres raises the alarm |
+| 10 | Keycloak logins, evidence bucket with lock (`LEDGER_ARCHIVE_LOCK`), published heads, hourly entry archive and `archive.rebuild`, verifier | | V1-V5 (V5: delete a project's immudb database, rebuild it from the archive, verify against the heads) | a row changed directly in Postgres raises the alarm |
 
 Phases 5 to 9 depend on phase 3's `caused_by` and runs, not on each other. A DPIA is done before
 `record` is switched on in staging (spec 7.5).

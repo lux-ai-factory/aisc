@@ -522,6 +522,21 @@ evidence_ref, depends_on, outcome, details, registry_version`.
   signatures. This wasn't spiked; it is phase 1's first immudb test.
 - Every `HEAD_PUBLISH` (1 h), each project's signed head is written to the object-locked `evidence`
   bucket (phase 10; until then to `ledger.published_head` in Postgres).
+- **The ten-year record (D4).** At the same hour, the entries added since the last archive, each with
+  its inclusion proof, are written to `evidence/ledger/<pid>/<first seq>-<last seq>.jsonl` under the
+  same lock (the export format of 6.3). immudb is the working log, fast and verifiable; the locked
+  archive is what lasts. `archive.rebuild(pid, into_db)` replays a project's archive into a fresh
+  database and checks it against the signed heads, so a log deleted by the immudb superuser is
+  recoverable, not only detected. The platform never deletes an archive object, and in compliance
+  mode MinIO refuses it to everyone.
+- **Who the lock stops.** Object Lock is enforced by the storage software. It stops the apps, the
+  platform and MinIO's own admin. It does not stop whoever has root on the machine that holds the
+  bytes (they can delete the volume). So in staging and production the locked bucket lives on
+  storage the AISC host can't administer (decision L3); on a laptop or a development stack the lock
+  is off (`LEDGER_ARCHIVE_LOCK=off`), because test data must stay erasable and compliance mode can't
+  be undone.
+- **Backups.** Backups of the locked bucket keep the same ten years. Backups of the Postgres mapping
+  rows don't (`BACKUP_RETENTION`, 30 days), which is what lets an erasure complete (section 7.5).
 - A database assigned in `ledger.pool` that immudb no longer has is a `missing_database` alarm.
 - Restore runbook (`docs/runbooks/ledger-restore.md`, phase 1): restore immudb, see the alarm, an
   admin re-anchors, the verifier runs.
@@ -584,8 +599,10 @@ A whole-directory run stops at the collection errors first, so the check is run 
 1. Within one app, the swap of two matching concurrent requests (section 0).
 2. An AI service misreporting what its run produced. Its prompt and answer are frozen (W4), which
    makes this checkable after the fact.
-3. The immudb superuser deleting a log. Detected (7.3), not prevented. External anchoring stays out
-   of scope.
+3. The immudb superuser deleting a log. Detected (7.3), not prevented, and recoverable from the
+   locked archive when that lives off the AISC host (L3). Anyone with root on the archive's own
+   storage can still destroy it: that is why L3 puts it elsewhere. External timestamping stays out of
+   scope.
 4. A person's own token used by a compromised app within the window on a matching route.
 5. Page views are best effort and browser-reported.
 6. The engine is frozen. Its own token precedence is unchanged, and the witness covers it.
@@ -609,6 +626,7 @@ New in version 2:
 | D11 | Requests by non-members of the project in the path | recorded in the platform log, never the project's |
 | L1 | How ledger databases are created | pre-created pool by an operator script; the platform never holds the superuser |
 | L2 | Ledger content cap | 64 KiB per entry, larger content in the evidence store |
+| L3 | Where the locked archive lives in staging and production | **open**: storage the AISC host can't administer (a MinIO run by LIST IT, or a cloud bucket with Object Lock), at least replicated to a second site; off on development stacks |
 
 ## 12. Review findings, and where each is answered
 

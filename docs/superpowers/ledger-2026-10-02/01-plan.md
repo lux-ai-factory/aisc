@@ -105,6 +105,10 @@ As the 09-30 plan, sections 5 and 7.3, with these changes (spike M1-M16):
   the wrong database in the spike (M9).
 - The verified state per database is kept in Postgres and only moves forward. A rollback or a rewrite
   is an alarm (M13, M14). Each project's signed head is published hourly to the object-locked bucket.
+- **Ten years** (D4): immudb is the working log; every hour the new entries, with their proofs, are
+  also archived to the object-locked bucket, from which a deleted log can be rebuilt. The lock stops
+  everyone but root on the storage machine, so in production that storage sits off the AISC host
+  (decision L3), and on development stacks the lock is off.
 - **Evidence store**: entries up to 64 KiB canonical JSON (RFC 8785) inside immudb; anything larger
   (artifacts, PDFs, plot images, long AI prompts and answers) in a MinIO bucket `evidence` with Object
   Lock in compliance mode and versioning.
