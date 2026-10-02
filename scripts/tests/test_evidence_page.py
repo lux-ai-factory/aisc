@@ -188,8 +188,13 @@ def test_a_column_stays_while_a_link_names_it_even_outside_its_dimension():
     assert "linkedIn(it, rows)" in script
 
 
-def test_a_dimension_with_objectives_but_nothing_installed_says_so():
-    assert "Nothing installed for this dimension" in script_of(read(PAGE))
+def test_dimensions_with_nothing_installed_are_listed_together_at_the_bottom():
+    """Not one empty box per dimension (2026-10-02): one block after the tables names every
+    dimension that has objectives and no test or control, with its objectives."""
+    script = script_of(read(PAGE))
+    assert "Nothing installed for this dimension" not in script and "dim-empty" not in script
+    assert "missing.push(" in script
+    assert "el('div', 'missing')" in script and "No test or control installed yet for" in script
 
 
 def test_items_with_no_dimension_are_listed_as_unlinkable():
@@ -217,3 +222,24 @@ def test_the_columns_keep_the_dimensions_the_platform_gave_them():
     script = script_of(read(PAGE))
     body = re.search(r"function items\(\) \{(.*?)\n  \}", script, re.S).group(1)
     assert body.count("dimensions: t.dimensions") == 1 and body.count("dimensions: c.dimensions") == 1
+
+
+
+# ── step 4 tidied (2026-10-02) ──────────────────────────────────────────────
+
+def test_the_two_ways_on_are_big_buttons_with_nothing_else():
+    html = read(PAGE)
+    markup, css = markup_of(html), style_of(html)
+    assert re.search(r'<a class="way" id="execute-tests" href="[^"]+">Execute tests</a>', markup)
+    assert re.search(r'<a class="way" id="address-controls" href="[^"]+">Address controls</a>', markup)
+    assert "<small>" not in markup and "Run the tests in the execution engine" not in markup
+    way = rule(css, "a.way")
+    assert re.search(r"font-size\s*:\s*(1[4-9]|2\d)px", way) and re.search(r"padding\s*:\s*1[6-9]px", way)
+
+
+def test_the_explanation_is_behind_a_question_mark():
+    markup = markup_of(read(PAGE))
+    assert re.search(r'<button type="button" class="help" popovertarget="links-help"[^>]*>\?</button>', markup)
+    pop = re.search(r'<div id="links-help" class="help-pop" popover>(.*?)</div>', markup, re.S).group(1)
+    assert "One table per trustworthiness dimension" in pop and "greyed row or column" in pop
+    assert "<p>One table per trustworthiness dimension" not in markup

@@ -86,14 +86,13 @@
   section > p{margin:0 0 16px; color:var(--muted); font-size:13.5px; max-width:80ch}
 
   /* ---- the two ways on, and the grid ---- */
-  .ways{display:flex; flex-wrap:wrap; gap:12px; margin:0 0 8px}
+  .ways{display:flex; flex-wrap:wrap; gap:16px; margin:4px 0 8px}
   a.way{
-    display:inline-flex; align-items:center; gap:8px; padding:10px 16px; text-decoration:none;
+    display:inline-flex; align-items:center; justify-content:center; min-width:240px; padding:18px 28px; text-decoration:none;
     border:1px solid var(--primary); background:var(--primary); color:#fff;
-    font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+    font-family:var(--mono); font-size:15px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
   }
   a.way:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
-  a.way small{font-family:"Inter",sans-serif; font-size:12px; letter-spacing:0; text-transform:none; opacity:.85}
   /* the grid: objectives frozen on the left, header rows frozen on top, columns scroll under them */
   .grid-wrap{--obj-w:320px; --group-h:32px; overflow:auto; max-height:72vh; width:fit-content; max-width:100%;
              border:1px solid var(--border); background:var(--panel)}
@@ -145,7 +144,18 @@
   .dim-tag.r9{background:#efebe9; border-color:#d5cbc6; color:#4e342e}
   .dim-tag.r10{background:#eceff1; border-color:#cbd3d8; color:#37474f}
   .dim-tag.r11{background:#f4f4f4; border-color:#d6d6d6; color:#424242}
-  .dim-empty{padding:14px 16px; border:1px dashed var(--border-strong); color:var(--muted); font-size:13.5px}
+  .missing{margin-top:26px; padding:14px 18px; border:1px dashed var(--border-strong); background:var(--panel)}
+  .missing-head{margin:0 0 8px; font-size:13.5px; color:var(--text)}
+  .missing ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .missing .dim-tag{font-family:"Inter",sans-serif; margin-right:6px}
+  .h2-row{display:flex; align-items:center; gap:10px; margin:0 0 12px}
+  .h2-row h2{margin:0}
+  .help{width:24px; height:24px; border-radius:50%; border:1px solid var(--border); background:var(--panel); color:var(--primary);
+        font-weight:700; cursor:pointer; padding:0; font-family:"Inter",sans-serif; font-size:13px; letter-spacing:0; text-transform:none;
+        display:inline-flex; align-items:center; justify-content:center; gap:0; line-height:1}
+  .help:hover{border-color:var(--primary); background:var(--panel)}
+  .help-pop{max-width:460px; padding:14px 16px; border:1px solid var(--border); background:var(--panel); color:var(--text);
+            font-size:13.5px; line-height:1.55; box-shadow:0 8px 24px rgba(20,24,60,.18)}
   .unclassified{margin-top:22px; font-size:13px; color:var(--muted)}
   .unclassified b{font-weight:600; color:var(--text)}
   .stale{display:inline-block; margin-left:6px; padding:1px 6px; font-family:var(--mono); font-size:10px;
@@ -190,20 +200,22 @@
 
   <section>
     <h2>Collect the evidence</h2>
-    <p>Run the tests in the execution engine and score the checklists in the controls app.</p>
     <div class="ways">
-      <a class="way" id="execute-tests" href="http://localhost/">Execute tests <small>run evaluations on the system</small></a>
-      <a class="way" id="address-controls" href="http://localhost/controls">Address controls <small>score the checklists</small></a>
+      <a class="way" id="execute-tests" href="http://localhost/">Execute tests</a>
+      <a class="way" id="address-controls" href="http://localhost/controls">Address controls</a>
     </div>
   </section>
 
   <section id="links" hidden>
-    <h2>Link tests and controls to the control objectives</h2>
-    <p>One table per trustworthiness dimension. Tick a box when that test or control gives evidence
-       for that objective. The rows are the objectives in step 2's risk and control matrix in that dimension; the
-       columns are the tests and controls installed in step 3 that the catalogue tags with it. A
-       greyed row or column is kept because a link names it: its old links stay, and it takes no
-       new ones.</p>
+    <div class="h2-row">
+      <h2>Link tests and controls to the control objectives</h2>
+      <button type="button" class="help" popovertarget="links-help" aria-label="How the tables work">?</button>
+    </div>
+    <div id="links-help" class="help-pop" popover>One table per trustworthiness dimension. Tick a box when that test or
+      control gives evidence for that objective. The rows are the objectives in step 2's risk and control
+      matrix in that dimension; the columns are the tests and controls installed in step 3 that the catalogue
+      tags with it. A greyed row or column is kept because a link names it: its old links stay, and it takes
+      no new ones.</div>
     <p class="note" id="viewer-note" hidden>You can read the links; an editor or owner changes them.</p>
     <div class="grids" id="grid"></div>
     <div class="actions">
@@ -280,7 +292,7 @@
         'dimension: every objective is shown against every test and control.'));
       grid.appendChild(table(data.objectives, all, linked));
     } else {
-      var shown = {};
+      var shown = {}, missing = [];
       data.dimensions.forEach(function (d) {
         var rows = data.objectives.filter(function (o) { return o.dimension === d.id; });
         if (!rows.length) return;
@@ -288,17 +300,31 @@
           return (it.dimensions || []).indexOf(d.id) >= 0 || linkedIn(it, rows);
         });
         cols.forEach(function (it) { shown[it.kind + '|' + it.key] = true; });
+        if (!cols.length) { missing.push({d: d, rows: rows}); return; }
         var block = el('div', 'dim-block'), head = el('div', 'dim-head');
         head.appendChild(el('span', 'dim-tag ' + d.id.toLowerCase(), d.id + ' · ' + d.title));
         var tests = cols.filter(function (it) { return it.kind === 'test'; }).length;
         head.appendChild(el('span', 'dim-n', plural(rows.length, 'objective') + ' · ' +
           plural(tests, 'test') + ' · ' + plural(cols.length - tests, 'control')));
         block.appendChild(head);
-        block.appendChild(cols.length ? table(rows, cols, linked)
-          : el('p', 'dim-empty', 'Nothing installed for this dimension: pick tests and controls tagged with it ' +
-                                 'in step 3, the catalogue.'));
+        block.appendChild(table(rows, cols, linked));
         grid.appendChild(block);
       });
+      // the dimensions with objectives and nothing to link them to, together after the tables
+      if (missing.length) {
+        var box = el('div', 'missing');
+        box.appendChild(el('p', 'missing-head', 'No test or control installed yet for these dimensions: pick ones ' +
+                                                'tagged with them in step 3, the catalogue.'));
+        var list = el('ul');
+        missing.forEach(function (m) {
+          var li = el('li');
+          li.appendChild(el('span', 'dim-tag ' + m.d.id.toLowerCase(), m.d.id + ' · ' + m.d.title));
+          li.appendChild(document.createTextNode(' ' + m.rows.map(function (o) { return o.id; }).join(', ')));
+          list.appendChild(li);
+        });
+        box.appendChild(list);
+        grid.appendChild(box);
+      }
       var loose = all.filter(function (it) {
         return !shown[it.kind + '|' + it.key] && (it.dimensions || []).length === 0;
       });
