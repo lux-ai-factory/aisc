@@ -200,7 +200,7 @@
   <section id="links" hidden>
     <h2>Link tests and controls to the control objectives</h2>
     <p>One table per trustworthiness dimension. Tick a box when that test or control gives evidence
-       for that objective. The rows are the objectives selected in step 2 in that dimension; the
+       for that objective. The rows are the objectives in step 2's risk and control matrix in that dimension; the
        columns are the tests and controls installed in step 3 that the catalogue tags with it. A
        greyed row or column is kept because a link names it: its old links stay, and it takes no
        new ones.</p>
@@ -264,7 +264,7 @@
     var all = items();
     if (!data.objectives.length || !all.length) {
       grid.appendChild(el('p', 'empty', !data.objectives.length
-        ? 'No objectives are selected yet: select them in step 2, Set control objectives.'
+        ? 'No objectives are in the matrix yet: map the risks to objectives in step 2, Set control objectives.'
         : 'No tests or controls are installed yet: pick them in step 3, the catalogue.'));
       $('save').hidden = true;
       return;
