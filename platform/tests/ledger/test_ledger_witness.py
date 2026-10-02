@@ -271,4 +271,7 @@ def test_the_witness_table_has_no_column_for_a_person(platform_dsn):
         columns = {r[0] for r in conn.execute(
             "SELECT column_name FROM information_schema.columns WHERE table_schema = 'ledger'"
             " AND table_name = 'witness'").fetchall()}
-    assert columns and not columns & {"sub", "subject", "name", "username", "email", "actor_sub", "actor_name"}
+    # an allow-list, not a list of banned names: a new column of any name has to be added here on purpose
+    assert columns == {"request_id", "at", "mode", "app", "method", "route_path", "query_hmac", "host",
+                       "project_pid", "member", "actor_ref", "verified", "reason", "next_action", "token_jti",
+                       "token_exp", "delivered_seq"}

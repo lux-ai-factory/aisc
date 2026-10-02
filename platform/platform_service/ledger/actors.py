@@ -53,15 +53,21 @@ def _connect():
         with _lock:
             pool = _pools.get(dsn)
             if pool is None:
-                pool = ConnectionPool(dsn, min_size=1, max_size=4, open=True, kwargs={"row_factory": dict_row})
-                if dsn not in _migrated:
-                    from pathlib import Path
+                # a short wait: an unreachable mapping must fail the write quickly, not after 30 s
+                pool = ConnectionPool(dsn, min_size=1, max_size=4, open=True, timeout=5,
+                                      kwargs={"row_factory": dict_row})
+                try:
+                    if dsn not in _migrated:
+                        from pathlib import Path
 
-                    from platform_service.migrate import migrate
+                        from platform_service.migrate import migrate
 
-                    with pool.connection() as conn:
-                        migrate(conn, Path(MIGRATIONS), "identity.schema_migration")
-                    _migrated.add(dsn)
+                        with pool.connection() as conn:
+                            migrate(conn, Path(MIGRATIONS), "identity.schema_migration")
+                        _migrated.add(dsn)
+                except Exception:
+                    pool.close()                                     # never keep a pool that failed its first use
+                    raise
                 _pools[dsn] = pool
     return pool.connection()
 

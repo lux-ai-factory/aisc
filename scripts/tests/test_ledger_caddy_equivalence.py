@@ -40,16 +40,33 @@ def _is_strip(handler):
 
 
 def _is_authz(route):
-    return any("/api/authz/*" in (m.get("path") or []) for m in route.get("match") or [])
+    """Only the intended block: /api/authz/* answered by a static 404 and nothing else."""
+    if not any("/api/authz/*" in (m.get("path") or []) for m in route.get("match") or []):
+        return False
+    handlers = []
+    for h in route.get("handle") or []:
+        handlers.extend(r2 for r in (h.get("routes") or [{"handle": [h]}]) for r2 in r.get("handle") or [])
+    return bool(handlers) and all(h.get("handler") == "static_response" and h.get("status_code") in (404, "404")
+                                  for h in handlers)
+
+
+def _is_sign_in(handler):
+    """oauth2-proxy's forward_auth, as Caddy adapts it: a reverse_proxy to port 4180."""
+    return isinstance(handler, dict) and handler.get("handler") == "reverse_proxy" and \
+        any(str(u.get("dial", "")).endswith(":4180") for u in handler.get("upstreams") or [])
 
 
 def normal(node):
     """Drop the intended changes and flatten match-less subroutes, until nothing changes."""
     if isinstance(node, list):
         out = []
-        for item in node:
+        for i, item in enumerate(node):
             if isinstance(item, dict) and _is_strip(item):
-                continue
+                # only a strip in the run of strips right before sign-in is the intended one
+                rest = node[i + 1:]
+                following = next((h for h in rest if not (isinstance(h, dict) and _is_strip(h))), None)
+                if _is_sign_in(following):
+                    continue
             if isinstance(item, dict) and "handle" in item and _is_authz(item):
                 continue
             if isinstance(item, dict) and item.get("handler") == "subroute" and \
@@ -99,3 +116,32 @@ def test_the_strip_and_the_block_are_really_there():
     raw = json.dumps(adapt(ROOT / "Caddyfile"))
     assert raw.count('"X-Aisc-Request-Id"') + raw.count('"X-AISC-Request-Id"') >= 14
     assert "/api/authz/*" in raw
+
+
+def _mutated(tmp_path, old, new):
+    text = (ROOT / "Caddyfile").read_text()
+    assert old in text, old
+    path = tmp_path / "Caddyfile"
+    path.write_text(text.replace(old, new, 1))
+    return path
+
+
+@pytest.mark.parametrize("old, new", [
+    # the launcher's witness block proxying instead of refusing
+    ("    handle /api/authz/* {\n      respond 404\n    }", "    handle /api/authz/* {\n      reverse_proxy platform:8000\n    }"),
+    # the strip moved after sign-in, where it would delete oauth2-proxy's identity headers
+    ("  request_header -X-Auth-Request-*\n  forward_auth host.docker.internal:4180 {",
+     "  forward_auth host.docker.internal:4180 {"),
+])
+def test_the_comparison_is_not_fooled_by_a_changed_strip_or_block(tmp_path, old, new):
+    """Phase 2 re-review n2: only a static 404 counts as the block, only a strip before sign-in as the strip."""
+    if "forward_auth host.docker.internal:4180 {" in new and "request_header" not in new:
+        text = _mutated(tmp_path, old, new).read_text()
+        text = text.replace("      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n",
+                            "      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n  request_header -X-Auth-Request-*\n", 1)
+        (tmp_path / "Caddyfile").write_text(text)
+        path = tmp_path / "Caddyfile"
+    else:
+        path = _mutated(tmp_path, old, new)
+    before = fixpoint(adapt(ROOT / "scripts/tests/fixtures/ledger_gateway/Caddyfile.before-phase2"))
+    assert json.dumps(fixpoint(adapt(path)), sort_keys=True) != json.dumps(before, sort_keys=True)

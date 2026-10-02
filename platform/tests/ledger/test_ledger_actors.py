@@ -82,3 +82,17 @@ def test_the_mapping_reuses_its_connections(platform_dsn):
     import time
     time.sleep(0.6)                                       # the statistics collector reports with a delay
     assert sessions() - before <= 4, "a new session per call: the mapping has no pool"
+
+
+def test_an_unreachable_mapping_fails_fast_and_leaks_nothing(platform_dsn, monkeypatch):
+    """Phase 2 re-review n1: a failed first use closes its pool, and the next call doesn't wait 30 s."""
+    import time
+
+    monkeypatch.setenv("PLATFORM_DATABASE_URL", "postgresql://platform_rw:x@127.0.0.1:1/platform")
+    before = len(actors._pools)
+    for _ in range(2):
+        started = time.monotonic()
+        with pytest.raises(Exception):
+            actors.ref_for(P1, person(), "bob")
+        assert time.monotonic() - started < 10
+    assert len(actors._pools) == before

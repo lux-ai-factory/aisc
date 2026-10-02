@@ -71,10 +71,25 @@ That run is the first step of the deploy below.
   phase 4 deploy checklist.
 - **Rotating the gateway secret with an overlap**: phase 4.
 
+## Recorded for later (from the re-review, `15-phase2-rereview.md`)
+- **m7, the case and percent-encoding of paths.** Caddy's `handle /qualification*` ignores case, and
+  the apps decode percent-encoding; the witness's project rules do neither. A request to
+  `/qualification/p/%6Dcas/...` reaches project `mcas` while its witness record goes to the platform
+  log. This fails safe (the event will be rejected), and phase 3's relay must pin it with a test.
+- **m9, `env_file:` services.** The credentials test reads `environment:` blocks only; controls and
+  control objectives also take variables from `env_file:`. Phase 8 moves the test onto
+  `docker compose config` output.
+- **m10, the signing key's public half.** If `immudb-signing.pub` doesn't exist when the platform
+  starts, Docker creates a root-owned directory at that path, and a later `secrets.sh` then can't
+  write the file. Run `scripts/secrets.sh` before any `up`, which the deploy order does. If the
+  directory was made by mistake, remove it (`sudo rmdir immudb-signing.pub`) and run `secrets.sh`.
+
 ## To deploy, when you say so (in this order)
 1. `scripts/secrets.sh`. Already run here: it only adds what's missing.
-2. `postgres-setup`: applies the new `platform_rw` password and creates `ledger_identity`. Then
-   recreate `platform` (the image needs a rebuild: `ledger-identity/` and the new code).
+2. `postgres-setup`: applies the new `platform_rw` password and creates `ledger_identity`. **Then
+   recreate `platform` straight away** (the image needs a rebuild: `ledger-identity/` and the new
+   code): the running platform keeps its open sessions, but no new connection works until it uses
+   the new password.
 3. Recreate `oauth2-proxy` (4-minute refresh) and reload Caddy. Its witness stays off until
    `LEDGER_GATEWAY=on`.
 4. Turn on `LEDGER_MODE=record` and `LEDGER_GATEWAY=on`. Then run the two drills on the real stack: stop
