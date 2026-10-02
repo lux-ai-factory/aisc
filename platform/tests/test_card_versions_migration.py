@@ -6,6 +6,9 @@ database (tests/core_scratch.py), so the state before the migration is known.
 import psycopg
 import pytest
 
+# These tests pin core.system's history (migrations 0003-0005) on old layouts that skip postgres-setup,
+# so they migrate up to 0005: the ledger's 0006 needs the schema postgres-setup makes, and in production
+# the platform waits for postgres-setup (service_completed_successfully) before it migrates.
 from tests.core_scratch import (
     apply_platform_migrations,
     give_core_system_to_platform,
@@ -63,7 +66,7 @@ def test_d1_running_the_platform_part_twice_makes_platform_rw_the_owner():
 def test_s2_6_on_a_fresh_database_0003_succeeds_and_core_system_is_empty():
     with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         assert M0003 in _applied(rw)
         assert _one(rw, "select count(*) from core.system") == (0,)
         columns = _columns(rw)
@@ -76,7 +79,7 @@ def test_s2_6_constraints_after_0003():
     """Step 5: (project_id, number) is the key; (project_id, name, version) is not."""
     with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         with psycopg.connect(rw) as conn:
             constraints = {r[0] for r in conn.execute(
                 "select conname from pg_constraint where conrelid = 'core.system'::regclass").fetchall()}
@@ -93,7 +96,7 @@ def test_s2_6_constraints_after_0003():
 def test_s2_6_number_must_be_positive():
     with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         with psycopg.connect(rw) as conn:
             pid = conn.execute("insert into core.project (name, slug) values ('p', 'p') returning pid").fetchone()[0]
             with pytest.raises(psycopg.errors.CheckViolation):
@@ -103,7 +106,7 @@ def test_s2_6_number_must_be_positive():
 def test_s2_6_grants_on_core_system_are_kept():
     with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         assert M0003 in _applied(rw)
         with psycopg.connect(su) as conn:
             for role in ("qualification_rw", "control_objectives_rw", "controls_rw", "engine_rw", "dashboard_ro"):
@@ -139,7 +142,7 @@ def test_s2_7_on_the_live_shape_every_pid_is_kept_and_mcas_is_number_1():
         with psycopg.connect(rw) as conn:
             version_pids = {str(r[0]) for r in conn.execute("select pid from core.ai_system_version").fetchall()}
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         assert M0003 in _applied(rw)
         with psycopg.connect(rw) as conn:
             rows = conn.execute("select pid, project_id, number, name, version from core.system").fetchall()
@@ -161,12 +164,12 @@ def test_s2_8_without_ownership_0003_fails_with_the_guard_message_and_is_not_rec
     with scratch_database(old_layout=True) as (su, rw):
         apply_platform_migrations(rw, upto="0002")
         with pytest.raises(psycopg.errors.RaiseException, match=GUARD):
-            apply_platform_migrations(rw)
+            apply_platform_migrations(rw, upto="0005")
         assert M0003 not in _applied(rw)
         assert "0002_one_ai_system_per_project.sql" in _applied(rw)
         # and it succeeds once the superuser line has run
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         assert M0003 in _applied(rw)
 
 
@@ -176,7 +179,7 @@ def test_s2_8_without_ownership_0003_fails_with_the_guard_message_and_is_not_rec
 def test_s2_4_the_trigger_refuses_changes_to_an_older_version_and_to_number_or_project():
     with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")
         with psycopg.connect(rw, autocommit=True) as conn:
             project = conn.execute("insert into core.project (name, slug) values ('p', 'p') returning pid").fetchone()[0]
             other = conn.execute("insert into core.project (name, slug) values ('q', 'q') returning pid").fetchone()[0]

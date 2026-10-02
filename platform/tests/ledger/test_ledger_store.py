@@ -185,3 +185,39 @@ def test_the_state_store_is_compare_and_set(immudb):
     current = state.get(a)
     with pytest.raises(ValueError):
         state.put(a, current, expected=current.claiming(tx_id=current.tx_id - 1))
+
+
+def test_the_pool_refuses_when_the_ledger_users_password_is_not_the_one_given(immudb):
+    """An existing aisc_ledger with another password would make a pool the platform can't use: the
+    operator's command checks the login and says so (found by the phase-1 drill)."""
+    from platform_service.ledger import pool
+    from platform_service.ledger.naming import pool_name
+
+    fresh_databases(1)                                              # aisc_ledger exists, with the test password
+    with pytest.raises(PermissionError, match="LEDGER_IMMUDB_PASSWORD"):
+        pool.create_databases(IMMUDB_URL, admin_password=IMMUDB_ADMIN_PASSWORD, names=[pool_name()],
+                              grantee="aisc_ledger", grantee_password="not-the-password")
+
+
+def test_a_wrong_password_is_a_credentials_error_not_an_unknown_database(immudb):
+    from platform_service.ledger.store import LedgerCredentials
+
+    [a] = fresh_databases(1)
+    wrong = ImmudbLedger(IMMUDB_URL, user="aisc_ledger", password="not-the-password", state_store=MemoryStateStore())
+    with pytest.raises(LedgerCredentials):
+        wrong.append(a, entry())
+
+
+def test_the_ledger_user_sees_its_server_and_its_databases(immudb):
+    """As aisc_ledger, which has no right on immudb's defaultdb: the server id needs no login, and the
+    database list logs in to the platform log, which the pool command always makes (found by the
+    phase-1 drill)."""
+    from platform_service.ledger import pool
+    from platform_service.ledger.naming import PLATFORM_DB
+
+    pool.create_databases(IMMUDB_URL, admin_password=IMMUDB_ADMIN_PASSWORD, names=[PLATFORM_DB],
+                          grantee="aisc_ledger", grantee_password=LEDGER_USER_PASSWORD)
+    [a] = fresh_databases(1)
+    store = immudb()
+    assert store.server_id.startswith("immudb:") and len(store.server_id) > len("immudb:")
+    assert {a, PLATFORM_DB} <= store.databases()

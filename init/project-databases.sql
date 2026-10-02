@@ -59,6 +59,19 @@ BEGIN
 END
 $libraries$;
 
+-- The ledger's Postgres side (docs/superpowers/ledger-2026-10-02/02-spec.md 6.1): the platform
+-- service owns it and its migrations (0006 onwards) make its tables. No module role gets USAGE, so
+-- none can read the witness records, the person mapping or the pool. Making a schema takes a
+-- superuser, hence here (every start) and in init/platform-db.sql (a fresh volume), not in a migration.
+DO $ledger$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ledger') THEN
+    CREATE SCHEMA ledger AUTHORIZATION platform_rw;
+  END IF;
+END
+$ledger$;
+REVOKE ALL ON SCHEMA ledger FROM PUBLIC;
+
 -- The pre-isolation core.system, only while it is in use: absent (a fresh volume, or after the
 -- stage-7 drop) or retired (its comment begins with 'retired:', set by cutover C9), none of this
 -- runs, so a start after the retirement cannot give it back to anyone.

@@ -14,6 +14,8 @@ dependencies = [
     # the live model listing calls the providers; keys are Fernet-encrypted at rest
     "httpx>=0.27",
     "cryptography>=43",
+    # the ledger's store (docs/superpowers/ledger-2026-10-02): the engine's pin, the spike's version
+    "immudb-py==1.5.0",
 ]
 
 [project.optional-dependencies]

@@ -3,6 +3,7 @@
 #
 #   ./scripts/secrets.sh            # make them if they are missing
 #   ./scripts/secrets.sh --rotate   # make new ones, replacing what is there
+#   ./scripts/secrets.sh --add-ledger-key   # add the next version of the ledger's master key
 #
 # A secret committed to the repo is a secret every clone shares. The worst of
 # them would be the gateway's cookie secret: whoever holds it can mint a
@@ -19,6 +20,13 @@
 # (comma list, newest first), restart the platform, run
 #   python -m platform_service.llm_store rotate
 # in the platform container, then drop the old key from the list.
+#
+# The ledger's two (docs/superpowers/ledger-2026-10-02/02-spec.md 7.1, 7.5) survive --rotate too:
+# - PLATFORM_LEDGER_KEYS is versioned ("v1:<hex>,v2:<hex>") and every version is kept for ever,
+#   because the digests in immudb were made with them. Rotating means adding the next version
+#   (--add-ledger-key) and restarting the platform; new digests use it, old ones still check.
+# - LEDGER_IMMUDB_PASSWORD is the platform's immudb user's (aisc_ledger); it changes only together
+#   with immudb's own copy, through scripts/ledger-pool.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Every file written here holds secrets or is made from them: private from the moment it exists,
@@ -37,6 +45,8 @@ rand()      { openssl rand -hex 32; }
 cookie()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'; }
 # Fernet wants urlsafe base64 of 32 bytes WITH its `=` padding: 44 characters.
 fernet()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n'; }
+# The ledger's master key list starts at version 1.
+ledgerkey() { local k; k=$(rand) && echo "v1:$k"; }
 
 # Every secret, in the order a new env.secrets lists them, as NAME=kind of value it takes.
 # A secret added here reaches existing installs too: the loop below appends whatever an
@@ -72,18 +82,37 @@ QUALIFICATION_WEB_TO_LLM_TOKEN=rand
 QUALIFICATION_WEB_TO_PDF_TOKEN=rand
 CONTROLS_WEB_TO_PDF_TOKEN=rand
 PLATFORM_SECRETS_KEY=fernet
+# the ledger: the platform's immudb user, and its versioned master keys (both kept by --rotate)
+LEDGER_IMMUDB_PASSWORD=rand
+PLATFORM_LEDGER_KEYS=ledgerkey
 )
-value_of() { case "$1" in cookie) cookie ;; fernet) fernet ;; *) rand ;; esac; }
+value_of() { case "$1" in cookie) cookie ;; fernet) fernet ;; ledgerkey) ledgerkey ;; *) rand ;; esac; }
+# What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
+KEPT_ON_ROTATE=" PLATFORM_SECRETS_KEY LEDGER_IMMUDB_PASSWORD PLATFORM_LEDGER_KEYS "
 
 # A value of NAME in a file: empty when the line is missing or has no value.
 value_in() { awk -v n="$1" 'index($0, n "=") == 1 { print substr($0, length(n) + 2); exit }' "$2"; }
 # A new value, or empty when openssl failed (set -e would otherwise stop without a word).
 fresh()    { value_of "$1" || true; }
 
-# The LLM keys' encryption key survives --rotate (see the top of this file).
-secrets_key=""
+# What survives --rotate (see the top of this file), read before anything is written.
+declare -A kept=()
 if [ -f "$OUT" ]; then
-  secrets_key=$(value_in PLATFORM_SECRETS_KEY "$OUT")
+  for name in $KEPT_ON_ROTATE; do kept[$name]=$(value_in "$name" "$OUT"); done
+fi
+
+# --add-ledger-key: the next version of the ledger's master key, appended; nothing else changes.
+if [ "${1:-}" = "--add-ledger-key" ]; then
+  [ -f "$OUT" ] || { echo "$OUT does not exist: run scripts/secrets.sh first" >&2; exit 1; }
+  current=$(value_in PLATFORM_LEDGER_KEYS "$OUT")
+  [ -n "$current" ] || { echo "PLATFORM_LEDGER_KEYS is missing from $OUT: run scripts/secrets.sh first" >&2; exit 1; }
+  next=$(( $(tr ',' '\n' <<<"$current" | sed -n 's/^v\([0-9]*\):.*/\1/p' | sort -n | tail -1) + 1 ))
+  key=$(rand) || { echo "openssl failed; $OUT left as it was" >&2; exit 1; }
+  tmp=$(mktemp "$OUT.XXXXXX")
+  NAME=PLATFORM_LEDGER_KEYS VALUE="$current,v$next:$key" awk 'index($0, ENVIRON["NAME"] "=") == 1 { print ENVIRON["NAME"] "=" ENVIRON["VALUE"]; next } { print }' "$OUT" > "$tmp"
+  mv "$tmp" "$OUT"
+  echo "added ledger key version v$next to $OUT; restart the platform to use it"
+  exit 0
 fi
 
 # The new env.secrets is built beside the old one and moved into place at the end, so a run that
@@ -97,8 +126,8 @@ if [ "${1:-}" = "--rotate" ] || [ ! -f "$OUT" ]; then
     echo "# Rotating these signs everyone out and needs Keycloak re-imported (make clean)."
     for entry in "${SECRETS[@]}"; do
       name=${entry%%=*}
-      if [ "$name" = PLATFORM_SECRETS_KEY ] && [ -n "$secrets_key" ]; then
-        echo "$name=$secrets_key"
+      if [[ "$KEPT_ON_ROTATE" == *" $name "* ]] && [ -n "${kept[$name]:-}" ]; then
+        echo "$name=${kept[$name]}"
       else
         echo "$name=$(fresh "${entry#*=}")"
       fi

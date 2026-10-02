@@ -100,3 +100,40 @@ def test_a_failed_rotate_leaves_the_old_file_as_it_was(scratch):  # noqa: F811
     assert r.returncode != 0
     assert _digest((scratch / "env.secrets").read_text()) == _digest(before), "a failed rotation changed env.secrets"
     assert [p.name for p in scratch.iterdir() if p.name.startswith("env.secrets.")] == [], "temp file left"
+
+
+# The ledger's secrets (docs/superpowers/ledger-2026-10-02/02-spec.md 7.1, 7.5). Its master keys are
+# versioned and kept for ever, so `--rotate` must not replace them (a new version is added by
+# `--add-ledger-key`); the immudb user's password changes only together with immudb's own copy.
+LEDGER_KEPT = ("PLATFORM_LEDGER_KEYS", "LEDGER_IMMUDB_PASSWORD")
+
+
+def test_the_ledger_secrets_are_made_with_their_shapes(scratch):  # noqa: F811
+    run_secrets(scratch)
+    values = secrets_of(scratch)
+    assert re.fullmatch(r"v1:[0-9a-f]{64}", values["PLATFORM_LEDGER_KEYS"]), "PLATFORM_LEDGER_KEYS is v1:<64 hex>"
+    assert re.fullmatch(r"[0-9a-f]{64}", values["LEDGER_IMMUDB_PASSWORD"])
+
+
+def test_the_ledger_secrets_survive_rotate(scratch):  # noqa: F811
+    run_secrets(scratch)
+    before = secrets_of(scratch)
+    r = _run(scratch, "--rotate")
+    assert r.returncode == 0, r.stderr[-2000:]
+    after = secrets_of(scratch)
+    for name in LEDGER_KEPT:
+        assert _digest(after[name]) == _digest(before[name]), f"{name} was rotated"
+
+
+def test_a_ledger_key_version_is_added_never_replaced(scratch):  # noqa: F811
+    run_secrets(scratch)
+    before = secrets_of(scratch)["PLATFORM_LEDGER_KEYS"]
+    r = _run(scratch, "--add-ledger-key")
+    assert r.returncode == 0, r.stderr[-2000:]
+    after = secrets_of(scratch)["PLATFORM_LEDGER_KEYS"]
+    assert after.startswith(before + ",v2:") and re.fullmatch(r"v1:[0-9a-f]{64},v2:[0-9a-f]{64}", after)
+    others_before = {k: _digest(v) for k, v in secrets_of(scratch).items() if k != "PLATFORM_LEDGER_KEYS"}
+    assert others_before                                           # nothing else changed is checked below
+    r = _run(scratch, "--add-ledger-key")
+    assert re.fullmatch(r"v1:[0-9a-f]{64},v2:[0-9a-f]{64},v3:[0-9a-f]{64}", secrets_of(scratch)["PLATFORM_LEDGER_KEYS"])
+    assert {k: _digest(v) for k, v in secrets_of(scratch).items() if k != "PLATFORM_LEDGER_KEYS"} == others_before

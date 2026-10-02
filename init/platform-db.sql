@@ -121,5 +121,18 @@ ALTER ROLE catalogue_rw IN DATABASE platform SET search_path = catalogue, core;
 CREATE SCHEMA report_library AUTHORIZATION report_composer_rw;
 COMMENT ON SCHEMA report_library IS 'The install-wide library of report presets (D4): no project data.';
 
+-- The ledger's Postgres side (docs/superpowers/ledger-2026-10-02/02-spec.md 6.1): the platform
+-- service owns it and its migrations (0006 onwards) make its tables. No module role gets USAGE, so
+-- none can read the witness records, the person mapping or the pool. Making a schema takes a
+-- superuser, hence here and in init/project-databases.sql (every start), not in a migration.
+DO $ledger$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ledger') THEN
+    CREATE SCHEMA ledger AUTHORIZATION platform_rw;
+  END IF;
+END
+$ledger$;
+REVOKE ALL ON SCHEMA ledger FROM PUBLIC;
+
 ALTER ROLE platform_rw  IN DATABASE platform SET search_path = core;
 ALTER ROLE dashboard_ro IN DATABASE platform SET search_path = core;

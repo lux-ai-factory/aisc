@@ -103,7 +103,8 @@ def test_init_makes_core_system_unique_on_pid_and_project():
 def test_0004_on_a_fresh_database_is_recorded_and_leaves_one_constraint():
     with scratch_database(old_layout=True) as (su, rw):
         give_core_system_to_platform(su)
-        ran = apply_platform_migrations(rw)
+        # up to 0005: the ledger's 0006 needs the schema postgres-setup makes, which these old layouts skip
+        ran = apply_platform_migrations(rw, upto="0005")
         assert M0004 in ran
         assert _unique_def(rw) == "UNIQUE (pid, project_id)"
         with psycopg.connect(rw) as conn:
@@ -132,7 +133,7 @@ def test_a_key_into_the_pair_refuses_a_version_of_another_project():
     with scratch_database(old_layout=True) as (su, rw):
         _drop_unique(su)
         give_core_system_to_platform(su)
-        apply_platform_migrations(rw)
+        apply_platform_migrations(rw, upto="0005")                   # not the ledger's 0006: see above
         with psycopg.connect(su, autocommit=True) as conn:
             conn.execute(STAND_INS)
             conn.execute(
