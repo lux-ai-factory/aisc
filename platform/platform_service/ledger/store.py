@@ -458,8 +458,7 @@ class ImmudbLedger:
     def reanchor(self, db: str) -> tuple:
         """After a restore: forget the saved state, so the next read anchors on the server (spec T21)."""
         old = self._states.get(db)
-        if hasattr(self._states, "forget"):
-            self._states.forget(db)
+        self._states.forget(db)
         with self._lock:
             self._clients.pop(db, None)
         return (old.tx_id if old else 0), 0

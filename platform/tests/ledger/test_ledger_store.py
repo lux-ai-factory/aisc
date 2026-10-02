@@ -127,6 +127,20 @@ def test_a_rolled_back_state_raises_the_alarm(any_store):
         store.get(a, seq)
 
 
+def test_a_reanchor_after_a_restore_trusts_the_server_again(any_store):
+    """Spec T21 / runbook ledger-restore.md: after the alarm, an admin's re-anchor; reads work again and
+    the head is what the server holds."""
+    store, (a, _) = any_store
+    seq = store.append(a, entry())
+    state = store.state(a)
+    store.set_state(a, state.claiming(tx_id=state.tx_id + 1_000_000))
+    with pytest.raises(TamperAlarm):
+        store.get(a, seq)
+    store.reanchor(a)
+    assert store.get(a, seq).seq == seq and store.head(a).seq >= seq
+    assert store.append(a, entry()) > seq
+
+
 # memory only: tampering with storage ----------------------------------------------------------------
 
 def test_a_changed_entry_raises_the_alarm():

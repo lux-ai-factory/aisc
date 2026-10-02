@@ -67,3 +67,30 @@ def test_a_beacon_citing_someone_elses_request_is_refused(beacon, project):
 def test_a_flood_of_beacons_is_cut_off(beacon, project, settings):
     codes = [beacon(page(project)).status_code for _ in range(settings.BEACON_PER_MINUTE + 5)]
     assert codes.count(429) >= 5
+
+
+def test_a_detail_the_registry_does_not_name_is_refused(beacon, project):
+    assert beacon(page(project, details={"page": "/x", "password": "hunter2"})).status_code == 422
+
+
+def test_a_request_id_keeps_one_beacon(client, as_user, project, witnessed, mode):
+    """page.* is per_request=1: the same witnessed request can't carry a second moment."""
+    mode("enforce")
+    headers = {**as_user(MEMBER), "Content-Type": "text/plain;charset=UTF-8",
+               "X-AISC-Request-Id": witnessed(MEMBER, "POST", "platform", "/api/ledger/beacon")}
+    body = json.dumps(page(project))
+    assert client.post("/ledger/beacon", content=body, headers=headers).status_code == 204
+    assert client.post("/ledger/beacon", content=body, headers=headers).status_code == 409
+
+
+def test_a_beacon_for_a_strangers_project_is_404(beacon, make_project, project):
+    other = make_project(OWNER)
+    assert beacon(page(other)).status_code == 404
+    assert pageviews.recent(other["pid"]) == []
+
+
+def test_with_the_ledger_off_a_beacon_keeps_nothing(client, as_user, project, mode):
+    mode("off")
+    r = client.post("/ledger/beacon", content=json.dumps(page(project)),
+                    headers={**as_user(MEMBER), "Content-Type": "text/plain;charset=UTF-8"})
+    assert r.status_code == 204 and pageviews.recent(project["pid"]) == []

@@ -572,7 +572,8 @@ def test_i2_8_a_fresh_platform_database_has_no_module_schema_and_no_core_system(
                                        " where nspname in ('form_library', 'report_library')").fetchall())
     assert not schemas & {"qualification", "control_objectives", "engine", "report_composer"}, \
         f"I2.8: platform-db.sql still makes module schemas: {sorted(schemas)}"
-    assert core == {"project", "project_member", "schema_migration"}, f"I1.3: core has {sorted(core)}"
+    # core.outbox is the platform's own ledger outbox (migration 0008), not a module's table
+    assert core == {"project", "project_member", "schema_migration", "outbox"}, f"I1.3: core has {sorted(core)}"
     # (forms are per project since the user's decision of 2026-09-25: no form library in platform)
     assert "form_library" not in schemas and "report_library" in schemas, "I2.8: report_library only"
     assert owners.get("report_library") == "report_composer_rw", "I1.4: report_composer_rw owns report_library"

@@ -39,13 +39,10 @@ class MemoryStateStore:
                 raise ValueError(f"the verified state of {db} changed meanwhile")
             self._states[db] = state
 
-
-def _forget_memory(self, db: str) -> None:
-    with self._lock:
-        self._states.pop(db, None)
-
-
-MemoryStateStore.forget = _forget_memory
+    def forget(self, db: str) -> None:
+        """The re-anchor (spec T21): the next read trusts the server again."""
+        with self._lock:
+            self._states.pop(db, None)
 
 
 class PostgresStateStore:

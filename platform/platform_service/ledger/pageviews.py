@@ -8,12 +8,21 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 
+class AlreadyUsed(Exception):
+    """This witnessed request already carried a beacon."""
+
+
 def record(project_pid: str, actor_ref: str, action: str, details: dict, request_id: str | None) -> None:
+    from psycopg import errors
+
     from platform_service import db
 
     with db.pool().connection() as conn:
-        conn.execute("INSERT INTO ledger.page_view (project_pid, actor_ref, action, details, request_id)"
-                     " VALUES (%s, %s, %s, %s, %s)", (project_pid, actor_ref, action, json.dumps(details), request_id))
+        try:
+            conn.execute("INSERT INTO ledger.page_view (project_pid, actor_ref, action, details, request_id)"
+                         " VALUES (%s, %s, %s, %s, %s)", (project_pid, actor_ref, action, json.dumps(details), request_id))
+        except errors.UniqueViolation:
+            raise AlreadyUsed(request_id) from None
 
 
 def count_recent(actor_ref: str, within: timedelta) -> int:

@@ -106,7 +106,8 @@ def test_the_setup_and_the_platform_migrations_run_after_the_stage_7_drop():
             core = {r[0] for r in conn.execute(
                 "select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace"
                 " where n.nspname = 'core' and c.relkind in ('r', 'p')").fetchall()}
-    assert core == {"project", "project_member", "schema_migration"}, f"I1.3: core has {sorted(core)}"
+    # core.outbox is the platform's own ledger outbox (migration 0008), not a module's table
+    assert core == {"project", "project_member", "schema_migration", "outbox"}, f"I1.3: core has {sorted(core)}"
 
 
 @needs_superuser

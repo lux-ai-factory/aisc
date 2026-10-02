@@ -70,6 +70,8 @@ def sync_platform_actions(conn) -> None:
     browser), so ledger.emit refuses exactly those (template 0020; spec 6.4, n11)."""
     from platform_service.ledger.registry import REGISTRY
 
+    if conn.execute("SELECT to_regclass('ledger.platform_action')").fetchone()[0] is None:
+        return                                                        # a template before 0020: nothing to keep
     names = sorted(name for name, action in REGISTRY.items() if action.origin != "app")
     with conn.transaction():
         conn.execute("DELETE FROM ledger.platform_action WHERE NOT (name = ANY(%s))", (names,))

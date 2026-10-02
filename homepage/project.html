@@ -354,6 +354,9 @@
       <a href="http://localhost/flower/">Flower</a>
       <a href="http://localhost:8081/realms/aisc/account">Keycloak account</a>
       <span class="sep member-only" hidden></span>
+      <span class="group member-only" hidden>Audit</span>
+      <a id="activity-log" class="member-only" hidden>Activity log</a>
+      <span class="sep member-only" hidden></span>
       <span class="group member-only" hidden>Inspect database</span>
       <!-- Structure only, for every member: this project's database and the shared one on one page. -->
       <a id="inspect-schema" class="member-only" hidden target="_blank" rel="noopener">Database diagrams</a>
@@ -469,6 +472,7 @@
 
 </div>
 
+<script src="/assets/ledger-beacon.js"></script>
 <script>
   var slug = decodeURIComponent(window.location.pathname.replace(/^\/p\//, '').replace(/\/$/, ''));
 
@@ -487,7 +491,9 @@
           if (!a || !(a.role || a.admin)) return;   // members see the menu, strangers nothing
           // The diagrams open on one page for this project's database and the shared one.
           document.getElementById('inspect-schema').href = '/inspect/schema/?project=' + encodeURIComponent(p.pid);
+          document.getElementById('activity-log').href = '/logs.html?project=' + encodeURIComponent(slug);
           [].forEach.call(document.querySelectorAll('#manage .member-only'), function (el) { el.hidden = false; });
+          if (window.aiscBeacon) window.aiscBeacon(slug, 'page.opened', {page: '/p/' + slug});
           if (a.admin || a.role === 'owner') {      // an owner decides which internal hosts connections reach
             [].forEach.call(document.querySelectorAll('#manage .owner-only'), function (el) { el.hidden = false; });
             document.getElementById('connections-settings').href = '/connections.html?project=' + encodeURIComponent(slug);

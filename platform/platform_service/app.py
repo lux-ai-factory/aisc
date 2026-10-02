@@ -1833,13 +1833,19 @@ def _keep_beacon(project: str, caller: Caller, action: str, details: dict, reque
 
     if action not in registry.REGISTRY or registry.REGISTRY[action].origin != "browser":
         raise HTTPException(status_code=422, detail=f"{action} isn't a beacon moment")
+    unknown = sorted(set(details) - set(registry.REGISTRY[action].details_keys))
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"{action} carries no {', '.join(unknown)}")
     role_or_404(project, caller)
     found = db.get_project(project)
     pid = str(found["pid"])
     ref = actors.ref_of(pid, caller.subject) or actors.ref_for(pid, caller.subject, caller.username or caller.subject)
     if pageviews.count_recent(ref, timedelta(minutes=1)) >= ledger_settings.BEACON_PER_MINUTE:
         raise HTTPException(status_code=429, detail="too many beacons")
-    pageviews.record(pid, ref, action, details, request_id)
+    try:
+        pageviews.record(pid, ref, action, details, request_id)
+    except pageviews.AlreadyUsed:
+        raise HTTPException(status_code=409, detail="this request already carried a beacon") from None
 
 
 @app.exception_handler(RequestValidationError)
