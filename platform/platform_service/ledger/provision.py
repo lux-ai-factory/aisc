@@ -44,7 +44,7 @@ def assign(pid: str, conn=None) -> str | None:
 
     try:
         server_id = ledger.current().server_id
-    except LedgerError:
+    except (LedgerError, KeyError):
         return database_for(pid)
     if conn is not None:
         with conn.transaction():                                     # a savepoint inside the caller's

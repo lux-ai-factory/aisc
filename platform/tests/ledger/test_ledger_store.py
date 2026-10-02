@@ -356,3 +356,34 @@ def test_a_signed_server_is_checked_against_its_public_key(immudb):
                          state_store=MemoryStateStore(), public_key_file=other)
     with pytest.raises(TamperAlarm):
         wrong.append(a, entry())
+
+
+def test_a_half_configured_store_is_unavailable_never_a_crash(monkeypatch):
+    """Re-review minor 2: the URL set but not the password must not block project creation."""
+    from platform_service.ledger.store import LedgerUnavailable, from_environment
+
+    monkeypatch.setenv("LEDGER_IMMUDB_URL", "127.0.0.1:1")
+    monkeypatch.delenv("LEDGER_IMMUDB_PASSWORD", raising=False)
+    with pytest.raises(LedgerUnavailable, match="LEDGER_IMMUDB_PASSWORD"):
+        from_environment()
+
+
+def test_every_immudb_call_has_a_deadline():
+    """Re-review minor 3: a black-holed immudb must not hang the caller. The store's clients are made
+    with a deadline, and a failed server id is remembered for a while instead of waited for again."""
+    import time
+
+    from platform_service.ledger.store import LedgerUnavailable
+
+    store = ImmudbLedger("10.255.255.1:3322", user="aisc_ledger", password="x",      # unroutable: black hole
+                         state_store=MemoryStateStore(), timeout=2)
+    started = time.monotonic()
+    with pytest.raises(LedgerUnavailable):
+        store.server_id
+    first = time.monotonic() - started
+    started = time.monotonic()
+    with pytest.raises(LedgerUnavailable):
+        store.server_id                                                  # remembered: no second wait
+    assert first < 8 and time.monotonic() - started < 0.5
+    with pytest.raises(LedgerUnavailable):
+        store.append("ledger" + uuid.uuid4().hex, entry())

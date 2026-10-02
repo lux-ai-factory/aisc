@@ -268,9 +268,15 @@ class _StateAdapter:
 class ImmudbLedger:
     """The contract on immudb 1.11, as the `aisc_ledger` user (never the superuser, M1)."""
 
-    def __init__(self, url: str, *, user: str, password: str, state_store, public_key_file: str | None = None):
+    #: How long an unreachable server is remembered before it is tried again (re-review minor 3).
+    DOWN_FOR = 30.0
+
+    def __init__(self, url: str, *, user: str, password: str, state_store, public_key_file: str | None = None,
+                 timeout: float = 10):
         self._url, self._user, self._password, self._states = url, user, password, state_store
         self._public_key_file = public_key_file                      # immudb's --signingKey, public half (S3)
+        self._timeout = timeout                                      # every gRPC call: a black hole never hangs
+        self._down_until = 0.0
         self._clients: dict[str, tuple] = {}
         self._lock = threading.Lock()
         self._server_id = None
@@ -279,14 +285,20 @@ class ImmudbLedger:
     def server_id(self) -> str:
         """immudb's own server UUID, sent in every response's metadata (open item S7, settled)."""
         if self._server_id is None:
+            import time
+
             from google.protobuf import empty_pb2
             from immudb import ImmudbClient
 
+            if time.monotonic() < self._down_until:
+                raise LedgerUnavailable(f"immudb at {self._url} was unreachable moments ago")
             # Health needs no login, and aisc_ledger has no right on immudb's defaultdb anyway. A short
             # deadline: an unreachable server must never hold up project creation (review M4).
             try:
-                _, call = ImmudbClient(self._url)._stub.Health.with_call(empty_pb2.Empty(), timeout=5)
+                _, call = ImmudbClient(self._url)._stub.Health.with_call(empty_pb2.Empty(),
+                                                                         timeout=min(self._timeout, 5))
             except Exception as exc:
+                self._down_until = time.monotonic() + self.DOWN_FOR
                 raise LedgerUnavailable(f"immudb at {self._url} did not answer: {type(exc).__name__}") from exc
             self._server_id = "immudb:" + dict(call.initial_metadata())["immudb-uuid"]
         return self._server_id
@@ -298,7 +310,7 @@ class ImmudbLedger:
 
         from platform_service.ledger.naming import PLATFORM_DB
 
-        client = ImmudbClient(self._url)
+        client = ImmudbClient(self._url, timeout=self._timeout)
         try:
             client.login(self._user, self._password, database=PLATFORM_DB.encode())
             listed = client.databaseListV2().databases
@@ -315,7 +327,7 @@ class ImmudbLedger:
                 from immudb import ImmudbClient
 
                 client = ImmudbClient(self._url, rs=_StateAdapter(db, self._states),
-                                      publicKeyFile=self._public_key_file)
+                                      publicKeyFile=self._public_key_file, timeout=self._timeout)
                 try:
                     client.login(self._user, self._password, database=db.encode())
                 except Exception as exc:
@@ -388,7 +400,7 @@ class ImmudbLedger:
                         continue                                     # the number was taken: next one
                 self._verified(client, f"e:{seq:020d}".encode())      # proves the write, moves the state
                 return seq
-            raise LedgerError(f"{db}: no free sequence number after 50 tries")
+            raise LedgerUnavailable(f"{db}: no free sequence number after 50 tries (heavy contention): retry")
         return self._call(db, run)
 
     def get(self, db: str, seq: int) -> Entry:
@@ -457,7 +469,7 @@ def _classify(exc: Exception, db: str, login: bool = False) -> Exception:
     if code in ("UNAVAILABLE", "DEADLINE_EXCEEDED"):
         return LedgerUnavailable(f"{db}: {details or text}")
     if "does not exist" in details or "permission" in details.lower() or code == "PERMISSION_DENIED" \
-            or (login and code in ("NOT_FOUND", "UNKNOWN")):
+            or (login and code == "NOT_FOUND"):
         return UnknownDatabase(f"{db}: {details or text}")
     return LedgerError(f"{db}: {details or text}")
 
@@ -466,9 +478,9 @@ def from_environment():
     """The production store: immudb as `aisc_ledger`, state in the platform database."""
     from platform_service.ledger.state import PostgresStateStore
 
-    url = os.environ.get("LEDGER_IMMUDB_URL")
-    if not url:
-        raise LedgerUnavailable("LEDGER_IMMUDB_URL is not set")
+    url, password = os.environ.get("LEDGER_IMMUDB_URL"), os.environ.get("LEDGER_IMMUDB_PASSWORD")
+    if not url or not password:
+        raise LedgerUnavailable("LEDGER_IMMUDB_URL and LEDGER_IMMUDB_PASSWORD must both be set: the ledger waits")
     return ImmudbLedger(url, user=os.environ.get("LEDGER_IMMUDB_USER", "aisc_ledger"),
-                        password=os.environ["LEDGER_IMMUDB_PASSWORD"], state_store=PostgresStateStore(),
+                        password=password, state_store=PostgresStateStore(),
                         public_key_file=os.environ.get("LEDGER_IMMUDB_PUBLIC_KEY") or None)

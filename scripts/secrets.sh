@@ -118,7 +118,7 @@ if [ "${1:-}" = "--add-ledger-key" ]; then
   NAME=PLATFORM_LEDGER_KEYS VALUE="$current,v$next:$key" awk 'index($0, ENVIRON["NAME"] "=") == 1 { print ENVIRON["NAME"] "=" ENVIRON["VALUE"]; next } { print }' "$OUT" > "$tmp"
   mv "$tmp" "$OUT"
   trap - EXIT
-  echo "added ledger key version v$next to $OUT; restart the platform to use it"
+  echo "added ledger key version v$next to $OUT (the platform reads it once its compose passes PLATFORM_LEDGER_KEYS, from phase 3)"
   set --
 fi
 

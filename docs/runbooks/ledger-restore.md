@@ -49,3 +49,9 @@ signing key on, that state is signed by the server; from then on the anchor only
 On throwaway containers: write to a database, keep the verified state, replace the server with an
 older copy, read. Expected: `TamperAlarm`. Then delete the state row, read again: accepted, a new
 anchor. See `docs/superpowers/ledger-2026-10-02/10-phase1-report.md`.
+
+## Turning on immudb's signing key
+
+Order matters. First start immudb with `--signingKey` (`IMMUDB_SIGNINGKEY`), then give the platform its
+public half (`LEDGER_IMMUDB_PUBLIC_KEY`). A platform holding a public key while the server doesn't
+sign raises `TamperAlarm` on every read ("malformed signature"): it fails closed, as it should.
