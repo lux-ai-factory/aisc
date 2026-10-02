@@ -1,0 +1,3 @@
+# Routes that change nothing and so carry no ledger event (C1). Tab-separated:
+# app<TAB>file<TAB>function<TAB>reason
+# Every line is reviewed; every route here must still exist (test_ledger_coverage.py).

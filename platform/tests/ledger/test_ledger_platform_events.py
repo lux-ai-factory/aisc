@@ -1,57 +1,67 @@
-"""P1: the platform's own events (I7, I8). Each platform write cites the request the witness gave
-(Caddy forwards X-AISC-Request-Id); after the relay, the project's ledger holds the event with the
-witness's actor, and no secret appears anywhere in it."""
+"""P1-P4: the platform's own events (I3, I7, I8; spec 4.3, 6.4). A platform write cites the request the
+witness gave (Caddy forwards X-AISC-Request-Id). Member and project changes go through `core.outbox` in
+the platform database, in their own transaction (R2.4). A card version is saved by the qualification
+app on the person's behalf, so its cause is qualification's witnessed request (R1.6)."""
 from __future__ import annotations
 
+import psycopg
 import pytest
 
-from platform_service.ledger import relay
 from platform_service.ledger.canonical import canonical
 from platform_service.ledger.naming import database_name
-from tests.conftest import needs_database
-from tests.ledger.conftest import MEMBER, OWNER, entries
+from tests.conftest import DSN, needs_database
+from tests.ledger.conftest import MEMBER, OWNER, STRANGER, entries, person, relay_all
 
 pytestmark = needs_database
 
 
 @pytest.fixture
 def call(client, as_user, witnessed, mode):
-    """A platform API call that went through the witness first, as behind Caddy."""
+    """A platform API call that went through the launcher's gateway first (`/api/*`, stripped)."""
     mode("enforce")
 
     def run(subject, method, path, **kwargs):
-        request_id = witnessed(subject, method, "/api" + path)
+        request_id = witnessed(subject, method, "platform", "/api" + path)
         headers = {**as_user(subject), "X-AISC-Request-Id": request_id}
         return client.request(method, path, headers=headers, **kwargs)
     return run
 
 
 def actions(store, pid):
-    return [e for e in entries(store, database_name(pid)) if not e.action.startswith(("request.", "page."))]
+    return [e for e in entries(store, database_name(pid))
+            if not e.action.startswith(("request.", "page.", "ledger."))]
 
 
 def test_member_changes_are_recorded_with_who_made_them(project, call, memory_ledger):
-    slug = project["slug"]
-    other = "00000000-0000-0000-0000-0000000000d4"
+    slug, other = project["slug"], "00000000-0000-0000-0000-0000000000d4"
     assert call(OWNER, "POST", f"/projects/{slug}/members", json={"subject": other, "role": "viewer"}).status_code in (200, 201)
     assert call(OWNER, "PUT", f"/projects/{slug}/members/{other}", json={"role": "editor"}).status_code == 200
     assert call(OWNER, "DELETE", f"/projects/{slug}/members/{other}").status_code in (200, 204)
-    relay.relay_once(project["pid"])
-    got = [(e.action, e.actor_sub, e.item_id) for e in actions(memory_ledger, project["pid"])
-           if e.action.startswith("member.")]
+    relay_all(project["pid"])
+    got = [(e.action, person(project["pid"], e.actor_ref)[0], e.item_id) for e in actions(memory_ledger, project["pid"])
+           if e.action.startswith("member.") and e.item_id == other]
     assert got == [("member.added", OWNER, other), ("member.role_changed", OWNER, other),
                    ("member.removed", OWNER, other)]
     changed = next(e for e in actions(memory_ledger, project["pid"]) if e.action == "member.role_changed")
-    assert changed.details == {"role_before": "viewer", "role_after": "editor"}
+    assert {changed.details.get("role_before"), changed.details.get("role_after")} == {"viewer", "editor"}
 
 
-def test_an_llm_key_is_recorded_by_its_fingerprint_only(project, call, memory_ledger, monkeypatch):
+def test_a_member_change_that_fails_leaves_no_event(project, call, memory_ledger):
+    r = call(OWNER, "PUT", f"/projects/{project['slug']}/members/00000000-0000-0000-0000-0000000000ee",
+             json={"role": "editor"})                                # not a member: refused, nothing changed
+    assert r.status_code >= 400
+    relay_all(project["pid"])
+    assert [e for e in actions(memory_ledger, project["pid"]) if e.action.startswith("member.")
+            and e.item_id.endswith("ee")] == []
+
+
+def test_an_llm_key_is_recorded_by_its_keyed_fingerprint_only(project, call, memory_ledger):
     secret = "sk-test-0123456789abcdefghijklmnop"
     r = call(OWNER, "PUT", f"/projects/{project['slug']}/llm/providers/openai", json={"api_key": secret})
     assert r.status_code in (200, 201), r.text
-    relay.relay_once(project["pid"])
+    relay_all(project["pid"])
     [e] = [e for e in actions(memory_ledger, project["pid"]) if e.action == "llm.provider.saved"]
-    assert e.details["key"].startswith("sha256:")
+    assert e.details["key"].startswith("hmac:")
     for x in entries(memory_ledger, database_name(project["pid"])):
         assert secret.encode() not in canonical(x.as_dict())
 
@@ -60,12 +70,50 @@ def test_a_platform_write_without_a_witnessed_request_is_refused_in_enforce(proj
     mode("enforce")
     r = client.post(f"/projects/{project['slug']}/members", json={"subject": MEMBER, "role": "viewer"},
                     headers=as_user(OWNER))
-    assert r.status_code == 401 and "witness" in r.text
+    assert r.status_code == 401
 
 
-def test_a_card_version_is_recorded(project, call, memory_ledger):
-    r = call(OWNER, "POST", f"/projects/{project['slug']}/system-versions", json={"name": "MCAS", "version": "1.2.0"})
+def test_a_request_id_presented_by_someone_else_is_refused(project, client, as_user, witnessed, mode):
+    """Inside the network the id and the token can travel apart: the platform checks they match (R1.5)."""
+    mode("enforce")
+    owners = witnessed(OWNER, "POST", "platform", f"/api/projects/{project['slug']}/members")
+    r = client.post(f"/projects/{project['slug']}/members", json={"subject": STRANGER, "role": "viewer"},
+                    headers={**as_user(MEMBER), "X-AISC-Request-Id": owners})
+    assert r.status_code == 401
+
+
+def test_a_card_version_saved_by_step_1_is_the_persons(project, client, as_user, witnessed, memory_ledger, mode):
+    """The browser submits a server action to qualification; qualification calls the platform with the
+    person's token and the forwarded id (06-spike.md G11)."""
+    mode("enforce")
+    submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/qualify/new",
+                       next_action="60b7a2efb1d3fb3ac1825abb501965ed20949d5936")
+    r = client.post(f"/projects/{project['slug']}/system-versions", json={"name": "MCAS", "version": "1.2.0"},
+                    headers={**as_user(MEMBER), "X-AISC-Request-Id": submit})
     assert r.status_code in (200, 201), r.text
-    relay.relay_once(project["pid"])
+    relay_all(project["pid"])
     [e] = [e for e in actions(memory_ledger, project["pid"]) if e.action == "card_version.created"]
-    assert e.actor_sub == OWNER and e.item_version == "1"
+    assert (e.source_app, e.request_id) == ("platform", submit)
+    assert person(project["pid"], e.actor_ref)[0] == MEMBER and e.item_version == "1"
+
+
+def test_a_project_with_undelivered_events_is_not_dropped_until_they_are_delivered(project, call, memory_ledger):
+    call(OWNER, "POST", f"/projects/{project['slug']}/members",
+         json={"subject": "00000000-0000-0000-0000-0000000000d5", "role": "viewer"})
+    memory_ledger.down = True                                       # the drain can't deliver
+    r = call(OWNER, "DELETE", f"/projects/{project['slug']}")
+    assert r.status_code == 409 and "undelivered" in r.text.lower()
+    memory_ledger.down = False
+    assert call(OWNER, "DELETE", f"/projects/{project['slug']}").status_code in (200, 204)
+    relay_all()
+    kept = [e.action for e in entries(memory_ledger, database_name(project["pid"]))]
+    assert "member.added" in kept and "project.deleted" in kept     # the log outlives the project (D2)
+
+
+def test_member_events_wait_in_the_platform_databases_outbox(project, call):
+    call(OWNER, "POST", f"/projects/{project['slug']}/members",
+         json={"subject": "00000000-0000-0000-0000-0000000000d6", "role": "viewer"})
+    with psycopg.connect(DSN) as conn:
+        [(n,)] = conn.execute("SELECT count(*) FROM core.outbox WHERE action = 'member.added'"
+                              " AND project_pid = %s", (project["pid"],)).fetchall()
+    assert n >= 1

@@ -52,7 +52,7 @@ page left, dialogs, unsaved edits).
 | card.ai_refinement_requested | user | S | correlation id for the AI run |
 | agent.run_queued / started / finished / failed | AI | S | on_behalf_of, model, rounds, calls, error |
 | agent.model_resolved | AI | S | provider/model, project vs fallback |
-| agent.llm_call | AI | S | purpose, property, round, model, prompt sha256, response sha256, latency |
+| ai.llm_call | AI | S | purpose, property, round, model, prompt sha256, response sha256, latency |
 | agent.property_drafted / reviewed / revised, agent.long_answers_named, agent.consistency_checked | AI | S | property, findings, notes |
 | card.augmented_by_ai (AI draft published) | AI | S | extracted before/after sha256, flagged count, model |
 | card.extracted_replaced_by_user (API) | user | S | before/after sha256 |

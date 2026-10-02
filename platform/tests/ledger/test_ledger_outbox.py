@@ -1,7 +1,10 @@
-"""O1: the outbox of a project database (T7). Apps may only add rows; the row says which app added it
-whatever the app sends; only the platform reads, marks and keeps delivery state."""
+"""O1-O3: the outbox of a project database (T7, I3). Apps hold no right on the outbox table; they call
+`ledger.emit(event jsonb)`, which stamps the role that called it and the database's own time, so an app
+can't pass itself off as another or back-date an event (R2.1). The call returns nothing, so no ORM
+RETURNING is involved (R3.3). Only the platform reads, marks and keeps delivery state."""
 from __future__ import annotations
 
+import json
 import uuid
 
 import psycopg
@@ -10,52 +13,121 @@ from psycopg.conninfo import make_conninfo
 
 from platform_service import projectdb
 from tests.conftest import needs_database
-from tests.ledger.conftest import SUPERUSER_DSN
+from tests.ledger.conftest import SUPERUSER_DSN, need
 
-pytestmark = [needs_database, pytest.mark.skipif(not SUPERUSER_DSN, reason="PLATFORM_TEST_SUPERUSER_URL is not set")]
+pytestmark = needs_database
 
-MODULE_ROLES = ["qualification_rw", "controls_rw", "control_objectives_rw", "report_composer_rw", "platform_rw"]
+EMITTERS = ["qualification_rw", "controls_rw", "control_objectives_rw", "report_composer_rw", "platform_rw"]
+APPS = ["qualification_rw", "controls_rw", "control_objectives_rw", "report_composer_rw"]
+OTHERS = ["engine_rw", "report_ro", "inspector_ro"]
+
+
+@pytest.fixture(autouse=True)
+def _superuser():
+    need(SUPERUSER_DSN, "PLATFORM_TEST_SUPERUSER_URL is not set")
+
+
+def connect(pid):
+    return psycopg.connect(make_conninfo(SUPERUSER_DSN, dbname=projectdb.database_name(pid)))
 
 
 def as_role(pid, role, statement, params=()):
-    with psycopg.connect(make_conninfo(SUPERUSER_DSN, dbname=projectdb.database_name(pid))) as conn:
-        conn.execute(f'SET ROLE "{role}"')
+    """Run as a module role. The emitter reads session_user, so the role logs in as itself."""
+    with connect(pid) as conn:
+        conn.execute(f'SET SESSION AUTHORIZATION "{role}"')
         cur = conn.execute(statement, params)
         return cur.fetchall() if cur.description else None
 
 
 def as_superuser(pid, statement, params=()):
-    with psycopg.connect(make_conninfo(SUPERUSER_DSN, dbname=projectdb.database_name(pid))) as conn:
+    with connect(pid) as conn:
         cur = conn.execute(statement, params)
         return cur.fetchall() if cur.description else None
 
 
-INSERT = ("INSERT INTO ledger.outbox (event_id, db_role, request_id, action, item_type, item_id)"
-          " VALUES (%s, %s, %s, 'controls.submission.closed', 'submission', 's1')")
+def event(**over):
+    e = {"event_id": str(uuid.uuid4()), "request_id": str(uuid.uuid4()), "action": "controls.submission.closed",
+         "item_type": "submission", "item_id": "s1", "details": {}}
+    e.update(over)
+    return e
 
 
-@pytest.mark.parametrize("role", MODULE_ROLES)
-def test_every_module_role_can_add_a_row(project, role):
-    as_role(project["pid"], role, INSERT, (str(uuid.uuid4()), role, str(uuid.uuid4())))
+EMIT = "SELECT ledger.emit(%s::jsonb)"
 
 
-def test_the_row_names_the_role_that_added_it_whatever_was_sent(project):
-    event_id = str(uuid.uuid4())
-    as_role(project["pid"], "controls_rw", INSERT, (event_id, "platform_rw", str(uuid.uuid4())))
-    assert as_superuser(project["pid"], "SELECT db_role FROM ledger.outbox WHERE event_id = %s",
-                        (event_id,)) == [("controls_rw",)]
+def emit(pid, role, e):
+    as_role(pid, role, EMIT, (json.dumps(e),))
+    return e["event_id"]
 
 
-@pytest.mark.parametrize("statement", ["SELECT * FROM ledger.outbox",
-                                       "UPDATE ledger.outbox SET item_id = 'x'",
-                                       "DELETE FROM ledger.outbox"])
-@pytest.mark.parametrize("role", ["qualification_rw", "controls_rw", "control_objectives_rw", "report_composer_rw"])
-def test_an_app_cannot_read_change_or_remove_rows(project, role, statement):
+def row(pid, event_id, columns="db_role, occurred_at"):
+    return as_superuser(pid, f"SELECT {columns} FROM ledger.outbox WHERE event_id = %s", (event_id,))
+
+
+@pytest.mark.parametrize("role", EMITTERS)
+def test_every_emitting_role_can_emit(project, role):
+    assert row(project["pid"], emit(project["pid"], role, event()))
+
+
+def test_the_row_names_the_role_that_emitted_it_whatever_was_sent(project):
+    event_id = emit(project["pid"], "controls_rw", event(db_role="platform_rw"))
+    assert row(project["pid"], event_id, "db_role") == [("controls_rw",)]
+
+
+def test_the_time_is_the_databases_whatever_was_sent(project):
+    before = as_superuser(project["pid"], "SELECT clock_timestamp()")[0][0]
+    event_id = emit(project["pid"], "controls_rw", event(occurred_at="2001-01-01T00:00:00Z"))
+    [(occurred_at,)] = row(project["pid"], event_id, "occurred_at")
+    assert occurred_at >= before
+
+
+def test_emit_returns_nothing(project):
+    """A plain SELECT of a void function: Prisma $executeRaw and SQLAlchemy text() can run it."""
+    assert as_role(project["pid"], "controls_rw", EMIT, (json.dumps(event()),)) in ([("",)], [(None,)])
+
+
+def test_a_rolled_back_transaction_leaves_no_event(project):
+    e = event()
+    with connect(project["pid"]) as conn:
+        conn.execute('SET SESSION AUTHORIZATION "controls_rw"')
+        conn.execute(EMIT, (json.dumps(e),))
+        conn.rollback()
+    assert row(project["pid"], e["event_id"]) == []
+
+
+@pytest.mark.parametrize("action", ["request.witnessed", "ledger.rejected", "ledger.reanchored", "page.opened"])
+def test_an_app_cannot_emit_the_platforms_own_actions(project, action):
+    with pytest.raises(psycopg.errors.RaiseException):
+        emit(project["pid"], "controls_rw", event(action=action))
+
+
+@pytest.mark.parametrize("statement", [
+    "SELECT * FROM ledger.outbox",
+    "INSERT INTO ledger.outbox (event_id, action) VALUES (gen_random_uuid(), 'x')",
+    "UPDATE ledger.outbox SET item_id = 'x'",
+    "DELETE FROM ledger.outbox",
+    "TRUNCATE ledger.outbox",
+])
+@pytest.mark.parametrize("role", APPS)
+def test_an_app_has_no_right_on_the_table_itself(project, role, statement):
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         as_role(project["pid"], role, statement)
 
 
-def test_delivery_state_is_the_platforms_alone(project):
-    for role in ("controls_rw", "qualification_rw"):
+@pytest.mark.parametrize("role", OTHERS)
+def test_roles_that_are_not_emitters_cannot_emit(project, role):
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        emit(project["pid"], role, event())
+
+
+@pytest.mark.parametrize("table", ["ledger.delivered", "ledger.action_binding"])
+@pytest.mark.parametrize("role", APPS + OTHERS)
+def test_delivery_state_is_the_platforms_alone(project, role, table):
+    for statement in (f"SELECT * FROM {table}", f"INSERT INTO {table} DEFAULT VALUES"):
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            as_role(project["pid"], role, "SELECT * FROM ledger.delivered")
+            as_role(project["pid"], role, statement)
+
+
+def test_a_malformed_event_is_refused_in_the_apps_transaction(project):
+    with pytest.raises(psycopg.errors.RaiseException):
+        emit(project["pid"], "controls_rw", {"action": "controls.submission.closed"})   # no event_id

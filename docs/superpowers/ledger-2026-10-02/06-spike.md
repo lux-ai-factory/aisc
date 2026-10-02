@@ -229,3 +229,15 @@ backup tooling.
 ```bash
 docker rm -f $(docker ps -aq -f name=aisc-t-spike-); docker network rm aisc-t-spike
 ```
+
+## Addendum: settled while writing the tests
+
+- **S1** (`{args[1:]}` in a snippet matcher), on caddy:2.10.2: it expands to several paths, and
+  `{args[0:]}` passes through a nested import. With **no** extra arguments, the matcher becomes
+  `"path": null`. `caddy adapt` accepts it; `caddy run` refuses to load ("module value cannot be
+  null"). So read paths need their own snippet (`protect-reads`).
+- A refused page load can't be told apart in Caddy: `handle_response` matchers see the auth
+  server's response headers, not the request's. The witness answers a refused `Sec-Fetch-Dest:
+  document` request with a 302 itself, and forward_auth passes it through.
+- `spike/Caddyfile.reference` implements spec v2 section 3.1. The real-Caddy suite passes on it
+  (30 of 30, `LEDGER_TESTS_REQUIRED=1`), and fails on today's Caddyfile.

@@ -1,3 +1,0 @@
-# State-changing-looking routes that change nothing and so carry no ledger event (C1).
-# One per line: <app> <METHOD|ACTION> <route as declared in the code>  # reason
-# Every line is reviewed; every route here must still exist (test_ledger_coverage.py).

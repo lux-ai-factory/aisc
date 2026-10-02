@@ -52,3 +52,42 @@ def test_the_hash_is_the_sha256_of_the_canonical_bytes():
     value = {"b": [1, 2], "a": "x"}
     assert sha256_hex(value) == hashlib.sha256(canonical(value)).hexdigest()
     assert sha256_hex({"a": "x", "b": [1, 2]}) == sha256_hex(value)
+
+
+# version 2 additions (R2.11, R4.1) ------------------------------------------------------------------
+
+import json as _json
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+VECTORS = _json.loads((Path(__file__).parent / "fixtures" / "canonical_vectors.json").read_text())["vectors"]
+
+
+@pytest.mark.parametrize("vector", VECTORS, ids=[v["name"] for v in VECTORS])
+def test_the_shared_vectors(vector):
+    """The same file is read by the TypeScript twin in phase 5."""
+    assert canonical(_json.loads(vector["input_json"])) == vector["canonical"].encode("utf-8")
+
+
+def test_a_boolean_is_never_a_number():
+    assert canonical([True, 1, False, 0]) == b"[true,1,false,0]"
+
+
+@pytest.mark.parametrize("big", [2 ** 53 + 1, -(2 ** 53) - 1, 10 ** 30])
+def test_integers_beyond_two_to_the_53_are_refused(big):
+    """The TypeScript twin can't hold them exactly."""
+    with pytest.raises(ValueError):
+        canonical({"n": big})
+
+
+@pytest.mark.parametrize("bad", ["\ud800", "a\udfffb"])
+def test_lone_surrogates_are_refused(bad):
+    with pytest.raises(ValueError):
+        canonical({"s": bad})
+
+
+@pytest.mark.parametrize("bad", [Decimal("1.5"), datetime(2026, 10, 2, tzinfo=timezone.utc), b"bytes", {1, 2}])
+def test_types_json_has_no_form_for_are_refused(bad):
+    with pytest.raises((TypeError, ValueError)):
+        canonical({"x": bad})

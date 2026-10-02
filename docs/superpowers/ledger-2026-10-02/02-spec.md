@@ -1,123 +1,421 @@
-# Ledger: specification (2026-10-02)
+# Ledger: specification, version 2 (2026-10-02)
 
 Companion of `01-plan.md` (the design) and `../ledger-events-2026-10-02/01-event-registry.md` (every
-event). This file is what the tests (`04-test-plan.md`) check. Decisions D1-D8 and W1-W5 are at their
-defaults (`01-plan.md` section 11) until the user changes them: **ASSUMED**.
+event). Version 2 rewrites version 1 (commit 0819c5f) from the independent review
+(`05-independent-review.md`, "R" + finding number) and the spike (`06-spike.md`, "G"/"M" + number).
+Section 12 maps every blocker and major to where it is answered. The tests (`04-test-plan.md`) check
+this file.
+
+Decisions D1-D11, W1-W5 and L1-L2 (section 11) are at their defaults until the user changes them:
+**ASSUMED**. Every number that depends on one is a named setting in `ledger/settings.py`, never a
+literal in a test (R6.8).
+
+## 0. What the ledger claims, and what it doesn't
+
+**Claim.** For every event a person caused, the ledger names a person who:
+- made a request through the gateway that the platform witnessed;
+- presented a Keycloak-signed token, verified by the platform itself;
+- matches the event: the same app, a route the registry allows for that action, the same Next.js
+  action id when there is one, the same project, the same item when the route names it, and a time
+  inside the window.
+
+For an AI or worker event, it names the program and the person whose request started that run. No
+app can name a person who made no such request.
+
+**Not claimed (residual, section 10).** Inside one app, a compromised or buggy app can attribute an
+event to the wrong one of several matching requests (two people saving the same form at the same
+moment). It can also attribute an AI or worker result to the person who started the run when it
+wasn't the result of that run. Reconciliation (I11, section 7.4) raises an alarm on the patterns this
+leaves (two different event actions under one action id, a broken item chain, a witnessed write with
+no event), but can't prevent them. The immudb superuser can delete a whole log. That is detected
+(I4, section 7.3), not prevented.
 
 ## 1. Invariants
 
 | # | Invariant |
 |---|---|
-| I1 | No state-changing request reaches an app without a witness entry. In `enforce` mode a request whose token is missing, malformed, wrongly signed, from another issuer or expired never reaches the app (401). |
-| I2 | No app can choose who acted. The actor of every event is copied from the witness entry its `request_id` names, or from the service token for system events. Any actor-like field an app sends is ignored, and its presence is itself recorded (`ledger.rejected`, reason `actor_supplied`). |
-| I3 | Every event is recorded exactly once. A replay of the same `event_id` is a no-op; a relay crash at any point loses nothing and duplicates nothing. |
-| I4 | Nothing written to a ledger can be changed or removed without the verifier noticing: every read the platform shows is a verified immudb read, and the platform's last verified state per project only moves forward. |
-| I5 | A change made directly in a project database (outside the apps) is detected: the verifier recomputes the canonical content of the evidence rows and compares it with the latest frozen content. |
-| I6 | When the platform, immudb or the relay is down, no event is lost; writes are refused in `enforce` (W2) and let through but marked in `record`. |
-| I7 | Every state-changing route of every app is covered: it maps to at least one registry action, and every registry action names the routes allowed to cause it. A new route without one fails the build. |
-| I8 | No secret ever reaches the ledger: tokens, passwords, API keys appear only as fingerprints (`sha256:` of the value, first 12 hex). |
-| I9 | One project's events never land in another project's ledger, and a member of one project can't read another's. |
+| I1 | Every state-changing request that reaches an app through the gateway has exactly one witness record, made before the app saw it. In `enforce`, a request with a missing, malformed, wrongly signed, foreign-issuer, expired or mismatched token never reaches the app. |
+| I2 | No app chooses who acted. A person's identity comes only from a witness record that passes section 4's binding rules. An AI or worker run's person comes from its start event. A system event's identity comes from the caller's service token. Any actor-like field an app sends is ignored and recorded (`ledger.rejected`, `actor_supplied`). |
+| I3 | Every event is recorded exactly once. The idempotency key is `(event_id, content digest)`. A replay is a no-op. The same `event_id` with a different digest is an alarm (`duplicate_event_id`), never silently dropped (R2.3). A crash at any point loses and duplicates nothing. Undelivered events survive a project delete (R2.4). |
+| I4 | Every entry the platform shows or exports is a verified immudb read. The platform's verified state per database is kept outside immudb and only moves forward. A rollback, a rewrite or a missing database is an alarm, never an "unavailable" (M13-M15). |
+| I5 | A change made in a project database outside the apps is detected against a baseline. Each evidence table gets a genesis snapshot when its app's phase starts, and every migration that touches evidence emits a `system` event with digests before and after (R2.13). |
+| I6 | No event is lost while the platform, immudb or the relay is down. When immudb is down, nothing an app does is blocked: witness records and outbox rows wait in Postgres. When the platform is down, witnessed requests fail and other requests work (section 5.3). |
+| I7 | Every state-changing route, and every read route listed as "reads that matter", is covered. The coverage test finds it in the code, a registry action names it, and from each app's phase a static check finds that handler emitting that action (R4.14). |
+| I8 | No secret reaches the ledger. Tokens, passwords, keys and query strings appear only as keyed fingerprints (HMAC-SHA256 under a ledger key, first 32 hex), in `details` and in `content` alike (R1.16, R4.8). |
+| I9 | One project's records never land in another project's log. A member of one project can't read another's. A caller who isn't a member can't add to a project's log (R1.2). |
+| I10 | **Minimisation.** immudb holds a pseudonymous actor reference, never a subject or a name. The mapping to the person lives in Postgres, can be checked against the reference, and can be erased. Page views stay out of immudb, with a retention limit. Content digests are keyed, so low-entropy answers can't be reversed (R2.5). |
+| I11 | **Item chain.** For each item, an accepted event's `before_sha256` equals the previous accepted event's `after_sha256`. A break is recorded as an alarm, not a rejection, since concurrent edits are legitimate (R2.6). |
 
-## 2. Threats and the invariant that stops each
+## 2. Threats
 
-| # | Threat | Stopped by |
+| # | Threat | Stopped or detected by |
 |---|---|---|
-| T1 | An app writes a person's name into an event | I2 (actor from witness only) |
-| T2 | An app cites another user's request id | witness match: the request's app (Caddy upstream) must equal the event's app (outbox `db_role` or service token), the route must be one the registry allows for the action, and the event must name an item that appears in the request path or body digest |
-| T3 | An app cites an old request id | the window W3 (5 min) for user events; AI and worker events must cite a request whose action is the one that starts them (`ai.mapping.requested`, `engine.evaluation.run_requested`, ...) |
-| T4 | A request id is used for more events than its action allows | the registry's `per_request` limit per action |
-| T5 | A forged or expired token | witness verification (JWKS, issuer, audience, expiry, not-before) |
-| T6 | A token for one project used on another project's path | the witness records the project from the path; the event's project is the outbox's database; they must match (I9) |
-| T7 | An app edits or deletes its outbox rows | INSERT-only grant; `db_role` set by a trigger; delivery state in a platform-only table |
-| T8 | Replay of an outbox row or an internal event | `event_id` idempotency key (I3) |
-| T9 | Relay crash between the immudb write and the delivery mark | the write is idempotent on `event_id`; the mark is retried (I3) |
-| T10 | Someone with DB rights rewrites evidence rows | I5 |
-| T11 | Someone with immudb rights rewrites the ledger | immudb's own proofs + the platform's persisted verified state (I4) |
-| T12 | The read index is altered to hide events | every shown entry is read back verified from immudb and compared with its index row (I4) |
-| T13 | A secret leaks through `details` | the registry's allowed keys per action; a value matching a known secret pattern is replaced by its fingerprint (I8) |
-| T14 | Clock skew between apps and the platform | `occurred_at` from the project database's clock, `recorded_at` from the platform; the window check uses the witness time and the outbox `occurred_at` of the same database server |
-| T15 | Two writes of the same item at once | each is its own request and its own event; the content before/after hashes show the order |
-| T16 | Events silently not emitted by an app | I7 coverage tests + the daily reconciliation (witnessed writes with no event) |
+| T1 | An app writes a person's name into an event | I2 |
+| T2 | An app cites another person's request | section 4.2: app, route, action id, project, item and time must all match, and the request's subject is the actor |
+| T3 | An app cites an old request | the window: outbox `occurred_at` (set by the database) minus witness `at` must be within `WINDOW` (section 4.2). An AI or worker event must cite an accepted start event of the same run, within `RUN_WINDOW` (section 4.4) |
+| T4 | One request used for more events than its action allows | `per_request`, counted under the project's relay lock (section 7.2) |
+| T5 | A forged, expired or foreign token | witness verification (section 3.3): signature, issuer, `azp`, expiry with 30 s leeway, not-before |
+| T6 | A token for one project used on another's path | the witness resolves the project per app from the original URI or `X-AISC-Project`. A non-member's request goes to the platform log. The event's project must equal the witness's (I9) |
+| T7 | An app edits, deletes or back-dates its outbox rows | no table grant at all. Apps call `ledger.emit(...)`, a SECURITY DEFINER function that stamps `db_role := session_user` and `occurred_at := clock_timestamp()` (R2.1, R3.3) |
+| T8 | Replay of an outbox row or an internal event | I3 |
+| T9 | A relay crash between the immudb write and the delivery mark | I3: the immudb `id:` key is checked before every append |
+| T10 | Someone with database rights rewrites evidence rows | I5 |
+| T11 | Someone with immudb rights rewrites or rolls back a log | immudb proofs, plus the verified state in Postgres, plus heads published to the object-locked bucket (I4) |
+| T12 | The read index is altered to hide or change events | every entry shown is read back verified from immudb and compared with its index row. A difference is an alarm |
+| T13 | A secret leaks through `details` or `content` | I8: allowed keys per action; known secret patterns fingerprinted; query strings never stored |
+| T14 | Clock skew | both times in the window check come from the same Postgres cluster's clock (witness: platform database; `occurred_at`: project database). The internal route uses the platform's receive time |
+| T15 | Two writes of one item at once | each is its own request and event. I11 shows the order and flags a fork |
+| T16 | An app silently doesn't emit | I7 static check, plus the "witnessed write with no event" reconciliation from phase 3 |
+| T17 | Untrusted code holds ledger credentials (plugins, R1.9) | no ledger credential in any process that runs plugin code. Worker results reach the ledger through the engine backend, which holds the engine's token. A test asserts the plugin's child env has no `PLATFORM_LEDGER_*`, `AISC_*_TOKEN` or gateway secret |
+| T18 | Anyone calls the witness directly (G2) | the gateway secret `X-AISC-Gateway`, compared in constant time; the launcher blocks `/api/authz/*`; without the secret: 401, no record |
+| T19 | A forged `X-AISC-Request-Id` or identity header (G3) | `protect` strips them first, inside `route` (G7). The platform also checks a presented id against the presenter (section 4.3) |
+| T20 | Two tokens on one request (G5) | if `Authorization` and the gateway token are both present, their subjects must be equal, or the witness refuses (`enforce`) or records `request.unverified`, reason `token_mismatch` (`record`) |
+| T21 | A restore from backup (R2.9) | immudb: `illegal state` is an alarm; an admin's `ledger.reanchored` entry in the platform log, naming both heads, is the only way forward. Project Postgres: rows re-sent are no-ops by I3; `delivered` is rebuilt from immudb's `id:` keys |
+| T22 | Key rotation (R2.9) | JWKS re-fetched on an unknown `kid` (at most once per 30 s); the gateway secret, the ledger tokens and the ledger key each accept old and new during an overlap (`ROTATION_OVERLAP`, 24 h); the immudb user's password is rotated by an operator script |
+| T23 | A flood of witness calls with random project ids (R1.2) | a project id is used only if `db.get_project` finds it; an immudb database is never created on the request path (section 7.1) |
+| T24 | Two platform workers or two relays (R2.7) | one immudb client per database with its own lock; a per-project advisory lock around each relay batch; verified state updated by compare-and-set |
 
-## 3. Modes
+## 3. The gateway and the witness
 
-`LEDGER_MODE` on the platform: `off` (nothing happens; the default until phase 4 is deployed), `record`
-(the witness verifies and records but never refuses; a bad token gives `request.unverified`), `enforce`
-(a bad token is 401; a platform outage refuses writes through Caddy).
+### 3.1 The `protect` snippets (G7, G8, S1)
 
-**Defence in depth**: in `enforce`, every app also refuses (401) a state-changing request that has no
-`X-AISC-Request-Id`, so a request that reaches an app on the internal network without passing Caddy
-changes nothing. The platform also checks that the id is one it issued (its witness index); the other
-apps can't, and the relay rejects their events citing an unknown id (`unknown_request`).
+The reference implementation, run by the real-Caddy suite, is `spike/Caddyfile.reference`:
+`scripts/tests/test_ledger_gateway.py` passes on it with `LEDGER_TESTS_REQUIRED=1`. Its parts:
 
-## 4. Interfaces
+| Snippet | Content |
+|---|---|
+| `(strip-and-sign-in)` | `request_header -X-AISC-Request-Id`, `-X-AISC-App`, `-X-AISC-Gateway`, `-X-AISC-Original-Uri`, `-X-Auth-Request-*`, then today's oauth2-proxy `forward_auth` |
+| `(protect)` | `route { import strip-and-sign-in; import witness-{$LEDGER_GATEWAY} {args[0]} }` |
+| `(protect-reads)` | the same, plus `import witness-reads-{$LEDGER_GATEWAY} {args[0:]}` |
+| `(witness-on)` | matcher `@witnessed_{args[0]} { not method GET HEAD OPTIONS }`; `forward_auth @witnessed_{args[0]} platform:8000` with `uri /authz/witness`, `header_up X-AISC-App {args[0]}`, `header_up X-AISC-Original-Uri {http.request.orig_uri}`, `header_up X-AISC-Gateway {$AISC_WITNESS_GATEWAY_SECRET}`, `copy_headers X-AISC-Request-Id` |
+| `(witness-reads-on)` | the same with `@witnessed_reads_{args[0]} { method GET; path {args[1:]} }` |
+| `(witness-off)`, `(witness-reads-off)` | empty |
 
-### 4.1 Python package `platform/platform_service/ledger/`
+- Every handle imports `protect <app>`, or `protect-reads <app> <path>...` when it has reads that
+  matter (downloads, exports, "report viewed", an older card version viewed), with `<app>` from
+  `KNOWN_APPS`.
+- `route` is required. Without it Caddy runs the witness before sign-in and the strip after the
+  witness (G7).
+- **S1, settled.** `{args[1:]}` expands to several paths, and `{args[0:]}` passes through a nested
+  import. An empty path list stops Caddy at load ("module value cannot be null"), and `caddy adapt`
+  doesn't catch it. That's why `protect-reads` is a snippet of its own, never `protect` with zero
+  paths.
+- `LEDGER_GATEWAY` (`off` or `on`) picks the snippets at Caddy start, so the witness costs nothing
+  until `record` is switched on (R6.4). The strip is deployed first, on its own (phase 0b), because
+  G3 is a defect today.
+- The launcher answers 404 to `/api/authz/*`, before its `handle_path /api/*`, as it does to
+  `/api/internal/*`.
+- **A refused page load** (`Sec-Fetch-Dest: document`): the witness itself answers 302 to
+  `/oauth2/start?rd=<original uri>`, and forward_auth passes it through. Otherwise it answers 401
+  (R1.12). Caddy's `handle_response` matchers see only the auth server's response headers, so the
+  decision can't be made in Caddy.
+- Flower and pgAdmin: `flower.request` and `pgadmin.request` are witness-born actions. The witness
+  record is the event (R1.14).
+- The catalogue is hosted elsewhere and never passes this gateway. It is out of scope, except the
+  local `plugin.installed` and `control.installed` (R1.10).
 
-- `naming.database_name(pid) -> str`: `"ledger" + uuid hex` (32 hex), refusing anything not a pid.
-  The platform's own events (no project) go to `"ledgerplatform"`.
-- `canonical.canonical(value) -> bytes`: RFC 8785 JSON canonicalisation (UTF-8, keys sorted by UTF-16
-  code units, no insignificant whitespace, ECMAScript number form). `canonical.sha256_hex(value) -> str`.
-- `secrets.fingerprint(value) -> str`: `"sha256:" + first 12 hex`.
-- `registry.REGISTRY: dict[str, Action]` with `Action(name, step, apps, item_type, routes, paths,
-  actor_kinds, details_keys, content_required, per_request, starts)`:
-  - `routes`: where the code causes it, for the coverage test (I7): `(app, METHOD, path template as
-    declared in that app's code)`, or `(app, "ACTION", "path/to/file.ts#exportedFunction")` for a
-    Next.js server action;
-  - `paths`: `(METHOD, regex)` of the public gateway path of the request that may cause it, for the
-    relay's check (T2); an empty `paths` means the action has no user request (system, AI, worker);
-  - `starts`: for an AI or worker action, the actions whose request it may cite (T3);
-  - `per_request`: how many events of this action one request may produce (T4; `None` = no limit).
-  `registry.check(event) -> list[str]` (problems; empty = valid). Problem codes: `unknown_action`,
-  `missing:<field>`, `details_key:<key>`, `secret_in:<key>`, `actor_supplied`, `content_required`.
-- `registry.KNOWN_APPS`: the app names of section 4.5.
-- `platform_service.ledger.current() -> Ledger` and `platform_service.ledger.use(ledger)` (tests).
-- `store.Ledger` protocol: `ensure(db)`, `append(db, entry) -> int seq` (idempotent on `event_id`:
-  a second append returns the first seq), `get(db, seq) -> Entry` (verified), `head(db) -> Head(seq,
-  state_hash)`, `scan(db, after_seq, limit) -> list[Entry]`. `store.ImmudbLedger(url, user, password,
-  state_path)` and `store.MemoryLedger()` (tests). A verification failure raises `TamperAlarm`.
-- `witness.witness(*, mode, token, method, uri, host, fetch_dest, now) -> Witnessed | None`: `None` when
-  the request needs no witness (a GET that is not a document load). Raises `Unauthorised` in `enforce`.
-  `Witnessed(request_id, project_pid, app, subject, name, method, path, verified, at)`.
-- `relay.relay_once(pid, now=None) -> RelayStats(delivered, rejected, skipped)`; a rejected row
-  becomes a `ledger.rejected` entry whose `details.reason` is one of `missing_request`,
-  `unknown_request`, `app_mismatch`, `project_mismatch`, `stale_request`, `path_not_allowed`,
-  `per_request`, `content_hash`, `unknown_action`, `actor_supplied`, `starts`.
-- `verify.verify(pid) -> Report(entries_ok, entries_failed, evidence_ok, evidence_failed,
-  witness_mismatches, outside_changes)`.
+### 3.2 What the witness receives and trusts
 
-### 4.2 Entry (immudb table `event`)
+| Header | Set by | Trusted for |
+|---|---|---|
+| `X-AISC-Gateway` | Caddy (`header_up`), after the strip | that the call came from Caddy (T18) |
+| `X-AISC-App` | Caddy, per handle | the app (G1) |
+| `X-AISC-Original-Uri` | Caddy (`{http.request.orig_uri}`) | the path before stripping: the project and the route. The query is cut off and fingerprinted (G10) |
+| `X-Forwarded-Method` | Caddy (forward_auth) | the method |
+| `X-Forwarded-Host` | Caddy | the site (recorded, not used to decide) |
+| `X-AISC-Project` | the client (the engine web app) | engine routes only: the project, checked for membership |
+| `Next-Action` | the client (Next.js) | the server action id (G6), recorded for binding |
+| `X-Auth-Request-Access-Token` | oauth2-proxy via `copy_headers` | the gateway token: the person |
+| `Authorization: Bearer` | the client | compared with the gateway token (T20) |
+
+The witness ignores its own query string (G10) and every other header.
+
+### 3.3 Token verification (one function, shared)
+
+`aisc_identity.gateway_identity(headers) -> Identity | Refusal` lives in `shared/identity` (Python) with
+a TypeScript twin in `shared/identity-ts`, and is used by the witness and by every app that isn't
+frozen (R1.4):
+- The gateway token is authoritative. A Bearer token, when present, must be validly signed and carry
+  the same `sub`. Otherwise the result is a refusal, `token_mismatch`.
+- Signature against Keycloak's JWKS, re-fetched on an unknown `kid`. `iss` is the realm. `exp` and
+  `nbf` with `LEEWAY` = 30 s. `azp == aisc-gateway` for the gateway token (R1.15). The Bearer token
+  may come from another client (the engine web app's keycloak-js), so its `azp` isn't checked.
+- oauth2-proxy refreshes at 4 minutes, under the 5-minute token lifespan (`--cookie-refresh=4m`,
+  R1.12).
+- The engine is frozen and keeps its own precedence. The witness refuses the mismatch before the
+  engine sees it.
+
+### 3.4 What the witness records
+
+The witness writes to `ledger.witness` **in the platform's Postgres**, in the request (about 1 ms),
+not to immudb (M16, I6). The relay copies each record into its project's immudb log as
+`request.witnessed`.
+
+`ledger.witness(request_id uuid pk default gen_random_uuid(), at timestamptz default clock_timestamp(),
+mode, app, method, route_path, query_hmac, host, project_pid null, member bool, actor_ref, verified
+bool, reason null, next_action null, token_jti, token_exp, delivered_seq null)`.
+
+- `project_pid` is set only when the app's rule finds a pid that `db.get_project` knows **and** the
+  caller is a member. Otherwise it's null and the record goes to the platform log (T6, T23, I9).
+  D11 decides whether non-member requests are kept at all.
+- It answers 200 with `X-AISC-Request-Id` for every witnessed request in `record` and `enforce`, so
+  Caddy always overwrites the header (G3). `off` isn't reachable (the snippet is empty).
+
+Project rule per app (`registry.APP_PROJECT_RULES`), against the unstripped path:
+
+| App | Project from |
+|---|---|
+| qualification, controls | `/qualification/p/{slug}/...`, `/controls/p/{slug}/...` |
+| control_objectives | `/control-objectives/p/{pid}/...` |
+| report_composer | `/report-composer/p/{slug}/...` |
+| platform | `/api/projects/{slug}/...` (launcher) and `/platform/api/projects` (none) |
+| launcher | `/p/{slug}` |
+| engine | `X-AISC-Project` |
+| dashboard | the dashboard bridge table (dashboard id to project), else the platform log |
+| flower, pgadmin, schema, engine_webapp | none (platform log) |
+
+### 3.5 Page views
+
+Page views don't go through the witness (G9). They are **best effort**, `reported_by=browser`:
+- the shared beacon sends `page.opened`, `page.left`, `dialog.cancelled` and `unsaved_changes`;
+- it posts `text/plain` to `/ledger/beacon` on its own origin, so every site gets a beacon route
+  (R3.6); the beacon POST is itself witnessed, so who sent it is certain;
+- the records are kept in Postgres `ledger.page_view` with retention `PAGE_VIEW_RETENTION` (D10:
+  90 days), never in immudb (I10).
+
+## 4. Binding an event to its request
+
+### 4.1 Registry fields
+
+`Action(name, step, emitters, item_type, routes, caused_by, actor_kinds, details_keys,
+content_required, per_request, runs, run_window, registry_version)`:
+- `emitters`: the apps that may emit it (by `db_role` or token).
+- `caused_by`: the witnessed requests that may cause it, as `(app, METHOD, path_regex)` or
+  `(app, "ACTION", page_regex)` for a Next.js server action. An `item` named group in the regex binds
+  the event's `item_id` (R1.7). `caused_by` names the **originating** app, which may differ from the
+  emitter: `card_version.created` is emitted by `platform`, caused by `qualification`'s submit (R1.6).
+- `routes`: where the code handles it, for coverage. `(app, file, function)`: a file path relative to
+  the repo and the handler's function name, never a path template, which collides across routers
+  (R4.12).
+- `runs`: for a start action, the AI or worker actions its run may produce. `run_window` defaults to
+  24 h.
+- A witness-born action (`request.witnessed`, `flower.request`, `pgadmin.request`) has no
+  `caused_by` and no `routes` (R4.3).
+
+### 4.2 The relay's checks for a person's event
+
+An outbox or internal event citing `request_id` is accepted only if all of these hold. Otherwise it
+becomes `ledger.rejected` with the first failing reason:
+
+1. `unknown_request`: the witness record exists.
+2. `project_mismatch`: its `project_pid` equals the event's project.
+3. `emitter`: the event's emitter is in `action.emitters`.
+4. `cause`: `(witness.app, witness.method, witness.route_path)` matches an entry of `caused_by`.
+5. `action_id`: for a server action, see section 4.5.
+6. `item`: when the matching regex has an `item` group, it equals the event's `item_id`.
+7. `stale_request` / `early_event`: `0 <= event.occurred_at - witness.at <= WINDOW` (W3: 5 min), with
+   `CLOCK_SKEW` = 2 s of tolerance below zero (R2.2). Relay time never enters the check, so a backlog
+   never makes an event stale.
+8. `per_request`: the count of accepted events of this action citing this request stays within
+   `per_request`.
+9. `actor_supplied`, `details_key`, `secret_in`, `content_hash`, `unknown_action`: as in version 1.
+   An unknown action whose `registry_version` is newer than the platform's is **held** for
+   `HOLD_UNKNOWN` (24 h), then rejected (R2.12).
+
+`actor_ref := witness.actor_ref`. When the witness is unverified (record mode), the event is accepted
+with `verified=false` (R2.14).
+
+A `ledger.rejected` entry carries `actor_kind=system`, `program=relay`, the rejected row's digest and
+the cited request id. It is never attributed to the cited person (R4.7).
+
+### 4.3 Requests that travel on (app to app, R1.6)
+
+When an app calls another app's write route on behalf of the person (qualification to platform
+`system-versions` and `targets/sync`; the platform to the engine and the dashboard bridge):
+- It forwards `X-AISC-Request-Id` together with the person's token. The qualification app already
+  sends the person's token (G11).
+- The receiving app accepts a forwarded id only with a valid person token (section 3.3) whose `sub`
+  equals the witness's, or with a service token from a caller listed for that action. Otherwise it
+  answers 401 in `enforce`.
+- The relay applies section 4.2. The cited request's app is the originating one, which is why
+  `caused_by` is separate from `emitters`.
+- The platform checks every presented id against the presenter's subject and route (R1.5).
+
+### 4.4 AI and worker runs (R1.8)
+
+- The person's request emits a start event, for example `ai.refinement.requested` or
+  `engine.evaluation.run_requested`, with a fresh `run_id`. It is checked under section 4.2.
+- Every event of the run carries `(request_id, run_id)`. The relay requires an accepted start event
+  with that `run_id` citing that request, the event's action in the start action's `runs`, and
+  `occurred_at - start.occurred_at <= run_window`.
+- `on_behalf_of := start.actor_ref`. `actor_kind` and `program` come from the emitter's token, and
+  `model` from the event.
+- The internal route answers 202 and records a refused AI event as `ledger.rejected`, as I2 says,
+  rather than 422 (R4.10). A malformed body is still 422.
+
+### 4.5 Next.js server actions (G6)
+
+A server action is a POST to the page, with `Next-Action: <id>`. The build doesn't say which function
+an id is, so:
+- `caused_by` names the page regex, and the witness records the id.
+- `ledger.action_binding(app, next_action, action)` binds an id to the first event action accepted for
+  it (trust on first use). A later event of a **different** action citing a request with the same id
+  is rejected (`action_id`) and raises an alarm.
+- Ids change with each build. A new id simply binds afresh.
+- Open item S2: if a later Next version writes the export name into the manifest, the binding is
+  seeded at build time instead.
+
+## 5. Modes, rollout and failure
+
+### 5.1 Modes
+
+`LEDGER_MODE` (platform): `off`, `record`, `enforce`. `LEDGER_GATEWAY` (Caddy): `off`, `on`. The pairs
+that are allowed: (`off`, `off`), (`record`, `on`), (`enforce`, `on`). The platform refuses to start
+in `record` or `enforce` without the gateway secret.
+
+### 5.2 Rollout order (R2.14)
+
+1. Header strip in Caddy (fixes G3 today).
+2. Platform with the ledger core and registry, `off`.
+3. `record` + `LEDGER_GATEWAY=on`.
+4. Each app's emitter, platform first.
+5. A clean reconciliation period (`RECONCILE_DAYS` = 14).
+6. `enforce`, on the user's yes.
+
+The platform always deploys before an app that emits a new action.
+
+### 5.3 Failure behaviour (W2 restated, R1.11)
+
+| Down | Witnessed requests (writes, listed reads) | Other requests | Events |
+|---|---|---|---|
+| platform | fail (502) | work | wait in the outboxes |
+| immudb | work | work | witness records and outbox rows wait; nothing is rejected for waiting |
+| relay | work | work | wait |
+| Keycloak (JWKS cached) | work until the cache expires (`JWKS_TTL`) | work | wait |
+
+In `enforce`, apps also refuse a write with no `X-AISC-Request-Id` (defence in depth), except calls
+carrying a service token.
+
+## 6. Interfaces
+
+### 6.1 Python package `platform/platform_service/ledger/`
+
+`__init__.py`, `registry.py`, `settings.py`, `canonical.py` and `naming.py` import only the standard
+library, so the repo-level tests can load them (R3.7).
+
+- `settings`: `WINDOW`, `CLOCK_SKEW`, `RUN_WINDOW`, `LEEWAY`, `HOLD_UNKNOWN`, `ROTATION_OVERLAP`,
+  `PAGE_VIEW_RETENTION`, `RECONCILE_DAYS`, `MAX_ENTRY_BYTES` (64 KiB), `BEACON_PER_MINUTE` (60),
+  `EXPORT_ROLES` (D1), `KEEP_STRANGER_REQUESTS` (D11).
+- `naming.database_name(pid) -> str`: `"ledger" + 32 lowercase hex`. A pid is what `projects.PID`
+  accepts: a dashed UUID, either case. An undashed form and the nil UUID are refused (R4.2). The
+  platform log is `"ledgerplatform"`.
+- `canonical.canonical(value) -> bytes`: RFC 8785. It refuses integers beyond ±2^53, `bool` posing as
+  a number, lone surrogates, NaN and infinities, `Decimal` and `datetime` (R2.11, R4.1). The shared
+  vectors file `platform/tests/ledger/fixtures/canonical_vectors.json` is used by the TypeScript twin
+  in phase 5.
+- `secrets.fingerprint(value, key) -> str`: `"hmac:" + first 32 hex of HMAC-SHA256(key, value)`.
+  `secrets.actor_ref(pid, sub, key)` and `secrets.content_digest(pid, content, key)` are the same
+  construction, keyed per project (I8, I10). The key is `PLATFORM_LEDGER_KEY`.
+- `actors.resolve(pid, actor_ref) -> (sub, name) | None`: it checks the mapping row against the
+  reference and raises `MappingAlarm` when they disagree. `actors.erase(pid, sub)`.
+- `pageviews.recent(pid)` and `pageviews.expire(older_than)` (section 3.5).
+- `registry.REGISTRY`, `registry.VERSION`, `registry.KNOWN_APPS`, `registry.APP_PROJECT_RULES`,
+  `registry.override(actions)` (tests).
+- `registry.check(event, emitter) -> list[str]` gets the emitter (R4.3). `emitter` is the problem
+  when the emitter may not emit the action, which covers every app emitting a platform-only action.
+  `actor_supplied` covers an actor-like key in `details` and a platform field set at top level
+  (`actor_*`, `on_behalf_of_ref`, `source_app`, `verified`). It never scans `content` for actor
+  fields, since content legitimately carries `reviewed_by`. It does scan `content` for secrets (I8).
+- `KNOWN_APPS` holds every app behind the gateway (`engine`, `engine_webapp`, `flower`, `controls`,
+  `qualification`, `control_objectives`, `report_composer`, `platform`, `launcher`, `pgadmin`,
+  `schema`, `dashboard`) and every app that serves routes inside the network (`engine_worker`,
+  `connectors`, `report_renderer`, `qualification_agents`, `qualification_prefill`,
+  `qualification_ontology`, `qualification_llm`, `qualification_pdf`).
+- `store.Ledger` protocol: `append(db, entry) -> int`, `get(db, seq) -> Entry` (verified),
+  `head(db) -> Head`, `scan(db, after_seq, limit)`, and the test hooks `state(db)` and
+  `set_state(db, state)` (R3.4). `State.claiming(tx_id=...)` makes a state that claims more than the
+  server holds.
+  - Errors: `DuplicateEvent` (same id, other content), `EntryTooLarge`, `UnknownDatabase` (not made
+    by the pool), `TamperAlarm`.
+  - `MemoryLedger` test hooks: `create(db)`, `tamper(db, seq, field, value)`, `down`,
+    `crash_after_appends`, `public_key_pem()`.
+  - `store.ImmudbLedger(url, user, password, state_store)` uses the key-value API only (M8):
+    `e:<seq, 20 digits>` to the canonical entry, `id:<event_id>` to seq and digest.
+  - It keeps one client per database, each behind its own lock, and never calls `useDatabase` on a
+    shared client (M9).
+  - Its `state_store` is `state.PostgresStateStore`, over `ledger.state(db pk, tx_id, tx_hash,
+    signature, updated_at)`, or `state.MemoryStateStore` in tests. `get(db)`, and
+    `put(db, state, expected)`, a compare-and-set that raises `ValueError` on a stale `expected`
+    (M11).
+  - `illegal state` and `ErrCorruptedData` both raise `TamperAlarm` (M13, M14). It never creates a
+    database (M1).
+  - `store.MemoryLedger()` is for tests.
+- `pool.create_databases(url, *, admin_user="immudb", admin_password, names, grantee,
+  grantee_password)`: the operator's step behind `scripts/ledger-pool.sh`. It raises `PermissionError`
+  when the account isn't the superuser (M1).
+- `provision.assign(pid)`: takes a database from the pool (L1) and records it in
+  `ledger.databases(pid, db, assigned_at)`, the expected-databases list (R2.10). `provision.assigned()`
+  lists it. With the pool empty, the project still gets created, and its events wait (I6).
+- `witness.witness(*, headers, mode, now) -> WitnessResult(status, request_id, record)`. It takes the
+  raw headers, so the tests send exactly what Caddy sends (G1, G8). `witness.record(request_id)`
+  returns the stored record.
+- `relay.relay_once(pid=None) -> RelayStats(delivered, rejected, held, pending)`. It takes the
+  project's advisory lock and drains `ledger.witness`, the platform's `core.outbox` and the project's
+  `ledger.outbox`, in `occurred_at` order, with a seq per log.
+- `verify.verify(pid) -> Report(entries_ok, entries_failed, chain_breaks, action_id_conflicts,
+  evidence_ok, evidence_failed, witness_without_event, outside_changes, missing_database)`.
+- `testing.seed(pid, events)` writes entries as the relay does (immudb, the index, the actor
+  mapping). `testing.rehash_export(lines)` is an attacker's best effort at re-hashing an edited export.
+  Both are for tests.
+
+### 6.2 Entry (immudb, key `e:<seq>`)
 
 `seq, event_id, occurred_at, recorded_at, project_pid, card_version, step, source_app, action,
-actor_kind, actor_sub, actor_name, on_behalf_of_sub, program, model, request_id, reported_by,
-item_type, item_id, item_version, before_sha256, after_sha256, content_sha256, evidence_ref,
-depends_on, outcome, details`. `actor_*`, `on_behalf_of_sub`, `source_app`, `recorded_at` are always
-set by the platform.
+actor_kind, actor_ref, on_behalf_of_ref, program, model, request_id, run_id, next_action, verified,
+reported_by, item_type, item_id, item_version, before_sha256, after_sha256, content_sha256,
+evidence_ref, depends_on, outcome, details, registry_version`.
+- No subject or name (I10).
+- `actor_*`, `on_behalf_of_ref`, `source_app`, `recorded_at` and `verified` are always set by the
+  platform.
+- At most `MAX_ENTRY_BYTES` canonical. Larger content goes to the evidence store, and its digest goes
+  in the entry (M10).
 
-### 4.3 Routes
+### 6.3 Routes
 
 | Route | Who | Behaviour |
 |---|---|---|
-| `GET /authz/witness` (Caddy `forward_auth`, inside the `protect` snippet) | Caddy | reads `X-Forwarded-Method`, `X-Forwarded-Uri`, `X-Forwarded-Host`, `Sec-Fetch-Dest`, the token (`X-Auth-Request-Access-Token`, else `Authorization`); 200 + `X-AISC-Request-Id` (copied upstream by Caddy), 401 per mode |
-| `POST /internal/projects/{pid}/ledger/events` | services (per-caller token `PLATFORM_LEDGER_<APP>_TOKEN`) | events of the engine, the dashboard, the AI services; each cites `request_id` |
-| `POST /projects/{slug}/ledger/beacon` | the browser (witnessed) | `page.left`, `dialog.cancelled`, `unsaved_changes`, ...; ≤ 2 KB; `reported_by=browser` |
-| `GET /projects/{slug}/ledger/events` | members | filters `actor, step, app, action, item_type, item_id, card_version, outcome, ai, from, to, cursor` |
-| `GET /projects/{slug}/ledger/events/{seq}` | members | the entry, verified, with its witness |
-| `POST /projects/{slug}/ledger/verify` | owners, admins | runs `verify` now |
-| `GET /projects/{slug}/ledger/export` | owners, admins | JSONL of the entries + the head |
-| `GET /ledger/projects` | admins | each project's head and last verification |
+| `GET /authz/witness` | Caddy only (gateway secret) | section 3. 401 without the secret, with no record |
+| `POST /internal/projects/{pid}/ledger/events` | services, per-caller token `PLATFORM_LEDGER_<APP>_TOKEN` | engine backend, dashboard, AI services. Each token is bound to its `emitters` (R4.10). 202, or `ledger.rejected` |
+| `POST /ledger/beacon` (each site) | the browser, witnessed | `text/plain`, at most 2 KB, at most 60 per minute per person. Page view records (section 3.5) |
+| `GET /projects/{slug}/ledger/events` | members (D1) | read from the index `ledger.event_index`, each entry verified from immudb before it's shown (T12) |
+| `GET /projects/{slug}/ledger/events/{seq}` | members | the entry, verified, with its witness record and the person behind `actor_ref` when the mapping still exists |
+| `POST /projects/{slug}/ledger/verify` | owners, admins | `verify` now |
+| `GET /projects/{slug}/ledger/export` | `EXPORT_ROLES` | JSONL: each entry with its inclusion proof, the server-signed state and the head. `scripts/verify-ledger-export.py` checks it against immudb's public signing key (R4.9) |
+| `GET /ledger/projects` | admins | each project's head, last verification, alarms |
+| `POST /ledger/reanchor` | admins | after a restore: records `ledger.reanchored` with both heads in the platform log (T21) |
 
-### 4.4 Outbox (project template `0020_ledger_outbox.sql`)
+### 6.4 Outbox (project template `0020_ledger_outbox.sql`; platform `core.outbox` in `init/platform-db.sql`)
 
-Schema `ledger`: `outbox(event_id uuid pk, occurred_at timestamptz default now(), db_role text, request_id
-uuid, action text, item_type text, item_id text, item_version text, card_version uuid, content jsonb,
-content_sha256 text, before_sha256 text, after_sha256 text, details jsonb default '{}', outcome text
-default 'ok')`; a `BEFORE INSERT` trigger sets `db_role := current_user`; INSERT only for the module
-roles (qualification, controls, control objectives, report composer, platform); no SELECT, UPDATE or
-DELETE for them. `delivered(event_id pk, seq, delivered_at)` and `witness_index(request_id pk, ...)`
-in `core` (platform only).
+- Table `ledger.outbox(event_id uuid pk, occurred_at timestamptz, db_role text, request_id uuid,
+  run_id uuid, action, item_type, item_id, item_version, card_version uuid, content jsonb,
+  content_sha256, before_sha256, after_sha256, details jsonb, outcome)`. **No grant** to any module
+  role.
+- Function `ledger.emit(event jsonb) RETURNS void`, SECURITY DEFINER, `EXECUTE` granted only to
+  `qualification_rw`, `controls_rw`, `control_objectives_rw`, `report_composer_rw`, `platform_rw`.
+  - It sets `db_role := session_user` and `occurred_at := clock_timestamp()`, and refuses
+    `request.witnessed`, `ledger.*` and any platform-only action (R4.7).
+  - Apps call it with a plain statement (`SELECT ledger.emit($1)`): Prisma `$executeRaw` inside
+    `$transaction`, SQLAlchemy `text()`, so no ORM `RETURNING` is involved (R3.3).
+  - It runs in the app's own transaction, so a rollback leaves no event.
+- `ledger.delivered`, `ledger.witness`, `ledger.event_index` and `ledger.action_binding` are reachable
+  only by the platform. Every other role (`engine_rw`, `dashboard_ro`, `report_ro`, `inspector_ro`
+  included) has neither EXECUTE nor any table right (R4.6).
+- `core.outbox` in the platform database has the same shape plus `project_pid` (null for the
+  platform log). Member and project changes write to it in their own transaction (R2.4).
+- **Project delete** runs `relay_once(pid)` first, and refuses (409, "the log still has undelivered
+  events") while any row for that project is undelivered. Only then does it drop the database (R2.4).
 
-### 4.5 App mapping (who `source_app` is)
+### 6.5 App mapping
 
 | `db_role` / token | app |
 |---|---|
@@ -126,11 +424,149 @@ in `core` (platform only).
 | `control_objectives_rw` | control_objectives |
 | `report_composer_rw` | report_composer |
 | `platform_rw` | platform |
-| `PLATFORM_LEDGER_ENGINE_TOKEN` | engine |
+| `PLATFORM_LEDGER_ENGINE_TOKEN` | engine (held by the engine backend only, never the worker: T17) |
 | `PLATFORM_LEDGER_DASHBOARD_TOKEN` | dashboard |
 | `PLATFORM_LEDGER_AGENTS_TOKEN` | qualification_agents |
-| `PLATFORM_LEDGER_CATALOGUE_TOKEN` | catalogue |
 
-Caddy upstream → app (for the witness): `/api/*` engine, `/controls*` controls, `/qualification*`
-qualification, `/control-objectives*` control_objectives, `/report-composer*` report_composer, platform
-`/api/*` and `/p/*` platform, the dashboard site dashboard, the rest webapp.
+## 7. Operations
+
+### 7.1 immudb accounts and databases (M1-M7)
+
+- The platform holds only `aisc_ledger`, with RW on its assigned databases.
+- An operator script, `scripts/ledger-pool.sh`, holds the superuser. It pre-creates `LEDGER_POOL`
+  databases (default 20), grants `aisc_ledger` RW on them, and is run again when the pool runs low.
+  The panel shows the pool level (L1).
+- After a grant, the platform logs in again (M7).
+- Databases are never deleted (D2), and a deleted name is never reused (M12).
+
+### 7.2 Concurrency (M9, R2.7, R2.8)
+
+- One immudb client per database, each behind its own lock.
+- The relay takes `pg_try_advisory_lock(hash(pid))` on the platform database per batch. The seq, the
+  `per_request` counts and the delivery marks are written under it.
+- The relay polls with backoff (1 s to 30 s) and holds at most `RELAY_CONNECTIONS` (4) project
+  connections at once. There is no LISTEN/NOTIFY.
+
+### 7.3 Anchoring, restore, deletion by the superuser (R2.9, R2.10)
+
+- The server signing key is on (`--signingKey`); the platform and the export checker verify state
+  signatures. This wasn't spiked; it is phase 1's first immudb test.
+- Every `HEAD_PUBLISH` (1 h), each project's signed head is written to the object-locked `evidence`
+  bucket (phase 10; until then to `ledger.published_head` in Postgres).
+- A database in `ledger.databases` that immudb no longer has is a `missing_database` alarm.
+- Restore runbook (`docs/runbooks/ledger-restore.md`, phase 1): restore immudb, see the alarm, an
+  admin re-anchors, the verifier runs.
+
+### 7.4 Reconciliation (from phase 3, R2.6)
+
+Daily and on demand:
+- witnessed writes with no event after `WINDOW`;
+- events whose cited request had another app's events (`cause` near-misses);
+- action ids bound to two event actions;
+- item chain breaks;
+- pool level;
+- missing databases.
+
+Each is a panel alarm.
+
+### 7.5 Privacy (I10, D9, D10)
+
+- `actor_ref = HMAC(project ledger key, sub)`. Postgres `ledger.actor(pid, actor_ref, sub, name)`
+  holds the mapping. Anyone with the key can check a mapping row, so a swapped row is detected.
+- Erasing a person deletes their mapping rows. Their entries stay, pseudonymous.
+- Page views stay in Postgres with retention (section 3.5).
+- A DPIA is required before `record` is switched on in staging. D1 (who sees per-person activity) is
+  revisited in it.
+
+## 8. Limits
+
+| Limit | Value |
+|---|---|
+| canonical entry | at most 64 KiB (`MAX_ENTRY_BYTES`); 5 MiB went through immudb (M10), so this is our cap, not immudb's |
+| integers in canonical JSON | at most ±2^53 |
+| beacon body | at most 2 KB, 60 per minute per person |
+| write latency added by the witness | one platform call plus one Postgres insert; immudb (about 30 ms, M16) is off the request path |
+
+## 9. Tests must not pass on skips (R6.2)
+
+With `LEDGER_TESTS_REQUIRED=1`, every skip in `platform/tests/ledger` and `scripts/tests/test_ledger_*`
+becomes a failure. Every Definition-of-Done run sets it, and every phase report states the skip count.
+
+## 10. Residual risks (accepted, stated)
+
+1. Within one app, the swap of two matching concurrent requests (section 0).
+2. An AI service misreporting what its run produced. Its prompt and answer are frozen (W4), which
+   makes this checkable after the fact.
+3. The immudb superuser deleting a log. Detected (7.3), not prevented. External anchoring stays out
+   of scope.
+4. A person's own token used by a compromised app within the window on a matching route.
+5. Page views are best effort and browser-reported.
+6. The engine is frozen. Its own token precedence is unchanged, and the witness covers it.
+
+## 11. Decisions (ASSUMED until answered)
+
+From the 09-30 plan: D1 every member sees the panel; D2 the log is kept after a project is deleted;
+D3 engine forwarding by one registered exception; D4 a 10-year lock; D5 personal data frozen in the
+evidence store, hashed in the log; D6 Superset page views out of immudb; D7 fix the defects before each
+app's phase; D8 immudb in staging and production.
+
+Version 1: W1 witness every write at the gateway; W2 as restated in 5.3; W3 a 5-minute window; W4 full
+AI prompts and answers frozen; W5 operator actions logged as `operator`, unverified.
+
+New in version 2:
+
+| # | Decision | Default |
+|---|---|---|
+| D9 | Pseudonymous actors in immudb, mapping in Postgres | yes |
+| D10 | Page views: best effort, in Postgres, retention | 90 days |
+| D11 | Requests by non-members of the project in the path | recorded in the platform log, never the project's |
+| L1 | How ledger databases are created | pre-created pool by an operator script; the platform never holds the superuser |
+| L2 | Ledger content cap | 64 KiB per entry, larger content in the evidence store |
+
+## 12. Review findings, and where each is answered
+
+| Finding | Where |
+|---|---|
+| 1.1 (blocker) app/project from paths | 3.1 per-handle app, 3.4 project rules; G1, G8 |
+| 1.2 (blocker) witness callable by anyone | T18, T23, 3.1, 3.4; G2 |
+| 1.6 (blocker) app-to-app writes | 4.1 `caused_by`, 4.3; G11 |
+| 1.3 forged request id | T19, 3.1; G3 |
+| 1.4 two tokens | T20, 3.3; G5 |
+| 1.7 shape-only binding | 0 (narrowed claim), 4.2 item, 4.5 action ids; G6 |
+| 1.8 AI runs | 4.4 |
+| 1.9 plugin env | T17 |
+| 1.10 apps without a project in the path | 3.4 table, catalogue out of scope (3.1) |
+| 1.11, 6.4 witness on every request | 3.1 writes-only matcher, `LEDGER_GATEWAY`; 5.3; G9 |
+| 1.12 token expiry | 3.3 leeway, refresh at 4 min, 3.1 redirect |
+| 2.1 occurred_at set by apps | 6.4 `ledger.emit` |
+| 2.2 stale window | 4.2 rule 7 |
+| 2.4 platform events, delete | 6.4 `core.outbox`, delete drain |
+| 2.5 privacy | I10, 7.5, D9-D10 |
+| 2.6 ordering | I11, 7.4 |
+| 2.7 concurrency | T24, 7.2; M9 |
+| 2.9 backup, rotation | T21, T22, 7.3 |
+| 2.10 superuser delete | 7.3, section 10 |
+| 3.1 database creation | 7.1, L1; M1-M5 |
+| 3.3 ORM RETURNING | 6.4 `ledger.emit` |
+| 4.4 store tests | 6.1 test hooks; 04-test-plan |
+| 4.5 witness tests | 6.1 `witness(headers=...)`; 04-test-plan |
+| 4.7 relay tests | 4.2; 04-test-plan |
+| 4.9 export without a trust root | 6.3 export with proofs and a signed state |
+| 4.12, 4.13 coverage discovery | 4.1 `routes` by file and function; 04-test-plan C1 |
+| 4.14 coverage only declarative | I7 static check |
+| 5.1 no real-Caddy test | 04-test-plan G-suite (the spike becomes a test) |
+| 5.2 I6 untested | 04-test-plan F-suite |
+| 6.1 riskiest last | done: `06-spike.md` |
+| 6.2 skips | section 9 |
+
+The minors are in the same sections, or in `04-test-plan.md` where they are test changes. Section 3.5
+of 01-plan and the test file names are made consistent with this file (R3.5).
+
+## Open items
+
+- ~~S1~~ settled: section 3.1.
+- **S2** Next.js action names at build time (4.5).
+- **S3** immudb `--signingKey` with immudb-py `publicKeyFile` (7.3).
+- **S4** the real oauth2-proxy and Preferred-Username (G3): check the header it returns.
+- **S5** M8, SQL privileges lost after another database's grant. Not needed (we use key-value);
+  worth an upstream issue.
