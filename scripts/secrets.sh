@@ -47,6 +47,9 @@ cookie()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'; }
 fernet()    { openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n'; }
 # The ledger's master key list starts at version 1.
 ledgerkey() { local k; k=$(rand) && echo "v1:$k"; }
+# immudb refuses a password without an upper and a lower case letter, a digit and a symbol, or over 32
+# characters: 24 random hex (96 bits) behind a fixed prefix that has one of each.
+immudbpw()  { local k; k=$(openssl rand -hex 12) && echo "Az9-$k"; }
 
 # Every secret, in the order a new env.secrets lists them, as NAME=kind of value it takes.
 # A secret added here reaches existing installs too: the loop below appends whatever an
@@ -82,11 +85,14 @@ QUALIFICATION_WEB_TO_LLM_TOKEN=rand
 QUALIFICATION_WEB_TO_PDF_TOKEN=rand
 CONTROLS_WEB_TO_PDF_TOKEN=rand
 PLATFORM_SECRETS_KEY=fernet
+# immudb's superuser: compose starts immudb with IMMUDB_FORCE_ADMIN_PASSWORD, so a new value is applied
+# at its next start (it used to be committed in env.development; rotated 2026-10-02)
+IMMUDB_ADMIN_PASSWORD=immudbpw
 # the ledger: the platform's immudb user, and its versioned master keys (both kept by --rotate)
-LEDGER_IMMUDB_PASSWORD=rand
+LEDGER_IMMUDB_PASSWORD=immudbpw
 PLATFORM_LEDGER_KEYS=ledgerkey
 )
-value_of() { case "$1" in cookie) cookie ;; fernet) fernet ;; ledgerkey) ledgerkey ;; *) rand ;; esac; }
+value_of() { case "$1" in cookie) cookie ;; fernet) fernet ;; ledgerkey) ledgerkey ;; immudbpw) immudbpw ;; *) rand ;; esac; }
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
 KEPT_ON_ROTATE=" PLATFORM_SECRETS_KEY LEDGER_IMMUDB_PASSWORD PLATFORM_LEDGER_KEYS "
 
@@ -206,6 +212,26 @@ if command -v setfacl >/dev/null 2>&1; then
   setfacl -m u:1000:r "$RENDERED"
 else
   echo "setfacl is missing: let uid 1000 (Keycloak) read $RENDERED, or Keycloak will not start" >&2
+fi
+
+# immudb signs its states with this key (ledger spec 7.3); the platform checks them with the public
+# half. Made once and never replaced, --rotate included: a new key would make every saved state
+# unverifiable. Private to this user, readable by immudb's uid 3322 only.
+SIGNING_KEY=immudb-signing.key
+SIGNING_PUB=immudb-signing.pub
+if [ ! -s "$SIGNING_KEY" ]; then
+  openssl ecparam -name prime256v1 -genkey -noout -out "$SIGNING_KEY.new" 2>/dev/null \
+    && openssl ec -in "$SIGNING_KEY.new" -pubout -out "$SIGNING_PUB" 2>/dev/null \
+    || { rm -f "$SIGNING_KEY.new"; echo "openssl could not make $SIGNING_KEY" >&2; exit 1; }
+  mv "$SIGNING_KEY.new" "$SIGNING_KEY"
+  echo "made $SIGNING_KEY and $SIGNING_PUB"
+fi
+chmod 600 "$SIGNING_KEY"
+chmod 644 "$SIGNING_PUB"
+if command -v setfacl >/dev/null 2>&1; then
+  setfacl -m u:3322:r "$SIGNING_KEY"
+else
+  echo "setfacl is missing: let uid 3322 (immudb) read $SIGNING_KEY, or immudb will not start" >&2
 fi
 
 # compose takes one --env-file, so the settings and the secrets are combined

@@ -112,7 +112,7 @@ def test_the_ledger_secrets_are_made_with_their_shapes(scratch):  # noqa: F811
     run_secrets(scratch)
     values = secrets_of(scratch)
     assert re.fullmatch(r"v1:[0-9a-f]{64}", values["PLATFORM_LEDGER_KEYS"]), "PLATFORM_LEDGER_KEYS is v1:<64 hex>"
-    assert re.fullmatch(r"[0-9a-f]{64}", values["LEDGER_IMMUDB_PASSWORD"])
+    assert _immudb_strong(values["LEDGER_IMMUDB_PASSWORD"])
 
 
 def test_the_ledger_secrets_survive_rotate(scratch):  # noqa: F811
@@ -158,3 +158,51 @@ def test_a_malformed_ledger_key_list_is_refused_and_nothing_changes(scratch):  #
     assert r.returncode != 0 and "PLATFORM_LEDGER_KEYS" in r.stderr
     assert out.read_text() == text
     assert not list(scratch.glob("env.secrets.*")), "a temporary file was left behind"
+
+
+
+def _immudb_strong(value):
+    """immudb refuses a password without an upper and a lower case letter, a digit and a symbol, or
+    shorter than 8 or longer than 32 characters (it would refuse the ledger user, and the superuser)."""
+    return all([8 <= len(value) <= 32, re.search(r"[A-Z]", value), re.search(r"[a-z]", value),
+                re.search(r"[0-9]", value), re.search(r"[^A-Za-z0-9]", value)])
+
+
+def test_the_immudb_superuser_password_is_generated_and_strong(scratch):  # noqa: F811
+    """Rotation of the committed one (2026-10-02): it lives in env.secrets, never in a tracked file."""
+    run_secrets(scratch)
+    values = secrets_of(scratch)
+    assert _immudb_strong(values["IMMUDB_ADMIN_PASSWORD"])
+    assert values["IMMUDB_ADMIN_PASSWORD"] != "immudbDev1!"
+
+
+def test_the_superuser_password_rotates_but_the_ledger_users_does_not(scratch):  # noqa: F811
+    """immudb re-applies the superuser's password at every start (IMMUDB_FORCE_ADMIN_PASSWORD), so
+    --rotate may change it; aisc_ledger's lives inside immudb and is kept."""
+    run_secrets(scratch)
+    before = secrets_of(scratch)
+    assert _run(scratch, "--rotate").returncode == 0
+    after = secrets_of(scratch)
+    assert _digest(after["IMMUDB_ADMIN_PASSWORD"]) != _digest(before["IMMUDB_ADMIN_PASSWORD"])
+    assert _digest(after["LEDGER_IMMUDB_PASSWORD"]) == _digest(before["LEDGER_IMMUDB_PASSWORD"])
+
+
+def test_the_immudb_signing_key_is_made_private_and_kept(scratch):  # noqa: F811
+    """immudb signs its states with it (ledger spec 7.3, S3); the platform checks them with the public
+    half. A new key would make every saved state unverifiable, so --rotate keeps it."""
+    run_secrets(scratch)
+    key, pub = scratch / "immudb-signing.key", scratch / "immudb-signing.pub"
+    assert key.exists() and pub.exists()
+    assert "PRIVATE KEY" in key.read_text() and "PUBLIC KEY" in pub.read_text()
+    assert _mode(key) & 0o007 == 0, "the private key must not be readable by others"
+    acl = subprocess.run(["getfacl", "-cp", str(key)], capture_output=True, text=True).stdout
+    if acl:                                            # with an ACL the group bits show its mask
+        entries = dict(line.split(":", 1)[::-1] and (line.rsplit(":", 1)[0], line.rsplit(":", 1)[1])
+                       for line in acl.splitlines() if line and not line.startswith("#"))
+        assert entries.get("group:") == "---", "the owning group must not read the private key"
+        assert entries.get("user:3322") == "r--", "immudb (uid 3322) must read it"
+    else:
+        assert _mode(key) & 0o070 == 0, "the private key must not be readable by its group"
+    before = _digest(key.read_text())
+    assert _run(scratch, "--rotate").returncode == 0
+    assert _digest(key.read_text()) == before
