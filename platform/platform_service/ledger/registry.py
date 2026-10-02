@@ -316,12 +316,19 @@ _SECRET = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_-]{16,}|\beyJ[A-Za-z0-
 def check(event: dict, emitter: str | None = None) -> list[str]:
     """The problems of one event as `emitter` sent it; empty means it may be relayed (spec 6.1)."""
     problems = [f"missing:{field}" for field in _EVENT_FIELDS if not event.get(field)]
-    action = REGISTRY.get(event.get("action"))
-    if event.get("action") and action is None:
+    name = event.get("action")
+    action = REGISTRY.get(name) if isinstance(name, str) else None
+    if name and not isinstance(name, str):
+        problems.append("unknown_action")
+    details = event.get("details") or {}
+    if not isinstance(details, dict):
+        return problems + ["details_not_object"]
+    if event.get("content") is not None and not isinstance(event["content"], (dict, list)):
+        problems.append("content_not_object")
+    if isinstance(name, str) and name and action is None:
         problems.append("unknown_action")
     if action is not None and emitter is not None and emitter not in action.emitters:
         problems.append("emitter")
-    details = event.get("details") or {}
     if any(key in _ACTOR_KEYS for key in details) or any(field in event for field in _PLATFORM_ACTOR_FIELDS):
         problems.append("actor_supplied")
     problems += [f"platform_field:{field}" for field in _PLATFORM_FIELDS if field in event]

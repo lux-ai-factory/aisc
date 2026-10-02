@@ -85,3 +85,38 @@ def test_the_pool_refuses_a_name_that_is_not_a_ledger_name(memory_ledger, bad):
 def test_the_server_id_is_the_servers_own_identity(memory_ledger):
     """Not its address, which changes with a hostname (n-c): immudb's server UUID, `memory:<uuid>` here."""
     assert memory_ledger.server_id.startswith("memory:") and uuid.UUID(memory_ledger.server_id[7:])
+
+
+def test_with_immudb_unreachable_assign_waits_and_never_blocks(memory_ledger):
+    """M4: project creation must not depend on immudb being up (I6). With the store unreachable,
+    assign answers None (pending) quickly instead of raising or hanging."""
+    import time
+
+    from platform_service import ledger
+    from platform_service.ledger.state import MemoryStateStore
+    from platform_service.ledger.store import ImmudbLedger
+
+    previous = ledger.use(ImmudbLedger("127.0.0.1:1", user="aisc_ledger", password="x",
+                                       state_store=MemoryStateStore()))
+    try:
+        started = time.monotonic()
+        assert provision.assign(pid()) is None
+        assert time.monotonic() - started < 10
+    finally:
+        ledger.use(previous)
+
+
+def test_migration_0006_says_what_is_missing_without_the_schema():
+    """The guard: a platform migrating before postgres-setup made the schema gets a clear message."""
+    import psycopg
+
+    from tests.core_scratch import apply_platform_migrations, scratch_database
+
+    from tests.ledger.conftest import SUPERUSER_DSN, need
+    need(SUPERUSER_DSN, "PLATFORM_TEST_SUPERUSER_URL is not set")
+    with scratch_database(old_layout=True) as (su, rw):
+        with psycopg.connect(su, autocommit=True) as conn:
+            conn.execute("DROP SCHEMA IF EXISTS ledger CASCADE")
+            conn.execute("ALTER TABLE core.system OWNER TO platform_rw")
+        with pytest.raises(psycopg.errors.RaiseException, match="schema ledger is missing"):
+            apply_platform_migrations(rw)

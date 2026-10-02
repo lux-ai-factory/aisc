@@ -137,3 +137,24 @@ def test_a_ledger_key_version_is_added_never_replaced(scratch):  # noqa: F811
     r = _run(scratch, "--add-ledger-key")
     assert re.fullmatch(r"v1:[0-9a-f]{64},v2:[0-9a-f]{64},v3:[0-9a-f]{64}", secrets_of(scratch)["PLATFORM_LEDGER_KEYS"])
     assert {k: _digest(v) for k, v in secrets_of(scratch).items() if k != "PLATFORM_LEDGER_KEYS"} == others_before
+
+
+def test_an_added_ledger_key_reaches_env_runtime(scratch):  # noqa: F811
+    """Phase 1 review minor 10: compose reads env.runtime, so the new version must be there too."""
+    run_secrets(scratch)
+    r = _run(scratch, "--add-ledger-key")
+    assert r.returncode == 0, r.stderr[-2000:]
+    runtime = (scratch / "env.runtime").read_text()
+    keys = secrets_of(scratch)["PLATFORM_LEDGER_KEYS"]
+    assert f"PLATFORM_LEDGER_KEYS={keys}" in runtime and ",v2:" in keys
+
+
+def test_a_malformed_ledger_key_list_is_refused_and_nothing_changes(scratch):  # noqa: F811
+    run_secrets(scratch)
+    out = scratch / "env.secrets"
+    text = out.read_text().replace(secrets_of(scratch)["PLATFORM_LEDGER_KEYS"], "v1:notakey")
+    out.write_text(text)
+    r = _run(scratch, "--add-ledger-key")
+    assert r.returncode != 0 and "PLATFORM_LEDGER_KEYS" in r.stderr
+    assert out.read_text() == text
+    assert not list(scratch.glob("env.secrets.*")), "a temporary file was left behind"

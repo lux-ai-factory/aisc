@@ -147,9 +147,11 @@ class MemoryLedger:
         return self._dbs[db]
 
     def append(self, db: str, entry: dict) -> int:
+        body, digest = _prepare(entry)                               # the size cap first, as in immudb
         with self._lock:
             d = self._db(db)
-            body, digest = _prepare(entry)
+            if d["verified"] > len(d["rows"]):
+                raise TamperAlarm("the server holds less than was verified: a rollback")
             known = d["ids"].get(entry["event_id"])
             if known is not None:
                 if known[1] != digest:
@@ -248,19 +250,27 @@ class _StateAdapter:
         return self._service.CurrentState(empty_pb2.Empty())       # first sight: nothing to compare yet
 
     def set(self, root):
+        """Move the verified state forward, never back. An older proof than the stored state is not
+        tampering: another worker sharing the state moved it on meanwhile (review M1). A rollback is
+        caught by immudb's own proof against the stored state, before this is called."""
         new = State(self._db, int(root.txId), bytes(root.txHash), bytes(getattr(root, "signature", b"") or b"") or None)
-        current = self._store.get(self._db)
-        if current is not None and new.tx_id < current.tx_id:
-            raise TamperAlarm(f"{self._db}: the server proved an older state than was verified")
-        if current != new:
-            self._store.put(self._db, new, expected=current)
+        for _ in range(5):
+            current = self._store.get(self._db)
+            if current is not None and new.tx_id <= current.tx_id:
+                return
+            try:
+                self._store.put(self._db, new, expected=current)
+                return
+            except ValueError:
+                continue                                             # lost the race: look again
 
 
 class ImmudbLedger:
     """The contract on immudb 1.11, as the `aisc_ledger` user (never the superuser, M1)."""
 
-    def __init__(self, url: str, *, user: str, password: str, state_store):
+    def __init__(self, url: str, *, user: str, password: str, state_store, public_key_file: str | None = None):
         self._url, self._user, self._password, self._states = url, user, password, state_store
+        self._public_key_file = public_key_file                      # immudb's --signingKey, public half (S3)
         self._clients: dict[str, tuple] = {}
         self._lock = threading.Lock()
         self._server_id = None
@@ -272,8 +282,12 @@ class ImmudbLedger:
             from google.protobuf import empty_pb2
             from immudb import ImmudbClient
 
-            # Health needs no login, and aisc_ledger has no right on immudb's defaultdb anyway
-            _, call = ImmudbClient(self._url)._stub.Health.with_call(empty_pb2.Empty())
+            # Health needs no login, and aisc_ledger has no right on immudb's defaultdb anyway. A short
+            # deadline: an unreachable server must never hold up project creation (review M4).
+            try:
+                _, call = ImmudbClient(self._url)._stub.Health.with_call(empty_pb2.Empty(), timeout=5)
+            except Exception as exc:
+                raise LedgerUnavailable(f"immudb at {self._url} did not answer: {type(exc).__name__}") from exc
             self._server_id = "immudb:" + dict(call.initial_metadata())["immudb-uuid"]
         return self._server_id
 
@@ -300,7 +314,8 @@ class ImmudbLedger:
             if db not in self._clients:
                 from immudb import ImmudbClient
 
-                client = ImmudbClient(self._url, rs=_StateAdapter(db, self._states))
+                client = ImmudbClient(self._url, rs=_StateAdapter(db, self._states),
+                                      publicKeyFile=self._public_key_file)
                 try:
                     client.login(self._user, self._password, database=db.encode())
                 except Exception as exc:
@@ -309,16 +324,22 @@ class ImmudbLedger:
             return self._clients[db]
 
     def _call(self, db: str, fn):
-        client, lock = self._client(db)
-        with lock:
-            try:
-                return fn(client)
-            except LedgerError:
-                raise
-            except KeyError:
-                raise
-            except Exception as exc:
-                raise _classify(exc, db) from exc
+        """Run `fn` with the database's client. A lost session (an immudb restart) is logged in again
+        once and retried, so the same store recovers on its own (review B1)."""
+        for attempt in (1, 2):
+            client, lock = self._client(db)
+            with lock:
+                try:
+                    return fn(client)
+                except (LedgerError, KeyError):
+                    raise
+                except Exception as exc:
+                    if attempt == 1 and _session_lost(exc):
+                        with self._lock:
+                            if self._clients.get(db, (None,))[0] is client:
+                                del self._clients[db]
+                        continue
+                    raise _classify(exc, db) from exc
 
     @staticmethod
     def _verified(client, key: bytes):
@@ -346,13 +367,28 @@ class ImmudbLedger:
                 return known["seq"]
             except KeyError:
                 pass
-            seq = self._last(client) + 1
-            body["seq"] = seq
-            client.setAll({f"e:{seq:020d}".encode(): canonical(body),
-                           f"id:{entry['event_id']}".encode(): json.dumps({"seq": seq, "digest": digest}).encode(),
-                           b"seq:last": str(seq).encode()})
-            self._verified(client, f"e:{seq:020d}".encode())          # proves the write, moves the state
-            return seq
+            # Two writers may race for a number: the entry's key and the event's key must not exist yet,
+            # or immudb refuses the whole transaction and the loser looks again (review B2).
+            for _ in range(50):
+                seq = self._last(client) + 1
+                body["seq"] = seq
+                try:
+                    _set_new(client, {f"e:{seq:020d}".encode(): canonical(body),
+                                      f"id:{entry['event_id']}".encode():
+                                          json.dumps({"seq": seq, "digest": digest}).encode(),
+                                      b"seq:last": str(seq).encode()},
+                             must_not_exist=(f"e:{seq:020d}".encode(), f"id:{entry['event_id']}".encode()))
+                except _Taken:
+                    try:                                             # the same event, written meanwhile?
+                        known = json.loads(self._verified(client, f"id:{entry['event_id']}".encode()))
+                        if known["digest"] != digest:
+                            raise DuplicateEvent(entry["event_id"])
+                        return known["seq"]
+                    except KeyError:
+                        continue                                     # the number was taken: next one
+                self._verified(client, f"e:{seq:020d}".encode())      # proves the write, moves the state
+                return seq
+            raise LedgerError(f"{db}: no free sequence number after 50 tries")
         return self._call(db, run)
 
     def get(self, db: str, seq: int) -> Entry:
@@ -380,19 +416,48 @@ class ImmudbLedger:
         self._states.put(db, state, expected=self._states.get(db))
 
 
+class _Taken(Exception):
+    """A precondition failed: the key already exists."""
+
+
+def _set_new(client, kvs: dict, must_not_exist: tuple) -> None:
+    """immudb's Set with KeyMustNotExist preconditions (immudb-py 1.5's setAll has none)."""
+    from immudb.grpc import schema_pb2
+
+    request = schema_pb2.SetRequest(
+        KVs=[schema_pb2.KeyValue(key=k, value=v) for k, v in kvs.items()],
+        preconditions=[schema_pb2.Precondition(
+            keyMustNotExist=schema_pb2.Precondition.KeyMustNotExistPrecondition(key=k)) for k in must_not_exist])
+    try:
+        client._stub.Set(request)
+    except Exception as exc:
+        details = (getattr(exc, "details", lambda: "")() or "").lower()
+        code = getattr(getattr(exc, "code", lambda: None)(), "name", "")
+        if code == "FAILED_PRECONDITION" or "precondition" in details:
+            raise _Taken() from exc
+        raise
+
+
+def _session_lost(exc: Exception) -> bool:
+    details = (getattr(exc, "details", lambda: "")() or str(exc)).lower()
+    code = getattr(getattr(exc, "code", lambda: None)(), "name", "")
+    return code == "UNAUTHENTICATED" or "not logged in" in details or "please login" in details
+
+
 def _classify(exc: Exception, db: str, login: bool = False) -> Exception:
-    """immudb's errors, sorted by what the caller must do (spike M1-M15)."""
+    """immudb's errors, sorted by what the caller must do (spike M1-M15, review minor 1)."""
     text = f"{type(exc).__name__}: {exc}"
     details = getattr(exc, "details", lambda: "")() or ""
     code = getattr(getattr(exc, "code", lambda: None)(), "name", "")
-    if "illegal state" in details or "CorruptedData" in text or "Verification" in type(exc).__name__ \
-            or "verification" in text.lower():
+    if "illegal state" in details or "CorruptedData" in text or \
+            type(exc).__name__ in ("VerificationException", "BadSignatureError"):
         return TamperAlarm(f"{db}: {details or text}")
     if "invalid user name or password" in details.lower():
         return LedgerCredentials(f"{db}: immudb refused the ledger user's password (LEDGER_IMMUDB_PASSWORD)")
-    if code == "UNAVAILABLE":
+    if code in ("UNAVAILABLE", "DEADLINE_EXCEEDED"):
         return LedgerUnavailable(f"{db}: {details or text}")
-    if login or "does not exist" in details or "permission" in details.lower() or code == "PERMISSION_DENIED":
+    if "does not exist" in details or "permission" in details.lower() or code == "PERMISSION_DENIED" \
+            or (login and code in ("NOT_FOUND", "UNKNOWN")):
         return UnknownDatabase(f"{db}: {details or text}")
     return LedgerError(f"{db}: {details or text}")
 
@@ -405,4 +470,5 @@ def from_environment():
     if not url:
         raise LedgerUnavailable("LEDGER_IMMUDB_URL is not set")
     return ImmudbLedger(url, user=os.environ.get("LEDGER_IMMUDB_USER", "aisc_ledger"),
-                        password=os.environ["LEDGER_IMMUDB_PASSWORD"], state_store=PostgresStateStore())
+                        password=os.environ["LEDGER_IMMUDB_PASSWORD"], state_store=PostgresStateStore(),
+                        public_key_file=os.environ.get("LEDGER_IMMUDB_PUBLIC_KEY") or None)

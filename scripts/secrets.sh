@@ -101,18 +101,25 @@ if [ -f "$OUT" ]; then
   for name in $KEPT_ON_ROTATE; do kept[$name]=$(value_in "$name" "$OUT"); done
 fi
 
-# --add-ledger-key: the next version of the ledger's master key, appended; nothing else changes.
+# --add-ledger-key: the next version of the ledger's master key, appended; nothing else changes. It
+# then goes on as a plain run (values kept), so env.runtime carries the new version too.
 if [ "${1:-}" = "--add-ledger-key" ]; then
   [ -f "$OUT" ] || { echo "$OUT does not exist: run scripts/secrets.sh first" >&2; exit 1; }
   current=$(value_in PLATFORM_LEDGER_KEYS "$OUT")
   [ -n "$current" ] || { echo "PLATFORM_LEDGER_KEYS is missing from $OUT: run scripts/secrets.sh first" >&2; exit 1; }
+  if ! [[ "$current" =~ ^v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*$ ]]; then
+    echo "PLATFORM_LEDGER_KEYS in $OUT is not v<N>:<64 hex>[,...]: fix it by hand; nothing changed" >&2
+    exit 1
+  fi
   next=$(( $(tr ',' '\n' <<<"$current" | sed -n 's/^v\([0-9]*\):.*/\1/p' | sort -n | tail -1) + 1 ))
   key=$(rand) || { echo "openssl failed; $OUT left as it was" >&2; exit 1; }
   tmp=$(mktemp "$OUT.XXXXXX")
+  trap 'rm -f "$tmp"' EXIT
   NAME=PLATFORM_LEDGER_KEYS VALUE="$current,v$next:$key" awk 'index($0, ENVIRON["NAME"] "=") == 1 { print ENVIRON["NAME"] "=" ENVIRON["VALUE"]; next } { print }' "$OUT" > "$tmp"
   mv "$tmp" "$OUT"
+  trap - EXIT
   echo "added ledger key version v$next to $OUT; restart the platform to use it"
-  exit 0
+  set --
 fi
 
 # The new env.secrets is built beside the old one and moved into place at the end, so a run that

@@ -245,3 +245,12 @@ def test_browser_reported_actions_have_their_own_origin():
     """`page.*` come through the beacon, never through an app's `ledger.emit` (fourth review 2)."""
     assert {n for n, a in REGISTRY.items() if a.origin == "browser"} >= {"page.opened", "page.left"}
     assert all(a.origin != "app" for n, a in REGISTRY.items() if n.startswith(("page.", "request.", "ledger.")))
+
+
+@pytest.mark.parametrize("bad", [{"details": "x"}, {"details": ["a"]}, {"action": ["risk.rated"]},
+                                 {"action": {"a": 1}}, {"content": 5}])
+def test_a_malformed_event_is_a_problem_never_a_crash(bad):
+    """Review minor 8: check() answers for anything an app sends."""
+    event = {**_event(), **bad}
+    problems = check(event, emitter=_emitter())
+    assert problems

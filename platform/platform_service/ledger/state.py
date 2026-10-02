@@ -73,7 +73,8 @@ class PostgresStateStore:
             else:
                 done = conn.execute(
                     "UPDATE ledger.state SET tx_id = %s, tx_hash = %s, signature = %s, updated_at = clock_timestamp()"
-                    " WHERE db = %s AND tx_id = %s AND tx_hash = %s",
-                    (state.tx_id, state.tx_hash, state.signature, db, expected.tx_id, expected.tx_hash)).rowcount
+                    " WHERE db = %s AND tx_id = %s AND tx_hash = %s AND signature IS NOT DISTINCT FROM %s",
+                    (state.tx_id, state.tx_hash, state.signature, db, expected.tx_id, expected.tx_hash,
+                     expected.signature)).rowcount
             if done != 1:
                 raise ValueError(f"the verified state of {db} changed meanwhile")

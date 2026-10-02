@@ -387,8 +387,21 @@ library, so the repo-level tests can load them (R3.7).
     signature, updated_at)`, or `state.MemoryStateStore` in tests. `get(db)`, and
     `put(db, state, expected)`, a compare-and-set that raises `ValueError` on a stale `expected`
     (M11).
-  - `illegal state` and `ErrCorruptedData` both raise `TamperAlarm` (M13, M14). It never creates a
-    database (M1).
+  - `illegal state`, `ErrCorruptedData`, a failed proof and a bad state signature all raise
+    `TamperAlarm` (M13, M14). It never creates a database (M1).
+  - **Two writers** (phase 1 review B2): each append writes `e:<seq>`, `id:<event_id>` and `seq:last` in
+    one transaction with immudb `KeyMustNotExist` preconditions on the first two; a writer that loses
+    the race reads again and takes the next number. No event is ever lost or numbered twice, whether
+    or not the relay's advisory lock is held.
+  - **A lost session** (an immudb restart, B1) is logged in again once and the call retried, so the
+    same store recovers on its own.
+  - **Shared verified state** (M1): a proof of an older state than the stored one is not tampering
+    (another worker moved it on); the state only moves forward, by compare-and-set with retry.
+  - **Signed states** (S3, settled): with immudb's `--signingKey`, the store is given the public key
+    (`LEDGER_IMMUDB_PUBLIC_KEY`) and every state's signature is checked.
+  - **First sight**: a database with no saved state trusts the server's current state as the anchor.
+    With the signing key on, that state is at least the server's own; the anchor then only moves
+    forward. Stated here and in the runbook.
   - `store.MemoryLedger()` is for tests.
 - `pool.create_databases(url, *, admin_user="immudb", admin_password, names, grantee,
   grantee_password)`: the operator's step behind `scripts/ledger-pool.sh`. It raises `PermissionError`
@@ -698,10 +711,14 @@ of 01-plan and the test file names are made consistent with this file (R3.5).
 
 - ~~S1~~ settled: section 3.1.
 - **S2** Next.js action names at build time (4.5).
-- **S3** immudb `--signingKey` with immudb-py `publicKeyFile` (7.3).
+- ~~S3~~ settled in phase 1: immudb `--signingKey` with immudb-py `publicKeyFile`, tested.
 - **S4** the real oauth2-proxy and Preferred-Username (G3): check the header it returns.
 - **S6** whether a conditional branch of a server action needs registry support beyond `caused_by`
   (section 4.5 limits): decide from phase 5's real actions.
-- **S7** read immudb's server UUID from the `immudb-uuid` metadata with immudb-py (pool `server_id`).
+- ~~S7~~ settled in phase 1: the `immudb-uuid` of a login-free `Health` call, with a 5 s deadline.
+- **S8** `inspector_ro` (pgAdmin, SchemaSpy) reads every table through `pg_read_all_data`, so it can
+  read `ledger.*`. Harmless for phase 1 (pool, state); phase 3's `ledger.actor` and `ledger.witness`
+  hold personal data. Decide before phase 3: keep (admins only), or move those tables to a database
+  the inspector can't connect to.
 - **S5** M8, SQL privileges lost after another database's grant. Not needed (we use key-value);
   worth an upstream issue.

@@ -11,7 +11,7 @@ from platform_service.ledger.naming import is_ledger_name
 
 
 def create_databases(url: str, *, admin_user: str = "immudb", admin_password: str, names: list[str],
-                     grantee: str, grantee_password: str) -> list[str]:
+                     grantee: str, grantee_password: str, login_database: str = "defaultdb") -> list[str]:
     """Create `names` in immudb and give `grantee` read-write on each, creating the user if needed.
     PermissionError when `admin_user` may not (anyone but the superuser, M1)."""
     from immudb import ImmudbClient, constants
@@ -22,7 +22,7 @@ def create_databases(url: str, *, admin_user: str = "immudb", admin_password: st
             raise ValueError(f"not a ledger name: {name!r}")
     client = ImmudbClient(url)
     try:
-        client.login(admin_user, admin_password)                      # refused outright to aisc_ledger (M1)
+        client.login(admin_user, admin_password, database=login_database.encode())
         for name in names:
             client.createDatabaseV2(name, DatabaseSettingsV2(), True)
         users = {u.user.decode() if isinstance(u.user, bytes) else u.user for u in client.listUsers().userlist.users}

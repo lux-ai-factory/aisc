@@ -38,8 +38,14 @@ def _assign(conn, pid: str, server_id: str) -> str | None:
 
 
 def assign(pid: str, conn=None) -> str | None:
-    """The project's database, taken from the pool if it has none yet; None when the pool is empty."""
-    server_id = ledger.current().server_id
+    """The project's database, taken from the pool if it has none yet; None when the pool is empty or
+    the store can't be reached now: the project waits (I6, review M4), it is never blocked."""
+    from platform_service.ledger.store import LedgerError
+
+    try:
+        server_id = ledger.current().server_id
+    except LedgerError:
+        return database_for(pid)
     if conn is not None:
         with conn.transaction():                                     # a savepoint inside the caller's
             return _assign(conn, pid, server_id)

@@ -30,10 +30,19 @@ the state is re-anchored. Nothing is lost on the apps' side: events wait in the 
      SELECT db, tx_id, encode(tx_hash, 'hex') FROM ledger.state WHERE db = '<db>';
      DELETE FROM ledger.state WHERE db = '<db>';
      ```
-4. **Expect the gap.** Entries written after the backup was taken are gone from immudb. Until
+4. **Know what restarts.** After the re-anchor the log's numbering continues from the restored
+   head, so numbers that existed before the restore are given again to new entries. From phase 4
+   the read index is keyed by (project, seq): its rows above the restored head must be moved aside
+   (kept, marked "lost in restore") before the relay writes again.
+5. **Expect the gap.** Entries written after the backup was taken are gone from immudb. Until
    phase 10, the published heads only prove they existed. From phase 10, rebuild them from the locked
    archive (`archive.rebuild`).
-5. Run the verifier (phase 3 onwards) and check that the project's later events are delivered.
+6. Run the verifier (phase 3 onwards) and check that the project's later events are delivered.
+
+## First sight
+
+A database with no saved state trusts what the server says the first time it is read. With immudb's
+signing key on, that state is signed by the server; from then on the anchor only moves forward.
 
 ## Drill (phase 1, done 2026-10-02)
 

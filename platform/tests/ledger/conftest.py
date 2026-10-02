@@ -23,7 +23,7 @@ REQUIRED = os.environ.get("LEDGER_TESTS_REQUIRED") == "1"
 
 GATEWAY_SECRET = "test-gateway-secret-0123456789abcdef"
 #: The master keys, versioned: per-project, per-purpose keys are derived from them (spec 6.1, N5).
-LEDGER_KEYS = "v1:test-ledger-master-key-v1-0123456789abcdef"
+LEDGER_KEYS = "v1:" + "a1" * 32
 GATEWAY_CLIENT = "aisc-gateway"
 
 OWNER = "00000000-0000-0000-0000-0000000000a1"
@@ -165,6 +165,16 @@ def own_store(memory_ledger):
     yield run
     for previous in reversed(made):
         ledger.use(previous)
+
+
+@pytest.fixture
+def platform_dsn(_database_required, dsn):
+    """The platform database's DSN, migrated first (the platform migrates on its first pool use, so a
+    test reaching ledger.* directly must not depend on another test having done it)."""
+    from platform_service import db
+
+    db.pool()
+    return dsn
 
 
 def log_of(pid: str) -> str:

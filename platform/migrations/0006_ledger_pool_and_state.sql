@@ -1,6 +1,6 @@
 -- The ledger's Postgres side, phase 1 (docs/superpowers/ledger-2026-10-02/02-spec.md 6.1, 7.1-7.3).
--- In schema `ledger`, which init/ledger-schema.sql makes, owned by this service; no module role can
--- reach it.
+-- In schema `ledger`, which init/platform-db.sql (a fresh volume) and init/project-databases.sql
+-- (postgres-setup, every start) make, owned by this service; no module role can reach it.
 
 DO $guard$
 BEGIN

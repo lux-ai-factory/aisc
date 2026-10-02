@@ -150,11 +150,14 @@ def immudb():
 
 
 def test_the_ledger_user_cannot_create_a_database(immudb):
+    """Refused for lack of the right, not for a failed login: aisc_ledger logs in to a database it
+    may use, and is refused the creation itself (review minor 13)."""
     from platform_service.ledger import pool
 
-    with pytest.raises(PermissionError):
+    [mine] = fresh_databases(1)
+    with pytest.raises(PermissionError, match="may not create"):
         pool.create_databases(IMMUDB_URL, admin_user="aisc_ledger", admin_password=LEDGER_USER_PASSWORD,
-                              names=["ledger" + uuid.uuid4().hex], grantee="aisc_ledger",
+                              login_database=mine, names=["ledger" + uuid.uuid4().hex], grantee="aisc_ledger",
                               grantee_password=LEDGER_USER_PASSWORD)
 
 
@@ -221,3 +224,135 @@ def test_the_ledger_user_sees_its_server_and_its_databases(immudb):
     store = immudb()
     assert store.server_id.startswith("immudb:") and len(store.server_id) > len("immudb:")
     assert {a, PLATFORM_DB} <= store.databases()
+
+
+# phase 1 review (11-phase1-review.md): what the first tests missed --------------------------------
+
+def test_the_store_logs_in_again_after_losing_its_session(immudb):
+    """B1: an immudb restart drops every session; the same store must recover on its own, not until
+    the platform restarts. Losing the session is simulated by logging the cached client out."""
+    [a] = fresh_databases(1)
+    store = immudb()
+    store.append(a, entry())
+    client, _ = store._clients[a]
+    client.logout()
+    assert store.append(a, entry()) == 2
+    assert [x.seq for x in store.scan(a, after_seq=0, limit=10)] == [1, 2]
+
+
+def test_two_stores_writing_one_database_lose_nothing(immudb):
+    """B2: two platform workers append to one database at once; every acknowledged event is in the log
+    exactly once, with no gap and no number used twice."""
+    [a] = fresh_databases(1)
+    stores, ids, errors = (immudb(), immudb()), [], []
+
+    def write(store, n=40):
+        try:
+            for _ in range(n):
+                e = entry()
+                store.append(a, e)
+                ids.append(e["event_id"])
+        except Exception as exc:                                    # pragma: no cover - reported below
+            errors.append(exc)
+    threads = [threading.Thread(target=write, args=(s,)) for s in stores]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert not errors
+    logged = immudb().scan(a, after_seq=0, limit=1000)
+    assert [x.seq for x in logged] == list(range(1, 81))
+    assert sorted(x.event_id for x in logged) == sorted(ids)
+
+
+def test_a_reader_and_a_writer_sharing_the_state_raise_no_false_alarm(immudb, platform_dsn):
+    """M1: two workers share the verified state (Postgres). A reader proving an older, valid state
+    than the one the writer just stored is not tampering."""
+    from platform_service.ledger.state import PostgresStateStore
+
+    [a] = fresh_databases(1)
+    shared = PostgresStateStore(platform_dsn)
+    writer, reader = immudb(shared), immudb(shared)
+    writer.append(a, entry())
+    alarms, errors, done = [], [], threading.Event()
+
+    def read():
+        while not done.is_set():
+            try:
+                reader.get(a, 1)
+            except TamperAlarm as exc:
+                alarms.append(exc)
+            except Exception as exc:                                # pragma: no cover - reported below
+                errors.append(exc)
+    t = threading.Thread(target=read)
+    t.start()
+    for _ in range(40):
+        writer.append(a, entry())
+    done.set()
+    t.join()
+    assert not alarms and not errors
+
+
+def test_the_postgres_state_catches_a_rollback_across_stores(immudb, platform_dsn):
+    """M2: the production state store, across a new store, with immudb."""
+    from platform_service.ledger.state import PostgresStateStore
+
+    [a] = fresh_databases(1)
+    state = PostgresStateStore(platform_dsn)
+    seq = immudb(state).append(a, entry())
+    saved = state.get(a)
+    state.put(a, saved.claiming(tx_id=saved.tx_id + 50), expected=saved)
+    with pytest.raises(TamperAlarm):
+        immudb(state).get(a, seq)
+
+
+def test_the_postgres_state_store_is_compare_and_set(platform_dsn):
+    from platform_service.ledger.state import PostgresStateStore, State
+
+    db = "ledger" + uuid.uuid4().hex
+    store = PostgresStateStore(platform_dsn)
+    first = State(db, 3, b"\x01" * 32, b"sig")
+    store.put(db, first, expected=None)
+    assert store.get(db) == first
+    with pytest.raises(ValueError):
+        store.put(db, State(db, 4, b"\x02" * 32), expected=None)          # someone else made it first
+    with pytest.raises(ValueError):
+        store.put(db, State(db, 4, b"\x02" * 32), expected=first.claiming(tx_id=2))
+    with pytest.raises(ValueError):                                       # the signature is part of it
+        store.put(db, State(db, 4, b"\x02" * 32), expected=State(db, 3, b"\x01" * 32, b"other"))
+    store.put(db, State(db, 4, b"\x02" * 32), expected=first)
+    assert store.get(db).tx_id == 4
+
+
+def test_after_a_rollback_the_memory_store_refuses_appends_too():
+    """Minor 2: as immudb does, a store whose verified state is ahead of it writes nothing more."""
+    store = MemoryLedger()
+    a = "ledger" + uuid.uuid4().hex
+    store.create(a)
+    store.append(a, entry())
+    store.set_state(a, store.state(a).claiming(tx_id=99))
+    with pytest.raises(TamperAlarm):
+        store.append(a, entry())
+
+
+def test_a_signed_server_is_checked_against_its_public_key(immudb):
+    """S3: with immudb's --signingKey on, every state carries a signature the store checks; a store
+    holding another key raises the alarm. The throwaway immudb is started with a signing key and its
+    public key is in LEDGER_TEST_IMMUDB_PUBLIC_KEY."""
+    import os
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    key = os.environ.get("LEDGER_TEST_IMMUDB_PUBLIC_KEY")
+    need(key, "LEDGER_TEST_IMMUDB_PUBLIC_KEY is not set (start the throwaway immudb with a signing key)")
+    [a] = fresh_databases(1)
+    signed = ImmudbLedger(IMMUDB_URL, user="aisc_ledger", password=LEDGER_USER_PASSWORD,
+                          state_store=MemoryStateStore(), public_key_file=key)
+    assert signed.get(a, signed.append(a, entry())).seq == 1
+    other = os.path.join(os.path.dirname(key), "other.pub")
+    with open(other, "wb") as f:
+        f.write(ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    wrong = ImmudbLedger(IMMUDB_URL, user="aisc_ledger", password=LEDGER_USER_PASSWORD,
+                         state_store=MemoryStateStore(), public_key_file=other)
+    with pytest.raises(TamperAlarm):
+        wrong.append(a, entry())

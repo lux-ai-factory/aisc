@@ -172,7 +172,7 @@ def test_the_same_content_digests_differently_in_two_projects(project, make_proj
 
 def test_after_a_rotation_new_digests_use_the_new_key_and_old_ones_still_check(project, rate, monkeypatch):
     old = rate(n=1)
-    monkeypatch.setenv("PLATFORM_LEDGER_KEYS", LEDGER_KEYS + ",v2:test-ledger-master-key-v2-fedcba9876543210")
+    monkeypatch.setenv("PLATFORM_LEDGER_KEYS", LEDGER_KEYS + ",v2:" + "b2" * 32)
     new = rate(n=2)
     assert old.content_sha256.startswith("hmac:v1:") and new.content_sha256.startswith("hmac:v2:")
     assert secrets.check(project["pid"], "content", canonical({"answer": "yes"}), old.content_sha256)
@@ -182,7 +182,7 @@ def test_after_a_rotation_new_digests_use_the_new_key_and_old_ones_still_check(p
 
 def test_a_digest_of_a_retired_version_no_longer_checks(project, rate, monkeypatch):
     old = rate()
-    monkeypatch.setenv("PLATFORM_LEDGER_KEYS", "v2:test-ledger-master-key-v2-fedcba9876543210")
+    monkeypatch.setenv("PLATFORM_LEDGER_KEYS", "v2:" + "b2" * 32)
     assert not secrets.check(project["pid"], "content", canonical({"answer": "yes"}), old.content_sha256)
 
 
@@ -198,7 +198,7 @@ def test_the_export_carries_only_this_projects_content_key(client, as_user, proj
     assert set(keys) == {"content"}
     assert keys["content"] == {v: k.hex() for v, k in secrets.derive_all(project["pid"], "content").items()}
     assert keys["content"] != {v: k.hex() for v, k in secrets.derive_all(other["pid"], "content").items()}
-    assert "test-ledger-master-key" not in text
+    assert "a1" * 32 not in text and "b2" * 32 not in text
     path, key = tmp_path / "e.jsonl", tmp_path / "pub"
     path.write_text(text)
     key.write_text(memory_ledger.public_key_pem())

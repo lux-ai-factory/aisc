@@ -13,7 +13,13 @@ cd "$(dirname "$0")/.."
 : "${IMMUDB_ADMIN_PASSWORD:?set IMMUDB_ADMIN_PASSWORD (the immudb superuser password) in this shell first}"
 COUNT=${1:-20}
 [[ "$COUNT" =~ ^[0-9]+$ ]] || { echo "N must be a number" >&2; exit 2; }
-export IMMUDB_ADMIN_PASSWORD
+# The platform container has no ledger settings of its own: hand it the immudb address and the ledger
+# user's password (env.secrets) too. Every value goes by name (-e NAME), never on the command line.
+LEDGER_IMMUDB_PASSWORD=$(awk 'index($0, "LEDGER_IMMUDB_PASSWORD=") == 1 { print substr($0, 24); exit }' env.secrets 2>/dev/null || true)
+[ -n "$LEDGER_IMMUDB_PASSWORD" ] || { echo "LEDGER_IMMUDB_PASSWORD is missing from env.secrets: run scripts/secrets.sh first" >&2; exit 1; }
+LEDGER_IMMUDB_URL=${LEDGER_IMMUDB_URL:-immudb:3322}
+export IMMUDB_ADMIN_PASSWORD LEDGER_IMMUDB_PASSWORD LEDGER_IMMUDB_URL
 docker compose -p "${COMPOSE_PROJECT:-aisc}" --env-file env.runtime \
   -f docker-compose.plugin_downloader.yml -f docker-compose-infra.development.yml -f docker-compose.development.yml \
-  run --rm --no-deps -e IMMUDB_ADMIN_PASSWORD platform python -m platform_service.ledger.pool create "$COUNT"
+  run --rm --no-deps -e IMMUDB_ADMIN_PASSWORD -e LEDGER_IMMUDB_PASSWORD -e LEDGER_IMMUDB_URL \
+  platform python -m platform_service.ledger.pool create "$COUNT"
