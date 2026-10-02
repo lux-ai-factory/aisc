@@ -127,6 +127,8 @@ services:
       # Lets the platform make one database per project. After the platform DB,
       # because it alters the platform's role.
       - ./init/project-databases.sql:/docker-entrypoint-initdb.d/06-project-databases.sql:ro,Z
+      # The ledger's schema, owned by the platform service (ledger plan 2026-10-02).
+      - ./init/ledger-schema.sql:/docker-entrypoint-initdb.d/07-ledger-schema.sql:ro,Z
       # Creates the `superset` metadata DB (apps/results-dashboard) on a fresh volume.
       - ./init/superset-db.sql:/docker-entrypoint-initdb.d/50-superset-db.sql:ro,Z
       # The report's roles (report_ro, report_composer_rw) and the composer's schema.
@@ -160,12 +162,14 @@ services:
       - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
       - ./init/report-roles.sql:/setup/report-roles.sql:ro,Z
       - ./init/inspector-role.sql:/setup/inspector-role.sql:ro,Z
+      - ./init/ledger-schema.sql:/setup/ledger-schema.sql:ro,Z
     command: >
       sh -c "until pg_isready -q; do sleep 1; done
       && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql
       && psql -v ON_ERROR_STOP=1 -v report_ro_password=\"$$REPORT_RO_PASSWORD\"
       -v report_composer_password=\"$$REPORT_COMPOSER_PASSWORD\" -f /setup/report-roles.sql
-      && psql -v ON_ERROR_STOP=1 -v inspector_password=\"$$INSPECTOR_PASSWORD\" -f /setup/inspector-role.sql"
+      && psql -v ON_ERROR_STOP=1 -v inspector_password=\"$$INSPECTOR_PASSWORD\" -f /setup/inspector-role.sql
+      && psql -v ON_ERROR_STOP=1 -f /setup/ledger-schema.sql"
     depends_on:
       - postgres
     restart: "no"

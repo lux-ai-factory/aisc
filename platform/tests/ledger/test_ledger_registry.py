@@ -49,9 +49,9 @@ REQUIRED = [
     "ai.mapping.requested", "ai.mapping.completed", "ai.mapping.failed", "mapping.risk.edited",
     "objective.key.set", "assessment.profile.switched", "objective_set.created", "objective_set.published",
     "objective_profile.created", "objective_profile.version_saved",
-    # step 3
-    "catalogue.tool.created", "catalogue.tool.updated", "catalogue.tool.deleted",
-    "catalogue.control.ingested", "plugin.installed", "control.installed",
+    # step 3: only the local installs. The catalogue is hosted elsewhere and never passes this gateway,
+    # so its tool and ingest events belong in its own log (spec 3.1, R1.10).
+    "plugin.installed", "control.installed",
     # step 4
     "evidence.links.saved", "engine.evaluation.run_requested", "engine.evaluation.status_changed",
     "engine.measures.recorded", "engine.artifact.uploaded", "engine.plugin.configured",
