@@ -113,6 +113,10 @@ def witness(headers) -> Answer:
             member = db.role_in_project(pid, who.subject) is not None
             if not member:
                 pid = None                                           # a stranger's request: platform log (D11)
+    elif current == "record":
+        # record mode observes before enforcing: an unverified request keeps the project its path names,
+        # as no member, so the events it caused land in that log marked unverified (spec 3.4, 4.2)
+        pid = _project(app, path, headers)
     actor_ref = None
     if who is not None:
         from platform_service.ledger import actors

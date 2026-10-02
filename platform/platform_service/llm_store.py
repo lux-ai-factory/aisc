@@ -103,7 +103,8 @@ def ciphertext_of(pid, provider: str) -> str | None:
     return row["ciphertext"] if row else None
 
 
-def save_provider(pid, provider: str, *, ciphertext=KEEP, base_url=KEEP, subject: str | None) -> dict:
+def save_provider(pid, provider: str, *, ciphertext=KEEP, base_url=KEEP, subject: str | None,
+                  key_fingerprint: str | None = None) -> dict:
     """Insert or update a provider row; a KEEP column keeps its stored value."""
     params = {
         "provider": provider,
@@ -113,7 +114,13 @@ def save_provider(pid, provider: str, *, ciphertext=KEEP, base_url=KEEP, subject
         "set_url": base_url is not KEEP,
         "subject": subject,
     }
-    with connect(pid) as conn:
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        details = {"key": key_fingerprint} if key_fingerprint else {}
+        if base_url is not KEEP:
+            details["base_url_after"] = base_url
+        outbox.emit_project(conn, "llm.provider.saved", item_type="llm_provider", item_id=provider, details=details)
         return conn.execute(
             "INSERT INTO llm.provider (provider, ciphertext, base_url, updated_by)"
             " VALUES (%(provider)s, %(ciphertext)s, %(base_url)s, %(subject)s)"

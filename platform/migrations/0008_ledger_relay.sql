@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS ledger.event_index (
     before_sha256 text,
     after_sha256 text,
     reason       text,
+    row_digest   text,                         -- what the emitter sent: a re-sent row that differs is an alarm
     PRIMARY KEY (log, seq),
     UNIQUE (log, event_id)
 );

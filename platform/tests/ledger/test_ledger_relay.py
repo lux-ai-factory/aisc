@@ -96,7 +96,8 @@ def test_an_event_citing_its_request_gets_the_witnesss_actor(project, memory_led
     assert (e.actor_kind, e.source_app, e.request_id, e.verified) == ("user", "controls", closing, True)
     assert e.content_sha256 == secrets.content_digest(project["pid"], content)      # the platform's (N4)
     assert person(project["pid"], e.actor_ref) == (MEMBER, "bob")
-    [w] = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.action == "request.witnessed"]
+    [w] = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.action == "request.witnessed"
+           and x.request_id == closing]                              # the fixture's member-add is witnessed too
     assert w.request_id == closing and w.actor_ref == e.actor_ref
 
 

@@ -159,11 +159,24 @@ def create_project(name: str, slug: str, description: str | None,
             " values (%s, %s, %s, 'owner')",
             (created["pid"], owner, email),
         )
+        # the project's ledger database, from the operator's pool, in the same transaction (spec 7.1)
+        from platform_service.ledger import outbox, provision
+
+        provision.assign(str(created["pid"]), conn=conn)
+        # recorded in the platform log: the request that made it named no project yet (spec 4.2)
+        outbox.emit(conn, "project.created", project_pid=None, item_type="project", item_id=created["pid"],
+                    details={"name": name})
         return created
 
 
 def delete_project(pid) -> None:
-    with pool().connection() as conn:
+    from platform_service.ledger import outbox
+
+    with pool().connection() as conn, conn.transaction():
+        members = conn.execute("select count(*) as n from core.project_member where project_id = %s",
+                               (pid,)).fetchone()
+        outbox.emit(conn, "project.deleted", project_pid=pid, item_type="project", item_id=pid,
+                    details={"members": members["n"] if members else 0})
         conn.execute("delete from core.project where pid = %s", (pid,))
 
 
@@ -300,6 +313,12 @@ def create_version(project: str, name: str, version: str | None, provider: str |
             " values ((select coalesce(max(number), 0) + 1 from project.system), %s, %s, %s, %s, %s)"
             f" returning {_STORED}",
             (name, version, provider, description, subject)).fetchone()
+        from platform_service.ledger import outbox
+
+        outbox.emit_project(conn, "card_version.created", item_type="card_version", item_id=row["pid"],
+                            item_version=row["number"],
+                            details={"number": row["number"], "name": name, "version": version,
+                                     "provider": provider})
     return _as_version(row, pid)
 
 
@@ -392,11 +411,15 @@ def members(project: str) -> list[dict]:
 
 def add_member(project: str, subject: str, email: str | None, role: str) -> dict | None:
     """Put somebody in a project, or change what they are in it."""
-    with pool().connection() as conn:
+    from platform_service.ledger import outbox
+
+    with pool().connection() as conn, conn.transaction():
         pid = _project_pid(conn, project)
         if pid is None:
             return None
-        return conn.execute(
+        before = conn.execute("select role from core.project_member where project_id = %s and subject = %s",
+                              (pid, subject)).fetchone()
+        row = conn.execute(
             "insert into core.project_member (project_id, subject, email, role)"
             " values (%s, %s, %s, %s)"
             " on conflict (project_id, subject) do update"
@@ -405,6 +428,13 @@ def add_member(project: str, subject: str, email: str | None, role: str) -> dict
             " returning subject, email, role, added_at",
             (pid, subject, email, role),
         ).fetchone()
+        if before is None:
+            outbox.emit(conn, "member.added", project_pid=pid, item_type="member", item_id=subject,
+                        details={"role": role})
+        elif before["role"] != role:
+            outbox.emit(conn, "member.role_changed", project_pid=pid, item_type="member", item_id=subject,
+                        details={"role_before": before["role"], "role_after": role})
+        return row
 
 
 def owner_count(project: str) -> int:
@@ -420,15 +450,20 @@ def owner_count(project: str) -> int:
 
 
 def remove_member(project: str, subject: str) -> bool:
-    with pool().connection() as conn:
+    from platform_service.ledger import outbox
+
+    with pool().connection() as conn, conn.transaction():
         pid = _project_pid(conn, project)
         if pid is None:
             return False
         done = conn.execute(
-            "delete from core.project_member where project_id = %s and subject = %s",
+            "delete from core.project_member where project_id = %s and subject = %s returning role",
             (pid, subject),
-        )
-        return done.rowcount > 0
+        ).fetchone()
+        if done:
+            outbox.emit(conn, "member.removed", project_pid=pid, item_type="member", item_id=subject,
+                        details={"role": done["role"]})
+        return done is not None
 
 
 def bootstrap_owners(subjects: list[str]) -> int:

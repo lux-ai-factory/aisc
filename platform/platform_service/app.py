@@ -48,6 +48,59 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AISC platform", docs_url="/docs")
 
+#: What the ledger's defence in depth checks (spec 5.3): every write, but not the internal and authz routes,
+#: which carry service tokens or are Caddy's own.
+_LEDGER_WRITES = {"POST", "PUT", "PATCH", "DELETE"}
+_LEDGER_EXEMPT = ("/internal/", "/authz/", "/docs", "/openapi.json")
+
+
+def _ledger_presented(request: Request, request_id: str | None) -> str | None:
+    """Why this write may not go on in `enforce`, or None. The request id must be one the witness gave,
+    for a verified person who is this caller; through the gateway directly, for this method and path."""
+    from aisc_identity.service import NotAuthenticated, caller_from_headers
+
+    from platform_service.ledger import actors, witness as ledger_witness
+
+    if not request_id:
+        return "a write needs the request the gateway witnessed (X-AISC-Request-Id)"
+    rec = ledger_witness.record(request_id)
+    if rec is None or not rec.verified:
+        return "unknown or unverified request id"
+    try:
+        caller = caller_from_headers(request.headers)
+    except NotAuthenticated:
+        return None                                                   # the route answers 401 itself
+    try:
+        who = actors.resolve(rec.project_pid, rec.actor_ref)
+    except actors.MappingAlarm:
+        return "the request's person can't be checked"
+    if who is None or who[0] != caller.subject:
+        return "this request id was witnessed for someone else"
+    if rec.app == "platform" and (rec.method != request.method or rec.route_path != "/api" + request.url.path):
+        return "this request id was witnessed for another request"
+    return None
+
+
+@app.middleware("http")
+async def ledger_request(request: Request, call_next):
+    """The witnessed request this one is (X-AISC-Request-Id), for the platform's own events; in `enforce`,
+    a write without a matching one is refused (spec 5.3, R1.5)."""
+    from starlette.concurrency import run_in_threadpool
+
+    from platform_service.ledger import outbox, witness as ledger_witness
+
+    request_id = request.headers.get("x-aisc-request-id") or None
+    token = outbox.current_request.set(request_id)
+    try:
+        if (request.method in _LEDGER_WRITES and not request.url.path.startswith(_LEDGER_EXEMPT)
+                and ledger_witness.mode() == "enforce"):
+            problem = await run_in_threadpool(_ledger_presented, request, request_id)
+            if problem:
+                return JSONResponse({"detail": problem}, status_code=401)
+        return await call_next(request)
+    finally:
+        outbox.current_request.reset(token)
+
 #: The realm role that administers the platform. It is not a membership: an
 #: admin is not in the project, it may act on any of them, which is what makes
 #: an orphaned project recoverable.
@@ -545,8 +598,13 @@ def save_llm_provider(slug: str, provider: str, body: ProviderIn,
             ciphertext = llm_store.encrypt(key)
         except llm_store.SecretsKeyError as exc:
             raise secrets_unavailable(exc) from None
+    from platform_service.ledger import secrets as ledger_secrets, witness as ledger_witness
+
+    fingerprint = None
+    if key is not None and ledger_witness.mode() != "off":
+        fingerprint = ledger_secrets.fingerprint(pid, key)            # never the key itself (I8)
     row = llm_store.save_provider(pid, provider, ciphertext=ciphertext, base_url=base_url,
-                                  subject=caller.subject)
+                                  subject=caller.subject, key_fingerprint=fingerprint)
     return provider_view(provider, row)
 
 

@@ -157,7 +157,10 @@ mode, app, method, route_path, query_hmac, host, project_pid null, member bool, 
 bool, reason null, next_action null, token_jti, token_exp, delivered_seq null)`.
 
 - `project_pid` is set only when the app's rule finds a pid that `db.get_project` knows **and** the
-  caller is a member. Otherwise it's null and the record goes to the platform log (T6, T23, I9).
+  caller is a member. Otherwise it's null and the record goes to the platform log (T6, T23, I9). One
+  exception, in `record` only: a request with no verified person keeps the project its path names
+  (`member=false`, `verified=false`), so the events it caused are recorded in that project's log,
+  marked unverified (4.2). `enforce` refuses such a request outright.
   D11 decides whether non-member requests are kept at all.
 - It answers 200 with `X-AISC-Request-Id` for every witnessed request in `record` and `enforce`, so
   Caddy always overwrites the header (G3). `off` isn't reachable (the snippet is empty).
