@@ -11,7 +11,8 @@ import pytest
 
 from platform_service.ledger.canonical import canonical
 from tests.conftest import DSN
-from tests.ledger.conftest import log_of, needs_db, MEMBER, OWNER, STRANGER, entries, person, relay_all
+from tests.ledger.conftest import (ADMIN, ADMIN_ROLES, log_of, needs_db, MEMBER, OWNER, STRANGER, entries,
+                                   person, relay_all)
 
 pytestmark = needs_db
 
@@ -44,16 +45,20 @@ def test_member_changes_are_recorded_with_who_made_them(project, call, memory_le
 
 def test_a_member_change_that_fails_leaves_no_event(project, call, memory_ledger):
     r = call(OWNER, "PUT", f"/projects/{project['slug']}/members/00000000-0000-0000-0000-0000000000ee",
-             json={"role": "editor"})                                # not a member: refused, nothing changed
+             json={"role": "boss"})                                  # no such role: refused, nothing changed
     assert r.status_code >= 400
     relay_all(project["pid"])
     assert [e for e in actions(memory_ledger, project["pid"]) if e.action.startswith("member.")
             and e.item_id.endswith("ee")] == []
 
 
-def test_an_llm_key_is_recorded_by_its_keyed_fingerprint_only(project, call, memory_ledger):
+def test_an_llm_key_is_recorded_by_its_keyed_fingerprint_only(project, call, memory_ledger, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("PLATFORM_SECRETS_KEY", Fernet.generate_key().decode())   # the keys are encrypted at rest
     secret = "sk-test-0123456789abcdefghijklmnop"
-    r = call(OWNER, "PUT", f"/projects/{project['slug']}/llm/providers/openai", json={"api_key": secret})
+    r = call(ADMIN, "PUT", f"/projects/{project['slug']}/llm/providers/openai", json={"api_key": secret},
+             roles=ADMIN_ROLES)                                     # only a platform admin manages keys
     assert r.status_code in (200, 201), r.text
     relay_all(project["pid"])
     [e] = [e for e in actions(memory_ledger, project["pid"]) if e.action == "llm.provider.saved"]
@@ -108,10 +113,10 @@ def test_a_project_db_with_undelivered_events_is_not_dropped_until_they_are_deli
                                                                                       memory_ledger):
     _project_db_event(project, witnessed)
     memory_ledger.down = True                                       # the drain can't deliver
-    r = call(OWNER, "DELETE", f"/projects/{project['slug']}")
+    r = call(ADMIN, "DELETE", f"/projects/{project['slug']}", roles=ADMIN_ROLES, json={"confirm_name": project["name"]})
     assert r.status_code == 409 and "undelivered" in r.text.lower()
     memory_ledger.down = False
-    assert call(OWNER, "DELETE", f"/projects/{project['slug']}").status_code in (200, 204)
+    assert call(ADMIN, "DELETE", f"/projects/{project['slug']}", roles=ADMIN_ROLES, json={"confirm_name": project["name"]}).status_code in (200, 204)
     relay_all(project["pid"])
     kept = [e.action for e in entries(memory_ledger, log_of(project["pid"]))]
     assert "risk.rated" in kept and "project.deleted" in kept       # the log outlives the project (D2)
@@ -123,7 +128,7 @@ def test_pending_platform_database_rows_never_block_a_delete(project, call, memo
     call(OWNER, "POST", f"/projects/{project['slug']}/members",
          json={"subject": "00000000-0000-0000-0000-0000000000d5", "role": "viewer"})
     memory_ledger.down = True
-    assert call(OWNER, "DELETE", f"/projects/{project['slug']}").status_code in (200, 204)
+    assert call(ADMIN, "DELETE", f"/projects/{project['slug']}", roles=ADMIN_ROLES, json={"confirm_name": project["name"]}).status_code in (200, 204)
     memory_ledger.down = False
     relay_all(project["pid"])
     kept = [e.action for e in entries(memory_ledger, log_of(project["pid"]))]

@@ -251,10 +251,42 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
         raise no_project(slug)
     if body.confirm_name != found["name"]:
         raise HTTPException(status_code=422, detail="type the project's name exactly to delete it")
+    _ledger_drain_or_refuse(found["pid"])
     # The dashboard lets go of the project's database before it is dropped.
     dashboard_bridge.unregister(found["pid"])
     projectdb.drop(db.dsn(), found["pid"])
     db.delete_project(found["pid"])
+
+
+def _ledger_drain_or_refuse(pid) -> None:
+    """Before a project database is dropped, its outbox must be in the log: the drop would destroy what
+    hasn't been delivered (spec 6.4, R2.4). Platform-database rows (members, this delete's own event)
+    don't block: they outlive the drop."""
+    from platform_service.ledger import relay, witness as ledger_witness
+    from platform_service.ledger.store import LedgerError
+
+    if ledger_witness.mode() == "off":
+        return
+    try:
+        relay.relay_once(str(pid))
+    except LedgerError:
+        pass                                                          # counted below
+    try:
+        with projectdb_connection(pid) as conn:
+            left = conn.execute("SELECT count(*) AS n FROM ledger.outbox o LEFT JOIN ledger.delivered d"
+                                " ON d.event_id = o.event_id WHERE d.event_id IS NULL").fetchone()["n"]
+    except Exception:
+        left = 0                                                      # no project database: nothing to lose
+    if left:
+        raise HTTPException(status_code=409, detail=f"the log still has {left} undelivered events: try again soon")
+
+
+def projectdb_connection(pid):
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+    from psycopg.rows import dict_row
+
+    return psycopg.connect(make_conninfo(db.dsn(), dbname=projectdb.database_name(pid)), row_factory=dict_row)
 
 
 # ── who is in a project ──────────────────────────────────────────────────────

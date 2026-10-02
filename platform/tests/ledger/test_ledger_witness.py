@@ -275,3 +275,14 @@ def test_the_witness_table_has_no_column_for_a_person(platform_dsn):
     assert columns == {"request_id", "at", "mode", "app", "method", "route_path", "query_hmac", "host",
                        "project_pid", "member", "actor_ref", "verified", "reason", "next_action", "token_jti",
                        "token_exp", "delivered_seq"}
+
+
+def test_an_admin_acting_in_a_project_is_recorded_in_its_log(witnessed, project, mode):
+    """A platform admin manages keys and deletes projects without being a member: their requests are
+    the project's, not a stranger's."""
+    from tests.ledger.conftest import ADMIN, ADMIN_ROLES
+
+    mode("enforce")
+    rec = record(witnessed(ADMIN, "PUT", "platform", f"/api/projects/{project['slug']}/llm/providers/openai",
+                           roles=ADMIN_ROLES))
+    assert (rec.project_pid, rec.member) == (project["pid"], True)

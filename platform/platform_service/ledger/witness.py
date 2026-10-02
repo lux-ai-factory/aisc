@@ -110,7 +110,9 @@ def witness(headers) -> Answer:
 
         pid = _project(app, path, headers)
         if pid is not None:
-            member = db.role_in_project(pid, who.subject) is not None
+            # a member, or a platform admin, who may act in every project (keys, deletion)
+            roles = (who.claims.get("realm_access") or {}).get("roles") or []
+            member = db.role_in_project(pid, who.subject) is not None or "admin" in roles
             if not member:
                 pid = None                                           # a stranger's request: platform log (D11)
     elif current == "record":

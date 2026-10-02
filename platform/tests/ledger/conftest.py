@@ -27,6 +27,9 @@ LEDGER_KEYS = "v1:" + "a1" * 32
 GATEWAY_CLIENT = "aisc-gateway"
 
 OWNER = "00000000-0000-0000-0000-0000000000a1"
+#: A platform admin: deletes projects and manages LLM keys, member of no project.
+ADMIN = "00000000-0000-0000-0000-0000000000ad"
+ADMIN_ROLES = ("primary-user", "admin")
 MEMBER = "00000000-0000-0000-0000-0000000000b2"
 STRANGER = "00000000-0000-0000-0000-0000000000c3"
 
@@ -235,10 +238,10 @@ def through_gateway(client, as_user, call_witness, gateway_token):
     first (app `platform`, path `/api` + path), then the call citing the id it gave, if it gave one.
     Tests create their projects this way, so a test may set `enforce` before it has a project
     (second review N2): no route is exempt from the witness to make setup work."""
-    def run(subject, method, path, **kwargs):
-        w = call_witness(gateway_token(subject), method, "platform", "/api" + path)
+    def run(subject, method, path, roles=("primary-user",), **kwargs):
+        w = call_witness(gateway_token(subject, roles=roles), method, "platform", "/api" + path)
         assert w.status_code == 200, w.text
-        headers = as_user(subject)
+        headers = as_user(subject, roles)
         if "X-AISC-Request-Id" in w.headers:
             headers["X-AISC-Request-Id"] = w.headers["X-AISC-Request-Id"]
         return client.request(method, path, headers=headers, **kwargs)
@@ -249,7 +252,8 @@ def through_gateway(client, as_user, call_witness, gateway_token):
 def make_project(memory_ledger, through_gateway, unique):
     """make_project(owner, editors=()) -> {"pid", "slug"}, made through the gateway."""
     def run(owner, editors=()):
-        made = through_gateway(owner, "POST", "/projects", json={"name": unique("ledger")})
+        name = unique("ledger")
+        made = through_gateway(owner, "POST", "/projects", json={"name": name})
         assert made.status_code == 201, made.text
         p = made.json()
         MADE["pids"].add(p["pid"])
@@ -257,13 +261,13 @@ def make_project(memory_ledger, through_gateway, unique):
             r = through_gateway(owner, "POST", f"/projects/{p['slug']}/members",
                                 json={"subject": editor, "role": "editor"})
             assert r.status_code in (200, 201), r.text
-        return {"pid": p["pid"], "slug": p["slug"]}
+        return {"pid": p["pid"], "slug": p["slug"], "name": name}
     return run
 
 
 @pytest.fixture
 def project(make_project):
-    """A project owned by OWNER with MEMBER as editor: {"pid", "slug"}."""
+    """A project owned by OWNER with MEMBER as editor: {"pid", "slug", "name"}."""
     return make_project(OWNER, editors=(MEMBER,))
 
 
@@ -326,8 +330,9 @@ def call_witness(client):
 @pytest.fixture
 def witnessed(call_witness, gateway_token):
     """A request the witness accepted; returns the request id it gave."""
-    def run(subject: str, method: str, app: str, original_uri: str, *, username: str | None = None, **kw) -> str:
-        r = call_witness(gateway_token(subject, username=username), method, app, original_uri, **kw)
+    def run(subject: str, method: str, app: str, original_uri: str, *, username: str | None = None,
+            roles=("primary-user",), **kw) -> str:
+        r = call_witness(gateway_token(subject, username=username, roles=roles), method, app, original_uri, **kw)
         assert r.status_code == 200, r.text
         request_id = r.headers.get("X-AISC-Request-Id")
         assert request_id and uuid.UUID(request_id)

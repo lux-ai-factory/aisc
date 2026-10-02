@@ -6,7 +6,7 @@ import uuid
 
 
 from platform_service.ledger import provision, testing, verify
-from tests.ledger.conftest import MEMBER, OWNER, entries, log_of, needs_db, relay_all
+from tests.ledger.conftest import ADMIN, ADMIN_ROLES, MEMBER, OWNER, entries, log_of, needs_db, relay_all
 from tests.ledger.test_ledger_outbox import emit
 
 pytestmark = needs_db
@@ -43,7 +43,8 @@ def test_with_the_pool_empty_a_projects_events_wait(own_store, make_project, wit
 def test_the_assignment_outlives_the_project(memory_ledger, make_project, through_gateway):
     p = make_project(OWNER)
     db = log_of(p["pid"])
-    assert through_gateway(OWNER, "DELETE", f"/projects/{p['slug']}").status_code in (200, 204)
+    assert through_gateway(ADMIN, "DELETE", f"/projects/{p['slug']}", roles=ADMIN_ROLES,
+                           json={"confirm_name": p["name"]}).status_code in (200, 204)
     relay_all(p["pid"])
     assert provision.database_for(p["pid"]) == db
 
