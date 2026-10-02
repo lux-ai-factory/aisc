@@ -109,8 +109,9 @@ def test_drill_immudb_down_for_a_long_stretch(immudb_ledger, busy_project):
     relay_all(p["pid"])
     subprocess.run(["docker", "stop", CONTAINER], check=True, capture_output=True)
     try:
-        started, pending = time.time(), []
-        while time.time() - started < seconds:
+        # monotonic: a suspended host must not count as outage time (the first rerun did)
+        started, pending = time.monotonic(), []
+        while time.monotonic() - started < seconds:
             emitted += work(3)
             pending.append(relay_all(p["pid"]).pending)              # never raises, never blocks the work
             time.sleep(min(30, seconds / 10))
@@ -124,5 +125,5 @@ def test_drill_immudb_down_for_a_long_stretch(immudb_ledger, busy_project):
             time.sleep(1)
     relay_all(p["pid"])
     n = _check(immudb_ledger, p["pid"], emitted, len(emitted))
-    print(f"\nDRILL outage {seconds}s: pending grew {pending[0]} -> {pending[-1]}, then {n} entries, each once")
+    print(f"\nDRILL outage {seconds}s awake ({len(pending)} rounds): pending grew {pending[0]} -> {pending[-1]}, then {n} entries, each once")
     assert pending[-1] > pending[0]
