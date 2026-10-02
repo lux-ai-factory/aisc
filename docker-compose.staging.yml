@@ -126,7 +126,7 @@ services:
     networks:
       - backend
 
- # ── AI-compliance checklists app (apps/controls submodule) ──
+  # ── AI-compliance checklists app (apps/controls submodule) ──
   controls-pdf:
     image: ghcr.io/lux-ai-factory/controls:staging
     container_name: controls-pdf
@@ -240,7 +240,7 @@ services:
       - backend
 
   qualification-web:
-    image: ghcr.io/lux-ai-factory}/qualification-web:staging
+    image: ghcr.io/lux-ai-factory/qualification-web:staging
     container_name: qualification-web
     command: ["npx", "next", "start", "-p", "3000"]
     environment:
