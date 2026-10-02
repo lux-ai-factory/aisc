@@ -169,13 +169,51 @@ services:
       - backend
       - frontend
 
-  qualification-llm:
-    image: ghcr.io/lux-ai-factory/qualification-llm:staging
-    container_name: qualification-llm
+  # AIRO graph builder. It is deterministic and makes no external calls.
+  qualification-ontology:
+    image: ghcr.io/lux-ai-factory/qualification-ontology:staging
+    container_name: qualification-ontology
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # BESSER ontology filler. Its image contains the private CA needed by the
+  # university's OpenAI-compatible LiteLLM endpoint.
+  qualification-agents:
+    image: ghcr.io/lux-ai-factory/qualification-agents:staging
+    container_name: qualification-agents
     environment:
-      QUALIFICATION_LLM_MODEL: deepseek-v4-flash-vllm
-      QUALIFICATION_LLM_API_BASE: https://rsfllm.uni.lux/litellm/
-      QUALIFICATION_LLM_API_KEY: ${QUALIFICATION_LLM_API_KEY}
+      APP_URL: http://qualification-web:3000/qualification
+      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
+      BAF_LLM_PROVIDER: ${QUALIFICATION_LLM_PROVIDER:-compatible}
+      BAF_LLM_MODEL: ${QUALIFICATION_LLM_MODEL:-deepseek-v4-flash-vllm}
+      BAF_LLM_BASE_URL: ${QUALIFICATION_LLM_API_BASE:-https://rsfllm.uni.lux/litellm/v1}
+      BAF_LLM_API_KEY: ${QUALIFICATION_LLM_API_KEY}
+    depends_on:
+      qualification-ontology:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8012/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     networks:
       - backend
@@ -189,7 +227,7 @@ services:
       - backend
 
   qualification-migrate:
-    image: ghcr.io/lux-ai-factory/qualification:staging
+    image: ghcr.io/lux-ai-factory/qualification-web:staging
     container_name: qualification-migrate
     environment:
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/qualification?schema=public"
@@ -202,28 +240,28 @@ services:
       - backend
 
   qualification-web:
-    image: ghcr.io/lux-ai-factory/qualification-web:staging
+    image: ghcr.io/lux-ai-factory}/qualification-web:staging
     container_name: qualification-web
     command: ["npx", "next", "start", "-p", "3000"]
     environment:
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/qualification?schema=public"
       AISC_BACKEND_URL: http://aisc-backend:8000
-      LLM_SERVICE_URL: "http://qualification-llm:4000"
+      AGENT_SERVICE_URL: "http://qualification-agents:8012"
       SYSTEM_CARD_RENDERER_URL: "http://qualification-pdf:8005"
       ONTOLOGY_SERVICE_URL: "http://qualification-ontology:8011"
     depends_on:
       qualification-migrate:
         condition: service_completed_successfully
-      qualification-llm:
-        condition: service_started
+      qualification-agents:
+        condition: service_healthy
+      qualification-ontology:
+        condition: service_healthy
       qualification-pdf:
         condition: service_started
     restart: unless-stopped
     networks:
       - backend
       - frontend
-
-
 
 volumes:
   flower_data:

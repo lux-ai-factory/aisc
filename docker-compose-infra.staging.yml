@@ -94,7 +94,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
-      # Create Keycloak's own DB on a fresh volume (Keycloak can't create its own database).
+      # Application databases are created once when the Postgres volume is new.
+      - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro
     restart: unless-stopped
     networks:
