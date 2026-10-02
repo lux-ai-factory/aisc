@@ -74,6 +74,7 @@ CLEANUP = [
                      " OR (scope = 'platform' AND sub = ANY(%(subs)s))"),
     ("ledger.event_index", "DELETE FROM ledger.event_index WHERE project_pid::text = ANY(%(pids)s)"),
     ("ledger.page_view", "DELETE FROM ledger.page_view WHERE project_pid::text = ANY(%(pids)s)"),
+    ("ledger.content", "DELETE FROM ledger.content WHERE project_pid::text = ANY(%(pids)s)"),
     ("core.outbox", "DELETE FROM core.outbox WHERE project_pid::text = ANY(%(pids)s)"
                     " OR request_id::text = ANY(%(requests)s)"),
     ("ledger.state", "DELETE FROM ledger.state WHERE db IN (SELECT db FROM ledger.pool"

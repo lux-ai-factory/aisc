@@ -61,7 +61,20 @@ def provision_as(base_dsn: str, pid: str | UUID, *, set_role: str | None = None,
         if set_role is not None:
             conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(set_role)))
         migrate(conn, TEMPLATE, TRACKING_TABLE)
+        sync_platform_actions(conn)
     return name
+
+
+def sync_platform_actions(conn) -> None:
+    """Keep ledger.platform_action equal to the registry's actions no app may emit (origin platform or
+    browser), so ledger.emit refuses exactly those (template 0020; spec 6.4, n11)."""
+    from platform_service.ledger.registry import REGISTRY
+
+    names = sorted(name for name, action in REGISTRY.items() if action.origin != "app")
+    with conn.transaction():
+        conn.execute("DELETE FROM ledger.platform_action WHERE NOT (name = ANY(%s))", (names,))
+        for name in names:
+            conn.execute("INSERT INTO ledger.platform_action (name) VALUES (%s) ON CONFLICT DO NOTHING", (name,))
 
 
 #: The one function templates 0007..0010 call to set a module role's search_path in

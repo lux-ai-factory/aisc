@@ -124,7 +124,11 @@ def test_roles_that_are_not_emitters_cannot_emit(project, role):
 @pytest.mark.parametrize("table", ["ledger.delivered", "ledger.action_binding"])
 @pytest.mark.parametrize("role", APPS + OTHERS)
 def test_delivery_state_is_the_platforms_alone(project, role, table):
-    for statement in (f"SELECT * FROM {table}", f"INSERT INTO {table} DEFAULT VALUES"):
+    """No app reads or writes the relay's state. pgAdmin's inspector_ro reads every table of a project
+    database by design (pg_read_all_data, S8: only the names behind references are kept from it), so for
+    it only the write is refused."""
+    statements = [f"INSERT INTO {table} DEFAULT VALUES"] + ([] if role == "inspector_ro" else [f"SELECT * FROM {table}"])
+    for statement in statements:
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             as_role(project["pid"], role, statement)
 
