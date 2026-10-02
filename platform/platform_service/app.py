@@ -1633,8 +1633,6 @@ def ledger_export(slug: str, caller: Caller = Depends(caller_dependency)) -> Res
         raise HTTPException(status_code=409, detail=f"tamper alarm: {exc}") from None
     except LedgerUnavailable as exc:
         raise _ledger_unavailable(exc) from None
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from None
     logger.info("project %s: ledger exported by %s (%d entries)", found["pid"], caller.subject, len(lines) - 1)
     body = "\n".join(_json.dumps(line, separators=(",", ":"), ensure_ascii=False) for line in lines) + "\n"
     return Response(body, media_type="application/x-ndjson",

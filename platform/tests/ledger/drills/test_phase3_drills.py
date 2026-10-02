@@ -18,8 +18,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import DSN
-from tests.ledger.conftest import (IMMUDB_URL, LEDGER_KEYS, LEDGER_USER_PASSWORD, MEMBER, OWNER, entries, fresh_databases,
-                                   log_of, need, relay_all)
+from tests.ledger.conftest import IMMUDB_URL, LEDGER_KEYS, LEDGER_USER_PASSWORD, MEMBER, OWNER, entries, log_of, relay_all
 from tests.ledger.test_ledger_outbox import emit
 
 pytestmark = pytest.mark.skipif(os.environ.get("LEDGER_DRILLS") != "1", reason="drills are opt-in: LEDGER_DRILLS=1")
@@ -28,35 +27,7 @@ CONTAINER = os.environ.get("LEDGER_ENV_TAG", "") + "-immudb"
 
 
 @pytest.fixture
-def real_ledger(memory_ledger, platform_dsn):
-    """An ImmudbLedger as the platform makes it (state in Postgres), with a fresh pool, made current."""
-    from platform_service import ledger
-    from platform_service.ledger import pool
-    from platform_service.ledger.naming import PLATFORM_DB
-    from platform_service.ledger.state import PostgresStateStore
-    from platform_service.ledger.store import ImmudbLedger
-
-    need(IMMUDB_URL, "LEDGER_TEST_IMMUDB_URL is not set")
-    store = ImmudbLedger(IMMUDB_URL, user="aisc_ledger", password=LEDGER_USER_PASSWORD,
-                         state_store=PostgresStateStore(),
-                         public_key_file=os.environ.get("LEDGER_TEST_IMMUDB_PUBLIC_KEY") or None)
-    names = fresh_databases(4)
-    from tests.ledger.conftest import IMMUDB_ADMIN_PASSWORD
-
-    try:                                            # a fresh server has no platform log yet
-        pool.create_databases(IMMUDB_URL, admin_password=IMMUDB_ADMIN_PASSWORD, names=[PLATFORM_DB],
-                              grantee="aisc_ledger", grantee_password=LEDGER_USER_PASSWORD)
-    except Exception as exc:
-        if "exist" not in str(exc).lower():
-            raise
-    pool.register(store, names)
-    previous = ledger.use(store)
-    yield store
-    ledger.use(previous)
-
-
-@pytest.fixture
-def busy_project(real_ledger, make_project, witnessed, mode):
+def busy_project(immudb_ledger, make_project, witnessed, mode):
     mode("record")
     p = make_project(OWNER, editors=(MEMBER,))
 
@@ -102,7 +73,7 @@ def _check(store, pid, emitted, requests):
     return len(all_entries)
 
 
-def test_drill_the_relay_killed_mid_batch(real_ledger, busy_project):
+def test_drill_the_relay_killed_mid_batch(immudb_ledger, busy_project):
     p, work = busy_project
     emitted = work(40)
     kills = 0
@@ -114,12 +85,12 @@ def test_drill_the_relay_killed_mid_batch(real_ledger, busy_project):
             kills += 1
         proc.wait()
     relay_all(p["pid"])
-    n = _check(real_ledger, p["pid"], emitted, 40)
+    n = _check(immudb_ledger, p["pid"], emitted, 40)
     print(f"\nDRILL kill: {kills} kills, {n} entries, contiguous, each once")
     assert kills >= 1, "the relay finished before any kill: raise the batch size"
 
 
-def test_drill_two_relays_at_once(real_ledger, busy_project):
+def test_drill_two_relays_at_once(immudb_ledger, busy_project):
     p, work = busy_project
     emitted = work(10)
     procs = [_relay_process(p["pid"], loops=6) for _ in range(2)]
@@ -127,11 +98,11 @@ def test_drill_two_relays_at_once(real_ledger, busy_project):
     outs = [proc.communicate(timeout=300)[0] for proc in procs]
     assert all(proc.returncode == 0 for proc in procs), outs
     relay_all(p["pid"])
-    n = _check(real_ledger, p["pid"], emitted, 30)
+    n = _check(immudb_ledger, p["pid"], emitted, 30)
     print(f"\nDRILL two relays: {n} entries, contiguous, each once")
 
 
-def test_drill_immudb_down_for_a_long_stretch(real_ledger, busy_project):
+def test_drill_immudb_down_for_a_long_stretch(immudb_ledger, busy_project):
     p, work = busy_project
     seconds = int(os.environ.get("LEDGER_DRILL_OUTAGE_SECONDS", "600"))
     emitted = work(5)
@@ -147,11 +118,11 @@ def test_drill_immudb_down_for_a_long_stretch(real_ledger, busy_project):
         subprocess.run(["docker", "start", CONTAINER], check=True, capture_output=True)
     for _ in range(60):
         try:
-            real_ledger.databases()
+            immudb_ledger.databases()
             break
         except Exception:
             time.sleep(1)
     relay_all(p["pid"])
-    n = _check(real_ledger, p["pid"], emitted, len(emitted))
+    n = _check(immudb_ledger, p["pid"], emitted, len(emitted))
     print(f"\nDRILL outage {seconds}s: pending grew {pending[0]} -> {pending[-1]}, then {n} entries, each once")
     assert pending[-1] > pending[0]

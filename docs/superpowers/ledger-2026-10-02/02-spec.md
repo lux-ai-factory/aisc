@@ -740,5 +740,16 @@ of 01-plan and the test file names are made consistent with this file (R3.5).
   Everything else stays in the platform database's `ledger` schema: the witness records, the index
   and the page views hold only random references, so an admin inspecting them learns no name.
   Phase 3 builds it; `test_ledger_privacy.py` checks it.
+- ~~S9~~ settled in phase 4 (2026-10-02): the export from immudb itself. immudb signs its own state
+  (the accumulated hash of its last transaction), not the platform's chain. So the export carries
+  every transaction of the log's database, 1..N, with its entries' digests, then each ledger entry
+  with the transaction that wrote it, then the state immudb signed. The checker recomputes each
+  transaction's entries root and accumulated hash, chained from sha256(""), requires the last to be
+  the signed state (ECDSA over db, tx id and hash, as immudb-py's `State.Hash`), and requires every
+  `e:<seq>` key of every transaction to be in the file with that exact value, numbered 1..N: nothing
+  can be changed, added or left out without the signing key. The platform runs the same checks
+  before handing the file out, plus one more: the chain must pass through the state it verified
+  (`platform_service/ledger/immudb_proof.py`, `ImmudbLedger.export`). Header version 1 only
+  (immudb 1.11); another version is refused, never guessed.
 - **S5** M8, SQL privileges lost after another database's grant. Not needed (we use key-value);
   worth an upstream issue.

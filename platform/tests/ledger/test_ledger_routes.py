@@ -143,3 +143,22 @@ def test_only_an_admin_can_reanchor_and_it_is_recorded(client, as_user, project,
     assert r.status_code == 200
     [e] = [x for x in memory_ledger.scan(PLATFORM_DB, after_seq=0, limit=100) if x.action == "ledger.reanchored"]
     assert {"old_head", "new_head"} <= set(e.details)
+
+
+def test_a_project_on_immudb_exports_a_file_the_checker_accepts(client, as_user, immudb_ledger, make_project, tmp_path):
+    """S9: the export route on the real store: immudb's transactions and signed state, checked offline."""
+    import os
+
+    from tests.ledger.conftest import need
+
+    key_path = os.environ.get("LEDGER_TEST_IMMUDB_PUBLIC_KEY")
+    need(key_path, "LEDGER_TEST_IMMUDB_PUBLIC_KEY is not set")
+    on_immudb = make_project(OWNER, editors=(MEMBER,))
+    seed(on_immudb["pid"], n=3)
+    text = _export(client, as_user, on_immudb)
+    assert json.loads(text.splitlines()[-1])["head"]["format"] == "immudb"
+    path = tmp_path / "export.jsonl"
+    path.write_text(text)
+    checked = subprocess.run([sys.executable, str(CHECKER), "--public-key", key_path, "--check-content", str(path)],
+                             capture_output=True, text=True)
+    assert checked.returncode == 0, checked.stdout + checked.stderr

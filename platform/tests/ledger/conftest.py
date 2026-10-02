@@ -363,3 +363,29 @@ def relay_all(pid: str | None = None):
 def entries(store, db: str) -> list:
     """Every entry of one ledger database, oldest first."""
     return store.scan(db, after_seq=0, limit=10_000)
+
+
+@pytest.fixture
+def immudb_ledger(memory_ledger, platform_dsn):
+    """An ImmudbLedger as the platform makes it (state in Postgres), with a fresh pool, made current."""
+    from platform_service import ledger
+    from platform_service.ledger import pool
+    from platform_service.ledger.naming import PLATFORM_DB
+    from platform_service.ledger.state import PostgresStateStore
+    from platform_service.ledger.store import ImmudbLedger
+
+    need(IMMUDB_URL, "LEDGER_TEST_IMMUDB_URL is not set")
+    store = ImmudbLedger(IMMUDB_URL, user="aisc_ledger", password=LEDGER_USER_PASSWORD,
+                         state_store=PostgresStateStore(),
+                         public_key_file=os.environ.get("LEDGER_TEST_IMMUDB_PUBLIC_KEY") or None)
+    names = fresh_databases(4)
+    try:                                            # a fresh server has no platform log yet
+        pool.create_databases(IMMUDB_URL, admin_password=IMMUDB_ADMIN_PASSWORD, names=[PLATFORM_DB],
+                              grantee="aisc_ledger", grantee_password=LEDGER_USER_PASSWORD)
+    except Exception as exc:
+        if "exist" not in str(exc).lower():
+            raise
+    pool.register(store, names)
+    previous = ledger.use(store)
+    yield store
+    ledger.use(previous)

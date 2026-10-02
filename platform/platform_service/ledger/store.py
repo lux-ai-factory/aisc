@@ -220,11 +220,23 @@ class MemoryLedger:
 
         with self._lock:
             d = self._db(db)
-            if not 0 <= seq < len(d["chain"]) or d["chain"][seq].hex() != chain:
-                raise TamperAlarm("the export's chain is not this store's: nothing is signed")
+            if seq != len(d["rows"]) or d["chain"][seq].hex() != chain:
+                raise TamperAlarm("the export's chain is not this store's whole chain: nothing is signed")
         head = {"log": db, "seq": seq, "chain": chain}
         signature = self._signing_key().sign(canonical(head), ec.ECDSA(hashes.SHA256()))
         return {**head, "signature": base64.b64encode(signature).decode()}
+
+    def export(self, db: str) -> list[dict]:
+        """Every entry with its hash link, then the signed head (format `chain`, the contract's own)."""
+        from platform_service.ledger import export
+
+        with self._lock:
+            rows = list(self.scan(db, after_seq=0, limit=len(self._db(db)["rows"])))
+            lines, chain = [], export.GENESIS
+            for e in rows:
+                previous, chain = chain, export.link(chain, e.as_dict())
+                lines.append({"entry": e.as_dict(), "proof": {"previous": previous, "chain": chain}})
+            return lines + [{"head": {"format": "chain", **self.export_head(db, len(rows), chain)}}]
 
     def reanchor(self, db: str) -> tuple:
         """After a restore: trust what the store holds now (spec T21). Returns (old, new) verified seq."""
@@ -358,9 +370,16 @@ class ImmudbLedger:
                 self._clients[db] = (client, threading.Lock())
             return self._clients[db]
 
+    def _forget_client(self, db: str, client) -> None:
+        with self._lock:
+            if self._clients.get(db, (None,))[0] is client:
+                del self._clients[db]
+
     def _call(self, db: str, fn):
         """Run `fn` with the database's client. A lost session (an immudb restart) is logged in again
-        once and retried, so the same store recovers on its own (review B1)."""
+        once and retried, so the same store recovers on its own (review B1). An unreachable server
+        drops the client too: its gRPC channel would stay in reconnect backoff, up to about 2 minutes,
+        after the server is back (the phase 3 outage drill); the next call dials afresh."""
         for attempt in (1, 2):
             client, lock = self._client(db)
             with lock:
@@ -370,11 +389,12 @@ class ImmudbLedger:
                     raise
                 except Exception as exc:
                     if attempt == 1 and _session_lost(exc):
-                        with self._lock:
-                            if self._clients.get(db, (None,))[0] is client:
-                                del self._clients[db]
+                        self._forget_client(db, client)
                         continue
-                    raise _classify(exc, db) from exc
+                    classified = _classify(exc, db)
+                    if isinstance(classified, LedgerUnavailable):
+                        self._forget_client(db, client)
+                    raise classified from exc
 
     @staticmethod
     def _verified(client, key: bytes):
@@ -450,10 +470,90 @@ class ImmudbLedger:
     def set_state(self, db: str, state: State) -> None:
         self._states.put(db, state, expected=self._states.get(db))
 
-    def export_head(self, db: str, seq: int, chain: str) -> dict:
-        """Not yet (open item S9): an immudb export must carry immudb's own inclusion proofs and its
-        server-signed state, which the offline checker verifies; the platform holds no signing key."""
-        raise NotImplementedError("exports from immudb need its inclusion proofs (open item S9)")
+    def export(self, db: str) -> list[dict]:
+        """Every transaction of the database, 1..N, with its entries, then each ledger entry, then the
+        head: the state immudb signed at N (format `immudb`, open item S9). Checked here before it
+        leaves: the chain must hold, end at the signed state, and pass through the state this platform
+        verified (a server rolled back behind it is a TamperAlarm, never a file)."""
+        import base64
+
+        from google.protobuf import empty_pb2
+        from immudb import schema as immu_schema
+        from immudb.grpc import schema_pb2
+
+        from platform_service.ledger import immudb_proof
+
+        def run(client):
+            state = client._stub.CurrentState(empty_pb2.Empty(), timeout=self._timeout)
+            # two scans: the entries' digests (what the header hashes) and, separately, their values
+            resolve = schema_pb2.EntriesSpec(kvEntriesSpec=schema_pb2.EntryTypeSpec(action=schema_pb2.RESOLVE))
+            txs, values, at = [], {}, 1
+            while at <= state.txId:
+                limit = min(1000, state.txId - at + 1)
+                page = client._stub.TxScan(schema_pb2.TxScanRequest(initialTx=at, limit=limit),
+                                           timeout=self._timeout).txs
+                if not page:
+                    break
+                for tx in client._stub.TxScan(schema_pb2.TxScanRequest(initialTx=at, limit=limit, entriesSpec=resolve),
+                                              timeout=self._timeout).txs:
+                    for kv in tx.kvEntries:
+                        values[(tx.header.id, kv.key)] = kv.value
+                for tx in page:
+                    if tx.header.id > state.txId:
+                        break
+                    h = tx.header
+                    txs.append({"id": h.id, "ts": h.ts, "version": h.version, "nentries": h.nentries,
+                                "prevAlh": h.prevAlh.hex(), "eH": h.eH.hex(), "blTxId": h.blTxId,
+                                "blRoot": h.blRoot.hex(),
+                                "md": (immu_schema.TxMetadataFromProto(h.metadata).Bytes() or b"").hex()
+                                      if h.HasField("metadata") else "",
+                                "entries": [{"key": e.key.hex(), "hValue": e.hValue.hex(),
+                                             "md": (immu_schema.KVMetadataFromProto(e.metadata).Bytes() or b"").hex()
+                                                   if e.HasField("metadata") else ""} for e in tx.entries]})
+                at = page[-1].header.id + 1
+            return state, txs, values
+
+        state, txs, values = self._call(db, run)
+        try:
+            alhs = immudb_proof.check_txs(txs)
+        except ValueError as exc:
+            raise TamperAlarm(f"{db}: the server's transactions don't hold together: {exc}") from None
+        if not alhs or len(alhs) != state.txId or alhs[-1] != bytes(state.txHash):
+            raise TamperAlarm(f"{db}: the server's state is not the end of its transactions")
+        saved = self._states.get(db)
+        if saved is not None and (saved.tx_id > state.txId or alhs[saved.tx_id - 1] != saved.tx_hash):
+            raise TamperAlarm(f"{db}: the server is behind or beside the state this platform verified")
+        if self._public_key_file:
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import ec
+
+            with open(self._public_key_file, "rb") as f:
+                key = serialization.load_pem_public_key(f.read())
+            try:
+                key.verify(state.signature.signature,
+                           immudb_proof.state_message(state.db, state.txId, bytes(state.txHash)),
+                           ec.ECDSA(hashes.SHA256()))
+            except Exception:
+                raise TamperAlarm(f"{db}: the server's state is not signed by its key") from None
+        lines = [{"tx": tx} for tx in txs]
+        seqs = []
+        for tx in txs:
+            for e in tx["entries"]:
+                key = bytes.fromhex(e["key"])
+                if not key.startswith(b"\x00e:"):
+                    continue
+                value = values.get((tx["id"], key[1:]))
+                if value is None or immudb_proof.value_hash(value).hex() != e["hValue"]:
+                    raise TamperAlarm(f"{db}: entry {key[1:].decode()} doesn't match its transaction")
+                entry = json.loads(value)
+                seqs.append(entry["seq"])
+                lines.append({"entry": entry, "tx": tx["id"]})
+        if seqs != list(range(1, len(seqs) + 1)):
+            raise TamperAlarm(f"{db}: the entries are not numbered 1..{len(seqs)}")
+        head = {"format": "immudb", "log": db, "seq": len(seqs), "at": txs[-1]["ts"],
+                "state": {"db": state.db, "txId": state.txId, "txHash": bytes(state.txHash).hex(),
+                          "signature": base64.b64encode(state.signature.signature).decode()}}
+        return lines + [{"head": head}]
 
     def reanchor(self, db: str) -> tuple:
         """After a restore: forget the saved state, so the next read anchors on the server (spec T21)."""

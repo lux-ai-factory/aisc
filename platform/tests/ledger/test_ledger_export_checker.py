@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import random
 import subprocess
 import sys
@@ -15,6 +16,7 @@ import pytest
 from platform_service.ledger import export
 from platform_service.ledger.canonical import canonical
 from platform_service.ledger.store import MemoryLedger, TamperAlarm
+from tests.ledger.conftest import needs_db
 
 ROOT = Path(__file__).resolve().parents[3]
 CHECKER = ROOT / "scripts" / "verify-ledger-export.py"
@@ -111,3 +113,80 @@ def test_an_unreadable_file_is_exit_2(tmp_path):
     r = subprocess.run([sys.executable, str(CHECKER), "--public-key", str(tmp_path / "none"), str(tmp_path / "none")],
                        capture_output=True, text=True)
     assert r.returncode == 2
+
+
+# S9: the export from immudb itself ------------------------------------------------------------------
+# Every transaction of the log's database, 1..N, with its entries: the checker recomputes each one's
+# entries root and hash link, compares the last with immudb's signed state, and so sees every write.
+
+def _immudb_export(immudb_ledger, n=3):
+    from tests.ledger.conftest import fresh_databases
+
+    [log] = fresh_databases(1)
+    for i in range(n):
+        immudb_ledger.append(log, {"event_id": str(uuid.uuid4()), "action": "risk.rated", "item_id": f"r{i}"})
+    return log, immudb_ledger.export(log)
+
+
+def _immudb_key():
+    from tests.ledger.conftest import need
+
+    path = os.environ.get("LEDGER_TEST_IMMUDB_PUBLIC_KEY")
+    need(path, "LEDGER_TEST_IMMUDB_PUBLIC_KEY is not set (the throwaway immudb's signing key)")
+    return Path(path).read_text()
+
+
+@needs_db
+def test_an_immudb_export_checks_offline_against_immudbs_own_signature(immudb_ledger, tmp_path):
+    log, lines = _immudb_export(immudb_ledger)
+    head = lines[-1]["head"]
+    assert head["format"] == "immudb" and head["log"] == log and head["seq"] == 3
+    r = _run(tmp_path, lines, _immudb_key())
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_db
+@pytest.mark.parametrize("edit", ["entry", "drop_entry", "drop_tx", "tx_value", "tx_other_key", "head_tx", "state_db"])
+def test_an_edited_immudb_export_fails(immudb_ledger, tmp_path, edit):
+    log, lines = _immudb_export(immudb_ledger)
+    txs = [i for i, line in enumerate(lines) if "tx" in line and "entry" not in line]
+    entries_at = [i for i, line in enumerate(lines) if "entry" in line]
+    if edit == "entry":
+        lines[entries_at[1]]["entry"]["item_id"] = "r9"
+    elif edit == "drop_entry":
+        del lines[entries_at[-1]]
+    elif edit == "drop_tx":
+        del lines[txs[-1]]
+    elif edit == "tx_value":
+        lines[txs[0]]["tx"]["entries"][0]["hValue"] = "00" * 32
+    elif edit == "tx_other_key":                                      # id:/seq:last, which only eH covers
+        lines[txs[0]]["tx"]["entries"][1]["hValue"] = "00" * 32
+    elif edit == "head_tx":
+        lines[-1]["head"]["state"]["txId"] -= 1
+    else:
+        lines[-1]["head"]["state"]["db"] = "ledger" + "0" * 32
+    assert _run(tmp_path, lines, _immudb_key()).returncode != 0
+
+
+@needs_db
+def test_an_immudb_export_fails_against_another_key(immudb_ledger, tmp_path):
+    _, lines = _immudb_export(immudb_ledger)
+    assert _run(tmp_path, lines, MemoryLedger().public_key_pem()).returncode != 0
+
+
+@needs_db
+def test_an_immudb_export_refuses_a_state_behind_the_verified_one(immudb_ledger):
+    """The platform checks its own export too: a server rolled back behind the state it verified is an
+    alarm, never a file."""
+    log, _ = _immudb_export(immudb_ledger)
+    state = immudb_ledger.state(log)
+    immudb_ledger.set_state(log, state.claiming(tx_id=state.tx_id + 100))
+    with pytest.raises(TamperAlarm):
+        immudb_ledger.export(log)
+
+
+def test_a_memory_store_signs_only_its_whole_chain():
+    """A head short of the store's own is refused: no signed export that drops the newest entries."""
+    store, log, lines = _export(3)
+    with pytest.raises(TamperAlarm):
+        store.export_head(log, 2, lines[1]["proof"]["chain"])

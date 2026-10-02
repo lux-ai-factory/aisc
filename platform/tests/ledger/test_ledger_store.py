@@ -401,3 +401,32 @@ def test_every_immudb_call_has_a_deadline():
     assert first < 8 and time.monotonic() - started < 0.5
     with pytest.raises(LedgerUnavailable):
         store.append("ledger" + uuid.uuid4().hex, entry())
+
+
+def test_an_unreachable_server_drops_the_cached_client(immudb):
+    """Found by the 10-minute outage drill: a cached client's gRPC channel stays in reconnect backoff
+    (up to about 2 minutes) after the server is back. An UNAVAILABLE answer must drop the client, so the
+    next call dials afresh."""
+    import grpc
+
+    from platform_service.ledger.store import LedgerUnavailable
+
+    store = immudb()
+    [a] = fresh_databases(1)
+    store.append(a, entry())
+    client, _ = store._client(a)
+
+    class Down(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.UNAVAILABLE
+
+        def details(self):
+            return "failed to connect to all addresses"
+
+    def refuse(*_args, **_kwargs):
+        raise Down()
+    client.verifiedGet = refuse
+    with pytest.raises(LedgerUnavailable):
+        store.get(a, 1)
+    assert store._client(a)[0] is not client                         # a new client, a new channel
+    assert store.get(a, 1).seq == 1
