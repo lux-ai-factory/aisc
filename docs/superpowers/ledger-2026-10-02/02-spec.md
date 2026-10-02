@@ -346,7 +346,8 @@ library, so the repo-level tests can load them (R3.7).
   `fingerprint(pid, value)` = `digest(pid, "fingerprint", value)`.
 - `actors.ref_for(pid, sub, name) -> actor_ref` gives the person's reference in that project,
   creating it on first sight: `"actor:" + 32 random hex`, with a mapping row
-  `ledger.actor(scope, actor_ref, sub, name, mac)`, where `scope` is the pid as text, or
+  `actor(scope, actor_ref, sub, name, mac)` in the separate database `ledger_identity` (S8), where
+  `scope` is the pid as text, or
   `'platform'` for `pid=None` (never NULL, which a unique key wouldn't cover); unique on
   `(scope, sub)`, so first sightings at once make one reference, in either scope; and
   `mac = digest(pid, "mapping", canonical([actor_ref, sub, name]))`. A name change rewrites the row
@@ -716,9 +717,13 @@ of 01-plan and the test file names are made consistent with this file (R3.5).
 - **S6** whether a conditional branch of a server action needs registry support beyond `caused_by`
   (section 4.5 limits): decide from phase 5's real actions.
 - ~~S7~~ settled in phase 1: the `immudb-uuid` of a login-free `Health` call, with a 5 s deadline.
-- **S8** `inspector_ro` (pgAdmin, SchemaSpy) reads every table through `pg_read_all_data`, so it can
-  read `ledger.*`. Harmless for phase 1 (pool, state); phase 3's `ledger.actor` and `ledger.witness`
-  hold personal data. Decide before phase 3: keep (admins only), or move those tables to a database
-  the inspector can't connect to.
+- ~~S8~~ decided 2026-10-02 (the user delegated it): `inspector_ro` (pgAdmin, SchemaSpy) reads every
+  table it can connect to through `pg_read_all_data`, which can't be narrowed per schema. So the one
+  table that names people, the mapping `actor(scope, actor_ref, sub, name, mac)`, lives in its own
+  database **`ledger_identity`**, owned by `platform_rw`, with CONNECT revoked from PUBLIC and never
+  granted to `inspector_ro` or any module role; made by the init files like the `ledger` schema.
+  Everything else stays in the platform database's `ledger` schema: the witness records, the index
+  and the page views hold only random references, so an admin inspecting them learns no name.
+  Phase 3 builds it; `test_ledger_privacy.py` checks it.
 - **S5** M8, SQL privileges lost after another database's grant. Not needed (we use key-value);
   worth an upstream issue.

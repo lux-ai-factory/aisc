@@ -212,3 +212,29 @@ def test_the_export_carries_only_this_projects_content_key(client, as_user, proj
     tampered = subprocess.run([sys.executable, str(ROOT / "scripts/verify-ledger-export.py"), "--public-key",
                                str(key), "--check-content", str(path)], capture_output=True, text=True)
     assert tampered.returncode != 0
+
+
+# S8 (decided 2026-10-02): the person mapping is beyond the inspector --------------------------------
+
+def test_the_person_mapping_lives_where_the_inspector_cannot_connect():
+    """pgAdmin's role reads everything it can connect to (pg_read_all_data), so the only table naming
+    people is in its own database, closed to PUBLIC, the inspector and every module role."""
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    from tests.ledger.conftest import SUPERUSER_DSN, need
+
+    need(SUPERUSER_DSN, "PLATFORM_TEST_SUPERUSER_URL is not set")
+    with psycopg.connect(SUPERUSER_DSN) as conn:
+        assert conn.execute("SELECT 1 FROM pg_database WHERE datname = 'ledger_identity'").fetchone(), \
+            "the ledger_identity database is missing"
+        for role in ("inspector_ro", "report_ro", "qualification_rw", "controls_rw", "control_objectives_rw",
+                     "report_composer_rw", "engine_rw", "dashboard_ro"):
+            exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
+            if exists:
+                assert not conn.execute("SELECT has_database_privilege(%s, 'ledger_identity', 'CONNECT')",
+                                        (role,)).fetchone()[0], f"{role} may connect to ledger_identity"
+        assert conn.execute("SELECT has_database_privilege('platform_rw', 'ledger_identity', 'CONNECT')").fetchone()[0]
+    with psycopg.connect(make_conninfo(SUPERUSER_DSN, dbname="platform")) as conn:
+        assert not conn.execute("SELECT to_regclass('ledger.actor')").fetchone()[0], \
+            "the mapping must not be in the platform database, where the inspector reads"
