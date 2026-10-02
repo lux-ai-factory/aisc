@@ -233,7 +233,7 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
         layout = layout_or_404(conn, layout_id)
         template = template_of(conn, layout)
         pw = preview_with.parse(conn, dict(request.query_params))
-        links = evidence_links.coverage_links(conn)
+        links = evidence_links.coverage_links(conn, pw.system["pid"] if pw.system else None)
     result = _render_preview(request, g, layout, template, pw, links)
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
                                                  "X-Content-Type-Options": "nosniff"})
@@ -284,7 +284,7 @@ def _draft_preview(request: Request, g: Guarded, layout_id: str, body: dict) -> 
         template_id = chosen_template(conn, body.get("template_id"))
         template = db.get_template(conn, template_id, with_logo=True) if template_id else None
         pw = preview_with.parse(conn, body.get("preview_with") if isinstance(body.get("preview_with"), dict) else None)
-        links = evidence_links.coverage_links(conn)
+        links = evidence_links.coverage_links(conn, pw.system["pid"] if pw.system else None)
     settings = document_settings(body, current)
     blocks = _blocks(body) if body.get("blocks") is not None else current["blocks"]
     problems = _problems_for(request, g, blocks, pw)
@@ -351,7 +351,7 @@ def preview_builtin_layout(request: Request, layout_id: str, g: Guarded = Depend
     layout = _builtin_or_404(request, layout_id)
     with _project_db(request, g) as conn:
         pw = preview_with.parse(conn, dict(request.query_params))
-        links = evidence_links.coverage_links(conn)
+        links = evidence_links.coverage_links(conn, pw.system["pid"] if pw.system else None)
     result = _render_preview(request, g, layout, None, pw, links)
     return HTMLResponse(result["html"], headers={"Content-Security-Policy": PREVIEW_CSP,
                                                  "X-Content-Type-Options": "nosniff"})

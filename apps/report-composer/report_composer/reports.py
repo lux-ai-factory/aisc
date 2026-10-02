@@ -72,7 +72,7 @@ def snapshot_of(project, layout, mode, caller, template=None, *, system_id, sele
     """What the renderer is sent: the layout, and the data it covers (the anchor version and the
     selection, report modules spec 2026-09-28, section 6); `template` (read with its logo) gives the
     report its look, and none means the platform look. `coverage_links` are the project's step 4 links
-    (evidence_links.coverage_links)."""
+    (evidence_links.coverage_links) of the card version it is of."""
     snap = {"snapshot_version": 3, "project_id": project["pid"], "system_id": system_id,
             "layout": {"id": layout["id"], "name": layout["name"], "revision": layout["revision"]},
             "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": _sent_options(b)}
@@ -142,7 +142,7 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None) ->
     report_id = str(uuid.uuid4())
     snapshot = snapshot_of(project, layout, fmt, caller, template, system_id=system["pid"],
                            selection=data_selection.for_snapshot(sel), document_id=report_id,
-                           coverage_links=evidence_links.coverage_links(conn))
+                           coverage_links=evidence_links.coverage_links(conn, system["pid"]))
     db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
                      system_id=system["pid"], snapshot=snapshot, created_by=caller.subject, created_at=clock(),
                      fmt=fmt, report_id=report_id, period_from=sel.period_from, period_to=sel.period_to,

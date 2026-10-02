@@ -61,12 +61,13 @@ DIMENSIONS = (
 _BY_SLUG = {slug: rid for rid, _, slug in DIMENSIONS}
 _TITLE = {rid: title for rid, title, _ in DIMENSIONS}
 
-#: The latest card version's selection: of the highest-numbered version that has one.
+#: The project's AI card versions, latest first (2026-10-02: step 4's links belong to one of them).
+_VERSIONS = "SELECT pid::text AS pid, number FROM project.system ORDER BY number DESC"
+#: What one card version's assessment takes forward: its step 2 matrix.
 _SELECTED = (
     "SELECT sel.objective_ids FROM control_objectives.objective_selection sel"
     " JOIN control_objectives.project a ON a.id = sel.project_id"
-    " JOIN project.system s ON s.pid = a.system_id"
-    " ORDER BY s.number DESC LIMIT 1"
+    " WHERE a.system_id::text = %s"
 )
 _PLUGINS = ("SELECT package_name, display_name, enabled, catalogue_slug FROM engine.aisc_backend_plugin"
             " ORDER BY display_name, package_name")
@@ -86,6 +87,14 @@ class NotConfigured(RuntimeError):
 
 class Refused(ValueError):
     """A new link to something that cannot take one; the message says which and why."""
+
+
+class OlderVersion(ValueError):
+    """Links change only on the latest card version; an older one is kept as it was."""
+
+
+class UnknownVersion(LookupError):
+    """No such card version in this project."""
 
 
 @dataclass
@@ -112,18 +121,34 @@ def _reader(pid) -> psycopg.Connection:
     return psycopg.connect(url.replace("{database}", projectdb.database_name(pid)), row_factory=dict_row)
 
 
-def _rows(conn, query: str) -> list[dict]:
+def _rows(conn, query: str, params=None) -> list[dict]:
     """A module's table that is not there yet (its step never ran here) reads as empty."""
     try:
         with conn.transaction():
-            return conn.execute(query).fetchall()
+            return conn.execute(query, params).fetchall()
     except psycopg.errors.UndefinedTable:
         return []
 
 
-def choices(pid) -> Choices:
+def versions(pid) -> list[dict]:
+    """[{"pid", "number"}, ...], latest first."""
     with _reader(pid) as conn:
-        selected = _rows(conn, _SELECTED)
+        return [{"pid": r["pid"], "number": r["number"]} for r in _rows(conn, _VERSIONS)]
+
+
+def _version(all_versions: list[dict], version: str | None) -> dict | None:
+    """The card version asked for, or the latest when none is; None when the project has none."""
+    if version is None:
+        return all_versions[0] if all_versions else None
+    for v in all_versions:
+        if v["pid"] == str(version):
+            return v
+    raise UnknownVersion(f"no card version {version} in this project")
+
+
+def choices(pid, version_pid: str | None) -> Choices:
+    with _reader(pid) as conn:
+        selected = _rows(conn, _SELECTED, (version_pid,)) if version_pid else []
         plugins = _rows(conn, _PLUGINS)
         checklists = _rows(conn, _CHECKLISTS)
         own = _rows(conn, _OWN_OBJECTIVES)
@@ -235,10 +260,12 @@ def item_dimensions(found: Choices, catalogue, kind: str, key: str) -> list[str]
     return []
 
 
-def links(pid) -> list[dict]:
+def links(pid, version_pid: str) -> list[dict]:
+    """One card version's links."""
     with connection_store.connect(pid) as conn:
         return conn.execute("SELECT objective_id, kind, item_key, created_by, created_at FROM evidence.link"
-                            " ORDER BY objective_id, kind, item_key").fetchall()
+                            " WHERE system_id::text = %s ORDER BY objective_id, kind, item_key",
+                            (version_pid,)).fetchall()
 
 
 def item_stale(found: Choices, kind: str, key: str) -> str | None:
@@ -257,11 +284,27 @@ def link_stale(found: Choices, objective_id: str, kind: str, key: str) -> str | 
     return item_stale(found, kind, key)
 
 
-def view(pid) -> dict:
-    """The page: the selected objectives, the tests and the controls (each flagged stale when it is
-    only there because a link names it), and the links."""
-    found = choices(pid)
-    stored = links(pid)
+def view(pid, version: str | None = None) -> dict:
+    """The page of one card version (the latest when none is asked for): its matrix's objectives, the
+    tests and the controls (each flagged stale when it is only there because a link names it), and
+    its links. An older version is read-only. The latest version with no links of its own is offered
+    those of the nearest earlier version that has some, only where they still apply (its matrix holds
+    the objective, the item is installed), marked carried and not stored until saved."""
+    all_versions = versions(pid)
+    current = _version(all_versions, version)
+    read_only = current is not None and current["pid"] != all_versions[0]["pid"]
+    found = choices(pid, current["pid"] if current else None)
+    stored = links(pid, current["pid"]) if current else []
+    carried_from = None
+    if current is not None and not stored and not read_only:
+        for earlier in all_versions[1:]:
+            rows = links(pid, earlier["pid"])
+            if rows:
+                kept = [r for r in rows if r["objective_id"] in found.selected
+                        and item_stale(found, r["kind"], r["item_key"]) is None]
+                if kept:
+                    stored, carried_from = kept, earlier["number"]
+                break
     objectives = list(found.selected) + sorted(
         {r["objective_id"] for r in stored} - set(found.selected), key=_objective_order)
     tests = [{"key": k, "label": label, "stale": None if enabled else "disabled"}
@@ -280,6 +323,10 @@ def view(pid) -> dict:
     dims = {**objective_dimensions(), **{oid: dim for oid, (_, dim) in found.own.items()}}
     dim_titles = dimension_titles()
     return {
+        "version": current,
+        "versions": all_versions,
+        "read_only": read_only,
+        "carried_from": carried_from,
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
         "dimensions_known": catalogue is not None and bool(dims),
         "objectives": [{"id": o, "title": names.get(o, ""), "dimension": dims.get(o),
@@ -289,23 +336,34 @@ def view(pid) -> dict:
         "controls": controls,
         "links": [{"objective_id": r["objective_id"], "kind": r["kind"], "key": r["item_key"],
                    "created_by": r["created_by"], "created_at": r["created_at"].isoformat(),
-                   "stale": link_stale(found, r["objective_id"], r["kind"], r["item_key"])}
+                   "stale": link_stale(found, r["objective_id"], r["kind"], r["item_key"]),
+                   "carried": carried_from is not None}
                   for r in stored],
     }
 
 
-def replace(pid, wanted: list[tuple[str, str, str]], who: str) -> None:
-    """Make the links exactly `wanted` ((objective_id, kind, key), ...). A link already there is
-    kept as it is, stale or not, with who made it; a new one must be to a selected objective and
-    to a test or control that can take it (Refused otherwise, and nothing is changed)."""
-    found = choices(pid)
+def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | None = None) -> None:
+    """Make the latest card version's links exactly `wanted` ((objective_id, kind, key), ...). A link
+    already there is kept as it is, stale or not, with who made it; a new one must be to an objective
+    in that version's matrix and to a test or control that can take it (Refused otherwise, and nothing
+    is changed). An older version is OlderVersion: it is kept as it was."""
+    all_versions = versions(pid)
+    current = _version(all_versions, version)
+    if current is None:
+        raise Refused("this project has no AI card version yet")
+    if current["pid"] != all_versions[0]["pid"]:
+        raise OlderVersion(f"version {current['number']} is kept as it was: links change only on the latest"
+                           f" AI card version, {all_versions[0]['number']}")
+    system_id = current["pid"]
+    found = choices(pid, system_id)
     catalogue = tool_dimensions()
     dims = {**objective_dimensions(), **{oid: dim for oid, (_, dim) in found.own.items()}}
     wanted_set = set(wanted)
     with connection_store.connect(pid) as conn:
         with conn.transaction():
             have = {(r["objective_id"], r["kind"], r["item_key"]) for r in conn.execute(
-                "SELECT objective_id, kind, item_key FROM evidence.link FOR UPDATE").fetchall()}
+                "SELECT objective_id, kind, item_key FROM evidence.link WHERE system_id::text = %s FOR UPDATE",
+                (system_id,)).fetchall()}
             problems = []
             for objective_id, kind, key in sorted(wanted_set - have):
                 if kind not in KINDS:
@@ -322,8 +380,8 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str) -> None:
             if problems:
                 raise Refused("; ".join(problems))
             for gone in have - wanted_set:
-                conn.execute("DELETE FROM evidence.link WHERE objective_id = %s AND kind = %s AND item_key = %s",
-                             gone)
+                conn.execute("DELETE FROM evidence.link WHERE system_id::text = %s AND objective_id = %s"
+                             " AND kind = %s AND item_key = %s", (system_id, *gone))
             for objective_id, kind, key in sorted(wanted_set - have):
-                conn.execute("INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                             " VALUES (%s, %s, %s, %s)", (objective_id, kind, key, who))
+                conn.execute("INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                             " VALUES (%s, %s, %s, %s, %s)", (system_id, objective_id, kind, key, who))

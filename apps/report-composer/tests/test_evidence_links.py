@@ -25,9 +25,12 @@ EXPECTED = [{"objective_id": "O1", "tests": ["aisc-plugin-langbite"], "checklist
 def links(bed):
     db = pdb_of("A")
     bed.psql(db, "DELETE FROM evidence.link")
-    bed.psql(db, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by) VALUES"
-                 " ('O1', 'test', 'aisc-plugin-langbite', 'alice'), ('O1', 'control', 'cl-1', 'alice'),"
-                 " ('O5', 'test', 'aisc-plugin-promptfoo', 'alice'), ('O5', 'test', 'aisc-plugin-langbite', 'bob')")
+    v1, v2 = IDS["A_V1"], IDS["A_V2"]
+    # version 2's links; one of version 1's, which a report of version 2 does not carry (2026-10-02)
+    bed.psql(db, "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by) VALUES"
+                 f" ('{v2}', 'O1', 'test', 'aisc-plugin-langbite', 'alice'), ('{v2}', 'O1', 'control', 'cl-1', 'alice'),"
+                 f" ('{v2}', 'O5', 'test', 'aisc-plugin-promptfoo', 'alice'), ('{v2}', 'O5', 'test', 'aisc-plugin-langbite', 'bob'),"
+                 f" ('{v1}', 'O3', 'test', 'aisc-plugin-langbite', 'alice')")
     yield
     bed.psql(db, "DELETE FROM evidence.link")
 
@@ -103,3 +106,13 @@ def test_the_editor_has_no_coverage_map(client_v2, auth):
     assert doc.find("details", attrs={"data-coverage-map": True}) is None
     assert doc.find(attrs={"data-control": "use-coverage-map"}) is None
     assert "Collect evidence" in doc.get_text(" ", strip=True)
+
+
+
+def test_a_report_carries_the_links_of_the_card_version_it_is_of(client_v2, auth, fake_v2, bed, links):
+    layout = lay(client_v2, auth)
+    r = client_v2.post(f"/api/p/alpha/layouts/{layout['id']}/reports", json={"system_id": IDS["A_V1"]},
+                       headers=auth("alice"))
+    assert r.status_code == 201, r.text[:300]
+    assert fake_v2.snapshots[-1]["coverage_links"] == [
+        {"objective_id": "O3", "tests": ["aisc-plugin-langbite"], "checklists": []}]

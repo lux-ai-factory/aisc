@@ -2,7 +2,7 @@
 
 Which tests and controls give evidence for which control objective is set once per project, on the
 platform's Collect evidence page, and kept in the project's own database (evidence.link, template
-0016; this role may read it). Every snapshot carries them as `coverage_links`, one entry per objective:
+0016; this role may read it), one set per AI card version (template 0019). Every snapshot carries them as `coverage_links`, one entry per objective:
 tests by plugin package, checklists by checklist id. A generated report stores its snapshot, so it
 keeps the links it was made with. A database made before the template reads as no links.
 """
@@ -23,10 +23,15 @@ def _objective_order(objective_id: str) -> tuple:
     return (0 if code == "O" else 1, code, int(number), "")
 
 
-def coverage_links(conn) -> list[dict]:
+def coverage_links(conn, system_id) -> list[dict]:
+    """The step 4 links of one AI card version, the one the report is of (2026-10-02: links belong to a
+    card version); [] with no version."""
+    if not system_id:
+        return []
     try:
         with conn.transaction():
-            rows = conn.execute("SELECT objective_id, kind, item_key FROM evidence.link").fetchall()
+            rows = conn.execute("SELECT objective_id, kind, item_key FROM evidence.link WHERE system_id::text = %s",
+                                (str(system_id),)).fetchall()
     except psycopg.errors.UndefinedTable:
         return []
     by_objective: dict[str, dict] = {}

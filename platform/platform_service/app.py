@@ -1059,24 +1059,29 @@ class EvidenceLinkIn(BaseModel):
 class EvidenceLinksIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     links: list[EvidenceLinkIn]
+    #: The AI card version the links are for; none is the latest, the only one that changes.
+    version: str | None = None
 
 
-def _evidence_answer(pid, role: str) -> dict:
+def _evidence_answer(pid, role: str, version: str | None = None) -> dict:
     try:
-        answer = evidence.view(pid)
+        answer = evidence.view(pid, version)
     except evidence.NotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
-    answer["can_edit"] = at_least(role, "editor")
+    except evidence.UnknownVersion as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    answer["can_edit"] = at_least(role, "editor") and not answer["read_only"]
     return answer
 
 
 @app.get("/projects/{slug}/evidence")
-def get_evidence(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+def get_evidence(slug: str, version: str | None = None, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Step 4 of one AI card version: `version` is its pid, the latest when left out."""
     role = role_or_404(slug, caller)
     found = db.get_project(slug)
     if found is None:
         raise no_project(slug)
-    return _evidence_answer(found["pid"], role)
+    return _evidence_answer(found["pid"], role, version)
 
 
 @app.put("/projects/{slug}/evidence/links")
@@ -1089,13 +1094,17 @@ def put_evidence_links(slug: str, body: EvidenceLinksIn, caller: Caller = Depend
         raise HTTPException(status_code=422, detail="links: at most 5000")
     try:
         evidence.replace(found["pid"], [(l.objective_id, l.kind, l.key) for l in body.links],
-                         caller.subject)
+                         caller.subject, body.version)
     except evidence.Refused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    except evidence.OlderVersion as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except evidence.UnknownVersion as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
     except evidence.NotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
     logger.info("project %s: %d evidence links saved", found["pid"], len(body.links))
-    return _evidence_answer(found["pid"], role)
+    return _evidence_answer(found["pid"], role, body.version)
 
 
 # ── Allowed internal hosts (allowlist task 2026-09-29) ─────────────────────────

@@ -107,8 +107,9 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     coverage = [{"objective_id": "O1", "tests": ["LangBiTe"], "checklists": ["cl-m1"]}]
     # the project's step 4 links, as the platform's Collect evidence page saves them
     full_bed.psql(report_bed.project_db(IDS["M"]),
-                  "DELETE FROM evidence.link; INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                  " VALUES ('O1', 'test', 'aisc-plugin-langbite', 'mia'), ('O1', 'control', 'cl-m1', 'mia')")
+                  "DELETE FROM evidence.link; INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                  f" VALUES ('{IDS['M_V2']}', 'O1', 'test', 'aisc-plugin-langbite', 'mia'),"
+                  f" ('{IDS['M_V2']}', 'O1', 'control', 'cl-m1', 'mia')")
     links = [{"objective_id": "O1", "tests": ["aisc-plugin-langbite"], "checklists": ["cl-m1"]}]
     body = {k: lay[k] for k in ("name", "template_id", "revision", "blocks")}
     body.update(language="fr", coverage=coverage)

@@ -85,6 +85,8 @@
   }
   section > p{margin:0 0 16px; color:var(--muted); font-size:13.5px; max-width:80ch}
 
+  /* the hidden attribute wins over any display rule (Save on a read-only version, for a viewer) */
+  [hidden]{display:none !important}
   /* ---- the two ways on, and the grid ---- */
   .ways{display:flex; flex-wrap:wrap; gap:16px; margin:4px 0 8px}
   a.way{
@@ -144,6 +146,10 @@
   .dim-tag.r9{background:#efebe9; border-color:#d5cbc6; color:#4e342e}
   .dim-tag.r10{background:#eceff1; border-color:#cbd3d8; color:#37474f}
   .dim-tag.r11{background:#f4f4f4; border-color:#d6d6d6; color:#424242}
+  .version-bar{display:flex; align-items:center; gap:10px; margin:8px 0 0}
+  .version-bar label{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  select.version{font:inherit; font-size:14px; font-weight:700; color:var(--text); background:var(--panel);
+                 border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer}
   .missing{margin-top:26px; padding:14px 18px; border:1px dashed var(--border-strong); background:var(--panel)}
   .missing-head{margin:0 0 8px; font-size:13.5px; color:var(--text)}
   .missing ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-family:var(--mono); font-size:12px; color:var(--muted)}
@@ -196,6 +202,10 @@
 <main>
   <h1 class="title" id="project-name">&hellip;</h1>
   <p class="subtitle">Step 4 &middot; Collect evidence</p>
+  <div class="version-bar" hidden id="version-bar">
+    <label for="version">AI card version</label>
+    <select class="version" id="version" aria-label="AI card version"></select>
+  </div>
   <p class="note" id="page-message" hidden></p>
 
   <section>
@@ -216,6 +226,7 @@
       matrix in that dimension; the columns are the tests and controls installed in step 3 that the catalogue
       tags with it. A greyed row or column is kept because a link names it: its old links stay, and it takes
       no new ones.</div>
+    <p class="note" id="version-note" hidden></p>
     <p class="note" id="viewer-note" hidden>You can read the links; an editor or owner changes them.</p>
     <div class="grids" id="grid"></div>
     <div class="actions">
@@ -227,7 +238,10 @@
 </div>
 
 <script>
-  var slug = new URLSearchParams(location.search).get('project') || '';
+  var params = new URLSearchParams(location.search);
+  var slug = params.get('project') || '';
+  // the AI card version shown (2026-10-02: step 4's links belong to one); none is the latest
+  var version = params.get('version');
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
   var data = null;                          // the platform's answer: objectives, tests, controls, links, can_edit
@@ -424,14 +438,38 @@
   }
 
   function load() {
-    return api('/api/projects/' + enc(slug) + '/evidence')
+    return api('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
       .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); })
       .then(function (r) {
         if (!r.res.ok) { show('page-message', refusal(r.res, r.d)); return; }
         data = r.d;
         show('links');
+        versionBar();
         render();
       });
+  }
+
+  // which card version this is, the others to look at, and what that means for the links
+  function versionBar() {
+    var select = $('version');
+    select.textContent = '';
+    var all = data.versions || [];          // a platform from before 2026-10-02 sends none
+    all.forEach(function (v, i) {
+      var option = el('option', null, 'Version ' + v.number + (i === 0 ? ' (latest)' : ''));
+      option.value = v.pid;
+      if (data.version && v.pid === data.version.pid) option.selected = true;
+      select.appendChild(option);
+    });
+    $('version-bar').hidden = !all.length;
+    var note = $('version-note');
+    if (data.read_only) {
+      note.textContent = 'Version ' + data.version.number + ' is kept as it was: links change only on the latest ' +
+                         'AI card version, ' + data.versions[0].number + '.';
+    } else if (data.carried_from) {
+      note.textContent = 'Taken from version ' + data.carried_from + ', for the objectives this version\'s matrix ' +
+                         'still holds: save to keep them.';
+    }
+    note.hidden = !(data.read_only || data.carried_from);
   }
 
   function save() {
@@ -441,12 +479,14 @@
     });
     $('save').disabled = true;
     say('Saving...');
-    api('/api/projects/' + enc(slug) + '/evidence/links', {method: 'PUT', body: {links: links}})
+    api('/api/projects/' + enc(slug) + '/evidence/links',
+        {method: 'PUT', body: {links: links, version: data.version ? data.version.pid : null}})
       .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); })
       .then(function (r) {
         $('save').disabled = false;
         if (!r.res.ok) { say(refusal(r.res, r.d), 'err'); return; }
         data = r.d;
+        versionBar();
         render();
         say('Saved: ' + data.links.length + ' link' + (data.links.length === 1 ? '' : 's') + '.', 'ok');
       })
@@ -458,6 +498,10 @@
   function boot() {
     $('back').href = '/p/' + enc(slug);
     $('save').addEventListener('click', save);
+    $('version').addEventListener('change', function () {
+      var picked = $('version').value, latest = data.versions[0].pid;
+      location.search = '?project=' + enc(slug) + (picked === latest ? '' : '&version=' + enc(picked));
+    });
     api('/api/projects/' + enc(slug))
       .then(function (res) {
         if (!res.ok) { show('page-message', 'No project with the handle ' + slug + '.'); return null; }

@@ -243,3 +243,39 @@ def test_the_explanation_is_behind_a_question_mark():
     pop = re.search(r'<div id="links-help" class="help-pop" popover>(.*?)</div>', markup, re.S).group(1)
     assert "One table per trustworthiness dimension" in pop and "greyed row or column" in pop
     assert "<p>One table per trustworthiness dimension" not in markup
+
+
+# ── the links belong to one AI card version (2026-10-02) ────────────────────
+
+def test_the_page_names_its_card_version_and_offers_the_others():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    assert re.search(r'<select class="version" id="version"', markup)
+    assert "var all = data.versions || [];" in script and "all.forEach(" in script and "data.version" in script
+    # the version asked for travels in the address and to the platform
+    assert "params.get('version')" in script
+    assert "'/evidence' + (version ? '?version=' + enc(version) : '')" in script
+
+
+def test_an_older_version_is_read_only():
+    script = script_of(read(PAGE))
+    assert "data.read_only" in script
+    assert "is kept as it was" in script
+
+
+def test_links_carried_from_an_earlier_version_say_so_until_saved():
+    script = script_of(read(PAGE))
+    assert "data.carried_from" in script
+    assert "Taken from version " in script and "save to keep them" in script
+
+
+def test_saving_names_the_version():
+    script = script_of(read(PAGE))
+    assert "body: {links: links, version: data.version ? data.version.pid : null}" in script
+
+
+def test_hidden_means_hidden_whatever_an_elements_display():
+    # a `button { display: ... }` rule otherwise beats the hidden attribute: Save showed on a
+    # read-only version, and to a viewer (2026-10-02)
+    css = style_of(read(PAGE))
+    assert re.search(r"\[hidden\]\s*\{\s*display\s*:\s*none\s*!important", css)

@@ -114,6 +114,7 @@ def put(client, as_user, project, links, who=ALICE):
                       headers=as_user(who))
 
 
+V1, V2 = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 LB = {"objective_id": "O1", "kind": "test", "key": "aisc-plugin-langbite"}
 GOV = {"objective_id": "O24", "kind": "control", "key": "ck1"}
 
@@ -123,7 +124,7 @@ GOV = {"objective_id": "O24", "kind": "control", "key": "ck1"}
 def test_the_evidence_schema_is_made_and_the_readers_read_it(project, dsn):
     cols = sql(dsn, project["pid"], "SELECT column_name FROM information_schema.columns"
                                     " WHERE table_schema = 'evidence' AND table_name = 'link' ORDER BY ordinal_position")
-    assert [c[0] for c in cols] == ["objective_id", "kind", "item_key", "created_by", "created_at"]
+    assert [c[0] for c in cols] == ["objective_id", "kind", "item_key", "created_by", "created_at", "system_id"]
     rows = sql(dsn, project["pid"], "SELECT r, has_table_privilege(r, 'evidence.link', 'SELECT'),"
                                     " has_table_privilege(r, 'evidence.link', 'INSERT')"
                                     " FROM unnest(array['report_ro', 'dashboard_ro', 'report_composer_rw']) r"
@@ -135,8 +136,8 @@ def test_the_evidence_schema_is_made_and_the_readers_read_it(project, dsn):
 
 def test_a_link_is_one_objective_one_item(project, dsn):
     with pytest.raises(psycopg.errors.CheckViolation):
-        sql(dsn, project["pid"], "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                                 " VALUES ('O1', 'model', 'x', 'a')")
+        sql(dsn, project["pid"], "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                                 " VALUES ('22222222-2222-2222-2222-222222222222', 'O1', 'model', 'x', 'a')")
 
 
 # ── what the page lists ─────────────────────────────────────────────────────
@@ -386,13 +387,13 @@ def test_template_0017_renames_old_ids_and_takes_only_new_ones(project, dsn):
     pid = project["pid"]
     # a link stored before the rename, with the old check
     sql(dsn, pid, "ALTER TABLE evidence.link DROP CONSTRAINT IF EXISTS link_objective_id_check")
-    sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                  " VALUES ('R6.1', 'control', 'ck1', 'a'), ('R11.4', 'test', 'x', 'a')")
+    sql(dsn, pid, "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                  " VALUES (%(v)s, 'R6.1', 'control', 'ck1', 'a'), (%(v)s, 'R11.4', 'test', 'x', 'a')", {"v": V2})
     sql(dsn, pid, template)
     assert sql(dsn, pid, "SELECT objective_id FROM evidence.link ORDER BY objective_id") == [("O24",), ("O50",)]
     with pytest.raises(psycopg.errors.CheckViolation):
-        sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                      " VALUES ('R1.1', 'test', 'y', 'a')")
+        sql(dsn, pid, "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                      " VALUES (%(v)s, 'R1.1', 'test', 'y', 'a')", {"v": V2})
     # running it again changes nothing
     sql(dsn, pid, template)
     assert sql(dsn, pid, "SELECT count(*) FROM evidence.link") == [(2,)]
@@ -434,9 +435,93 @@ def test_template_0018_takes_any_sets_ids(project, dsn):
                 / "0018_objective_set_ids.sql").read_text()
     pid = project["pid"]
     sql(dsn, pid, template)
-    sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                  " VALUES ('BNK12', 'test', 'x', 'a'), ('O3', 'test', 'x', 'a')")
+    sql(dsn, pid, "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                  " VALUES (%(v)s, 'BNK12', 'test', 'x', 'a'), (%(v)s, 'O3', 'test', 'x', 'a')", {"v": V2})
     for bad in ("bnk1", "B1", "BNK0", "R1.1"):
         with pytest.raises(psycopg.errors.CheckViolation):
-            sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by)"
-                          " VALUES (%s, 'test', 'y', 'a')", (bad,))
+            sql(dsn, pid, "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
+                          " VALUES (%s, %s, 'test', 'y', 'a')", (V2, bad))
+
+
+
+# ── the links belong to one AI card version (2026-10-02) ────────────────────
+
+def _v3(dsn, pid, selected="{O1}"):
+    """A third card version, the new latest, whose assessment selects `selected`."""
+    v3 = "33333333-3333-3333-3333-333333333333"
+    sql(dsn, pid, "INSERT INTO project.system (pid, number, name) VALUES (%s, 3, 'S')", (v3,))
+    sql(dsn, pid, "INSERT INTO control_objectives.project VALUES ('a3', %s)", (v3,))
+    sql(dsn, pid, "INSERT INTO control_objectives.objective_selection (project_id, objective_ids) VALUES ('a3', %s)",
+        (selected,))
+    return v3
+
+
+def test_the_page_is_the_latest_versions_and_names_every_version(client, as_user, project):
+    body = get(client, as_user, project).json()
+    assert body["version"] == {"pid": V2, "number": 2}
+    assert [v["number"] for v in body["versions"]] == [2, 1]
+    assert body["read_only"] is False and body["carried_from"] is None
+
+
+def test_links_are_saved_for_the_latest_version(client, as_user, project, dsn):
+    put(client, as_user, project, [LB])
+    assert sql(dsn, project["pid"], "SELECT system_id::text, objective_id FROM evidence.link") == [(V2, "O1")]
+
+
+def test_an_older_version_reads_its_own_selection_and_cannot_change(client, as_user, project, dsn):
+    put(client, as_user, project, [LB])
+    older = client.get(f"/projects/{project['slug']}/evidence?version={V1}", headers=as_user(ALICE)).json()
+    assert older["version"]["number"] == 1 and older["read_only"] is True
+    assert [o["id"] for o in older["objectives"]] == ["O1", "O7"]
+    assert older["links"] == []
+    r = client.put(f"/projects/{project['slug']}/evidence/links", json={"links": [LB], "version": V1},
+                   headers=as_user(ALICE))
+    assert r.status_code == 409 and "version 1" in r.text
+
+
+def test_a_version_not_in_the_project_is_404(client, as_user, project):
+    r = client.get(f"/projects/{project['slug']}/evidence?version=99999999-9999-9999-9999-999999999999",
+                   headers=as_user(ALICE))
+    assert r.status_code == 404
+
+
+def test_a_new_version_is_offered_the_previous_links_still_in_its_matrix(client, as_user, project, dsn):
+    put(client, as_user, project, [LB, GOV])                     # v2: O1 <- LangBiTe, O24 <- checklist
+    v3 = _v3(dsn, project["pid"], "{O1}")
+    body = get(client, as_user, project).json()
+    assert body["version"]["number"] == 3 and body["carried_from"] == 2
+    assert [(l["objective_id"], l["key"], l["carried"]) for l in body["links"]] == [
+        ("O1", "aisc-plugin-langbite", True)]                  # O24 is not in v3's matrix
+    # nothing is written until the assessor saves
+    assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s", (v3,)) == [(0,)]
+    saved = put(client, as_user, project, [LB]).json()
+    assert saved["carried_from"] is None and [l["carried"] for l in saved["links"]] == [False]
+    assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s", (v3,)) == [(1,)]
+    # version 2 keeps its own
+    assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s", (V2,)) == [(2,)]
+
+
+def test_deleting_a_version_deletes_its_links(client, as_user, project, dsn):
+    put(client, as_user, project, [LB])
+    sql(dsn, project["pid"], "DELETE FROM control_objectives.project WHERE system_id = %s", (V2,))
+    sql(dsn, project["pid"], "DELETE FROM project.system WHERE pid = %s", (V2,))
+    assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link") == [(0,)]
+
+
+def test_template_0019_gives_every_link_its_version(project, dsn):
+    from pathlib import Path
+
+    folder = Path(evidence.__file__).resolve().parent.parent / "project-template"
+    pid = project["pid"]
+    # a link from before 0019, with no version
+    sql(dsn, pid, "ALTER TABLE evidence.link DROP CONSTRAINT IF EXISTS link_pkey")
+    sql(dsn, pid, "ALTER TABLE evidence.link DROP COLUMN system_id")
+    sql(dsn, pid, "ALTER TABLE evidence.link ADD PRIMARY KEY (objective_id, kind, item_key)")
+    sql(dsn, pid, "INSERT INTO evidence.link (objective_id, kind, item_key, created_by) VALUES ('O1', 'test', 'x', 'a')")
+    sql(dsn, pid, (folder / "0019_evidence_per_version.sql").read_text())
+    assert sql(dsn, pid, "SELECT system_id::text FROM evidence.link") == [(V2,)]     # the latest version
+    keys = sql(dsn, pid, "SELECT pg_get_constraintdef(oid) FROM pg_constraint"
+                         " WHERE conrelid = 'evidence.link'::regclass AND contype = 'p'")
+    assert keys == [("PRIMARY KEY (system_id, objective_id, kind, item_key)",)]
+    sql(dsn, pid, (folder / "0019_evidence_per_version.sql").read_text())           # again: no change
+    assert sql(dsn, pid, "SELECT count(*) FROM evidence.link") == [(1,)]
