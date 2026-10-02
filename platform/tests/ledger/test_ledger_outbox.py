@@ -134,11 +134,12 @@ def test_a_malformed_event_is_refused_in_the_apps_transaction(project):
         emit(project["pid"], "controls_rw", {"action": "controls.submission.closed"})   # no event_id
 
 
-def test_emit_refuses_every_platform_only_action_of_the_registry(project):
-    """The SQL list is generated from the registry, so they can't drift (third review n11)."""
+def test_emit_refuses_every_action_whose_origin_is_not_an_app(project):
+    """The SQL list is generated from the registry (origin platform or browser), so they can't drift
+    (third review n11, fourth review 2)."""
     from platform_service.ledger.registry import REGISTRY
 
-    platform_only = sorted(name for name, action in REGISTRY.items() if not action.emitters)
+    platform_only = sorted(name for name, action in REGISTRY.items() if action.origin != "app")
     assert platform_only
     for action in platform_only:
         with pytest.raises(psycopg.errors.RaiseException):

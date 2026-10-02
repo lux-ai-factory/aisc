@@ -4,6 +4,8 @@ the platform database, in their own transaction (R2.4). A card version is saved 
 app on the person's behalf, so its cause is qualification's witnessed request (R1.6)."""
 from __future__ import annotations
 
+import uuid
+
 import psycopg
 import pytest
 
@@ -97,7 +99,7 @@ def _project_db_event(project, witnessed):
 
     request_id = witnessed(MEMBER, "POST", "control_objectives",
                            f"/control-objectives/p/{project['pid']}/api/projects/a1/ratings")
-    emit(project["pid"], "control_objectives_rw", {"event_id": "00000000-0000-4000-8000-0000000000d1",
+    emit(project["pid"], "control_objectives_rw", {"event_id": str(uuid.uuid4()),
                                                    "request_id": request_id, "action": "risk.rated",
                                                    "item_type": "risk", "item_id": "r1"})
 

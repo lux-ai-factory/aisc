@@ -2,6 +2,8 @@
 witnessed requests fail, others work) is the real-Caddy suite, scripts/tests/test_ledger_gateway.py."""
 from __future__ import annotations
 
+import uuid
+
 
 
 from tests.ledger.conftest import log_of, needs_db, MEMBER, entries, relay_all
@@ -15,7 +17,7 @@ def ratings(pid):
 
 
 def rated(request_id, n):
-    return {"event_id": f"00000000-0000-4000-8000-{n:012d}", "request_id": request_id, "action": "risk.rated",
+    return {"event_id": str(uuid.uuid4()), "request_id": request_id, "action": "risk.rated",
             "item_type": "risk", "item_id": f"r{n}"}
 
 
@@ -40,7 +42,7 @@ def test_an_internal_event_is_queued_when_immudb_is_down(client, project, witnes
     memory_ledger.down = True
     request_id = witnessed(MEMBER, "POST", "engine", "/api/v1/evaluation/", project_header=project["pid"])
     r = client.post(f"/internal/projects/{project['pid']}/ledger/events",
-                    json={"event_id": "00000000-0000-4000-8000-0000000000e1", "request_id": request_id,
+                    json={"event_id": str(uuid.uuid4()), "request_id": request_id,
                           "action": "engine.evaluation.run_requested", "item_type": "evaluation", "item_id": "ev1",
                           "run_id": "00000000-0000-4000-8000-0000000000f1"},
                     headers={"X-AISC-Service-Token": "engine-token-0123456789"})

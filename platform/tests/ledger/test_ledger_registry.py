@@ -97,6 +97,8 @@ def test_every_action_is_described_completely():
         assert action.step in range(0, 7), name
         assert set(action.emitters) <= set(KNOWN_APPS), name
         assert action.emitters or name in PLATFORM_ONLY, name
+        assert action.origin in {"app", "platform", "browser"}, name
+        assert (action.origin == "platform") == (not action.emitters), f"{name}: no emitters means origin platform"
         assert action.item_type, name
         assert action.actor_kinds and set(action.actor_kinds) <= ACTOR_KINDS, name
         assert not {"actor_sub", "actor_name", "actor_kind", "actor_ref", "user", "subject"} & set(action.details_keys), name
@@ -237,3 +239,9 @@ def test_override_merges_over_the_real_registry_and_restores_it():
         assert registry.REGISTRY["test.only.action"] is extra
         assert set(real) <= set(registry.REGISTRY)
     assert dict(registry.REGISTRY) == real
+
+
+def test_browser_reported_actions_have_their_own_origin():
+    """`page.*` come through the beacon, never through an app's `ledger.emit` (fourth review 2)."""
+    assert {n for n, a in REGISTRY.items() if a.origin == "browser"} >= {"page.opened", "page.left"}
+    assert all(a.origin != "app" for n, a in REGISTRY.items() if n.startswith(("page.", "request.", "ledger.")))

@@ -188,8 +188,10 @@ Page views don't go through the witness (G9). They are **best effort**, `reporte
 
 ### 4.1 Registry fields
 
-`Action(name, step, emitters, item_type, routes, caused_by, actor_kinds, details_keys,
+`Action(name, step, origin, emitters, item_type, routes, caused_by, actor_kinds, details_keys,
 content_required, per_request, runs, run_window, registry_version)`:
+- `origin`: `app` (an app emits it through `ledger.emit` or the internal route), `platform` (the
+  witness or the relay makes it; no emitters), or `browser` (the beacon route reports it, `page.*`).
 - `emitters`: the apps that may emit it (by `db_role` or token).
 - `caused_by`: the witnessed requests that may cause it, as `(app, METHOD, path_regex)` or
   `(app, "ACTION", page_regex)` for a Next.js server action. An `item` named group in the regex binds
@@ -344,9 +346,11 @@ library, so the repo-level tests can load them (R3.7).
   `fingerprint(pid, value)` = `digest(pid, "fingerprint", value)`.
 - `actors.ref_for(pid, sub, name) -> actor_ref` gives the person's reference in that project,
   creating it on first sight: `"actor:" + 32 random hex`, with a mapping row
-  `ledger.actor(pid, actor_ref, sub, name, mac)`, unique on `(pid, sub)` so first sightings at once
-  make one reference, and `mac = digest(pid, "mapping", canonical([actor_ref, sub, name]))`. A name
-  change rewrites the row and its MAC. `pid=None` is the platform log's own scope (n-g).
+  `ledger.actor(scope, actor_ref, sub, name, mac)`, where `scope` is the pid as text, or
+  `'platform'` for `pid=None` (never NULL, which a unique key wouldn't cover); unique on
+  `(scope, sub)`, so first sightings at once make one reference, in either scope; and
+  `mac = digest(pid, "mapping", canonical([actor_ref, sub, name]))`. A name change rewrites the row
+  and its MAC (n-g, fourth review 3).
   `actors.resolve(pid, actor_ref) -> (sub, name) | None` checks the MAC and raises `MappingAlarm` on a
   mismatch. `actors.erase(pid, sub)` deletes the rows; the next sight of that person makes a new,
   unrelated reference. `actors.tamper` is a test hook.
@@ -374,7 +378,9 @@ library, so the repo-level tests can load them (R3.7).
   - `MemoryLedger` test hooks: `create(db)`, `drop(db)`, `tamper(db, seq, field, value)`, `down`,
     `crash_after_appends`, `public_key_pem()`.
   - `store.ImmudbLedger(url, user, password, state_store)` uses the key-value API only (M8):
-    `e:<seq, 20 digits>` to the canonical entry, `id:<event_id>` to seq and digest.
+    `e:<seq, 20 digits>` to the canonical entry, `id:<event_id>` to seq and digest. Event ids are
+    unique **per log**; `ledger.event_index` is keyed `(project_pid, seq)` and unique on
+    `(project_pid, event_id)`, never on `event_id` alone (fourth review 6).
   - It keeps one client per database, each behind its own lock, and never calls `useDatabase` on a
     shared client (M9).
   - Its `state_store` is `state.PostgresStateStore`, over `ledger.state(db pk, tx_id, tx_hash,
@@ -387,12 +393,19 @@ library, so the repo-level tests can load them (R3.7).
 - `pool.create_databases(url, *, admin_user="immudb", admin_password, names, grantee,
   grantee_password)`: the operator's step behind `scripts/ledger-pool.sh`. It raises `PermissionError`
   when the account isn't the superuser (M1).
+- Platform-database tables, with the columns other code and the test cleanup rely on:
+  `ledger.witness(request_id, project_pid, ...)` (section 3.4), `ledger.actor(scope, actor_ref, sub,
+  name, mac)`, `ledger.event_index(project_pid, seq, event_id, action, actor_ref, step, item_type,
+  item_id, card_version, outcome, occurred_at)`, `ledger.page_view(project_pid, actor_ref, action,
+  details, at)`, `ledger.state(db pk, tx_id, tx_hash, signature, updated_at)`,
+  `core.outbox(..., project_pid, request_id)`.
 - `ledger.pool(db pk, server_id, created_at, assigned_pid null, assigned_at)` in the platform
   database: the operator's script inserts a row per database it makes (`pool.register(store, names)`
   refuses a name that isn't a ledger name). `server_id` is the server's own identity, never its
   address: immudb's server UUID (sent in the `immudb-uuid` response metadata; open item S7), or
-  `memory:<uuid>` (n-c). `provision.assign(pid, conn=None)` runs **inside the project creation's
-  transaction** (`provision.transaction()`), so a failed creation consumes nothing; it is idempotent
+  `memory:<uuid>` (n-c). `provision.assign(pid, conn=None) -> db | None` (None when the pool is
+  empty) neither looks the project up nor holds a foreign key to it, so phase 1 can test it alone
+  (fourth review 4); it runs **inside the project creation's transaction** (`provision.transaction()`), so a failed creation consumes nothing; it is idempotent
   per pid, and takes a free row **of the current store's `server_id`** with `FOR UPDATE SKIP LOCKED`, so two creations never share one and another server's database is never handed out
   (N1). `provision.database_for(pid) -> db | None`; `provision.assigned()`; `provision.pool_level()`;
   `provision.assign_pending(pid) -> bool` after a refill. With the pool empty the project is still
@@ -452,8 +465,10 @@ evidence_ref, depends_on, outcome, details, registry_version`.
 - Function `ledger.emit(event jsonb) RETURNS void`, SECURITY DEFINER, `EXECUTE` granted only to
   `qualification_rw`, `controls_rw`, `control_objectives_rw`, `report_composer_rw`, `platform_rw`.
   - It sets `db_role := session_user` and `occurred_at := clock_timestamp()`, and refuses every
-    platform-only action (`request.*`, `flower.request`, `pgadmin.request`, `page.*`, `ledger.*`;
-    R4.7). The list is generated from the registry into the template, so the two can't drift (n11).
+    action whose registry `origin` isn't `app` (today `request.*`, `flower.request`,
+    `pgadmin.request`, `page.*`, `ledger.*`; R4.7). The list is generated from the registry into the
+    template by that one rule, and a test checks it against the registry, so the two can't drift
+    (n11, fourth review 2).
   - Apps call it with a plain statement (`SELECT ledger.emit($1)`): Prisma `$executeRaw` inside
     `$transaction`, SQLAlchemy `text()`, so no ORM `RETURNING` is involved (R3.3).
   - It runs in the app's own transaction, so a rollback leaves no event.
@@ -507,7 +522,7 @@ evidence_ref, depends_on, outcome, details, registry_version`.
   signatures. This wasn't spiked; it is phase 1's first immudb test.
 - Every `HEAD_PUBLISH` (1 h), each project's signed head is written to the object-locked `evidence`
   bucket (phase 10; until then to `ledger.published_head` in Postgres).
-- A database in `ledger.databases` that immudb no longer has is a `missing_database` alarm.
+- A database assigned in `ledger.pool` that immudb no longer has is a `missing_database` alarm.
 - Restore runbook (`docs/runbooks/ledger-restore.md`, phase 1): restore immudb, see the alarm, an
   admin re-anchors, the verifier runs.
 
@@ -652,6 +667,11 @@ Third review (`08-third-review.md`):
 | M3 P4 against the delete rule | P4 blocks on a project-DB row; a new test shows platform-DB rows never block |
 | M4 shared state, whole-database relay | 6.1 relay: missing database is pending + alarm per project; tests clean exactly the rows they recorded |
 | n-a to n-j | `own_store` order; 6.4 `extra`; pool `server_id`, assign in the creation transaction; 4.5 wording; `state` key; versions kept; mapping MAC with name, uniqueness, platform scope, pid case; retention; keys read per call; export negative check |
+
+Fourth review (`09-fourth-review.md`, 0 blocker, 0 major): minors 1 (cleanup by recorded ids,
+per statement, reported; `test_ledger_cleanup.py`; PF4 checks its own project), 2 (`origin`), 3
+(fresh subjects, `scope` never NULL), 4 (assign contract), 5 (labels, `ledger.pool`), 6 (random event
+ids, per-log uniqueness) are closed in the sections above.
 
 The minors are in the same sections, or in `04-test-plan.md` where they are test changes. Section 3.5
 of 01-plan and the test file names are made consistent with this file (R3.5).

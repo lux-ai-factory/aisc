@@ -2,6 +2,8 @@
 third review M1, M4). These need the witness (phase 2) and the relay (phase 3)."""
 from __future__ import annotations
 
+import uuid
+
 
 from platform_service.ledger import provision, testing, verify
 from tests.ledger.conftest import MEMBER, OWNER, entries, log_of, needs_db, relay_all
@@ -13,7 +15,7 @@ pytestmark = needs_db
 def rating(p, witnessed, n):
     request_id = witnessed(MEMBER, "POST", "control_objectives",
                            f"/control-objectives/p/{p['pid']}/api/projects/a1/ratings")
-    emit(p["pid"], "control_objectives_rw", {"event_id": f"00000000-0000-4000-8000-{n:012d}",
+    emit(p["pid"], "control_objectives_rw", {"event_id": str(uuid.uuid4()),
                                              "request_id": request_id, "action": "risk.rated",
                                              "item_type": "risk", "item_id": f"r{n}"})
 
@@ -53,8 +55,8 @@ def test_a_database_gone_from_immudb_holds_that_project_only(memory_ledger, make
     rating(lost, witnessed, 1)
     rating(fine, witnessed, 2)
     memory_ledger.drop(log_of(lost["pid"]))                       # what the immudb superuser could do
-    stats = relay_all()                                             # every project, as the daemon runs
-    assert stats.pending >= 1
+    relay_all()                                                     # every project, as the daemon runs
+    assert relay_all(lost["pid"]).pending >= 1                      # its own row waits (fourth review 1)
     assert [e.item_id for e in entries(memory_ledger, log_of(fine["pid"])) if e.action == "risk.rated"] == ["r2"]
     assert verify.verify(lost["pid"]).missing_database is True
     assert verify.verify(fine["pid"]).missing_database is False
@@ -67,5 +69,5 @@ def test_the_relay_skips_rows_whose_database_another_store_holds(memory_ledger, 
     mode("enforce")
     rating(p, witnessed, 1)
     own_store(2)                                                    # another server is now current
-    stats = relay_all()
-    assert stats.pending >= 1 and verify.verify(p["pid"]).missing_database is True
+    relay_all()                                                     # never raises
+    assert relay_all(p["pid"]).pending >= 1 and verify.verify(p["pid"]).missing_database is True

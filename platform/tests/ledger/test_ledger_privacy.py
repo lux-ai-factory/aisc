@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import uuid
+
 import hashlib
 import json
 import subprocess
@@ -22,7 +24,7 @@ import pytest
 
 from platform_service.ledger import actors, secrets
 from platform_service.ledger.canonical import canonical
-from tests.ledger.conftest import LEDGER_KEYS, MEMBER, OWNER, entries, log_of, needs_db, person, relay_all
+from tests.ledger.conftest import LEDGER_KEYS, MEMBER, OWNER, STRANGER, entries, log_of, needs_db, person, relay_all
 from tests.ledger.test_ledger_outbox import emit
 
 pytestmark = needs_db
@@ -31,7 +33,7 @@ PURPOSES = ("content", "state", "query", "mapping", "fingerprint")
 
 
 def rated(request_id, n=1, **over):
-    e = {"event_id": f"00000000-0000-4000-8000-{n:012d}", "request_id": request_id, "action": "risk.rated",
+    e = {"event_id": str(uuid.uuid4()), "request_id": request_id, "action": "risk.rated",
          "item_type": "risk", "item_id": f"r{n}", "content": {"answer": "yes"}}
     e.update(over)
     return e
@@ -79,15 +81,20 @@ def test_the_same_person_keeps_one_reference_in_a_project(rate):
     assert rate(n=1).actor_ref == rate(n=2).actor_ref
 
 
-def test_first_sightings_at_once_make_one_reference(project):
-    """A unique (project, person) mapping: two requests at the same moment can't mint two (n-g)."""
+@pytest.mark.parametrize("scope", ["project", "platform"])
+def test_first_sightings_at_once_make_one_reference(project, scope):
+    """Unique on (scope, sub): two requests at the same moment can't mint two, also in the platform's
+    own scope, where a NULL project would not be unique (n-g, fourth review 3)."""
     import threading
+    import uuid as _uuid
 
+    newcomer = str(_uuid.uuid4())                                  # never seen: a real first sighting
+    where = project["pid"] if scope == "project" else None
     refs, errors = [], []
 
     def run():
         try:
-            refs.append(actors.ref_for(project["pid"], OWNER, "olive"))
+            refs.append(actors.ref_for(where, newcomer, "olive"))
         except Exception as exc:                                     # pragma: no cover - reported below
             errors.append(exc)
     threads = [threading.Thread(target=run) for _ in range(6)]
@@ -104,9 +111,12 @@ def test_a_changed_name_in_the_mapping_is_detected(project, rate):
         person(project["pid"], e.actor_ref)
 
 
-def test_the_platform_logs_references_are_scoped_apart_from_any_project(project):
-    """Requests outside any project get references in the platform's own scope (n-g)."""
-    assert actors.ref_for(None, MEMBER, "bob") != actors.ref_for(project["pid"], MEMBER, "bob")
+def test_the_platform_scope_keeps_one_reference_per_person(project):
+    """Requests outside any project use the platform's own scope: stable there, and erasable (n-g)."""
+    first = actors.ref_for(None, STRANGER, "sam")
+    assert actors.ref_for(None, STRANGER, "sam") == first
+    actors.erase(None, STRANGER)
+    assert person(None, first) is None
 
 
 def test_the_key_derivation_ignores_the_case_of_the_pid(project):

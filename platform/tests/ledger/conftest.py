@@ -63,32 +63,55 @@ needs_db = pytest.mark.usefixtures("_database_required")
 
 
 #: What these tests made in the platform database, so the session can remove exactly that (third review
-#: M4). Never a pattern match on real data: a row is deleted only if a test recorded its id here.
-MADE: dict[str, set] = {"pids": set(), "requests": set()}
+#: M4, fourth review 1). A row is deleted only if its id was recorded here: project ids, request ids,
+#: the stores' server ids and the subjects of the tokens the tests made. Never a pattern on real data.
+MADE: dict[str, set] = {"pids": set(), "requests": set(), "servers": set(), "subs": set()}
 
 CLEANUP = [
-    ("ledger.witness", "DELETE FROM ledger.witness WHERE request_id::text = ANY(%(requests)s) OR project_pid::text = ANY(%(pids)s)"),
-    ("ledger.actor", "DELETE FROM ledger.actor WHERE pid::text = ANY(%(pids)s)"),
+    ("ledger.witness", "DELETE FROM ledger.witness WHERE request_id::text = ANY(%(requests)s)"
+                       " OR project_pid::text = ANY(%(pids)s)"),
+    ("ledger.actor", "DELETE FROM ledger.actor WHERE scope = ANY(%(pids)s)"
+                     " OR (scope = 'platform' AND sub = ANY(%(subs)s))"),
     ("ledger.event_index", "DELETE FROM ledger.event_index WHERE project_pid::text = ANY(%(pids)s)"),
-    ("core.outbox", "DELETE FROM core.outbox WHERE project_pid::text = ANY(%(pids)s) OR request_id::text = ANY(%(requests)s)"),
-    ("ledger.page_view", "DELETE FROM ledger.page_view WHERE pid::text = ANY(%(pids)s)"),
-    ("ledger.pool", "DELETE FROM ledger.pool WHERE server_id LIKE 'memory:%%'"),
+    ("ledger.page_view", "DELETE FROM ledger.page_view WHERE project_pid::text = ANY(%(pids)s)"),
+    ("core.outbox", "DELETE FROM core.outbox WHERE project_pid::text = ANY(%(pids)s)"
+                    " OR request_id::text = ANY(%(requests)s)"),
+    ("ledger.state", "DELETE FROM ledger.state WHERE db IN (SELECT db FROM ledger.pool"
+                     " WHERE server_id = ANY(%(servers)s))"),
+    ("ledger.pool", "DELETE FROM ledger.pool WHERE server_id = ANY(%(servers)s)"),
 ]
+
+
+def remove_made(dsn: str, made: dict) -> list[str]:
+    """Delete exactly what `made` names, one statement per transaction; returns the failures, so a
+    caller can't miss them (fourth review 1)."""
+    import psycopg
+
+    params = {k: sorted(v) for k, v in made.items()}
+    failures = []
+    with psycopg.connect(dsn, connect_timeout=2, autocommit=True) as conn:
+        for table, statement in CLEANUP:
+            if not conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0]:
+                continue                                            # not built yet
+            try:
+                conn.execute(statement, params)
+            except Exception as exc:
+                failures.append(f"{table}: {exc}")
+    return failures
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _remove_what_the_tests_made():
     yield
-    try:
-        import psycopg
+    import warnings
 
-        from tests.conftest import DSN
-        with psycopg.connect(DSN, connect_timeout=2) as conn:
-            for table, statement in CLEANUP:
-                if conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0]:
-                    conn.execute(statement, {"pids": sorted(MADE["pids"]), "requests": sorted(MADE["requests"])})
-    except Exception:                                               # no database: nothing was made
-        pass
+    from tests.conftest import DSN
+    try:
+        failures = remove_made(DSN, MADE)
+    except Exception as exc:                                        # no database at all: nothing was made
+        failures = [] if not any(MADE.values()) else [f"connect: {exc}"]
+    for failure in failures:
+        warnings.warn(f"ledger test cleanup left rows behind: {failure}")
 
 
 @pytest.fixture(autouse=True)
@@ -116,6 +139,7 @@ def memory_ledger(_database_required):
     from platform_service.ledger.store import MemoryLedger
 
     store = MemoryLedger()
+    MADE["servers"].add(store.server_id)
     testing.fill_pool(store, n=8)                  # creates the databases + the platform log, registers them
     previous = ledger.use(store)
     yield store
@@ -134,6 +158,7 @@ def own_store(memory_ledger):
 
     def run(n):
         store = MemoryLedger()
+        MADE["servers"].add(store.server_id)
         testing.fill_pool(store, n=n)
         made.append(ledger.use(store))
         return store
@@ -239,6 +264,7 @@ def gateway_token(key):
     from tests.conftest import ISSUER
 
     def make(subject, *, username=None, roles=("primary-user",), **claims):
+        MADE["subs"].add(subject)
         body = {"sub": subject, "email": f"{subject}@localhost", "preferred_username": username or subject,
                 "iss": ISSUER, "azp": GATEWAY_CLIENT, "exp": int(time.time()) + 300,
                 "realm_access": {"roles": list(roles)}}
