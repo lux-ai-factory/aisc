@@ -91,17 +91,41 @@ def test_a_card_version_saved_by_step_1_is_the_persons(project, client, as_user,
     assert person(project["pid"], e.actor_ref)[0] == MEMBER and e.item_version == "1"
 
 
-def test_a_project_with_undelivered_events_is_not_dropped_until_they_are_delivered(project, call, memory_ledger):
-    call(OWNER, "POST", f"/projects/{project['slug']}/members",
-         json={"subject": "00000000-0000-0000-0000-0000000000d5", "role": "viewer"})
+def _project_db_event(project, witnessed):
+    """An event in the project database's own outbox, which the drop would destroy."""
+    from tests.ledger.test_ledger_outbox import emit
+
+    request_id = witnessed(MEMBER, "POST", "control_objectives",
+                           f"/control-objectives/p/{project['pid']}/api/projects/a1/ratings")
+    emit(project["pid"], "control_objectives_rw", {"event_id": "00000000-0000-4000-8000-0000000000d1",
+                                                   "request_id": request_id, "action": "risk.rated",
+                                                   "item_type": "risk", "item_id": "r1"})
+
+
+def test_a_project_db_with_undelivered_events_is_not_dropped_until_they_are_delivered(project, call, witnessed,
+                                                                                      memory_ledger):
+    _project_db_event(project, witnessed)
     memory_ledger.down = True                                       # the drain can't deliver
     r = call(OWNER, "DELETE", f"/projects/{project['slug']}")
     assert r.status_code == 409 and "undelivered" in r.text.lower()
     memory_ledger.down = False
     assert call(OWNER, "DELETE", f"/projects/{project['slug']}").status_code in (200, 204)
-    relay_all()
+    relay_all(project["pid"])
     kept = [e.action for e in entries(memory_ledger, log_of(project["pid"]))]
-    assert "member.added" in kept and "project.deleted" in kept     # the log outlives the project (D2)
+    assert "risk.rated" in kept and "project.deleted" in kept       # the log outlives the project (D2)
+
+
+def test_pending_platform_database_rows_never_block_a_delete(project, call, memory_ledger):
+    """Member events and the delete's own witness and `project.deleted` live in the platform database,
+    which the drop doesn't touch: they are delivered later (spec 6.4, third review M3)."""
+    call(OWNER, "POST", f"/projects/{project['slug']}/members",
+         json={"subject": "00000000-0000-0000-0000-0000000000d5", "role": "viewer"})
+    memory_ledger.down = True
+    assert call(OWNER, "DELETE", f"/projects/{project['slug']}").status_code in (200, 204)
+    memory_ledger.down = False
+    relay_all(project["pid"])
+    kept = [e.action for e in entries(memory_ledger, log_of(project["pid"]))]
+    assert "member.added" in kept and "project.deleted" in kept
 
 
 def test_member_events_wait_in_the_platform_databases_outbox(project, call):

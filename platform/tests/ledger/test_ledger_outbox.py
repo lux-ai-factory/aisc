@@ -132,3 +132,21 @@ def test_delivery_state_is_the_platforms_alone(project, role, table):
 def test_a_malformed_event_is_refused_in_the_apps_transaction(project):
     with pytest.raises(psycopg.errors.RaiseException):
         emit(project["pid"], "controls_rw", {"action": "controls.submission.closed"})   # no event_id
+
+
+def test_emit_refuses_every_platform_only_action_of_the_registry(project):
+    """The SQL list is generated from the registry, so they can't drift (third review n11)."""
+    from platform_service.ledger.registry import REGISTRY
+
+    platform_only = sorted(name for name, action in REGISTRY.items() if not action.emitters)
+    assert platform_only
+    for action in platform_only:
+        with pytest.raises(psycopg.errors.RaiseException):
+            emit(project["pid"], "controls_rw", event(action=action))
+
+
+def test_emit_keeps_fields_only_the_platform_may_set_for_the_relay_to_reject(project):
+    """Refusing them in emit would roll back the business write; the relay rejects them instead (n-b)."""
+    event_id = emit(project["pid"], "controls_rw", event(content_sha256="0" * 64, recorded_at="2001-01-01"))
+    [(extra,)] = row(project["pid"], event_id, "extra")
+    assert extra == {"content_sha256": "0" * 64, "recorded_at": "2001-01-01"}

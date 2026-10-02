@@ -62,6 +62,35 @@ def _database_required():
 needs_db = pytest.mark.usefixtures("_database_required")
 
 
+#: What these tests made in the platform database, so the session can remove exactly that (third review
+#: M4). Never a pattern match on real data: a row is deleted only if a test recorded its id here.
+MADE: dict[str, set] = {"pids": set(), "requests": set()}
+
+CLEANUP = [
+    ("ledger.witness", "DELETE FROM ledger.witness WHERE request_id::text = ANY(%(requests)s) OR project_pid::text = ANY(%(pids)s)"),
+    ("ledger.actor", "DELETE FROM ledger.actor WHERE pid::text = ANY(%(pids)s)"),
+    ("ledger.event_index", "DELETE FROM ledger.event_index WHERE project_pid::text = ANY(%(pids)s)"),
+    ("core.outbox", "DELETE FROM core.outbox WHERE project_pid::text = ANY(%(pids)s) OR request_id::text = ANY(%(requests)s)"),
+    ("ledger.page_view", "DELETE FROM ledger.page_view WHERE pid::text = ANY(%(pids)s)"),
+    ("ledger.pool", "DELETE FROM ledger.pool WHERE server_id LIKE 'memory:%%'"),
+]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _remove_what_the_tests_made():
+    yield
+    try:
+        import psycopg
+
+        from tests.conftest import DSN
+        with psycopg.connect(DSN, connect_timeout=2) as conn:
+            for table, statement in CLEANUP:
+                if conn.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0]:
+                    conn.execute(statement, {"pids": sorted(MADE["pids"]), "requests": sorted(MADE["requests"])})
+    except Exception:                                               # no database: nothing was made
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _ledger_settings(monkeypatch):
     monkeypatch.setenv("AISC_WITNESS_GATEWAY_SECRET", GATEWAY_SECRET)
@@ -91,6 +120,26 @@ def memory_ledger(_database_required):
     previous = ledger.use(store)
     yield store
     ledger.use(previous)
+
+
+@pytest.fixture
+def own_store(memory_ledger):
+    """own_store(n) -> a ledger with a pool of n databases, made current until the test ends. It
+    depends on memory_ledger so it is torn down first and restores it in order (third review n-a)."""
+    from platform_service import ledger
+    from platform_service.ledger import testing
+    from platform_service.ledger.store import MemoryLedger
+
+    made = []
+
+    def run(n):
+        store = MemoryLedger()
+        testing.fill_pool(store, n=n)
+        made.append(ledger.use(store))
+        return store
+    yield run
+    for previous in reversed(made):
+        ledger.use(previous)
 
 
 def log_of(pid: str) -> str:
@@ -167,6 +216,7 @@ def make_project(memory_ledger, through_gateway, unique):
         made = through_gateway(owner, "POST", "/projects", json={"name": unique("ledger")})
         assert made.status_code == 201, made.text
         p = made.json()
+        MADE["pids"].add(p["pid"])
         for editor in editors:
             r = through_gateway(owner, "POST", f"/projects/{p['slug']}/members",
                                 json={"subject": editor, "role": "editor"})
@@ -229,7 +279,10 @@ def witness_path(original_uri: str) -> str:
 def call_witness(client):
     """Call the witness the way Caddy does; returns the response."""
     def run(token, method, app, original_uri, **kw):
-        return client.get(witness_path(original_uri), headers=caddy_headers(token, method, app, original_uri, **kw))
+        r = client.get(witness_path(original_uri), headers=caddy_headers(token, method, app, original_uri, **kw))
+        if "X-AISC-Request-Id" in r.headers:
+            MADE["requests"].add(r.headers["X-AISC-Request-Id"])
+        return r
     return run
 
 

@@ -223,3 +223,17 @@ def test_a_secret_in_the_details_or_the_content_is_a_problem(value, where):
 def test_an_action_that_freezes_content_needs_it():
     name = next(n for n, a in REGISTRY.items() if a.content_required)
     assert "content_required" in check(_event(name), emitter=_emitter(name))
+
+
+def test_override_merges_over_the_real_registry_and_restores_it():
+    """Tests declare their own actions; every real action stays known meanwhile (third review M2)."""
+    from platform_service.ledger import registry
+    from platform_service.ledger.registry import Action
+
+    extra = Action(name="test.only.action", step=0, emitters=("controls",), item_type="x", caused_by=(),
+                   routes=(), actor_kinds=("system",), details_keys=(), per_request=None)
+    real = dict(REGISTRY)
+    with registry.override({extra.name: extra}):
+        assert registry.REGISTRY["test.only.action"] is extra
+        assert set(real) <= set(registry.REGISTRY)
+    assert dict(registry.REGISTRY) == real

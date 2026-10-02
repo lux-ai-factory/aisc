@@ -45,6 +45,7 @@ CARD = Action(name="card_version.created", step=1, emitters=("platform",), item_
 def _actions(mode):
     need(SUPERUSER_DSN, "PLATFORM_TEST_SUPERUSER_URL is not set")
     mode("enforce")
+    # override MERGES over the real registry: the fixtures' own events (member.added, ...) stay known
     with registry.override({a.name: a for a in (CLOSE, SAVE, RENAME, QCREATED, CARD)}):
         yield
 
@@ -88,8 +89,9 @@ def closing(project, witnessed):
 def test_an_event_citing_its_request_gets_the_witnesss_actor(project, memory_ledger, closing):
     content = {"answers": [{"q": 1, "a": "yes"}]}
     emit(project["pid"], "controls_rw", ev(closing, content=content))
-    stats = relay_all(project["pid"])
-    assert (stats.delivered, stats.rejected) == (2, 0)              # the witness record and the event
+    relay_all(project["pid"])
+    mine = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.request_id == closing]
+    assert sorted(x.action for x in mine) == ["controls.submission.closed", "request.witnessed"]  # only its own (M2)
     [e] = trusted(memory_ledger, project["pid"])
     assert (e.actor_kind, e.source_app, e.request_id, e.verified) == ("user", "controls", closing, True)
     assert e.content_sha256 == secrets.content_digest(project["pid"], content)      # the platform's (N4)

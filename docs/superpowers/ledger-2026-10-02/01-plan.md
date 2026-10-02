@@ -219,7 +219,7 @@ service-token suite. `03-coding-plan.md` has the detail.
 |---|---|---|
 | 0 | spec, plan, tests; review; spike (done: `06-spike.md`); spec v2; second review | no open blocker |
 | 0b | **Header strip** in Caddy `protect` (inside `route`), deployable alone: fixes G3 today | the Caddy suite (real Caddy) shows forged headers never reach an app |
-| 1 | Ledger core: registry, settings, canonical JSON, key-value store with per-database clients, Postgres state, pool provisioning, signing key | platform ledger tests green, `LEDGER_TESTS_REQUIRED=1`, no skips |
+| 1 | Ledger core: registry, settings, canonical JSON, key-value store with per-database clients, Postgres state, pool provisioning, signing key | L1-L4 and PV1-PV7 green, `LEDGER_TESTS_REQUIRED=1`, no skips (the other ledger suites wait for phases 2-4) |
 | 2 | Witness: `/authz/witness`, gateway secret, per-app project rules, token rule, `witness-on` snippet | the real-Caddy suite green; a write with a forged or missing token never reaches an app |
 | 3 | `ledger.emit`, `core.outbox`, relay with every binding check, forwarded requests, runs, platform's own events, project delete drain, reconciliation | a row citing a wrong request is rejected; the actor can't be set by an app |
 | 3b | **Red team** (moved before the apps rely on it) | every finding becomes a test first |

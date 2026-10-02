@@ -4,8 +4,8 @@ Companion of `01-plan.md` (the design) and `../ledger-events-2026-10-02/01-event
 event). Version 2 rewrites version 1 (commit 0819c5f) from the independent review
 (`05-independent-review.md`, "R" + finding number) and the spike (`06-spike.md`, "G"/"M" + number).
 Section 12 maps every blocker and major to where it is answered. Version 2.1 closes the second
-review's open majors (`07-second-review.md`, N1-N5 and 6.2) and its cheap minors; section 12 lists
-them too. The tests (`04-test-plan.md`) check this file.
+review's open majors (`07-second-review.md`, N1-N5 and 6.2) and its cheap minors; version 2.2 closes
+the third review's (`08-third-review.md`, M1-M4, n-a to n-j); section 12 lists both. The tests (`04-test-plan.md`) check this file.
 
 Decisions D1-D11, W1-W5 and L1-L2 (section 11) are at their defaults until the user changes them:
 **ASSUMED**. Every number that depends on one is a named setting in `ledger/settings.py`, never a
@@ -265,10 +265,10 @@ A server action is a POST to the page, with `Next-Action: <id>`. The build doesn
 an id is, so:
 - `caused_by` names the page regex, and the witness records the id.
 - `ledger.action_binding(app, next_action) -> set of actions` is learned from the **first request**
-  witnessed with that id that has accepted events: the set of every action its events carried (one
-  server action may save and rename at once). After that request's window closes, a later request
-  with the same id may produce any subset of the set; an event of an action outside it is rejected
-  (`action_id`) and raises an alarm (N3).
+  witnessed with that id that has accepted events: the set grows with every action that request's
+  events carry (one server action may save and rename at once). Every other request with the same id
+  is checked, at any time, against the set as it stands: it may produce any subset; an event of an
+  action outside it is rejected (`action_id`) and raises an alarm (N3, third review n-d).
 - Only events emitted by the app that serves the action bind or are checked: an event another app
   emits on the same request (the platform's `card_version.created` on a step-1 submit) is checked by
   its `caused_by` alone, and run events (section 4.4) are checked by their start event, never by the
@@ -322,7 +322,7 @@ library, so the repo-level tests can load them (R3.7).
 
 - `settings`: `WINDOW`, `CLOCK_SKEW`, `RUN_WINDOW`, `LEEWAY`, `HOLD_UNKNOWN`, `ROTATION_OVERLAP`,
   `PAGE_VIEW_RETENTION`, `RECONCILE_DAYS`, `MAX_ENTRY_BYTES` (64 KiB), `BEACON_PER_MINUTE` (60),
-  `EXPORT_ROLES` (D1), `KEEP_STRANGER_REQUESTS` (D11).
+  `BACKUP_RETENTION` (30 days), `EXPORT_ROLES` (D1), `KEEP_STRANGER_REQUESTS` (D11).
 - `naming.pool_name() -> str`: `"ledger" + 32 random lowercase hex`. `naming.is_ledger_name(name)`
   is checked before any immudb call. A name never carries a pid: the pool makes databases before
   projects exist and immudb can't rename one (N1). The platform log is `"ledgerplatform"`.
@@ -332,20 +332,28 @@ library, so the repo-level tests can load them (R3.7).
   in phase 5.
 - `secrets` (section 7.5): `derive(pid, purpose, version=None) -> (version, key)` and
   `derive_all(pid, purpose) -> {version: key}` (HKDF-SHA256 from `PLATFORM_LEDGER_KEYS`, info
-  `aisc-ledger/<purpose>/<pid>`, purposes `content`, `query`, `mapping`, `fingerprint`);
+  `aisc-ledger/<purpose>/<pid lowercased>`, or `.../platform` for the platform log; purposes `content`,
+  `state`, `query`, `mapping`, `fingerprint`). `PLATFORM_LEDGER_KEYS` is read on every call, so a
+  rotation needs no restart (n-j).
   `digest(pid, purpose, value) -> "hmac:v<N>:" + 32 hex` under the newest version;
   `check(pid, purpose, value, digest) -> bool` under the digest's own version, if still kept;
   `content_digest(pid, content)` = `digest(pid, "content", canonical(content))`;
+  `state_digest(pid, state)` = `digest(pid, "state", canonical(state))`, for `before_sha256` and
+  `after_sha256`: the chain needs only equality, and the `state` key is never exported, so a rating
+  history can't be brute-forced from an export (n-e);
   `fingerprint(pid, value)` = `digest(pid, "fingerprint", value)`.
 - `actors.ref_for(pid, sub, name) -> actor_ref` gives the person's reference in that project,
   creating it on first sight: `"actor:" + 32 random hex`, with a mapping row
-  `ledger.actor(pid, actor_ref, sub, name, mac)`, `mac = digest(pid, "mapping", actor_ref + sub)`.
+  `ledger.actor(pid, actor_ref, sub, name, mac)`, unique on `(pid, sub)` so first sightings at once
+  make one reference, and `mac = digest(pid, "mapping", canonical([actor_ref, sub, name]))`. A name
+  change rewrites the row and its MAC. `pid=None` is the platform log's own scope (n-g).
   `actors.resolve(pid, actor_ref) -> (sub, name) | None` checks the MAC and raises `MappingAlarm` on a
   mismatch. `actors.erase(pid, sub)` deletes the rows; the next sight of that person makes a new,
   unrelated reference. `actors.tamper` is a test hook.
 - `pageviews.recent(pid)` and `pageviews.expire(older_than)` (section 3.5).
 - `registry.REGISTRY`, `registry.VERSION`, `registry.KNOWN_APPS`, `registry.APP_PROJECT_RULES`,
-  `registry.override(actions)` (tests).
+  `registry.override(actions)` (tests): a context manager that **merges** the given actions over
+  the real registry and restores it on exit, so the fixtures' own events stay known (third review M2).
 - `registry.check(event, emitter) -> list[str]` gets the emitter (R4.3). `emitter` is the problem
   when the emitter may not emit the action, which covers every app emitting a platform-only action.
   `actor_supplied` covers an actor-like key in `details` and a platform field set at top level
@@ -380,9 +388,12 @@ library, so the repo-level tests can load them (R3.7).
   grantee_password)`: the operator's step behind `scripts/ledger-pool.sh`. It raises `PermissionError`
   when the account isn't the superuser (M1).
 - `ledger.pool(db pk, server_id, created_at, assigned_pid null, assigned_at)` in the platform
-  database: the operator's script inserts a row per database it makes. `provision.assign(pid)` runs
-  at project creation and takes a free row **of the current store's `server_id`** with `FOR UPDATE
-  SKIP LOCKED`, so two creations never share one and another server's database is never handed out
+  database: the operator's script inserts a row per database it makes (`pool.register(store, names)`
+  refuses a name that isn't a ledger name). `server_id` is the server's own identity, never its
+  address: immudb's server UUID (sent in the `immudb-uuid` response metadata; open item S7), or
+  `memory:<uuid>` (n-c). `provision.assign(pid, conn=None)` runs **inside the project creation's
+  transaction** (`provision.transaction()`), so a failed creation consumes nothing; it is idempotent
+  per pid, and takes a free row **of the current store's `server_id`** with `FOR UPDATE SKIP LOCKED`, so two creations never share one and another server's database is never handed out
   (N1). `provision.database_for(pid) -> db | None`; `provision.assigned()`; `provision.pool_level()`;
   `provision.assign_pending(pid) -> bool` after a refill. With the pool empty the project is still
   created, `database_for` is `None`, and its events wait (I6). The assignment is kept for ever (D2):
@@ -390,7 +401,10 @@ library, so the repo-level tests can load them (R3.7).
 - `witness.witness(*, headers, mode, now) -> WitnessResult(status, request_id, record)`. It takes the
   raw headers, so the tests send exactly what Caddy sends (G1, G8). `witness.record(request_id)`
   returns the stored record; `witness.count(route_path=...)` counts records (tests).
-- `relay.relay_once(pid=None) -> RelayStats(delivered, rejected, held, pending)`. It takes the
+- `relay.relay_once(pid=None) -> RelayStats(delivered, rejected, held, pending)`. A project whose
+  assigned database the current store doesn't have (gone from immudb, or another server's) counts
+  as pending and raises the `missing_database` alarm for that project only; the batch never aborts
+  and the other projects are delivered (third review M4). It takes the
   project's advisory lock and drains `ledger.witness`, the platform's `core.outbox` and the project's
   `ledger.outbox`, in `occurred_at` order, with a seq per log.
 - `verify.verify(pid) -> Report(entries_ok, entries_failed, chain_breaks, action_id_conflicts,
@@ -430,8 +444,10 @@ evidence_ref, depends_on, outcome, details, registry_version`.
 
 - Table `ledger.outbox(event_id uuid pk, occurred_at timestamptz, db_role text, request_id uuid,
   run_id uuid, action, item_type, item_id, item_version, card_version uuid, content jsonb,
-  before jsonb, after jsonb, details jsonb, outcome)`. Apps send plain states and never a digest
-  (N4); the relay digests them, and moves content over `MAX_ENTRY_BYTES` to the evidence store.
+  before jsonb, after jsonb, details jsonb, outcome, extra jsonb)`. Apps send plain states and never
+  a digest (N4); the relay digests them, and moves content over `MAX_ENTRY_BYTES` to the evidence
+  store. `emit` keeps every top-level key it doesn't know in `extra`, unrefused, because refusing
+  would roll back the business write; the relay rejects them (`platform_field:<name>`, n-b).
   **No grant** to any module role.
 - Function `ledger.emit(event jsonb) RETURNS void`, SECURITY DEFINER, `EXECUTE` granted only to
   `qualification_rw`, `controls_rw`, `control_objectives_rw`, `report_composer_rw`, `platform_rw`.
@@ -514,13 +530,17 @@ Each is a panel alarm.
   catches a swapped row.
 - **Keys.** `PLATFORM_LEDGER_KEYS="v1:<secret>,v2:<secret>"`, held by the platform alone. Per
   project and purpose, keys are derived with HKDF, so no derived key opens another project or
-  another purpose. Every digest names its version. Rotation adds a version; new digests use it; a
-  version is removed only after every digest made with it has been re-made, and removing it makes
-  its digests uncheckable (a test says so).
+  another purpose. Every digest names its version. Rotation adds a version; new digests use it.
+  Versions are **kept for ever**: digests in immudb can't be re-made, and removing a version makes
+  its digests uncheckable (a test shows that consequence, n-f). Rotation protects new records after
+  a suspected leak; it doesn't re-protect old ones.
 - **Auditors.** The export carries that project's `content` keys only, so an auditor checks every
   content digest offline and learns nothing about another project. `fingerprint`, `query` and
   `mapping` keys are never exported.
 - Erasing a person deletes their mapping rows. Their entries stay, pseudonymous.
+- **Retention** (n-h): `token_jti` and `token_exp` in `ledger.witness` are nulled after
+  `RECONCILE_DAYS`; Postgres backups keep erased mapping rows until they expire (`BACKUP_RETENTION`,
+  30 days), so an erasure is complete only after that, and the DPIA says so.
 - Page views stay in Postgres with retention (section 3.5).
 - A DPIA is required before `record` is switched on in staging. D1 (who sees per-person activity) is
   revisited in it.
@@ -540,8 +560,9 @@ With `LEDGER_TESTS_REQUIRED=1`, every skip in `platform/tests/ledger` and `scrip
 becomes a failure. Every Definition-of-Done run sets it, and every phase report states the skip count.
 The mechanism is `need()` in the ledger conftest; database tests use the fixture marker `needs_db`,
 never the platform's collection-time `needs_database` skipif, which no flag can turn into a failure
-(second review 6.2). Verified 2026-10-02: with no database, 96 tests skip without the flag and error
-with it.
+(second review 6.2). Verified 2026-10-02 on every file that collects before phase 1 (witness, outbox, internal,
+failure): with no database, every test skips without the flag and fails with it, none skipping.
+A whole-directory run stops at the collection errors first, so the check is run on those files.
 
 ## 10. Residual risks (accepted, stated)
 
@@ -622,6 +643,16 @@ Second review (`07-second-review.md`):
 | 6.2 skips bypassing `LEDGER_TESTS_REQUIRED` | 9; the ledger suites use `needs_db` (a fixture), not the platform's collection-time `skipif` |
 | n1, n3, n4, n11 | witness test counts records; 6.4 delete rule; witness 302 test; 6.4 `emit` list |
 
+Third review (`08-third-review.md`):
+
+| Finding | Where |
+|---|---|
+| M1 phase-1 provisioning tests needing phases 2-3 | `test_ledger_provision.py` (phase 1, no HTTP) and `test_ledger_provision_flow.py` (phase 3) |
+| M2 exact relay counts, `override` semantics | 6.1 `override` merges; R1 counts its own request's entries; a registry test pins the merge |
+| M3 P4 against the delete rule | P4 blocks on a project-DB row; a new test shows platform-DB rows never block |
+| M4 shared state, whole-database relay | 6.1 relay: missing database is pending + alarm per project; tests clean exactly the rows they recorded |
+| n-a to n-j | `own_store` order; 6.4 `extra`; pool `server_id`, assign in the creation transaction; 4.5 wording; `state` key; versions kept; mapping MAC with name, uniqueness, platform scope, pid case; retention; keys read per call; export negative check |
+
 The minors are in the same sections, or in `04-test-plan.md` where they are test changes. Section 3.5
 of 01-plan and the test file names are made consistent with this file (R3.5).
 
@@ -633,5 +664,6 @@ of 01-plan and the test file names are made consistent with this file (R3.5).
 - **S4** the real oauth2-proxy and Preferred-Username (G3): check the header it returns.
 - **S6** whether a conditional branch of a server action needs registry support beyond `caused_by`
   (section 4.5 limits): decide from phase 5's real actions.
+- **S7** read immudb's server UUID from the `immudb-uuid` metadata with immudb-py (pool `server_id`).
 - **S5** M8, SQL privileges lost after another database's grant. Not needed (we use key-value);
   worth an upstream issue.

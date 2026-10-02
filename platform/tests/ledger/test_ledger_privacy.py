@@ -27,7 +27,7 @@ from tests.ledger.test_ledger_outbox import emit
 
 pytestmark = needs_db
 ROOT = Path(__file__).resolve().parents[3]
-PURPOSES = ("content", "query", "mapping", "fingerprint")
+PURPOSES = ("content", "state", "query", "mapping", "fingerprint")
 
 
 def rated(request_id, n=1, **over):
@@ -79,6 +79,40 @@ def test_the_same_person_keeps_one_reference_in_a_project(rate):
     assert rate(n=1).actor_ref == rate(n=2).actor_ref
 
 
+def test_first_sightings_at_once_make_one_reference(project):
+    """A unique (project, person) mapping: two requests at the same moment can't mint two (n-g)."""
+    import threading
+
+    refs, errors = [], []
+
+    def run():
+        try:
+            refs.append(actors.ref_for(project["pid"], OWNER, "olive"))
+        except Exception as exc:                                     # pragma: no cover - reported below
+            errors.append(exc)
+    threads = [threading.Thread(target=run) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert not errors and len(set(refs)) == 1
+
+
+def test_a_changed_name_in_the_mapping_is_detected(project, rate):
+    """The MAC covers the reference, the subject and the name (n-g)."""
+    e = rate()
+    actors.tamper(project["pid"], e.actor_ref, name="mallory")
+    with pytest.raises(actors.MappingAlarm):
+        person(project["pid"], e.actor_ref)
+
+
+def test_the_platform_logs_references_are_scoped_apart_from_any_project(project):
+    """Requests outside any project get references in the platform's own scope (n-g)."""
+    assert actors.ref_for(None, MEMBER, "bob") != actors.ref_for(project["pid"], MEMBER, "bob")
+
+
+def test_the_key_derivation_ignores_the_case_of_the_pid(project):
+    assert secrets.content_digest(project["pid"].upper(), {"a": 1}) == secrets.content_digest(project["pid"], {"a": 1})
+
+
 def test_a_swapped_mapping_row_is_detected(project, rate):
     e = rate()
     actors.tamper(project["pid"], e.actor_ref, sub=OWNER)                 # test hook: someone edits the row
@@ -103,10 +137,13 @@ def test_the_platform_computes_the_content_digest(project, rate):
     assert e.content_sha256.split(":")[-1] != hashlib.sha256(canonical({"answer": "yes"})).hexdigest()[:32]
 
 
-def test_before_and_after_states_are_digested_by_the_platform(project, rate):
+def test_before_and_after_states_are_digested_by_the_platform_under_a_key_never_exported(project, rate):
+    """The chain check needs only equality, and the content key goes to auditors: states use their own
+    `state` key, so a rating history can't be brute-forced from an export (third review n-e)."""
     e = rate(before={"impact": 3}, after={"impact": 5})
-    assert e.before_sha256 == secrets.content_digest(project["pid"], {"impact": 3})
-    assert e.after_sha256 == secrets.content_digest(project["pid"], {"impact": 5})
+    assert e.before_sha256 == secrets.state_digest(project["pid"], {"impact": 3})
+    assert e.after_sha256 == secrets.state_digest(project["pid"], {"impact": 5})
+    assert e.after_sha256 != secrets.content_digest(project["pid"], {"impact": 5})
 
 
 @pytest.mark.parametrize("field", ["content_sha256", "before_sha256", "after_sha256"])
@@ -158,3 +195,10 @@ def test_the_export_carries_only_this_projects_content_key(client, as_user, proj
     checked = subprocess.run([sys.executable, str(ROOT / "scripts/verify-ledger-export.py"), "--public-key", str(key),
                               "--check-content", str(path)], capture_output=True, text=True)
     assert checked.returncode == 0, checked.stdout + checked.stderr
+    lines = [json.loads(line) for line in text.splitlines() if line.strip()]
+    target = next(line for line in lines if line.get("entry", {}).get("action") == "risk.rated")
+    target["content"] = {"answer": "no"}                              # the frozen content, edited (n-i)
+    path.write_text("\n".join(json.dumps(line) for line in lines))
+    tampered = subprocess.run([sys.executable, str(ROOT / "scripts/verify-ledger-export.py"), "--public-key",
+                               str(key), "--check-content", str(path)], capture_output=True, text=True)
+    assert tampered.returncode != 0
