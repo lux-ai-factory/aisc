@@ -48,6 +48,14 @@ $fn$;
 REVOKE ALL ON FUNCTION aisc_setup.apply_role_setting(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION aisc_setup.apply_role_setting(text) TO platform_rw;
 
+-- ledger_identity: the only place that names the people behind the ledger's references (ledger spec
+-- 6.1, S8). Owned by the platform service; CONNECT for nobody else, so pgAdmin's read-all role
+-- (pg_read_all_data) can't read it. Its table is made by the platform (platform/ledger-identity/).
+SELECT 'CREATE DATABASE ledger_identity OWNER platform_rw'
+ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ledger_identity')\gexec
+REVOKE ALL ON DATABASE ledger_identity FROM PUBLIC;
+GRANT CONNECT ON DATABASE ledger_identity TO platform_rw;
+
 \connect platform
 -- The install-wide library of report presets (D4), for a volume made before init/platform-db.sql
 -- made it. A missing role is skipped. (Forms are per project: there is no form library.)

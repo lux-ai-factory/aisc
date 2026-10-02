@@ -91,6 +91,12 @@ IMMUDB_ADMIN_PASSWORD=immudbpw
 # the ledger: the platform's immudb user, and its versioned master keys (both kept by --rotate)
 LEDGER_IMMUDB_PASSWORD=immudbpw
 PLATFORM_LEDGER_KEYS=ledgerkey
+# the witness: Caddy sends it, the platform checks it (ledger spec 3.1, T18)
+AISC_WITNESS_GATEWAY_SECRET=rand
+# one token per caller that posts ledger events, held by it and the platform only (spec 6.5, T17)
+PLATFORM_LEDGER_ENGINE_TOKEN=rand
+PLATFORM_LEDGER_DASHBOARD_TOKEN=rand
+PLATFORM_LEDGER_AGENTS_TOKEN=rand
 )
 value_of() { case "$1" in cookie) cookie ;; fernet) fernet ;; ledgerkey) ledgerkey ;; immudbpw) immudbpw ;; *) rand ;; esac; }
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.

@@ -41,7 +41,7 @@ def caddyfile_for_test(text: str) -> str:
     return "(tls-test) {\n}\n" + text
 
 
-@pytest.fixture(scope="module", params=["on", "off"])
+@pytest.fixture(scope="module", params=["on", "off", "unset"])
 def gateway(request, tmp_path_factory):
     if not shutil.which("docker") or docker("info", check=False).returncode != 0:
         if REQUIRED:
@@ -65,7 +65,7 @@ def gateway(request, tmp_path_factory):
         env = {"CADDY_DOMAIN": "http://localhost", "CADDY_PORT": PORTS["main"], "HOMEPAGE_PORT": PORTS["launcher"],
                "DASHBOARD_PORT": PORTS["dashboard"], "CADDY_ENVIRONMENT": "test", "LOG_FILE": "/tmp/caddy.log",
                "DASHBOARD_UPSTREAM": "dashboard-up:8088", "AISC_WITNESS_GATEWAY_SECRET": SECRET,
-               "LEDGER_GATEWAY": request.param}
+               **({} if request.param == "unset" else {"LEDGER_GATEWAY": request.param})}
         names.append(f"{tag}-caddy")
         ports = [a for p in PORTS.values() for a in ("-p", f"127.0.0.1:{p}:{p}")]
         envs = [a for k, v in env.items() for a in ("-e", f"{k}={v}")]
@@ -125,7 +125,7 @@ WRITES = [
 def test_a_write_is_witnessed_with_its_app_and_unstripped_path(gateway, site, path, app, upstream):
     status, got, witness = send(gateway, site, "POST", path, body=b"{}")
     assert status == 200 and got["who"] == upstream
-    if gateway["mode"] == "off":
+    if gateway["mode"] != "on":
         assert witness is None and "X-Aisc-Request-Id" not in got["headers"]
         return
     h = witness["headers"]
@@ -193,7 +193,29 @@ def test_a_listed_read_that_matters_is_witnessed(gateway):
     path = prefix + paths[0].replace("*", "x")
     site = "main"
     _, _, witness = send(gateway, site, "GET", path)
-    if gateway["mode"] == "off":
+    if gateway["mode"] != "on":
         assert witness is None
     else:
         assert witness and witness["headers"].get("X-Aisc-App") == app
+
+
+def _platform_saw(gw, tid, path_prefix):
+    logs = docker("logs", f"{gw['tag']}-platform", check=False).stdout.splitlines()
+    return [json.loads(line) for line in logs if tid in line and f'"path": "{path_prefix}' in line]
+
+
+@pytest.mark.parametrize("path, check", [("/inspect/pgadmin/", "/authz/admin"), ("/inspect/schema/x", "/authz/schema")])
+def test_the_admin_and_schema_checks_run_after_sign_in(gateway, path, check):
+    """`route` sorts after `forward_auth` in Caddy: a check outside protect's route would run before
+    sign-in and see no token, refusing every admin. Both checks must see the person's token."""
+    tid = uuid.uuid4().hex
+    req = urllib.request.Request(f"http://127.0.0.1:{PORTS['launcher']}{path}",
+                                 headers={"Host": f"localhost:{PORTS['launcher']}", "X-Test-Id": tid})
+    try:
+        urllib.request.urlopen(req, timeout=10).read()
+    except urllib.error.HTTPError:
+        pass
+    seen = _platform_saw(gateway, tid, check)
+    assert seen, f"{check} was not called"
+    assert seen[0]["headers"].get("X-Auth-Request-Access-Token") == "token-of-alice", \
+        f"{check} ran before sign-in"

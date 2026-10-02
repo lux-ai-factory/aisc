@@ -223,6 +223,17 @@ def authorisation(slug: str, caller: Caller = Depends(caller_dependency)) -> dic
     }
 
 
+@app.get("/authz/witness")
+def ledger_witness(request: Request) -> Response:
+    """The ledger's witness, for Caddy's forward_auth (docs/superpowers/ledger-2026-10-02/02-spec.md 3).
+    Never served to a browser: the launcher answers 404 to /api/authz/*, and a call without the
+    gateway secret gets 401. Off unless LEDGER_MODE says otherwise."""
+    from platform_service.ledger.witness import witness
+
+    answer = witness(request.headers)
+    return Response(status_code=answer.status, headers=answer.headers)
+
+
 @app.get("/authz/admin", status_code=204)
 def admin_gate(caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> Response:
     """Whether this caller is an admin, for Caddy to ask with forward_auth.

@@ -18,6 +18,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      # The ledger's witness (ledger plan 2026-10-02): off until a deploy turns it on; the secret proves
+      # a witness call comes from this gateway (spec 3.1, T18).
+      LEDGER_GATEWAY: ${LEDGER_GATEWAY:-off}
+      AISC_WITNESS_GATEWAY_SECRET: ${AISC_WITNESS_GATEWAY_SECRET:?run scripts/secrets.sh first}
       LOG_FILE: "/data/access.log"
       CADDY_DOMAIN: ${CADDY_DOMAIN}
       CADDY_PORT: "8005"
@@ -205,7 +209,8 @@ services:
       - --pass-access-token=true
       # Keep that session alive while someone is working, rather than letting
       # the realm drop it after its idle timeout behind their back.
-      - --cookie-refresh=5m
+      # under the 5-minute token lifespan, so a token never expires mid-request (ledger spec 3.3)
+      - --cookie-refresh=4m
       - --email-domain=*
       # the realm's users have no email claim
       - --oidc-email-claim=preferred_username

@@ -99,7 +99,7 @@ def test_protect_strips_client_headers_before_anything_else():
 def test_sign_in_comes_before_the_witness():
     assert "/oauth2/auth" in snippet("strip-and-sign-in")
     body = snippet("protect")
-    assert body.index("import strip-and-sign-in") < body.index("import witness-{$LEDGER_GATEWAY} {args[0]}")
+    assert body.index("import strip-and-sign-in") < body.index("import witness-{$LEDGER_GATEWAY:off} {args[0]}")
 
 
 def test_the_witness_snippet_is_chosen_by_ledger_gateway():
@@ -130,6 +130,11 @@ def test_every_serving_handle_imports_protect_with_its_app():
                 continue
             seen.add(key)
             imports = re.findall(r"^\s*import (protect|protect-reads)\s(.*)$", body, re.M)
+            checks = re.findall(r"^\s*import (admin_only|schema_gate)\s*$", body, re.M)
+            if checks:                                   # a check must share protect's route (Caddy order)
+                routed = [b for h, b, _ in blocks(body) if h == "route"]
+                if not any(f"import {checks[0]}" in b and "import protect" in b for b in routed):
+                    problems.append(f"{key}: {checks[0]} is outside protect's route: it would run before sign-in")
             if len(imports) != 1:
                 problems.append(f"{key}: {len(imports)} `import protect`")
                 continue
@@ -166,8 +171,8 @@ def test_protect_reads_is_protect_plus_listed_reads():
     body = snippet("protect-reads")
     assert directives(body)[0] == "route {"
     assert "import strip-and-sign-in" in body and "import strip-and-sign-in" in snippet("protect")
-    assert "import witness-{$LEDGER_GATEWAY} {args[0]}" in body
-    assert "import witness-reads-{$LEDGER_GATEWAY} {args[0:]}" in body
+    assert "import witness-{$LEDGER_GATEWAY:off} {args[0]}" in body
+    assert "import witness-reads-{$LEDGER_GATEWAY:off} {args[0:]}" in body
     assert directives(snippet("witness-reads-off")) == []
     on = snippet("witness-reads-on")
     assert re.search(r"@witnessed_reads_\{args\[0\]\}\s*\{\s*method GET\s+path \{args\[1:\]\}\s*\}", on)

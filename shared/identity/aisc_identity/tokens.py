@@ -22,7 +22,7 @@ class TokenRejected(Exception):
 ALGORITHMS = ["RS256"]
 
 
-def verify_token(token: str, *, issuer: str, key_for: Callable[[str], Any]) -> dict:
+def verify_token(token: str, *, issuer: str, key_for: Callable[[str], Any], leeway: float = 0) -> dict:
     """The claims of a token that verified, or TokenRejected.
 
     `key_for` maps the token to the key that signed it, so in production it
@@ -44,6 +44,7 @@ def verify_token(token: str, *, issuer: str, key_for: Callable[[str], Any]) -> d
             # the realm is what we actually care about, so the issuer is the
             # check that matters and the audience is not one.
             options={"verify_aud": False, "require": ["exp", "iss", "sub"]},
+            leeway=leeway,
         )
     except jwt.PyJWTError as exc:
         raise TokenRejected(str(exc)) from exc
