@@ -17,7 +17,7 @@ from tests.ledger.conftest import (IMMUDB_ADMIN_PASSWORD, IMMUDB_URL, LEDGER_USE
 
 def entry(**over):
     base = {"event_id": str(uuid.uuid4()), "action": "risk.rated", "item_type": "risk", "item_id": "risk2",
-            "actor_kind": "user", "actor_ref": "hmac:" + "1" * 32, "source_app": "control_objectives",
+            "actor_kind": "user", "actor_ref": "actor:" + "1" * 32, "source_app": "control_objectives",
             "details": {"impact": 5}}
     base.update(over)
     return base
@@ -134,7 +134,7 @@ def test_a_changed_entry_raises_the_alarm():
     a = "ledger" + uuid.uuid4().hex
     store.create(a)
     seq = store.append(a, entry())
-    store.tamper(a, seq, "actor_ref", "hmac:" + "f" * 32)          # what someone with storage access could do
+    store.tamper(a, seq, "actor_ref", "actor:" + "f" * 32)          # what someone with storage access could do
     with pytest.raises(TamperAlarm):
         store.get(a, seq)
 

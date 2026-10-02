@@ -22,7 +22,8 @@ SUPERUSER_DSN = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
 REQUIRED = os.environ.get("LEDGER_TESTS_REQUIRED") == "1"
 
 GATEWAY_SECRET = "test-gateway-secret-0123456789abcdef"
-LEDGER_KEY = "test-ledger-key-0123456789abcdef0123456789"
+#: The master keys, versioned: per-project, per-purpose keys are derived from them (spec 6.1, N5).
+LEDGER_KEYS = "v1:test-ledger-master-key-v1-0123456789abcdef"
 GATEWAY_CLIENT = "aisc-gateway"
 
 OWNER = "00000000-0000-0000-0000-0000000000a1"
@@ -45,10 +46,26 @@ def need(condition, reason: str):
         pytest.skip(reason)
 
 
+def _database_up() -> bool:
+    from tests.conftest import _database_up as up
+
+    return up()
+
+
+@pytest.fixture
+def _database_required():
+    need(_database_up(), "no platform database reachable (PLATFORM_TEST_DATABASE_URL)")
+
+
+#: The ledger's own "needs a database": a fixture, so LEDGER_TESTS_REQUIRED=1 turns it into a failure.
+#: The platform's `needs_database` is a collection-time skipif, which nothing can (second review 6.2).
+needs_db = pytest.mark.usefixtures("_database_required")
+
+
 @pytest.fixture(autouse=True)
 def _ledger_settings(monkeypatch):
     monkeypatch.setenv("AISC_WITNESS_GATEWAY_SECRET", GATEWAY_SECRET)
-    monkeypatch.setenv("PLATFORM_LEDGER_KEY", LEDGER_KEY)
+    monkeypatch.setenv("PLATFORM_LEDGER_KEYS", LEDGER_KEYS)
     monkeypatch.setenv("AISC_GATEWAY_CLIENT_ID", GATEWAY_CLIENT)
 
 
@@ -61,15 +78,28 @@ def settings():
 
 
 @pytest.fixture
-def memory_ledger():
-    """The platform's ledger, in memory, for one test."""
+def memory_ledger(_database_required):
+    """The platform's ledger, in memory, for one test, with a small pool of databases made the way the
+    operator's script makes them (spec 7.1). Pool rows name their server, so a later test's store is
+    never handed this store's databases (second review N1). Projects are made after it."""
     from platform_service import ledger
+    from platform_service.ledger import testing
     from platform_service.ledger.store import MemoryLedger
 
     store = MemoryLedger()
+    testing.fill_pool(store, n=8)                  # creates the databases + the platform log, registers them
     previous = ledger.use(store)
     yield store
     ledger.use(previous)
+
+
+def log_of(pid: str) -> str:
+    """The immudb database a project's log lives in: looked up, never derived from the pid (N1)."""
+    from platform_service.ledger import provision
+
+    db = provision.database_for(pid)
+    assert db, f"project {pid} has no ledger database"
+    return db
 
 
 def fresh_databases(n: int) -> list[str]:
@@ -77,7 +107,9 @@ def fresh_databases(n: int) -> list[str]:
     aisc_ledger granted RW; unique per test, so a persistent server never shares them (R4.4)."""
     from platform_service.ledger import pool
 
-    names = ["ledger" + uuid.uuid4().hex for _ in range(n)]
+    from platform_service.ledger.naming import pool_name
+
+    names = [pool_name() for _ in range(n)]
     pool.create_databases(IMMUDB_URL, admin_password=IMMUDB_ADMIN_PASSWORD, names=names,
                           grantee="aisc_ledger", grantee_password=LEDGER_USER_PASSWORD)
     return names
@@ -113,15 +145,40 @@ def mode(monkeypatch):
 
 
 @pytest.fixture
-def project(client, as_user, unique):
+def through_gateway(client, as_user, call_witness, gateway_token):
+    """A platform API call as the launcher's gateway makes it, in whatever mode is set: the witness
+    first (app `platform`, path `/api` + path), then the call citing the id it gave, if it gave one.
+    Tests create their projects this way, so a test may set `enforce` before it has a project
+    (second review N2): no route is exempt from the witness to make setup work."""
+    def run(subject, method, path, **kwargs):
+        w = call_witness(gateway_token(subject), method, "platform", "/api" + path)
+        assert w.status_code == 200, w.text
+        headers = as_user(subject)
+        if "X-AISC-Request-Id" in w.headers:
+            headers["X-AISC-Request-Id"] = w.headers["X-AISC-Request-Id"]
+        return client.request(method, path, headers=headers, **kwargs)
+    return run
+
+
+@pytest.fixture
+def make_project(memory_ledger, through_gateway, unique):
+    """make_project(owner, editors=()) -> {"pid", "slug"}, made through the gateway."""
+    def run(owner, editors=()):
+        made = through_gateway(owner, "POST", "/projects", json={"name": unique("ledger")})
+        assert made.status_code == 201, made.text
+        p = made.json()
+        for editor in editors:
+            r = through_gateway(owner, "POST", f"/projects/{p['slug']}/members",
+                                json={"subject": editor, "role": "editor"})
+            assert r.status_code in (200, 201), r.text
+        return {"pid": p["pid"], "slug": p["slug"]}
+    return run
+
+
+@pytest.fixture
+def project(make_project):
     """A project owned by OWNER with MEMBER as editor: {"pid", "slug"}."""
-    made = client.post("/projects", json={"name": unique("ledger")}, headers=as_user(OWNER))
-    assert made.status_code == 201, made.text
-    p = made.json()
-    r = client.post(f"/projects/{p['slug']}/members", json={"subject": MEMBER, "role": "editor"},
-                    headers=as_user(OWNER))
-    assert r.status_code in (200, 201), r.text
-    return {"pid": p["pid"], "slug": p["slug"]}
+    return make_project(OWNER, editors=(MEMBER,))
 
 
 @pytest.fixture

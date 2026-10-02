@@ -191,6 +191,12 @@ def test_an_app_setting_a_platform_field_is_a_problem(key):
     assert "actor_supplied" in check(_event(**{key: "x"}), emitter=_emitter())
 
 
+@pytest.mark.parametrize("field", ["content_sha256", "before_sha256", "after_sha256", "recorded_at", "seq"])
+def test_an_app_sending_what_only_the_platform_computes_is_a_problem(field):
+    """Digests are keyed with keys only the platform holds (second review N4)."""
+    assert f"platform_field:{field}" in check(_event(**{field: "x"}), emitter=_emitter())
+
+
 def test_content_may_carry_its_own_authors():
     """A frozen review legitimately says who reviewed it; only details and top-level fields are actor
     fields (R4.3)."""

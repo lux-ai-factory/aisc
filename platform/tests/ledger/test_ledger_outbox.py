@@ -12,10 +12,10 @@ import pytest
 from psycopg.conninfo import make_conninfo
 
 from platform_service import projectdb
-from tests.conftest import needs_database
-from tests.ledger.conftest import SUPERUSER_DSN, need
 
-pytestmark = needs_database
+from tests.ledger.conftest import needs_db, SUPERUSER_DSN, need
+
+pytestmark = needs_db
 
 EMITTERS = ["qualification_rw", "controls_rw", "control_objectives_rw", "report_composer_rw", "platform_rw"]
 APPS = ["qualification_rw", "controls_rw", "control_objectives_rw", "report_composer_rw"]
@@ -95,7 +95,8 @@ def test_a_rolled_back_transaction_leaves_no_event(project):
     assert row(project["pid"], e["event_id"]) == []
 
 
-@pytest.mark.parametrize("action", ["request.witnessed", "ledger.rejected", "ledger.reanchored", "page.opened"])
+@pytest.mark.parametrize("action", ["request.witnessed", "request.unverified", "flower.request", "pgadmin.request",
+                                    "ledger.rejected", "ledger.reanchored", "page.opened"])
 def test_an_app_cannot_emit_the_platforms_own_actions(project, action):
     with pytest.raises(psycopg.errors.RaiseException):
         emit(project["pid"], "controls_rw", event(action=action))

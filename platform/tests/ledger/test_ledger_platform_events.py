@@ -8,27 +8,21 @@ import psycopg
 import pytest
 
 from platform_service.ledger.canonical import canonical
-from platform_service.ledger.naming import database_name
-from tests.conftest import DSN, needs_database
-from tests.ledger.conftest import MEMBER, OWNER, STRANGER, entries, person, relay_all
+from tests.conftest import DSN
+from tests.ledger.conftest import log_of, needs_db, MEMBER, OWNER, STRANGER, entries, person, relay_all
 
-pytestmark = needs_database
+pytestmark = needs_db
 
 
 @pytest.fixture
-def call(client, as_user, witnessed, mode):
+def call(through_gateway, mode):
     """A platform API call that went through the launcher's gateway first (`/api/*`, stripped)."""
     mode("enforce")
-
-    def run(subject, method, path, **kwargs):
-        request_id = witnessed(subject, method, "platform", "/api" + path)
-        headers = {**as_user(subject), "X-AISC-Request-Id": request_id}
-        return client.request(method, path, headers=headers, **kwargs)
-    return run
+    return through_gateway
 
 
 def actions(store, pid):
-    return [e for e in entries(store, database_name(pid))
+    return [e for e in entries(store, log_of(pid))
             if not e.action.startswith(("request.", "page.", "ledger."))]
 
 
@@ -61,8 +55,8 @@ def test_an_llm_key_is_recorded_by_its_keyed_fingerprint_only(project, call, mem
     assert r.status_code in (200, 201), r.text
     relay_all(project["pid"])
     [e] = [e for e in actions(memory_ledger, project["pid"]) if e.action == "llm.provider.saved"]
-    assert e.details["key"].startswith("hmac:")
-    for x in entries(memory_ledger, database_name(project["pid"])):
+    assert e.details["key"].startswith("hmac:v1:")                       # the project's fingerprint key
+    for x in entries(memory_ledger, log_of(project["pid"])):
         assert secret.encode() not in canonical(x.as_dict())
 
 
@@ -106,7 +100,7 @@ def test_a_project_with_undelivered_events_is_not_dropped_until_they_are_deliver
     memory_ledger.down = False
     assert call(OWNER, "DELETE", f"/projects/{project['slug']}").status_code in (200, 204)
     relay_all()
-    kept = [e.action for e in entries(memory_ledger, database_name(project["pid"]))]
+    kept = [e.action for e in entries(memory_ledger, log_of(project["pid"]))]
     assert "member.added" in kept and "project.deleted" in kept     # the log outlives the project (D2)
 
 

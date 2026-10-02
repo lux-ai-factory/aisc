@@ -9,11 +9,10 @@ import json
 import pytest
 
 from platform_service.ledger import pageviews
-from platform_service.ledger.naming import database_name
-from tests.conftest import needs_database
-from tests.ledger.conftest import MEMBER, OWNER, entries, person
 
-pytestmark = needs_database
+from tests.ledger.conftest import log_of, needs_db, MEMBER, OWNER, entries, person
+
+pytestmark = needs_db
 
 
 @pytest.fixture
@@ -40,7 +39,7 @@ def test_a_page_left_is_kept_as_browser_reported_outside_immudb(beacon, project,
     [v] = pageviews.recent(project["pid"])
     assert (v.action, v.reported_by, v.details["unsaved_changes"]) == ("page.left", "browser", True)
     assert person(project["pid"], v.actor_ref)[0] == MEMBER
-    assert [e for e in entries(memory_ledger, database_name(project["pid"])) if e.action.startswith("page.")] == []
+    assert [e for e in entries(memory_ledger, log_of(project["pid"])) if e.action.startswith("page.")] == []
 
 
 def test_page_views_expire(beacon, project, settings):

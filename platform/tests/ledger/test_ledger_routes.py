@@ -12,13 +12,12 @@ import uuid
 from pathlib import Path
 
 import psycopg
-import pytest
 
 from platform_service.ledger import testing
-from tests.conftest import DSN, needs_database
-from tests.ledger.conftest import MEMBER, OWNER, STRANGER
+from tests.conftest import DSN
+from tests.ledger.conftest import log_of, needs_db, MEMBER, OWNER, STRANGER
 
-pytestmark = needs_database
+pytestmark = needs_db
 ROOT = Path(__file__).resolve().parents[3]
 CHECKER = ROOT / "scripts" / "verify-ledger-export.py"
 
@@ -55,8 +54,8 @@ def test_filters_narrow_the_list(client, as_user, project, memory_ledger):
     assert events and {e["actor"]["sub"] for e in events} == {OWNER}
 
 
-def test_another_projects_entries_never_appear(client, as_user, unique, project, memory_ledger):
-    other = client.post("/projects", json={"name": unique("other")}, headers=as_user(MEMBER)).json()
+def test_another_projects_entries_never_appear(client, as_user, make_project, project, memory_ledger):
+    other = make_project(MEMBER)
     seed(other["pid"], n=2)
     r = client.get(f"/projects/{project['slug']}/ledger/events", headers=as_user(MEMBER))
     assert r.json()["events"] == []
@@ -69,10 +68,9 @@ def test_an_entry_is_shown_verified(client, as_user, project, memory_ledger):
 
 
 def test_a_tampered_entry_is_an_alarm_not_a_page(client, as_user, project, memory_ledger):
-    from platform_service.ledger.naming import database_name
 
     [seq] = seed(project["pid"], n=1)
-    memory_ledger.tamper(database_name(project["pid"]), seq, "item_id", "risk9")
+    memory_ledger.tamper(log_of(project["pid"]), seq, "item_id", "risk9")
     r = client.get(f"/projects/{project['slug']}/ledger/events/{seq}", headers=as_user(MEMBER))
     assert r.status_code == 409 and "tamper" in r.text.lower()
 

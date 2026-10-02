@@ -13,7 +13,7 @@ HOLDERS = {
     "PLATFORM_LEDGER_ENGINE_TOKEN": {"aisc-backend", "platform"},
     "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"dashboard", "platform"},
     "PLATFORM_LEDGER_AGENTS_TOKEN": {"qualification-agents", "platform"},
-    "PLATFORM_LEDGER_KEY": {"platform"},
+    "PLATFORM_LEDGER_KEYS": {"platform"},
     "AISC_WITNESS_GATEWAY_SECRET": {"caddy", "platform"},
 }
 RUNS_PLUGINS = {"aisc-eval-worker", "plugin-downloader", "plugin-publisher", "aisc-eval-flower"}

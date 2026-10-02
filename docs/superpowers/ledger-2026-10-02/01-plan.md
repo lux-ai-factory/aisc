@@ -69,7 +69,7 @@ browser --(signed token)--> Caddy protect <app>: strip, sign in, witness (writes
 
 | Kind | Example | Where the identity comes from | Recorded as |
 |---|---|---|---|
-| A person, through the browser or the API | rating a risk, saving links, generating a report | the platform verifies the Keycloak token at the gateway (`request.witnessed`) | `actor_kind=user`, subject + name from the token |
+| A person, through the browser or the API | rating a risk, saving links, generating a report | the platform verifies the Keycloak token at the gateway (`request.witnessed`) | `actor_kind=user`, a random per-project `actor_ref` (the person kept in a mapping that can be erased) |
 | An AI agent | Suggest with AI, card refinement, control ingest | the agent's own service token names the program; the event cites the request that started it | `actor_kind=ai`, `program`, `model`, `on_behalf_of` = that request's person |
 | A worker | a test run's plugin steps | worker service token; cites the run's request | `actor_kind=worker`, `on_behalf_of` |
 | The platform or an app on its own | provisioning, a target sync on save, startup retries | the per-caller service token (`scripts/secrets.sh`) | `actor_kind=system`, `program` |
@@ -108,8 +108,11 @@ As the 09-30 plan, sections 5 and 7.3, with these changes (spike M1-M16):
 - **Evidence store**: entries up to 64 KiB canonical JSON (RFC 8785) inside immudb; anything larger
   (artifacts, PDFs, plot images, long AI prompts and answers) in a MinIO bucket `evidence` with Object
   Lock in compliance mode and versioning.
-- **Personal data**: immudb holds a pseudonymous `actor_ref` (an HMAC of the subject); the mapping to
-  the person is in Postgres and can be erased (D9).
+- **Personal data**: immudb holds a random per-project `actor_ref`; the mapping to the person is in
+  Postgres, protected by a MAC, and deleting it really erases the link (D9). Digests are computed by
+  the platform under per-project keys derived from versioned master keys.
+- **Database names** are random and handed out from the operator's pool; a project's log is found by
+  lookup (`ledger.pool`), never derived from its id.
 
 ## 7. How events travel
 

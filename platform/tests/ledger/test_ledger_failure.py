@@ -2,14 +2,12 @@
 witnessed requests fail, others work) is the real-Caddy suite, scripts/tests/test_ledger_gateway.py."""
 from __future__ import annotations
 
-import pytest
 
-from platform_service.ledger.naming import database_name
-from tests.conftest import needs_database
-from tests.ledger.conftest import MEMBER, entries, relay_all
+
+from tests.ledger.conftest import log_of, needs_db, MEMBER, entries, relay_all
 from tests.ledger.test_ledger_outbox import emit
 
-pytestmark = needs_database
+pytestmark = needs_db
 
 
 def ratings(pid):
@@ -30,7 +28,7 @@ def test_an_immudb_outage_blocks_nothing_and_loses_nothing(project, witnessed, m
     assert relay_all(project["pid"]).pending >= 6
     memory_ledger.down = False
     relay_all(project["pid"])
-    db = database_name(project["pid"])
+    db = log_of(project["pid"])
     assert len([e for e in entries(memory_ledger, db) if e.action == "risk.rated"]) == 3
     assert len([e for e in entries(memory_ledger, db) if e.action == "request.witnessed"]) == 3
 
@@ -49,7 +47,7 @@ def test_an_internal_event_is_queued_when_immudb_is_down(client, project, witnes
     assert r.status_code == 202
     memory_ledger.down = False
     relay_all(project["pid"])
-    assert [e.item_id for e in entries(memory_ledger, database_name(project["pid"]))
+    assert [e.item_id for e in entries(memory_ledger, log_of(project["pid"]))
             if e.action == "engine.evaluation.run_requested"] == ["ev1"]
 
 

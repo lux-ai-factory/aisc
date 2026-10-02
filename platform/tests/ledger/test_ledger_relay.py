@@ -15,15 +15,14 @@ from datetime import timedelta
 import psycopg
 import pytest
 
-from platform_service.ledger import registry, relay, verify
-from platform_service.ledger.canonical import sha256_hex
-from platform_service.ledger.naming import database_name
+from platform_service.ledger import registry, verify
+from platform_service.ledger import secrets
 from platform_service.ledger.registry import Action
-from tests.conftest import DSN, needs_database
-from tests.ledger.conftest import MEMBER, OWNER, SUPERUSER_DSN, entries, need, person, relay_all
+from tests.conftest import DSN
+from tests.ledger.conftest import log_of, needs_db, MEMBER, OWNER, SUPERUSER_DSN, entries, need, person, relay_all
 from tests.ledger.test_ledger_outbox import EMIT, as_superuser, connect, emit
 
-pytestmark = needs_database
+pytestmark = needs_db
 
 CLOSE = Action(name="controls.submission.closed", step=4, emitters=("controls",), item_type="submission",
                caused_by=(("controls", "POST", r"^/controls/p/[^/]+/submissions/(?P<item>[^/]+)/close$"),),
@@ -34,6 +33,9 @@ SAVE = Action(name="controls.submission.draft_saved", step=4, emitters=("control
 RENAME = Action(name="controls.submission.renamed", step=4, emitters=("controls",), item_type="submission",
                 caused_by=(("controls", "ACTION", r"^/controls/p/[^/]+/submissions/[^/]+$"),),
                 routes=(), actor_kinds=("user",), details_keys=(), per_request=1)
+QCREATED = Action(name="qualification.created", step=1, emitters=("qualification",), item_type="qualification",
+                  caused_by=(("qualification", "ACTION", r"^/qualification/p/[^/]+/qualify/new$"),),
+                  routes=(), actor_kinds=("user",), details_keys=(), per_request=1)
 CARD = Action(name="card_version.created", step=1, emitters=("platform",), item_type="card_version",
               caused_by=(("qualification", "ACTION", r"^/qualification/p/[^/]+/qualify/new$"),),
               routes=(), actor_kinds=("user",), details_keys=(), per_request=1)
@@ -43,7 +45,7 @@ CARD = Action(name="card_version.created", step=1, emitters=("platform",), item_
 def _actions(mode):
     need(SUPERUSER_DSN, "PLATFORM_TEST_SUPERUSER_URL is not set")
     mode("enforce")
-    with registry.override({a.name: a for a in (CLOSE, SAVE, RENAME, CARD)}):
+    with registry.override({a.name: a for a in (CLOSE, SAVE, RENAME, QCREATED, CARD)}):
         yield
 
 
@@ -69,11 +71,11 @@ def shift_witness(request_id, delta: timedelta):
 
 
 def trusted(store, pid, action="controls.submission.closed"):
-    return [e for e in entries(store, database_name(pid)) if e.action == action]
+    return [e for e in entries(store, log_of(pid)) if e.action == action]
 
 
 def rejected(store, pid):
-    return [e for e in entries(store, database_name(pid)) if e.action == "ledger.rejected"]
+    return [e for e in entries(store, log_of(pid)) if e.action == "ledger.rejected"]
 
 
 @pytest.fixture
@@ -85,13 +87,14 @@ def closing(project, witnessed):
 
 def test_an_event_citing_its_request_gets_the_witnesss_actor(project, memory_ledger, closing):
     content = {"answers": [{"q": 1, "a": "yes"}]}
-    emit(project["pid"], "controls_rw", ev(closing, content=content, content_sha256=sha256_hex(content)))
+    emit(project["pid"], "controls_rw", ev(closing, content=content))
     stats = relay_all(project["pid"])
     assert (stats.delivered, stats.rejected) == (2, 0)              # the witness record and the event
     [e] = trusted(memory_ledger, project["pid"])
     assert (e.actor_kind, e.source_app, e.request_id, e.verified) == ("user", "controls", closing, True)
+    assert e.content_sha256 == secrets.content_digest(project["pid"], content)      # the platform's (N4)
     assert person(project["pid"], e.actor_ref) == (MEMBER, "bob")
-    [w] = [x for x in entries(memory_ledger, database_name(project["pid"])) if x.action == "request.witnessed"]
+    [w] = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.action == "request.witnessed"]
     assert w.request_id == closing and w.actor_ref == e.actor_ref
 
 
@@ -120,17 +123,17 @@ def test_a_rejection_is_the_relays_never_the_cited_persons(project, memory_ledge
     ("route_not_allowed", "cause"),
     ("other_item", "item"),
     ("unknown_action", "unknown_action"),
-    ("bad_hash", "content_hash"),
+    ("app_digest", "platform_field:content_sha256"),
 ])
-def test_an_event_that_does_not_fit_its_request_is_rejected(client, as_user, unique, project, witnessed,
-                                                            memory_ledger, closing, case, reason):
+def test_an_event_that_does_not_fit_its_request_is_rejected(make_project, project, witnessed, memory_ledger, closing,
+                                                            case, reason):
     pid, role, request_id, over = project["pid"], "controls_rw", closing, {}
     if case == "no_request":
         request_id = None
     elif case == "unknown_request":
         request_id = str(uuid.uuid4())
     elif case == "other_project":
-        other = client.post("/projects", json={"name": unique("other")}, headers=as_user(MEMBER)).json()
+        other = make_project(MEMBER)
         request_id = witnessed(MEMBER, "POST", "controls", close_uri(other))
     elif case == "other_emitter":
         role = "qualification_rw"                                   # a controls action from qualification
@@ -140,8 +143,8 @@ def test_an_event_that_does_not_fit_its_request_is_rejected(client, as_user, uni
         over["item_id"] = "s2"                                      # the request closed s1
     elif case == "unknown_action":
         over["action"] = "controls.submission.vanished"
-    elif case == "bad_hash":
-        over.update(content={"answers": []}, content_sha256="0" * 64)
+    elif case == "app_digest":
+        over.update(content={"answers": []}, content_sha256="0" * 64)        # only the platform digests (N4)
     emit(pid, role, ev(request_id, **over))
     relay_all(pid)
     assert trusted(memory_ledger, pid) == []
@@ -218,6 +221,36 @@ def test_one_action_id_binds_to_one_event_action(project, memory_ledger, witness
     assert len(trusted(memory_ledger, project["pid"], "controls.submission.draft_saved")) == 2
     assert [r.details["reason"] for r in rejected(memory_ledger, project["pid"])] == ["action_id"]
     assert verify.verify(project["pid"]).action_id_conflicts == 1
+
+
+def test_an_action_id_binds_to_every_action_of_its_first_request(project, memory_ledger, witnessed):
+    """A server action that saves and renames in one call: both are its actions from then on (N3)."""
+    page = f"/controls/p/{project['slug']}/submissions/s1"
+    first = witnessed(MEMBER, "POST", "controls", page, next_action="40cd")
+    emit(project["pid"], "controls_rw", ev(first, action="controls.submission.draft_saved"))
+    emit(project["pid"], "controls_rw", ev(first, action="controls.submission.renamed"))
+    relay_all(project["pid"])
+    later = witnessed(MEMBER, "POST", "controls", page, next_action="40cd")
+    emit(project["pid"], "controls_rw", ev(later, action="controls.submission.renamed"))   # a subset is fine
+    relay_all(project["pid"])
+    assert len(trusted(memory_ledger, project["pid"], "controls.submission.draft_saved")) == 1
+    assert len(trusted(memory_ledger, project["pid"], "controls.submission.renamed")) == 2
+    assert rejected(memory_ledger, project["pid"]) == []
+
+
+def test_another_apps_event_on_the_same_request_is_not_bound(project, memory_ledger, witnessed):
+    """A step-1 submit: qualification records its own event and the platform the card version, both
+    citing one request with one action id. Only the serving app's events bind the id (N3)."""
+    submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/qualify/new",
+                       next_action="60ee")
+    emit(project["pid"], "qualification_rw", ev(submit, action="qualification.created", item_type="qualification",
+                                                item_id="q1"))
+    emit(project["pid"], "platform_rw", ev(submit, action="card_version.created", item_type="card_version",
+                                           item_id="1"))
+    relay_all(project["pid"])
+    assert len(trusted(memory_ledger, project["pid"], "qualification.created")) == 1
+    assert len(trusted(memory_ledger, project["pid"], "card_version.created")) == 1
+    assert rejected(memory_ledger, project["pid"]) == []
 
 
 def test_a_server_action_event_needs_an_action_id(project, memory_ledger, witnessed):
@@ -302,7 +335,7 @@ def test_two_relays_at_once_still_honour_per_request(project, memory_ledger, clo
     assert not errors
     assert len(trusted(memory_ledger, project["pid"])) == 1
     assert len(rejected(memory_ledger, project["pid"])) == 3
-    seqs = [e.seq for e in entries(memory_ledger, database_name(project["pid"]))]
+    seqs = [e.seq for e in entries(memory_ledger, log_of(project["pid"]))]
     assert seqs == sorted(set(seqs))
 
 
@@ -326,9 +359,9 @@ def test_an_action_from_a_newer_registry_is_held_not_rejected(project, memory_le
 
 def test_a_broken_item_chain_is_reported(project, memory_ledger, witnessed):
     first = witnessed(MEMBER, "POST", "controls", close_uri(project))
-    emit(project["pid"], "controls_rw", ev(first, before_sha256="a" * 64, after_sha256="b" * 64))
+    emit(project["pid"], "controls_rw", ev(first, before={"state": "open"}, after={"state": "closed"}))
     second = witnessed(OWNER, "POST", "controls", close_uri(project))
-    emit(project["pid"], "controls_rw", ev(second, before_sha256="c" * 64, after_sha256="d" * 64))
+    emit(project["pid"], "controls_rw", ev(second, before={"state": "draft"}, after={"state": "closed"}))
     many = Action(name=CLOSE.name, step=4, emitters=CLOSE.emitters, item_type="submission",
                   caused_by=CLOSE.caused_by, routes=(), actor_kinds=("user",), details_keys=(), per_request=None)
     with registry.override({CLOSE.name: many}):
@@ -341,3 +374,13 @@ def test_a_witnessed_write_with_no_event_is_reported(project, memory_ledger, clo
     shift_witness(closing, -(settings.WINDOW + timedelta(minutes=1)))
     relay_all(project["pid"])
     assert verify.verify(project["pid"]).witness_without_event == 1
+
+
+def test_the_platforms_digest_ignores_key_order(project, memory_ledger, witnessed):
+    """The platform digests canonical JSON (RFC 8785), so the app's key order changes nothing."""
+    a = witnessed(MEMBER, "POST", "controls", close_uri(project, "sa"))
+    b = witnessed(MEMBER, "POST", "controls", close_uri(project, "sb"))
+    emit(project["pid"], "controls_rw", ev(a, item_id="sa", content={"b": 1, "a": [1, 2]}))
+    emit(project["pid"], "controls_rw", ev(b, item_id="sb", content={"a": [1, 2], "b": 1}))
+    relay_all(project["pid"])
+    assert len({e.content_sha256 for e in trusted(memory_ledger, project["pid"])}) == 1

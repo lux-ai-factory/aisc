@@ -10,12 +10,11 @@ from datetime import timedelta
 
 import pytest
 
-from platform_service.ledger.naming import database_name
-from tests.conftest import needs_database
-from tests.ledger.conftest import MEMBER, entries, person, relay_all
+
+from tests.ledger.conftest import log_of, needs_db, MEMBER, entries, person, relay_all
 from tests.ledger.test_ledger_outbox import emit
 
-pytestmark = needs_database
+pytestmark = needs_db
 AGENTS_TOKEN = "test-agents-token-0123456789"
 ENGINE_TOKEN = "test-engine-token-0123456789"
 
@@ -53,11 +52,11 @@ def run(project, witnessed):
 
 
 def trusted(store, pid, action="card.augmented_by_ai"):
-    return [e for e in entries(store, database_name(pid)) if e.action == action]
+    return [e for e in entries(store, log_of(pid)) if e.action == action]
 
 
 def reasons(store, pid):
-    return [e.details["reason"] for e in entries(store, database_name(pid)) if e.action == "ledger.rejected"]
+    return [e.details["reason"] for e in entries(store, log_of(pid)) if e.action == "ledger.rejected"]
 
 
 def test_an_ai_event_names_the_program_the_model_and_the_person_who_started_the_run(client, project, memory_ledger, run):
@@ -115,14 +114,14 @@ def test_a_token_may_emit_only_its_own_apps_actions(client, project, memory_ledg
     assert "emitter" in reasons(memory_ledger, project["pid"])
 
 
-def test_an_event_for_another_project_is_rejected(client, as_user, unique, project, memory_ledger, run):
-    other = client.post("/projects", json={"name": unique("other")}, headers=as_user(MEMBER)).json()
+def test_an_event_for_another_project_is_rejected(client, make_project, project, memory_ledger, run):
+    other = make_project(MEMBER)
     post(client, other["pid"], ai_event(*run))
     relay_all(other["pid"])
     assert "project_mismatch" in reasons(memory_ledger, other["pid"])
 
 
 def test_an_ai_event_naming_a_person_is_rejected(client, project, memory_ledger, run):
-    post(client, project["pid"], ai_event(*run, on_behalf_of_ref="hmac:" + "0" * 32))
+    post(client, project["pid"], ai_event(*run, on_behalf_of_ref="actor:" + "0" * 32))
     relay_all(project["pid"])
     assert reasons(memory_ledger, project["pid"]) == ["actor_supplied"]

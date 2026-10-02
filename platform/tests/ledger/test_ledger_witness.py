@@ -11,11 +11,11 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from tests.conftest import ISSUER, needs_database
-from tests.ledger.conftest import (GATEWAY_CLIENT, MEMBER, OWNER, STRANGER, caddy_headers, entries, person,
+from tests.conftest import ISSUER
+from tests.ledger.conftest import (needs_db, GATEWAY_CLIENT, MEMBER, OWNER, STRANGER, caddy_headers, entries, person,
                                    record)
 
-pytestmark = needs_database
+pytestmark = needs_db
 
 
 def ratings(pid):
@@ -40,7 +40,8 @@ def test_the_record_holds_no_subject_and_no_name(call_witness, gateway_token, pr
     mode("enforce")
     r = call_witness(gateway_token(MEMBER, username="bob"), "POST", "control_objectives", ratings(project["pid"]))
     rec = record(r.headers["X-AISC-Request-Id"])
-    assert MEMBER not in rec.actor_ref and "bob" not in str(vars(rec).values())
+    assert rec.actor_ref.startswith("actor:") and "bob" not in str(vars(rec).values())
+    assert MEMBER not in str(vars(rec).values())
 
 
 def test_every_witnessed_request_gets_its_own_id(call_witness, gateway_token, project, mode):
@@ -56,9 +57,13 @@ def test_every_witnessed_request_gets_its_own_id(call_witness, gateway_token, pr
 def test_a_call_without_the_gateway_secret_is_refused_and_leaves_no_record(call_witness, gateway_token, project,
                                                                            mode, gateway):
     mode("record")                                                  # even in record mode
+    from platform_service.ledger import witness
+
+    before = witness.count(route_path=ratings(project["pid"]))
     r = call_witness(gateway_token(MEMBER), "POST", "control_objectives", ratings(project["pid"]), gateway=gateway)
     assert r.status_code == 401
     assert "X-AISC-Request-Id" not in r.headers
+    assert witness.count(route_path=ratings(project["pid"])) == before          # no record at all (n1)
 
 
 def test_the_platform_refuses_to_witness_without_a_configured_secret(call_witness, gateway_token, project, mode,
@@ -119,6 +124,20 @@ def test_record_mode_lets_a_bad_token_through_and_says_so(call_witness, key, gat
     assert r.status_code == 200
     rec = record(r.headers["X-AISC-Request-Id"])                    # an id even now, so Caddy overwrites (G3)
     assert rec.verified is False and rec.reason and rec.actor_ref is None
+
+
+def test_a_refused_page_load_is_sent_to_sign_in(client, gateway_token, project, mode):
+    """forward_auth passes a non-2xx answer through, so the witness itself redirects a document load
+    (spec 3.1; Caddy's handle_response can't see the request's Sec-Fetch-Dest)."""
+    mode("enforce")
+    uri = f"/control-objectives/p/{project['pid']}/projects/a1"
+    expired = gateway_token(MEMBER, exp=int(time.time()) - 3600)
+    headers = {**caddy_headers(expired, "POST", "control_objectives", uri), "Sec-Fetch-Dest": "document"}
+    r = client.get("/authz/witness", headers=headers, follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["Location"].startswith("/oauth2/start?rd=") and "control-objectives" in r.headers["Location"]
+    del headers["Sec-Fetch-Dest"]
+    assert client.get("/authz/witness", headers=headers, follow_redirects=False).status_code == 401
 
 
 def test_a_token_just_past_expiry_is_still_accepted_within_the_leeway(call_witness, gateway_token, project, mode,
@@ -217,7 +236,7 @@ def test_the_query_string_is_kept_only_as_a_keyed_fingerprint(witnessed, project
     secret = "tok-abcdef0123456789"
     rec = record(witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/x?token={secret}"))
     assert "?" not in rec.route_path and secret not in str(vars(rec).values())
-    assert rec.query_hmac and rec.query_hmac.startswith("hmac:")
+    assert rec.query_hmac and rec.query_hmac.startswith("hmac:v1:")
 
 
 def test_a_server_action_id_is_recorded(witnessed, project, mode):
