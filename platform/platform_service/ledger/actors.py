@@ -18,7 +18,6 @@ import os
 import secrets as _random
 import threading
 
-import psycopg
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 
@@ -40,20 +39,31 @@ def _dsn() -> str:
     return make_conninfo(os.environ["PLATFORM_DATABASE_URL"], dbname=DATABASE)
 
 
+_pools: dict = {}
+
+
 def _connect():
-    """A connection to ledger_identity, its table migrated on first use (platform_rw owns it)."""
+    """A pooled connection to ledger_identity, its table migrated on first use (platform_rw owns it).
+    The witness asks for a reference on every write: no new login each time (phase 2 review m3)."""
+    from psycopg_pool import ConnectionPool
+
     dsn = _dsn()
-    conn = psycopg.connect(dsn, row_factory=dict_row)
-    if dsn not in _migrated:
-        from pathlib import Path
-
-        from platform_service.migrate import migrate
-
+    pool = _pools.get(dsn)
+    if pool is None:
         with _lock:
-            if dsn not in _migrated:
-                migrate(conn, Path(MIGRATIONS), "identity.schema_migration")
-                _migrated.add(dsn)
-    return conn
+            pool = _pools.get(dsn)
+            if pool is None:
+                pool = ConnectionPool(dsn, min_size=1, max_size=4, open=True, kwargs={"row_factory": dict_row})
+                if dsn not in _migrated:
+                    from pathlib import Path
+
+                    from platform_service.migrate import migrate
+
+                    with pool.connection() as conn:
+                        migrate(conn, Path(MIGRATIONS), "identity.schema_migration")
+                    _migrated.add(dsn)
+                _pools[dsn] = pool
+    return pool.connection()
 
 
 def _scope(pid) -> str:

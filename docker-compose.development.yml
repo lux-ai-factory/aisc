@@ -74,8 +74,6 @@ services:
     # per-project aliases are copied from (project_<hex>, search_path engine).
     environment:
       <<: *backend-env
-      # posts the engine's ledger events (phase 8); never given to the worker that runs plugins (T17)
-      PLATFORM_LEDGER_ENGINE_TOKEN: ${PLATFORM_LEDGER_ENGINE_TOKEN:?run scripts/secrets.sh first}
     networks:
       - backend
     depends_on:
@@ -327,7 +325,6 @@ services:
     pull_policy: never
     container_name: qualification-agents
     environment:
-      PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
       LLM_SERVICE_URL: http://qualification-llm:4000
       BAF_LLM_BASE_URL: http://qualification-llm:4000
       ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
@@ -752,7 +749,6 @@ services:
       - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
       - ./dashboard-gateway:/app/pythonpath_gateway:ro,Z
     environment:
-      PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
       <<: *dashboard-env
       SUPERSET_BIND_ADDRESS: ${DASHBOARD_BIND_ADDRESS:-172.17.0.1}
       SUPERSET_PORT: ${DASHBOARD_INTERNAL_PORT:-8189}
@@ -841,7 +837,8 @@ services:
       PLATFORM_LEDGER_ENGINE_TOKEN: ${PLATFORM_LEDGER_ENGINE_TOKEN:?run scripts/secrets.sh first}
       PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
       PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
-      PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL:-postgresql://platform_rw:platform_rw@postgres:5432/platform}
+      # platform_rw's generated password (phase 2 review M1): postgres-setup applies the same value
+      PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
       # A project belongs to the people in it, so this service has to know who
       # is asking. Verified here rather than taken on the gateway's word.

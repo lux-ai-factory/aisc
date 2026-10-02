@@ -9,14 +9,20 @@ from conftest import ROOT
 
 FILES = ["docker-compose.plugin_downloader.yml", "docker-compose-infra.development.yml", "docker-compose.development.yml"]
 #: credential -> the only services that may hold it
+#: Until a caller's phase wires its emitter (agents: 5, engine: 8, dashboard: 9), only the platform
+#: holds its token (phase 2 review M2). The engine's must then go to a process that never imports
+#: plugin code: aisc-backend loads plugin packages in-process (decision D12, spec T17).
 HOLDERS = {
-    "PLATFORM_LEDGER_ENGINE_TOKEN": {"aisc-backend", "platform"},
-    "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"dashboard", "platform"},
-    "PLATFORM_LEDGER_AGENTS_TOKEN": {"qualification-agents", "platform"},
+    "PLATFORM_LEDGER_ENGINE_TOKEN": {"platform"},
+    "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"platform"},
+    "PLATFORM_LEDGER_AGENTS_TOKEN": {"platform"},
     "PLATFORM_LEDGER_KEYS": {"platform"},
+    "LEDGER_IMMUDB_PASSWORD": {"platform"},
     "AISC_WITNESS_GATEWAY_SECRET": {"caddy", "platform"},
 }
-RUNS_PLUGINS = {"aisc-eval-worker", "plugin-downloader", "plugin-publisher", "aisc-eval-flower"}
+#: Processes that run or import plugin code: the eval worker runs it, the engine backend imports
+#: plugin packages to read their configuration (shared/plugin-manager loader).
+RUNS_PLUGINS = {"aisc-eval-worker", "plugin-downloader", "plugin-publisher", "aisc-eval-flower", "aisc-backend"}
 
 
 def services() -> dict:

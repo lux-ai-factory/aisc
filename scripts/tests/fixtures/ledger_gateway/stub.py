@@ -17,6 +17,8 @@ class H(BaseHTTPRequestHandler):
             if "unauth" in test: return self.reply(401, {})
             return self.reply(202, {"X-Auth-Request-User": "alice-sub", "X-Auth-Request-Email": "alice@x",
                                     "X-Auth-Request-Access-Token": "token-of-alice"})
+        if ROLE == "platform" and self.path.startswith("/authz/admin") and "admin-403" in test:
+            return self.reply(403, {})
         if ROLE == "platform" and self.path.startswith("/authz/witness"):
             if "witness-down" in test: time.sleep(0); return self.reply(503, {})
             if "witness-401" in test:

@@ -261,3 +261,14 @@ def test_the_witness_works_while_immudb_is_down(call_witness, gateway_token, pro
     memory_ledger.down = True
     r = call_witness(gateway_token(MEMBER), "POST", "control_objectives", ratings(project["pid"]))
     assert r.status_code == 200 and record(r.headers["X-AISC-Request-Id"]) is not None
+
+
+def test_the_witness_table_has_no_column_for_a_person(platform_dsn):
+    """I10, phase 2 review m8: not only the record object; the table itself can't hold a name."""
+    import psycopg
+
+    with psycopg.connect(platform_dsn) as conn:
+        columns = {r[0] for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'ledger'"
+            " AND table_name = 'witness'").fetchall()}
+    assert columns and not columns & {"sub", "subject", "name", "username", "email", "actor_sub", "actor_name"}

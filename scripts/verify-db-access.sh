@@ -18,7 +18,11 @@ ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 
 # run SQL as a role in a database; prints nothing, returns non-zero when refused
-as_in() { docker exec "$PGC" psql "postgresql://$1:$1@$HOST:5432/$2" -v ON_ERROR_STOP=1 -At -c "$3" >/dev/null 2>&1; }
+# platform_rw has a generated password (scripts/secrets.sh, applied by postgres-setup); the module roles
+# still log in with their own names.
+PLATFORM_RW_PASSWORD=${PLATFORM_RW_PASSWORD:-$(awk 'index($0, "PLATFORM_RW_PASSWORD=") == 1 { print substr($0, 22); exit }' "$ROOT/env.runtime" 2>/dev/null)}
+pw() { if [ "$1" = platform_rw ]; then echo "${PLATFORM_RW_PASSWORD:-platform_rw}"; else echo "$1"; fi; }
+as_in() { docker exec "$PGC" psql "postgresql://$1:$(pw "$1")@$HOST:5432/$2" -v ON_ERROR_STOP=1 -At -c "$3" >/dev/null 2>&1; }
 as() { as_in "$1" "$DB" "$2"; }
 
 allow() { as "$1" "$2" && ok "$1: $3" || no "$1: $3 (was refused)"; }
@@ -41,12 +45,12 @@ done
 # the throwaway project database of sections 3 to 5
 PROBE_DB="project_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
 gone() {
-  docker exec "$PGC" psql "postgresql://platform_rw:platform_rw@$HOST:5432/$DB" -At \
+  docker exec "$PGC" psql "postgresql://platform_rw:$(pw platform_rw)@$HOST:5432/$DB" -At \
     -c "drop database if exists \"$PROBE_DB\" with (force)" >/dev/null 2>&1
 }
 trap gone EXIT
 made=1
-docker exec "$PGC" psql "postgresql://platform_rw:platform_rw@$HOST:5432/$DB" -v ON_ERROR_STOP=1 -At \
+docker exec "$PGC" psql "postgresql://platform_rw:$(pw platform_rw)@$HOST:5432/$DB" -v ON_ERROR_STOP=1 -At \
   -c "create database \"$PROBE_DB\"" >/dev/null 2>&1 || made=0
 if [ "$made" = 1 ]; then
   {
@@ -58,7 +62,7 @@ if [ "$made" = 1 ]; then
       echo "insert into provision.template_migration (name) values ('$(basename "$f")');"
     done
     echo "commit;"
-  } | docker exec -i "$PGC" psql "postgresql://platform_rw:platform_rw@$HOST:5432/$PROBE_DB" -v ON_ERROR_STOP=1 -q -f - >/dev/null 2>&1 || made=0
+  } | docker exec -i "$PGC" psql "postgresql://platform_rw:$(pw platform_rw)@$HOST:5432/$PROBE_DB" -v ON_ERROR_STOP=1 -q -f - >/dev/null 2>&1 || made=0
 fi
 if [ "$made" = 1 ]; then ok "platform_rw: made a project database with the template"; else no "platform_rw: could not make a project database with the template"; fi
 

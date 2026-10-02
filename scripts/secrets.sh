@@ -91,6 +91,8 @@ IMMUDB_ADMIN_PASSWORD=immudbpw
 # the ledger: the platform's immudb user, and its versioned master keys (both kept by --rotate)
 LEDGER_IMMUDB_PASSWORD=immudbpw
 PLATFORM_LEDGER_KEYS=ledgerkey
+# platform_rw, the platform service's database role: postgres-setup applies it on every start
+PLATFORM_RW_PASSWORD=rand
 # the witness: Caddy sends it, the platform checks it (ledger spec 3.1, T18)
 AISC_WITNESS_GATEWAY_SECRET=rand
 # one token per caller that posts ledger events, held by it and the platform only (spec 6.5, T17)

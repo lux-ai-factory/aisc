@@ -67,7 +67,7 @@ no event), but can't prevent them. The immudb superuser can delete a whole log. 
 | T14 | Clock skew | both times in the window check come from the same Postgres cluster's clock (witness: platform database; `occurred_at`: project database). The internal route uses the platform's receive time |
 | T15 | Two writes of one item at once | each is its own request and event. I11 shows the order and flags a fork |
 | T16 | An app silently doesn't emit | I7 static check, plus the "witnessed write with no event" reconciliation from phase 3 |
-| T17 | Untrusted code holds ledger credentials (plugins, R1.9) | no ledger credential in any process that runs plugin code. Worker results reach the ledger through the engine backend, which holds the engine's token. A test asserts the plugin's child env has no `PLATFORM_LEDGER_*`, `AISC_*_TOKEN` or gateway secret |
+| T17 | Untrusted code holds ledger credentials (plugins, R1.9). Note (phase 2 review M2): the engine backend imports plugin packages in its own process, so it counts as running plugin code; the engine's token goes to a process that never imports plugins (D12) | no ledger credential in any process that runs plugin code. Worker results reach the ledger through the engine backend, which holds the engine's token. A test asserts the plugin's child env has no `PLATFORM_LEDGER_*`, `AISC_*_TOKEN` or gateway secret |
 | T18 | Anyone calls the witness directly (G2) | the gateway secret `X-AISC-Gateway`, compared in constant time; the launcher blocks `/api/authz/*`; without the secret: 401, no record |
 | T19 | A forged `X-AISC-Request-Id` or identity header (G3) | `protect` strips them first, inside `route` (G7). The platform also checks a presented id against the presenter (section 4.3) |
 | T20 | Two tokens on one request (G5) | if `Authorization` and the gateway token are both present, their subjects must be equal, or the witness refuses (`enforce`) or records `request.unverified`, reason `token_mismatch` (`record`) |
@@ -288,9 +288,12 @@ an id is, so:
 
 ### 5.1 Modes
 
-`LEDGER_MODE` (platform): `off`, `record`, `enforce`. `LEDGER_GATEWAY` (Caddy): `off`, `on`. The pairs
-that are allowed: (`off`, `off`), (`record`, `on`), (`enforce`, `on`). The platform refuses to start
-in `record` or `enforce` without the gateway secret.
+`LEDGER_MODE` (platform): `off`, `record`, `enforce`. `LEDGER_GATEWAY` (Caddy): `off`, `on`; unset is
+`off`, so a Caddy restarted without the setting behaves as before. The pairs that are allowed: (`off`,
+`off`), (`record`, `on`), (`enforce`, `on`). In `record` or `enforce` without the gateway secret, the
+witness answers 503 to every call (phase 2 does this per request rather than refusing to start; a
+start-up check, and a check for the disallowed pair `on` + `off`, come with the deploy checklist of
+phase 4).
 
 ### 5.2 Rollout order (R2.14)
 
@@ -314,6 +317,11 @@ The platform always deploys before an app that emits a new action.
 
 In `enforce`, apps also refuse a write with no `X-AISC-Request-Id` (defence in depth), except calls
 carrying a service token.
+
+**`record` fails closed too.** If the witness can't write its record (the platform database or
+`ledger_identity` unreachable), it answers 500 and Caddy refuses the write, in `record` as in
+`enforce`. `record` relaxes only the token rule (an unverified person is let through and marked), never
+the record itself: an unrecorded write is what the ledger exists to prevent.
 
 ## 6. Interfaces
 
@@ -425,9 +433,12 @@ library, so the repo-level tests can load them (R3.7).
   `provision.assign_pending(pid) -> bool` after a refill. With the pool empty the project is still
   created, `database_for` is `None`, and its events wait (I6). The assignment is kept for ever (D2):
   it is also the expected-databases list (R2.10).
-- `witness.witness(*, headers, mode, now) -> WitnessResult(status, request_id, record)`. It takes the
-  raw headers, so the tests send exactly what Caddy sends (G1, G8). `witness.record(request_id)`
+- `witness.witness(headers) -> Answer(status, headers)`, with the mode read from `LEDGER_MODE`. It takes
+  the raw headers, so the tests send exactly what Caddy sends (G1, G8). `witness.record(request_id)`
   returns the stored record; `witness.count(route_path=...)` counts records (tests).
+- The one token rule is `aisc_identity.gateway.gateway_identity` in `shared/identity` (Python). Its
+  TypeScript twin, and the apps' own adoption of the rule, come with each app's phase (5 for the
+  TypeScript apps); until then the witness applies it before any app sees the request.
 - `relay.relay_once(pid=None) -> RelayStats(delivered, rejected, held, pending)`. A project whose
   assigned database the current store doesn't have (gone from immudb, or another server's) counts
   as pending and raises the `missing_database` alarm for that project only; the batch never aborts
@@ -640,6 +651,7 @@ New in version 2:
 | D11 | Requests by non-members of the project in the path | recorded in the platform log, never the project's |
 | L1 | How ledger databases are created | pre-created pool by an operator script; the platform never holds the superuser |
 | L2 | Ledger content cap | 64 KiB per entry, larger content in the evidence store |
+| D12 | Who posts the engine's ledger events, given that aisc-backend imports plugin code | **open, for phase 8**: recommended, a small forwarder process (no plugin imports) next to the engine backend holds the token, or the engine's events reach the platform through its database outbox instead of a token |
 | L3 | Where the locked archive lives in staging and production | **open**: storage the AISC host can't administer (a MinIO run by LIST IT, or a cloud bucket with Object Lock), at least replicated to a second site; off on development stacks |
 
 ## 12. Review findings, and where each is answered

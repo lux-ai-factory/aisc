@@ -219,3 +219,9 @@ def test_the_admin_and_schema_checks_run_after_sign_in(gateway, path, check):
     assert seen, f"{check} was not called"
     assert seen[0]["headers"].get("X-Auth-Request-Access-Token") == "token-of-alice", \
         f"{check} ran before sign-in"
+
+
+def test_a_refused_admin_check_keeps_pgadmin_closed(gateway):
+    """Phase 2 review m14: the admin gate's 403 reaches the browser and pgAdmin never sees the request."""
+    status, got, _ = send(gateway, "launcher", "GET", "/inspect/pgadmin/", {"X-Test": "admin-403"})
+    assert status == 403 and got is None
