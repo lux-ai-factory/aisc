@@ -47,24 +47,25 @@ INSERT INTO qualification.qualification_risk (id, "qualificationId", "position",
   ('qr-m2b', 'q-m2', 2, 'Biased answers', 'Training data', NULL, 'Unequal treatment', 'user', '{fundamental_rights}', 'Bias tests', NULL),
   ('qr-d1', 'q-d1', 1, 'Delta risk', 'x', NULL, 'x', 'user', '{}', 'x', NULL);
 
--- ── control objectives: severities 5, 3, 1 and not rated in version 2 (01-specs.md 22) ──
+-- ── control objectives: (impact, likelihood) in version 2: (5, 4) rating 20 Critical, (3, -) 9 Medium,
+-- (1, 2) 2 Low, (-, -) not rated, (4, -) 12 High; an unrated part counts 3 (01-specs.md 22, schema 2026-10-01) ──
 INSERT INTO control_objectives.project (id, name, objectives_digest, created_at, updated_at, project_id, system_id) VALUES
   ('com1', 'Mike v1', 'dm1', now(), now(), 'f0000000-0000-4000-8000-000000000001', 'f1000000-0000-4000-8000-000000000001'),
   ('com2', 'Mike v2', 'dm2', now(), now(), 'f0000000-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000002'),
   ('cod1', 'Delta v1', 'dd1', now(), now(), 'd0000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000001');
 
-INSERT INTO control_objectives.risk (id, project_id, risk_id, "position", text, short_label, source, vulnerability, consequence, impact, stakeholder, control, follow_up_control, areas, vair_terms, provenance, severity) VALUES
-  (601, 'com2', 'R-1', 1, 'Wrong referral', 'Referral', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 5),
-  (602, 'com2', 'R-2', 2, 'Biased answers', 'Bias', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3),
-  (603, 'com2', 'R-3', 3, 'Outdated information', 'Outdated', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 1),
-  (604, 'com2', 'R-4', 4, 'Unclear limits', 'Limits', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', NULL),
-  (605, 'com2', 'R-5', 5, 'Unmapped risk', 'Unmapped', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 4),
-  -- version 1: R-1 was rated 3 (5 in version 2), R-9 went away in version 2
-  (651, 'com1', 'R-1', 1, 'Wrong referral', 'Referral', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3),
-  (659, 'com1', 'R-9', 2, 'Old risk M1MARK', 'OldM1', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 2),
-  (701, 'cod1', 'R-1', 1, 'Delta risk', 'Delta', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3);
+INSERT INTO control_objectives.risk (id, project_id, risk_id, "position", text, short_label, source, vulnerability, consequence, impact, stakeholder, control, follow_up_control, areas, vair_terms, provenance, rating_impact, rating_likelihood) VALUES
+  (601, 'com2', 'R-1', 1, 'Wrong referral', 'Referral', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 5, 4),
+  (602, 'com2', 'R-2', 2, 'Biased answers', 'Bias', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, NULL),
+  (603, 'com2', 'R-3', 3, 'Outdated information', 'Outdated', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 1, 2),
+  (604, 'com2', 'R-4', 4, 'Unclear limits', 'Limits', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', NULL, NULL),
+  (605, 'com2', 'R-5', 5, 'Unmapped risk', 'Unmapped', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 4, NULL),
+  -- version 1: R-1 was impact 3 x likelihood 3 = 9 (20 in version 2), R-9 went away in version 2
+  (651, 'com1', 'R-1', 1, 'Wrong referral', 'Referral', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, 3),
+  (659, 'com1', 'R-9', 2, 'Old risk M1MARK', 'OldM1', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 2, NULL),
+  (701, 'cod1', 'R-1', 1, 'Delta risk', 'Delta', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, NULL);
 
--- version 2: R1.1 (severity 5), R2.1 (3), R4.1 (1), R5.1 (not rated); R-5 maps to nothing.
+-- version 2: R1.1 (impact 5), R2.1 (3), R4.1 (1), R5.1 (not rated); R-5 maps to nothing.
 -- version 1: R1.1 and R3.1 (R3.1 removed and R2.1, R4.1, R5.1 added in version 2)
 INSERT INTO control_objectives.mapped_objective (id, risk_row_id, objective_id, quote, rationale) VALUES
   (61, 601, 'R1.1', 'mq one', 'oversight of referrals'),

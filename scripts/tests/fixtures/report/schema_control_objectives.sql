@@ -136,7 +136,8 @@ CREATE TABLE control_objectives.risk (
     areas text[] NOT NULL,
     vair_terms text[] NOT NULL,
     provenance text NOT NULL,
-    severity integer
+    rating_impact integer,
+    rating_likelihood integer
 );
 
 
