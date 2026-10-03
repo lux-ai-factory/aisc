@@ -234,7 +234,8 @@ def test_the_two_ways_on_are_big_buttons_with_nothing_else():
     assert re.search(r'<a class="way" id="address-controls" href="[^"]+">Address controls</a>', markup)
     assert "<small>" not in markup and "Run the tests in the execution engine" not in markup
     way = rule(css, "a.way")
-    assert re.search(r"font-size\s*:\s*(1[4-9]|2\d)px", way) and re.search(r"padding\s*:\s*1[6-9]px", way)
+    # bigger since 2026-10-03 (the test tiles sit under Execute tests)
+    assert re.search(r"font-size\s*:\s*(1[4-9]|2\d)px", way) and re.search(r"padding\s*:\s*(1[6-9]|[2-4]\d)px", way)
 
 
 def test_the_explanation_is_behind_a_question_mark():
@@ -279,3 +280,58 @@ def test_hidden_means_hidden_whatever_an_elements_display():
     # read-only version, and to a viewer (2026-10-02)
     css = style_of(read(PAGE))
     assert re.search(r"\[hidden\]\s*\{\s*display\s*:\s*none\s*!important", css)
+
+
+# ── step 4 test tiles (2026-10-03) ──────────────────────────────────────────
+
+def test_the_tests_tiles_are_a_column_under_execute_tests():
+    markup = markup_of(read(PAGE))
+    column = re.search(r'<div class="way-col">\s*(<a\b[^>]*id="execute-tests".*?</a>)\s*'
+                       r'<div class="tiles" id="test-tiles"', markup, re.S)
+    assert column, "the tiles do not sit under Execute tests"
+    assert re.search(r'<div class="way-col">\s*<a\b[^>]*id="address-controls"', markup)
+
+
+def test_the_two_buttons_are_bigger():
+    html = read(PAGE)
+    way = re.search(r"a\.way\{(.*?)\}", html, re.S).group(1)
+    size = re.search(r"font-size:\s*(\d+)px", way)
+    padding = re.search(r"padding:\s*(\d+)px", way)
+    assert size and int(size.group(1)) >= 20 and padding and int(padding.group(1)) >= 22
+
+
+def test_a_tile_links_to_the_tests_configuration_and_its_execution():
+    script = script_of(read(PAGE))
+    assert "data.engine_workspace" in script and "it.engine_name" in script
+    assert re.search(r"ENGINE\s*\+\s*'/projects/'\s*\+\s*enc\(data\.engine_workspace\)\s*\+\s*'/plugins/'\s*\+\s*"
+                     r"enc\(it\.engine_name\)", script), "C does not open the test's configuration"
+    assert re.search(r"'/plugins/evaluation\?project='\s*\+\s*enc\(pid\)\s*\+\s*'&plugin='\s*\+\s*"
+                     r"enc\(it\.engine_name\)", script), "E does not open the execution page on that test"
+    for label in ("'C'", "'E'"):
+        assert label in script, label
+
+
+def test_a_tile_counts_the_runs_of_the_version_shown():
+    script = script_of(read(PAGE))
+    for field in ("runs.executed", "runs.failed", "runs.running"):
+        assert field in script, field
+    for word in ("executed", "failed", "running"):
+        assert "'" + word + "'" in script or word + "'" in script, word
+    # only installed tests get a tile: a removed one (kept for its links) has no runs
+    assert re.search(r"filter\(function \(it\) \{\s*return it\.runs", script)
+
+
+def test_the_link_tables_are_a_collapsible():
+    markup = markup_of(read(PAGE))
+    fold = re.search(r'<details\b[^>]*id="links"[^>]*>\s*<summary\b[^>]*>(.*?)</summary>', markup, re.S)
+    assert fold, "the link tables are not in a <details>"
+    assert "Link tests and controls to the control objectives" in fold.group(1)
+    assert 'id="grid"' in markup[fold.end():]
+
+
+def test_a_disabled_test_has_no_e_since_the_execution_page_lists_only_enabled_ones():
+    script = script_of(read(PAGE))
+    body = re.search(r"function renderTiles\(\) \{(.*?)\n  \}", script, re.S).group(1)
+    assert re.search(r"if \(it\.stale !== 'disabled'\)\s*\{?\s*tile\.appendChild\(tileLink\('E'", body), \
+        "E is offered for a disabled test"
+    assert "'Disabled in the engine'" in body

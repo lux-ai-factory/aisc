@@ -88,12 +88,37 @@
   /* the hidden attribute wins over any display rule (Save on a read-only version, for a viewer) */
   [hidden]{display:none !important}
   /* ---- the two ways on, and the grid ---- */
-  .ways{display:flex; flex-wrap:wrap; gap:16px; margin:4px 0 8px}
+  .ways{display:flex; flex-wrap:wrap; align-items:flex-start; gap:24px; margin:4px 0 8px}
+  .way-col{display:flex; flex-direction:column; gap:12px; flex:1 1 340px; max-width:520px}
   a.way{
-    display:inline-flex; align-items:center; justify-content:center; min-width:240px; padding:18px 28px; text-decoration:none;
+    display:flex; align-items:center; justify-content:center; min-height:96px; padding:26px 34px; text-decoration:none;
     border:1px solid var(--primary); background:var(--primary); color:#fff;
-    font-family:var(--mono); font-size:15px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+    font-family:var(--mono); font-size:20px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
   }
+  /* step 4 test tiles (2026-10-03): one per installed test, under Execute tests */
+  .tiles{display:flex; flex-direction:column; gap:8px}
+  .tile{display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border);
+        border-left:4px solid var(--primary); background:var(--panel)}
+  .tile-main{flex:1; min-width:0}
+  .tile-name{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .tile-runs{font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:3px}
+  .tile-runs .failed{color:#b02424}
+  .tile-runs .running{color:var(--primary)}
+  a.tile-btn{display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px;
+             border:1px solid var(--primary); color:var(--primary); background:var(--panel); text-decoration:none;
+             font-family:var(--mono); font-weight:700}
+  a.tile-btn:hover{background:var(--primary); color:#fff}
+  .tile-off{font-size:12px; color:var(--muted); font-style:italic}
+  .tiles .empty{margin:0; font-size:13px; color:var(--muted)}
+  /* the link tables fold away under their title */
+  details.fold{margin-top:34px}
+  details.fold > summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px}
+  details.fold > summary::-webkit-details-marker{display:none}
+  details.fold > summary::before{content:"\25B8"; color:var(--primary); font-size:14px}
+  details.fold[open] > summary::before{content:"\25BE"}
+  details.fold > summary h2{margin:0}
+  details.fold > summary .fold-n{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  details.fold > .fold-body{margin-top:12px}
   a.way:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
   /* the grid: objectives frozen on the left, header rows frozen on top, columns scroll under them */
   .grid-wrap{--obj-w:320px; --group-h:32px; overflow:auto; max-height:72vh; width:fit-content; max-width:100%;
@@ -211,14 +236,20 @@
   <section>
     <h2>Collect the evidence</h2>
     <div class="ways">
-      <a class="way" id="execute-tests" href="http://localhost/">Execute tests</a>
-      <a class="way" id="address-controls" href="http://localhost/controls">Address controls</a>
+      <div class="way-col">
+        <a class="way" id="execute-tests" href="http://localhost/">Execute tests</a>
+        <div class="tiles" id="test-tiles" aria-label="Installed tests"></div>
+      </div>
+      <div class="way-col">
+        <a class="way" id="address-controls" href="http://localhost/controls">Address controls</a>
+      </div>
     </div>
   </section>
 
-  <section id="links" hidden>
+  <details class="fold" id="links" hidden>
+    <summary><h2>Link tests and controls to the control objectives</h2><span class="fold-n" id="links-n"></span></summary>
+    <div class="fold-body">
     <div class="h2-row">
-      <h2>Link tests and controls to the control objectives</h2>
       <button type="button" class="help" popovertarget="links-help" aria-label="How the tables work">?</button>
     </div>
     <div id="links-help" class="help-pop" popover>One table per trustworthiness dimension. Tick a box when that test or
@@ -233,7 +264,8 @@
       <button type="button" id="save" hidden>Save links</button>
       <span class="msg" id="save-msg"></span>
     </div>
-  </section>
+    </div>
+  </details>
 </main>
 </div>
 
@@ -245,6 +277,8 @@
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
   var data = null;                          // the platform's answer: objectives, tests, controls, links, can_edit
+  var pid = '';                             // the project's pid: the engine's pages take it as ?project=
+  var ENGINE = 'http://localhost';          // the engine web app, as the launcher's other pages name it
 
   function api(path, opts) {
     opts = opts || {};
@@ -284,7 +318,48 @@
     node.className = 'count' + (n === 0 ? ' none' : '');
   }
 
+  // one tile per installed test (2026-10-03): C opens its configuration, E the execution page on it, and
+  // its runs on the card version shown. A removed test, kept only for its links, has no runs and no tile.
+  function renderTiles() {
+    var box = $('test-tiles');
+    box.textContent = '';
+    var tests = (data.tests || []).filter(function (it) { return it.runs; });
+    if (!tests.length) {
+      box.appendChild(el('p', 'empty', 'No tests installed yet: pick them in step 3, the catalogue.'));
+      return;
+    }
+    tests.forEach(function (it) {
+      var tile = el('div', 'tile'), main = el('div', 'tile-main');
+      main.appendChild(el('div', 'tile-name', it.label));
+      if (it.stale === 'disabled') main.appendChild(el('div', 'tile-off', 'Disabled in the engine'));
+      var runs = el('div', 'tile-runs');
+      runs.appendChild(el('span', null, it.runs.executed + ' executed'));
+      runs.appendChild(document.createTextNode(' · '));
+      runs.appendChild(el('span', it.runs.failed ? 'failed' : null, it.runs.failed + ' failed'));
+      runs.appendChild(document.createTextNode(' · '));
+      runs.appendChild(el('span', it.runs.running ? 'running' : null, it.runs.running + ' running'));
+      main.appendChild(runs);
+      tile.appendChild(main);
+      if (data.engine_workspace && it.engine_name) {
+        tile.appendChild(tileLink('C', 'Configure ' + it.label,
+          ENGINE + '/projects/' + enc(data.engine_workspace) + '/plugins/' + enc(it.engine_name) + '?project=' + enc(pid)));
+        // the execution page lists only the enabled tests
+        if (it.stale !== 'disabled') tile.appendChild(tileLink('E', 'Execute ' + it.label,
+          ENGINE + '/projects/' + enc(data.engine_workspace) + '/plugins/evaluation?project=' + enc(pid) + '&plugin=' + enc(it.engine_name)));
+      }
+      box.appendChild(tile);
+    });
+  }
+
+  function tileLink(letter, title, href) {
+    var a = el('a', 'tile-btn', letter);
+    a.href = href; a.title = title; a.setAttribute('aria-label', title);
+    return a;
+  }
+
   function render() {
+    renderTiles();
+    $('links-n').textContent = plural(data.links.length, 'link');
     var grid = $('grid');
     grid.textContent = '';
     var all = items();
@@ -512,6 +587,7 @@
         $('project-name').textContent = p.name;
         document.title = p.name + ' - Collect evidence';
         // the engine takes the project as a query; the controls app has it in the path
+        pid = p.pid;
         $('execute-tests').href = 'http://localhost/?project=' + enc(p.pid);
         $('address-controls').href = 'http://localhost/controls/p/' + enc(p.pid);
         return load();

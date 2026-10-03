@@ -69,8 +69,23 @@ _SELECTED = (
     " JOIN control_objectives.project a ON a.id = sel.project_id"
     " WHERE a.system_id::text = %s"
 )
-_PLUGINS = ("SELECT package_name, display_name, enabled, catalogue_slug FROM engine.aisc_backend_plugin"
+_PLUGINS = ("SELECT package_name, display_name, enabled, catalogue_slug, name FROM engine.aisc_backend_plugin"
             " ORDER BY display_name, package_name")
+#: The engine's workspace of this project (its pages are /projects/<name>/...); one row per database.
+_WORKSPACE = "SELECT name FROM engine.aisc_backend_project ORDER BY id LIMIT 1"
+#: Step 4's test tiles (2026-10-03): each installed test's runs on one card version, as the engine's
+#: per-plugin rows count them; an archived evaluation is hidden in the engine, so it is not counted.
+_RUNS = (
+    "SELECT pl.package_name, count(*) FILTER (WHERE ep.status = 'Done') AS executed,"
+    " count(*) FILTER (WHERE ep.status = 'Failed') AS failed,"
+    " count(*) FILTER (WHERE ep.status IN ('Pending', 'Running')) AS running"
+    " FROM engine.aisc_backend_evaluationplugin ep"
+    " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id"
+    " JOIN engine.aisc_backend_pluginconfig pc ON pc.id = ep.plugin_config_id"
+    " JOIN engine.aisc_backend_plugin pl ON pl.id = pc.plugin_id"
+    " WHERE e.system_id::text = %s AND e.status <> 'Archived'"
+    " GROUP BY pl.package_name"
+)
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
 #: The project's own objectives (objective sets, 2026-10-01), each as its latest published version words it.
 _OWN_OBJECTIVES = (
@@ -112,6 +127,12 @@ class Choices:
     checklist_slugs: dict[str, str | None]
     #: the project's own objectives: id -> (label, dimension)
     own: dict[str, tuple[str, str]] = field(default_factory=dict)
+    #: package_name -> the engine's name of the plugin (its configuration page is named by it)
+    plugin_names: dict[str, str | None] = field(default_factory=dict)
+    #: package_name -> {"executed", "failed", "running"} on the card version asked for
+    runs: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: the engine's workspace name, None before the engine has made it
+    workspace: str | None = None
 
 
 def _reader(pid) -> psycopg.Connection:
@@ -152,6 +173,8 @@ def choices(pid, version_pid: str | None) -> Choices:
         plugins = _rows(conn, _PLUGINS)
         checklists = _rows(conn, _CHECKLISTS)
         own = _rows(conn, _OWN_OBJECTIVES)
+        runs = _rows(conn, _RUNS, (version_pid,)) if version_pid else []
+        workspace = _rows(conn, _WORKSPACE)
     return Choices(
         selected=sorted(selected[0]["objective_ids"], key=_objective_order) if selected else [],
         plugins={r["package_name"]: (r["display_name"] or r["package_name"], r["enabled"]) for r in plugins},
@@ -159,6 +182,9 @@ def choices(pid, version_pid: str | None) -> Choices:
         plugin_slugs={r["package_name"]: r["catalogue_slug"] for r in plugins},
         checklist_slugs={r["id"]: r["catalogueId"] for r in checklists},
         own={r["objective_id"]: (r["label"], r["dimension"]) for r in own},
+        plugin_names={r["package_name"]: r.get("name") for r in plugins},
+        runs={r["package_name"]: {k: r[k] for k in ("executed", "failed", "running")} for r in runs},
+        workspace=workspace[0]["name"] if workspace else None,
     )
 
 
@@ -307,9 +333,11 @@ def view(pid, version: str | None = None) -> dict:
                 break
     objectives = list(found.selected) + sorted(
         {r["objective_id"] for r in stored} - set(found.selected), key=_objective_order)
-    tests = [{"key": k, "label": label, "stale": None if enabled else "disabled"}
+    no_runs = {"executed": 0, "failed": 0, "running": 0}
+    tests = [{"key": k, "label": label, "stale": None if enabled else "disabled",
+              "engine_name": found.plugin_names.get(k), "runs": found.runs.get(k, no_runs)}
              for k, (label, enabled) in found.plugins.items()]
-    tests += [{"key": k, "label": k, "stale": "removed"}
+    tests += [{"key": k, "label": k, "stale": "removed", "engine_name": None, "runs": None}
               for k in sorted({r["item_key"] for r in stored if r["kind"] == "test"} - set(found.plugins))]
     controls = [{"key": k, "label": title, "stale": None} for k, title in found.checklists.items()]
     controls += [{"key": k, "label": k, "stale": "deleted"}
@@ -327,6 +355,7 @@ def view(pid, version: str | None = None) -> dict:
         "versions": all_versions,
         "read_only": read_only,
         "carried_from": carried_from,
+        "engine_workspace": found.workspace,
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
         "dimensions_known": catalogue is not None and bool(dims),
         "objectives": [{"id": o, "title": names.get(o, ""), "dimension": dims.get(o),

@@ -36,7 +36,13 @@ CREATE TABLE IF NOT EXISTS control_objectives.objective_selection (
     project_id varchar(32) PRIMARY KEY, objective_ids text[] NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_plugin (
     id serial PRIMARY KEY, package_name text NOT NULL, version text NOT NULL, display_name text NOT NULL,
-    catalogue_slug text, enabled boolean NOT NULL DEFAULT true);
+    catalogue_slug text, enabled boolean NOT NULL DEFAULT true, name text);
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_project (id serial PRIMARY KEY, name text NOT NULL, project_id uuid);
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_pluginconfig (id serial PRIMARY KEY, plugin_id int NOT NULL, name text);
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluation (
+    id serial PRIMARY KEY, status text NOT NULL, system_id uuid);
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationplugin (
+    id serial PRIMARY KEY, evaluation_id int NOT NULL, plugin_config_id int, status text NOT NULL);
 CREATE TABLE IF NOT EXISTS controls.checklist (id text PRIMARY KEY, "catalogueId" text, title text NOT NULL);
 CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version (
     id varchar(32) PRIMARY KEY, set_id varchar(32) NOT NULL, number int NOT NULL);
@@ -45,7 +51,9 @@ CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version_item (
     PRIMARY KEY (set_version_id, objective_id));
 GRANT SELECT ON control_objectives.project, control_objectives.objective_selection,
     control_objectives.objective_set_version, control_objectives.objective_set_version_item,
-    engine.aisc_backend_plugin, controls.checklist TO report_ro;
+    engine.aisc_backend_plugin, controls.checklist, engine.aisc_backend_project,
+    engine.aisc_backend_evaluation, engine.aisc_backend_evaluationplugin TO report_ro;
+GRANT SELECT (id, plugin_id, name) ON engine.aisc_backend_pluginconfig TO report_ro;
 """
 
 
@@ -525,3 +533,67 @@ def test_template_0019_gives_every_link_its_version(project, dsn):
     assert keys == [("PRIMARY KEY (system_id, objective_id, kind, item_key)",)]
     sql(dsn, pid, (folder / "0019_evidence_per_version.sql").read_text())           # again: no change
     assert sql(dsn, pid, "SELECT count(*) FROM evidence.link") == [(1,)]
+
+
+# ── step 4 test tiles (2026-10-03): each test's engine name and its runs on the version shown ──
+
+V1, V2 = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+
+
+def _runs(dsn, pid, package, version, *statuses, evaluation_status="Done"):
+    """One evaluation of `version` running `package` once per status (its per-plugin rows)."""
+    plugin = sql(dsn, pid, "SELECT id FROM engine.aisc_backend_plugin WHERE package_name = %s", (package,))[0][0]
+    config = sql(dsn, pid, "INSERT INTO engine.aisc_backend_pluginconfig (plugin_id, name) VALUES (%s, 'c')"
+                           " RETURNING id", (plugin,))[0][0]
+    for status in statuses:
+        ev = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluation (status, system_id) VALUES (%s, %s)"
+                           " RETURNING id", (evaluation_status, version))[0][0]
+        sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationplugin (evaluation_id, plugin_config_id, status)"
+                      " VALUES (%s, %s, %s)", (ev, config, status))
+
+
+@pytest.fixture
+def engine(project, dsn):
+    pid = project["pid"]
+    sql(dsn, pid, "INSERT INTO engine.aisc_backend_project (name, project_id) VALUES ('evd-workspace', %s)", (pid,))
+    sql(dsn, pid, "UPDATE engine.aisc_backend_plugin SET name = 'LangBiTePlugin'"
+                  " WHERE package_name = 'aisc-plugin-langbite'")
+    sql(dsn, pid, "UPDATE engine.aisc_backend_plugin SET name = 'PromptfooPlugin'"
+                  " WHERE package_name = 'aisc-plugin-promptfoo'")
+    return project
+
+
+def test_the_page_names_the_engine_workspace_and_each_tests_engine_name(client, as_user, engine):
+    body = get(client, as_user, engine).json()
+    assert body["engine_workspace"] == "evd-workspace"
+    names = {t["key"]: t["engine_name"] for t in body["tests"]}
+    assert names == {"aisc-plugin-langbite": "LangBiTePlugin", "aisc-plugin-promptfoo": "PromptfooPlugin"}
+
+
+def test_each_test_counts_its_runs_on_the_version_shown(client, as_user, engine, dsn):
+    pid = engine["pid"]
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", "Done", "Failed", "Running", "Pending")
+    _runs(dsn, pid, "aisc-plugin-langbite", V1, "Done")
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", evaluation_status="Archived")   # hidden in the engine
+    latest = {t["key"]: t["runs"] for t in get(client, as_user, engine).json()["tests"]}
+    assert latest["aisc-plugin-langbite"] == {"executed": 2, "failed": 1, "running": 2}
+    assert latest["aisc-plugin-promptfoo"] == {"executed": 0, "failed": 0, "running": 0}
+    older = client.get(f"/projects/{engine['slug']}/evidence?version={V1}", headers=as_user(ALICE)).json()
+    assert {t["key"]: t["runs"] for t in older["tests"]}["aisc-plugin-langbite"] == \
+        {"executed": 1, "failed": 0, "running": 0}
+
+
+def test_a_removed_test_has_no_engine_name_and_no_runs(client, as_user, engine, dsn):
+    put(client, as_user, engine, [LB])
+    sql(dsn, engine["pid"], "DELETE FROM engine.aisc_backend_plugin WHERE package_name = 'aisc-plugin-langbite'")
+    tests = {t["key"]: t for t in get(client, as_user, engine).json()["tests"]}
+    assert tests["aisc-plugin-langbite"]["stale"] == "removed"
+    assert tests["aisc-plugin-langbite"]["engine_name"] is None and tests["aisc-plugin-langbite"]["runs"] is None
+
+
+def test_no_engine_tables_yet_reads_as_no_runs(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "DROP TABLE engine.aisc_backend_evaluationplugin, engine.aisc_backend_evaluation,"
+                             " engine.aisc_backend_project")
+    body = get(client, as_user, project).json()
+    assert body["engine_workspace"] is None
+    assert all(t["runs"] == {"executed": 0, "failed": 0, "running": 0} for t in body["tests"])
