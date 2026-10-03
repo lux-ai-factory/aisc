@@ -1,10 +1,9 @@
-"""`Throwaway.rows()` of scripts/pipeline_chain/throwaway.py (report run v2, part 2: 10-specs-part2.md
-R2-D3.5.1, authorised by the user in BRIEF-2 D3.5).
+"""`Throwaway.rows()` of scripts/pipeline_chain/throwaway.py.
 
 `rows()` must return the query's rows as dicts for 0, 1 and many rows, and for values holding newlines, quotes
 and non-ASCII text. psql's aligned output spreads json_agg over several lines and ends with a row-count footer
 such as "(1 row)"; the helper must parse psql's whole tuples-only unaligned output as one JSON value and never
-read that footer. On a failing query it raises AssertionError with psql's message, as today.
+read that footer. On a failing query it raises AssertionError with psql's message.
 
 One throwaway postgres:15-alpine container (aisc-t-rows-<hex>, a kernel-chosen port, never the host's 5432),
 removed at the end of the module.

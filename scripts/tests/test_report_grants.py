@@ -1,19 +1,16 @@
-"""The report's database roles and grants (report run 2026-09-23: 01-specs R4.1.3, R6.1, R6.5,
-R7.3.3, R7.3.6; 02 D6 (a)(b)(c), D13), in the isolated layout (isolation 2026-09-25: I1.4, I2.1, I2.6,
-I2.7, I8.1).
+"""The report's database roles and grants, with one database per project.
 
-Rewritten by WP V1 (S-D13: the approved design moves every module table into the project's own
-database). The bed is scripts/lib/report_bed_isolated.py: a throwaway postgres:15-alpine container on a
-free port, never the host's 5432, removed at session end, in the state the move tool and the stage-7 drop
-leave behind. What moved, and how the cases follow it:
+Every module table lives in the project's own database. The bed is scripts/lib/report_bed_isolated.py:
+a throwaway postgres:15-alpine container on a free port, never the host's 5432, removed at session end,
+in the state the move tool and the drop of the old shared schemas leave behind. What the cases check:
 
 - report_ro reads the module tables of the report inside each project database (A, B, E), not in
-  `platform`; in `platform` it reads core.project only (I1.4), core.system is gone.
-- a project database made later is readable after the next scripts/report-grants.sh run (I2.7), never
-  through a default privilege in template1 (I2.6 forbids them).
-- the composer (R1's final grants): in `platform` it owns report_library and reads core.project and
-  core.project_member; in each project database it may connect and has USAGE, CREATE on report_composer,
-  USAGE on project and SELECT, REFERENCES on project.system, and nothing of the other modules.
+  `platform`; in `platform` it reads core.project only, and core.system is gone.
+- a project database made later is readable after the next scripts/report-grants.sh run, never
+  through a default privilege in template1 (default privileges to readers are forbidden).
+- the composer: in `platform` it owns report_library and reads core.project and core.project_member;
+  in each project database it may connect and has USAGE, CREATE on report_composer, USAGE on project
+  and SELECT, REFERENCES on project.system, and nothing of the other modules.
 
     uv run --no-project --with pytest --with 'psycopg[binary]' python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_report_grants.py
@@ -75,11 +72,11 @@ def db_of(key):
     return report_bed.project_db(IDS[key])
 
 
-# ── report_ro: the role ──────────────────────────────────────────────────────
+# report_ro: the role
 
 
 def test_d6a_report_roles_sql_reruns_idempotently(bed):
-    """D6 (a), D13, R4.1.3: init/report-roles.sql runs as the superuser on every postgres-setup
+    """init/report-roles.sql runs as the superuser on every postgres-setup
     start, so a second run changes nothing and does not fail."""
     need(ROLES_SQL)
     r = bed.psql("platform", ROLES_SQL.read_text(), check=False)
@@ -87,7 +84,7 @@ def test_d6a_report_roles_sql_reruns_idempotently(bed):
 
 
 def test_d6a_report_ro_logs_in_read_only(bed):
-    """R6.1, D6 (a): report_ro is LOGIN and its sessions default to read-only transactions."""
+    """report_ro is LOGIN and its sessions default to read-only transactions."""
     rows = bed.rows("platform", "SELECT rolcanlogin, rolconfig FROM pg_roles WHERE rolname = 'report_ro'")
     assert rows, "missing feature: role report_ro"
     assert rows[0]["rolcanlogin"]
@@ -97,7 +94,7 @@ def test_d6a_report_ro_logs_in_read_only(bed):
 
 
 def test_r6_1_report_ro_reads_core(bed):
-    """R6.1, I1.4: in platform, SELECT on core.project and nothing else of core; core.system is gone."""
+    """In platform, SELECT on core.project and nothing else of core; core.system is gone."""
     r = as_ro(bed, "platform", "SELECT count(*) FROM core.project")
     assert ok(r), r.stderr
     assert bed.scalar("platform", "SELECT to_regclass('core.system') IS NULL") == "t"
@@ -106,7 +103,7 @@ def test_r6_1_report_ro_reads_core(bed):
 
 @pytest.mark.parametrize("key", PROJECTS)
 def test_r6_1_report_ro_reads_the_card_versions_of_each_project(bed, key):
-    """R6.1, I2.6: project.system in every project database."""
+    """project.system in every project database."""
     r = as_ro(bed, db_of(key), "SELECT count(*) FROM project.system")
     assert ok(r), r.stderr
 
@@ -115,14 +112,14 @@ def test_r6_1_report_ro_reads_the_card_versions_of_each_project(bed, key):
                          + [("control_objectives", t) for t in CONTROL_OBJECTIVES]
                          + [("engine", t) for t in ENGINE])
 def test_r6_1_report_ro_reads_the_listed_tables(bed, schema, table):
-    """R6.1, D6 (b), I2.6: SELECT on the tables the blocks read, in every project database."""
+    """SELECT on the tables the report blocks read, in every project database."""
     for key in PROJECTS:
         r = as_ro(bed, db_of(key), f"SELECT count(*) FROM {schema}.{table}")
         assert ok(r), f"{db_of(key)}: {r.stderr}"
 
 
 def test_d6b_plugin_config_is_readable_by_column_only(bed):
-    """D6 (b), I2.6: plugin_config.config may hold tool settings; report_ro gets (id, plugin_id) only."""
+    """plugin_config.config may hold tool settings; report_ro gets (id, plugin_id) only."""
     db = db_of("A")
     r = as_ro(bed, db, "SELECT id, plugin_id FROM engine.aisc_backend_pluginconfig")
     assert ok(r), r.stderr
@@ -131,8 +128,7 @@ def test_d6b_plugin_config_is_readable_by_column_only(bed):
 
 
 def test_d6b_the_configuration_name_is_readable_its_settings_are_not(bed):
-    """Report modules 2026-09-28 (Task 4, user ruling "name only"): the Test runs block names each
-    tool's configuration; its settings stay unreadable."""
+    """The Test runs block names each tool's configuration; its settings stay unreadable."""
     db = db_of("A")
     r = as_ro(bed, db, "SELECT id, plugin_id, name FROM engine.aisc_backend_pluginconfig")
     assert ok(r), r.stderr
@@ -142,7 +138,7 @@ def test_d6b_the_configuration_name_is_readable_its_settings_are_not(bed):
 
 @pytest.mark.parametrize("table", ENGINE_FORBIDDEN)
 def test_d6b_engine_tables_outside_the_list_are_refused(bed, table):
-    """D6 (b): never auth_*, django_*, project_config, plugin_config_project_config, account_*.
+    """Never auth_*, django_*, project_config, plugin_config_project_config, account_*.
     The role must exist and connect first, so this cannot pass by the role being absent."""
     db = db_of("A")
     assert ok(as_ro(bed, db, "SELECT 1")), "missing feature: report_ro cannot connect"
@@ -151,7 +147,7 @@ def test_d6b_engine_tables_outside_the_list_are_refused(bed, table):
 
 
 def test_r6_5_report_ro_never_reads_the_catalogue(bed):
-    """R6.5: no privilege on the catalogue schema."""
+    """No privilege on the catalogue schema."""
     rows = bed.rows("platform", "SELECT has_schema_privilege('report_ro', 'catalogue', 'USAGE') AS u"
                     " FROM pg_roles WHERE rolname = 'report_ro'")
     assert rows, "missing feature: role report_ro"
@@ -161,13 +157,13 @@ def test_r6_5_report_ro_never_reads_the_catalogue(bed):
 
 @pytest.mark.parametrize("table", SUPERSET)
 def test_d6b_report_ro_reads_the_superset_tables(bed, table):
-    """R6.1, D5, D6 (b): in superset, SELECT on the seven tables of chart ownership and comments."""
+    """In superset, SELECT on the seven tables of chart ownership and comments."""
     r = as_ro(bed, "superset", f"SELECT count(*) FROM public.{table}")
     assert ok(r), r.stderr
 
 
 def test_d6b_report_ro_does_not_read_superset_users(bed):
-    """D6 (b): nothing else in superset, e.g. ab_user (password hashes)."""
+    """Nothing else in superset, e.g. ab_user (password hashes)."""
     assert ok(as_ro(bed, "superset", "SELECT 1")), "missing feature: report_ro cannot connect to superset"
     r = as_ro(bed, "superset", "SELECT 1 FROM public.ab_user LIMIT 1")
     assert not ok(r) and "permission denied" in r.stderr
@@ -175,7 +171,7 @@ def test_d6b_report_ro_does_not_read_superset_users(bed):
 
 @pytest.mark.parametrize("key", PROJECTS)
 def test_d6c_report_ro_reads_controls_of_each_project(bed, key):
-    """R6.1, D6 (c): in every project database, CONNECT, USAGE on controls and SELECT on its five
+    """In every project database, CONNECT, USAGE on controls and SELECT on its five
     tables."""
     db = db_of(key)
     for t in CONTROLS:
@@ -183,7 +179,7 @@ def test_d6c_report_ro_reads_controls_of_each_project(bed, key):
         assert ok(r), f"{db} controls.{t}: {r.stderr}"
 
 
-# ── read-only means read-only ────────────────────────────────────────────────
+# read-only means read-only
 
 
 @pytest.mark.parametrize("where,sql", [
@@ -195,7 +191,7 @@ def test_d6c_report_ro_reads_controls_of_each_project(bed, key):
     ("superset", "UPDATE aisc_comment SET body = 'x'"),
 ])
 def test_r6_1_every_write_is_refused(bed, where, sql):
-    """R6.1, R7.3.6: when any write is attempted as report_ro, the database refuses it."""
+    """When any write is attempted as report_ro, the database refuses it."""
     db = db_of(where) if where in IDS else where
     assert ok(as_ro(bed, db, "SELECT 1")), "missing feature: report_ro cannot connect"
     r = as_ro(bed, db, sql)
@@ -204,7 +200,7 @@ def test_r6_1_every_write_is_refused(bed, where, sql):
 
 
 def test_r6_1_a_write_in_a_project_database_is_refused(bed):
-    """R6.1: the same for the controls answers of a project database."""
+    """The same for the controls answers of a project database."""
     db = db_of("A")
     assert ok(as_ro(bed, db, "SELECT 1")), "missing feature: report_ro cannot connect"
     r = as_ro(bed, db, "DELETE FROM controls.submission_answer")
@@ -212,7 +208,7 @@ def test_r6_1_a_write_in_a_project_database_is_refused(bed):
 
 
 def test_r6_1_read_only_even_when_the_session_asks_otherwise(bed):
-    """R6.1: turning read-only off in the session does not give write privileges."""
+    """Turning read-only off in the session does not give write privileges."""
     for db, sql in (("platform", "INSERT INTO core.project (name, slug) VALUES ('x', 'report-ro-y')"),
                     (db_of("A"), "DELETE FROM engine.aisc_backend_measurement")):
         assert ok(as_ro(bed, db, "SELECT 1")), "missing feature: report_ro cannot connect"
@@ -220,11 +216,11 @@ def test_r6_1_read_only_even_when_the_session_asks_otherwise(bed):
         assert not ok(r) and "permission denied" in r.stderr, (db, r.stderr)
 
 
-# ── no accidental reach ──────────────────────────────────────────────────────
+# no accidental reach
 
 
 def test_d6b_a_new_module_table_is_not_readable(bed):
-    """D6 (b), I2.6: no default privileges, so a table engine_rw creates later in a project database is not
+    """No default privileges, so a table engine_rw creates later in a project database is not
     readable by report_ro (while the listed ones are), not even after report-grants.sh repairs the list."""
     db = db_of("A")
     assert ok(as_ro(bed, db, "SELECT 1 FROM engine.aisc_backend_evaluation LIMIT 1")), \
@@ -241,7 +237,7 @@ def test_d6b_a_new_module_table_is_not_readable(bed):
 
 
 def test_d6c_a_project_database_made_later_is_readable_after_the_next_grants_run(bed):
-    """D6 (c), I2.6, I2.7: a project database created after the grants (by platform_rw, from template1 and
+    """A project database created after the grants (by platform_rw, from template1 and
     the project template, schema controls made by controls_rw) whose module did not grant the readers
     (here: its grants taken back, as for a database migrated before report_ro existed) is not readable
     through any default privilege; the next scripts/report-grants.sh run makes its listed tables readable."""
@@ -260,7 +256,7 @@ def test_d6c_a_project_database_made_later_is_readable_after_the_next_grants_run
 
 
 def test_d6b_grants_sql_skips_tables_that_do_not_exist_yet():
-    """D6 (b): init/report-ro-grants.sql is idempotent and skips a table whose to_regclass is null,
+    """init/report-ro-grants.sql is idempotent and skips a table whose to_regclass is null,
     so it succeeds on a cluster with no module schemas and no superset tables at all."""
     need(ROLES_SQL)
     need(GRANTS_SQL)
@@ -273,11 +269,11 @@ def test_d6b_grants_sql_skips_tables_that_do_not_exist_yet():
         b.stop()
 
 
-# ── report_composer_rw ───────────────────────────────────────────────────────
+# report_composer_rw
 
 
 def test_d13_composer_role_owns_its_library_and_its_project_schema(bed):
-    """R4.1.3, D13, I8.1: in platform the composer owns report_library; in a project database its schema
+    """In platform the composer owns report_library; in a project database its schema
     report_composer is the template's (owner platform_rw) with USAGE, CREATE for the composer."""
     rows = bed.rows("platform", "SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace"
                     " WHERE nspname = 'report_library'")
@@ -291,7 +287,7 @@ def test_d13_composer_role_owns_its_library_and_its_project_schema(bed):
 
 
 def test_d13_composer_role_search_path(bed):
-    """D13, I2.1: report_composer_rw's search_path is report_library, core in platform, and
+    """report_composer_rw's search_path is report_library, core in platform, and
     report_composer alone in a project database."""
     r = bed.psql("platform", "SHOW search_path", role="report_composer_rw", check=False)
     assert ok(r), f"missing feature: report_composer_rw cannot connect: {r.stderr}"
@@ -305,7 +301,7 @@ def test_d13_composer_role_search_path(bed):
 
 
 def test_d13_composer_role_can_reference_its_card_versions(bed):
-    """R3.1, D13, I1.6: the composer may create its tables with a foreign key to project.system
+    """The composer may create its tables with a foreign key to project.system
     (REFERENCES), in its own schema of a project database."""
     name = f"probe_{uuid.uuid4().hex[:8]}"
     r = as_composer(bed, db_of("A"),
@@ -315,7 +311,7 @@ def test_d13_composer_role_can_reference_its_card_versions(bed):
 
 
 def test_r4_4_2_composer_role_reads_memberships(bed):
-    """R4.4.2, D13: SELECT on core.project and core.project_member in platform, and on project.system in a
+    """SELECT on core.project and core.project_member in platform, and on project.system in a
     project database."""
     for t in ("core.project", "core.project_member"):
         r = as_composer(bed, "platform", f"SELECT count(*) FROM {t}")
@@ -325,7 +321,7 @@ def test_r4_4_2_composer_role_reads_memberships(bed):
 
 
 def test_d13_composer_role_never_writes_core(bed):
-    """R4.1.3: nothing but its own schemas: no write on core, none on project.system."""
+    """Nothing but its own schemas: no write on core, none on project.system."""
     assert ok(as_composer(bed, "platform", "SELECT 1")), "missing feature: report_composer_rw cannot connect"
     r = as_composer(bed, "platform", "INSERT INTO core.project (name, slug) VALUES ('x', 'composer-x')")
     assert not ok(r) and "permission denied" in r.stderr
@@ -336,7 +332,7 @@ def test_d13_composer_role_never_writes_core(bed):
 @pytest.mark.parametrize("table", ["qualification.qualification", "engine.aisc_backend_evaluation",
                                    "control_objectives.project", "controls.submission_answer"])
 def test_r7_3_3_composer_never_reads_module_schemas(bed, table):
-    """R7.3.3: the composer never reads module schemas; only the renderer does, as report_ro."""
+    """The composer never reads module schemas; only the renderer does, as report_ro."""
     db = db_of("A")
     assert ok(as_composer(bed, db, "SELECT 1")), "missing feature: report_composer_rw cannot connect"
     r = as_composer(bed, db, f"SELECT 1 FROM {table} LIMIT 1")
@@ -344,7 +340,7 @@ def test_r7_3_3_composer_never_reads_module_schemas(bed, table):
 
 
 def test_r7_3_3_composer_reaches_only_its_schema_and_no_comments(bed):
-    """R7.3.3, I2.1: the composer connects to project databases (template 0010) but reaches no module schema
+    """The composer connects to project databases (template 0010) but reaches no module schema
     there, and reads nothing of superset's comments."""
     db = db_of("A")
     assert ok(as_composer(bed, db, "SELECT 1")), "I2.1: report_composer_rw cannot connect to a project database"

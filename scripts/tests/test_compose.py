@@ -1,5 +1,6 @@
-"""Compose file rules (03 WP6a, WP2). Read-only: the compose files are copied to a scratch
-directory and resolved with `docker compose config`; nothing is started, stopped or built."""
+"""Compose file rules, and what the README must say about them. Read-only: the compose files are
+copied to a scratch directory and resolved with `docker compose config`; nothing is started, stopped
+or built."""
 
 import json
 import os
@@ -32,13 +33,13 @@ def compose(tmp_path_factory):
 
 
 def test_s6a_compose_config_is_valid(compose):
-    """WP6a: `docker compose -f <copy> config -q` passes."""
+    """`docker compose -f <copy> config -q` passes."""
     q, cfg = compose
     assert q.returncode == 0, q.stderr[-2000:]
 
 
 def test_s6a_qualification_agents_service(compose):
-    """WP6a: service qualification-agents builds services/agents, on network backend, with
+    """Service qualification-agents builds services/agents, on network backend, with
     LLM_SERVICE_URL=http://qualification-llm:4000."""
     q, cfg = compose
     svc = cfg["services"].get("qualification-agents")
@@ -50,7 +51,7 @@ def test_s6a_qualification_agents_service(compose):
 
 
 def test_s6a_qualification_web_reaches_the_agents(compose):
-    """WP6a: qualification-web gets AGENT_SERVICE_URL on the port service.py is served on."""
+    """qualification-web gets AGENT_SERVICE_URL on the port service.py is served on."""
     q, cfg = compose
     dockerfile = (ROOT / "apps/qualification/services/agents/Dockerfile").read_text()
     port = re.search(r'"--port", "(\d+)"', dockerfile).group(1)
@@ -59,15 +60,14 @@ def test_s6a_qualification_web_reaches_the_agents(compose):
 
 
 def test_wp2_aisc_backend_has_no_platform_url(compose):
-    """WP2 code: PLATFORM_URL (from c0f460e) is gone from aisc-backend."""
+    """aisc-backend has no PLATFORM_URL."""
     q, cfg = compose
     names = set(cfg["services"]["aisc-backend"].get("environment") or {})
     assert "PLATFORM_URL" not in names
 
 
-# ── LLM keys (pipeline 2026-09-24-llm-keys, 01-specs.md S6.1, S6.2, S6.7) ─────
-# A secret given as `${NAME:?...}` is in the fixture's `required` set and so resolves to "dummy":
-# that value proves the `:?` form (D9) without reading env.secrets.
+# LLM keys. A secret given as `${NAME:?...}` is in the fixture's `required` set and so resolves to
+# "dummy": that value proves the `:?` form without reading env.secrets.
 
 
 def _extra_hosts(svc):
@@ -120,7 +120,7 @@ def test_s6_7_the_compose_files_stay_valid_with_the_new_variables(compose):
 
 def test_each_agent_gets_the_token_of_its_own_system_only(tmp_path):
     """The card agent holds the card agent's token and the risk mapper the risk mapper's, so
-    neither can resolve the other's key (2026-09-25)."""
+    neither can resolve the other's key."""
     args, required = [], set()
     for f in FILES:
         shutil.copy(ROOT / f, tmp_path / f)
@@ -148,7 +148,7 @@ HOSTED_ORIGIN = "https://sandboxconfigurator.aifactory.lu"
 
 
 def test_controls_fetches_packages_from_the_hosted_catalogue(compose):
-    """The catalogue is the hosted one only (the user's decision of 2026-09-27): the launcher and
+    """The catalogue is the hosted one only: the launcher and
     the engine open it, and controls fetch a control's package from its API server-side
     (GET {CATALOGUE_URL}/control/{slug}/export); only that origin's install pages are trusted."""
     q, cfg = compose
@@ -190,8 +190,8 @@ def test_the_runtime_env_points_at_the_hosted_catalogue():
 
 def test_the_report_renderer_has_every_build_context_its_dockerfile_copies_from(compose):
     """The renderer's Dockerfile (apps/report-generator) copies from named contexts; compose must give
-    each one, or `up --build` fails on a fresh machine (it did on 2026-09-27: promptfoo). Since
-    2026-09-29 the only one is the report plugin interface (test_report_submodules.py)."""
+    each one, or `up --build` fails on a fresh machine. The only one is the report plugin interface
+    (test_report_submodules.py)."""
     q, cfg = compose
     contexts = (cfg["services"]["report-renderer"].get("build") or {}).get("additional_contexts") or {}
     assert set(contexts) == {"interface"}, sorted(contexts)
@@ -200,8 +200,8 @@ def test_the_report_renderer_has_every_build_context_its_dockerfile_copies_from(
 def test_the_plugin_downloader_fills_what_the_publisher_publishes(tmp_path):
     """With docker-compose.plugin_downloader.yml (the full run), the downloader clones the default
     plugins into ./def_plugins, the folder plugin-publisher builds and uploads to the index, and the
-    publisher waits for it: on a fresh clone def_plugins holds only its README (2026-09-27: the
-    publisher found nothing to upload, so no test could be installed)."""
+    publisher waits for it: on a fresh clone def_plugins holds only its README, and without the wait
+    the publisher finds nothing to upload, so no test can be installed."""
     files = FILES + ["docker-compose.plugin_downloader.yml"]
     args, required = [], set()
     for f in files:
@@ -230,8 +230,8 @@ def test_keycloak_may_read_the_realm_secrets_sh_renders():
 
 def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
     """A ${VAR} with no default in the compose files becomes an empty string when the env file lacks
-    it, which a strict parser refuses (2026-09-27: MODEL_LISTING_SSL_VERIFY='' stopped the engine's
-    migration, 'Not a valid boolean'). env.runtime is env.plugin_downloader plus the secrets."""
+    it, which a strict parser refuses (MODEL_LISTING_SSL_VERIFY='' stops the engine's migration with
+    'Not a valid boolean'). env.runtime is env.plugin_downloader plus the secrets."""
     bare = set()
     for f in FILES + ["docker-compose.plugin_downloader.yml"]:
         # $${VAR} is escaped: the container's shell expands it, not compose
@@ -244,7 +244,7 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
 
 def test_the_dashboard_healthcheck_asks_where_superset_listens(compose):
     """Superset listens only on SUPERSET_BIND_ADDRESS (the Docker host address), so the image's own
-    check on localhost always failed and a working dashboard showed as unhealthy."""
+    check on localhost always fails and a working dashboard shows as unhealthy."""
     q, cfg = compose
     svc = cfg["services"]["dashboard"]
     test = " ".join(svc.get("healthcheck", {}).get("test") or [])
@@ -253,10 +253,10 @@ def test_the_dashboard_healthcheck_asks_where_superset_listens(compose):
 
 
 def test_the_eval_healthchecks_ask_the_right_node(compose):
-    """The worker's image check pinged "celery@$$HOSTNAME", which in a Dockerfile is the shell's
-    pid followed by the word HOSTNAME, and flower's pinged a worker named after flower's own
-    container: both were unhealthy while working. The worker pings itself by its real hostname,
-    with time to answer; flower answers its own /healthcheck."""
+    """The worker's image check pings "celery@$$HOSTNAME", which in a Dockerfile is the shell's
+    pid followed by the word HOSTNAME, and flower's pings a worker named after flower's own
+    container: both show unhealthy while working. So the worker pings itself by its real hostname,
+    with time to answer, and flower answers its own /healthcheck."""
     q, cfg = compose
     worker = cfg["services"]["aisc-eval-worker"].get("healthcheck") or {}
     flower = cfg["services"]["aisc-eval-flower"].get("healthcheck") or {}
@@ -265,11 +265,11 @@ def test_the_eval_healthchecks_ask_the_right_node(compose):
     assert "/healthcheck" in " ".join(flower.get("test") or []), flower
 
 
-# ── Engine deployment modes (pipeline 2026-09-27, task 9: the Configurator wires the mode
-# and the platform list) ──────────────────────────────────────────────────────────────────
+# Engine deployment modes: the Configurator sets the mode and serves the engine the platform's
+# project list.
 
 def test_the_engine_runs_in_configurator_mode(compose):
-    """Ruling: the engine (backend, backend-migrate, eval worker, eval flower) is told it runs
+    """The engine (backend, backend-migrate, eval worker, eval flower) is told it runs
     inside the Configurator; the webapp gets the matching APP_DEPLOYMENT."""
     q, cfg = compose
     for name in ("aisc-backend", "aisc-backend-migrate", "aisc-eval-worker", "aisc-eval-flower"):
@@ -278,7 +278,7 @@ def test_the_engine_runs_in_configurator_mode(compose):
 
 
 def test_the_engine_site_serves_the_callers_platform_projects_behind_the_gateway():
-    """Ruling 3: on the engine's own site (not the launcher's), GET /platform/api/projects is
+    """On the engine's own site (not the launcher's), GET /platform/api/projects is
     protected then proxied to platform:8000, and it is placed before the catch-all handlers of
     that site so it wins. GET only: no other method is routed to the platform this way."""
     text = (ROOT / "Caddyfile").read_text()
@@ -304,7 +304,7 @@ def test_the_engine_site_serves_the_callers_platform_projects_behind_the_gateway
 
 
 def test_the_standalone_compose_names_no_configurator_setting():
-    """Ruling 4: the standalone compose never turns the Configurator on, never carries the
+    """The standalone compose never turns the Configurator on, never carries the
     per-request project header, and never talks to the platform service."""
     text = (ROOT / "docker-compose.engine-standalone.yml").read_text()
     assert "AISC_DEPLOYMENT: configurator" not in text
@@ -312,7 +312,7 @@ def test_the_standalone_compose_names_no_configurator_setting():
 
 
 def test_the_migrations_run_through_the_one_shot_not_the_long_running_service():
-    """Rulings 13/21: in the Configurator, the engine's schema is migrated by the compose
+    """In the Configurator, the engine's schema is migrated by the compose
     one-shot aisc-backend-migrate (migrate_projects, one database per project), never by a
     plain `manage.py migrate` on the long-running aisc-backend service."""
     text = (ROOT / "docker-compose.development.yml").read_text()
@@ -329,19 +329,17 @@ def test_the_migrations_run_through_the_one_shot_not_the_long_running_service():
 
 
 def test_the_webapp_gets_the_launcher_url(compose):
-    """Ruling 31: APP_LAUNCHER_URL must be set on aisc-webapp (where the project was chosen and
+    """APP_LAUNCHER_URL must be set on aisc-webapp (where the project was chosen and
     where the other five steps are), defaulting to the launcher's own external URL."""
     q, cfg = compose
     value = cfg["services"]["aisc-webapp"]["environment"].get("APP_LAUNCHER_URL")
     assert value, "APP_LAUNCHER_URL is not set on aisc-webapp"
 
 
-# ── Where the engine installs from (pipeline 2026-09-27, task 9b; changed 2026-09-28) ──────
-# Ruling 43: the engine installs from the stack's own devpi, which plugin-publisher fills from
-# def_plugins/ with exactly the packages and versions the hosted catalogue names. Méril's online
-# index (10.50.3.47) held only langbite plus two stale packages the catalogue does not point to,
-# so six of the seven catalogue installs could not resolve there. The catalogue handoff is
-# unchanged: it sends a package name and version, and any index holding them works.
+# Where the engine installs from: the stack's own devpi, which plugin-publisher fills from
+# def_plugins/ with exactly the packages and versions the hosted catalogue names. The online index
+# at 10.50.3.47 lacks most of them, so nothing may point there. The catalogue sends a package name
+# and version, and any index holding them works.
 
 LOCAL_INDEX = "http://devpi:3141"
 ONLINE_HOST = "10.50.3.47"
@@ -356,8 +354,8 @@ def _runtime_env():
 
 def test_the_runtime_env_installs_from_the_stacks_own_index():
     """env.runtime (built from env.plugin_downloader) names the local devpi as the registry:
-    PACKAGE_REGISTRY_URL alone decides where the engine installs from. Ruling 41:
-    CATALOGUE_TRUSTED_INDEXES has no consumer; it is kept, saying it is not enforced."""
+    PACKAGE_REGISTRY_URL alone decides where the engine installs from.
+    CATALOGUE_TRUSTED_INDEXES has no consumer; it is kept, with a comment saying it is not enforced."""
     base, env = _runtime_env()
     assert env.get("PACKAGE_REGISTRY_URL") == LOCAL_INDEX, base
     assert env.get("PACKAGE_REGISTRY_INDEX") == "root/public", base
@@ -382,15 +380,15 @@ def test_the_engine_installs_from_the_index_the_publisher_fills(compose):
 
 
 def test_postgres_is_15(compose):
-    """The backend requires PG15 (Méril's commit 5a05f12); fresh volumes, no data migration."""
+    """The backend requires PostgreSQL 15; moving from 14 needs fresh volumes, there is no data migration."""
     q, cfg = compose
     image = cfg["services"]["postgres"]["image"]
     assert re.match(r"postgres:15(\D|$)", image), image
 
 
 def test_every_compose_file_runs_postgres_15():
-    """Final review, old plan must-fix: staging and the plain infra file ran postgres:14, which
-    the backend does not support. Every compose file that runs a postgres image runs 15."""
+    """The backend does not support postgres:14, so every compose file that runs a postgres image,
+    staging and the plain infra file included, runs 15."""
     import yaml
     found = {}
     for path in sorted(ROOT.glob("docker-compose*.yml")):
@@ -409,7 +407,7 @@ def test_the_readme_says_staging_needs_fresh_volumes_too():
 
 
 def test_the_eval_worker_does_not_log_at_debug(compose):
-    """Final review I3: at debug the worker prints each message, run ticket included."""
+    """At debug the worker prints each message, run ticket included."""
     q, cfg = compose
     command = cfg["services"]["aisc-eval-worker"]["command"]
     command = " ".join(command) if isinstance(command, list) else command
@@ -417,7 +415,7 @@ def test_the_eval_worker_does_not_log_at_debug(compose):
 
 
 
-# ── Task 9b fix round 1: the standalone compose (Rulings 41, 42) ─────────────────────────────
+# the standalone compose
 
 SECRET_NAME = re.compile(r"PASSWORD|SECRET|KEY|TOKEN")
 # an empty default is no shipped secret: the registry is a public index read without login
@@ -445,8 +443,8 @@ def test_the_standalone_compose_ships_no_default_secret():
 
 
 def test_the_standalone_registry_user_is_empty_by_default():
-    """Sean's settings turn an empty password into None; a user without one makes DevpiClient
-    refuse to start the backend. The user is empty unless given."""
+    """The backend's settings turn an empty password into None; a user without one makes
+    DevpiClient refuse to start the backend. The user is empty unless given."""
     text, _ = _standalone()
     assert "${PACKAGE_REGISTRY_USER:-root}" not in text
     for f in ("env.plugin_downloader", "env.development"):
@@ -455,7 +453,7 @@ def test_the_standalone_registry_user_is_empty_by_default():
 
 
 def test_the_standalone_compose_uses_seans_settings_names_pg15_and_the_mounted_plugins():
-    """Ruling 42: Sean's settings read BACKEND_CRSF_TRUSTED_ORIGINS (his spelling); postgres 15;
+    """The backend's settings read BACKEND_CRSF_TRUSTED_ORIGINS (that spelling); postgres 15;
     PLUGIN_PATH is where the service mounts the plugins."""
     text, services = _standalone()
     backend = services["aisc-backend"]["environment"]

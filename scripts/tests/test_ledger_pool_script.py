@@ -1,5 +1,5 @@
 """scripts/ledger-pool.sh on a scratch copy, with a stand-in `docker` that records what it is asked to
-run (phase 1 review M3). Nothing is started; no secret is printed.
+run. Nothing is started; no secret is printed.
 
 The platform container has no ledger settings of its own, so the script must hand it the immudb URL
 and the ledger user's password (from env.secrets) as well as the superuser's (from this shell), all as

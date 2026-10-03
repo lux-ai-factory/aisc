@@ -1,9 +1,9 @@
-"""platform_rw's password is generated, not its own name (phase 2 review M1).
+"""platform_rw's password is generated, not its own name.
 
 The platform service is the only writer of the ledger's Postgres side (witness records, pool, state)
-and of ledger_identity, the database that names people (S8). With the password `platform_rw`, any
+and of ledger_identity, the database that names people. With the password `platform_rw`, any
 container on the backend network, the eval worker running plugin code included, could log in as it.
-Now scripts/secrets.sh makes PLATFORM_RW_PASSWORD, postgres-setup applies it on every start
+So scripts/secrets.sh makes PLATFORM_RW_PASSWORD, postgres-setup applies it on every start
 (init/platform-role.sql, like init/report-roles.sql), and the platform's URL is built from it. Reads
 the files only; nothing is started.
 """

@@ -1,4 +1,4 @@
-"""scripts/secrets.sh hardening (final review of the engine adapt, 2026-09-28, T6d).
+"""How scripts/secrets.sh protects the secrets it writes.
 
 - Every file it writes is private from the moment it exists (`umask 077` first), not only after a
   later chmod.
@@ -59,7 +59,7 @@ def test_platform_secrets_key_survives_rotate(scratch):  # noqa: F811
 
 def test_the_files_are_private_without_the_later_chmod(scratch):  # noqa: F811
     """chmod is made a no-op: what is left is what the files were created with. Both paths: a new
-    install, and a run on an existing env.secrets (which used to create env.runtime world-readable)."""
+    install, and a run on an existing env.secrets."""
     env = _shim(scratch, "chmod", "exit 0")
     for run in ("new", "existing"):
         if run == "existing":
@@ -102,7 +102,7 @@ def test_a_failed_rotate_leaves_the_old_file_as_it_was(scratch):  # noqa: F811
     assert [p.name for p in scratch.iterdir() if p.name.startswith("env.secrets.")] == [], "temp file left"
 
 
-# The ledger's secrets (docs/superpowers/ledger-2026-10-02/02-spec.md 7.1, 7.5). Its master keys are
+# The ledger's secrets. Its master keys are
 # versioned and kept for ever, so `--rotate` must not replace them (a new version is added by
 # `--add-ledger-key`); the immudb user's password changes only together with immudb's own copy.
 LEDGER_KEPT = ("PLATFORM_LEDGER_KEYS", "LEDGER_IMMUDB_PASSWORD")
@@ -140,7 +140,7 @@ def test_a_ledger_key_version_is_added_never_replaced(scratch):  # noqa: F811
 
 
 def test_an_added_ledger_key_reaches_env_runtime(scratch):  # noqa: F811
-    """Phase 1 review minor 10: compose reads env.runtime, so the new version must be there too."""
+    """Compose reads env.runtime, so the new version must be there too."""
     run_secrets(scratch)
     r = _run(scratch, "--add-ledger-key")
     assert r.returncode == 0, r.stderr[-2000:]
@@ -169,7 +169,7 @@ def _immudb_strong(value):
 
 
 def test_the_immudb_superuser_password_is_generated_and_strong(scratch):  # noqa: F811
-    """Rotation of the committed one (2026-10-02): it lives in env.secrets, never in a tracked file."""
+    """It lives in env.secrets, never in a tracked file."""
     run_secrets(scratch)
     values = secrets_of(scratch)
     assert _immudb_strong(values["IMMUDB_ADMIN_PASSWORD"])
@@ -188,7 +188,7 @@ def test_the_superuser_password_rotates_but_the_ledger_users_does_not(scratch): 
 
 
 def test_the_immudb_signing_key_is_made_private_and_kept(scratch):  # noqa: F811
-    """immudb signs its states with it (ledger spec 7.3, S3); the platform checks them with the public
+    """immudb signs its states with it; the platform checks them with the public
     half. A new key would make every saved state unverifiable, so --rotate keeps it."""
     run_secrets(scratch)
     key, pub = scratch / "immudb-signing.key", scratch / "immudb-signing.pub"

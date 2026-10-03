@@ -1,11 +1,11 @@
-"""With the witness off (LEDGER_GATEWAY unset, as on a live Caddy restarted after phase 2), the gateway
-behaves exactly as before phase 2, apart from the two intended changes: the header strip at the start
-of every protected handle, and the launcher's 404 for /api/authz/* (phase 2 review m13).
+"""With the ledger witness off (LEDGER_GATEWAY unset), the gateway behaves exactly as it did before the
+witness was added, apart from two intended changes: the header strip at the start of every protected
+handle, and the launcher's 404 for /api/authz/*.
 
 Both files are adapted by a real caddy:2.10.2 to JSON; the comparison ignores only those two changes and
-the extra nesting `route` adds. The baseline is the Caddyfile before phase 2
-(fixtures/ledger_gateway/Caddyfile.before-phase2): a later intended change to the gateway means this
-test's baseline is renewed on purpose, with the review that change gets.
+the extra nesting `route` adds. The baseline is the Caddyfile before the witness
+(fixtures/ledger_gateway/Caddyfile.before-phase2): any later intended change to the gateway means
+renewing this baseline on purpose, and reviewing that change.
 """
 import json
 import os
@@ -41,7 +41,7 @@ def _is_strip(handler):
 
 def _is_authz(route):
     """Only the intended block: /api/authz/* answered by a static 404 and nothing else."""
-    # exactly the allow-list: every /api/authz/* path but the pages' role route (phase 4 review B1)
+    # exactly the allow-list: every /api/authz/* path but the pages' role route
     if route.get("match") != [{"path": ["/api/authz/*"], "not": [{"path": ["/api/authz/projects/*"]}]}]:
         return False
     handlers = []
@@ -137,7 +137,7 @@ def _mutated(tmp_path, old, new):
      "  forward_auth host.docker.internal:4180 {"),
 ])
 def test_the_comparison_is_not_fooled_by_a_changed_strip_or_block(tmp_path, old, new):
-    """Phase 2 re-review n2: only a static 404 counts as the block, only a strip before sign-in as the strip."""
+    """Only a static 404 counts as the block, and only a strip before sign-in counts as the strip."""
     if "forward_auth host.docker.internal:4180 {" in new and "request_header" not in new:
         text = _mutated(tmp_path, old, new).read_text()
         text = text.replace("      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n",

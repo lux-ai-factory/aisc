@@ -1,5 +1,4 @@
-"""The cutover and rehearsal scripts (01-specs.md sections 13, 14, 15: I13.1..I13.4, I14.1..I14.7,
-I15.1, I15.2, I18.7).
+"""The cutover and rehearsal scripts that move a shared-layout install to one database per project.
 
 Static checks on scripts/isolation/cutover.sh and rehearse.sh, plus what can run without any database:
 the step order refusal and the rollback listing, with the state directory in a temporary folder. Nothing
@@ -42,7 +41,7 @@ def run(args, state: Path, timeout=60):
                           timeout=timeout)
 
 
-# ── I13.1 the steps, in order, each with a check ─────────────────────────────
+# the steps, in order, each with a check
 
 
 def test_i13_1_cutover_script_exists_and_is_executable():
@@ -68,7 +67,7 @@ def test_i13_1_the_script_lists_its_steps_in_order(tmp_path):
 
 
 def test_i13_1_a_step_refuses_to_start_before_the_previous_one_passed(tmp_path):
-    """I13.1: with no recorded passed step, C3 refuses (non-zero) and records nothing."""
+    """With no recorded passed step, C3 refuses (non-zero) and records nothing."""
     r = run(["C3", "--target", "rehearsal"], tmp_path)
     assert r.returncode != 0, "I13.1: C3 ran without C2 recorded as passed"
     assert re.search(r"C2", r.stdout + r.stderr), "I13.1: the refusal does not name the missing step C2"
@@ -78,7 +77,7 @@ def test_i13_1_a_step_refuses_to_start_before_the_previous_one_passed(tmp_path):
 
 
 def test_i13_1_a_step_after_a_fake_passed_state_still_checks_its_predecessor(tmp_path):
-    """I13.1: the state file records passed steps; C5 after a state of C0..C3 (C4 missing) refuses."""
+    """The state file records passed steps; C5 after a state of C0..C3 (C4 missing) refuses."""
     (tmp_path / "cutover-state.json").write_text(json.dumps({"passed": ["C0", "C1", "C2", "C3"]}))
     r = run(["C5", "--target", "rehearsal"], tmp_path)
     assert r.returncode != 0 and "C4" in (r.stdout + r.stderr), "I13.1: C5 did not refuse for missing C4"
@@ -94,12 +93,12 @@ def test_i13_1_the_state_file_is_named_cutover_state_json():
     ("C12", "verify-project-databases.sh"),
 ])
 def test_i13_steps_run_their_check(step, needle):
-    """Section 13 table: each step's action and check appear in the script."""
+    """Each step's action and check appear in the script."""
     assert needle in code(CUTOVER), f"section 13 {step}: cutover.sh does not run `{needle}`"
 
 
 def test_i13_4_the_quiet_check_is_repeated_at_c8_and_c10():
-    """I13.4: C2's no-module-session check runs again at C8 and C10."""
+    """C2's no-module-session check runs again at C8 and C10."""
     body = code(CUTOVER)
     assert body.count("pg_stat_activity") >= 1
     fn = re.search(r"(\w+)\s*\(\)\s*\{[^}]*pg_stat_activity", body, re.S)
@@ -107,7 +106,7 @@ def test_i13_4_the_quiet_check_is_repeated_at_c8_and_c10():
     assert body.count(fn.group(1)) >= 4, f"I13.4: {fn.group(1)} is not called at C2, C8 and C10"
 
 
-# ── I13.2, I14 rollbacks ─────────────────────────────────────────────────────
+# rollbacks
 
 
 def test_i13_2_every_step_has_a_named_rollback(tmp_path):
@@ -117,7 +116,7 @@ def test_i13_2_every_step_has_a_named_rollback(tmp_path):
 
 
 def test_i14_4_rollback_c8_drops_only_the_schemas_of_0006_to_0010():
-    """I14.4: only schemas created by 0006..0010, after confirming provision.template_migration names; never
+    """Only schemas created by 0006..0010, after confirming provision.template_migration names; never
     controls or llm."""
     body = code(CUTOVER)
     assert "provision.template_migration" in body, "I14.4: rollback C8 does not confirm template names"
@@ -139,12 +138,12 @@ def test_i14_3_rollback_c4_documents_the_restore_and_swap():
 
 
 def test_i14_7_caddy_starts_last_after_c12():
-    """I14.7: users are let in only after C12 passed (caddy is the last thing started)."""
+    """Users are let in only after C12 passed (caddy is the last thing started)."""
     body = code(CUTOVER)
     assert "caddy" in body, "I14.7: cutover.sh never mentions caddy"
 
 
-# ── I13.3, I18.7 no secret and no row value, backups outside the repo ────────
+# no secret and no row value, backups outside the repo
 
 
 def test_i13_3_dumps_and_reports_are_mode_600_under_the_backup_directory():
@@ -155,7 +154,7 @@ def test_i13_3_dumps_and_reports_are_mode_600_under_the_backup_directory():
 
 @pytest.mark.parametrize("path", [CUTOVER, REHEARSE])
 def test_i18_7_no_credential_is_echoed(path):
-    """I13.3, I18.7: no echo/printf of a password variable, no `set -x`."""
+    """No echo/printf of a password variable, no `set -x`."""
     body = code(path)
     assert not re.search(r"set -[a-z]*x", body), f"I18.7: {path.name} traces commands (set -x)"
     for line in body.splitlines():
@@ -170,7 +169,7 @@ def test_i13_3_backups_are_never_written_inside_a_repository():
         "I13.3: cutover.sh writes a dump or report inside the repository"
 
 
-# ── I15.1 the rehearsal script ───────────────────────────────────────────────
+# the rehearsal script
 
 
 def test_i15_1_rehearsal_script_exists():
@@ -212,7 +211,7 @@ def test_i15_1_rehearsal_runs_the_cutover_script_against_the_throwaway():
         "I15.1: rehearse.sh does not run cutover.sh --target rehearsal"
 
 
-# ── I15.2 the drop step ──────────────────────────────────────────────────────
+# the drop step
 
 
 def test_i15_2_drop_statements_appear_only_in_a_step_guarded_by_verify_dump():
@@ -228,7 +227,7 @@ def test_i15_2_drop_statements_appear_only_in_a_step_guarded_by_verify_dump():
 
 
 def test_i15_3_databases_needing_a_user_decision_are_never_dropped():
-    """I15.3: aisc, controls, qualification, control_objectives, control_objectives_test, the orphan project
+    """aisc, controls, qualification, control_objectives, control_objectives_test, the orphan project
     databases, the catalogue and Superset's aisc_* tables are reported only."""
     body = code(CUTOVER)
     for name in ("aisc", "controls", "qualification", "control_objectives", "control_objectives_test"):
@@ -238,7 +237,7 @@ def test_i15_3_databases_needing_a_user_decision_are_never_dropped():
         "I15.3: cutover.sh drops Superset's aisc_* tables"
 
 
-# ── I14.1, I14.2, I14.6 what each rollback says ──────────────────────────────
+# what each rollback says
 
 
 @pytest.mark.parametrize("step,needle,req", [
@@ -249,7 +248,7 @@ def test_i15_3_databases_needing_a_user_decision_are_never_dropped():
     ("C10", "c9-acl.json", "I14.6"), ("C11", "c9-acl.json", "I14.6"), ("C12", "c9-acl.json", "I14.6"),
 ])
 def test_i14_each_rollback_names_its_action(tmp_path, step, needle, req):
-    """Section 14: C0..C2 restart the :pre-isolation images; C3 is read-only; C5..C8b restart the old images
+    """C0..C2 restart the :pre-isolation images; C3 is read-only; C5..C8b restart the old images
     and point at `rollback C8`; C9..C12 restore what C9 saved in c9-acl.json."""
     r = run(["rollback", step, "--print"], tmp_path)
     assert r.returncode == 0, f"{req}: `cutover.sh rollback {step} --print` failed"
@@ -257,20 +256,20 @@ def test_i14_each_rollback_names_its_action(tmp_path, step, needle, req):
 
 
 def test_i14_7_the_point_of_no_return_is_stated():
-    """I14.7: after users are let in, rows written since C11 exist only in project databases; the script says
+    """After users are let in, rows written since C11 exist only in project databases; the script says
     so before starting caddy."""
     body = code(CUTOVER)
     assert re.search(r"point of no return|no return", body, re.I), "I14.7: cutover.sh does not state the point of no return"
 
 
 def test_i15_2_the_drop_is_exactly_the_four_schemas_core_system_and_its_function():
-    """I15.2: DROP SCHEMA qualification, control_objectives, engine, report_composer CASCADE; DROP TABLE
+    """DROP SCHEMA qualification, control_objectives, engine, report_composer CASCADE; DROP TABLE
     core.system CASCADE; DROP FUNCTION IF EXISTS core.system_only_latest_changes(); and nothing else."""
     body = code(CUTOVER)
     schemas = set()
     for m in re.finditer(r"DROP SCHEMA\s+(?:IF EXISTS\s+)?([\w\s,]+?)\s+CASCADE", body, re.I):
         schemas |= {s.strip() for s in m.group(1).split(",")}
-    # rollback C8 (I14.4) drops the new schemas inside project databases; the stage-7 drop is on platform
+    # rollback C8 drops the new schemas inside project databases; the final drop is on platform
     assert {"qualification", "control_objectives", "engine", "report_composer"} <= schemas, \
         f"I15.2: stage-7 drop names {sorted(schemas)}"
     assert not (schemas - {"qualification", "control_objectives", "engine", "report_composer", "project"}), \

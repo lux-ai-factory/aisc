@@ -1,5 +1,5 @@
-"""The Connections page and its Manage entry (connections plan 2026-09-29, H1 to H3). Static checks
-of the page source, like test_llm_keys.py does for "Models and API keys"."""
+"""The Targets and endpoints page (homepage/connections.html) and its Manage entry. Static checks of
+the page source, like test_llm_keys.py does for "Models and API keys"."""
 import re
 
 from conftest import ROOT
@@ -21,11 +21,11 @@ def markup_of(html):
     return re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.S | re.I)
 
 
-# ── H1 the Manage entry ─────────────────────────────────────────────────────
+# the Manage entry
 
 def test_h1_the_manage_menu_links_the_page_for_owners_and_admins():
-    # allowlist task 2026-09-29: an owner manages the project's allowed internal hosts there, so the
-    # link shows for owners too; managing the connections themselves stays a platform admin's
+    # an owner manages the project's allowed internal hosts there, so the link shows for owners too;
+    # managing the connections themselves is for platform admins
     html = read(PROJECT_PAGE)
     manage = re.search(r'<details[^>]*id="manage".*?</details>', html, re.S).group(0)
     link = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>(.*?)</a>', manage, re.S)
@@ -40,7 +40,7 @@ def test_h1_the_manage_menu_links_the_page_for_owners_and_admins():
     assert script.find("if (!a.admin) return;") > wiring.start(), "the link must not wait for the admin-only part"
 
 
-# ── H2 what the page does ───────────────────────────────────────────────────
+# what the page does
 
 def test_h2_the_page_has_the_launchers_look_and_one_inline_script():
     html, reference = read(PAGE), read(PROJECT_PAGE)
@@ -62,7 +62,7 @@ def test_h2_non_admins_are_told_and_nothing_is_asked_before_the_role_is_known():
 def test_h2_it_lists_saves_tests_links_and_deletes_through_the_platform():
     script = script_of(read(PAGE))
     assert "'/api/projects/' + enc(slug) + '/connections'" in script
-    # no engine link any more (targets plan v2, O1): evaluations pick the target
+    # there is no engine link: evaluations pick the target
     for needle in ("'PUT'", "'DELETE'", "/test'"):
         assert needle in script, needle
     for field in ("label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
@@ -72,7 +72,7 @@ def test_h2_it_lists_saves_tests_links_and_deletes_through_the_platform():
 
 
 def test_h2_connections_are_no_engine_components_any_more_so_the_page_offers_no_engine_link():
-    # targets plan v2 (O1): evaluations pick the target, never a connection
+    # evaluations pick the target, never a connection
     html = read(PAGE)
     assert "engine_linked" not in script_of(html)
     assert "Link to the engine" not in html and "not linked to the engine" not in html
@@ -88,7 +88,7 @@ def test_h2_json_fields_are_parsed_on_the_page_and_a_bad_one_is_said_before_send
     assert "JSON.parse" in script and "is not valid JSON" in script
 
 
-# ── H3 the key stays write-only; the page is CSP- and injection-safe ────────
+# the key stays write-only; the page is CSP- and injection-safe
 
 def test_h3_the_key_field_is_a_write_only_password_input():
     html = read(PAGE)
@@ -117,7 +117,7 @@ def test_h3_csp_and_injection_safe():
     assert script.count("credentials: 'same-origin'") >= len(calls)
 
 
-# ── H4 the a2a and oip kinds (connections plan, revision 3) ─────────────────
+# the a2a and oip kinds
 
 def test_h4_the_kind_menu_offers_a2a_and_oip():
     html = read(PAGE)
@@ -138,15 +138,15 @@ def test_h4_the_list_says_what_an_a2a_or_oip_connection_is():
     assert "A2A agent" in script and "Open Inference Protocol" in script
 
 
-# ── H5 the layout: hidden rows really hide; the key row reads as one control ─
+# the layout: hidden rows really hide; the key row reads as one control
 
 def style_of(html):
     return "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", html, re.S | re.I))
 
 
 def test_h5_a_hidden_row_is_hidden_even_when_its_class_sets_display():
-    # .fields sets display:flex, which beats the browser's [hidden] rule: a hidden kind's row stayed
-    # in the two-column grid and shifted every later label and field by one cell
+    # .fields sets display:flex, which beats the browser's [hidden] rule: without the override a hidden
+    # kind's row stays in the two-column grid and shifts every later label and field by one cell
     css = style_of(read(PAGE))
     assert re.search(r"form#editor \[hidden\]\s*\{\s*display:\s*none\s*!important", css)
 
@@ -162,7 +162,7 @@ def test_h5_the_key_row_is_the_field_and_its_remove_box_side_by_side():
     assert check and "text-transform:none" in check.group(1).replace(" ", "")
 
 
-# ── H6 the allowed internal hosts (allowlist task 2026-09-29) ──────────────
+# the allowed internal hosts
 
 def test_h6_the_page_has_an_allowlist_section_outside_the_admins_part():
     html = markup_of(read(PAGE))
@@ -197,7 +197,7 @@ def test_h6_the_deployments_entries_are_shown_read_only_and_denials_are_said():
     assert "never" in html.lower() and "loopback" in html
 
 
-# ── H8 targets and their endpoints (targets plan v2) ───────────────────────
+# targets and their endpoints
 
 def test_h8_the_page_is_named_targets_and_endpoints():
     html = read(PAGE)

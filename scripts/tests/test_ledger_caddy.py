@@ -1,13 +1,13 @@
-"""C2: the Caddyfile, read as text (I1, T18, T19; spec 3.1). What it must say, from what the spike saw
-on a real Caddy (docs/superpowers/ledger-2026-10-02/06-spike.md):
+"""The Caddyfile's ledger witness, read as text. What it must say, from how a real Caddy orders
+directives:
 
 - `protect` wraps everything in `route`, or Caddy runs the witness before sign-in and the strip after
-  the witness (G7);
-- it strips client-sent identity and request-id headers before anything else (G3);
+  the witness;
+- it strips client-sent identity and request-id headers before anything else;
 - the witness snippet is chosen by LEDGER_GATEWAY, called on writes only, with the gateway secret, the
-  app the handle names and the unstripped URI (G1, G8, G9);
+  app the handle names and the unstripped URI;
 - every handle that serves anything imports `protect` with the right app, and the launcher never serves
-  `/api/authz/*` (G2).
+  `/api/authz/*`.
 
 The behaviour itself is checked on a real Caddy by test_ledger_gateway.py.
 """
@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "platform"))
 import os
 from pathlib import Path
 
-#: LEDGER_TEST_CADDYFILE checks another file (a reference implementation of spec 3.1).
+#: LEDGER_TEST_CADDYFILE checks another file instead of the repo's Caddyfile.
 CADDYFILE = Path(os.environ.get("LEDGER_TEST_CADDYFILE", ROOT / "Caddyfile")).read_text()
 STRIPS = ["-X-AISC-Request-Id", "-X-AISC-App", "-X-AISC-Gateway", "-X-AISC-Original-Uri", "-X-Auth-Request-*"]
 
@@ -48,7 +48,7 @@ REFUSING = {(1, "handle /api/v1/internal/*"), (2, "handle /api/internal/*"), (2,
 
 def blocks(text: str):
     """(header, body, start) of every brace block. A `{` opens a block only at the end of its line, so
-    placeholders like {http.request.uri} or {$CADDY_DOMAIN} never count (R4.15)."""
+    placeholders like {http.request.uri} or {$CADDY_DOMAIN} never count."""
     out, stack, pos = [], [], 0
     for line in text.splitlines(keepends=True):
         stripped = line.split("#", 1)[0].rstrip()
@@ -186,7 +186,7 @@ def test_oauth_endpoints_stay_open():
 def test_read_paths_are_written_as_the_handle_sees_them():
     """handle_path strips its prefix before the matcher runs, so a read path under it is written without the
     prefix; under handle it keeps it. A path with the stripped prefix would never match, and every read it
-    should witness would go unwitnessed (phase 9 review B1)."""
+    should witness would go unwitnessed."""
     problems = []
     for site, handles in sites():
         for header, body in handles:

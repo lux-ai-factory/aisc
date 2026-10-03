@@ -1,5 +1,5 @@
-"""immudb on the development stack, 2026-10-02 (ledger phase 1 follow-up): the superuser's password is
-no longer committed, and immudb signs its states (ledger spec 7.3, S3). Reads the files only."""
+"""immudb on the development stack: its superuser password is not in any tracked file, and it signs
+its states with a generated key. Reads the files only."""
 import yaml
 
 from conftest import ROOT

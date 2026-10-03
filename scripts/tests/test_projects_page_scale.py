@@ -1,7 +1,7 @@
-"""The projects page (homepage/index.html) bigger and centred (2026-09-28, the user: "the projects
-page, everything should be bigger -> the bar, and the projects has to be bigger and fit in the middle
-of the page"). The top bar takes the project page's 1.2x values so the two bars match; the project
-cards are about 1.4x and sit centred as one wrapped row. Hairlines stay 1px."""
+"""The sizes of the projects page (homepage/index.html).
+
+The top bar uses the project page's values so the two bars match; the project cards are large and
+sit centred as one wrapped row. Hairlines stay 1px."""
 import re
 from pathlib import Path
 

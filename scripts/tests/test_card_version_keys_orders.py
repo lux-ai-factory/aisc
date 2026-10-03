@@ -25,12 +25,12 @@ Run from the repo root:
 
 Every database is a throwaway postgres:15-alpine container, never the host's 5432.
 
-A historical regression since the isolation (2026-09-25, 03-coding-plan.md V1): the composite keys it
-pins exist only in the pre-isolation shared layout, which the current init files and module
-migrations no longer build (I1.6, I1.7). So, like `scripts/guard-frozen.sh --orders`, it runs on the
-trees of the top-level commit f01288a: its init files, platform migrations and runner, its report
-composer, and the qualification and control-objectives commits of its gitlinks. The assertions are
-unchanged.
+This is a regression test of the shared layout used before each project had its own database: the
+composite keys it checks exist only there, and the current init files and module migrations do not
+build that layout. So, like `scripts/guard-frozen.sh --orders`, it runs on the trees of the top-level
+commit f01288a: its init files, platform migrations and runner, its report composer, and the
+qualification and control-objectives commits of its gitlinks. The commit must be present in the
+clone, or the module fails to load.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
 from throwaway import Throwaway  # noqa: E402
 
-#: the pre-isolation top-level commit (03-coding-plan.md G3)
+#: the last top-level commit with the shared layout
 REF = "f01288a"
 
 
@@ -79,7 +79,7 @@ RC = TOP / "apps/report-composer"
 PRISMA = ROOT / "apps/qualification/node_modules/.bin/prisma"
 CO_PYTHON = ROOT / "apps/control-objectives/.venv/bin/python"
 
-#: What exists on the live stack today, before this change.
+#: What a volume made before the composite keys holds.
 LIVE_PLATFORM = ["0001_project_membership.sql", "0002_one_ai_system_per_project.sql",
                  "0003_card_versions_in_core_system.sql"]
 LIVE_QUAL_NEW = "20260924120000_a_card_is_of_a_version_of_its_project"   # left out of the live shape
@@ -115,7 +115,7 @@ INSERT INTO report_composer.generated_report (layout_id, layout_revision, projec
 LIVE_ORDERS = ["SPQCR", "QCRSP", "QCRPS", "PQCRS", "QSCPR", "CRPQS", "RQPCS", "PSRCQ"]
 #: C comes after P in every fresh order: control-objectives' 4d2a9c1e7b60 reads core.system.number,
 #: which platform 0003 makes, so on a fresh volume its compose loop retries until the platform has
-#: migrated. That was so before this change and is not what is tested here.
+#: migrated. That is not what is tested here.
 FRESH_ORDERS = ["QRPSC", "PSQCR", "RQSPC"]
 
 
@@ -204,10 +204,10 @@ def _fresh(stack: Stack):
 
 
 def _live(stack: Stack):
-    """A volume made before this change, with every module at today's head and one row each."""
+    """A volume made before the composite keys, with every module at that head and one row each."""
     stack.su_file(TOP / "init/platform-db.sql", "postgres")
     stack.su(f"ALTER TABLE core.system DROP CONSTRAINT {UNIQUE}")
-    stack.su("ALTER TABLE core.system OWNER TO platform_rw")   # what postgres-setup did until now
+    stack.su("ALTER TABLE core.system OWNER TO platform_rw")   # what postgres-setup did before the keys
     stack.su_file(TOP / "init/report-roles.sql")
     stack.P(_only(TOP / "platform/migrations", LIVE_PLATFORM))
     prisma = Path(tempfile.mkdtemp(prefix="orders-prisma-")) / "prisma"

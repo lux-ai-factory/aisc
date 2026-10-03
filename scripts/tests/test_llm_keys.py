@@ -1,5 +1,4 @@
-"""Static and scratch-copy checks of the per-project LLM keys feature (pipeline
-2026-09-24-llm-keys, 01-specs.md S3.1, S4.1 to S4.8, S6.3 to S6.6).
+"""Static and scratch-copy checks of the per-project LLM keys ("Models and API keys").
 
 Nothing is started and nothing in the repo is written: scripts/secrets.sh runs on a scratch
 copy only (in the repo it would rewrite env.runtime, the live stack's env file). The platform
@@ -44,7 +43,7 @@ def markup_of(html):
     return re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.S | re.I)
 
 
-# ── S3.1 one module, two identical copies ────────────────────────────────────
+# one module, two identical copies
 
 
 def test_s3_1_both_copies_exist_and_are_byte_identical():
@@ -91,7 +90,7 @@ def test_s3_1_s2_3_the_agents_providers_are_the_platform_catalogue():
     assert set(json.loads(done.stdout.strip().splitlines()[-1])) == keys
 
 
-# ── S4 the page ──────────────────────────────────────────────────────────────
+# the page
 
 
 def test_s4_1_the_page_has_the_launchers_look_and_one_inline_script():
@@ -184,7 +183,7 @@ def test_s4_8_the_page_never_puts_anything_but_empty_into_a_key_field():
     assert not re.search(r"\.api_key\b", script), "the page reads a key field from a response"
 
 
-# ── S6.3 secrets.sh, on a scratch copy only ──────────────────────────────────
+# secrets.sh, on a scratch copy only
 
 
 @pytest.fixture
@@ -246,7 +245,7 @@ def test_s6_3_an_existing_install_gets_them_appended_without_replacing_anything(
     assert secrets_of(scratch) == first
 
 
-# ── S6.4 Caddy blocks the internal route on the launcher ─────────────────────
+# Caddy blocks the internal route on the launcher
 
 
 def test_s6_4_the_launcher_answers_404_to_api_internal_before_proxying_api():
@@ -259,7 +258,7 @@ def test_s6_4_the_launcher_answers_404_to_api_internal_before_proxying_api():
     assert route < block.start() < site.index("handle_path /api/*")
 
 
-# ── S6.5 and S6.6 dependencies and env comments ──────────────────────────────
+# dependencies and env comments
 
 
 def test_s6_5_the_platform_depends_on_httpx_and_cryptography_at_runtime():

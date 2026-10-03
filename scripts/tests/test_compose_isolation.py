@@ -1,7 +1,6 @@
-"""Compose wiring of the isolated stack (01-specs.md I3.6, I3.8, I5.5, I7.6, I8.1, I8.4, I9.1, I9.2, I10.2,
-I16.4, I18.1). Read-only: the compose files are copied and resolved with `docker compose config` (the fixture of
-test_compose.py); nothing is started, stopped or built. DSN values are never printed, only which
-database they name.
+"""Compose wiring of the stack with one database per project. Read-only: the compose files are copied and
+resolved with `docker compose config` (the fixture of test_compose.py); nothing is started, stopped or built.
+DSN values are never printed, only which database they name.
 """
 
 from __future__ import annotations
@@ -42,7 +41,7 @@ def _depends(svc) -> set:
     return set(d) if isinstance(d, (dict, list)) else set()
 
 
-# ── qualification (I3.6, I3.8, I4.2) ─────────────────────────────────────────
+# qualification
 
 
 @pytest.mark.parametrize("name", ["qualification-web", "qualification-migrate"])
@@ -55,7 +54,8 @@ def test_i3_8_qualification_gets_a_project_database_template(compose, name):  # 
 
 @pytest.mark.parametrize("name", ["qualification-web", "qualification-migrate"])
 def test_i3_8_qualification_has_no_platform_database(compose, name):  # noqa: F811
-    """I3.8 (forms are per project since the user's decision of 2026-09-25: no form library in platform): qualification's only database DSN is the project template."""
+    """Qualification's only database DSN is the project template (forms are per project; there is no form
+    library in platform)."""
     q, cfg = compose
     env = _env(cfg, name)
     assert "FORM_LIBRARY_DATABASE_URL" not in env, f"{name} still names a form library"
@@ -70,7 +70,7 @@ def test_i3_6_qualification_migrate_runs_migrate_projects_after_the_platform(com
     assert "exit 2" in _command(svc) or "-eq 2" in _command(svc), "I3.6: exit 2 (permanent error) is not honoured"
 
 
-# ── control objectives (I5.1, I5.5) ──────────────────────────────────────────
+# control objectives
 
 
 def test_i5_5_control_objectives_migrate_runs_migrate_projects(compose):  # noqa: F811
@@ -88,7 +88,7 @@ def test_i5_1_control_objectives_has_a_project_database_template(compose, name):
         f"I5.1: {name} has no per-project DSN template with {{database}}"
 
 
-# ── engine (I7.1, I7.6) ──────────────────────────────────────────────────────
+# engine
 
 
 def test_i7_6_aisc_backend_no_longer_migrates_platform(compose):  # noqa: F811
@@ -107,7 +107,7 @@ def test_i7_6_aisc_backend_migrate_one_shot_runs_migrate_projects(compose):  # n
         "I7.6: aisc-backend does not wait for aisc-backend-migrate"
 
 
-# ── report composer and renderer (I8.1, I8.4, I9.1, I9.2) ─────────────────────
+# report composer and renderer
 
 
 def test_i8_1_composer_has_a_project_database_template_and_platform_for_the_library(compose):  # noqa: F811
@@ -126,8 +126,8 @@ def test_i9_2_renderer_reads_projects_from_their_database(compose):  # noqa: F81
 
 
 def test_i9_1_renderer_builds_from_report_generator_dir(tmp_path):
-    """I9.1, D9: isolation builds set REPORT_GENERATOR_DIR to ~/aisc-isolation-report-generator and the
-    renderer's build context follows it."""
+    """When REPORT_GENERATOR_DIR is set (here to ~/aisc-isolation-report-generator), the renderer's build
+    context follows it."""
     args, required = [], set()
     for f in FILES:
         shutil.copy(ROOT / f, tmp_path / f)
@@ -144,7 +144,7 @@ def test_i9_1_renderer_builds_from_report_generator_dir(tmp_path):
     assert str(ctx).rstrip("/") == wanted
 
 
-# ── dashboard (I10.2) ─────────────────────────────────────────────────────────
+# dashboard
 
 
 @pytest.mark.parametrize("name", ["dashboard", "dashboard-migrate"])
@@ -158,7 +158,7 @@ def test_i10_2_dashboard_reads_memberships_over_a_plain_dsn_and_registers_no_pla
             "I10.2: dashboard AISC_MEMBERSHIP_DB_URI missing or not dashboard_ro on platform"
 
 
-# ── I16.4: the only platform DSNs are the membership and report library ones ────
+# the only platform DSNs are the membership and report library ones
 
 
 ALLOWED_PLATFORM = {
@@ -184,7 +184,7 @@ def test_i16_4_every_module_dsn_names_a_project_database_except_the_allowed_plat
     assert not stray, f"I16.4: {name} has platform DSNs beyond the allowed ones: {stray}"
 
 
-# ── I18.1 service tokens survive ───────────────────────────────────────────
+# service tokens are still required
 
 
 def _required_tokens(text: str) -> set[str]:
@@ -193,8 +193,8 @@ def _required_tokens(text: str) -> set[str]:
 
 @pytest.mark.parametrize("path", FILES)
 def test_i18_1_every_service_token_required_before_isolation_is_still_required(path):
-    """I18.1: per-caller service tokens stay `:?`-required in compose; isolation drops none of them.
-    Compared with the file as committed at the start of the isolation branch (f01288a, stage 1)."""
+    """Per-caller service tokens stay `:?`-required in compose. Compared with the file at f01288a, the
+    last commit before the per-project databases."""
     before = subprocess.run(["git", "show", f"f01288a:{path}"], cwd=ROOT, capture_output=True, text=True)
     assert before.returncode == 0, before.stderr
     lost = sorted(_required_tokens(before.stdout) - _required_tokens((ROOT / path).read_text()))

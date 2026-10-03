@@ -1,8 +1,8 @@
-"""Grants inside a project database after isolation (01-specs.md I2.1, I2.6, I2.7, I11.1, I16.1).
+"""Grants inside a project database.
 
 Two throwaway project databases (A and B) made by the platform's own provision, then every module's
-own migrate command (scripts/tests/isolation_bed.py). Until the work packages exist the bed records
-what is missing and each test FAILS naming it.
+own migrate command (scripts/tests/isolation_bed.py). When a step of the bed fails, it records what is
+missing and each test that needs it fails naming it.
 
     uv run --no-project --with pytest --with 'psycopg[binary]' python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_project_grants.py
@@ -42,12 +42,11 @@ def _can(bed, db, role, rel, priv="SELECT") -> bool:
     return bed.scalar(db, f"SELECT has_table_privilege('{role}', '{rel}', '{priv}')") == "t"
 
 
-# ── I2.1 template files and search paths ────────────────────────────────────
+# template files and search paths
 
 
 def test_i2_1_every_project_database_lists_template_0001_to_0010(bed):
-    """I2.1, I2.9, I16.3: provision applies 0006..0010 after 0001..0005, tracked in
-    provision.template_migration."""
+    """Provision applies template files 0001 to 0010 in order, tracked in provision.template_migration."""
     bed.require("templates", "provision")
     for db in DBS:
         names = [r["name"] for r in bed.rows(db, "SELECT name FROM provision.template_migration ORDER BY 1")]
@@ -56,7 +55,7 @@ def test_i2_1_every_project_database_lists_template_0001_to_0010(bed):
 
 @pytest.mark.parametrize("schema", ["project", "qualification", "control_objectives", "engine", "report_composer"])
 def test_i2_1_the_template_makes_each_module_schema_owned_by_platform_rw(bed, schema):
-    """I1.2, I2.1, D10: each module schema is created by the template and owned by platform_rw."""
+    """Each module schema is created by the template and owned by platform_rw."""
     bed.require("templates")
     for db in DBS:
         owner = bed.scalar(db, f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '{schema}'")
@@ -65,7 +64,7 @@ def test_i2_1_the_template_makes_each_module_schema_owned_by_platform_rw(bed, sc
 
 @pytest.mark.parametrize("schema,role", [(s, r) for s, r in ib.MODULES.items() if s != "controls"])
 def test_i2_1_each_module_role_has_its_own_search_path_in_the_project_database(bed, schema, role):
-    """I2.1: ALTER ROLE <module role> IN DATABASE <db> SET search_path = <module>."""
+    """ALTER ROLE <module role> IN DATABASE <db> SET search_path = <module>."""
     bed.require("templates")
     for db in DBS:
         cfg = bed.scalar(db, f"""
@@ -75,13 +74,13 @@ def test_i2_1_each_module_role_has_its_own_search_path_in_the_project_database(b
         assert f"search_path={schema}" in cfg, f"I2.1: {db} {role} settings {cfg!r}"
 
 
-# ── I2.6 the reader list, exhaustive ─────────────────────────────────────────
+# the reader list, exhaustive
 
 
 @pytest.mark.parametrize("reader", ib.READERS)
 @pytest.mark.parametrize("schema", sorted(ib.READER_TABLES))
 def test_i2_6_readers_see_exactly_the_listed_tables(bed, reader, schema):
-    """I2.6, I10.3, I16.1: in every project database, SELECT for report_ro and dashboard_ro on exactly the
+    """In every project database, SELECT for report_ro and dashboard_ro on exactly the
     tables of the reader list, no more, no less (engine.aisc_backend_pluginconfig is checked by column below)."""
     bed.require(*ALL_MODULES)
     for db in DBS:
@@ -102,7 +101,7 @@ def test_i2_6_readers_see_exactly_the_listed_tables(bed, reader, schema):
 
 @pytest.mark.parametrize("reader", ib.READERS)
 def test_i2_6_engine_plugin_config_only_its_id_and_plugin_id_columns(bed, reader):
-    """I2.6: `plugin_config (id, plugin_id)` columns only; `config` never."""
+    """`plugin_config (id, plugin_id)` columns only; `config` never."""
     bed.require("engine")
     for db in DBS:
         assert not _can(bed, db, reader, "engine.aisc_backend_pluginconfig"), f"{db}: table-wide SELECT on plugin_config"
@@ -116,7 +115,7 @@ def test_i2_6_engine_plugin_config_only_its_id_and_plugin_id_columns(bed, reader
 @pytest.mark.parametrize("reader", ib.READERS)
 @pytest.mark.parametrize("rel", ib.SECRETS)
 def test_i2_6_secrets_are_unreadable_by_readers(bed, reader, rel):
-    """I2.6, I18.5: engine.aisc_backend_projectconfig, plugin_config_project_config and llm.* are never readable."""
+    """engine.aisc_backend_projectconfig, plugin_config_project_config and llm.* are never readable."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         assert bed.exists(db, rel), f"I2.6: {db} lacks {rel}"
@@ -125,7 +124,7 @@ def test_i2_6_secrets_are_unreadable_by_readers(bed, reader, rel):
 
 @pytest.mark.parametrize("reader", ib.READERS)
 def test_i2_6_readers_never_write(bed, reader):
-    """I2.6, I10.3: no INSERT, UPDATE, DELETE or TRUNCATE for a reader on any table of a project database."""
+    """No INSERT, UPDATE, DELETE or TRUNCATE for a reader on any table of a project database."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         rows = bed.rows(db, f"""
@@ -137,7 +136,7 @@ def test_i2_6_readers_never_write(bed, reader):
 
 
 def test_i2_6_no_default_privilege_grants_to_a_reader(bed):
-    """I2.6, D10: reader grants come from each table owner's migration path, never from a default privilege
+    """Reader grants come from each table owner's migration path, never from a default privilege
     (which would also cover secrets)."""
     bed.require(*ALL_MODULES)
     for db in DBS:
@@ -148,12 +147,12 @@ def test_i2_6_no_default_privilege_grants_to_a_reader(bed):
         assert bad == [], f"{db}: default privileges to readers {bad}"
 
 
-# ── I16.1 module roles: their own schema, project.system read-only, nothing else ──────
+# module roles: their own schema, project.system read-only, nothing else
 
 
 @pytest.mark.parametrize("schema,role", list(ib.MODULES.items()))
 def test_i16_1_a_module_role_has_rights_only_on_its_own_schema(bed, schema, role):
-    """I16.1: USAGE, CREATE on its own schema; USAGE on project; nothing on llm, provision or another
+    """USAGE, CREATE on its own schema; USAGE on project; nothing on llm, provision or another
     module's schema."""
     bed.require(*ALL_MODULES)
     for db in DBS:
@@ -169,7 +168,7 @@ def test_i16_1_a_module_role_has_rights_only_on_its_own_schema(bed, schema, role
 
 @pytest.mark.parametrize("role", list(ib.MODULES.values()))
 def test_i2_1_project_system_is_select_and_references_only_for_module_roles(bed, role):
-    """I2.1, D2: SELECT, REFERENCES on project.system for every module role; no role but platform_rw writes it."""
+    """SELECT, REFERENCES on project.system for every module role; no role but platform_rw writes it."""
     bed.require("templates", "project_system")
     for db in DBS:
         assert _can(bed, db, role, "project.system", "SELECT")
@@ -182,7 +181,7 @@ def test_i2_1_project_system_is_select_and_references_only_for_module_roles(bed,
 
 @pytest.mark.parametrize("schema,role", [(s, r) for s, r in ib.MODULES.items()])
 def test_i2_6_module_tables_are_owned_by_their_module_role(bed, schema, role):
-    """I1.1, I1.2, D10: tables of a module schema are created by its own migrations, owned by its role."""
+    """Tables of a module schema are created by its own migrations, owned by its role."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         rows = bed.rows(db, f"""
@@ -192,12 +191,12 @@ def test_i2_6_module_tables_are_owned_by_their_module_role(bed, schema, role):
         assert {r["owner"] for r in rows} == {role}, f"{db} {schema}: {rows}"
 
 
-# ── I11.1 inspector_ro ───────────────────────────────────────────────────────
+# inspector_ro
 
 
 @pytest.mark.parametrize("schema", ["project", "qualification", "control_objectives", "engine", "report_composer"])
 def test_i11_1_inspector_reads_every_new_schema_and_writes_nothing(bed, schema):
-    """I11.1: inspector_ro SELECTs a row from each new schema of a project database and cannot INSERT."""
+    """inspector_ro SELECTs a row from each schema of a project database and cannot INSERT."""
     bed.require(*ALL_MODULES)
     db = DBS[0]
     tables = _tables(bed, db, schema)
@@ -209,21 +208,22 @@ def test_i11_1_inspector_reads_every_new_schema_and_writes_nothing(bed, schema):
     assert r.returncode != 0, "I11.1: inspector_ro inserted into project.system"
 
 
-# ── I2.7 scripts/report-grants.sh, the superuser repair one-shot ─────────────
+# scripts/report-grants.sh, the superuser repair one-shot
 
 
 GRANTS_SH = ROOT / "scripts/report-grants.sh"
 
 
 def test_i2_7_report_grants_has_no_platform_section_for_moved_schemas():
-    """I2.7: the platform section for qualification, control_objectives, engine is dropped."""
+    """There is no platform section for qualification, control_objectives or engine: those live in
+    the project databases."""
     text = GRANTS_SH.read_text()
     assert "engine.aisc_backend_measurement" not in text, "I2.7: report-grants.sh still waits for platform engine.aisc_backend_measurement"
     assert "-d platform -f" not in text, "I2.7: report-grants.sh still applies report-ro-grants.sql to platform"
 
 
 def test_i2_7_report_grants_covers_every_module_schema_of_a_project_database():
-    """I2.7: the per-project loop grants the whole reader list of I2.6 (project, controls, qualification,
+    """The per-project loop grants the whole reader list (project, controls, qualification,
     control_objectives, engine), not only controls."""
     text = GRANTS_SH.read_text()
     for schema in ("project", "qualification", "control_objectives", "engine"):
@@ -232,7 +232,7 @@ def test_i2_7_report_grants_covers_every_module_schema_of_a_project_database():
 
 
 def test_i2_7_report_grants_repairs_a_revoked_grant_and_reruns_idempotently(bed):
-    """I2.7: after a reader grant is revoked, one run restores it; a second run exits 0 and changes nothing;
+    """After a reader grant is revoked, one run restores it; a second run exits 0 and changes nothing;
     secrets stay unreadable."""
     bed.require(*ALL_MODULES)
     db = DBS[0]
@@ -250,7 +250,7 @@ def test_i2_7_report_grants_repairs_a_revoked_grant_and_reruns_idempotently(bed)
 
 
 def test_i2_7_report_grants_skips_a_project_database_without_module_tables(bed):
-    """I2.7: a project database with only the template (no module migrated yet) is skipped table by table,
+    """A project database with only the template (no module migrated yet) is skipped table by table,
     and the run still exits 0."""
     bed.require("templates")
     extra = "c0000000-0000-4000-8000-00000000000c"

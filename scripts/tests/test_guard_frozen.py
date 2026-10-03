@@ -1,7 +1,8 @@
-"""The guard (03 "Guard spec", WP0) and what it guards (WP1, WP4, WP9 under amendment A1, WP13).
+"""scripts/guard-frozen.sh, the guard that the engine and the vendored ontology files stay as upstream
+made them, and what it guards.
 
-Each test names its rule. A rule whose feature is not built yet fails with the guard's own
-reason (MISSING <file>, or the check that differs).
+G1 to G5 and S4.1 to S4.4 are the names of the guard's own checks, as it prints them. A failing check
+fails its test with the guard's own reason (MISSING <file>, or the check that differs).
 """
 
 import os
@@ -18,10 +19,10 @@ SCRIPTS = [GUARD, CHAIN, ROOT / "scripts/lib/throwaway-pg.sh", ROOT / "scripts/p
            ROOT / "scripts/pipeline_chain/test_dashboard_queries.py"]
 
 
-# --- WP0 ---------------------------------------------------------------------------------------
+# the guard's own hygiene
 
 def test_s0_1_no_container_remains_after_success(tmp_path):
-    """S0.1: a run that succeeds removes its container."""
+    """A run that succeeds removes its container."""
     r = run([str(GUARD), "--reference-only"], env={**os.environ, "GUARD_OUT": str(tmp_path)}, timeout=600)
     name = container_name(r.stdout)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -29,7 +30,7 @@ def test_s0_1_no_container_remains_after_success(tmp_path):
 
 
 def test_s0_1_no_container_remains_after_failure(tmp_path):
-    """S0.1: a run that fails after its container started removes it too."""
+    """A run that fails after its container started removes it too."""
     r = run([str(GUARD), "--reference-only"],
             env={**os.environ, "GUARD_OUT": str(tmp_path), "GUARD_BACKEND_PY": "/nonexistent/python"}, timeout=600)
     name = container_name(r.stdout)
@@ -38,7 +39,7 @@ def test_s0_1_no_container_remains_after_failure(tmp_path):
 
 
 def test_s0_1_no_container_remains_after_a_signal(tmp_path):
-    """S0.1: SIGTERM while the reference is being built still removes the container."""
+    """SIGTERM while the reference is being built still removes the container."""
     p = subprocess.Popen([str(GUARD), "--reference-only"], cwd=ROOT, text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                          env={**os.environ, "GUARD_OUT": str(tmp_path)})
@@ -58,7 +59,7 @@ def test_s0_1_no_container_remains_after_a_signal(tmp_path):
 
 
 def test_s0_2_two_reference_dumps_are_byte_identical(tmp_path):
-    """S0.2: two runs on an unchanged tree give byte-identical reference dumps."""
+    """Two runs on an unchanged tree give byte-identical reference dumps."""
     a, b = tmp_path / "a", tmp_path / "b"
     for d in (a, b):
         r = run([str(GUARD), "--reference-only"], env={**os.environ, "GUARD_OUT": str(d)}, timeout=600)
@@ -80,7 +81,7 @@ def _code_lines(path):
 
 
 def test_s0_3_scripts_never_target_the_hosts_5432():
-    """S0.3: 5432 appears only as the container side of `-p 127.0.0.1:$PORT:5432` (or in the
+    """5432 appears only as the container side of `-p 127.0.0.1:$PORT:5432` (or in the
     refusal of port 5432), and every 127.0.0.1 address is on the throwaway port."""
     for path in SCRIPTS:
         for n, code in _code_lines(path):
@@ -93,16 +94,16 @@ def test_s0_3_scripts_never_target_the_hosts_5432():
                     f"{path.name}:{n}: address not on the throwaway port: {code.strip()}"
 
 
-# --- WP1: engine undo ---------------------------------------------------------------------------
+# G1: the engine schema
 
 G1_PASS = "G1 PASS (engine schema equals Sean's master plus the listed additions)"
 
 
 def test_s1_1_engine_schema_equals_seans_master(guard_all):
-    """S1.1 / G1 (adapt plan 2026-09-28, Ruling 6): the engine migrations at HEAD, applied by
-    migrate_projects in a project database (isolation I7.12), give exactly the schema Sean's
-    origin/master makes, up to the additions the guard lists (and, in configurator, minus the
-    tables 0019 drops); the "0003 after" order is covered by S4.1, on the pre-isolation trees."""
+    """G1: the engine migrations at HEAD, applied by migrate_projects in a project database, give
+    exactly the schema the engine's origin/master makes, up to the additions the guard lists (and, in
+    configurator mode, minus the tables 0019 drops); the "0003 after" order is covered by S4.1, on the
+    trees of the shared layout."""
     r, out = guard_all
     lines = verdict(r.stdout, "G1")
     assert lines == [G1_PASS], "\n".join(lines) or r.stdout[-3000:]
@@ -134,7 +135,7 @@ def test_g1_a_difference_the_list_does_not_name_fails_g1_with_its_name(tmp_path)
 
 
 def test_s1_4_backend_part_of_g4_and_g5(guard_all):
-    """S1.4: G4 (backend) and G5 pass after WP1."""
+    """G4 (backend) and G5 pass."""
     r, out = guard_all
     backend = [l for l in verdict(r.stdout, "G4") if "backend" in l]
     assert backend == [], "\n".join(backend)
@@ -142,8 +143,8 @@ def test_s1_4_backend_part_of_g4_and_g5(guard_all):
 
 
 def test_s1_6_one_ai_system_per_engine_project(guard_all):
-    """S1.6: the candidate engine schema (in a project database) keeps UNIQUE (project_id) on
-    engine.aisc_backend_aisystem (Sean's table name)."""
+    """The candidate engine schema (in a project database) keeps UNIQUE (project_id) on
+    engine.aisc_backend_aisystem."""
     r, out = guard_all
     dump = (out / "engine.candidate.sql").read_text()
     assert re.search(r"ALTER TABLE ONLY engine\.aisc_backend_aisystem\s+ADD CONSTRAINT \w+ UNIQUE \(project_id\);",
@@ -152,10 +153,9 @@ def test_s1_6_one_ai_system_per_engine_project(guard_all):
 
 # --- the other guard checks ---------------------------------------------------------------------
 
-# 2026-09-30: the freeze is there so we never diverge from the originals: the authors' AIRO and VAIR
-# files, and Sean's code. knowledge_graph and qualification_risk are our own tables (the VAIR form added
-# columns to the second), and airo_vocab.json is our own list, so G2 is retired and G3 hashes only the
-# two vendored files.
+# The freeze keeps this repo from diverging from the originals: the authors' AIRO and VAIR files, and
+# the engine's upstream code. knowledge_graph and qualification_risk are our own tables, and
+# airo_vocab.json is our own list, so G2 is retired and G3 hashes only the two vendored files.
 
 def test_g2_is_retired():
     r = subprocess.run([str(GUARD), "--only", "G2"], capture_output=True, text=True, timeout=60)
@@ -214,9 +214,8 @@ def intended(path=INTENDED):
 
 
 def test_g4_the_list_names_every_change_of_feat_deployment_modes_with_its_reason():
-    """G4 (Ruling 36): each engine repo is compared with origin/master, the base of
-    feat/deployment-modes; the list names exactly the files the branch changes, each with a task
-    and a reason."""
+    """G4: each engine repo is compared with origin/master, the base of feat/deployment-modes; the
+    list names exactly the files the branch changes, each with a task and a reason."""
     bases, changes = intended()
     assert sorted(bases) == sorted(ENGINE_REPOS)
     for repo in ENGINE_REPOS:
@@ -257,7 +256,7 @@ def test_g4_passes_on_the_engine_repos_as_listed(tmp_path):
 
 
 def test_g4_webapp_seans_files_identical_to_origin_master(guard_all):
-    """G4 (webapp) / S13.2 under Ruling 36: every webapp file not on the list equals origin/master."""
+    """G4 (webapp): every webapp file not on the list equals origin/master."""
     r, out = guard_all
     web = [l for l in verdict(r.stdout, "G4") if "webapp" in l]
     assert web == [], "\n".join(web)
@@ -273,9 +272,9 @@ def test_g4_eval_as_listed_plugin_interface_plugin_manager_untouched(guard_all):
 
 
 def test_g4_plugin_manager_is_merils_staging_commit(tmp_path):
-    """G4 (Task 9b): shared/plugin-manager is pinned to 46e1867 (Méril's
-    origin/feat/dev-catalogue-staging, the public index without login), not master; the guard
-    records that reference with its reason and fails when the submodule is elsewhere."""
+    """G4: shared/plugin-manager is pinned to 46e1867 (origin/feat/dev-catalogue-staging, the public
+    index without login), not master; the guard records that reference with its reason and fails
+    when the submodule is elsewhere."""
     text = GUARD.read_text()
     assert re.search(r"^PM_REF=46e1867\b.*Task 9b", text, re.M), "no PM_REF=46e1867 with its reason"
     head = subprocess.run(["git", "-C", str(ROOT / "shared/plugin-manager"), "rev-parse", "HEAD"],
@@ -284,12 +283,12 @@ def test_g4_plugin_manager_is_merils_staging_commit(tmp_path):
     assert '"$PM_REF"' in text or "$PM_REF" in text.split("g4()", 1)[1].split("g5()", 1)[0]
 
 
-# --- WP9 under amendment A1 ----------------------------------------------------------------------
+# the evaluation stamp stays outside the engine's own files
 
 @pytest.mark.parametrize("path", ["aisc_backend/routers/evaluation.py", "aisc_backend/models/evaluation.py"])
 def test_s9_1_seans_evaluation_files_change_only_as_listed_and_never_stamp(path):
-    """S9.1 as amended by A1, under Ruling 36: the stamp is set outside Sean's files. Each file
-    equals origin/master or is on the G4 list, and what it adds never sets the stamp."""
+    """The system version stamp is set outside the engine's own files. Each file equals
+    origin/master or is on the G4 list, and what it adds never sets the stamp."""
     bases, changes = intended()
     r = subprocess.run(["git", "diff", "-U0", bases["backend"], "HEAD", "--", path],
                        cwd=ROOT / "apps/backend", capture_output=True, text=True)
@@ -302,22 +301,22 @@ def test_s9_1_seans_evaluation_files_change_only_as_listed_and_never_stamp(path)
 
 
 def test_s9_4_g1_equals_seans_master_and_g5_after_the_stamp(guard_all):
-    """S9.4: G1 (Sean's master plus the listed additions) and G5 still pass after WP9."""
+    """G1 (origin/master plus the listed additions) and G5 still pass with the stamp in place."""
     r, out = guard_all
     assert verdict(r.stdout, "G1")[:1] == [G1_PASS]
     assert verdict(r.stdout, "G5") == ["G5 PASS"]
 
 
-# --- WP4: migration orders -----------------------------------------------------------------------
+# S4: migration orders (guard-frozen.sh --orders)
 
 def test_s4_1_every_order_gives_the_reference_engine_schema(guard_orders):
-    """S4.1 (and S1.1 with platform 0003 before and after engine 0023)."""
+    """S4.1: every order gives the reference engine schema, with platform 0003 before and after engine 0023."""
     r, out = guard_orders
     assert verdict(r.stdout, "S4.1") == ["S4.1 PASS"], r.stdout[-3000:]
 
 
 def test_s4_2_core_and_qualification_schema_identical_across_orders(guard_orders):
-    """S4.2"""
+    """S4.2: core and qualification end with the same schema in every order."""
     r, out = guard_orders
     assert verdict(r.stdout, "S4.2") == ["S4.2 PASS"], r.stdout[-3000:]
 
@@ -329,6 +328,6 @@ def test_s4_3_mcas_card_and_version_survive_every_order(guard_orders):
 
 
 def test_s4_4_unowned_core_system_fails_only_at_0003_then_recovers(guard_orders):
-    """S4.4"""
+    """S4.4: an unowned core.system fails only at platform 0003, then recovers."""
     r, out = guard_orders
     assert verdict(r.stdout, "S4.4") == ["S4.4 PASS"], r.stdout[-3000:]

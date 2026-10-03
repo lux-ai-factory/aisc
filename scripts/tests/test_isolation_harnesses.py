@@ -1,5 +1,4 @@
-"""Test harnesses, consistency checks and labels after isolation (01-specs.md I7.12, I11.3, I16.6, I18.7,
-I19.2, I19.3).
+"""Test harnesses, consistency checks and schema-docs labels for the per-project databases.
 
 Throwaway postgres:15-alpine only (scripts/tests/isolation_bed.py and scripts/lib/throwaway-pg.sh).
 
@@ -33,7 +32,7 @@ CHECKS = ROOT / "scripts/db_consistency/checks.py"
 DB_A = ib.project_db(ib.A)
 
 
-# ── I11.3 schema-docs labels ─────────────────────────────────────────────────
+# schema-docs labels
 
 
 def _server():
@@ -52,17 +51,17 @@ def test_i11_3_project_schemas_name_every_module():
 
 def test_i11_3_platform_schemas_are_the_shared_ones_only():
     labels = _server().PLATFORM_SCHEMAS
-    # (forms are per project since the user's decision of 2026-09-25: no form library in platform)
+    # forms are per project, so there is no form library in platform
     assert set(labels) == {"core", "catalogue", "report_library"}, f"I11.3: {sorted(labels)}"
     assert labels["core"][0] == "Projects and their members", f"I11.3: core label {labels['core'][0]!r}"
 
 
 def test_i11_2_the_database_rule_is_unchanged():
-    """I11.2: the regex stays ^(platform|project_[0-9a-f]{32})$."""
+    """The regex stays ^(platform|project_[0-9a-f]{32})$."""
     assert _server().DATABASE.pattern == r"^(platform|project_[0-9a-f]{32})$"
 
 
-# ── I19.2 harnesses ──────────────────────────────────────────────────────────
+# harnesses
 
 
 def test_i19_2_throwaway_pg_has_tpg_project_db():
@@ -70,7 +69,7 @@ def test_i19_2_throwaway_pg_has_tpg_project_db():
 
 
 def test_i19_2_tpg_project_db_makes_a_project_database_with_the_template():
-    """I19.2: `tpg_project_db <pid>` creates project_<hex> and applies every template file, tracked."""
+    """`tpg_project_db <pid>` creates project_<hex> and applies every template file, tracked."""
     assert re.search(r"^tpg_project_db\s*\(\)", TPG.read_text(), re.M), "I19.2: throwaway-pg.sh lacks tpg_project_db"
     pid = "3f2b8c1e-0d4a-4e7b-9a55-1c2d3e4f5a6b"
     script = f"""
@@ -88,7 +87,7 @@ tpg_su project_3f2b8c1e0d4a4e7b9a551c2d3e4f5a6b -tA -c "SELECT string_agg(name, 
 
 
 def test_i19_2_n6_throwaway_rows_parse_a_single_row():
-    """I19.2 (N6): Throwaway.rows parses psql tuples-only output; a query of one row returns one dict."""
+    """Throwaway.rows parses psql tuples-only output; a query of one row returns one dict."""
     sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
     from throwaway import Throwaway
     t = Throwaway.start("iso-top-n6")
@@ -100,13 +99,13 @@ def test_i19_2_n6_throwaway_rows_parse_a_single_row():
 
 @pytest.mark.parametrize("path", [GUARD, CHAIN])
 def test_i19_2_harnesses_target_project_databases(path):
-    """I19.2: guard-frozen.sh and test-pipeline-chain.sh build module schemas in project databases."""
+    """guard-frozen.sh and test-pipeline-chain.sh build module schemas in project databases."""
     text = path.read_text()
     assert "tpg_project_db" in text, f"I19.2: {path.name} does not make project databases with tpg_project_db"
 
 
 def test_i7_12_guard_g1_compares_engine_definitions_in_a_project_database():
-    """I7.12: G1 dumps the engine schema of a project database migrated by migrate_projects, not
+    """The guard's G1 dumps the engine schema of a project database migrated by migrate_projects, not
     platform.engine."""
     text = GUARD.read_text()
     assert "migrate_projects" in text, "I7.12: guard-frozen.sh does not migrate the engine per project"
@@ -115,7 +114,7 @@ def test_i7_12_guard_g1_compares_engine_definitions_in_a_project_database():
 
 
 def test_i19_3_dashboard_queries_run_the_engine_dataset_on_a_project_database():
-    """I19.3: the engine dataset SQL joins project.system, has no pid filter, and runs on the project
+    """The engine dataset SQL joins project.system, has no pid filter, and runs on the project
     database as dashboard_ro."""
     text = DASHQ.read_text()
     sql = text.split("ENGINE_RESULTS_SQL", 1)[1].split('"""', 2)[1]
@@ -124,7 +123,7 @@ def test_i19_3_dashboard_queries_run_the_engine_dataset_on_a_project_database():
     assert not re.search(r'rows\("platform", ENGINE_RESULTS_SQL', text), "I19.3: engine dataset still runs on platform"
 
 
-# ── I16.6 db_consistency per project database ────────────────────────────────
+# db_consistency per project database
 
 
 def test_i16_6_checks_no_longer_read_core_system():
@@ -181,7 +180,7 @@ def test_i16_6_a_clean_isolated_bed_passes_every_data_check(bed, cluster):
     ("report_composer", "report_composer.schema_migration", "name"),
 ])
 def test_i16_6_c7_every_module_tracker_is_checked(bed, cluster, module, tracker, undo_col):
-    """I16.6 C7: a project database behind on any module's migrations is a FAIL naming that tracker."""
+    """Check C7: a project database behind on any module's migrations is a FAIL naming that tracker."""
     bed.require(*ALL)
     backup = f"iso_backup_{module}"
     with planted(bed, DB_A, f"CREATE TABLE public.{backup} AS SELECT * FROM {tracker}; DELETE FROM {tracker}",
@@ -191,7 +190,7 @@ def test_i16_6_c7_every_module_tracker_is_checked(bed, cluster, module, tracker,
 
 
 def test_i16_6_c4_an_evaluation_stamp_that_does_not_resolve_in_the_same_database(bed, cluster):
-    """I16.6 C4: engine.aisc_backend_evaluation.system_id must be a project.system of the same database."""
+    """Check C4: engine.aisc_backend_evaluation.system_id must be a project.system of the same database."""
     bed.require(*ALL)
     ghost = "deadbeef-0000-4000-8000-00000000beef"
     sql = f"""SET session_replication_role = replica;
@@ -207,8 +206,8 @@ def test_i16_6_c4_an_evaluation_stamp_that_does_not_resolve_in_the_same_database
 
 
 def test_i16_6_c8_lints_the_project_schemas(bed, cluster):
-    """I16.6 C8: the lint covers qualification, control_objectives, report_composer and project in project
-    databases (engine frozen, excluded)."""
+    """Check C8: the lint covers qualification, control_objectives, report_composer and project in project
+    databases (the engine's schema is not ours to rename, so it is excluded)."""
     bed.require(*ALL)
     with planted(bed, DB_A, "CREATE TABLE qualification.\"BadName\" (\"camelCol\" int)",
                  "DROP TABLE qualification.\"BadName\""):
@@ -227,7 +226,7 @@ def _any(found, *needles):
 
 
 def test_i16_6_c3_a_card_named_unlike_its_version_in_the_same_database(bed, cluster):
-    """I16.6 C3: qualification.qualification joins project.system of the same database (no core.system);
+    """Check C3: qualification.qualification joins project.system of the same database (no core.system);
     a card whose systemName differs from its version's name is a FAIL naming the database and the card."""
     bed.require(*ALL)
     sql = f"""SET session_replication_role = replica; {PLANT_SYSTEM}
@@ -242,7 +241,7 @@ def test_i16_6_c3_a_card_named_unlike_its_version_in_the_same_database(bed, clus
 
 
 def test_i16_6_c4_a_controls_answer_naming_a_version_absent_from_its_database(bed, cluster):
-    """I16.6 C4 (paired stamps): controls.submission_answer.system_version_pid must be a project.system row of
+    """Check C4 (paired stamps): controls.submission_answer.system_version_pid must be a project.system row of
     the same database (no core.system lookup)."""
     bed.require(*ALL)
     ghost = "6b6b6b6b-0000-4000-8000-00000000006b"
@@ -256,7 +255,7 @@ def test_i16_6_c4_a_controls_answer_naming_a_version_absent_from_its_database(be
 
 
 def test_i16_6_card_component_must_name_an_engine_component_of_the_same_database(bed, cluster):
-    """I16.6: qualification.card_component.component_pid exists in engine.aisc_backend_aicomponent of the same database."""
+    """qualification.card_component.component_pid exists in engine.aisc_backend_aicomponent of the same database."""
     bed.require(*ALL)
     ghost = "7c7c7c7c-0000-4000-8000-00000000007c"
     sql = f"""SET session_replication_role = replica;
@@ -271,7 +270,7 @@ def test_i16_6_card_component_must_name_an_engine_component_of_the_same_database
 
 
 def test_i16_6_c6_a_stale_graph_is_reported_in_its_project_database(bed, cluster):
-    """I16.6 C6: the graph digest check runs per project database (control_objectives.graph against
+    """Check C6: the graph digest check runs per project database (control_objectives.graph against
     qualification.knowledge_graph of the same database) and names the database."""
     bed.require(*ALL)
     sql = f"""SET session_replication_role = replica; {PLANT_SYSTEM}
@@ -294,7 +293,7 @@ def test_i16_6_c6_a_stale_graph_is_reported_in_its_project_database(bed, cluster
     assert hits, "I16.6 C6: a stale graph in a project database was not reported naming that database"
 
 
-# ── I18.7 no new script prints a secret ──────────────────────────────────────
+# no isolation script prints a secret
 
 
 def test_i18_7_isolation_scripts_print_no_secret():

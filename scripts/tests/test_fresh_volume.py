@@ -1,4 +1,4 @@
-"""A fresh volume, and init files that survive the drop step (01-specs.md I1.3, I1.4, I2.8, I16.3, I16.4).
+"""A fresh volume, and init files that still run once the old shared schemas are dropped.
 
 Throwaway postgres:15-alpine only (scripts/tests/isolation_bed.py), never the host's 5432.
 
@@ -24,7 +24,7 @@ MODULE_ROLES = ["qualification_rw", "control_objectives_rw", "controls_rw", "eng
                 "catalogue_rw"]
 
 
-# ── I2.8 static: what platform-db.sql no longer makes, and what it makes ──────
+# static: what platform-db.sql does not make, and what it makes
 
 
 def _sql(path):
@@ -61,7 +61,7 @@ def test_i2_8_platform_db_sql_sets_no_module_search_path():
 
 @pytest.mark.parametrize("schema,owner", [("report_library", "report_composer_rw")])
 def test_i2_8_platform_db_sql_creates_the_report_library(schema, owner):
-    """D4. There is no form library (forms are per project since the user's decision of 2026-09-25: no form library in platform)."""
+    """The report library is made; there is no form library (forms are per project)."""
     text = _sql(PLATFORM_DB_SQL)
     assert re.search(rf"CREATE SCHEMA\s+(IF NOT EXISTS\s+)?{schema}\b", text, re.I), \
         f"I2.8, D4: init/platform-db.sql does not create {schema}"
@@ -69,20 +69,20 @@ def test_i2_8_platform_db_sql_creates_the_report_library(schema, owner):
         f"I2.8: {schema} is not owned by {owner}"
 
 
-# ── I2.8 behaviour: project-databases.sql keeps running after the drop ────────
+# behaviour: project-databases.sql keeps running after the drop
 
 
 @pytest.fixture(scope="module")
 def old_volume():
-    """Init files and platform migrations as today, no project."""
+    """Init files and platform migrations, no project."""
     b = ib.build("initdrop", projects=(), modules=False)
     yield b
     b.stop()
 
 
 def test_i2_8_project_databases_sql_runs_after_core_system_and_module_schemas_are_dropped(old_volume):
-    """I2.8, I15.2: after stage 7 (DROP SCHEMA ... CASCADE; DROP TABLE core.system CASCADE) the file runs on
-    every start of postgres-setup and exits 0."""
+    """Once the old shared schemas and core.system are dropped (DROP SCHEMA ... CASCADE; DROP TABLE
+    core.system CASCADE), the file still runs on every start of postgres-setup and exits 0."""
     b = old_volume
     r = b.psql("platform", "DROP SCHEMA IF EXISTS qualification, control_objectives, engine, report_composer CASCADE;"
                            "DROP TABLE IF EXISTS core.system CASCADE;"
@@ -93,7 +93,7 @@ def test_i2_8_project_databases_sql_runs_after_core_system_and_module_schemas_ar
         again.stderr.strip()[-300:]
 
 
-# ── fresh volume: new init files, migrations, POST /projects ───────────────────
+# fresh volume: init files, migrations, POST /projects
 
 
 def _post_project(bed) -> dict:
@@ -130,12 +130,13 @@ def fresh():
 
 
 def test_i16_4_init_files_and_migrations_apply_on_a_fresh_volume(fresh):
-    """I2.8, I16.4: every init file and platform migration applies on an empty cluster."""
+    """Every init file and platform migration applies on an empty cluster."""
     fresh.require("init", "init-project-databases", "init-inspector-role", "init-report-roles", "platform-migrations")
 
 
 def test_i1_3_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
-    """I1.3, I16.2: `platform` holds core, catalogue, report_library and an empty public (forms are per project since the user's decision of 2026-09-25: no form library in platform)."""
+    """`platform` holds core, catalogue, report_library and an empty public (forms are per project, so
+    there is no form library)."""
     fresh.require("init")
     schemas = {r["nspname"] for r in fresh.rows("platform", """
         SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'""")}
@@ -165,7 +166,7 @@ def _table_privs(bed, role):
 
 @pytest.mark.parametrize("role", MODULE_ROLES)
 def test_i1_4_a_module_role_reads_only_core_project_and_members_in_platform(fresh, role):
-    """I1.4: a module role's only table privileges in `platform` (outside what it owns) are SELECT on
+    """A module role's only table privileges in `platform` (outside what it owns) are SELECT on
     core.project and core.project_member."""
     fresh.require("init", "platform-migrations")
     got = _table_privs(fresh, role)
@@ -178,14 +179,14 @@ def test_i1_4_a_module_role_reads_only_core_project_and_members_in_platform(fres
     ("report_ro", {("core.project", "SELECT")}),
 ])
 def test_i1_4_readers_in_platform(fresh, role, want):
-    """I1.4, I10.2, I10.3: dashboard_ro only SELECT core.project_member; report_ro only SELECT core.project."""
+    """dashboard_ro may only SELECT core.project_member; report_ro may only SELECT core.project."""
     fresh.require("init", "init-report-roles", "platform-migrations")
     got = _table_privs(fresh, role)
     assert got == want, f"I1.4: {role} has {sorted(got)}"
 
 
 def test_i16_4_post_projects_on_a_fresh_volume_yields_a_complete_project_database(fresh):
-    """I16.3, I16.4: the project made through the API has template 0001..0010, project.system, and every
+    """The project made through the API has template migrations 0001 to 0010, project.system, and every
     module's migration tracker."""
     fresh.require("post-projects", "templates", "project_system", "qualification", "control_objectives",
                   "engine", "report_composer", "controls")
@@ -197,7 +198,7 @@ def test_i16_4_post_projects_on_a_fresh_volume_yields_a_complete_project_databas
 
 
 def test_no_form_library_on_a_fresh_volume(fresh):
-    """Forms are per project since the user's decision of 2026-09-25: neither the init files nor the migrations make form_library."""
+    """Forms are per project: neither the init files nor the migrations make form_library."""
     fresh.require("init")
     assert fresh.scalar("platform", "SELECT to_regnamespace('form_library') IS NULL") == "t", "form_library exists"
     assert "form_library" not in _sql(PLATFORM_DB_SQL), "init/platform-db.sql still names form_library"

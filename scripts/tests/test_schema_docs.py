@@ -1,4 +1,4 @@
-"""The database diagrams: one landing page for a project's database and the shared one (2026-09-25).
+"""The database diagrams: one landing page for a project's database and the shared one.
 
 inspector/schema-docs/server.py is loaded from its file with its output in a temporary
 folder and served on a free port. SchemaSpy itself is never run: a generated site is
@@ -110,7 +110,7 @@ def test_the_other_routes_are_unchanged(docs):
     assert get(docs, "/keycloak/")[0] == 404
 
 
-# ── the Manage menu on the project page ─────────────────────────────────────
+# the Manage menu on the project page
 
 import re  # noqa: E402
 
@@ -148,7 +148,7 @@ def test_pgadmin_and_the_other_admin_tools_stay_admin_only():
 def test_a_member_sees_the_menu_and_a_stranger_does_not():
     _, script = menu_and_script()
     assert "if (!a || !(a.role || a.admin)) return;" in script
-    # one Manage menu since 2026-09-28: the member-only items are revealed after the check
+    # the member-only items of the Manage menu are revealed after the check
     assert script.index("if (!a || !(a.role || a.admin)) return;") < script.index("#manage .member-only")
 
 
@@ -157,7 +157,7 @@ def test_hidden_menu_items_really_are_hidden():
     assert re.search(r"\.menu\s+\.panel\s+\[hidden\]\s*\{\s*display\s*:\s*none", PAGE.read_text())
 
 
-# ── Caddy asks the platform which diagrams a caller may see ─────────────────
+# Caddy asks the platform which diagrams a caller may see
 
 
 def caddy_block(prefix):

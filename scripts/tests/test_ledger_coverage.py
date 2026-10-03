@@ -1,10 +1,11 @@
-"""C1, C3, C4: every state-changing route of every app is covered (I7, T16; spec 4.1).
+"""Every state-changing route of every app writes a ledger event.
 
 Routes are found in the code (ledger_routes.py), keyed by app, file and function. Each state-changing
 one must be named by a registry action's `routes`, or be on the reviewed exception list with a reason
-(fixtures/ledger_route_exceptions.tsv). No registry route may name code that is not there. From each
-app's phase, the handler of a registered route must itself call the emitter with that action (C4), so a
-registry entry alone covers nothing (R4.14).
+(fixtures/ledger_route_exceptions.tsv). No registry route may name code that is not there. For the
+apps in EMITTING_APPS, the handler of a registered route must itself call the emitter with that
+action, so a registry entry alone covers nothing. Some apps do not emit yet, so this file is expected
+to fail until they do.
 """
 import ast
 import re
@@ -18,8 +19,8 @@ from ledger_routes import SCOPED_OUT, WRITES, discovered
 sys.path.insert(0, str(ROOT / "platform"))
 
 EXCEPTIONS = ROOT / "scripts/tests/fixtures/ledger_route_exceptions.tsv"
-#: The apps whose handlers emit their own events. A phase's Definition of Done runs its app's case. The
-#: engine is frozen: its events come from the one registered forwarding module (D3), tested by E1-E2.
+#: The apps whose handlers emit their own events. The engine is not changed here: its events come from
+#: the one registered forwarding module.
 EMITTING_APPS = {"platform", "qualification", "controls", "control_objectives", "report_composer", "dashboard",
                  "qualification_agents"}
 EMIT_CALL = re.compile(r"\b(ledger\.emit|emit_event|emitEvent|ledgerEmit|ledger_emit)\s*\(")
@@ -50,7 +51,7 @@ def exceptions() -> dict:
 
 
 def registered() -> dict:
-    """route -> the actions it emits (a handler can emit several: retire and restore, phase 6 review m6)."""
+    """route -> the actions it emits (a handler can emit several, such as retire and restore)."""
     from platform_service.ledger.registry import REGISTRY
 
     out: dict = {}
@@ -65,15 +66,15 @@ def test_discovery_finds_what_the_review_said_was_missed():
     assert ("platform", "platform/platform_service/app.py", "add_project") in f
     assert ("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/app.py", "rate") in f
     assert ("engine", "apps/backend/aisc_backend/routers/audit.py", "post_audit") in f
-    assert any(a == "dashboard" and m == "MODELVIEW" for a, m, _, _ in found())         # FAB views (R4.12)
+    assert any(a == "dashboard" and m == "MODELVIEW" for a, m, _, _ in found())         # FAB views
     assert any(a == "connectors" for a, _, _, _ in writes())                             # connectors admin
     assert any(a == "qualification_agents" for a, _, _, _ in writes())                   # the AI run
     assert any(a == "qualification" and m == "ACTION" for a, m, _, _ in found())         # server actions
-    assert any(m == "GET" for _, m, _, _ in found())                                     # reads, for C3
+    assert any(m == "GET" for _, m, _, _ in found())                                     # reads are found too
 
 
 def test_routes_with_the_same_relative_path_stay_apart():
-    """Ninja routers all declare `@router.post("")`: one key per handler, not one per path (R4.12)."""
+    """Ninja routers all declare `@router.post("")`: one key per handler, not one per path."""
     engine_posts = [r for r in writes() if r[0] == "engine" and r[1] == "POST"]
     assert len({key(r) for r in engine_posts}) == len(engine_posts) > 1
 
@@ -121,7 +122,7 @@ def _source(file: str, function: str) -> str:
 
 @pytest.mark.parametrize("app", sorted(EMITTING_APPS))
 def test_a_registered_handler_emits_its_action(app):
-    """C4: the handler (or its module, for TypeScript) calls the emitter with the action's name."""
+    """The handler (or its module, for TypeScript) calls the emitter with the action's name."""
     problems = []
     for (route_app, file, function), actions in registered().items():
         if route_app != app:

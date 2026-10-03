@@ -1,7 +1,8 @@
-"""API auth WP3: pgAdmin and schema-docs sit on their own network (finding 4 and 10 of
-docs/superpowers/api-auth-2026-09-25/01-inventory.md). Only caddy (which gates /inspect/* behind
-sign-in and the platform admin check) and postgres (which both read as inspector_ro) share it.
-Read-only: the compose files are copied and resolved with `docker compose config`; nothing starts."""
+"""pgAdmin and schema-docs sit on a network of their own, so no plugin or other service can reach them.
+
+Only caddy (which gates /inspect/* behind sign-in and the platform admin check) and postgres (which
+both read as inspector_ro) share it. Read-only: the compose files are copied and resolved with
+`docker compose config`; nothing starts."""
 
 import pytest
 

@@ -1,10 +1,10 @@
-"""scripts/verify-project-databases.sh, the "done" check of the isolation (01-specs.md I16.1..I16.7, I19.1).
+"""scripts/verify-project-databases.sh, the check that every project's database is complete and isolated.
 
 Static checks on the script, then runs against the isolation bed (two throwaway project databases, every
 module migrated, never the host's 5432). The script reads its cluster from the PG* environment (like
-scripts/verify-db-consistency.sh), so a test points it at the throwaway; the container part (I16.4
-docker inspect) and the functional API part (I16.5) are switched off here with VERIFY_SKIP_CONTAINERS=1
-and VERIFY_SKIP_FUNCTIONAL=1 and checked statically (decision recorded in 02-tests.md).
+scripts/verify-db-consistency.sh), so a test points it at the throwaway; the container part (docker
+inspect) and the functional API part are switched off here with VERIFY_SKIP_CONTAINERS=1 and
+VERIFY_SKIP_FUNCTIONAL=1 and checked statically.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def body() -> str:
     return "\n".join(l for l in SCRIPT.read_text().splitlines() if not l.lstrip().startswith("#"))
 
 
-# ── static ───────────────────────────────────────────────────────────────────
+# static
 
 
 def test_i16_the_script_exists_and_is_executable():
@@ -45,7 +45,7 @@ def test_i19_1_verify_sh_runs_it_instead_of_verify_one_database():
 
 
 def test_i16_the_script_is_read_only():
-    """I16: read-only sessions and no statement that changes anything."""
+    """Read-only sessions and no statement that changes anything."""
     b = body()
     assert "default_transaction_read_only" in b, "I16: the script's sessions are not read-only"
     for stmt in (r"\bGRANT\b", r"\bREVOKE\b", r"\bALTER\s+(TABLE|ROLE|SCHEMA|DATABASE)\b", r"\bDROP\s",
@@ -63,7 +63,7 @@ def test_i16_the_script_checks(needle, req):
 
 
 def test_i16_4_container_dsns_are_never_printed():
-    """I16.4, I18.7: values of DSN variables are reduced to their database part before any output."""
+    """Values of DSN variables are reduced to their database part before any output."""
     b = body()
     for line in b.splitlines():
         if re.search(r"\b(echo|printf)\b", line):
@@ -72,7 +72,7 @@ def test_i16_4_container_dsns_are_never_printed():
 
 
 def test_i16_5_the_functional_isolation_part_exists():
-    """I16.5: two throwaway projects through the API; A's ids under B's pid are 404 on every module."""
+    """Two throwaway projects through the API; A's ids under B's pid are 404 on every module."""
     b = body()
     assert re.search(r"/projects", b) and "404" in b, "I16.5: no functional isolation part (two projects, 404s)"
     for module in ("qualification", "control-objectives", "controls", "engine", "report"):
@@ -86,8 +86,8 @@ def test_i16_7_warns_naming_pgbouncer_without_failing():
 
 
 def test_i19_1_verify_db_access_checks_project_database_grants():
-    """I19.1: verify-db-access.sh checks the grants of I16.1 on a throwaway project instead of probes in the
-    platform module schemas."""
+    """verify-db-access.sh checks the module grants on a throwaway project, not by probing module schemas
+    in platform."""
     text = DB_ACCESS.read_text()
     assert "project_" in text, "I19.1: verify-db-access.sh does not look into a project database"
     assert "select count(*) from core.system" not in text, "I19.1: verify-db-access.sh still probes core.system"
@@ -95,7 +95,7 @@ def test_i19_1_verify_db_access_checks_project_database_grants():
         "I19.1: verify-db-access.sh probes module schemas of platform"
 
 
-# ── against the bed ──────────────────────────────────────────────────────────
+# against the bed
 
 
 @pytest.fixture(scope="module")
@@ -178,7 +178,7 @@ def test_i16_3_fails_on_a_module_behind_its_head(bed):
 
 
 def test_i16_2_privileges_fail_while_a_shared_module_schema_is_reachable(bed):
-    """I16.2: after C9 the retired schemas are unreachable by every non-superuser role. A module schema in
+    """The retired shared schemas must be unreachable by every non-superuser role. A module schema in
     `platform` that its role can still use makes `--privileges` fail and is named."""
     bed.require(*ALL)
     made = bed.scalar("platform", "SELECT to_regnamespace('qualification') IS NULL") == "t"
@@ -191,8 +191,8 @@ def test_i16_2_privileges_fail_while_a_shared_module_schema_is_reachable(bed):
 
 
 def test_i16_1_i1_4_fails_on_a_reader_privilege_in_platform_beyond_i1_4(bed):
-    """I1.4, I16.1: in `platform` report_ro keeps only CONNECT, USAGE core, SELECT core.project; one more grant
-    fails the privileges check and is named."""
+    """In `platform` report_ro keeps only CONNECT, USAGE core, SELECT core.project; one more grant fails the
+    privileges check and is named."""
     bed.require(*ALL)
     with planted(bed, "platform", "GRANT SELECT ON core.project_member TO report_ro",
                  "REVOKE SELECT ON core.project_member FROM report_ro"):
@@ -201,7 +201,7 @@ def test_i16_1_i1_4_fails_on_a_reader_privilege_in_platform_beyond_i1_4(bed):
 
 
 def test_i16_3_fails_on_a_duplicate_or_dangling_version(bed):
-    """I16.3: project.system numbers are unique and positive, and every system_id of every module resolves in
+    """project.system numbers are unique and positive, and every system_id of every module resolves in
     the same database: a card naming a pid absent from project.system fails and is named."""
     bed.require(*ALL)
     ghost = "8d8d8d8d-0000-4000-8000-00000000008d"
@@ -215,9 +215,9 @@ def test_i16_3_fails_on_a_duplicate_or_dangling_version(bed):
 
 
 def test_i16_7_i17_1_warns_naming_pgbouncer_when_the_budget_passes_80_percent(bed):
-    """I16.7, I17.1: (projects x per-project budget of section 17) + base above 80% of max_connections (100)
-    prints a WARN naming PgBouncer. Ten more core.project rows are planted (their missing databases also fail
-    I16.3; this test reads only the WARN line)."""
+    """(projects x per-project connection budget) + base above 80% of max_connections (100) prints a WARN
+    naming PgBouncer. Ten more core.project rows are planted (their missing databases also fail the
+    completeness check; this test reads only the WARN line)."""
     bed.require(*ALL)
     pids = [f"e{i:07d}-0000-4000-8000-0000000000e{i}" for i in range(10)]
     values = ", ".join(f"('{p}', 'Budget {i}', 'budget-{i}')" for i, p in enumerate(pids))

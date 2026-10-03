@@ -1,7 +1,9 @@
-"""C5: a Next.js server action POSTs to the page it is mounted on, so the page its form really lives on
-must be one its registry action's `caused_by` names (phase 5 review B1: the card form had moved from
-/qualify/new to /system/edit, and every card's creation would have been rejected). The pages are found
-in the code, by following imports from the actions module up to each page.tsx that renders it."""
+"""Every page a Next.js server action is mounted on is named by its ledger action's `caused_by`.
+
+A server action POSTs to the page it is mounted on, so if a form moves to another page (the card form
+once moved from /qualify/new to /system/edit) and `caused_by` does not follow, every such event is
+rejected. The pages are found in the code, by following imports from the actions module up to each
+page.tsx that renders it."""
 import re
 import sys
 from pathlib import Path
@@ -14,7 +16,7 @@ sys.path.insert(0, str(ROOT / "platform"))
 #: app -> its source folder and the path it is served under
 APPS = {"qualification": ("apps/qualification/src", "/qualification"), "controls": ("apps/controls/src", "/controls")}
 IMPORT = re.compile(r"""from\s+["']([^"']+)["']""")
-#: Action modules no page renders today, and why. Each must really have no page: once one is mounted
+#: Action modules no page renders, and why. Each must really have no page: once one is mounted
 #: again, it is checked like the rest.
 UNMOUNTED = {
     "apps/qualification/src/app/p/[project]/qualify/[id]/component-actions.ts":

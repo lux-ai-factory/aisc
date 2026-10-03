@@ -1,12 +1,13 @@
-"""Tests of the pipeline's test infrastructure (pipeline 2026-09-23, 03 WP0, WP4, WP6a, WP12).
+"""Shared helpers for the tests of the repo's scripts, compose files, Caddyfile and pages.
 
 Run from the repo root:
 
-    uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider scripts/tests
+    uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]' \
+        python -m pytest -q -p no:cacheprovider scripts/tests
 
-They start throwaway postgres:15-alpine containers (never the host's 5432) through
-scripts/guard-frozen.sh and scripts/test-pipeline-chain.sh, and read `docker compose config`
-of scratch copies of the compose files (never up, down or build).
+Some start throwaway postgres:15-alpine containers (never the host's 5432), through
+scripts/guard-frozen.sh, scripts/test-pipeline-chain.sh and scripts/lib/; others read
+`docker compose config` of scratch copies of the compose files (never up, down or build).
 """
 
 import subprocess
@@ -37,7 +38,7 @@ def container_exists(name: str) -> bool:
 
 @pytest.fixture(scope="session")
 def guard_all(tmp_path_factory):
-    """One full guard run (G1..G5), shared by the tests that read its verdict lines."""
+    """One full guard run (checks G1 to G5), shared by the tests that read its verdict lines."""
     out = tmp_path_factory.mktemp("guard-all")
     r = run([str(GUARD)], env={**__import__("os").environ, "GUARD_OUT": str(out)}, timeout=900)
     return r, out

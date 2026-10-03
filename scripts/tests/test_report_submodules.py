@@ -1,5 +1,5 @@
-"""The report renderer is built from two submodules of this repository (2026-09-29): a recursive
-clone brings everything its image needs, and it needs no report plugin of any evaluation tool."""
+"""The report renderer is built from two submodules of this repository: a recursive clone brings
+everything its image needs, and it needs no report plugin of any evaluation tool."""
 import configparser
 import json
 import os

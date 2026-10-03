@@ -1,6 +1,6 @@
-"""Manage → Connections in the stack (connections plan 2026-09-29, R3 and R4): the resolve token is
-generated once by secrets.sh, and compose gives the platform and the eval worker exactly what the
-connections need. Nothing is started; compose files are resolved with `docker compose config`."""
+"""Manage, Connections in the stack: the resolve token is generated once by secrets.sh, and compose
+gives the platform and the eval worker exactly what the connections need. Nothing is started; compose
+files are resolved with `docker compose config`."""
 import json
 import os
 import re
@@ -28,7 +28,7 @@ def config():
     return json.loads(r.stdout)["services"], required
 
 
-# ── R3 secrets.sh ───────────────────────────────────────────────────────────
+# secrets.sh
 
 @pytest.fixture
 def scratch(tmp_path):
@@ -68,7 +68,7 @@ def test_r3_env_files_say_where_the_connections_token_comes_from(name):
     assert not re.search(r"^PLATFORM_CONNECTIONS_TOKEN=", text, re.M)
 
 
-# ── R4 compose ──────────────────────────────────────────────────────────────
+# compose
 
 def test_r4_the_token_is_required_so_compose_refuses_to_start_without_it():
     _, required = config()
@@ -101,8 +101,8 @@ def test_r4_the_eval_worker_gets_the_platform_url_the_token_and_the_allowlist():
     env = services["aisc-eval-worker"]["environment"]
     assert env["PLATFORM_URL"] == "http://platform:8000"
     assert env["PLATFORM_CONNECTIONS_TOKEN"] == "dummy"
-    # allowlist task 2026-09-29: the platform hands a run its project's rule in the resolve
-    # response, so the worker has no allowlist of its own that could drift or open more
+    # the platform hands a run its project's rule in the resolve response, so the worker has no
+    # allowlist of its own that could drift or allow more
     assert "CONNECTIONS_ALLOWED_HOSTS" not in env
     assert "CONNECTIONS_ALLOWED_HOSTS" in services["platform"]["environment"]
 

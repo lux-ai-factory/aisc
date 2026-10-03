@@ -5,18 +5,17 @@ Run from the repo root:
     uv run --no-project --with pytest --with psycopg[binary] python -m pytest -q -p no:cacheprovider \
         scripts/tests/test_db_consistency.py
 
-Every database here is a throwaway postgres:15-alpine container, never the host's 5432. Since the
-isolation (2026-09-25, 01-specs.md I16.6; rewritten by WP V1 under S-D13, the approved design moves every
-module into the project's own database) the bed is scripts/tests/isolation_bed.py: three projects whose
-databases are made by the platform's own provision and migrated by every module's own migrate command, so
-each migration tracker exists for C7. It adds a fake `keycloak` and a minimal `superset` database. The seed
-is clean, every check passes it. Each test then plants exactly one problem, asserts the check reports it,
-and takes it out again.
+Every database here is a throwaway postgres:15-alpine container, never the host's 5432. The bed is
+scripts/tests/isolation_bed.py: three projects whose databases are made by the platform's own provision
+and migrated by every module's own migrate command, so each migration tracker exists for C7. It adds a
+fake `keycloak` and a minimal `superset` database. The seed is clean, every check passes it. Each test
+then plants exactly one problem, asserts the check reports it, and takes it out again.
 
-What changed from the shared layout, case by case: C3, C4 and C6 read each project database against its own
-project.system; "belongs to another project" is now "a pid of B's project.system planted in A's table does not
-resolve here" (foreign keys make a real cross-project stamp impossible); C5 reads the composer's `*_by`
-columns in the project databases; C7 checks every module's tracker; C8 lints the project schemas.
+C1 to C8 are the check ids of scripts/db_consistency. C3, C4 and C6 read each project database against
+its own project.system; "belongs to another project" means "a pid of B's project.system planted in A's
+table does not resolve here" (foreign keys make a real cross-project stamp impossible); C5 reads the
+composer's `*_by` columns in the project databases; C7 checks every module's tracker; C8 lints the
+project schemas.
 """
 
 from __future__ import annotations
@@ -191,7 +190,7 @@ def only(findings, level, *needles):
     return hits[0]
 
 
-# ── the connection ────────────────────────────────────────────────────────────
+# the connection
 
 def test_every_connection_is_read_only(cluster):
     with cluster.connect("platform") as conn:
@@ -206,7 +205,7 @@ def test_the_clean_bed_passes_every_data_check(cluster):
         assert found == [], f"{check.id}: {[(f.level, f.message) for f in found]}"
 
 
-# ── C1 orphan databases ──────────────────────────────────────────────────────
+# C1 orphan databases
 
 ORPHAN_HEX = "0123456789abcdef0123456789abcdef"
 
@@ -226,7 +225,7 @@ def test_c1_a_project_without_its_database(bed, cluster):
         only(checks.c1_orphan_databases(cluster), "FAIL", lost, "lost")
 
 
-# ── the script ───────────────────────────────────────────────────────────────
+# the script
 
 SCRIPT = ROOT / "scripts/verify-db-consistency.sh"
 
@@ -252,7 +251,7 @@ def test_the_script_passes_a_clean_bed_and_fails_a_broken_one(bed):
     assert "failed: 0" not in broken.stdout
 
 
-# ── C2 unknown databases and schemas ─────────────────────────────────────────
+# C2 unknown databases and schemas
 
 @pytest.mark.parametrize("name", ["aisc", "controls", "qualification", "control_objectives"])
 def test_c2_a_leftover_standalone_database(bed, cluster, name):
@@ -273,7 +272,7 @@ def test_c2_an_unknown_schema_in_platform(bed, cluster):
 
 @pytest.mark.parametrize("schema", ["engine", "qualification", "control_objectives", "report_composer"])
 def test_c2_a_retired_module_schema_in_platform_is_a_warning(bed, cluster, schema):
-    """I16.6 C2: a module schema left in platform after the cutover is retired, pending the stage-7 drop."""
+    """C2: a module schema left in platform after the cutover is retired, a warning until it is dropped."""
     with planted(bed, "platform", f"CREATE SCHEMA {schema}", f"DROP SCHEMA {schema}"):
         found = checks.c2_unknown_databases_and_schemas(cluster)
     only(found, "WARN", f"schema {schema}", "retired", "stage-7")
@@ -291,7 +290,7 @@ def test_c2_the_catalogue_is_never_flagged(bed, cluster):
         assert checks.c2_unknown_databases_and_schemas(cluster) == []
 
 
-# ── C3 system identity drift ─────────────────────────────────────────────────
+# C3 system identity drift
 
 @pytest.mark.parametrize("column, version_value, drifted", [
     ('"systemName"', "Alpha scorer", "Alpha scorer PRO"),
@@ -320,7 +319,7 @@ def test_c3_a_version_less_system_is_named_without_one(bed, cluster):
         only(checks.c3_system_identity(cluster), "FAIL", DB_B, B_V1, "control_objectives")
 
 
-# ── C4 references resolve ────────────────────────────────────────────────────
+# C4 references resolve
 
 NOWHERE = "00000000-0000-4000-8000-00000000beef"
 EP = "b0e00000-0000-4000-8000-0000000000e2"
@@ -405,7 +404,7 @@ def test_c4_a_reference_that_does_not_resolve(bed, cluster, case):
     assert f.check == "C4"
 
 
-# ── C5 users resolve ─────────────────────────────────────────────────────────
+# C5 users resolve
 
 C5_CASES = {
     "member": ("platform",
@@ -453,7 +452,7 @@ def test_c5_skips_when_keycloak_cannot_be_read(bed, cluster):
     assert "skipped" in found[0].message and "no_keycloak_here" in found[0].message
 
 
-# ── C6 stale step-2 graph ────────────────────────────────────────────────────
+# C6 stale step-2 graph
 
 def test_c6_the_card_was_rebuilt_after_the_assessment(bed, cluster):
     with planted(bed, DB_A,
@@ -470,7 +469,7 @@ def test_c6_the_card_has_no_stored_graph_to_compare(bed, cluster):
         only(checks.c6_stale_graph(cluster), "WARN", DB_A, "coa2", "no stored knowledge graph")
 
 
-# ── C7 databases behind on migrations ────────────────────────────────────────
+# C7 databases behind on migrations
 
 TEMPLATES = heads.templates()
 
@@ -532,7 +531,7 @@ def test_c7_a_project_database_never_provisioned(bed, cluster):
             only(found, "FAIL", db, tracker.table, "missing")
 
 
-# ── C8 naming and types lint ─────────────────────────────────────────────────
+# C8 naming and types lint
 
 LINT_PROJECT_DB = f"project_{ORPHAN_HEX}"
 LINT_PLATFORM = """

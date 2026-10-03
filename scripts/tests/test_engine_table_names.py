@@ -1,4 +1,4 @@
-"""Our readers use Sean's engine table names (adapt plan 2026-09-28, item 1)."""
+"""The scripts and services that read the engine schema use its full table names (`aisc_backend_*`)."""
 import re
 from pathlib import Path
 

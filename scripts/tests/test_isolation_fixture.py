@@ -1,5 +1,8 @@
-"""The live-shape fixture used by the catalog-diff tests (01-specs.md I3.7, I7.9, I18.7, RULES: the rehearsal
-dump is never copied into a repository). It must be schema-only and cover every moving table, forms included.
+"""The live-shape fixture used by the catalog-diff tests.
+
+A dump of a real database is never copied into the repository, so the fixture must be schema-only
+(no data, owners, grants or secrets) and still cover every table that moves to the project
+databases, forms included.
 """
 
 from __future__ import annotations

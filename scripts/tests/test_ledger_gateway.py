@@ -1,7 +1,8 @@
-"""G1-G8: the gateway on a real Caddy (I1, I6, T18, T19; spec 3.1, 5.3; R5.1). The repo's own
-Caddyfile runs in a throwaway caddy:2.10.2 with stub upstreams that echo what they receive (the
-spike's setup, 06-spike.md), changed only where it must be: oauth2-proxy's address, TLS, ports. Never
-touches the running stack: its own network and containers, aisc-t-gw-*.
+"""The gateway's ledger witness on a real Caddy.
+
+The repo's own Caddyfile runs in a throwaway caddy:2.10.2 with stub upstreams that echo what they
+receive, changed only where it must be: oauth2-proxy's address, TLS, ports. Never touches the running
+stack: its own network and containers, aisc-t-gw-*.
 """
 import json
 import os
@@ -19,7 +20,7 @@ import pytest
 from conftest import ROOT
 
 FIXTURES = ROOT / "scripts/tests/fixtures/ledger_gateway"
-#: LEDGER_TEST_CADDYFILE runs another file (a reference implementation of spec 3.1).
+#: LEDGER_TEST_CADDYFILE runs another file instead of the repo's Caddyfile.
 CADDYFILE = Path(os.environ.get("LEDGER_TEST_CADDYFILE", ROOT / "Caddyfile"))
 REQUIRED = os.environ.get("LEDGER_TESTS_REQUIRED") == "1"
 SECRET = "gw-test-secret-0123456789"
@@ -130,7 +131,7 @@ def test_a_write_is_witnessed_with_its_app_and_unstripped_path(gateway, site, pa
         return
     h = witness["headers"]
     assert (h.get("X-Aisc-App"), h.get("X-Aisc-Original-Uri"), h.get("X-Aisc-Gateway")) == (app, path, SECRET)
-    assert h.get("X-Auth-Request-Access-Token") == "token-of-alice"      # sign-in ran first (G7)
+    assert h.get("X-Auth-Request-Access-Token") == "token-of-alice"      # sign-in ran first
     assert got["headers"].get("X-Aisc-Request-Id") == "rid-from-witness"
 
 
@@ -164,13 +165,13 @@ def test_the_launcher_never_serves_the_witness(gateway):
 
 @pytest.mark.parametrize("path", ["/api/authz/witness", "/api/authz/admin", "/api/authz/schema", "/api/authz/new-check"])
 def test_the_launcher_serves_none_of_caddys_own_checks(gateway, path):
-    """Allow-list: every /api/authz/* path but the pages' role route is Caddy's alone (T18)."""
+    """Allow-list: every /api/authz/* path but the pages' role route is Caddy's alone."""
     assert send(gateway, "launcher", "GET", path)[0] == 404
 
 
 def test_the_launcher_serves_the_pages_role_route(gateway):
-    """Phase 4 review B1: the Manage menu, the Activity log and the export link read the caller's role
-    at /api/authz/projects/<slug>. Blocking all of /api/authz/* hid them from everyone."""
+    """The Manage menu, the Activity log and the export link read the caller's role at
+    /api/authz/projects/<slug>, so that route must stay open while the rest of /api/authz/* is blocked."""
     status, got, _ = send(gateway, "launcher", "GET", "/api/authz/projects/demo")
     assert status == 200 and got["who"] == "platform" and got["path"] == "/authz/projects/demo"
 
@@ -180,7 +181,7 @@ def test_with_the_platform_down_reads_work_and_writes_fail_only_with_the_witness
     docker("stop", name)
     try:
         assert send(gateway, "main", "GET", "/qualification/_next/static/chunk.js")[0] == 200
-        expected = 502 if gateway["mode"] == "on" else 200          # off: nothing depends on the platform (R6.4)
+        expected = 502 if gateway["mode"] == "on" else 200          # off: nothing depends on the platform
         assert send(gateway, "main", "POST", "/qualification/p/mcas/x", body=b"{}")[0] == expected
     finally:
         docker("start", name)
@@ -188,7 +189,7 @@ def test_with_the_platform_down_reads_work_and_writes_fail_only_with_the_witness
 
 
 def test_a_refused_page_load_is_sent_to_sign_in(gateway):
-    """The witness answers a refused document load with a 302; forward_auth passes it through (R1.12)."""
+    """The witness answers a refused document load with a 302; forward_auth passes it through."""
     status, _, _ = send(gateway, "main", "POST", "/qualification/p/mcas/x",
                         {"X-Test": "witness-401", "Sec-Fetch-Dest": "document"}, b"{}")
     assert status == (302 if gateway["mode"] == "on" else 200)
@@ -197,7 +198,7 @@ def test_a_refused_page_load_is_sent_to_sign_in(gateway):
 
 
 def test_a_listed_read_that_matters_is_witnessed(gateway):
-    """spec 3.1 `import protect-reads <app> <path>...` (S1: {args[1:]} works on Caddy 2.10.2)."""
+    """`import protect-reads <app> <path>...` witnesses the listed reads ({args[1:]} works on Caddy 2.10.2)."""
     reads = re.findall(r"^\s*import protect-reads (\S+) (.+)$", CADDYFILE.read_text(), re.M)
     assert reads, "no handle imports protect-reads"
     app, paths = reads[0][0], reads[0][1].split()
@@ -235,6 +236,6 @@ def test_the_admin_and_schema_checks_run_after_sign_in(gateway, path, check):
 
 
 def test_a_refused_admin_check_keeps_pgadmin_closed(gateway):
-    """Phase 2 review m14: the admin gate's 403 reaches the browser and pgAdmin never sees the request."""
+    """The admin gate's 403 reaches the browser and pgAdmin never sees the request."""
     status, got, _ = send(gateway, "launcher", "GET", "/inspect/pgadmin/", {"X-Test": "admin-403"})
     assert status == 403 and got is None

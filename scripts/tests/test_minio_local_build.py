@@ -1,6 +1,6 @@
-"""MinIO is built in the stack from a pinned source release (MinIO stopped publishing community
-images in late 2025; every quay.io/minio and minio/ tag is refused). M1 to M4: static checks of
-the compose files and the Dockerfile; nothing is built here."""
+"""MinIO is built in the stack from a pinned source release, because MinIO publishes no community
+images any more; every quay.io/minio and minio/ image is refused. Static checks of the compose files
+and the Dockerfile; nothing is built here."""
 import re
 
 import yaml
@@ -9,7 +9,7 @@ from conftest import ROOT
 
 MINIO_RELEASE = "RELEASE.2025-10-15T17-29-55Z"
 MC_RELEASE = "RELEASE.2025-08-13T08-35-41Z"
-IMAGE = "aisc-minio:${AISC_IMAGE_TAG:-latest}"     # the stack's convention for built images (G9)
+IMAGE = "aisc-minio:${AISC_IMAGE_TAG:-latest}"     # the stack's convention for built images
 DOCKERFILE = ROOT / "infra/minio/Dockerfile"
 FILES = ["docker-compose-infra.development.yml", "docker-compose-infra.yml", "docker-compose-infra.staging.yml",
          "docker-compose.engine-standalone.yml"]
@@ -52,6 +52,6 @@ def test_m4_the_server_keeps_its_command_healthcheck_and_bucket_names():
         assert "mc" in str(s["minio"]["healthcheck"]["test"])
         job = s["make_buckets"]
         if f == "docker-compose-infra.yml":
-            continue    # its job runs ./tasks/minio_add_bucket.sh, a file missing from the repo (pre-existing)
+            continue    # its job runs ./tasks/minio_add_bucket.sh, a file missing from the repo
         for bucket in ("datasets", "artifacts", "models"):
             assert f"mc mb --ignore-existing minio/{bucket}" in job["entrypoint"], (f, bucket)

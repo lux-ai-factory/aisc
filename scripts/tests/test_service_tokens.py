@@ -1,4 +1,4 @@
-"""Service tokens per caller edge (API auth WP2, docs/superpowers/api-auth-2026-09-25).
+"""Service tokens, one per caller edge.
 
 The service-only APIs (qualification-agents, -ontology, -prefill, -llm, -pdf and controls-pdf)
 and the card agent's two routes on qualification-web each accept only the tokens of their own
@@ -106,7 +106,7 @@ def test_the_platform_tokens_are_left_as_they_were(wired):
     assert platform["PLATFORM_RISK_MAPPER_TOKEN"] == "dummy"
 
 
-# ── secrets.sh, on a scratch copy only ───────────────────────────────────────
+# secrets.sh, on a scratch copy only
 
 
 @pytest.fixture
@@ -161,7 +161,7 @@ def test_rotate_makes_new_distinct_tokens(scratch):
         assert after[name] != before[name], name
 
 
-# ── env comments and the door module ─────────────────────────────────────────
+# env comments and the door module
 
 
 @pytest.mark.parametrize("name", ["env.development", "env.staging"])

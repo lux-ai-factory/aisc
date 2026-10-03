@@ -1,7 +1,7 @@
-"""The project page has one menu, Manage, in the top bar (2026-09-28, the user: "the endpoints ->
-renamed manage and add all the stuff from the manage dropdown, so that we only have one").
-What it shows is unchanged: the endpoints to anyone signed in, the database diagrams to the
-project's members, pgAdmin / models and keys / delete to admins."""
+"""The project page has one menu, Manage, in the top bar.
+
+It shows the endpoints to anyone signed in, the database diagrams to the project's members, and
+pgAdmin, models and keys, and delete to admins."""
 import re
 from pathlib import Path
 

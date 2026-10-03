@@ -1,12 +1,12 @@
-"""Route discovery for the ledger coverage test (C1, C3, C4; spec 4.1, R4.12-R4.14). Python routes are
-read with `ast` (any quote style, api_route, add_api_route, Flask-AppBuilder ModelViews); Next.js route
-handlers and server actions with patterns. Each route is keyed (app, METHOD, file, function), so two
+"""Route discovery for the ledger coverage test. Python routes are read with `ast` (any quote style,
+api_route, add_api_route, Flask-AppBuilder ModelViews); Next.js route handlers and server actions with
+patterns. Each route is keyed (app, METHOD, file, function), so two
 routers declaring the same relative path never collapse into one."""
 import ast
 import re
 from pathlib import Path
 
-#: Every directory whose code serves requests, and the app it is (registry KNOWN_APPS).
+#: Every directory whose code serves requests, and the app it is (the ledger registry's KNOWN_APPS).
 PY_DIRS = {
     "platform/platform_service": "platform",
     "apps/control-objectives/src": "control_objectives",
@@ -24,7 +24,7 @@ PY_DIRS = {
     "apps/results-dashboard": "dashboard",
 }
 NEXT_DIRS = {"apps/qualification/src": "qualification", "apps/controls/src": "controls"}
-#: Not in scope, and why (spec 3.1, R1.10).
+#: Not in scope, and why.
 SCOPED_OUT = {"apps/catalogue": "the catalogue is hosted elsewhere and never passes this gateway",
               "apps/webapp": "the engine's browser app: no server routes"}
 IGNORE = re.compile(r"/(tests?|\.venv|node_modules|migrations|alembic|site-packages|__pycache__|\.next)/|/test_[^/]*$|/conftest\.py$")

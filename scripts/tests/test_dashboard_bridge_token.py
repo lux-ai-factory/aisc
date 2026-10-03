@@ -1,12 +1,10 @@
-"""The dashboard bridge token (adapt Task 6d, D2, 2026-09-28).
+"""The dashboard bridge token.
 
 The platform tells the dashboard's bridge (`POST/DELETE /api/v1/aisc_project/<pid>`) about every project,
-with DASHBOARD_BRIDGE_TOKEN; the bridge refuses every call when the token is empty. The end-to-end run of
-Task 6b found it empty in both services: scripts/secrets.sh never wrote it and compose fell back to "".
-
-So: secrets.sh generates it like its other random secrets, an existing env.secrets gets every missing
-secret appended without a byte of what is there changing, it never prints a secret, and compose refuses
-to start platform or dashboard without it.
+with DASHBOARD_BRIDGE_TOKEN; the bridge refuses every call when the token is empty. So secrets.sh
+generates it like its other random secrets, an existing env.secrets gets every missing secret appended
+without a byte of what is there changing, no secret is ever printed, and compose refuses to start
+platform or dashboard without it.
 
 Nothing is started and nothing in the repo is written: secrets.sh runs on a scratch copy and
 `docker compose config` reads scratch copies of the compose files.
@@ -49,7 +47,7 @@ def printed(r):
     return r.stdout + r.stderr
 
 
-# ── secrets.sh ───────────────────────────────────────────────────────────────
+# secrets.sh
 
 
 def test_a_new_install_gets_the_bridge_token_in_env_secrets_and_env_runtime(scratch):
@@ -106,7 +104,7 @@ def test_rotate_replaces_the_bridge_token(scratch):
     assert after not in printed(r)
 
 
-# ── compose ──────────────────────────────────────────────────────────────────
+# compose
 
 
 def test_compose_requires_the_token_for_platform_and_dashboard():

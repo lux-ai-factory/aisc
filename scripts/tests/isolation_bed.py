@@ -1,9 +1,9 @@
-"""The isolation test bed (isolation 2026-09-25, 01-specs.md section 20): one throwaway Postgres with
-the platform database and project databases made the way the isolated stack makes them.
+"""The isolation test bed: one throwaway Postgres with the platform database and project databases
+made the way the stack makes them.
 
 Test infrastructure only. It builds databases with the product's own files and commands and records
-what could not be built as `problems`, so a test that needs a missing piece FAILS with the requirement
-ID instead of erroring in a fixture:
+what could not be built as `problems`, so a test that needs a missing piece fails naming it instead of
+erroring in a fixture:
 
     bed = build("grants")               # aisc-t-iso-top-grants-<hex>, a free port, never 5432
     bed.require("qualification", "engine")   # pytest.fail("missing feature: ...") when absent
@@ -14,8 +14,8 @@ Steps, in the stack's order:
     (superuser; a file that fails is a problem, not an error)
  2. platform migrations as platform_rw (scripts/pipeline_chain/throwaway.platform_migration)
  3. two projects A and B in core.project (platform_rw), their databases made by the platform's own
-    `projectdb.provision` (so every template file 0001.. is applied, 0006..0010 included once they exist)
- 4. each module's migrate command against every project database (I3.6, I5.5, I7.6, I8.4, controls):
+    `projectdb.provision` (so every template file is applied)
+ 4. each module's migrate command against every project database:
     qualification `node scripts/migrate-projects.mjs`, control-objectives
     `python -m aisc_control_objectives.migrate_projects`, engine `manage.py migrate_projects`, composer
     `python -m report_composer.migrate`, controls `node scripts/migrate-projects.mjs`.
@@ -42,7 +42,7 @@ INSTALL = Path.home() / "aisc-install"
 A = "a0000000-0000-4000-8000-00000000000a"
 B = "b0000000-0000-4000-8000-00000000000b"
 
-#: I2.1: the template files every project database has after isolation.
+#: The template files every project database has.
 TEMPLATES = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004_inspector.sql",
              "0005_llm.sql", "0006_project_system.sql", "0007_qualification.sql",
              "0008_control_objectives.sql", "0009_engine.sql", "0010_report_composer.sql",
@@ -50,7 +50,7 @@ TEMPLATES = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004
              "0013_connection_allowlist.sql", "0014_target.sql",
              "0015_connection_target.sql"]
 
-#: I1.1: module schema -> its role.
+#: module schema -> its role.
 MODULES = {
     "qualification": "qualification_rw",
     "control_objectives": "control_objectives_rw",
@@ -59,11 +59,11 @@ MODULES = {
     "controls": "controls_rw",
 }
 
-#: I2.6, exhaustive: SELECT for report_ro and dashboard_ro inside a project database.
+#: Exhaustive: SELECT for report_ro and dashboard_ro inside a project database.
 READERS = ("report_ro", "dashboard_ro")
 READER_TABLES = {
     "project": ["system"],
-    # what each assessment is about (targets plan v2): no secret, the readers show it with results
+    # what each assessment is about: no secret, the readers show it with results
     "target": ["target"],
     "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
@@ -78,13 +78,13 @@ READER_TABLES = {
     "connection": [],
     "provision": [],
 }
-#: I2.6: only these columns of engine.aisc_backend_pluginconfig.
+#: Only these columns of engine.aisc_backend_pluginconfig.
 PLUGIN_CONFIG_COLUMNS = ["id", "plugin_id"]
-#: I2.6: never readable by either reader.
+#: Never readable by either reader.
 SECRETS = ["engine.aisc_backend_projectconfig", "engine.aisc_backend_pluginconfigprojectconfig", "llm.provider",
            "llm.system_choice", "connection.endpoint", "connection.run_key"]
 
-#: The migration trackers of every module (I16.3, I16.6 C7).
+#: The migration trackers of every module.
 TRACKERS = {
     "qualification": "qualification._prisma_migrations",
     "control_objectives": "control_objectives.alembic_version",
@@ -176,7 +176,7 @@ def _run(bed: IsoBed, key: str, cmd: list[str], cwd: Path, env: dict[str, str], 
 
 
 def provision(bed: IsoBed, pids: list[str]) -> None:
-    """Rows in core.project, then the platform's own projectdb.provision for each (I2.4)."""
+    """Rows in core.project, then the platform's own projectdb.provision for each."""
     for pid in pids:
         r = bed.psql("platform", f"INSERT INTO core.project (pid, name, slug) VALUES "
                                  f"('{pid}', 'Iso {pid[:1]}', 'iso-{pid[:8]}') ON CONFLICT DO NOTHING",
@@ -201,11 +201,11 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
 def migrate_modules(bed: IsoBed) -> None:
     """Each module's own command for every project database (the -migrate one-shots of the stack)."""
     port = bed.port
-    # controls: exists today (plan 1)
+    # controls
     _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
          {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls")},
          "controls migrate-projects.mjs")
-    # qualification (I3.6): every project database (no form library: forms are per project)
+    # qualification: every project database (no form library: forms are per project)
     q = ROOT / "apps/qualification/scripts/migrate-projects.mjs"
     if not q.exists():
         bed.problems["qualification"] = "I3.6 apps/qualification/scripts/migrate-projects.mjs missing"
@@ -213,7 +213,7 @@ def migrate_modules(bed: IsoBed) -> None:
         _run(bed, "qualification", ["node", str(q)], ROOT / "apps/qualification",
              {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2")},
              "I3.6 qualification migrate-projects.mjs")
-    # control objectives (I5.5)
+    # control objectives
     py = _python("apps/control-objectives")
     if not py:
         bed.problems["control_objectives"] = "no python environment for apps/control-objectives"
@@ -225,7 +225,7 @@ def migrate_modules(bed: IsoBed) -> None:
               "PROJECT_DATABASE_URL": "postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:"
                                       f"{port}/{{database}}"},
              "I5.5 python -m aisc_control_objectives.migrate_projects")
-    # engine (I7.6)
+    # engine
     py = _python("apps/backend")
     if not py:
         bed.problems["engine"] = "no python environment for apps/backend"
@@ -238,7 +238,7 @@ def migrate_modules(bed: IsoBed) -> None:
               "DB_PASSWORD": "engine_rw", "DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_SCHEMA": "engine",
               "PYTHONPATH": f"{ROOT}/shared/plugin-interface/src:{ROOT}/shared/plugin-manager/src"},
              "I7.6 manage.py migrate_projects")
-    # report composer (I8.4)
+    # report composer
     py = _python("apps/report-composer")
     if not py:
         bed.problems["report_composer"] = "no python environment for apps/report-composer"

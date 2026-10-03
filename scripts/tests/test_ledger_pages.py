@@ -1,5 +1,7 @@
-"""A6: the Activity log page and the beacon script (spec 6.3, 3.5). The page stays thin: the platform
-filters, verifies and names people; the page lays rows out with textContent only."""
+"""The Activity log page and the ledger beacon script.
+
+The page stays thin: the platform filters, verifies and names people; the page lays rows out with
+textContent only."""
 from __future__ import annotations
 
 import re
@@ -31,8 +33,8 @@ def test_the_export_link_is_offered_to_owners_and_admins_only():
 
 
 def test_hidden_wins_over_the_buttons_display():
-    """Found in a headless render: `button{display:inline-flex}` showed hidden buttons, and would have
-    shown the export link to every member."""
+    """`[hidden]` beats `button{display:inline-flex}`, which would otherwise show hidden buttons and
+    the export link to every member."""
     assert "[hidden]{display:none !important}" in LOGS.read_text()
 
 
@@ -60,7 +62,7 @@ def test_the_scripts_parse(tmp_path, page):
 
 
 def test_paging_keeps_the_submitted_filters_and_a_new_list_starts_empty():
-    """Review m11: "Older entries" pages the list on screen, and a reset clears its rows before fetching."""
+    """"Older entries" pages the list on screen, and a reset clears its rows before fetching."""
     html = LOGS.read_text()
     assert "var q = new URLSearchParams(submitted);" in html
     start = html.index("if (reset || !submitted) {")

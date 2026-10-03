@@ -1,11 +1,10 @@
-"""Isolation stage 2 (02-tests.md): guards for what the isolation must leave as it is.
+"""What the per-project databases leave as it is in the database inspector.
 
-I11.4: pgAdmin needs no change. It has one server, reads as inspector_ro, and uses `platform` as its
-maintenance database, so every project database is listed.
-I18.6: the diagrams gate and schema-docs keep the database regex `^(platform|project_[0-9a-f]{32})$`,
-and pgAdmin and schema-docs stay on the `inspector` network. test_inspector_network.py pins the network
-in detail; this file checks the regex and then relies on that suite.
-These pass today and must stay green through every work package. Static, no database.
+pgAdmin has one server, reads as inspector_ro, and uses `platform` as its maintenance database, so
+every project database is listed. The diagrams gate and schema-docs accept the database names
+`^(platform|project_[0-9a-f]{32})$`, and pgAdmin and schema-docs stay on the `inspector` network:
+test_inspector_network.py checks the network in detail, this file checks the regex and that the
+network suite is still there. Static, no database.
 """
 
 import json

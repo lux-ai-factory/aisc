@@ -1,5 +1,6 @@
-"""The engine's package registry client can be built from what compose gives it (Task 9b fix
-round 1). Sean's backend settings (apps/backend/config/settings.py) turn an empty
+"""The engine's package registry client can be built from what compose gives it.
+
+The engine backend's settings (apps/backend/config/settings.py) turn an empty
 PACKAGE_REGISTRY_USER / PASSWORD into None, and plugin-manager's DevpiClient refuses a user
 without a password: with `PACKAGE_REGISTRY_USER=root` and an empty password the backend does not
 boot (routers/plugin.py builds the Loader at import). The eval worker (aisc_eval/utils/env.py)

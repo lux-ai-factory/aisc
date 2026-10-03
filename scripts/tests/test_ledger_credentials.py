@@ -1,21 +1,21 @@
-"""T17, T18: who holds which ledger credential, read from the compose files (spec 6.5; R1.9). Plugins run
-inside the engine worker with a copy of its whole environment (apps/eval/aisc_eval/celery_tasks.py,
-`os.environ.copy()`), so no process that runs plugin code may hold a ledger credential. The worker's
-results reach the ledger through the engine backend."""
+"""Who holds which ledger credential, read from the compose files.
+
+Plugins run inside the engine worker with a copy of its whole environment
+(apps/eval/aisc_eval/celery_tasks.py, `os.environ.copy()`), so no process that runs plugin code may
+hold a ledger credential. The worker's results reach the ledger through the engine backend."""
 import pytest
 import yaml
 
 from conftest import ROOT
 
 FILES = ["docker-compose.plugin_downloader.yml", "docker-compose-infra.development.yml", "docker-compose.development.yml"]
-#: credential -> the only services that may hold it
-#: Until a caller's phase wires its emitter (agents: 5, engine: 8, dashboard: 9), only the platform
-#: holds its token (phase 2 review M2). The engine's must then go to a process that never imports
-#: plugin code: aisc-backend loads plugin packages in-process (decision D12, spec T17).
+#: credential -> the only services that may hold it. The engine's token stays with the platform:
+#: it may only go to a process that never imports plugin code, and aisc-backend loads plugin
+#: packages in-process.
 HOLDERS = {
     "PLATFORM_LEDGER_ENGINE_TOKEN": {"platform"},
-    "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"platform", "dashboard"},                  # phase 9
-    "PLATFORM_LEDGER_AGENTS_TOKEN": {"platform", "qualification-agents"},          # phase 5
+    "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"platform", "dashboard"},
+    "PLATFORM_LEDGER_AGENTS_TOKEN": {"platform", "qualification-agents"},
     "PLATFORM_LEDGER_KEYS": {"platform"},
     "LEDGER_IMMUDB_PASSWORD": {"platform"},
     "AISC_WITNESS_GATEWAY_SECRET": {"caddy", "platform"},
