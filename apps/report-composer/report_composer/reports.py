@@ -13,6 +13,7 @@ import unicodedata
 import uuid
 from datetime import timedelta
 
+from . import anchor as ledger_anchor
 from . import db, evidence_links, layouts
 from . import selection as data_selection
 from . import templates as looks
@@ -119,7 +120,7 @@ def _error(code, message, details=()) -> dict:
     return {"error": {"code": code, "message": message, "details": list(details)}}
 
 
-def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None) -> tuple[str, dict]:
+def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, anchor=None) -> tuple[str, dict]:
     """Checks the saved layout and records a running report with its snapshot: (report id, snapshot).
 
     The layout row stays locked until the caller's transaction ends, so two generations of one
@@ -143,6 +144,8 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None) ->
     snapshot = snapshot_of(project, layout, fmt, caller, template, system_id=system["pid"],
                            selection=data_selection.for_snapshot(sel), document_id=report_id,
                            coverage_links=evidence_links.coverage_links(conn, system["pid"]))
+    if anchor is not None:
+        snapshot["document"]["ledger_anchor"] = anchor                # printed by the renderer (ledger phase 9)
     db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
                      system_id=system["pid"], snapshot=snapshot, created_by=caller.subject, created_at=clock(),
                      fmt=fmt, report_id=report_id, period_from=sel.period_from, period_to=sel.period_to,
@@ -150,18 +153,41 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None) ->
     return report_id, snapshot
 
 
-def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None) -> tuple[int, dict]:
+def outcome_fields(o: dict) -> dict:
+    """The fields of a generation's event (`report.generated` or `report.failed`), from its outcome."""
+    layout = {"id": o["layout"]["id"], "revision": o["layout"]["revision"]}
+    if not o["ok"]:
+        return {"item_type": "report", "item_id": o["report_id"], "card_version": o["system_id"],
+                "details": {"error": o["error_code"], "format": o["format"]}, "content": {"layout": layout}}
+    anchor = o.get("anchor")
+    return {"item_type": "report", "item_id": o["report_id"], "card_version": o["system_id"],
+            "details": {"card_version": o["system_id"], "ledger_head": anchor["seq"] if anchor else None,
+                        "blocks": len(o["block_statuses"]), "document_sha256": o["sha256"], "format": o["format"]},
+            "content": {"anchor": anchor, "layout": layout, "status": o["status"],
+                        "block_statuses": [{k: s.get(k) for k in ("instance_id", "block_type", "status")}
+                                           for s in o["block_statuses"]],
+                        "fingerprint": o.get("fingerprint"), "selection": o.get("selection")}}
+
+
+def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, record=None) -> tuple[int, dict]:
     """One generation at a time per layout; the snapshot is stored before the renderer runs. Every
-    read and write is in the project's own database."""
+    read and write is in the project's own database. `record(conn, outcome)`, the caller's ledger event,
+    runs in the transaction that finishes the report (outcome_fields says what it holds). The ledger
+    anchor the report prints is asked for first, outside any transaction (ledger phase 9, M3)."""
     projects, renderer, clock = request.app.state.projects, request.app.state.renderer, request.app.state.clock
+    anchor = ledger_anchor.fetch(request, project)
     with projects.connect(project["pid"]) as conn:
-        report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice)
+        report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor)
+    outcome = {"report_id": report_id, "system_id": snapshot["system_id"], "format": fmt,
+               "layout": snapshot["layout"], "anchor": anchor, "selection": snapshot.get("selection")}
 
     def failed(status, code, message, **extra):
         ref = _ref()
         with projects.connect(project["pid"]) as conn:
             db.finish_report(conn, report_id, status="failed", finished_at=clock(), error_ref=ref, error_code=code,
                              **extra)
+            if record is not None:
+                record(conn, {**outcome, "ok": False, "error_code": code})
         return status, _error(code, f"{message} (ref {ref})", [{"error_ref": ref, "report_id": report_id}])
 
     try:
@@ -180,10 +206,13 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None) -> 
         return failed(507, "pdf_too_large", "The document is larger than 25 MB and was not stored",
                       block_statuses=statuses)
     status = "partial" if any(s.get("status") == "error" for s in statuses) else "done"
+    sha256 = hashlib.sha256(document).hexdigest()
     with projects.connect(project["pid"]) as conn:
         # the bytes of either format sit in the column named pdf
         db.finish_report(conn, report_id, status=status, finished_at=clock(), pdf=document,
-                         sha256=hashlib.sha256(document).hexdigest(), size_bytes=len(document),
-                         block_statuses=statuses, fingerprint=fingerprint)
+                         sha256=sha256, size_bytes=len(document), block_statuses=statuses, fingerprint=fingerprint)
+        if record is not None:
+            record(conn, {**outcome, "ok": True, "status": status, "sha256": sha256, "block_statuses": statuses,
+                          "fingerprint": fingerprint})
     return 201, {"id": report_id, "status": status, "format": fmt, "block_statuses": statuses,
                  "fingerprint": fingerprint}

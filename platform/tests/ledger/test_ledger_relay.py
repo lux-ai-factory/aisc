@@ -354,7 +354,7 @@ def test_in_record_mode_an_unverified_request_gives_an_unverified_event(project,
 
 
 def test_an_action_from_a_newer_registry_is_held_not_rejected(project, memory_ledger, closing):
-    emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.archived",
+    emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.forwarded",   # an action no registry has yet
                                            registry_version=registry.VERSION + 1))
     stats = relay_all(project["pid"])
     assert stats.held == 1 and rejected(memory_ledger, project["pid"]) == []

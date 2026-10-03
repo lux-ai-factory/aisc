@@ -278,6 +278,41 @@ def _check_contents(body, head) -> list[str]:
     return problems
 
 
+def _entries(lines) -> list[dict]:
+    return [line["entry"] for line in lines[:-1] if isinstance(line.get("entry"), dict)]
+
+
+def anchor_problems(lines, printed: str) -> tuple[list[str], int | None]:
+    """A report's printed anchor, `SEQ:DIGEST` (the digest's first 16 hex digits or more): the entry SEQ of
+    this (checked) export must hash to it, sha256 over its canonical form (ledger phase 9)."""
+    seq_text, _, digest = printed.partition(":")
+    if not seq_text.isdigit() or len(digest) < 16 or any(c not in "0123456789abcdef" for c in digest):
+        return [f"the anchor {printed!r} is not SEQ:DIGEST (16 hex digits or more)"], None
+    seq = int(seq_text)
+    found = next((e for e in _entries(lines) if e.get("seq") == seq), None)
+    if found is None:
+        return [f"the anchor's entry {seq} is not in this export"], None
+    if not hashlib.sha256(canonical(found)).hexdigest().startswith(digest):
+        return [f"the anchor doesn't match entry {seq}: the report was not made under this log's entry"], None
+    return [], seq
+
+
+def document_problems(lines, document: bytes, anchor_seq: int | None) -> tuple[list[str], int | None]:
+    """The report.generated entry that recorded this document (its sha256), later than the anchor it names."""
+    sha = hashlib.sha256(document).hexdigest()
+    found = [e for e in _entries(lines) if e.get("action") == "report.generated"
+             and (e.get("details") or {}).get("document_sha256") == sha]
+    if not found:
+        return ["no report.generated entry records this document (its sha256 is in no entry)"], None
+    entry = found[0]
+    head = (entry.get("details") or {}).get("ledger_head")
+    if anchor_seq is not None and head != anchor_seq:
+        return [f"the document's entry {entry['seq']} names anchor {head}, not the printed {anchor_seq}"], None
+    if head is not None and not head < entry["seq"]:
+        return [f"the document's entry {entry['seq']} is not later than the anchor it names"], None
+    return [], entry["seq"]
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--public-key", required=True, help="the immudb signing key's public half (PEM)")
@@ -285,6 +320,8 @@ def main(argv=None) -> int:
     parser.add_argument("--no-content-check", action="store_true", help="skip the frozen contents, and say so")
     parser.add_argument("--log", help="refuse an export of any other log (its ledger database name)")
     parser.add_argument("--project", help="refuse an export of any other project (its pid)")
+    parser.add_argument("--anchor", help="a report's printed ledger anchor, SEQ:DIGEST: it must be an entry of this log")
+    parser.add_argument("--document", help="a generated report (PDF or DOCX): a report.generated entry must record it")
     parser.add_argument("export", help="the .jsonl file the platform exported")
     args = parser.parse_args(argv)
     try:
@@ -293,6 +330,10 @@ def main(argv=None) -> int:
                      for line in f if line.strip()]
         with open(args.public_key, "rb") as f:
             pem = f.read()
+        document = None
+        if args.document:
+            with open(args.document, "rb") as f:
+                document = f.read()
     except _Malformed as exc:
         print(f"refused: {exc}")
         return 1
@@ -308,10 +349,24 @@ def main(argv=None) -> int:
         problems.append(f"this is the export of {head.get('log')!r}, not of {args.log!r}")
     if args.project and str(project_of(lines)) != args.project:
         problems.append(f"this is the export of project {project_of(lines)!r}, not of {args.project!r}")
+    notes = []
+    anchor_seq = None
+    if args.anchor and not problems:
+        found, anchor_seq = anchor_problems(lines, args.anchor)
+        problems += found
+        if anchor_seq is not None:
+            notes.append(f"anchor: entry {anchor_seq} of this log")
+    if document is not None and not problems:
+        found, recorded = document_problems(lines, document, anchor_seq)
+        problems += found
+        if recorded is not None:
+            notes.append(f"document: recorded by entry {recorded} (report.generated)")
     for p in problems:
         print(p)
     if problems:
         return 1
+    for note in notes:
+        print(note)
     print(f"ok: log {head.get('log')}, project {project_of(lines)}, {head.get('seq')} entries, "
           f"format {head.get('format') or 'chain'}, signed"
           + ("; frozen contents NOT checked" if args.no_content_check else "; frozen contents checked"))

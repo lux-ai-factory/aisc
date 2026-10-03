@@ -165,7 +165,7 @@ def test_a_non_start_event_cannot_shadow_the_runs_start(project, memory_ledger, 
 # M4: newer-registry rows are held for HOLD_UNKNOWN only -----------------------------------------------
 
 def test_a_held_row_is_rejected_after_hold_unknown(project, memory_ledger, closing, settings):
-    emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.archived",
+    emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.forwarded",   # an action no registry has yet
                                            registry_version=registry.VERSION + 1))
     as_superuser(project["pid"], "UPDATE ledger.outbox SET occurred_at = occurred_at - %s",
                  (settings.HOLD_UNKNOWN + timedelta(hours=1),))
@@ -175,7 +175,7 @@ def test_a_held_row_is_rejected_after_hold_unknown(project, memory_ledger, closi
 
 def test_a_version_far_ahead_is_not_held(project, memory_ledger, closing):
     """An emitter's own number can't hold a row for ever: one version ahead at most."""
-    emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.archived",
+    emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.forwarded",   # an action no registry has yet
                                            registry_version=registry.VERSION + 50))
     stats = relay_all(project["pid"])
     assert stats.held == 0 and reasons(memory_ledger, project["pid"]) == ["unknown_action"]

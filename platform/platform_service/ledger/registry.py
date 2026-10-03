@@ -55,7 +55,8 @@ APP_PROJECT_RULES = {
     "qualification": ("slug", r"^/qualification/p/(?P<project>[^/]+)(/|$)"),
     "controls": ("slug", r"^/controls/p/(?P<project>[^/]+)(/|$)"),
     "control_objectives": ("pid", r"^/control-objectives/p/(?P<project>[^/]+)(/|$)"),
-    "report_composer": ("slug", r"^/report-composer/p/(?P<project>[^/]+)(/|$)"),
+    # its pages at /report-composer/p/<slug>, its API at /report-composer/api/p/<slug> (phase 9)
+    "report_composer": ("slug", r"^/report-composer(?:/api)?/p/(?P<project>[^/]+)(/|$)"),
     "platform": ("slug", r"^/api/projects/(?P<project>[^/]+)(/|$)"),
     "launcher": ("slug", r"^/p/(?P<project>[^/]+)(/|$)"),
     "engine": ("header", "X-AISC-Project"),
@@ -70,7 +71,7 @@ APP_PROJECT_RULES = {
 _P = r"[^/]+"
 _LAUNCH = r"^/api/projects/(?P<project>[^/]+)"
 _CO = r"^/control-objectives/p/(?P<project>[^/]+)"
-_RC = r"^/report-composer/p/(?P<project>[^/]+)"
+_RC = r"^/report-composer(?:/api)?/p/(?P<project>[^/]+)"
 _QU = r"^/qualification/p/(?P<project>[^/]+)"
 _CT = r"^/controls/p/(?P<project>[^/]+)"
 _EN = r"^/api/v1"
@@ -354,31 +355,64 @@ _ACTIONS = [
        same_action=("controls.checklist.questions_revised",),
        routes=(("controls", "apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts", "saveReviewedQuestions"),)),
     # --- step 5: dashboard -----------------------------------------------------------------------
+    # (page views are best effort, D6: dashboard.viewed is declared, not yet sent)
     _a("dashboard.viewed", 5, ("dashboard",), "dashboard", per_request=None,
        caused_by=(("dashboard", "GET", r"^/superset/dashboard/(?P<item>[^/]+)/?$"),)),
+    # the dashboard queues these in Superset's database with the change (its own outbox) and posts them
+    # through the internal route; its slug, aisc-<pid hex>, names the project (phase 9, D1-D2)
     _a("dashboard.comment.created", 5, ("dashboard",), "comment",
-       caused_by=(("dashboard", "POST", _DB + r"/aisc_comment/?$"),), content_required=True),
+       caused_by=(("dashboard", "POST", _DB + r"/aisc_comment/?$"),), details_keys=("dashboard", "chart"),
+       content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/comments/api.py", "post"),)),
     _a("dashboard.comment.deleted", 5, ("dashboard",), "comment",
-       caused_by=(("dashboard", "DELETE", _DB + r"/aisc_comment/(?P<item>[^/]+)$"),)),
+       caused_by=(("dashboard", "DELETE", _DB + r"/aisc_comment/(?P<item>[0-9]+)$"),), details_keys=("dashboard",),
+       content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/comments/api.py", "delete"),)),
     _a("dashboard.review.requested", 5, ("dashboard",), "review_request",
-       caused_by=(("dashboard", "POST", _DB + r"/aisc_review_request/?$"),), details_keys=("assignee",)),
+       caused_by=(("dashboard", "POST", _DB + r"/aisc_review_request/?$"),), details_keys=("assignee",),
+       content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/reviews/api.py", "post"),)),
     _a("dashboard.review.resolved", 5, ("dashboard",), "review_request",
-       caused_by=(("dashboard", "PATCH", _DB + r"/aisc_review_request/(?P<item>[^/]+)$"),),
-       details_keys=("status_before", "status_after")),
+       caused_by=(("dashboard", "PATCH", _DB + r"/aisc_review_request/(?P<item>[0-9]+)$"),),
+       details_keys=("status_before", "status_after"), routes=(("dashboard", "apps/results-dashboard/aisc_ext/reviews/api.py", "patch"),)),
     # --- step 6: the report ----------------------------------------------------------------------
     _a("report.layout.created", 6, ("report_composer",), "layout",
        caused_by=(("report_composer", "POST", _RC + "/layouts$"),
-                  ("report_composer", "POST", _RC + rf"/layouts/{_P}/duplicate$")), content_required=True),
+                  ("report_composer", "POST", _RC + rf"/layouts/{_P}/duplicate$")),
+       details_keys=("from",), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "post_layout"), ("report_composer", "apps/report-composer/report_composer/api.py", "duplicate_layout"))),
     _a("report.layout.updated", 6, ("report_composer",), "layout",
        caused_by=(("report_composer", "PUT", _RC + r"/layouts/(?P<item>[^/]+)$"),),
-       details_keys=("revision",), content_required=True),
+       details_keys=("revision",), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "put_layout"),)),
+    # a deleted layout is hidden and keeps its reports (phase 9, M2): the event names them, content `reports`
     _a("report.layout.deleted", 6, ("report_composer",), "layout",
-       caused_by=(("report_composer", "DELETE", _RC + r"/layouts/(?P<item>[^/]+)$"),)),
+       caused_by=(("report_composer", "DELETE", _RC + r"/layouts/(?P<item>[^/]+)$"),),
+       details_keys=("reports",), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "delete_layout"),)),
+    _a("report.template.created", 6, ("report_composer",), "template",
+       caused_by=(("report_composer", "POST", _RC + r"/templates(/import)?$"),),
+       details_keys=("from",), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "post_template"), ("report_composer", "apps/report-composer/report_composer/api.py", "import_template"))),
+    _a("report.template.updated", 6, ("report_composer",), "template",
+       caused_by=(("report_composer", "PUT", _RC + r"/templates/(?P<item>[^/]+)$"),), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "put_template"),)),
+    _a("report.template.deleted", 6, ("report_composer",), "template",
+       caused_by=(("report_composer", "DELETE", _RC + r"/templates/(?P<item>[^/]+)$"),), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "delete_template"),)),
+    # the anchor it prints (`ledger_head`, the seq; the entry's digest in content) and its document's sha256,
+    # so the PDF and an export prove each other offline (verify-ledger-export.py --anchor, --document)
     _a("report.generated", 6, ("report_composer",), "report",
        caused_by=(("report_composer", "POST", _RC + rf"/layouts/{_P}/(reports|generate)$"),),
-       details_keys=("card_version", "ledger_head", "blocks"), content_required=True),
+       details_keys=("card_version", "ledger_head", "blocks", "document_sha256", "format"), content_required=True,
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "post_report"),
+               ("report_composer", "apps/report-composer/report_composer/pages.py", "generate_submit"))),
+    _a("report.failed", 6, ("report_composer",), "report",
+       caused_by=(("report_composer", "POST", _RC + rf"/layouts/{_P}/(reports|generate)$"),),
+       details_keys=("error", "format"),
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "post_report"),
+               ("report_composer", "apps/report-composer/report_composer/pages.py", "generate_submit"))),
     _a("report.downloaded", 6, ("report_composer",), "report", per_request=None,
-       caused_by=(("report_composer", "GET", _RC + r"/reports/(?P<item>[^/]+)/(pdf|download)$"),)),
+       caused_by=(("report_composer", "GET", _RC + r"/reports/(?P<item>[^/]+)/(pdf|download)$"),),
+       details_keys=("document_sha256",),
+       routes=(("report_composer", "apps/report-composer/report_composer/api.py", "get_pdf"), ("report_composer", "apps/report-composer/report_composer/api.py", "download"))),
 ]
 
 REGISTRY: dict[str, Action] = {a.name: a for a in _ACTIONS}

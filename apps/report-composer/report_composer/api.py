@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import builtin_layouts, db, evidence_links, layouts, presets, preview_with, reports
+from . import builtin_layouts, db, evidence_links, layouts, ledger, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, project_guard, signed_in
@@ -138,7 +138,11 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
         with _project_db(request, g) as conn:
             lid = db.insert_layout(conn, template_id=template_id, name=name, description=description, blocks=blocks,
                                    who=g.caller.subject, now=now, settings=settings)
-            view = layout_view(db.get_layout(conn, lid), pid)
+            saved = db.get_layout(conn, lid)
+            ledger.emit(conn, "report.layout.created", item_type="layout", item_id=lid, item_version="1",
+                        details={"from": "file" if imported is not None else ("blocks" if blocks else "empty")},
+                        content=ledger.layout_state(saved), after=ledger.layout_state(saved))
+            view = layout_view(saved, pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
     if imported is not None:
@@ -150,6 +154,13 @@ def _shape_problems(blocks, types) -> list[dict]:
     """A saved layout's problems without its references: those are checked against a version, in the
     preview and when a report is generated (report modules spec, section 3.1)."""
     return layouts.validate_layout(blocks, block_types=types, choices=None, allow_missing_references=True)
+
+
+@router.get("/p/{ref}/deleted-layouts")
+def get_deleted_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
+    """The deleted layouts whose reports stay (ledger phase 9, M2), each with its reports."""
+    with _project_db(request, g) as conn:
+        return db.deleted_layouts_with_reports(conn)
 
 
 @router.get("/p/{ref}/layouts/{layout_id}")
@@ -175,6 +186,7 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
     fail_on(_shape_problems(blocks, block_types(request)))
     try:
         with _project_db(request, g) as conn:
+            before = ledger.layout_state(db.get_layout(conn, current["id"], for_update=True))
             new = db.update_layout(conn, current["id"], based_on=revision, name=name, description=description,
                                    template_id=template_id, blocks=blocks,
                                    who=g.caller.subject, now=request.app.state.clock(), settings=settings)
@@ -183,7 +195,11 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
                 raise ApiError(409, "stale_revision",
                                f"The layout was saved meanwhile; the current revision is {latest['revision']}.",
                                [{"current_revision": latest["revision"]}])
-            return layout_view(db.get_layout(conn, current["id"]), pid)
+            saved = db.get_layout(conn, current["id"])
+            ledger.emit(conn, "report.layout.updated", item_type="layout", item_id=current["id"],
+                        item_version=str(new), details={"revision": new}, content=ledger.layout_state(saved),
+                        before=before, after=ledger.layout_state(saved))
+            return layout_view(saved, pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
 
@@ -191,8 +207,14 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
 @router.delete("/p/{ref}/layouts/{layout_id}", status_code=204)
 def delete_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("editor"))):
     with _project_db(request, g) as conn:
-        if not db.delete_layout(conn, layout_id):
+        layout = db.get_layout(conn, layout_id, for_update=True)
+        held = db.reports_of(conn, layout["id"]) if layout is not None else []
+        if layout is None or not db.delete_layout(conn, layout_id, request.app.state.clock()):
             raise ApiError(404, "not_found", NO_LAYOUT)
+        # hidden, not removed: its revisions (layout_revision) and its reports stay (M2)
+        ledger.emit(conn, "report.layout.deleted", item_type="layout", item_id=layout["id"],
+                    details={"reports": len(held)}, before=ledger.layout_state(layout),
+                    content={"layout": ledger.layout_state(layout), "reports": held})
     return Response(status_code=204)
 
 
@@ -316,7 +338,11 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
             lid = db.insert_layout(conn, template_id=src["template_id"],
                                    name=name, description=src.get("description") or "", blocks=blocks,
                                    who=g.caller.subject, now=now, settings=settings)
-            return layout_view(db.get_layout(conn, lid), pid)
+            saved = db.get_layout(conn, lid)
+            ledger.emit(conn, "report.layout.created", item_type="layout", item_id=lid, item_version="1",
+                        details={"from": "duplicate"}, content={**ledger.layout_state(saved), "source": layout_id},
+                        after=ledger.layout_state(saved))
+            return layout_view(saved, pid)
     except psycopg.errors.UniqueViolation:
         raise _layout_name_taken() from None
 
@@ -385,7 +411,10 @@ def post_report(request: Request, layout_id: str, body: dict | None = Body(None)
                        [{"pointer": "/format", "message": "must be one of pdf, docx"}])
     choice = {k: body.get(k) for k in ("system_id", "period_from", "period_to", "compare_to")}
     choice["other_versions"] = body.get("other_versions") is True
-    status, answer = reports.generate(request, g.project, layout_id, g.caller, fmt, choice=choice)
+    status, answer = reports.generate(request, g.project, layout_id, g.caller, fmt, choice=choice,
+                                      record=lambda conn, o: ledger.emit(
+                                          conn, "report.generated" if o["ok"] else "report.failed",
+                                          **reports.outcome_fields(o)))
     return JSONResponse(status_code=status, content=answer)
 
 
@@ -396,7 +425,7 @@ def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_g
         return [reports.report_row(r) for r in db.list_reports(conn, layout["id"])]
 
 
-def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool) -> Response:
+def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool, record=None) -> Response:
     with _project_db(request, g) as conn:
         report = db.get_report(conn, report_id)
     fmt = (report or {}).get("format") or "pdf"
@@ -405,27 +434,35 @@ def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool) -> R
     snap = report["snapshot"] or {}
     name = reports.document_filename(g.project["slug"], report["system_number"],
                                      (snap.get("layout") or {}).get("name", ""), report["created_at"], fmt)
+    if record is not None:
+        with _project_db(request, g) as conn:
+            record(conn, report)
     return Response(bytes(report["pdf"]), media_type=reports.MEDIA_TYPES[fmt],
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.get("/p/{ref}/reports/{report_id}/pdf")
 def get_pdf(request: Request, report_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    return _document(request, g, report_id, only_pdf=True)
+    return _document(request, g, report_id, only_pdf=True, record=lambda conn, r: ledger.emit(
+        conn, "report.downloaded", item_type="report", item_id=r["id"], details={"document_sha256": r["sha256"]}))
 
 
 @router.get("/p/{ref}/reports/{report_id}/download")
 def download(request: Request, report_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    return _document(request, g, report_id, only_pdf=False)
+    return _document(request, g, report_id, only_pdf=False, record=lambda conn, r: ledger.emit(
+        conn, "report.downloaded", item_type="report", item_id=r["id"], details={"document_sha256": r["sha256"]}))
 
 
 # Templates: a report's look
 
-def _save_template(request: Request, g: Guarded, body, template_id=None, rename_if_taken=False):
+def _save_template(request: Request, g: Guarded, body, template_id=None, rename_if_taken=False, record=None):
+    """`record(conn, template_id, before, after)`: the caller's ledger event, in the save's transaction."""
     look, logo = looks.checked(body, fonts(request))
     now = request.app.state.clock()
     try:
         with _project_db(request, g) as conn:
+            before = ledger.template_state(db.get_template(conn, template_id, with_logo=True)) \
+                if template_id is not None else None
             if template_id is not None and body.get("keep_logo") and "logo" not in body:
                 current = template_or_404(conn, template_id, with_logo=True)
                 logo = (current["logo_mime"], bytes(current["logo"])) if current.get("logo") else None
@@ -436,6 +473,9 @@ def _save_template(request: Request, g: Guarded, body, template_id=None, rename_
                                                  now=now)
             elif not db.update_template(conn, template_id, look=look, logo=logo, who=g.caller.subject, now=now):
                 raise ApiError(404, "not_found", NO_TEMPLATE)
+            if record is not None:
+                record(conn, template_id, before, ledger.template_state(db.get_template(conn, template_id,
+                                                                                       with_logo=True)))
             return looks.view(template_or_404(conn, template_id))
     except psycopg.errors.UniqueViolation:
         raise ApiError(422, "name_taken", "A template of this project already has this name.") from None
@@ -454,12 +494,17 @@ def get_templates(request: Request, g: Guarded = Depends(project_guard("viewer")
 
 @router.post("/p/{ref}/templates", status_code=201)
 def post_template(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
-    return _save_template(request, g, body)
+    return _save_template(request, g, body, record=lambda conn, tid, before, after: ledger.emit(
+        conn, "report.template.created", item_type="template", item_id=tid, details={"from": "form"},
+        content=after, after=after))
 
 
 @router.post("/p/{ref}/templates/import", status_code=201)
 def import_template(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
-    return _save_template(request, g, looks.from_export(body), rename_if_taken=True)
+    return _save_template(request, g, looks.from_export(body), rename_if_taken=True,
+                          record=lambda conn, tid, before, after: ledger.emit(
+                              conn, "report.template.created", item_type="template", item_id=tid,
+                              details={"from": "file"}, content=after, after=after))
 
 
 @router.put("/p/{ref}/templates/{template_id}")
@@ -467,14 +512,21 @@ def put_template(request: Request, template_id: str, body: dict = Body(...),
                  g: Guarded = Depends(project_guard("editor"))):
     with _project_db(request, g) as conn:
         current = template_or_404(conn, template_id)
-    return _save_template(request, g, body, template_id=current["id"])
+    return _save_template(request, g, body, template_id=current["id"],
+                          record=lambda conn, tid, before, after: ledger.emit(
+                              conn, "report.template.updated", item_type="template", item_id=tid, content=after,
+                              before=before, after=after))
 
 
 @router.delete("/p/{ref}/templates/{template_id}", status_code=204)
 def delete_template(request: Request, template_id: str, g: Guarded = Depends(project_guard("editor"))):
     with _project_db(request, g) as conn:
-        if not db.delete_template(conn, template_id):
+        found = db.get_template(conn, template_id, with_logo=True)
+        if found is None or not db.delete_template(conn, template_id):
             raise ApiError(404, "not_found", NO_TEMPLATE)
+        before = ledger.template_state(found)
+        ledger.emit(conn, "report.template.deleted", item_type="template", item_id=found["id"],
+                    before=before, content=before)
     return Response(status_code=204)
 
 

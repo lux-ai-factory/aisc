@@ -59,6 +59,25 @@
     </table>
     {% if not layouts %}<p class="muted table-note">This project has no layout of its own yet.{% if editor %} Duplicate a built-in one, or start with New layout.{% endif %}</p>{% endif %}
   </section>
+  {% if deleted %}
+  <section class="qf-section" data-section="deleted-layouts">
+    <h2>Reports of deleted layouts</h2>
+    <p class="muted">A deleted layout is gone from the list above; the reports made with it are kept here.</p>
+    <table class="layouts">
+      <thead><tr><th>Layout</th><th>Deleted</th><th>Report</th><th></th></tr></thead>
+      <tbody>
+      {% for l in deleted %}{% for r in l.reports %}
+        <tr data-deleted-layout="{{ l.id }}">
+          <td>{{ l.name }}</td>
+          <td class="muted">{{ l.deleted_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="muted">{{ r.created_at[:16] | replace("T", " ") }} ({{ r.status }}, {{ r.format }})</td>
+          <td class="actions">{% if r.status in ("done", "partial") %}<a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/download" download>Download</a>{% endif %}</td>
+        </tr>
+      {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
 </main>
 {% endblock %}
 {% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}

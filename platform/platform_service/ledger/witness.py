@@ -16,10 +16,11 @@ from __future__ import annotations
 import hmac
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlsplit
 
 from platform_service.ledger import registry, secrets, settings
 
@@ -46,7 +47,22 @@ def mode() -> str:
     return value if value in ("off", "record", "enforce") else "off"
 
 
-def _project(app: str, path: str, headers) -> str | None:
+#: A project's dashboard is `aisc-<pid hex>` (apps/results-dashboard aisc_ext/projects.py).
+_DASHBOARD_SLUG = re.compile(r"(?:^|[/=])aisc-([0-9a-f]{32})(?=$|[/?&#])")
+
+
+def _bridge(path: str, query: str) -> str | None:
+    """The pid a dashboard request names by its dashboard's slug, in the path (`/superset/dashboard/aisc-<hex>/`)
+    or in the query (`?dashboard=aisc-<hex>`, which the Review page adds to every write), else None."""
+    for part in (path, *parse_qsl(query or "", keep_blank_values=False)):
+        text = part if isinstance(part, str) else f"{part[0]}={part[1]}"
+        m = _DASHBOARD_SLUG.search(text)
+        if m:
+            return str(uuid.UUID(m.group(1)))
+    return None
+
+
+def _project(app: str, path: str, headers, query: str = "") -> str | None:
     """The pid the request is about, by the app's rule (registry.APP_PROJECT_RULES), if it exists."""
     from platform_service import db
 
@@ -56,7 +72,9 @@ def _project(app: str, path: str, headers) -> str | None:
         identifier = m.group("project") if m else None
     elif kind == "header":
         identifier = _header(headers, rule) or None
-    else:                                                            # "bridge" (phase 9) and "none"
+    elif kind == "bridge":                                           # the dashboard (phase 9)
+        identifier = _bridge(path, query)
+    else:
         identifier = None
     if not identifier:
         return None
@@ -108,7 +126,7 @@ def witness(headers) -> Answer:
     if who is not None:
         from platform_service import db
 
-        pid = _project(app, path, headers)
+        pid = _project(app, path, headers, parts.query)
         if pid is not None:
             # a member, or a platform admin, who may act in every project (keys, deletion)
             roles = (who.claims.get("realm_access") or {}).get("roles") or []
@@ -118,7 +136,7 @@ def witness(headers) -> Answer:
     elif current == "record":
         # record mode observes before enforcing: an unverified request keeps the project its path names,
         # as no member, so the events it caused land in that log marked unverified (spec 3.4, 4.2)
-        pid = _project(app, path, headers)
+        pid = _project(app, path, headers, parts.query)
     actor_ref = None
     if who is not None:
         from platform_service.ledger import actors

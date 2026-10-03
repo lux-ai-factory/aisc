@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from . import api, db, errors, migrate, pages
+from . import api, db, errors, ledger, migrate, pages
 from .projectdb import ProjectDatabases
 from .renderer_client import HttpRendererClient
 
@@ -50,6 +50,7 @@ def create_app(*, database_url=None, project_database_url=None, renderer=None, c
     app = FastAPI(root_path=root_path, lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(RestorePrefix, prefix=root_path)
+    app.add_middleware(ledger.RequestId)                             # the witnessed request, for its events
     app.state.database_url = database_url
     app.state.project_database_url = project_database_url
     app.state.projects = projects

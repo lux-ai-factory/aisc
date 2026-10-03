@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import builtin_layouts, db, forms, groups, layouts, preview_with, prose, reports
+from . import builtin_layouts, db, forms, groups, layouts, ledger, preview_with, prose, reports
 from . import templates as looks
 from .errors import ApiError
 from .guards import guard
@@ -70,7 +70,8 @@ def layouts_page(request: Request, ref: str):
         return _by_slug(request, g.project, "/")
     with request.app.state.projects.connect(g.project["pid"]) as conn:
         rows = db.list_layouts(conn)
-    return _page("layouts.html.j2", request, project=g.project, layouts=rows,
+        gone = db.deleted_layouts_with_reports(conn)
+    return _page("layouts.html.j2", request, project=g.project, layouts=rows, deleted=gone,
                  builtins=builtin_layouts.all_layouts(block_types(request)), editor=g.access.may_write)
 
 
@@ -226,8 +227,10 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
     choice["other_versions"] = typed["other_versions"]
     fmt = typed["format"] if typed["format"] in reports.FORMATS else "pdf"
     try:
-        status, body = await run_in_threadpool(reports.generate, request, g.project, layout_id, g.caller, fmt,
-                                               choice=choice)
+        status, body = await run_in_threadpool(
+            reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
+            record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
+                                               **reports.outcome_fields(o)))
     except ApiError as e:
         with request.app.state.projects.connect(g.project["pid"]) as conn:
             layout, systems = layout_or_404(conn, layout_id), db.systems(conn)

@@ -569,6 +569,9 @@ services:
       REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
       REPORT_RENDERER_URL: http://report-renderer:8001
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
+      # ledger phase 9: off until the ledger is deployed; the platform answers a report's ledger anchor
+      LEDGER_MODE: ${LEDGER_MODE:-off}
+      PLATFORM_URL: http://platform:8000
     depends_on:
       postgres-setup:
         condition: service_completed_successfully
@@ -778,6 +781,12 @@ services:
       DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
       # where a project's own database is, as this host-network container sees it
       AISC_PROJECT_DB_HOSTPORT: localhost:5432
+      # ledger phase 9: comments and reviews are queued in Superset's database with the change and posted to
+      # the platform's internal route with this token; until the platform is reachable from the host
+      # network (DASHBOARD_PLATFORM_URL), they stay queued
+      LEDGER_MODE: ${LEDGER_MODE:-off}
+      PLATFORM_URL: ${DASHBOARD_PLATFORM_URL:-http://172.17.0.1:8000}
+      PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
     depends_on:
       dashboard-migrate:
         condition: service_completed_successfully

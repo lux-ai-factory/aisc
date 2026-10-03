@@ -60,7 +60,7 @@ DEFAULT_SETTINGS = {"show_index": True, "numbering": True}
 
 
 def layout_names(conn) -> set[str]:
-    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.layout").fetchall()}
+    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.layout WHERE deleted_at IS NULL").fetchall()}
 
 
 def list_layouts(conn) -> list[dict]:
@@ -72,7 +72,7 @@ def list_layouts(conn) -> list[dict]:
         " LEFT JOIN LATERAL (SELECT json_build_object('id', r.id, 'created_at', r.created_at, 'status', r.status)"
         "                    AS last_report FROM report_composer.generated_report r WHERE r.layout_id = l.id"
         "                    ORDER BY r.created_at DESC LIMIT 1) lr ON true"
-        " ORDER BY l.name").fetchall()
+        " WHERE l.deleted_at IS NULL ORDER BY l.name").fetchall()
 
 
 def get_layout(conn, layout_id, for_update=False) -> dict | None:
@@ -83,7 +83,7 @@ def get_layout(conn, layout_id, for_update=False) -> dict | None:
         "SELECT l.id::text AS id, l.name, l.description,"
         " l.template_id::text AS template_id, l.revision, l.created_at,"
         " l.created_by, l.updated_at, l.updated_by, l.show_index, l.numbering"
-        " FROM report_composer.layout l WHERE l.id = %s"
+        " FROM report_composer.layout l WHERE l.id = %s AND l.deleted_at IS NULL"
         + (" FOR UPDATE" if for_update else ""), (lid,)).fetchone()
     if row is None:
         return None
@@ -109,7 +109,17 @@ def insert_layout(conn, *, template_id, name, description, blocks, who, now, set
         (template_id, name, description, now, who, now, who, s["show_index"],
          s["numbering"])).fetchone()
     _insert_blocks(conn, row["id"], blocks)
+    keep_revision(conn, row["id"], now)
     return row["id"]
+
+
+def keep_revision(conn, layout_id, now) -> None:
+    """The layout's revision as saved, kept for good (ledger phase 9, M1: layout_revision is append-only)."""
+    from .ledger import layout_state
+
+    state = layout_state(get_layout(conn, layout_id))
+    conn.execute("INSERT INTO report_composer.layout_revision (layout_id, revision, state, saved_at)"
+                 " VALUES (%s, %s, %s, %s)", (layout_id, state["revision"], Jsonb(state), now))
 
 
 def update_layout(conn, layout_id, *, based_on, name, description, template_id, blocks, who,
@@ -124,14 +134,27 @@ def update_layout(conn, layout_id, *, based_on, name, description, template_id, 
         return None
     conn.execute("DELETE FROM report_composer.layout_block WHERE layout_id = %s", (layout_id,))
     _insert_blocks(conn, layout_id, blocks)
+    keep_revision(conn, layout_id, now)
     return row["revision"]
 
 
-def delete_layout(conn, layout_id) -> bool:
+def delete_layout(conn, layout_id, now) -> bool:
+    """Deletes a layout as the user sees it: it is hidden, and its reports stay (ledger phase 9, M2)."""
     lid = _uuid(layout_id)
     if lid is None:
         return False
-    return conn.execute("DELETE FROM report_composer.layout WHERE id = %s RETURNING id", (lid,)).fetchone() is not None
+    return conn.execute("UPDATE report_composer.layout SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL"
+                        " RETURNING id", (now, lid)).fetchone() is not None
+
+
+def deleted_layouts_with_reports(conn) -> list[dict]:
+    """The deleted layouts that have reports, newest deletion first, each with its reports (no bytes)."""
+    return conn.execute(
+        "SELECT l.id::text AS id, l.name, l.deleted_at,"
+        " json_agg(json_build_object('id', r.id, 'status', r.status, 'format', r.format, 'created_at', r.created_at)"
+        "          ORDER BY r.created_at DESC) AS reports"
+        " FROM report_composer.layout l JOIN report_composer.generated_report r ON r.layout_id = l.id"
+        " WHERE l.deleted_at IS NOT NULL GROUP BY l.id ORDER BY l.deleted_at DESC, l.name").fetchall()
 
 
 # Templates (a report's look)
@@ -230,12 +253,20 @@ def list_reports(conn, layout_id) -> list[dict]:
                         (layout_id,)).fetchall()
 
 
+def reports_of(conn, layout_id) -> list[dict]:
+    """What a layout's reports are, without their bytes (what a layout's delete takes with it)."""
+    return conn.execute("SELECT id::text AS id, status, format, sha256, layout_revision, system_id::text AS system_id,"
+                        " created_at FROM report_composer.generated_report WHERE layout_id = %s"
+                        " ORDER BY created_at, id", (layout_id,)).fetchall()
+
+
 def get_report(conn, report_id) -> dict | None:
     rid = _uuid(report_id)
     if rid is None:
         return None
     return conn.execute(
-        "SELECT r.id::text AS id, r.status, r.pdf, r.snapshot, r.created_at, s.number AS system_number, r.format"
+        "SELECT r.id::text AS id, r.status, r.pdf, r.snapshot, r.created_at, s.number AS system_number, r.format,"
+        " r.sha256"
         " FROM report_composer.generated_report r"
         " LEFT JOIN project.system s ON s.pid = r.system_id"
         " WHERE r.id = %s", (rid,)).fetchone()

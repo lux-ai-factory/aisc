@@ -14,7 +14,7 @@ FILES = ["docker-compose.plugin_downloader.yml", "docker-compose-infra.developme
 #: plugin code: aisc-backend loads plugin packages in-process (decision D12, spec T17).
 HOLDERS = {
     "PLATFORM_LEDGER_ENGINE_TOKEN": {"platform"},
-    "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"platform"},
+    "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"platform", "dashboard"},                  # phase 9
     "PLATFORM_LEDGER_AGENTS_TOKEN": {"platform", "qualification-agents"},          # phase 5
     "PLATFORM_LEDGER_KEYS": {"platform"},
     "LEDGER_IMMUDB_PASSWORD": {"platform"},

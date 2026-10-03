@@ -161,14 +161,16 @@ def test_r4_3_list_fields(client, auth):
     assert "updated_at" in row and "last_report" in row
 
 
-# R3.13
-def test_r3_13_deleting_a_layout_deletes_its_reports(client, auth, bed):
+# R3.13, changed by ledger phase 9 (2026-10-03, the user's decision): a deleted layout keeps its reports
+def test_r3_13_deleting_a_layout_keeps_its_reports(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
-    assert client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]},
-                       headers=auth("alice")).status_code == 201
+    made = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]},
+                       headers=auth("alice"))
+    assert made.status_code == 201
     assert client.delete(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 204
-    assert bed.scalar(pdb_of("A"), f"SELECT count(*) FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "0"
+    assert bed.scalar(pdb_of("A"), f"SELECT count(*) FROM report_composer.generated_report WHERE layout_id = '{lay['id']}'") == "1"
     assert client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 404
+    assert client.get(f"/api/p/alpha/reports/{made.json()['id']}/download", headers=auth("alice")).status_code == 200
 
 
 # R4.3.2, R7.3.1

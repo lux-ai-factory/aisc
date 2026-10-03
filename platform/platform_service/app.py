@@ -1705,6 +1705,26 @@ def ledger_event(slug: str, seq: int, caller: Caller = Depends(caller_dependency
     return _shown(str(found["pid"]), _verified_entry(log, seq))
 
 
+@app.get("/projects/{slug}/ledger/head")
+def ledger_head(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """The project log's newest entry, verified: its seq and the sha256 of its canonical form. A generated
+    report prints it (ledger phase 9, M3), and verify-ledger-export.py --anchor finds it in an export."""
+    import hashlib
+
+    from platform_service import ledger
+    from platform_service.ledger.canonical import canonical
+    from platform_service.ledger.store import LedgerUnavailable
+
+    _, _, log = _ledger_project(slug, caller)
+    try:
+        seq = ledger.current().head(log).seq
+    except LedgerUnavailable as exc:
+        raise _ledger_unavailable(exc) from None
+    if seq == 0:
+        raise HTTPException(status_code=404, detail="the project's log has no entry yet")
+    return {"seq": seq, "entry_sha256": hashlib.sha256(canonical(_verified_entry(log, seq).as_dict())).hexdigest()}
+
+
 @app.get("/projects/{slug}/ledger/export")
 def ledger_export(slug: str, caller: Caller = Depends(caller_dependency)) -> Response:
     """The whole log as JSON lines, for scripts/verify-ledger-export.py (EXPORT_ROLES only)."""
