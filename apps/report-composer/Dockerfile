@@ -1,5 +1,5 @@
-# The report composer (report run 2026-09-23), step 7. shared/identity is mounted at
-# /app/shared/identity by docker compose (aisc_identity).
+# The report composer (step 6). shared/identity (aisc_identity) is not copied: docker compose
+# mounts it at /app/shared/identity.
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.9.9 /uv /uvx /bin/
 WORKDIR /app

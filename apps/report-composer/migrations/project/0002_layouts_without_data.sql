@@ -1,4 +1,4 @@
--- Report modules spec 2026-09-28, section 7.2: a layout is structure only; the data a report covers
+-- A layout is structure only; the data a report covers
 -- (the AI card version, the period of test runs, other versions, the version compared with) is
 -- chosen when it is generated and recorded on the report.
 ALTER TABLE report_composer.layout ADD COLUMN show_index boolean NOT NULL DEFAULT true;
@@ -8,7 +8,7 @@ ALTER TABLE report_composer.layout
     DROP CONSTRAINT layout_language_check, DROP COLUMN language,
     DROP CONSTRAINT layout_system_id_fkey, DROP COLUMN system_id;
 
--- options that named one run or one version leave the layout (section 3.1)
+-- options that named one run or one version leave the layout
 UPDATE report_composer.layout_block SET options = options - 'evaluations' WHERE block_type = 'test_results';
 UPDATE report_composer.layout_block SET options = jsonb_set(options, '{compare_to}', '"previous"')
     WHERE block_type = 'changes_since' AND options ? 'compare_to' AND options->>'compare_to' <> 'previous';

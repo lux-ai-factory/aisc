@@ -81,7 +81,7 @@ class HttpRendererClient:
         return parsed()
 
     def _call_within(self, seconds: float, method: str, path: str, json=None):
-        """The call with a deadline for the whole of it (finding 3 of 16-reverify-part2.md): the caller gets an
+        """The call with a deadline for the whole of it: the caller gets an
         answer or RendererTimeout after at most `seconds`, even from a renderer that sends its answer byte by
         byte. The call runs in a helper thread, which itself stops at the next piece of body after the
         deadline, or at the next per-step timeout."""

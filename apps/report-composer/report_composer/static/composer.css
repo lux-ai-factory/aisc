@@ -266,7 +266,7 @@ label.btn:focus-within { outline: 2px solid var(--primary); outline-offset: 2px;
 .field input[type="color"] { padding: 2px; height: 42px; }
 .field label.inline { flex-direction: row; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-weight: 600; margin-top: 8px; }
 
-/* Report run v2: help lines, More options, commentary, chapters, coverage map, messages, dialog */
+/* Help lines, More options, commentary, chapters, coverage map, messages, dialog */
 .help { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.4; }
 details[data-more], details[data-commentary] { margin-top: 10px; }
 details[data-more] > summary, details[data-commentary] > summary { cursor: pointer; font-weight: 700; font-size: 13px; }

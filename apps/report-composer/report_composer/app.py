@@ -1,4 +1,4 @@
-"""The report composer: step 7 of the platform.
+"""The report composer: step 6 of the platform, composing the report.
 
     uvicorn report_composer.app:app --host 0.0.0.0 --port 8095 --proxy-headers
 """
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def create_app(*, database_url=None, project_database_url=None, renderer=None, clock=None) -> FastAPI:
     """database_url: REPORT_COMPOSER_DATABASE_URL, `platform` (core.project, core.project_member and the
     library report_library). project_database_url: REPORT_COMPOSER_PROJECT_DATABASE_URL, the same kind of
-    DSN with `{database}` in place of the name, for everything of a project (I8.1). Nothing connects here."""
+    DSN with `{database}` in place of the name, for everything of a project. Nothing connects here."""
     database_url = database_url or os.environ.get("REPORT_COMPOSER_DATABASE_URL", "")
     project_database_url = project_database_url or os.environ.get("REPORT_COMPOSER_PROJECT_DATABASE_URL", "")
     projects = ProjectDatabases(project_database_url, database_url)
@@ -35,7 +35,7 @@ def create_app(*, database_url=None, project_database_url=None, renderer=None, c
 
     @asynccontextmanager
     async def lifespan(app):
-        # the library first: a failure here is fatal, as before
+        # the library first: a failure here is fatal
         with db.connect(database_url) as conn:
             migrate.migrate_library(conn)
         # then every project database; one that fails is logged and migrated again on its first open

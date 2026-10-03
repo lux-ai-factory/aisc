@@ -1,4 +1,4 @@
-"""The data a report covers (report modules spec 2026-09-28, section 6). Dates are inclusive, in UTC:
+"""The data a report covers. Dates are inclusive, in UTC:
 a period runs from 00:00 of `from` to 00:00 of the day after `to`."""
 from __future__ import annotations
 

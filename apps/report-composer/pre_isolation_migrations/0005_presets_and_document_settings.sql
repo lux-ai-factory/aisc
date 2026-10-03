@@ -1,4 +1,4 @@
--- Report run v2 (2026-09-24): document settings and one coverage map per layout, header, footer
+-- Document settings and one coverage map per layout, header, footer
 -- and marking per template, the format and fingerprint of a generated report, and saved presets.
 -- Additive only. Every new column defaults to what the composer did before this run.
 

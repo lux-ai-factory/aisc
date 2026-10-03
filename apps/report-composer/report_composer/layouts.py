@@ -108,7 +108,7 @@ def _reference_problems(name, value, choices: dict, iid, default=None) -> list[d
                 if item not in _allowed(choices, name):
                     out.append(_problem(iid, "invalid_reference", f"/{name}/{i}", bad))
             elif isinstance(item, dict):
-                # legacy per-field check (summary links): only where the renderer offers the field's choices
+                # a per-field check (the Summary block's links): only where the renderer offers the field's choices
                 for field, v in item.items():
                     key = f"{name}.{field}"
                     if key not in choices:
@@ -162,7 +162,7 @@ def _block_problems(b: dict, t: dict, choices_of, allow_missing_references: bool
     refs = reference_options(t)
     found = _option_problems(t["options_schema"], merged, iid, set(refs) if allow_missing_references else set(),
                              refs)
-    if found or not refs or choices_of is None:      # no choices: the shape only (report modules, 3.1)
+    if found or not refs or choices_of is None:      # no choices: the shape only
         return found
     allowed = choices_of(t["type_id"])
     defaults = t.get("default_options") or {}
@@ -175,7 +175,7 @@ def validate_layout(blocks, *, block_types, choices, allow_missing_references=Fa
 
     `choices(block_type)` answers the values each reference option may take (called at most once
     per block type, and only for a block whose options are otherwise valid); `choices=None` checks the
-    shape only, as a layout is saved without a version (report modules spec 2026-09-28, 3.1).
+    shape only, as a layout is saved without a version.
     """
     types = {t["type_id"]: t for t in block_types}
     problems = _layout_problems(blocks)
@@ -235,8 +235,8 @@ CONTENT_EXCLUDED = ("cover", "chapter", "appendix")
 
 
 def outline_depths(blocks: list[dict]) -> list[tuple[int, bool]]:
-    """(depth, empty chapter) per block: 1 after a chapter until the next chapter or appendix (R-V5.9),
-    and whether a chapter holds no content block (R-V5.8). Computed from the order; nothing is stored."""
+    """(depth, empty chapter) per block: 1 after a chapter until the next chapter or appendix, and
+    whether a chapter holds no content block. Computed from the order; nothing is stored."""
     out = []
     inside = False
     for i, b in enumerate(blocks):
@@ -268,7 +268,7 @@ def outline_numbers(blocks: list[dict], numbering: bool = False) -> list[str]:
     """The report's section number per block ("" for none), so the editor shows what the report prints:
     the renderer's structure.plan rule (chapters 1, 2, their blocks 1.1, 1.2, the appendix A, B; no number
     for the cover or the appendix heading). An unwritten free text is left out of the report and takes no
-    number (renderer document.py, R2-D3.8.1). Nothing is numbered when numbering is off."""
+    number (the renderer's document.py). Nothing is numbered when numbering is off."""
     out = []
     top = sub = 0
     in_appendix, chapter = False, None
@@ -295,8 +295,8 @@ def outline_numbers(blocks: list[dict], numbering: bool = False) -> list[str]:
 
 def outline(blocks: list[dict], block_types=(), numbering: bool = False) -> list[dict]:
     """The editor's outline for any block order: {instance_id, depth, empty_chapter, unwritten, unwritten_hint,
-    number} per block (fix round 1: the editor redraws indentation, hints and numbers from this after a move
-    or an edit). `unwritten` names the options still holding the placeholder (R2-D3.8.3); a block type the
+    number} per block; the editor redraws indentation, hints and numbers from this after a move or an
+    edit. `unwritten` names the options still holding the placeholder; a block type the
     renderer does not describe uses the fixed list."""
     by_type = {t["type_id"]: t for t in block_types or ()}
     out = []

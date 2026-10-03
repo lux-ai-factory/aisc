@@ -1,5 +1,5 @@
 """What a preview is drawn with: a version and a period, chosen in the editor's preview pane and never
-saved in the layout (report modules spec 2026-09-28, section 5)."""
+saved in the layout."""
 from __future__ import annotations
 
 from dataclasses import dataclass

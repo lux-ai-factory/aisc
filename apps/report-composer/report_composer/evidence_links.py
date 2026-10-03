@@ -1,10 +1,11 @@
-"""The coverage links a report is made with (evidence links plan 2026-09-30, D5).
+"""The coverage links a report is made with.
 
-Which tests and controls give evidence for which control objective is set once per project, on the
-platform's Collect evidence page, and kept in the project's own database (evidence.link, template
-0016; this role may read it), one set per AI card version (template 0019). Every snapshot carries them as `coverage_links`, one entry per objective:
-tests by plugin package, checklists by checklist id. A generated report stores its snapshot, so it
-keeps the links it was made with. A database made before the template reads as no links.
+Which tests and controls give evidence for which control objective is set per project on the
+platform's Collect evidence page (step 4), and kept in the project's own database: table
+`evidence.link` (project templates 0016 and 0019), one set per AI card version, readable by this
+service's role. Every snapshot carries them as `coverage_links`, one entry per objective: tests by
+plugin package, checklists by checklist id. A generated report stores its snapshot, so it keeps the
+links it was made with. A database without the table reads as no links.
 """
 from __future__ import annotations
 
@@ -14,8 +15,8 @@ import psycopg
 
 
 def _objective_order(objective_id: str) -> tuple:
-    """The built-in set first (O9 before O10), then the project's own sets by code, by number
-    (2026-10-01); an id from before the rename (R1.1) after."""
+    """The built-in set first (O9 before O10), then the project's own sets by code and number; an
+    id of any other shape last."""
     found = re.fullmatch(r"(O|[A-Z]{2,6})([1-9][0-9]*)", objective_id)
     if found is None:
         return (2, "", 0, objective_id)
@@ -24,8 +25,7 @@ def _objective_order(objective_id: str) -> tuple:
 
 
 def coverage_links(conn, system_id) -> list[dict]:
-    """The step 4 links of one AI card version, the one the report is of (2026-10-02: links belong to a
-    card version); [] with no version."""
+    """The step 4 links of the AI card version the report is of; [] with no version."""
     if not system_id:
         return []
     try:

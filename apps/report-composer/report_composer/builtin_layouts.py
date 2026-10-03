@@ -1,5 +1,5 @@
-"""The five built-in layouts (report modules spec 2026-09-28, section 4.1): read-only, shared by every
-project, opened to inspect and duplicated to adapt. They are the files of presets/; nothing is stored
+"""The five built-in layouts: read-only, shared by every project, opened to inspect and duplicated
+to adapt. They are the files of presets/; nothing is stored
 for them. Their instance ids are derived from the file, so a built-in reads the same every time."""
 from __future__ import annotations
 

@@ -1,12 +1,12 @@
--- The composer's tables in one project's database (isolation 2026-09-25, 01-specs.md I8.2, I1.6, I1.7).
+-- The composer's tables in one project's database.
 --
--- The final shape that the pre-isolation files 0001..0005 left in the shared schema (now in
--- pre_isolation_migrations/), minus the column that named the project: the database is the project.
--- Column order and constraint names are those of the shared tables, so the data move copies column by
--- column. The version keys point at this database's project.system (NO ACTION, I1.6). The install-wide
--- structures saved by users live in the library (migrations/library/, D4), not here.
--- Schema only: the coverage-map data step of 0005 ran on the old layout before the rows moved (I8.6).
--- Nothing is granted: the readers get no access to these tables (I2.6).
+-- The shape that pre_isolation_migrations/0001..0005 made in the shared schema, minus the column that
+-- named the project: the database is the project. Column order and constraint names are those of the
+-- shared tables, so the platform's data move copies column by column. The version keys point at this
+-- database's project.system (NO ACTION). The install-wide structures saved by users live in the
+-- library (migrations/library/), not here.
+-- Schema only: the coverage-map data step of the shared schema's 0005 ran before the rows were moved.
+-- Nothing is granted: the readers get no access to these tables.
 
 CREATE TABLE report_composer.template (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -43,7 +43,7 @@ CREATE TABLE report_composer.layout (
     updated_by  text NOT NULL,
     -- null for a layout whose template was deleted: it previews in the platform look
     template_id uuid CONSTRAINT layout_template_id_fkey REFERENCES report_composer.template (id) ON DELETE SET NULL,
-    -- kept although reports are English only: the data move copies it (I12.6)
+    -- kept although reports are English only: the data move copies it
     language    text NOT NULL DEFAULT 'en' CONSTRAINT layout_language_check CHECK (language ~ '^[a-z]{2}(-[A-Z]{2})?$'),
     toc         text NOT NULL DEFAULT 'auto' CONSTRAINT layout_toc_check CHECK (toc IN ('auto', 'on', 'off')),
     numbering   boolean NOT NULL DEFAULT false,

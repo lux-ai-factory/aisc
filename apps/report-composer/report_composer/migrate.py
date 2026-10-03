@@ -1,4 +1,4 @@
-"""The composer's own migrations: two histories (isolation 2026-09-25, 01-specs.md I8.2, I8.4).
+"""The composer's own migrations: two histories.
 
     migrations/project/   each project's database, schema report_composer, tracked in
                           report_composer.schema_migration of that database

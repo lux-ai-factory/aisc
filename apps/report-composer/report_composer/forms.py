@@ -1,18 +1,17 @@
 """The configure form of a block, from its options schema.
 
-Python decides every field; the page only draws what this returns. Report run v2: labels and help
-come from the schema's `title` and `description` (R-U5.3), enum values from `x-aisc-enum-labels`,
-options marked `x-aisc-more` go under "More options" after the main ones (R-U5.4), options with
-`x-aisc-show-if` are hidden while the named option has another value (R-V4.15), "all or a list"
-options are radios and checkboxes (R-U4.2), enum lists are checkbox lists (R-U4.4), and the
-commentary has a field of its own (R-V3.13). A block without annotations keeps today's generated
-labels, all main (R-U5.5).
+Python decides every field; the page only draws what this returns. Labels and help come from the
+schema's `title` and `description`, enum labels from `x-aisc-enum-labels`. Options marked
+`x-aisc-more` go under "More options" after the main ones; options with `x-aisc-show-if` are hidden
+while the named option has another value. "All or a list" options are radios and checkboxes, enum
+lists are checkbox lists, and the commentary has a field of its own. A block without annotations
+gets labels made from its option names, all of them main.
 """
 from __future__ import annotations
 
 from .layouts import is_all_or_list
 
-#: the help line under every textarea that takes light formatting (R-V3.15)
+#: the help line under every textarea that takes light formatting
 LIGHT_FORMATTING_HELP = ("Light formatting: **bold**, *italic*, lists with - or 1., links [text](https://...),"
                          " tables with |.")
 FILTER_ABOVE = 10
@@ -61,7 +60,7 @@ def _field(name: str, prop: dict, values: dict, choices: dict, required: set) ->
     if name == "commentary":
         field.update(widget="commentary", kind="str", light=True)
     elif "array" in types and items.get("type") == "object":
-        # the Summary block's own links, from before step 4: not shown, and not sent (evidence links, D5)
+        # the Summary block's own coverage links: step 4 sets the links, so this is neither shown nor sent
         return None
     elif is_all_or_list(prop):
         inner = _array_of(prop)

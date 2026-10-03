@@ -1,4 +1,4 @@
-"""The module groups of the layout editor's palette (report modules spec 2026-09-28, section 3)."""
+"""The module groups of the layout editor's palette."""
 from __future__ import annotations
 
 GROUPS: list[tuple[str, tuple[str, ...]]] = [

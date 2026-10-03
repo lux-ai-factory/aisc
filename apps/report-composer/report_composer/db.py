@@ -1,10 +1,10 @@
-"""The composer's SQL (isolation 2026-09-25, 01-specs.md I8.1, I8.3).
+"""The composer's SQL.
 
 Every helper takes a connection first. The version, layout, template and report helpers take a
 connection to ONE project's database (projectdb.ProjectDatabases.connect): the database is the project,
 so no row carries or filters by a project column; they read project.system and write only the schema
 report_composer. The preset helpers take a connection to `platform` and use the install-wide library
-report_library (D4). A malformed uuid argument finds nothing.
+report_library. A malformed uuid argument finds nothing.
 """
 from __future__ import annotations
 
@@ -53,9 +53,9 @@ def latest_system(conn) -> dict | None:
 
 # Layouts
 
-#: a layout's document settings before anyone sets them; numbering is on (2026-10-01, retroactive: project
-#: migration 0003). The layout's coverage column is no longer read or written (evidence links 2026-09-30, D5):
-#: the links are set in step 4.
+#: a layout's document settings before anyone sets them (project migration 0003 turns numbering on for
+#: existing layouts too). The layout table's coverage column is neither read nor written: the links are set
+#: in step 4.
 DEFAULT_SETTINGS = {"show_index": True, "numbering": True}
 
 
@@ -114,7 +114,7 @@ def insert_layout(conn, *, template_id, name, description, blocks, who, now, set
 
 
 def keep_revision(conn, layout_id, now) -> None:
-    """The layout's revision as saved, kept for good (ledger phase 9, M1: layout_revision is append-only)."""
+    """The layout's revision as saved, kept for good (layout_revision is append-only)."""
     from .ledger import layout_state
 
     state = layout_state(get_layout(conn, layout_id))
@@ -139,7 +139,7 @@ def update_layout(conn, layout_id, *, based_on, name, description, template_id, 
 
 
 def delete_layout(conn, layout_id, now) -> bool:
-    """Deletes a layout as the user sees it: it is hidden, and its reports stay (ledger phase 9, M2)."""
+    """Deletes a layout as the user sees it: it is hidden, and its reports stay."""
     lid = _uuid(layout_id)
     if lid is None:
         return False
@@ -217,8 +217,8 @@ def layouts_using(conn, template_id) -> list[str]:
 
 
 def drop_template_from(conn, layout_id, *, who, now) -> int:
-    """A layout leaves its template (being deleted) as a save would: its next revision, kept (phase 9 review
-    M1). Returns that revision."""
+    """A layout leaves its template (being deleted) as a save would: its next revision, kept. Returns that
+    revision."""
     row = conn.execute("UPDATE report_composer.layout SET template_id = NULL, revision = revision + 1,"
                        " updated_at = %s, updated_by = %s WHERE id = %s RETURNING revision",
                        (now, who, layout_id)).fetchone()
@@ -294,7 +294,7 @@ def get_report(conn, report_id) -> dict | None:
         " WHERE r.id = %s", (rid,)).fetchone()
 
 
-# Saved presets: the install-wide library, on a connection to `platform` (D4)
+# Saved presets: the install-wide library, on a connection to `platform`; no route uses it
 
 _PRESET = ("id::text AS id, name, description, toc, numbering, blocks, source_project_id::text AS"
            " source_project_id, created_by, created_at")

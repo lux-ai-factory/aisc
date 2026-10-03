@@ -1,4 +1,4 @@
--- A template is a report's look, not a recipe of blocks (user decision, 2026-09-24): font, base
+-- A template is a report's look, not a recipe of blocks: font, base
 -- font size, primary and accent colour, and a logo. It belongs to one project, which may have any
 -- number; a file export carries it to another project. A layout names the template it is saved
 -- with. The block-recipe templates of 0001 had no rows anywhere they ran, so they are dropped.

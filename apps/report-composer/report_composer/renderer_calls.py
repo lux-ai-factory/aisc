@@ -26,7 +26,7 @@ def renderer_call(fn, *args):
 def block_types(request: Request) -> list:
     """The renderer's block types, asked now. The fresh answer also refreshes the outline's cache, so a
     renderer restarted with new block types is seen by the outline as soon as the palette, a save, a
-    validation, a preview or a generation has asked for them (finding 2 of 16-reverify-part2.md)."""
+    validation, a preview or a generation has asked for them."""
     value = renderer_call(request.app.state.renderer.block_types)
     _outline_cache(request.app.state).put(value)
     return value
@@ -43,11 +43,11 @@ def choices_for(request: Request, project_pid: str, system_pid: str):
 
 class BlockTypesCache:
     """The renderer's block types for the outline route, kept for `ttl` seconds. They change only when the
-    renderer restarts, and `put` stores any fresher answer. A failure gives [] (the outline then uses the fixed
-    prose list, DV12-6) and is kept for the shorter `failure_ttl`, so a hung renderer is not asked again on
-    every edit (finding 1 of 14-verify-part2.md).
+    renderer restarts, and `put` stores any fresher answer. A failure gives [] (the outline then uses its fixed
+    list of prose block types) and is kept for the shorter `failure_ttl`, so a hung renderer is not asked again
+    on every edit.
 
-    Single flight (finding 1 of 16-reverify-part2.md): only one fetch runs at a time. While it runs, the other
+    Single flight: only one fetch runs at a time. While it runs, the other
     callers take the older list at once if there is one; otherwise they wait for the fetch, at most `wait`
     seconds, and then use [] if it has not ended."""
 

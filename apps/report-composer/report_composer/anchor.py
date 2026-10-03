@@ -1,4 +1,4 @@
-"""The ledger anchor a generated report prints (ledger phase 9, M3).
+"""The ledger anchor a generated report prints.
 
 At generation the composer asks the platform for the project log's newest entry, as the person
 generating it (their gateway token: members may read their project's log). The report prints the entry's

@@ -1,11 +1,11 @@
-"""One database per project (isolation 2026-09-25, 01-specs.md I8.1, I8.4, I2.5, I17.1, I1.8).
+"""One database per project.
 
 Everything of a project (its versions in project.system, its layouts, templates and reports) is read and
 written over REPORT_COMPOSER_PROJECT_DATABASE_URL, a DSN with `{database}` in place of the database
 name, filled with `project_<pid without hyphens>`. A project database is opened only after
 guards.guard has decided membership for that pid (the callers open it inside the guarded route).
 
-One connection per call, one transaction, closed on exit: no pool (I17.1). The first open of a database
+One connection per call, one transaction, closed on exit: no pool. The first open of a database
 in this process migrates it first (lock 8_190_233_707 in that database, the history re-read inside the
 lock), unless the start loop already did.
 """
@@ -29,7 +29,7 @@ UNAVAILABLE = "This project's reports cannot be reached just now."
 
 
 def database_name(pid: str) -> str:
-    """I1.8: project_<32 lowercase hex digits>; anything but a canonical uuid is refused."""
+    """project_<32 lowercase hex digits>; anything but a canonical uuid is refused."""
     if not isinstance(pid, str) or not _PID.match(pid):
         raise ValueError("not a project pid")
     return "project_" + pid.replace("-", "").lower()
@@ -70,7 +70,7 @@ class ProjectDatabases:
             return self._locks.setdefault(name, threading.Lock())
 
     def _refused(self, pid: str) -> ApiError:
-        """A connect error: 404 when the database is gone (I2.5), else 503. The error text is not parsed."""
+        """A connect error: 404 when the database is gone (the project was deleted), else 503. The error text is not parsed."""
         try:
             gone = not self.exists(pid)
         except psycopg.Error:

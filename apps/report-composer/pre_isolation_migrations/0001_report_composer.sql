@@ -1,4 +1,4 @@
--- The composer's own tables (report run 2026-09-23, 01 section 3.1, 02 D13).
+-- The composer's own tables, in the shared schema before each project had its own database.
 CREATE TABLE report_composer.layout (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id  uuid NOT NULL REFERENCES core.project (pid) ON DELETE CASCADE,

@@ -1,6 +1,6 @@
--- Ledger phase 9 (M2; the user's decision of 2026-10-03): a deleted layout keeps its reports. Deleting a
--- layout sets deleted_at; every layout read leaves it out, and its name is free again. Its generated
--- reports stay, still downloadable. The reports' key becomes RESTRICT, so no hard delete takes them again.
+-- A deleted layout keeps its reports. Deleting a layout sets deleted_at; every layout read leaves it
+-- out, and its name is free again. Its generated reports stay, still downloadable. The reports' key
+-- becomes RESTRICT, so no hard delete of a layout can remove them.
 ALTER TABLE report_composer.layout ADD COLUMN deleted_at timestamptz;
 
 ALTER TABLE report_composer.layout DROP CONSTRAINT layout_name_key;

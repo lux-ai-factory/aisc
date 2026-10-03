@@ -20,7 +20,7 @@ dev = [
     "pytest>=8.0",
     "beautifulsoup4>=4.12",
     "pypdf>=4.0",
-    # browser tests of composer.js (fix round 1); they drive the system Chrome, no browser download
+    # browser tests of composer.js; they drive the system Chrome, no browser download
     "playwright>=1.40",
 ]
 
@@ -33,7 +33,7 @@ packages = ["report_composer"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# aisc_identity is shared by every Python service, mounted from shared/ (as control-objectives)
+# aisc_identity is shared by every Python service and read from shared/identity, not installed
 pythonpath = [".", "../../shared/identity"]
 markers = [
     "db: needs the throwaway report bed (docker, postgres:15-alpine, never the host's 5432)",

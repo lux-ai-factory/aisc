@@ -1,5 +1,4 @@
-"""Which options of a block hold prose written for one project (report run v2, part 2: R2-D3.7.3 to
-R2-D3.7.5, R2-D3.8.3). Pure functions, no I/O.
+"""Which options of a block hold prose written for one project. Pure functions, no I/O.
 
 The rule walks a block type's options schema (as GET /v1/block-types returns it) through `properties`,
 `additionalProperties`, `items`, `prefixItems` and the `oneOf` / `anyOf` / `allOf` branches. A string leaf
@@ -21,7 +20,7 @@ PLACEHOLDER = "Write this section."
 #: the prose options known without a schema: name -> needs a value
 FIXED_COMMON = {"commentary": False}
 FIXED = {"free_text": {"text": True}, "chapter": {"intro": False}}
-#: options the renderer leaves out of the report while they hold the placeholder (R2-D3.8.1)
+#: options the renderer leaves out of the report while they hold the placeholder
 LEFT_OUT = {"commentary", ("free_text", "text"), ("chapter", "intro")}
 TITLE_MAX = 300
 CONSTRAINTS = ("enum", "const", "pattern", "format")
@@ -94,7 +93,7 @@ def _choice(value, node, blocked):
 
 
 def blank(value, node, *, required: bool = False, blocked: bool = False, nullable: bool = False):
-    """`value` with every prose string it holds replaced (R2-D3.7.4); a value of another shape stays."""
+    """`value` with every prose string it holds replaced; a value of another shape stays."""
     if not isinstance(node, dict):
         return value
     blocked_here = _blocks_below(node, blocked)

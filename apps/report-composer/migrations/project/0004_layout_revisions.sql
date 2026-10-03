@@ -1,4 +1,4 @@
--- Ledger phase 9 (M1): every revision of a layout is kept. A save replaces the layout's blocks; the
+-- Every revision of a layout is kept, for the ledger. A save replaces the layout's blocks; the
 -- revision it made is written here first and never changed or removed (append-only, TRUNCATE refused).
 -- No key to the layout: its revisions outlive it. The table's owner (the role migrations run as) can
 -- still drop the triggers; the ledger's frozen states are the check on that.

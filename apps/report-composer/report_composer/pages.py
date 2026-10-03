@@ -64,7 +64,7 @@ def layouts_page_without_slash(request: Request, ref: str):
 
 @router.get("/p/{ref}/")
 def layouts_page(request: Request, ref: str):
-    """The layouts: the five built-in ones, then the project's (report modules spec 2026-09-28, 4 and 5)."""
+    """The layouts: the five built-in ones, then the project's."""
     g = guard(request, ref, "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, "/")
@@ -93,7 +93,7 @@ def _reference_choices(request: Request, project: dict, layout: dict, by_type: d
 def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, depth: int = 0,
                    empty_chapter: bool = False, problems=(), number: str = "") -> dict:
     """A block as the editor's outline draws it; an editor also gets its configure form. A block still
-    holding the placeholder in a prose option gets the unwritten hint (R2-D3.8.3)."""
+    holding the placeholder in a prose option gets the unwritten hint."""
     unwritten = prose.unwritten(block["block_type"], block["options"] or {}, block_type)
     return {"instance_id": block["instance_id"], "block_type": block["block_type"],
             "title": (block["options"] or {}).get("title") or (block_type["title"] if block_type else None),
@@ -130,7 +130,7 @@ def _preview_query(request: Request) -> dict:
 def editor_page(request: Request, ref: str, layout_id: str):
     """One editor for a saved layout, a new one (`new`, nothing saved until Save) and a built-in one
     (read-only); the preview is drawn with the version and period of `?system_id=&period_from=...`,
-    never saved (report modules spec 2026-09-28, section 5)."""
+    never saved."""
     g = guard(request, ref, "editor" if layout_id == "new" else "viewer")
     if _is_pid(ref):
         return _by_slug(request, g.project, f"/layouts/{layout_id}")
@@ -180,7 +180,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
 
 
 def _problem_lines(details, layout: dict, types: list[dict]) -> list[str]:
-    """Each refused option as "<module title>: <option>: <message>", in the layout's order (final review I1)."""
+    """Each refused option as "<module title>: <option>: <message>", in the layout's order."""
     titles = {t["type_id"]: t["title"] for t in types}
     names = {b["instance_id"]: (b.get("options") or {}).get("title") or titles.get(b["block_type"], b["block_type"])
              for b in layout["blocks"]}
@@ -194,7 +194,7 @@ def _problem_lines(details, layout: dict, types: list[dict]) -> list[str]:
 def generate_context(layout: dict, systems: list, error: str | None = None, form: dict | None = None,
                      problems: list | None = None) -> dict:
     """What the Generate report page shows: the versions newest first, Compare with only when the layout
-    compares versions, and the message of a project without a version (report modules spec, section 6)."""
+    compares versions, and the message of a project without a version."""
     return {"systems": systems, "has_changes_since": any(b["block_type"] == "changes_since" for b in layout["blocks"]),
             "message": None if systems else NO_VERSION, "error": error, "form": form or {}, "problems": problems or []}
 

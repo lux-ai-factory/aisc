@@ -1,7 +1,7 @@
 """A report's look: checking a template, sending it to the renderer, and its export file.
 
-A template is font, base font size, primary and accent colour, an optional logo and (report run
-v2) header text, footer text, a confidentiality marking and whether the document id is printed. The
+A template is font, base font size, primary and accent colour, an optional logo, header text,
+footer text, a confidentiality marking and whether the document id is printed. The
 fonts are the renderer's (GET /v1/fonts), because only those can be drawn in the PDF.
 """
 from __future__ import annotations
@@ -107,7 +107,7 @@ def style(t: dict) -> dict:
     logo = _logo_json(t)
     if logo:
         s["logo"] = logo
-    # the new fields only when set, so a default template sends today's style (R-V5.16)
+    # the optional fields only when set, so a template that leaves them out sends the plain style
     for key in ("header_text", "footer_text"):
         if t.get(key) is not None:
             s[key] = t[key]

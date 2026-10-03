@@ -1,7 +1,7 @@
 """Generated reports: the snapshot sent to the renderer, the document's filename and the generation itself.
 
-Report run v2: snapshots are version 2 (document settings, coverage links from step 4; no language, reports are
-English), a report is a PDF or a Word document (DOCX), and the renderer's fingerprint is stored with it.
+Snapshots are version 2 (document settings, coverage links from step 4; no language, reports are English), a
+report is a PDF or a Word document (DOCX), and the renderer's fingerprint is stored with it.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def requested_by(caller) -> str:
 
 
 def _sent_options(block: dict) -> dict:
-    """A block's options as sent: a Summary block's own links from before step 4 are left out (D5)."""
+    """A block's options as sent: a Summary block's own `links` are left out, since step 4 sets the links."""
     options = dict(block["options"] or {})
     if block["block_type"] == "summary_coverage":
         options.pop("links", None)
@@ -71,7 +71,7 @@ def _sent_options(block: dict) -> dict:
 def snapshot_of(project, layout, mode, caller, template=None, *, system_id, selection=None,
                 document_id=None, coverage_links=()) -> dict:
     """What the renderer is sent: the layout, and the data it covers (the anchor version and the
-    selection, report modules spec 2026-09-28, section 6); `template` (read with its logo) gives the
+    selection); `template` (read with its logo) gives the
     report its look, and none means the platform look. `coverage_links` are the project's step 4 links
     (evidence_links.coverage_links) of the card version it is of."""
     snap = {"snapshot_version": 3, "project_id": project["pid"], "system_id": system_id,
@@ -88,7 +88,7 @@ def snapshot_of(project, layout, mode, caller, template=None, *, system_id, sele
 
 
 def check_choice(conn, choice: dict):
-    """The version and the selection a report is generated for (report modules spec, section 6)."""
+    """The version and the selection a report is generated for."""
     if not choice.get("system_id"):
         raise ApiError(422, "invalid_request", "Choose the AI card version to report on.",
                        [{"pointer": "/system_id", "message": "is required"}])
@@ -138,14 +138,14 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
         choices=choices_for(request, project["pid"], system["pid"])))
     if db.running_report(conn, layout["id"], clock() - timedelta(minutes=GENERATION_WINDOW_MINUTES)):
         raise ApiError(409, "generation_running", "A report of this layout is being generated.")
-    # only what is saved is generated; without a template it is the platform look (R-U6.1)
+    # only what is saved is generated; without a template it is the platform look
     template = template_of(conn, layout)
     report_id = str(uuid.uuid4())
     snapshot = snapshot_of(project, layout, fmt, caller, template, system_id=system["pid"],
                            selection=data_selection.for_snapshot(sel), document_id=report_id,
                            coverage_links=evidence_links.coverage_links(conn, system["pid"]))
     if anchor is not None:
-        snapshot["document"]["ledger_anchor"] = anchor                # printed by the renderer (ledger phase 9)
+        snapshot["document"]["ledger_anchor"] = anchor                # printed by the renderer
     db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
                      system_id=system["pid"], snapshot=snapshot, created_by=caller.subject, created_at=clock(),
                      fmt=fmt, report_id=report_id, period_from=sel.period_from, period_to=sel.period_to,
@@ -173,7 +173,7 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
     """One generation at a time per layout; the snapshot is stored before the renderer runs. Every
     read and write is in the project's own database. `record(conn, outcome)`, the caller's ledger event,
     runs in the transaction that finishes the report (outcome_fields says what it holds). The ledger
-    anchor the report prints is asked for first, outside any transaction (ledger phase 9, M3)."""
+    anchor the report prints is asked for first, outside any transaction."""
     projects, renderer, clock = request.app.state.projects, request.app.state.renderer, request.app.state.clock
     anchor = ledger_anchor.fetch(request, project)
     with projects.connect(project["pid"]) as conn:

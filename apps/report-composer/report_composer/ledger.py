@@ -1,11 +1,11 @@
-"""The composer's ledger events (docs/superpowers/ledger-2026-10-02/02-spec.md 6.4, 6.5; phase 9).
+"""The composer's ledger events.
 
 An event is written with the project database's `ledger.emit(jsonb)` on the connection of the write it
 describes, inside that write's one transaction (db.connect, projectdb.connect), so a rollback leaves no
-event and a committed change always has one (R2.4). The composer never names who acted: it cites the
+event and a committed change always has one. The composer never names who acted: it cites the
 request the gateway witnessed (`X-AISC-Request-Id`, kept per request by `RequestId`), and the platform's
 relay takes the person from that record. It sends plain content (a logo as its sha256, never the image);
-the platform computes the keyed digests (N4). Nothing is written while LEDGER_MODE is off (the default).
+the platform computes the keyed digests. Nothing is written while LEDGER_MODE is off (the default).
 """
 from __future__ import annotations
 

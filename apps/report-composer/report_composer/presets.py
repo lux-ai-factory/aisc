@@ -1,10 +1,10 @@
-"""Layout files: report structures without project data (report run v2, R-V1.1 to R-V1.12; report modules
-2026-09-28).
+"""Layout files: report structures without project data.
 
 A file is an ordered list of {block_type, options} plus the document settings show_index (version 1:
 toc) and numbering (reports are English only; a `language` in a file is ignored). It carries a structure
 to another project or platform; a layout made from it keeps no link to it. The built-in layouts are the
-files of report_composer/presets/ (builtin_layouts.py); the install-wide saved-preset library is gone.
+files of report_composer/presets/ (builtin_layouts.py). The install-wide saved-preset library
+(report_library.preset, db.list_presets and the rest) is still migrated, but no route uses it.
 """
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ from .prose import PLACEHOLDER  # noqa: F401  (the one placeholder text, pinned 
 
 DIRECTORY = Path(__file__).resolve().parent / "presets"
 FILE_FORMAT = "aisc-report-preset"
-#: files written today; version 1 files (with toc auto/on/off, a language, run ids) are still read
+#: the version written; version 1 files (with toc auto/on/off, a language, run ids) are still read
 FILE_VERSION = 2
 READ_VERSIONS = (1, 2)
-#: options that named one run or one version and left the layout (report modules spec 2026-09-28, 3.1):
+#: options that named one run or one version, which a layout does not hold:
 #: (block type, option) -> the value that replaces it, or DROP
 DROP = object()
 RETIRED_OPTIONS = {("test_results", "evaluations"): DROP, ("changes_since", "compare_to"): "previous"}
@@ -41,7 +41,7 @@ class Preset:
     blocks: list = field(default_factory=list)
     built_in: bool = False
     created_by: str | None = None
-    #: (block index, option, label) of every reference a preset file held and that was reset (R2-D3.6);
+    #: (block index, option, label) of every reference a preset file held and that was reset;
     #: neither exported nor stored
     reset: list = field(default_factory=list)
 
@@ -74,7 +74,7 @@ def _types(block_types) -> dict:
 
 
 def unknown_types_problem(blocks, block_types) -> None:
-    """422 unknown_block_type naming every block type the renderer does not offer (R-V1.5)."""
+    """422 unknown_block_type naming every block type the renderer does not offer."""
     types = _types(block_types)
     unknown = []
     for b in blocks:
@@ -90,7 +90,7 @@ def unknown_types_problem(blocks, block_types) -> None:
 
 
 def _without_references(options: dict, block_type: dict) -> dict:
-    """Options with every data reference set to its type default, or left out (R-V1.4)."""
+    """Options with every data reference set to its type default, or left out."""
     out = copy.deepcopy(options)
     defaults = block_type.get("default_options") or {}
     for name in layouts.reference_options(block_type):
@@ -102,7 +102,7 @@ def _without_references(options: dict, block_type: dict) -> dict:
 
 
 def reset_references(blocks, block_types) -> tuple[list[dict], list[tuple[int, str, str]]]:
-    """R2-D3.6.1: the blocks of a preset file with every reference option reset (file options only, no
+    """The blocks of a preset file with every reference option reset (file options only, no
     defaults merged), and (i, option, label) for each reference whose value in the file was changed."""
     types = _types(block_types)
     out, changed = [], []
@@ -121,7 +121,7 @@ def reset_references(blocks, block_types) -> tuple[list[dict], list[tuple[int, s
 
 
 def reference_notices(changed, where: str) -> list[dict]:
-    """One notice per reset reference (R2-D3.6.2); `where` says whose data it pointed at."""
+    """One notice per reset reference; `where` says whose data it pointed at."""
     return [{"pointer": f"/blocks/{i}/{option}",
              "message": f"The {label} of block {i + 1} pointed at {where}; it was reset to its default."}
             for i, option, label in changed]
@@ -138,7 +138,7 @@ def _show_index(doc: dict) -> bool | None:
 
 def retire_options(blocks, block_types=()) -> tuple[list[dict], list[tuple[int, str, str]]]:
     """Blocks without the options that named one run or one version, and (i, option, label) for each
-    one that was dropped or put back to "previous" (report modules spec, 3.1). The label is the option's
+    one that was dropped or put back to "previous". The label is the option's
     title in the block type's schema when it has one."""
     fallback = {"evaluations": "Evaluations", "compare_to": "Compare with"}
     types = _types(block_types)
@@ -164,8 +164,8 @@ def retire_options(blocks, block_types=()) -> tuple[list[dict], list[tuple[int, 
 
 
 def from_file(doc, block_types) -> Preset:
-    """A preset file checked (R-V1.10): 422 not_a_preset, unknown_block_type, invalid_options or duplicate_cover.
-    Its references are reset and listed in `reset` (R2-D3.6.1)."""
+    """A preset file checked: 422 not_a_preset, unknown_block_type, invalid_options or duplicate_cover.
+    Its references are reset and listed in `reset`."""
     if not isinstance(doc, dict) or doc.get("format") != FILE_FORMAT or doc.get("version") not in READ_VERSIONS:
         raise ApiError(422, "not_a_preset", "This file is not a report preset.")
     blocks = doc.get("blocks")
@@ -222,8 +222,8 @@ def blocks_for_layout(preset: Preset, block_types) -> list[dict]:
 
 
 def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
-    """A layout's structure as a preset (R-V1.7, R-V1.9): references stripped, every prose option (found
-    from the block type's schema by prose.strip_options, R2-D3.7.3) becomes the placeholder, null or empty
+    """A layout's structure as a preset: references stripped, every prose option (found from the block
+    type's schema by prose.strip_options) becomes the placeholder, null or empty
     unless kept. Titles, cover title and subtitle stay."""
     types = _types(block_types)
     blocks = []
@@ -241,14 +241,14 @@ def from_layout(layout: dict, block_types, keep_text: bool = False) -> Preset:
 
 
 def export_doc(p: Preset) -> dict:
-    """The preset file (R-V1.7)."""
+    """The preset file."""
     return {"format": FILE_FORMAT, "version": FILE_VERSION, "name": p.name, "description": p.description,
             "show_index": True if p.show_index is None else bool(p.show_index), "numbering": True if p.numbering is None else bool(p.numbering),
             "blocks": [{"block_type": b["block_type"], "options": copy.deepcopy(b["options"])} for b in p.blocks]}
 
 
 def copy_name(name: str, taken: set[str]) -> str:
-    """"{name} (copy)", then "{name} (copy 2)" and so on until free, at most 120 characters (R-V1.6)."""
+    """"{name} (copy)", then "{name} (copy 2)" and so on until free, at most 120 characters."""
     n = 1
     while True:
         suffix = " (copy)" if n == 1 else f" (copy {n})"

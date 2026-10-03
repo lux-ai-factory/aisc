@@ -1,7 +1,7 @@
 """Who may read and who may change a project's reports.
 
-The pattern of control-objectives' access.py: the platform's core.project_member says what a
-person is to a project, read on every request. A realm admin reads every project and edits only
+As in control-objectives' access.py, the platform's core.project_member says what a person is to a
+project, read on every request. A realm admin reads every project and edits only
 where they are an editor. No answer from the database means nobody gets in.
 """
 from __future__ import annotations

@@ -34,7 +34,7 @@ def template_of(conn, layout) -> dict | None:
 
 
 def chosen_template(conn, template_id) -> str | None:
-    """One of the project's templates, or None: the platform default look (report run v2, R-U6.1)."""
+    """One of the project's templates, or None: the platform's default look."""
     if not template_id:
         return None
     t = db.get_template(conn, template_id)

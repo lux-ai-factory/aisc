@@ -28,7 +28,7 @@ DRAFT_MAX_BYTES = 1_048_576
 
 
 def _project_db(request: Request, g: Guarded):
-    """The guarded project's own database (I8.1): opened only after the guard has decided."""
+    """The guarded project's own database: opened only after the guard has decided."""
     return request.app.state.projects.connect(g.project["pid"])
 
 
@@ -108,8 +108,7 @@ def get_layouts(request: Request, g: Guarded = Depends(project_guard("viewer")))
 @router.post("/p/{ref}/layouts", status_code=201)
 def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(project_guard("editor"))):
     """A layout of this project: empty, from its blocks, or from a layout file (`file`; `preset_file` is the
-    older name). It holds no data: a version or a toc sent by an older client is ignored (report
-    modules spec 2026-09-28, section 7.2)."""
+    older name). It holds no data: a version or a toc sent by an older client is ignored."""
     body = {**body, "file": body.get("file", body.get("preset_file"))}
     sources = [k for k in ("file", "blocks") if body.get(k) is not None]
     if len(sources) > 1:
@@ -152,13 +151,13 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
 
 def _shape_problems(blocks, types) -> list[dict]:
     """A saved layout's problems without its references: those are checked against a version, in the
-    preview and when a report is generated (report modules spec, section 3.1)."""
+    preview and when a report is generated."""
     return layouts.validate_layout(blocks, block_types=types, choices=None, allow_missing_references=True)
 
 
 @router.get("/p/{ref}/deleted-layouts")
 def get_deleted_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
-    """The deleted layouts whose reports stay (ledger phase 9, M2), each with its reports."""
+    """The deleted layouts whose reports stay, each with its reports."""
     with _project_db(request, g) as conn:
         return db.deleted_layouts_with_reports(conn)
 
@@ -211,7 +210,7 @@ def delete_layout(request: Request, layout_id: str, g: Guarded = Depends(project
         held = db.reports_of(conn, layout["id"]) if layout is not None else []
         if layout is None or not db.delete_layout(conn, layout_id, request.app.state.clock()):
             raise ApiError(404, "not_found", NO_LAYOUT)
-        # hidden, not removed: its revisions (layout_revision) and its reports stay (M2)
+        # hidden, not removed: its revisions (layout_revision) and its reports stay
         ledger.emit(conn, "report.layout.deleted", item_type="layout", item_id=layout["id"],
                     details={"reports": len(held)}, before=ledger.layout_state(layout),
                     content={"layout": ledger.layout_state(layout), "reports": held})
@@ -270,7 +269,7 @@ def outline(request: Request, layout_id: str, body: dict = Body(...),
         with _project_db(request, g) as conn:
             layout_or_404(conn, layout_id)
     blocks = _blocks(body)
-    if len(blocks) > layouts.MAX_BLOCKS:   # the limit of layout save (fix round 2, item 4)
+    if len(blocks) > layouts.MAX_BLOCKS:   # the same limit as saving a layout
         raise ApiError(422, "too_many_blocks", f"A layout holds at most {layouts.MAX_BLOCKS} blocks.",
                        [{"pointer": "/blocks", "message": f"a layout holds at most {layouts.MAX_BLOCKS} blocks"}])
     if not all(isinstance(b["block_type"], str) for b in blocks):
@@ -281,13 +280,13 @@ def outline(request: Request, layout_id: str, body: dict = Body(...),
         raise ApiError(422, "invalid_request", "numbering must be true or false.",
                        [{"pointer": "/numbering", "message": "is not valid"}])
     # cached block types, short timeout, [] when the renderer fails: the outline then uses the fixed prose
-    # list (DV12-6), so indentation keeps working without the renderer
+    # list, so indentation keeps working without the renderer
     return {"outline": layouts.outline(blocks, outline_block_types(request), numbering=numbering)}
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/preview")
 async def preview_draft(request: Request, layout_id: str, g: Guarded = Depends(project_guard("editor"))):
-    """The editor's unsaved state rendered as a preview; nothing is stored (report run v2, R-U3.1)."""
+    """The editor's unsaved state rendered as a preview; nothing is stored."""
     raw = await request.body()
     if len(raw) > DRAFT_MAX_BYTES:
         raise ApiError(413, "too_large", "The draft is larger than 1 MB.")
@@ -355,7 +354,7 @@ def _preset_file_response(p: presets.Preset) -> Response:
 
 @router.get("/p/{ref}/builtin-layouts")
 def get_builtin_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
-    """The five built-in layouts (report modules spec 2026-09-28, section 4.1), read-only."""
+    """The five built-in layouts, read-only."""
     return builtin_layouts.all_layouts(block_types(request))
 
 
@@ -402,8 +401,7 @@ def export_layout(request: Request, layout_id: str, keep_text: bool = False,
 @router.post("/p/{ref}/layouts/{layout_id}/reports")
 def post_report(request: Request, layout_id: str, body: dict | None = Body(None),
                 g: Guarded = Depends(project_guard("editor"))):
-    """A report of the layout for a chosen version, period, other-versions switch and compare version
-    (report modules spec 2026-09-28, section 6)."""
+    """A report of the layout for a chosen version, period, other-versions switch and compare version."""
     body = body or {}
     fmt = body.get("format") or "pdf"
     if fmt not in reports.FORMATS:
@@ -524,7 +522,7 @@ def delete_template(request: Request, template_id: str, g: Guarded = Depends(pro
         found = db.get_template(conn, template_id, with_logo=True, for_update=True)
         if found is None:
             raise ApiError(404, "not_found", NO_TEMPLATE)
-        # its layouts leave it first, each as its next revision, recorded (phase 9 review M1)
+        # its layouts leave it first, each as its next revision, recorded
         for lid in db.layouts_using(conn, found["id"]):
             was = ledger.layout_state(db.get_layout(conn, lid))
             revision = db.drop_template_from(conn, lid, who=g.caller.subject, now=request.app.state.clock())

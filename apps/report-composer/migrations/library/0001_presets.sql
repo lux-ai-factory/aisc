@@ -1,9 +1,9 @@
--- The install-wide library of saved report structures (isolation 2026-09-25, 01-specs.md I8.2, D4).
+-- The install-wide library of saved report structures.
 --
 -- A saved structure holds no project data and is seen by every signed-in user, so it stays in the
 -- platform database, in schema report_library (owner report_composer_rw, made by the init files). A
 -- layout made from one keeps no link to it. source_project_id says where it was saved from: a plain
--- uuid without a foreign key, because the library must never depend on a project (D4).
+-- uuid without a foreign key, because the library must never depend on a project.
 
 CREATE TABLE report_library.preset (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
