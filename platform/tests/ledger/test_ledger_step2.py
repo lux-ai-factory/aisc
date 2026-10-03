@@ -38,23 +38,29 @@ def rejected(store, pid):
 
 CASES = [
     ("/projects", "assessment.started", "assessment", A,
-     {"card_version": str(uuid.uuid4()), "details": {"risks": 5}}),
-    (f"/api/projects/{A}/ratings", "risk.rated", "risk", "risk0",
+     {"card_version": str(uuid.uuid4()), "details": {"risks": 5, "profile_version": None}}),
+    ("/projects", "assessment.started", "assessment", A,
+     {"card_version": str(uuid.uuid4()), "details": {"risks": 5, "profile_version": "pv1"}}),
+    (f"/api/projects/{A}/ratings", "risk.rated", "risk_rating", f"{A}/risks/risk0",
      {"details": {"rating": 8}, "before": {"impact": None, "likelihood": None}, "after": {"impact": 4, "likelihood": 2}}),
-    (f"/projects/{A}/severity", "risk.rated", "risk", "risk0", {"details": {"rating": 8}}),
-    (f"/api/projects/{A}/severity-comments", "risk.rating_comment.set", "risk", "risk0",
+    (f"/projects/{A}/severity", "risk.rated", "risk_rating", f"{A}/risks/risk0", {"details": {"rating": 8}}),
+    (f"/api/projects/{A}/severity-comments", "risk.rating_comment.set", "risk_comment", f"{A}/risks/risk0",
      {"content": {"comment": "see the logs"}}),
-    (f"/api/projects/{A}/risks/risk0/mapping", "mapping.risk.edited", "risk", "risk0",
+    (f"/api/projects/{A}/risks/risk0/mapping", "mapping.risk.edited", "risk_mapping", f"{A}/risks/risk0",
      {"details": {"added": ["O5"], "removed": []}, "before": [], "after": ["O5"]}),
-    (f"/projects/{A}/key", "objective.key.set", "assessment", A, {"details": {"added": ["O5"], "removed": []}}),
+    (f"/projects/{A}/key", "objective.key.set", "assessment", A,
+     {"details": {"added": ["O5"], "removed": []}, "before": {}, "after": {"O5": True, "O7": False}}),
     (f"/api/projects/{A}/profile", "assessment.profile.switched", "assessment", A,
      {"details": {"version_before": None, "version_after": "v1", "dropped": []}}),
     ("/api/sets", "objective_set.created", "objective_set", "set1", {"details": {"code": "LDG"}, "content": {"code": "LDG"}}),
-    ("/sets/set1/objectives", "objective.added", "objective", "LDG1", {"details": {"set": "set1"}, "content": {"text": "x"}}),
-    ("/sets/set1/objectives/LDG1", "objective.edited", "objective", "LDG1",
+    ("/sets/set1/objectives", "objective.added", "objective", "set1/objectives/LDG1",
+     {"details": {"set": "set1"}, "content": {"text": "x"}}),
+    ("/sets/set1/objectives/LDG1", "objective.edited", "objective", "set1/objectives/LDG1",
      {"details": {"set": "set1"}, "content": {"text": "y"}, "before": {"text": "x"}, "after": {"text": "y"}}),
-    ("/api/sets/set1/objectives/LDG1/retire", "objective.retired", "objective", "LDG1", {"details": {"set": "set1"}}),
-    ("/sets/set1/objectives/LDG1/restore", "objective.restored", "objective", "LDG1", {"details": {"set": "set1"}}),
+    ("/api/sets/set1/objectives/LDG1/retire", "objective.retired", "objective", "set1/objectives/LDG1",
+     {"details": {"set": "set1"}}),
+    ("/sets/set1/objectives/LDG1/restore", "objective.restored", "objective", "set1/objectives/LDG1",
+     {"details": {"set": "set1"}}),
     ("/api/sets/set1/publish", "objective_set.published", "objective_set", "set1",
      {"item_version": "1", "details": {"version": 1}, "content": [{"id": "LDG1"}]}),
     ("/sets/set1/delete", "objective_set.deleted", "objective_set", "set1", {"content": {"code": "LDG"}}),
@@ -76,7 +82,7 @@ def test_an_event_as_the_app_sends_it_is_accepted(project, memory_ledger, witnes
 
 
 @pytest.mark.parametrize("method, tail, action, item_type, item_id", [
-    ("PUT", "/api/sets/set1/objectives/LDG1", "objective.edited", "objective", "LDG1"),
+    ("PUT", "/api/sets/set1/objectives/LDG1", "objective.edited", "objective", "set1/objectives/LDG1"),
     ("DELETE", "/api/sets/set1", "objective_set.deleted", "objective_set", "set1"),
     ("DELETE", f"/api/projects/{A}", "assessment.deleted", "assessment", A),
 ])
@@ -95,11 +101,57 @@ def test_an_ai_mapping_is_one_run_written_in_its_request(project, memory_ledger,
                                                        run_id=run_id))
     emit(project["pid"], "control_objectives_rw", body(request_id, "ai.llm_call", "llm_call", f"{run_id}:1",
                                                        run_id=run_id, model="fake/model",
-                                                       details={"purpose": "mapping", "round": 1, "latency_ms": 3}))
+                                                       details={"purpose": "mapping", "property": "risk0", "round": 1,
+                                                                "latency_ms": 3}))
     emit(project["pid"], "control_objectives_rw", body(request_id, "ai.mapping.completed", "assessment", A,
                                                        run_id=run_id, model="fake/model", details={"attempts": 1},
-                                                       content={"risk0": ["O5"]}))
+                                                       content={"risks": {"risk0": ["O5"]}}))
     relay_all(project["pid"])
     assert rejected(memory_ledger, project["pid"]) == []
     done = [e for e in entries(memory_ledger, log_of(project["pid"])) if e.action == "ai.mapping.completed"]
     assert [(e.actor_kind, e.run_id, e.model) for e in done] == [("ai", run_id, "fake/model")]
+
+
+
+def _age_witness(request_id: str, minutes: int) -> None:
+    from platform_service import db
+
+    with db.pool().connection() as conn:
+        conn.execute("UPDATE ledger.witness SET at = at - make_interval(mins => %s) WHERE request_id = %s",
+                     (minutes, request_id))
+
+
+def test_a_long_mapping_keeps_its_run(project, memory_ledger, witnessed):
+    """Phase 6 review M1: the request is recorded before the first model call, so a run whose calls take
+    longer than the relay's 5-minute window still has an accepted start, and its events are accepted
+    (they are checked against the run's window, not the request's)."""
+    request_id = witnessed(MEMBER, "POST", "control_objectives", co(project, f"/projects/{A}/map"))
+    run_id = str(uuid.uuid4())
+    emit(project["pid"], "control_objectives_rw", body(request_id, "ai.mapping.requested", "assessment", A,
+                                                       run_id=run_id))
+    relay_all(project["pid"])
+    _age_witness(request_id, 6)                                         # the calls took 6 minutes
+    emit(project["pid"], "control_objectives_rw", body(request_id, "ai.llm_call", "llm_call", f"{run_id}:1",
+                                                       run_id=run_id, model="fake/model",
+                                                       details={"purpose": "mapping", "latency_ms": 360000}))
+    emit(project["pid"], "control_objectives_rw", body(request_id, "ai.mapping.completed", "assessment", A,
+                                                       run_id=run_id, model="fake/model", details={"attempts": 1},
+                                                       content={"risks": {}}))           # (m1: no risk mapped)
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+    assert [e.action for e in entries(memory_ledger, log_of(project["pid"]))
+            if e.action.startswith("ai.")] == ["ai.mapping.requested", "ai.llm_call", "ai.mapping.completed"]
+
+
+def test_a_mapping_run_with_no_end_is_an_open_run(project, memory_ledger, witnessed, monkeypatch):
+    """A mapping whose process died between its start and its save: verify counts it (phase 6 review M1)."""
+    from datetime import timedelta
+
+    from platform_service.ledger import settings, verify
+
+    request_id = witnessed(MEMBER, "POST", "control_objectives", co(project, f"/projects/{A}/map"))
+    emit(project["pid"], "control_objectives_rw", body(request_id, "ai.mapping.requested", "assessment", A,
+                                                       run_id=str(uuid.uuid4())))
+    relay_all(project["pid"])
+    monkeypatch.setattr(settings, "RUN_WINDOW", timedelta(seconds=-1))
+    assert verify.verify(project["pid"]).open_runs == 1

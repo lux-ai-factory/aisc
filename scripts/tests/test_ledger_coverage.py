@@ -50,9 +50,14 @@ def exceptions() -> dict:
 
 
 def registered() -> dict:
+    """route -> the actions it emits (a handler can emit several: retire and restore, phase 6 review m6)."""
     from platform_service.ledger.registry import REGISTRY
 
-    return {tuple(r): name for name, action in REGISTRY.items() for r in action.routes}
+    out: dict = {}
+    for name, action in REGISTRY.items():
+        for r in action.routes:
+            out.setdefault(tuple(r), set()).add(name)
+    return out
 
 
 def test_discovery_finds_what_the_review_said_was_missed():
@@ -118,12 +123,13 @@ def _source(file: str, function: str) -> str:
 def test_a_registered_handler_emits_its_action(app):
     """C4: the handler (or its module, for TypeScript) calls the emitter with the action's name."""
     problems = []
-    for (route_app, file, function), action in registered().items():
+    for (route_app, file, function), actions in registered().items():
         if route_app != app:
             continue
         body = _source(file, function)
-        named = f'"{action}"' in body or f"'{action}'" in body
-        if not (EMIT_CALL.search(body) and named):
-            problems.append(f"{file}:{function} does not emit {action}")
+        for action in sorted(actions):
+            named = f'"{action}"' in body or f"'{action}'" in body
+            if not (EMIT_CALL.search(body) and named):
+                problems.append(f"{file}:{function} does not emit {action}")
     assert registered(), "the registry names no routes yet"
     assert not problems, "\n".join(problems)
