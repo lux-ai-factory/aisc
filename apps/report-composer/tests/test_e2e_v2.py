@@ -1,13 +1,12 @@
-"""End to end, report run v2: composer API -> real renderer -> PDF and DOCX (R-V1.3, R-V8.9,
-R-V8.14, R-V8.15, R-U2.1, R-U3.1, R-V5.14, R-V5.15, R-S.3; part 2: R2-C.1, R2-D1.10, R2-D1.12, R2-D3.8.4).
+"""End to end: composer API -> real renderer -> PDF and DOCX, for a built-in layout.
 
 A full throwaway bed (aisc-t-e2e2-*), project Mike (seed_tools.sql: the three Mijke tools on version 2).
 The real renderer (aisc-report-generator via REPORT_GENERATOR_DIR, default the apps/report-generator submodule)
 runs as a subprocess on a free port; the composer talks to it with HttpRendererClient.
 
 Mia (owner of Mike) duplicates the built-in layout "eu-ai-act" on the platform default look,
-sends a French language and a coverage map (which an older client may still do; both are ignored: all reports
-are English, and the links come from step 4, evidence links 2026-09-30), previews a draft, generates a PDF and
+sends a French language and a coverage map (an older client may still send them; both are ignored: all reports
+are English, and the links come from step 4), previews a draft, generates a PDF and
 a DOCX and downloads both. The preset's unwritten free text
 ("Write this section.") is left out of both documents.
 """
@@ -29,13 +28,13 @@ from conftest import FIXED_NOW, ISSUER, IDS, Missing, lazily, need, report_bed, 
 pytestmark = [pytest.mark.db, pytest.mark.e2e]
 GENERATOR = Path(os.environ.get("REPORT_GENERATOR_DIR", Path(__file__).resolve().parents[2] / "report-generator"))
 TOKEN = "e2e-v2-token-" + "0" * 24
-EU = ["cover", "free_text", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives", "control_answers", "summary_coverage", "chapter", "test_runs", "test_results", "chart", "changes_since", "free_text", "appendix", "free_text"]      # the built-in layout eu-ai-act (report modules 2026-09-28)
+EU = ["cover", "free_text", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives", "control_answers", "summary_coverage", "chapter", "test_runs", "test_results", "chart", "changes_since", "free_text", "appendix", "free_text"]      # the built-in layout eu-ai-act
 
 
 @pytest.fixture(scope="module")
 def full_bed():
     report_bed.check_dsn_env()
-    # isolation S-D13: the renderer and the composer read one database per project
+    # the renderer and the composer read one database per project
     b = report_bed_isolated.build_isolated("e2e2", modules=True)
     yield b
     b.stop()
@@ -149,7 +148,7 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
 
     text = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
     assert "The AI system" in text and "DRAFTMARK" not in text         # only the saved revision is generated
-    assert "Write this section." not in text                           # R2-D3.8.4
+    assert "Write this section." not in text                           # unwritten free text is left out
 
     # DOCX
     r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "docx", "system_id": IDS["M_V2"]}, headers=mia)
@@ -161,7 +160,7 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
     with zipfile.ZipFile(io.BytesIO(docx.content)) as z:
         body_xml = z.read("word/document.xml").decode("utf-8")
     assert "The AI system" in body_xml and "Evidence" in body_xml
-    assert "Write this section." not in body_xml                       # R2-D3.8.4
+    assert "Write this section." not in body_xml                       # unwritten free text is left out
 
     # what was stored: format, fingerprint, the v2 snapshot with the document id
     for rid, fmt in ((pdf_id, "pdf"), (docx_id, "docx")):

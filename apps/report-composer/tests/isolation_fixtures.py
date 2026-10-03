@@ -1,6 +1,6 @@
-"""The composer on one database per project (isolation 2026-09-25, 01-specs.md section 8), test infrastructure.
+"""Test infrastructure for the composer on one database per project.
 
-Test infrastructure only (stage 2). The bed is `scripts/lib/report_bed_isolated.build_isolated(modules=False)`:
+The bed is `scripts/lib/report_bed_isolated.build_isolated(modules=False)`:
 the composer bed's core seed (alpha, beta, gamma, echo, their versions and members), then the isolated shape:
 alpha, beta and echo each have `project_<hex>` with `project.system` (their own versions) and an empty
 `report_composer` schema; gamma has no database; `platform` keeps core.project and core.project_member only,
@@ -8,7 +8,7 @@ has no report_composer schema and no core.system, and has an empty `report_libra
 report_composer_rw). Alice is made an editor of beta as well, so a 404 across projects is the database's
 answer, not the membership's.
 
-The API the tests assume of `report_composer` (stage 4 implements it, I8.1):
+The API the tests assume of `report_composer`:
 
     report_composer.app.create_app(*, database_url, project_database_url, renderer, clock=None) -> FastAPI
         database_url          REPORT_COMPOSER_DATABASE_URL, `platform` as report_composer_rw: core.project,
@@ -31,7 +31,7 @@ import pytest
 
 from conftest import ISSUER, ORIGIN, FIXED_NOW, lazily, need
 
-ROOT = Path(__file__).resolve().parents[3]           # the isolation worktree
+ROOT = Path(__file__).resolve().parents[3]           # the aisc repository root
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 import report_bed  # noqa: E402
 
@@ -66,7 +66,7 @@ def iso_bed():
 
 def new_project(bed, pid: str, slug: str, owner: str = "alice") -> str:
     """A project made after the composer started: core.project row, owner, and its database as the platform
-    makes it (templates; where 0006/0010 are not written yet, what they would make)."""
+    makes it (from the project templates)."""
     iso = _iso()
     bed.psql("platform", f"INSERT INTO core.project (pid, name, slug) VALUES ('{pid}', '{slug} project', '{slug}')")
     bed.psql("platform", "INSERT INTO core.project_member (project_id, subject, email, role)"
@@ -97,7 +97,7 @@ def project_db_template(bed) -> str:
 
 @pytest.fixture
 def iso_make_client(iso_bed, key, monkeypatch):
-    """The composer app on the isolated bed, both DSNs, authentication on (the conftest's make_client pattern)."""
+    """The composer app on the bed with both DSNs and authentication on, like the conftest's make_client."""
     platform = iso_bed.dsn("report_composer_rw", "platform")
     template = project_db_template(iso_bed)
     monkeypatch.setenv("AUTH_ENABLED", "true")

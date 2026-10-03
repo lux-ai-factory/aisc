@@ -1,6 +1,5 @@
-"""Part 2, fix round 1, finding 1 of 14-verify-part2.md: the outline route asked the renderer for its block types
-on every request, with the client's 120 s timeout. Now the block types are cached for a short time, and the
-outline's own call uses a short timeout; a slow or failing renderer gives the fixed prose list (DV12-6)."""
+"""The outline route's block types: cached for a short time, and fetched with a short timeout of the
+outline's own instead of the client's 120 s, so a slow or failing renderer gives the fixed prose list."""
 import socket
 import time
 
@@ -89,7 +88,7 @@ def test_p2r1_1_the_quick_timeout_defaults_to_a_few_seconds():
     assert 0 < Http("http://renderer:8001", token="t" * 32).quick_timeout <= 5
 
 
-# ── the route ────────────────────────────────────────────────────────────────
+# the route
 
 
 class Counting(FakeRendererV2):
@@ -154,6 +153,6 @@ def test_p2r1_1_a_hung_renderer_gives_the_fallback_outline_with_the_quick_call(m
     fake.slow = False
     got = outline(client, auth, lay)
     outline(client, auth, lay)
-    assert [item.get("depth") for item in got] == [0, 1]      # indentation still works (DV12-6 fallback)
+    assert [item.get("depth") for item in got] == [0, 1]      # indentation still works (the fixed prose list)
     assert fake.slow is False, "the outline used the call with the long timeout"
     assert fake.quick_calls == 1                               # the failure is remembered for a short time

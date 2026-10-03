@@ -1,4 +1,4 @@
-"""The step 4 links are sent in catalogue order of their objective (2026-10-01): O9 before O10."""
+"""The step 4 links are sent in catalogue order of their objective: O9 before O10."""
 from report_composer.evidence_links import _objective_order
 
 

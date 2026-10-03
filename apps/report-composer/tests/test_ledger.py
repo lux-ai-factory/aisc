@@ -1,4 +1,4 @@
-"""M1-M3: step 6 in the ledger (phase 9). Every composer write records its event with the project
+"""Step 6 in the ledger. Every composer write records its event with the project
 database's ledger.emit (platform template 0020), in the write's own transaction, citing the witnessed
 request and naming nobody; a layout keeps every revision it had (layout_revision, append-only); a
 generated report records the ledger anchor it prints and its document's sha256. Database tests on the
@@ -179,7 +179,7 @@ def test_a_request_id_that_is_not_a_uuid_is_never_cited(client, auth, bed):
 
 
 def test_m1_review_deleting_a_template_records_each_layout_it_leaves(client, auth, bed):
-    """Phase 9 review M1: the layouts of a deleted template lose it (they draw in the platform look); each
+    """The layouts of a deleted template lose it (they draw in the platform look); each
     gets its next revision, kept, and an event in the delete's transaction, so its chain holds."""
     t = new_template(client, auth, name="Going away")
     lay = new_layout(client, auth, name="Uses it", template_id=t["id"], blocks=[blk("free_text", text="x")])

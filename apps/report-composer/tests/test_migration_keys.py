@@ -6,12 +6,11 @@
       platform has not made it yet, 0004 leaves the keys out and init/project-databases.sql
       adds them under the same names on its next run.
 
-Isolation 2026-09-25 (S-D13): the composer itself no longer runs these files; they are the
-pre-isolation history of the shared schema, kept in pre_isolation_migrations/ because cutover step C4
-still applies 0003..0005 to the live shared schema before the data move. So this file keeps pinning
-them on the OLD shared layout: its own bed (report_bed.build, the pre-isolation platform), the files
-applied with the composer's generic runner as report_composer_rw (what C4 does), instead of starting
-the app. Every assertion is unchanged; each test takes `migrated` where it took `client`.
+The composer itself does not run these files: they are the history of the shared schema, in
+pre_isolation_migrations/, which the cutover applies to a shared schema before it moves the data
+into one database per project. So these tests run them on the shared layout: their own bed
+(report_bed.build, the shared platform database), with the files applied by the composer's generic
+runner as report_composer_rw, the way the cutover applies them, instead of starting the app.
 """
 import json
 import sys
@@ -36,7 +35,7 @@ NOWHERE = "deadbeef-0000-4000-8000-00000000dead"
 
 @pytest.fixture(scope="module")
 def keys_bed():
-    """The pre-isolation shared layout with the composer's old history applied to `platform`."""
+    """The shared layout, with the composer's shared-schema migrations applied to `platform`."""
     report_bed.check_dsn_env()
     b = report_bed.build("composer-keys", modules=False)
     try:
@@ -58,7 +57,7 @@ def bed(keys_bed):
 
 @pytest.fixture
 def migrated(bed):
-    """The pre-isolation files are applied (by `keys_bed`), as the app's start applied them before."""
+    """The shared-schema files, applied by `keys_bed`."""
     return bed
 
 
@@ -83,7 +82,7 @@ def report_row(bed, project=IDS["A"], system=IDS["A_V2"]):
                     f" ('{LAYOUT}', 1, '{project}', '{system}', '{{}}', 'running', 'alice')", check=False)
 
 
-# ── 0003: the report's keys match the layout's ──────────────────────────────
+# 0003: the report's keys match the layout's
 
 
 def test_0003_the_report_points_at_its_project_and_version_as_its_layout_does(migrated, bed):
@@ -110,7 +109,7 @@ def test_0003_a_report_of_no_version_is_refused(migrated, bed):
     assert r.returncode != 0 and "generated_report_system_id_fkey" in r.stderr
 
 
-# ── 0004: the version belongs to the project ────────────────────────────────
+# 0004: the version belongs to the project
 
 
 def test_0004_the_pair_is_a_key_into_core_system(migrated, bed):

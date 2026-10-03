@@ -1,4 +1,4 @@
-"""Reports generated for a chosen selection (report modules spec 2026-09-28, section 6)."""
+"""Reports generated for a chosen selection (version, period, other versions, compare with)."""
 import pytest
 
 from conftest import IDS, blk, new_layout

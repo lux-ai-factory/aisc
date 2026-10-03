@@ -1,4 +1,4 @@
-"""Layouts hold no data (report modules spec 2026-09-28, section 7.2)."""
+"""The layout tables hold no data columns."""
 import pytest
 
 from conftest import pdb_of
@@ -28,7 +28,7 @@ def test_a_report_records_its_selection(client, bed):
 
 
 def test_the_settings_default_to_an_index_and_numbering():
-    """2026-10-01: numbering is on by default (test_numbering_on_by_default.py)."""
+    """Numbering is on by default (see test_numbering_on_by_default.py)."""
     from report_composer.settings import document_settings, snapshot_document
     s = document_settings({}, None)
     assert (s["show_index"], s["numbering"]) == (True, True)

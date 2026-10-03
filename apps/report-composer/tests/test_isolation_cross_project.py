@@ -1,14 +1,13 @@
-"""Cross-project isolation of every composer route that addresses an object by id (isolation 2026-09-25,
-01-specs.md I16.5, I8.1, I8.3; section 23 risk 3).
+"""Cross-project isolation of every composer route that addresses an object by id.
 
-On the isolated bed (isolation_fixtures.py) alice is an editor of alpha AND beta, so a refusal is not the
+On the bed of isolation_fixtures.py alice is an editor of alpha AND beta, so a refusal is not the
 membership's: a layout, template or report of alpha lives only in alpha's database, and opened under beta it
 is 404, every route, every method. Alpha's objects are intact afterwards. Ids of alpha named in a body under
 beta (template_id, system_id) are 422 `*_not_in_project`.
 
-Route inventory (report_composer/api.py, pages.py, 2026-09-25), every route with an object id in its path:
+Route inventory (report_composer/api.py, pages.py), every route with an object id in its path:
   layouts/{id}: GET, PUT, DELETE; /validate POST; /preview GET and POST; /outline POST; /duplicate POST;
-  /export GET; /reports GET and POST (the /preset route and the preset library are gone, report modules 2026-09-28)
+  /export GET; /reports GET and POST
   reports/{id}: /pdf GET; /download GET
   templates/{id}: PUT, DELETE; /export GET; /logo GET
   page: GET /p/{ref}/layouts/{id}
@@ -92,7 +91,7 @@ def _call(client, auth, method, path, body, world, slug):
 
 @pytest.mark.parametrize("method,path,body", ROUTES, ids=[f"{m} {p}" for m, p, _ in ROUTES])
 def test_i16_5_an_alpha_object_opened_under_beta_is_404(iso_client, iso_bed, auth, alphas, method, path, body):
-    """I16.5, I8.1: alpha's id under beta's project is 404 (it is not in beta's database), and alpha's rows
+    """Alpha's id under beta's project is 404 (it is not in beta's database), and alpha's rows
     are untouched afterwards."""
     alphas = alphas()
     r = _call(iso_client, auth, method, path, body, alphas, "beta")
@@ -113,14 +112,14 @@ SAFE = [(m, p, b) for m, p, b in ROUTES if m == "get"]
 
 @pytest.mark.parametrize("method,path,body", SAFE, ids=[f"{m} {p}" for m, p, _ in SAFE])
 def test_i16_5_the_same_id_under_its_own_project_answers(iso_client, auth, alphas, method, path, body):
-    """I16.5 counterpart: the 404 above is about the project, the ids are real under alpha."""
+    """The counterpart: the 404 above is about the project, the ids are real under alpha."""
     alphas = alphas()
     r = _call(iso_client, auth, method, path, body, alphas, "alpha")
     assert r.status_code == 200, (method, path, r.status_code, r.text[:300])
 
 
 def test_i8_3_alphas_template_named_in_a_beta_layout_is_422(iso_client, auth, alphas):
-    """I8.3 with R-U6.1: a template id of alpha in beta's body is template_not_in_project."""
+    """A template id of alpha in beta's body is template_not_in_project."""
     alphas = alphas()
     r = iso_client.post("/api/p/beta/layouts", json={"name": unique("L"), "template_id": alphas["template"]["id"],
                                                      "system_id": IDS["B_V1"]}, headers=auth("alice"))
@@ -131,8 +130,8 @@ def test_i8_3_alphas_template_named_in_a_beta_layout_is_422(iso_client, auth, al
 
 
 def test_i8_3_alphas_version_named_in_a_beta_report_is_422(iso_client, auth):
-    """I8.3: a version of alpha chosen for a beta report is system_not_in_project (a layout holds no
-    version since report modules 2026-09-28; the report does)."""
+    """A version of alpha chosen for a beta report is system_not_in_project (the report holds the
+    version, not the layout)."""
     own = new_layout(iso_client, auth, slug="beta", blocks=[v2blk("cover")])
     r = iso_client.post(f"/api/p/beta/layouts/{own['id']}/reports", json={"system_id": IDS["A_V2"]},
                         headers=auth("alice"))
@@ -140,7 +139,7 @@ def test_i8_3_alphas_version_named_in_a_beta_report_is_422(iso_client, auth):
 
 
 def test_i16_5_beta_lists_nothing_of_alpha(iso_client, auth, alphas):
-    """I16.5: beta's lists show none of alpha's layouts, templates or versions."""
+    """Beta's lists show none of alpha's layouts, templates or versions."""
     alphas = alphas()
     lays = iso_client.get("/api/p/beta/layouts", headers=auth("alice"))
     looks = iso_client.get("/api/p/beta/templates", headers=auth("alice"))

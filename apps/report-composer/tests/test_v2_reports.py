@@ -1,6 +1,5 @@
-"""Generated documents of report run v2: PDF or DOCX (R-V8.14, R-V8.15, R-V8.12), the fingerprint
-(R-V5.15), the document id (R-V5.14) and the template's header/footer fields in the snapshot (R-V5.11
-composer side). Database tests, v2 fake renderer.
+"""Generated documents: PDF or DOCX, the fingerprint, the document id and the template's
+header/footer fields in the snapshot. Database tests, v2 fake renderer.
 """
 import json
 
@@ -25,7 +24,7 @@ def generate(client, auth, lay, **body):
     return client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json=body, headers=auth("alice"))
 
 
-# ── R-V8.14 format ──────────────────────────────────────────────────────────
+# format
 
 def test_r_v8_14_docx_is_asked_of_the_renderer(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
@@ -38,7 +37,7 @@ def test_r_v8_14_absent_format_is_pdf(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
     assert generate(client_v2, auth, lay).status_code == 201
     assert fake_v2.snapshots[-1]["mode"] == "pdf"
-    assert fake_v2.snapshots[-1].get("snapshot_version") == 3      # report modules 2026-09-28: with a selection
+    assert fake_v2.snapshots[-1].get("snapshot_version") == 3      # with a selection
 
 
 def test_r_v8_14_an_unknown_format_is_refused(client_v2, auth):
@@ -47,7 +46,7 @@ def test_r_v8_14_an_unknown_format_is_refused(client_v2, auth):
     assert r.status_code == 422 and error_code(r) == "invalid_request"
 
 
-# ── R-V8.15 storage, download, list ─────────────────────────────────────────
+# storage, download, list
 
 def test_r_v8_15_docx_is_stored_with_its_format_and_downloads_as_word(client_v2, auth, bed):
     lay = layout(client_v2, auth)
@@ -93,7 +92,7 @@ def test_r_v8_15_the_editor_page_lists_the_format(client_v2, auth):
     assert "DOCX" in page and f"/reports/" in page and "/download" in page
 
 
-# ── R-V8.12 the size rule for both formats ──────────────────────────────────
+# the size rule for both formats
 
 def test_r_v8_12_a_document_over_25_mb_is_not_stored(client_v2, auth, fake_v2):
     fake_v2.docx = b"PK\x03\x04" + b"0" * (25 * 1024 * 1024 + 1)
@@ -103,7 +102,7 @@ def test_r_v8_12_a_document_over_25_mb_is_not_stored(client_v2, auth, fake_v2):
     assert r.json()["error"]["message"].startswith("The document is larger than 25 MB and was not stored")
 
 
-# ── R-V5.15 the fingerprint is stored and shown ─────────────────────────────
+# the fingerprint is stored and shown
 
 def test_r_v5_15_the_fingerprint_is_stored(client_v2, auth, bed):
     lay = layout(client_v2, auth)
@@ -119,7 +118,7 @@ def test_r_v5_15_the_editor_shows_the_fingerprint_next_to_the_sha256(client_v2, 
     assert FINGERPRINT[:12] in page
 
 
-# ── R-V5.14 the document id is the report's id ──────────────────────────────
+# the document id is the report's id
 
 def test_r_v5_14_the_document_id_is_the_generated_report_id(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
@@ -127,7 +126,7 @@ def test_r_v5_14_the_document_id_is_the_generated_report_id(client_v2, auth, fak
     assert (fake_v2.snapshots[-1].get("document") or {}).get("id") == rid
 
 
-# ── R-V5.10/R-V5.11 composer side: the template's header/footer fields reach the renderer ──
+# the template's header/footer fields reach the renderer
 
 def test_r_v5_11_the_style_carries_header_footer_marking_and_document_id(client_v2, auth, fake_v2):
     t = new_template(client_v2, auth, name=unique("Marked"), header_text="{project} v{version}",

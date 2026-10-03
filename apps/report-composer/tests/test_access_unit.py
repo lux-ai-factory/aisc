@@ -1,5 +1,5 @@
-"""Rights, without a database (report run 2026-09-23: R4.4.3 to R4.4.6). `report_composer.access`,
-on the pattern of control-objectives' access.py, with admin as viewer everywhere (R4.4.5)."""
+"""Rights, without a database: `report_composer.access`, on the pattern of control-objectives'
+access.py, with an admin a viewer of every project."""
 import pytest
 
 from conftest import need
@@ -15,13 +15,11 @@ def decide(method, a):
     return need(A, "decide")(method, a)
 
 
-# R4.4.3
 def test_r4_4_3_a_stranger_is_told_nothing_exists():
     for m in ("GET", "POST", "PUT", "DELETE"):
         assert decide(m, access(None)) == "not-found"
 
 
-# R4.4.4
 def test_r4_4_4_a_viewer_reads_and_changes_nothing():
     assert decide("GET", access("viewer")) == "allow"
     for m in ("POST", "PUT", "DELETE"):
@@ -38,7 +36,6 @@ def test_r4_4_4_no_answer_fails_closed():
     assert decide("GET", None) == "unavailable"
 
 
-# R4.4.5
 def test_r4_4_5_an_admin_outside_the_project_is_a_viewer():
     a = access(None, admin=True)
     assert decide("GET", a) == "allow"
@@ -49,7 +46,6 @@ def test_r4_4_5_an_admin_who_is_an_editor_edits():
     assert decide("PUT", access("editor", admin=True)) == "allow"
 
 
-# R4.4.6
 @pytest.mark.parametrize("headers,ok", [
     ({"origin": "http://localhost"}, True),
     ({"origin": "http://evil.example"}, False),

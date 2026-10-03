@@ -1,8 +1,8 @@
-"""U3: a preview of unsaved changes (report run v2, 01-specs.md section 10: R-U3.1 to R-U3.6).
+"""A preview of unsaved changes.
 
 POST /api/p/{ref}/layouts/{id}/preview takes the editor's state and stores nothing. The debounce,
-single-flight and "older answer ignored" behaviour of composer.js (R-U3.4) is browser behaviour: the
-static checks below pin its visible parts; the timing itself is checked by hand (see 02-tests.md).
+single-flight and "older answer ignored" behaviour of composer.js is browser behaviour: the static
+checks below pin its visible parts, and test_v2_browser.py drives it in a browser.
 """
 from pathlib import Path
 
@@ -33,7 +33,6 @@ def post(client, auth, lay, body, who="alice", **kw):
     return client.post(f"/api/p/alpha/layouts/{lay['id']}/preview", json=body, headers=auth(who, **kw))
 
 
-# ── R-U3.1 ──────────────────────────────────────────────────────────────────
 
 def test_r_u3_1_the_draft_is_rendered_and_nothing_is_stored(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
@@ -44,7 +43,7 @@ def test_r_u3_1_the_draft_is_rendered_and_nothing_is_stored(client_v2, auth, fak
     assert set(body) >= {"html", "problems", "block_statuses"}
     sent = fake_v2.snapshots[-1]
     assert sent["mode"] == "preview" and [b["instance_id"] for b in sent["blocks"]] == [b["instance_id"] for b in blocks]
-    # R2-D1.10, R2-D1.12: the draft's language is accepted and ignored; the snapshot carries none
+    # the draft's language is accepted and ignored; the snapshot carries none
     assert "language" not in sent and (sent.get("document") or {}).get("toc") == "on"
     again = client_v2.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).json()
     assert again["revision"] == 1 and again["blocks"] == lay["blocks"]
@@ -53,7 +52,7 @@ def test_r_u3_1_the_draft_is_rendered_and_nothing_is_stored(client_v2, auth, fak
 def test_r_u3_1_problems_are_returned_but_do_not_stop_the_preview(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
     bad = v2blk("dashboard_chart", width=5)
-    # an old client's coverage map is ignored (evidence links 2026-09-30, D5), so it raises no problem
+    # an old client's coverage map is ignored, so it raises no problem
     r = post(client_v2, auth, lay, draft(lay, blocks=[bad], coverage=[{"objective_id": "R9.9", "tests": [],
                                                                         "checklists": ["cl-1"]}]))
     assert r.status_code == 200
@@ -72,10 +71,9 @@ def test_r_u3_1_a_draft_needs_the_same_origin(client_v2, auth):
     assert post(client_v2, auth, lay, draft(lay), origin="http://evil.example").status_code == 403
 
 
-# ── R-U3.2 ──────────────────────────────────────────────────────────────────
 
 def test_r_u3_2_a_version_of_another_project_is_never_previewed(client_v2, auth, fake_v2):
-    """Report modules 2026-09-28: the preview's version is not stored; one that is not the project's
+    """The preview's version is not stored; one that is not the project's
     falls back to the project's latest, never to the other project's."""
     lay = layout(client_v2, auth)
     r = post(client_v2, auth, lay, draft(lay, preview_with={"system_id": IDS["B_V1"]}))
@@ -105,7 +103,6 @@ def test_r_u3_2_renderer_failures(client_v2, auth, fake_v2, failure, status):
     assert post(client_v2, auth, lay, draft(lay)).status_code == status
 
 
-# ── R-U3.3 ──────────────────────────────────────────────────────────────────
 
 def test_r_u3_3_the_html_has_the_csp_meta_as_first_head_element(client_v2, auth):
     from bs4 import BeautifulSoup
@@ -128,7 +125,7 @@ def test_r_u3_3_the_iframe_keeps_an_empty_sandbox(client_v2, auth):
     assert iframe is not None and iframe.has_attr("sandbox") and not iframe.get("sandbox")
 
 
-# ── R-U3.4, R-U3.5 composer.js (static; timing is browser only) ──────────────
+# composer.js (static; the timing is browser only)
 
 def test_r_u3_4_composer_js_posts_drafts_with_a_1_5_s_pause():
     js = JS.read_text()
@@ -169,7 +166,6 @@ def test_r_u3_5_the_label_is_on_the_page(client_v2, auth):
     assert label is not None and label.get_text(strip=True) == "Preview of revision 1"
 
 
-# ── R-U3.6 ──────────────────────────────────────────────────────────────────
 
 def test_r_u3_6_viewers_keep_the_get_preview_and_generate_uses_the_saved_revision(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)

@@ -1,8 +1,7 @@
-"""Part 2, D3.6 to D3.8 on the composer side (10-specs-part2.md R2-D3.6.1, R2-D3.6.2, R2-D3.7.3 to R2-D3.7.5,
-R2-D3.8.1 composer constant).
+"""Preset import and "Keep texts" on the composer side.
 
-- Imported presets lose every reference option of the source and the answer names each reset (D3.6).
-- "Keep texts" recognises the prose options of any block type from its schema (D3.7): walking properties,
+- Imported presets lose every reference option of the source and the answer names each reset.
+- "Keep texts" recognises the prose options of any block type from its schema: walking properties,
   items, prefixItems, additionalProperties and oneOf / anyOf / allOf; `x-aisc-prose` true or false decides,
   otherwise an unconstrained string (no enum, const, pattern, format, maxLength <= 300) is prose.
 Unit tests on `presets.from_layout` with fake plugin block types, plus database tests with the v2 fake renderer.
@@ -18,7 +17,7 @@ from v2_fakes import BY_TYPE_V2, clean_presets, client_v2, fake_v2, unique  # no
 PLACEHOLDER = "Write this section."
 
 
-# ── R2-D3.8.1 the placeholder is one constant, pinned in the composer ───────
+# the placeholder is one constant, pinned in the composer
 
 def test_r2_d3_8_1_the_composer_placeholder_constant():
     from report_composer import presets
@@ -26,7 +25,7 @@ def test_r2_d3_8_1_the_composer_placeholder_constant():
     assert presets.PLACEHOLDER == "Write this section."
 
 
-# ── R2-D3.7.3, R2-D3.7.4, R2-D3.7.5 schema-driven prose rule ────────────────
+# the schema-driven prose rule
 
 def plugin_type(props, required=(), defaults=None, type_id="auditor_notes"):
     schema = {"type": "object", "properties": {"title": {"type": "string", "maxLength": 200}, **props},
@@ -79,7 +78,7 @@ def test_r2_d3_7_3_prose_options_are_dropped_without_keep_texts(case):
 
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_r2_d3_7_5_prose_options_are_kept_with_keep_texts(case):
-    """Compatibility: "Keep texts" keeps every value as written (passes today for every case)."""
+    """Compatibility: "Keep texts" keeps every value as written."""
     schema, value, _ = CASES[case]
     t = plugin_type({"x": schema})
     assert export({"x": value}, t, keep_text=True)["x"] == value
@@ -101,7 +100,7 @@ KEPT = {
 
 @pytest.mark.parametrize("case", sorted(KEPT))
 def test_r2_d3_7_3_identifiers_enums_patterns_are_kept(case):
-    """Compatibility guard for most cases (today's rule keeps them too); pins the rule's "never prose" side."""
+    """Pins the rule's "never prose" side."""
     schema, value = KEPT[case]
     t = plugin_type({"x": schema})
     assert export({"x": value}, t)["x"] == value
@@ -110,7 +109,7 @@ def test_r2_d3_7_3_identifiers_enums_patterns_are_kept(case):
 def test_r2_d3_7_3_a_string_under_a_reference_option_is_not_prose():
     t = plugin_type({"source": {"type": "string", "x-aisc-reference": True}},
                     defaults={"source": "latest"})
-    assert export({"source": "some-project-id"}, t)["source"] == "latest"   # reset by R-V1.4, not blanked
+    assert export({"source": "some-project-id"}, t)["source"] == "latest"   # reset to its default, not blanked
 
 
 def test_r2_d3_7_4_a_required_prose_value_becomes_the_placeholder_cut_to_max_length():
@@ -133,7 +132,7 @@ def test_r2_d3_7_4_titles_stay():
 
 def test_r2_d3_7_3_without_a_description_the_fixed_list_applies():
     """Compatibility: a block type the renderer does not describe keeps the fixed list (commentary,
-    free_text.text, chapter.intro) and leaves other options alone (passes today)."""
+    free_text.text, chapter.intro) and leaves other options alone."""
     from report_composer import presets
 
     layout = {"name": "L", "blocks": [{"block_type": "gone_plugin", "options": {"notes": "Client X",
@@ -144,7 +143,7 @@ def test_r2_d3_7_3_without_a_description_the_fixed_list_applies():
     assert blocks[1]["options"] == {"title": "C", "intro": ""}
 
 
-# ── R2-D3.6.1, R2-D3.6.2 imported presets lose the source's references ──────
+# imported presets lose the source's references
 
 db = pytest.mark.db
 
@@ -169,7 +168,7 @@ def label(type_id, option):
 @db
 @pytest.mark.usefixtures("clean_layouts", "clean_presets")
 def test_r2_d3_6_1_import_stores_no_reference_of_the_source(client_v2, auth):
-    # report modules 2026-09-28: a file is imported as a layout of the project (the preset library is gone)
+    # a file is imported as a layout of the project
     r = client_v2.post("/api/p/alpha/layouts", json={"file": preset_file(FOREIGN)}, headers=auth("alice"))
     assert r.status_code == 201, r.text[:300]
     exported = client_v2.get(f"/api/p/alpha/layouts/{r.json()['id']}/export", headers=auth("alice")).json()
@@ -209,7 +208,7 @@ def test_r2_d3_6_2_a_layout_from_a_preset_file_names_every_reset_reference(clien
 @db
 @pytest.mark.usefixtures("clean_layouts", "clean_presets")
 def test_r2_d3_6_2_no_notice_when_nothing_was_reset(client_v2, auth):
-    """Compatibility guard: a file without references gives no notice (passes today: no `notices` key)."""
+    """A file without references gives no notice (no `notices` key)."""
     r = client_v2.post("/api/p/alpha/layouts", json={"file": preset_file([{"block_type": "cover", "options": {}},
                                                                           {"block_type": "test_results",
                                                                            "options": {"tools": "all"}}])},
@@ -218,4 +217,4 @@ def test_r2_d3_6_2_no_notice_when_nothing_was_reset(client_v2, auth):
     assert r.json().get("notices", []) == []
 
 # The composer showing these notices to the user is a browser test: test_p2_browser.py,
-# test_r2_d3_6_2_the_composer_shows_notices_as_information (fix round 1 of part 2, finding 2).
+# test_r2_d3_6_2_the_composer_shows_notices_as_information.

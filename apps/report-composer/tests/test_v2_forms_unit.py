@@ -1,12 +1,10 @@
-"""The configure form of report run v2, decided in Python (`report_composer.forms.form_fields`):
-labels and help from the schema (R-U5.3), "More options" (R-U5.4), plugin blocks without annotations
-(R-U5.5), all-or-list radios and checkbox lists (R-U4.2, R-U4.4, R-U4.5), fields shown per value
-(R-V4.15), the key figures checkboxes (R-V6.12) and the commentary field (R-V3.13).
+"""The configure form, decided in Python (`report_composer.forms.form_fields`): labels and help
+from the schema, "More options", plugin blocks without annotations, all-or-list radios and checkbox
+lists, fields shown per value, the key figures checkboxes and the commentary field.
 
-Field dicts gain (stage 4 implements): `help` (the description), `more` (bool), `show_if`
-({option: [values]} or None), `hidden` (bool: the named option has another value), `filter` (bool, a
-text filter over more than 10 choices); widgets `all-or-list` (radios + checkboxes) and `checkboxes`
-replace `multiselect`, which is gone.
+A field dict carries `help` (the description), `more` (bool), `show_if` ({option: [values]} or
+None), `hidden` (bool: the named option has another value) and `filter` (bool, a text filter over
+more than 10 choices); the list widgets are `all-or-list` (radios + checkboxes) and `checkboxes`.
 """
 from conftest import BLOCK_TYPES, need
 from v2_fakes import BY_TYPE_V2
@@ -24,7 +22,7 @@ def fields(type_id, values=None, choices=None, types=BY_TYPE_V2):
     return {f["name"]: f for f in form_fields(t["options_schema"], merged, choices)}
 
 
-# ── R-U5.3 labels, help, enum labels ────────────────────────────────────────
+# labels, help, enum labels
 
 def test_r_u5_3_title_is_the_label_and_description_the_help():
     f = fields("key_figures")["show_tool_headlines"]
@@ -39,7 +37,7 @@ def test_r_u5_3_enum_labels_come_from_the_schema():
                             {"value": "horizontal", "label": "Horizontal"}]
 
 
-# ── R-U5.4 more options ─────────────────────────────────────────────────────
+# more options
 
 def test_r_u5_4_more_options_are_flagged():
     f = fields("test_results", choices={"evaluations": [], "metrics": []})
@@ -57,7 +55,7 @@ def test_r_u5_4_more_fields_come_after_main_fields():
     assert more and names[-len(more):] == more
 
 
-# ── R-U5.5 plugin blocks without annotations (today's behaviour) ────────────
+# plugin blocks without annotations
 
 def test_r_u5_5_a_plugin_block_without_annotations_keeps_generated_labels_all_main():
     f = fields("ai_card", types=V1)
@@ -65,7 +63,7 @@ def test_r_u5_5_a_plugin_block_without_annotations_keeps_generated_labels_all_ma
     assert not f["show_graph_stats"].get("more") and not f["show_graph_stats"].get("help")
 
 
-# ── R-U4.2, R-U4.4, R-U4.5 widgets ─────────────────────────────────────────
+# widgets
 
 def test_r_u4_2_all_or_list_is_radios_and_checkboxes():
     choices = {"evaluations": [{"value": "e1", "label": "Evaluation 1"}], "metrics": []}
@@ -105,7 +103,7 @@ def test_r_u4_1_no_multiselect_widget_is_left():
             assert f["widget"] != "multiselect", (type_id, f["name"])
 
 
-# ── R-V6.12 key figures ─────────────────────────────────────────────────────
+# key figures
 
 def test_r_v6_12_key_figures_are_labelled_checkboxes_all_ticked_by_default():
     f = fields("key_figures")["figures"]
@@ -114,7 +112,7 @@ def test_r_v6_12_key_figures_are_labelled_checkboxes_all_ticked_by_default():
     assert f["value"] == ["version", "risks", "objectives", "coverage", "tests", "checklists"]
 
 
-# ── R-V4.15 fields shown per value ──────────────────────────────────────────
+# fields shown per value
 
 def test_r_v4_15_show_if_is_passed_on_and_decides_hidden():
     f = fields("chart", {"dataset": "coverage_status"})
@@ -126,7 +124,7 @@ def test_r_v4_15_show_if_is_passed_on_and_decides_hidden():
     assert g["tool_chart"].get("hidden") is True
 
 
-# ── R-V3.13 the commentary field ────────────────────────────────────────────
+# the commentary field
 
 def test_r_v3_13_commentary_is_a_six_row_textarea_of_its_own():
     f = fields("ai_card")["commentary"]

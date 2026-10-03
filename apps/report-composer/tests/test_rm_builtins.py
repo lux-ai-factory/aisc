@@ -1,4 +1,4 @@
-"""The five built-in layouts (report modules spec 2026-09-28, section 4.1): read-only, listed, opened,
+"""The five built-in layouts: read-only, listed, opened,
 duplicated, exported. Their options are checked against the real renderer in the renderer's
 tests/test_builtin_layouts_valid.py."""
 import pytest

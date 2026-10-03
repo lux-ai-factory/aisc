@@ -1,5 +1,5 @@
-"""The per-block configure form, generated in Python from the options schema (report run
-2026-09-23: R4.2.2, R4.1.1). `report_composer.forms.form_fields(schema, values, choices)`."""
+"""The per-block configure form, generated in Python from the options schema:
+`report_composer.forms.form_fields(schema, values, choices)`."""
 from conftest import BLOCK_TYPES, need
 
 BY = {t["type_id"]: t for t in BLOCK_TYPES}
@@ -11,7 +11,6 @@ def fields(type_id, values=None, choices=None):
         t["options_schema"], values or t["default_options"], choices or {})}
 
 
-# R4.2.2
 def test_r4_2_2_widgets_follow_the_schema():
     f = fields("dashboard_chart", choices={"chart_id": [{"value": 33, "label": "Bias rate by version"}]})
     assert f["show_comments"]["widget"] == "checkbox"

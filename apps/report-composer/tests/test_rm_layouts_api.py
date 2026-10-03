@@ -1,4 +1,4 @@
-"""Layouts without data (report modules spec 2026-09-28, sections 2, 3.1, 5)."""
+"""A layout holds no data: the version and the runs are chosen when a report is generated."""
 import pytest
 
 from conftest import IDS, blk, new_layout

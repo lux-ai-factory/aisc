@@ -1,4 +1,4 @@
-"""Part 2, D3.3 (10-specs-part2.md R2-D3.3.1): when the latest outline request fails, the editor removes
+"""When the latest outline request fails, the editor removes
 every indentation and outline hint, says so in the message region with a "Try again" button, still ignores an
 older answer arriving afterwards, and redraws on the next successful answer. Browser test (system Chrome
 through Playwright), on the composer served over HTTP with the v2 fake renderer, like test_v2_browser.py.
@@ -61,13 +61,12 @@ def test_r2_d3_3_1_a_failed_outline_request_clears_the_outline_and_offers_try_ag
 
 
 def test_r2_d3_6_2_the_composer_shows_notices_as_information(live):
-    """Fix round 1 of part 2, finding 2 (R2-D3.6.2): a preset file with another project's references is imported
-    on the layouts page; the new layout's editor opens and its message region names every reset reference, as
-    information (not an error). Replaces a test that only searched composer.js for the word "notices"."""
+    """A preset file with another project's references is imported on the layouts page; the new layout's
+    editor opens and its message region names every reset reference, as information (not an error)."""
     page, _ = live([v2blk("cover")])                        # any page of the served composer, to learn its address
     base = page.url.rsplit("/layouts/", 1)[0]
     page.goto(base + "/")
-    # report modules 2026-09-28: Import from file in the page header; picking the file imports it
+    # Import from file in the page header; picking the file imports it
     form = page.locator('.page-actions form[data-control="import-layout"]')
     with page.expect_navigation(url="**/layouts/*", timeout=10000):
         form.locator('input[name="file"]').set_input_files(

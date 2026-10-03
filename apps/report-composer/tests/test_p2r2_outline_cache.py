@@ -1,4 +1,4 @@
-"""Part 2, fix round 2, findings 1 to 3 of 16-reverify-part2.md: the outline's block-types cache.
+"""The outline's block-types cache.
 
 1. Single flight: while one fetch is in flight, other requests wait for it (or take the older list), they
    never start their own.
@@ -44,7 +44,7 @@ def run_all(fn, n):
     return threads, out
 
 
-# ── 1. single flight ─────────────────────────────────────────────────────────
+# 1. single flight
 
 
 def test_p2r2_1_concurrent_requests_on_an_empty_cache_make_one_fetch():
@@ -103,7 +103,7 @@ def test_p2r2_1_waiters_give_up_after_their_wait_and_use_the_fallback():
     first.start()
     time.sleep(0.1)
     started = time.monotonic()
-    assert c.get() == []                              # the fixed prose list (DV12-6)
+    assert c.get() == []                              # the fixed prose list
     assert time.monotonic() - started < 1.5
     release.set()
     first.join(5)
@@ -144,7 +144,7 @@ def test_p2r2_1_concurrent_outline_requests_make_one_block_types_call(make_clien
     assert fake.type_calls == 1
 
 
-# ── 2. a renderer restart is seen at once ────────────────────────────────────
+# 2. a renderer restart is seen at once
 
 
 def test_p2r2_2_a_fresh_list_put_into_the_cache_is_used_without_a_fetch():
@@ -204,7 +204,7 @@ def test_p2r2_2_after_a_restart_the_next_block_types_call_refreshes_the_outline(
     assert _outline_unwritten(client, auth, lay, notes) == [["notes"]]
 
 
-# ── 3. a deadline for the whole call ─────────────────────────────────────────
+# 3. a deadline for the whole call
 
 
 def _drip_server(whole: bytes, drip: bytes, gap: float):

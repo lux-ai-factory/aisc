@@ -1,4 +1,4 @@
-"""The Generate report page (report modules spec 2026-09-28, section 6): a form drawn and handled in
+"""The Generate report page: a form drawn and handled in
 Python; the version is required, the period, the other-versions switch and Compare with are optional."""
 import pytest
 
@@ -80,7 +80,7 @@ def test_without_a_version_generate_explains():
 
 
 def test_a_refused_generation_lists_every_problem_with_its_module(client_v2, auth):
-    """Final review I1: the page names each module whose option the chosen version does not offer."""
+    """The page names each module whose option the chosen version does not offer."""
     lay = new_layout(client_v2, auth, name="Refs", blocks=[v2blk("cover"),
                                                            v2blk("control_answers", checklists=["no-such-list"]),
                                                            v2blk("dashboard_chart", chart_id=999)])

@@ -1,7 +1,7 @@
-"""Browser behaviours of composer.js (report run v2, fix round 1).
+"""Browser behaviours of composer.js.
 
-The draft preview recovers after a network failure (05-verify.md note 5), and the chapter indentation and
-the "This chapter is empty." hint follow the block order after a move (note 6, R-V5.8, R-V5.9).
+The draft preview recovers after a network failure, and the chapter indentation and the
+"This chapter is empty." hint follow the block order after a move.
 The real composer app runs with uvicorn on the bed with the v2 fake renderer; the system Chrome drives the
 editor page through Playwright (no browser download).
 """
@@ -115,7 +115,7 @@ def test_fix_chapter_indentation_follows_a_move(live):
 
 
 def test_fix_r2_5_an_older_outline_answer_arriving_last_is_ignored(live):
-    """Fix round 2, item 5: two quick moves whose outline answers arrive out of order leave the indentation
+    """Two quick moves whose outline answers arrive out of order leave the indentation
     and the empty-chapter hint of the latest order on screen."""
     cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
     page, lay = live([cover, chapter, card])
@@ -146,7 +146,7 @@ def test_fix_r2_5_an_older_outline_answer_arriving_last_is_ignored(live):
 
 
 def test_numbers_follow_a_move_and_the_numbering_box(live):
-    """2026-10-01: the outline's numbers are the report's, redrawn after a move and when Numbering changes."""
+    """The outline's numbers are the report's, redrawn after a move and when Numbering changes."""
     cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
     page, lay = live([cover, chapter, card], numbering=True)
 

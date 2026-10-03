@@ -1,6 +1,5 @@
-"""The editor's block numbers are the report's section numbers (2026-10-01): the outline used to count
-every block 1..N with a CSS counter, while the report numbers chapters 1, 2, their blocks 1.1, 1.2, the
-appendix A, B and leaves the cover, the appendix heading and an unwritten free text without a number.
+"""The editor's block numbers are the report's section numbers: chapters 1, 2, their blocks 1.1, 1.2,
+the appendix A, B, and no number for the cover, the appendix heading and an unwritten free text.
 `report_composer.layouts.outline_numbers`, no database."""
 import importlib.util
 import sys
@@ -63,7 +62,7 @@ def _renderer_plan():
     [blk("appendix"), blk("chapter", title="In the appendix"), blk("ai_card"), blk("chapter", title="2nd")],
 ])
 def test_the_composer_numbers_as_the_renderer_does(blocks):
-    """The renderer drops an unwritten free text before it numbers (document.py, R2-D3.8.1); the rest
+    """The renderer drops an unwritten free text before it numbers (its document.py); the rest
     are its sections, with `kind` set for chapters and the appendix."""
     plan = _renderer_plan()
     kept = [b for b in blocks if not (b["block_type"] == "free_text" and b["options"].get("text") == PLACEHOLDER)]

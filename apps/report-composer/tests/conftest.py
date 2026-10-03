@@ -1,15 +1,15 @@
-"""Fixtures of the composer tests (report run 2026-09-23, stage 3; 02 section 5).
+"""Fixtures of the composer tests.
 
-Database tests run on a throwaway postgres:15-alpine bed in the isolated layout
-(scripts/lib/report_bed_isolated.py, isolation 2026-09-25): the core part of the seed (projects alpha,
+Database tests run on a throwaway postgres:15-alpine bed with one database per project
+(scripts/lib/report_bed_isolated.py): the core part of the seed (projects alpha,
 beta, gamma, echo; members) in `platform`, and one database per project holding its versions in
 project.system and the composer's schema. The composer connects as `report_composer_rw`. Never the
 host's 5432.
 
-The API the tests assume of `report_composer` (stage 5 implements it; isolation I8.1 adds the project DSN):
+The API the tests assume of `report_composer`:
 
     report_composer.app.create_app(*, database_url, project_database_url, renderer, clock=None) -> FastAPI
-        routes: /api/... (R4.3, the /report-composer prefix is stripped by Caddy) and /p/{slug}/... pages;
+        routes: /api/... (Caddy strips the /report-composer prefix) and /p/{slug}/... pages;
         migrations run at start (lifespan), so the TestClient is used as a context manager.
     renderer: an object with block_types(), choices(project_id, system_id, block_type), render(snapshot)
         raising report_composer.renderer_client.RendererUnavailable / RendererTimeout;
@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[3]           # aisc-install
+ROOT = Path(__file__).resolve().parents[3]           # the aisc repository root
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 import report_bed  # noqa: E402
 import report_bed_isolated  # noqa: E402
@@ -41,7 +41,7 @@ IDS = report_bed.IDS
 
 
 def pdb_of(key: str = "A") -> str:
-    """The database of the seed's project `key` (isolation: a project's composer rows live there)."""
+    """The database of the seed's project `key`, where that project's composer rows live."""
     return report_bed.project_db(IDS[key])
 ISSUER = "http://keycloak:8080/realms/aisc"
 ORIGIN = "http://localhost"
@@ -82,7 +82,7 @@ def lazily(make):
         return Missing(str(exc))
 
 
-# ── the block types a fake renderer offers (shapes of the real ones, R5.4 /v1/block-types) ──
+# The block types a fake renderer offers, shaped like the real renderer's /v1/block-types.
 
 COMMON = {"title": {"type": "string", "minLength": 0, "maxLength": 200},
           "page_break_before": {"type": "boolean"}}
@@ -163,7 +163,7 @@ FONTS = [{"id": "inter", "label": "Inter"}, {"id": "liberation-serif", "label": 
 
 
 class FakeRenderer:
-    """The renderer from the composer's side (R7.4.1): records what it is sent."""
+    """The renderer from the composer's side: records what it is sent."""
 
     def __init__(self):
         self.snapshots = []
@@ -200,13 +200,13 @@ class FakeRenderer:
                 "block_statuses": statuses}
 
 
-# ── the bed ──────────────────────────────────────────────────────────────────
+# The bed
 
 
 @pytest.fixture(scope="session")
 def bed():
     report_bed.check_dsn_env()
-    # isolation S-D13: the isolated layout; gamma gets a database too, as "another project alice edits"
+    # One database per project; gamma gets a database too, as "another project alice edits".
     b = report_bed_isolated.build_isolated("composer", modules=False, no_database=frozenset())
     yield b
     b.stop()
@@ -241,7 +241,7 @@ def token(key):
 
 @pytest.fixture
 def auth(token):
-    """Headers for a caller as the gateway sends them, with the same-origin header (R4.4.6)."""
+    """Headers for a caller as the gateway sends them, with the same-origin header."""
     def make(subject, roles=("primary-user",), origin=ORIGIN, **kw):
         h = {"Authorization": f"Bearer {token(subject, roles, **kw)}"}
         if origin:

@@ -1,6 +1,6 @@
-"""`python -m report_composer.migrate` follows the migrate one-shots' exit convention (isolation, orchestrator's
-decision for WP V1; the same as qualification's and controls' migrate-projects.mjs, control objectives'
-migrate_projects and the engine's migrate_projects):
+"""`python -m report_composer.migrate` follows the migrate one-shots' exit convention (the same as
+qualification's and controls' migrate-projects.mjs, control objectives' migrate_projects and the
+engine's migrate_projects):
 
     0  the library and every project database are at their head
     1  the platform database cannot be reached yet: the compose loop waits and runs it again

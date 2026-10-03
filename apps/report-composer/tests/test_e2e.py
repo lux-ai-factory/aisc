@@ -1,4 +1,4 @@
-"""End to end: composer API -> real renderer -> PDF (report run 2026-09-23, stage 3 task; R7.4.1).
+"""End to end: composer API -> real renderer -> PDF.
 
 A throwaway bed with every module schema; project Echo has two system versions, a card each, an
 objectives assessment each, one evaluation per version with measurements, one checklist with answers
@@ -31,7 +31,7 @@ TOKEN = "e2e-token-" + "0" * 24
 @pytest.fixture(scope="module")
 def full_bed():
     report_bed.check_dsn_env()
-    # isolation S-D13: the renderer and the composer read one database per project
+    # the renderer and the composer read one database per project
     b = report_bed_isolated.build_isolated("e2e", modules=True)
     yield b
     b.stop()
@@ -153,7 +153,7 @@ def test_e2e_pinned_to_version_1(e2e_client, auth):
                                              "blocks": [b for b in blocks() if b["block_type"] != "summary_coverage"],
                                              "template_id": some_template(c, auth, slug="echo", who="erin")},
                  headers=erin).json()
-    # report modules 2026-09-28: the layout holds no version; the preview is drawn with the one asked for
+    # the layout holds no version; the preview is drawn with the one asked for
     html = c.get(f"/api/p/echo/layouts/{lay['id']}/preview?system_id={IDS['E_V1']}", headers=erin).text
     assert "E2MARK" not in html
     assert "This report covers version 1. Version 2 is newer." in html

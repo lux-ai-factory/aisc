@@ -1,8 +1,8 @@
-"""The renderer as the composer sees it after report run v2 (2026-09-24, 01-specs.md), for the v2 tests.
+"""A fake renderer for the v2 tests, as the composer sees the renderer.
 
-Test infrastructure only (stage 2). The composer's renderer object gains these calls, which stage 4
-implements in `report_composer.renderer_client.HttpRendererClient` (the real renderer's routes of
-01-specs.md 16.3) and which this fake answers:
+The composer's renderer object has these calls, implemented by
+`report_composer.renderer_client.HttpRendererClient` against the real renderer's routes, and
+answered here by the fake:
 
     renderer.block_types()                       GET  /v1/block-types  (items gain `description`,
                                                                         `new_instance_options`)
@@ -10,17 +10,16 @@ implements in `report_composer.renderer_client.HttpRendererClient` (the real ren
     renderer.choices(project_id, system_id, t)   POST /v1/choices      (unchanged)
     renderer.coverage_choices(project_id, system_id)
         -> {objectives: [{value, label, group}], tests: [{value, label}], checklists: [{value, label}]}
-                                                 POST /v1/coverage-choices (R-U2.7)
+                                                 POST /v1/coverage-choices
     renderer.render(snapshot)                    POST /v1/render
         preview -> {html, fingerprint, block_statuses}
         pdf     -> {pdf_base64, sha256, fingerprint, block_statuses}
-        docx    -> {docx_base64, sha256, fingerprint, block_statuses}          (R-S.2, R-V8.9)
+        docx    -> {docx_base64, sha256, fingerprint, block_statuses}
 
-The block types are the shapes of 01-specs.md: every property carries `title` and `description`
-(R-U5.1), enum values carry `x-aisc-enum-labels`, "more options" carry `x-aisc-more: true` (R-U5.4),
-chart's dependent options carry `x-aisc-show-if` (R-V4.15), and the common properties include
-`commentary` and `commentary_position` (R-V3.6). Part 2 (R2-D1.9): the renderer's `languages()` call is no
-longer used by the composer, so the fake has none.
+The block types have the real renderer's shape: every property carries `title` and `description`,
+enum values carry `x-aisc-enum-labels`, "more options" carry `x-aisc-more: true`, chart's dependent
+options carry `x-aisc-show-if`, and the common properties include `commentary` and
+`commentary_position`. The composer does not call the renderer's `languages()`, so the fake has none.
 """
 from __future__ import annotations
 
@@ -79,7 +78,7 @@ def _type(type_id, title, props, defaults, required=(), description="", new_inst
 
 
 def _annotated(t: dict) -> dict:
-    """A block type of 2026-09-23 with v2 annotations on every property (title, description)."""
+    """A base block type with a title and a description on every property."""
     props = {}
     for name, prop in t["options_schema"]["properties"].items():
         if name in COMMON_V2:
@@ -94,7 +93,7 @@ _BY = {t["type_id"]: t for t in BLOCK_TYPES}
 
 def _v2_types() -> list[dict]:
     out = []
-    # cover, ai_card, risk_classification, control_answers, dashboard_chart: annotated, main/more split (R-U5.4)
+    # cover, ai_card, risk_classification, control_answers, dashboard_chart: annotated, main/more split
     for type_id, more in (("cover", {"show_logo", "show_generated_by"}), ("ai_card", {"show_graph_stats"}),
                           ("risk_classification", {"show_impact_areas"}), ("control_answers", {"include_archived"}),
                           ("dashboard_chart", {"include_replies", "width", "height"})):
@@ -104,7 +103,7 @@ def _v2_types() -> list[dict]:
         req = _BY[type_id]["options_schema"].get("required", ())
         out.append(_type(type_id, _BY[type_id]["title"], props, defaults, required=req,
                          description=f"The {_BY[type_id]['title']} block."))
-    # control_objectives with the V6 filters
+    # control_objectives with its filters
     props, defaults = _annotated(_BY["control_objectives"])
     props["group_by"]["x-aisc-enum-labels"] = {"objective": "By objective", "risk": "By risk"}
     for name in ("show_rationale", "show_quotes"):
@@ -146,7 +145,7 @@ def _v2_types() -> list[dict]:
     defaults["requirements"] = "all"
     out.append(_type("summary_coverage", "Summary / coverage", props, defaults, contract_version=2,
                      description="Coverage of the objectives."))
-    # free_text with format; new blocks get markdown (R-V3.12)
+    # free_text with format; new blocks get markdown
     out.append(_type("free_text", "Free text", {
         "text": _p({"type": "string", "minLength": 1, "maxLength": 20000}, "Text", "The section's text.",
                    **{"x-aisc-prose": True}),
@@ -206,7 +205,7 @@ def _v2_types() -> list[dict]:
     chapter["default_options"].update({"title": "Chapter", "page_break_before": True})
     out.append(chapter)
     out.append(_type("appendix", "Appendix", {}, {}, description="Everything after it is the appendix."))
-    # report modules 2026-09-28: the runs of the report's period
+    # the runs of the report's period
     out.append(_type("test_runs", "Test runs", {
         "detail": _p({"enum": ["summary", "full"]}, "Detail", "One line per run, or each tool.",
                      **{"x-aisc-enum-labels": {"summary": "One line per run", "full": "Each tool"}}),
@@ -256,7 +255,7 @@ CHOICES_V2.update({
 
 
 class FakeRendererV2:
-    """The v2 renderer from the composer's side (R7.4.1 still holds: the composer tests need no renderer)."""
+    """The v2 renderer from the composer's side, so the composer tests need no real renderer."""
 
     def __init__(self):
         self.snapshots = []
@@ -315,8 +314,8 @@ def client_v2(make_client, fake_v2):
 
 @pytest.fixture
 def clean_presets(bed):
-    """Saved presets are platform wide, in the library report_library (isolation D4): every test starts
-    without any (the table may not exist yet)."""
+    """Saved presets are platform wide, in report_library: every test starts without any (the table
+    may not exist yet)."""
     bed.psql("platform", "DO $$ BEGIN IF to_regclass('report_library.preset') IS NOT NULL THEN "
                          "DELETE FROM report_library.preset; END IF; END $$;", check=False)
     yield
@@ -327,8 +326,8 @@ def unique(prefix: str) -> str:
 
 
 def scalar_json(bed, sql: str, db: str = "platform"):
-    """One JSON value from the bed (bed.rows() cannot parse psql's footer, see 05-report F1); `db` is
-    the database to read (a project's database for its composer rows, isolation)."""
+    """One JSON value from the bed (bed.rows() cannot parse psql's footer); `db` is the database to
+    read (a project's database for its composer rows)."""
     import json
 
     out = bed.scalar(db, sql)

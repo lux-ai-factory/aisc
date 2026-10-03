@@ -1,4 +1,4 @@
-"""Sign-in and rights on every route (report run 2026-09-23: R4.4.1 to R4.4.6, R4.3.1, R7.3.1)."""
+"""Sign-in and rights on every route."""
 import pytest
 
 from conftest import IDS, error_code, need, new_layout, some_template
@@ -12,7 +12,6 @@ PROJECT_ROUTES = [
 ]
 
 
-# R4.4.1, R4.3.1
 @pytest.mark.parametrize("method,path", PROJECT_ROUTES + [("get", "/api/block-types"), ("get", "/api/p/alpha/templates")])
 def test_r4_4_1_no_sign_in_is_401(client, method, path):
     r = getattr(client, method)(path, headers={"Origin": "http://localhost"})
@@ -21,10 +20,9 @@ def test_r4_4_1_no_sign_in_is_401(client, method, path):
         assert error_code(r) == "not_signed_in"
 
 
-# R4.4.3
 @pytest.mark.parametrize("method,path", PROJECT_ROUTES)
 def test_r4_4_3_a_stranger_gets_404(client, auth, method, path):
-    # R2-D3.5.3: json= only for post (TestClient.get takes no json argument)
+    # json= only for post (TestClient.get takes no json argument)
     extra = {"json": {"name": "x"}} if method == "post" else {}
     r = getattr(client, method)(path, headers=auth("bob"), **extra)
     assert r.status_code == 404
@@ -36,7 +34,6 @@ def test_r4_4_3_an_unknown_project_is_the_same_404(client, auth):
     assert (a.status_code, a.json()) == (b.status_code, b.json())
 
 
-# R4.4.4
 def test_r4_4_4_a_viewer_is_forbidden_to_edit(client, auth):
     r = client.post("/api/p/alpha/layouts", json={"name": "v"}, headers=auth("victor"))
     assert r.status_code == 403 and error_code(r) == "forbidden"
@@ -62,7 +59,6 @@ def test_r4_4_4_the_membership_lookup_failing_is_503(client, auth, monkeypatch):
     assert client.get("/api/p/alpha/layouts", headers=auth("alice")).status_code == 503
 
 
-# R4.4.2
 def test_r4_4_2_the_role_is_read_on_every_request(client, auth, bed):
     assert client.post("/api/p/alpha/layouts", json={"name": "a"}, headers=auth("victor")).status_code == 403
     bed.psql("platform", f"UPDATE core.project_member SET role = 'editor' WHERE project_id = '{IDS['A']}' AND subject = 'victor'")
@@ -73,14 +69,12 @@ def test_r4_4_2_the_role_is_read_on_every_request(client, auth, bed):
         bed.psql("platform", f"UPDATE core.project_member SET role = 'viewer' WHERE project_id = '{IDS['A']}' AND subject = 'victor'")
 
 
-# R4.4.5
 def test_r4_4_5_an_admin_reads_every_project_and_edits_none(client, auth):
     admin = auth("root-admin", roles=("admin",))
     assert client.get("/api/p/beta/layouts", headers=admin).status_code == 200
     assert client.post("/api/p/beta/layouts", json={"name": "x"}, headers=admin).status_code == 403
 
 
-# R4.4.6
 @pytest.mark.parametrize("origin", [None, "http://evil.example"])
 def test_r4_4_6_writes_need_the_same_origin(client, auth, origin):
     r = client.post("/api/p/alpha/layouts", json={"name": "o"}, headers=auth("alice", origin=origin))

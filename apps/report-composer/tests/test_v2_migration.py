@@ -1,17 +1,16 @@
-"""Migration 0005 of report run v2 on a database made before the run (R-D.1, R-D.2, R-U2.4, R-C.3).
+"""Shared-schema migration 0005 on a database with rows in the older shapes.
 
-A bed of its own (aisc-t-composer-mig-*, core seed only): migrations 0001 to 0004 run first, as the
-composer ran them before this run; layouts, a template and a generated report are written in the old
-shapes; then 0005 runs. Never the host's 5432.
+A bed of its own (aisc-t-composer-mig-*, core seed only): migrations 0001 to 0004 run first;
+layouts, a template and a generated report are written in the older shapes; then 0005 runs. Never
+the host's 5432.
 
-Isolation 2026-09-25 (S-D13): 0001..0005 are the pre-isolation history of the shared schema, kept in
-pre_isolation_migrations/ because cutover step C4 applies 0005 to the live shared schema before the data
-move (I8.6). So `mig` runs 0005 with the composer's generic runner (what C4 does) instead of starting the
-app, and the R-D.1 and R-U2.4 tests lose their start trigger (their assertions are unchanged). The R-C.3
-tests need the app, which now reads each project's own database: `moved` copies alpha's rows after 0005
-from `mig`'s platform into alpha's database of an isolated bed, by column name and without project_id
-(what `isolate copy` does), and starts the app there. Their assertions are unchanged; the one database
-read of the last one reads alpha's database, where the report now is.
+0001..0005 are the history of the shared schema, in pre_isolation_migrations/, which the cutover
+applies before it moves the data into one database per project. So `mig` runs 0005 with the
+composer's generic runner, as the cutover does, instead of starting the app. The tests of old
+layouts, templates and reports need the app, which reads each project's own database: `moved`
+copies alpha's rows after 0005 from `mig`'s platform into alpha's database of a bed with one database
+per project, by column name and without project_id (as `isolate copy` does), and starts the app
+there.
 """
 import json
 import shutil
@@ -78,7 +77,7 @@ def _old_rows(bed):
 
 @pytest.fixture(scope="module")
 def mig(tmp_path_factory):
-    """The bed after 0001-0004, the old rows, then 0005 with the generic runner (cutover step C4)."""
+    """The bed after 0001-0004, the old rows, then 0005 with the generic runner, as the cutover runs it."""
     report_bed.check_dsn_env()
     bed = report_bed.build("composer-mig", modules=False)
     try:
@@ -130,8 +129,8 @@ def moved(mig, key):
 
         from report_composer.migrate import PROJECT, PROJECT_TABLE, migrate
 
-        # the rows were moved at the isolation baseline (0001); later project migrations (0002, report
-        # modules 2026-09-28) run over them when the app starts, as on an install that has data
+        # the rows arrive at the project baseline (0001); later project migrations run over them when
+        # the app starts, as on an install that has data
         with tempfile.TemporaryDirectory() as baseline, psycopg.connect(bed.dsn("report_composer_rw", alpha)) as conn:
             shutil.copy(PROJECT / "0001_project_database.sql", baseline)
             migrate(conn, Path(baseline), PROJECT_TABLE, create_schema=False)
@@ -183,7 +182,7 @@ def row(bed, sql):
     return json.loads(out) if out else None
 
 
-# ── R-D.2 static: the migration touches only the composer's schema ──────────
+# static: the migration touches only the composer's schema
 
 def test_r_d_2_0005_touches_only_report_composer():
     assert M0005.exists(), "missing feature: migrations/0005_presets_and_document_settings.sql"
@@ -197,7 +196,7 @@ def test_r_d_2_0005_touches_only_report_composer():
     assert not re.search(r"\bDROP\s+(TABLE|COLUMN)\b", sql, re.I), "0005 is additive only"
 
 
-# ── R-D.1 the columns and the preset table ──────────────────────────────────
+# the columns and the preset table
 
 def test_r_d_1_new_columns_with_their_defaults(mig):
     bed = mig
@@ -244,7 +243,7 @@ def test_r_d_1_preset_names_are_unique(mig):
     assert r.returncode != 0 and ("unique" in r.stderr or "duplicate key" in r.stderr), r.stderr[-300:]
 
 
-# ── R-U2.4 the coverage map moves out of the first summary block ────────────
+# the coverage map moves out of the first summary block
 
 def test_r_u2_4_the_lowest_summary_links_become_the_layout_map(mig):
     bed = mig
@@ -263,24 +262,24 @@ def test_r_u2_4_a_layout_without_links_keeps_an_empty_map(mig):
     assert got.get("coverage") == [] and got["revision"] == 3
 
 
-# ── R-C.3 old layouts, templates and reports ────────────────────────────────
+# old layouts, templates and reports
 
 def test_r_c_3_an_old_layout_previews_with_the_same_snapshot_apart_from_new_keys(moved, auth):
     bed, client, renderer = moved
     r = client.get(f"/api/p/alpha/layouts/{LAYOUT_1}/preview", headers=auth("alice"))
     assert r.status_code == 200
     sent = renderer.snapshots[-1]
-    # evidence links 2026-09-30 (D5): the links come from step 4, not from the map 0005 moved into the
-    # layout row, and a Summary block's own links are not sent (this project has no step 4 links)
+    # the links come from step 4, not from the map 0005 moved into the layout row, and a Summary
+    # block's own links are not sent (this project has no step 4 links)
     assert sent.get("coverage_links") == []
-    # report modules 2026-09-28: the layout lost its version; a preview is drawn with the latest one
+    # the layout holds no version; a preview is drawn with the latest one
     old = {"project_id": IDS["A"], "system_id": IDS["A_V3"],
            "layout": {"id": LAYOUT_1, "name": "Old layout", "revision": 7},
            "blocks": [{"instance_id": iid, "block_type": t, "options": o} for iid, _, t, o in BLOCKS_1],
            "mode": "preview", "requested_by": "alice",
            "style": {"font": "liberation-serif", "font_size_pt": 11, "primary_color": "#123456",
                      "accent_color": "#abcdef"}}
-    for b in old["blocks"]:                   # a Summary block's own links are not sent (D5)
+    for b in old["blocks"]:                   # a Summary block's own links are not sent
         if b["block_type"] == "summary_coverage":
             b["options"] = {k: v for k, v in b["options"].items() if k != "links"}
     new_keys = {"snapshot_version", "language", "document", "coverage_links", "selection"}
@@ -290,7 +289,7 @@ def test_r_c_3_an_old_layout_previews_with_the_same_snapshot_apart_from_new_keys
     assert stripped == old
     assert sent.get("language", "en") == "en"
     assert (sent.get("document") or {}).get("toc") == "on"        # toc auto became show_index true (0002)
-    assert (sent.get("document") or {}).get("numbering") is True   # numbered retroactively (0003, 2026-10-01)
+    assert (sent.get("document") or {}).get("numbering") is True   # numbered by project migration 0003
 
 
 def test_r_c_3_templates_keep_their_look(moved, auth):

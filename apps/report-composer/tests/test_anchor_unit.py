@@ -1,4 +1,4 @@
-"""The ledger anchor a report prints, asked of the platform as the person generating it (phase 9 review m3):
+"""The ledger anchor a report prints, asked of the platform as the person generating it:
 a stub platform behind httpx's MockTransport, no bed."""
 from __future__ import annotations
 

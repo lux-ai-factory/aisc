@@ -1,5 +1,4 @@
-"""Layouts through the API (report run 2026-09-23: R3.1 to R3.13, R4.3, R4.3.1, R4.3.2, R4.1.3, D11,
-D13, R7.3.1). Database tests on the bed, with a fake renderer."""
+"""Layouts through the API. Database tests on the bed, with a fake renderer."""
 import pytest
 
 from conftest import IDS, blk, error_code, new_layout, pdb_of, put_layout
@@ -7,11 +6,10 @@ from conftest import IDS, blk, error_code, new_layout, pdb_of, put_layout
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
 
-# R4.1.3, D13
 def test_r4_1_3_migrations_run_at_start(client, bed):
     client.get("/api/block-types")
-    # isolation S-D13: the project history is in each project's database; there the schema is the
-    # platform's (I1.2, D10) and the tables the composer's; the library schema in platform is the composer's
+    # The migration history is in each project's database. There the schema belongs to the platform
+    # and the tables to the composer; the library schema in `platform` belongs to the composer.
     assert bed.scalar(pdb_of("A"), "SELECT count(*) FROM report_composer.schema_migration") not in ("", "0")
     owner = bed.scalar(pdb_of("A"), "SELECT relowner::regrole FROM pg_class WHERE oid = 'report_composer.layout'::regclass")
     assert owner == "report_composer_rw"
@@ -19,7 +17,7 @@ def test_r4_1_3_migrations_run_at_start(client, bed):
     assert owner == "report_composer_rw"
 
 
-# R4.3 systems
+# systems
 def test_r4_3_systems_newest_first(client, auth):
     r = client.get("/api/p/alpha/systems", headers=auth("victor"))
     assert r.status_code == 200
@@ -44,7 +42,7 @@ def test_r7_3_1_choices_for_a_version_of_another_project_are_refused(client, aut
     assert all(c[1] != IDS["B_V1"] for c in fake_renderer.choice_calls)
 
 
-# R3.3, R3.4; report modules 2026-09-28: a new layout starts empty and holds no version
+# a new layout starts empty and holds no version
 def test_r3_3_a_new_layout_starts_empty_without_a_version(client, auth):
     lay = new_layout(client, auth, name="Default one")
     assert lay["blocks"] == [] and "system_id" not in lay
@@ -68,14 +66,13 @@ def test_r3_1_names_are_unique_per_project(client, auth):
     new_layout(client, auth, slug="gamma", name="Same name")      # another project may
 
 
-# R3.2
 def test_r3_2_a_layout_never_moves_between_projects(client, auth):
     lay = new_layout(client, auth)
     r = put_layout(client, auth, lay, project_id=IDS["B"])
     assert r.status_code == 422 and error_code(r) == "immutable_field"
 
 
-# R3.11, R4.2.3: Save sends the full ordered list
+# Save sends the full ordered list
 def test_r3_11_saving_bumps_the_revision_and_keeps_the_order(client, auth):
     lay = new_layout(client, auth, system_id=IDS["A_V2"])
     order = [blk("free_text", text="z"), blk("cover"), blk("ai_card")]
@@ -93,7 +90,6 @@ def test_r3_11_a_stale_revision_is_409(client, auth):
     assert "2" in r.text
 
 
-# R3.5, R4.3.1
 def test_r3_5_unknown_block_type_and_invalid_options(client, auth):
     lay = new_layout(client, auth, system_id=IDS["A_V2"])
     r = put_layout(client, auth, lay, blocks=[blk("nope")])
@@ -106,7 +102,7 @@ def test_r3_5_unknown_block_type_and_invalid_options(client, auth):
     assert set(r.json()["error"]) == {"code", "message", "details"}
 
 
-# R3.6, R7.3.1: checked against the chosen version when generating (report modules 2026-09-28, 3.1)
+# checked against the chosen version when generating
 def test_r3_6_a_reference_of_another_project_is_refused(client, auth):
     lay = new_layout(client, auth, system_id=IDS["A_V2"])
     assert put_layout(client, auth, lay, blocks=[blk("test_results", evaluations=[IDS["EVAL_B_V1"]])]).status_code == 200
@@ -114,7 +110,6 @@ def test_r3_6_a_reference_of_another_project_is_refused(client, auth):
     assert r.status_code == 422 and error_code(r) == "invalid_reference"
 
 
-# R3.7
 def test_r3_7_limits(client, auth):
     lay = new_layout(client, auth, system_id=IDS["A_V2"])
     r = put_layout(client, auth, lay, blocks=[blk("free_text", text="x") for _ in range(51)])
@@ -125,13 +120,11 @@ def test_r3_7_limits(client, auth):
     assert error_code(r) == "duplicate_cover"
 
 
-# R3.8
 def test_r3_8_zero_blocks_saves(client, auth):
     lay = new_layout(client, auth)
     assert put_layout(client, auth, lay, blocks=[]).status_code == 200
 
 
-# R3.10
 def test_r3_10_a_block_type_that_went_away(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
     bed.psql(pdb_of("A"), f"UPDATE report_composer.layout_block SET block_type = 'gone_type' "
@@ -152,7 +145,7 @@ def test_r4_3_validate(client, auth):
     assert r.status_code == 200 and r.json() == {"valid": True, "problems": []}
 
 
-# R4.3 list, R4.2.1
+# the list
 def test_r4_3_list_fields(client, auth):
     new_layout(client, auth, name="Listed", system_id=IDS["A_V2"])
     rows = client.get("/api/p/alpha/layouts", headers=auth("victor")).json()
@@ -161,7 +154,7 @@ def test_r4_3_list_fields(client, auth):
     assert "updated_at" in row and "last_report" in row
 
 
-# R3.13, changed by ledger phase 9 (2026-10-03, the user's decision): a deleted layout keeps its reports
+# a deleted layout keeps its reports
 def test_r3_13_deleting_a_layout_keeps_its_reports(client, auth, bed):
     lay = new_layout(client, auth, system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
     made = client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]},
@@ -173,7 +166,6 @@ def test_r3_13_deleting_a_layout_keeps_its_reports(client, auth, bed):
     assert client.get(f"/api/p/alpha/reports/{made.json()['id']}/download", headers=auth("alice")).status_code == 200
 
 
-# R4.3.2, R7.3.1
 def test_r4_3_2_a_layout_of_another_project_is_404(client, auth, bed):
     lay = new_layout(client, auth, slug="alpha")
     bed.psql("platform", "INSERT INTO core.project_member (project_id, subject, role) VALUES "
@@ -188,7 +180,6 @@ def test_r4_3_2_a_layout_of_another_project_is_404(client, auth, bed):
         bed.psql("platform", f"DELETE FROM core.project_member WHERE project_id = '{IDS['B']}' AND subject = 'alice'")
 
 
-# D11
 def test_d11_the_project_may_be_named_by_pid(client, auth):
     assert client.get(f"/api/p/{IDS['A']}/layouts", headers=auth("victor")).status_code == 200
     r = client.get(f"/p/{IDS['A']}/", headers=auth("victor"), follow_redirects=False)

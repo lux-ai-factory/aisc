@@ -1,10 +1,7 @@
-"""Layout settings of report run v2 (01-specs.md; the language setting is gone in part 2, R2-D1.10 to
-R2-D1.12, see test_p2_english_only.py): document settings (R-V5.1 composer
-side; the coverage map is gone, evidence links 2026-09-30), the optional template (R-U6.1, R-U6.4), the "pick at least one"
-rule (R-U4.3), API shapes (R-D.3, R-D.4, R-C.6) and the snapshot (R-S.3, R-V5.14). Report modules
-2026-09-28: a layout holds no version, the index is on or off (show_index), and references (the coverage
-map's too) are checked against a version when previewing or generating, not when saving. Database tests,
-v2 fake renderer.
+"""Layout settings: document settings, the optional template, the "pick at least one" rule, API
+shapes and the snapshot. A layout holds no version and no language (see test_p2_english_only.py),
+the index is on or off (show_index), and references are checked against a version when previewing
+or generating, not when saving. Database tests, v2 fake renderer.
 """
 import pytest
 
@@ -29,19 +26,18 @@ def put(client, auth, layout, who="alice", **changes):
     return client.put(f"/api/p/alpha/layouts/{layout['id']}", json=body, headers=auth(who))
 
 
-# ── R-C.6, R-D.3 defaults and shapes ─────────────────────────────────────────
+# defaults and shapes
 
 def test_r_c_6_new_fields_default_to_todays_behaviour(client_v2, auth):
     lay_ = lay(client_v2, auth)
     got = client_v2.get(f"/api/p/alpha/layouts/{lay_['id']}", headers=auth("victor")).json()
     assert {k: got.get(k) for k in ("show_index", "numbering")} == {"show_index": True, "numbering": True}
-    # the coverage map is gone (evidence links 2026-09-30, D5): step 4 holds the links
+    # a layout has no coverage map: step 4 holds the links
     assert "language" not in got and "toc" not in got and "system_id" not in got and "coverage" not in got
 
 
 def test_r_d_3_post_and_put_accept_the_new_fields(client_v2, auth):
-    # R2-D1.10: a language (and since report modules, a toc; since evidence links, a coverage) key is
-    # accepted and ignored
+    # a language, toc or coverage key is accepted and ignored
     lay_ = lay(client_v2, auth, language="fr", toc="on", show_index=False, numbering=True, coverage=MAP[:1])
     assert (lay_.get("show_index"), lay_.get("numbering")) == (False, True)
     assert "language" not in lay_ and "toc" not in lay_ and "coverage" not in lay_
@@ -60,7 +56,7 @@ def test_r_d_3_absent_on_put_keeps_the_current_value(client_v2, auth):
     assert (second.json().get("show_index"), second.json().get("numbering")) == (False, True)
 
 
-# ── R-D.4 validation of the new fields ───────────────────────────────────────
+# validation of the document fields
 
 @pytest.mark.parametrize("change,code", [
     ({"show_index": "sometimes"}, "invalid_request"),
@@ -72,7 +68,7 @@ def test_r_d_4_bad_settings_are_refused(client_v2, auth, change, code):
     assert r.status_code == 422 and error_code(r) == code
 
 
-# ── R-U4.3 "Only these" with nothing ticked ──────────────────────────────────
+# "Only these" with nothing ticked
 
 def test_r_u4_3_an_empty_list_is_refused_with_pick_at_least_one(client_v2, auth):
     lay_ = lay(client_v2, auth)
@@ -83,7 +79,7 @@ def test_r_u4_3_an_empty_list_is_refused_with_pick_at_least_one(client_v2, auth)
     assert d["message"] == "Pick at least one, or choose All." and d["instance_id"] == tests["instance_id"]
 
 
-# ── R-U6.1, R-U6.4 no project template needed ────────────────────────────────
+# no project template needed
 
 def test_r_u6_1_a_layout_is_saved_and_generated_without_a_template(client_v2, auth, fake_v2):
     r = client_v2.post("/api/p/alpha/layouts", json={"name": "Plain look",
@@ -116,7 +112,7 @@ def test_r_u6_4_a_deleted_template_leaves_a_layout_that_saves_and_generates(clie
     assert "style" not in fake_v2.snapshots[-1]
 
 
-# ── R-S.3, R-V5.14, R-U2.1: the v2 snapshot (no language, R2-D1.12) ───────────
+# the v2 snapshot (no language)
 
 def test_r_s_3_the_stored_snapshot_is_version_3_with_the_new_keys(client_v2, auth, fake_v2, bed):
     lay_ = lay(client_v2, auth, show_index=True, numbering=True)

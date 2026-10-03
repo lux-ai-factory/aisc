@@ -1,11 +1,11 @@
-"""Coverage comes from step 4 (evidence links plan 2026-09-30, D5).
+"""Coverage comes from step 4.
 
-The layout's coverage map is gone: which tests and controls give evidence for which objective is set
+A layout has no coverage map: which tests and controls give evidence for which objective is set
 once per project on the platform's Collect evidence page (evidence.link in the project's database,
 template 0016). Every snapshot, preview or generated report, carries those links as coverage_links,
 grouped per objective (tests by plugin package, checklists by id), so a generated report keeps the
-links it was made with. A summary block's own links from before the map are not sent either, and
-an old client's `coverage` is ignored like its `language`.
+links it was made with. Links stored in a summary block's own options are not sent, and an old
+client's `coverage` is ignored like its `language`.
 """
 import json
 
@@ -26,7 +26,7 @@ def links(bed):
     db = pdb_of("A")
     bed.psql(db, "DELETE FROM evidence.link")
     v1, v2 = IDS["A_V1"], IDS["A_V2"]
-    # version 2's links; one of version 1's, which a report of version 2 does not carry (2026-10-02)
+    # version 2's links; one of version 1's, which a report of version 2 does not carry
     bed.psql(db, "INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by) VALUES"
                  f" ('{v2}', 'O1', 'test', 'aisc-plugin-langbite', 'alice'), ('{v2}', 'O1', 'control', 'cl-1', 'alice'),"
                  f" ('{v2}', 'O5', 'test', 'aisc-plugin-promptfoo', 'alice'), ('{v2}', 'O5', 'test', 'aisc-plugin-langbite', 'bob'),"

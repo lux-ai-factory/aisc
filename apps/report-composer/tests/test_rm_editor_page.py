@@ -1,4 +1,4 @@
-"""The layout editor (report modules spec 2026-09-28, section 5): grouped palette, Index and Numbering, a
+"""The layout editor: grouped palette, Index and Numbering, a
 Preview with choice that is never saved, Generate as a link, Delete inside the editor, built-ins read-only."""
 import json
 

@@ -1,4 +1,4 @@
-"""Server-rendered screens (report run 2026-09-23: R4.1.1, R4.2.1, R4.2.2, R4.2.6, R7.3.4).
+"""Server-rendered screens.
 The frontend is one small script; what is on the page is decided in Python."""
 import pytest
 
@@ -13,17 +13,15 @@ def soup(html):
     return BeautifulSoup(html, "html.parser")
 
 
-# R4.2.1
 def test_r4_2_1_layouts_list(client, auth):
     new_layout(client, auth, name="Board pack", system_id=IDS["A_V2"])
     page = client.get("/p/alpha/", headers=auth("alice"))
     assert page.status_code == 200
     t = page.text
-    assert "Board pack" in t and "New layout" in t          # Delete is in the editor (report modules 2026-09-28)
-    assert "New from template" not in t          # templates are looks now, not block recipes
+    assert "Board pack" in t and "New layout" in t          # Delete is in the editor
+    assert "New from template" not in t          # templates are looks, not block recipes
 
 
-# R4.2.6
 def test_r4_2_6_a_viewer_sees_no_edit_controls(client, auth):
     lay = new_layout(client, auth, name="Viewed", system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
     listing = client.get("/p/alpha/", headers=auth("victor")).text
@@ -34,7 +32,6 @@ def test_r4_2_6_a_viewer_sees_no_edit_controls(client, auth):
     assert editor.find("iframe") is not None                        # preview is available
 
 
-# R4.2.2
 def test_r4_2_2_the_editor(client, auth):
     lay = new_layout(client, auth, name="Edited", system_id=IDS["A_V2"],
                      blocks=[blk("cover"), blk("dashboard_chart", chart_id=33)])
@@ -45,14 +42,13 @@ def test_r4_2_2_the_editor(client, auth):
         assert doc.find(attrs={"data-control": control}) is not None, control
     blocks = [el["data-instance-id"] for el in doc.find_all(attrs={"data-instance-id": True})]
     assert blocks == [b["instance_id"] for b in lay["blocks"]]
-    # report modules 2026-09-28: no version on the layout; the preview is drawn with one, newest first
+    # no version on the layout; the preview is drawn with one, newest first
     version = doc.find("form", attrs={"data-control": "preview-with"}).find("select", attrs={"name": "system_id"})
     assert "3" in version.find("option", selected=True).get_text()
-    # the configure form of the chart block offers the project's charts (R1.13 via the renderer)
+    # the configure form of the chart block offers the project's charts (through the renderer)
     assert "Bias rate by version" in str(doc)
 
 
-# R7.3.4
 def test_r7_3_4_the_preview_iframe_is_sandboxed_without_scripts(client, auth):
     lay = new_layout(client, auth, name="Framed", system_id=IDS["A_V2"], blocks=[blk("free_text", text="x")])
     iframe = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text).find("iframe")
@@ -60,7 +56,7 @@ def test_r7_3_4_the_preview_iframe_is_sandboxed_without_scripts(client, auth):
     assert "allow-scripts" not in iframe["sandbox"]
 
 
-# R4.1.1: one small script, no logic of its own
+# one small script, no logic of its own
 def test_r4_1_1_one_small_script(client, auth):
     lay = new_layout(client, auth, name="Scripted", system_id=IDS["A_V2"])
     doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
@@ -72,7 +68,7 @@ def test_r4_1_1_one_small_script(client, auth):
     assert js.exists() and len(js.read_text().splitlines()) < 500
 
 
-# R7.3.3: the composer reads no module schema
+# the composer reads no module schema
 def test_r7_3_3_the_composer_code_names_no_module_schema():
     from pathlib import Path
 
@@ -109,8 +105,8 @@ def test_the_templates_screen(client, auth):
         assert doc.find(attrs={"data-control": control}) is not None, control
 
 
-# 2026-09-28, the user: one editor for new templates, reopened ones and just-imported ones, laid out by
-# good practice: the page's actions in its header, the editor only while it is used, beside the list.
+# One editor for new templates, reopened ones and just-imported ones: the page's actions in its
+# header, the editor only while it is used, beside the list.
 def _editors(doc):
     return doc.find_all("form", attrs={"data-control": ["new-template", "edit-template"]})
 
@@ -227,5 +223,5 @@ def test_the_header_links_the_templates(client, auth):
     assert doc.find("a", href=lambda h: h and h.endswith("/p/alpha/templates")) is not None
 
 
-# Generate PDF: the feedback is next to the button and the finished PDF downloads at once
-# (it used to go to the "Generated reports" card below the preview, off screen, then reload)
+# Generate PDF: the feedback is next to the button and the finished PDF downloads at once, rather
+# than appearing in the "Generated reports" card below the preview, off screen

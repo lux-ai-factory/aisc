@@ -1,5 +1,4 @@
-"""Part 2, D3.8 composer side (10-specs-part2.md R2-D3.8.3): blocks still holding the placeholder
-"Write this section." in a prose option (rule R2-D3.7.3) are flagged in the editor, computed in Python, on
+"""Blocks still holding the placeholder "Write this section." in a prose option are flagged in the editor, computed in Python, on
 page render and in the outline route's answer (`unwritten: [option names]` per item). A hint, not a problem:
 Save and Generate are not refused. Database tests with the v2 fake renderer plus one plugin block type.
 """
@@ -88,7 +87,7 @@ def test_r2_d3_8_3_the_outline_answer_flags_plugin_blocks_too(client_plugin, aut
 
 
 def test_r2_d3_8_3_a_hint_not_a_problem_save_and_generate_go_through(client_v2, auth):
-    """Compatibility guard: the placeholder never blocks validation, save or generate (passes today)."""
+    """The placeholder never blocks validation, save or generate."""
     free = v2blk("free_text", text=PLACEHOLDER)
     lay, _ = editor(client_v2, auth, [v2blk("cover"), free])
     v = client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice")).json()

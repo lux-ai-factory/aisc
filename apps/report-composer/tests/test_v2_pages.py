@@ -1,16 +1,11 @@
-"""Screens of report run v2, drawn in Python (01-specs.md sections 2.3, 4.4, 6.3, 9.3, 11 to 15).
+"""Screens drawn in Python.
 
-Markup hooks these tests assume (stage 4 implements them; documented in 02-tests.md):
-- the coverage map is gone (evidence links 2026-09-30, D5): test_evidence_links.py pins its absence
-- editor toolbar (no language control since part 2, R2-D1.9): buttons `[data-control=generate]` "Generate PDF" and
-  `[data-control=generate-docx]` "Generate Word (DOCX)"
+Markup hooks these tests assume:
 - outline: `li[data-instance-id][data-depth]` (1 inside a chapter, 0 otherwise)
 - block form: `details[data-more]` "More options" (closed), `details[data-commentary]` "Add a commentary",
   fields with `data-show-if` (JSON) and `hidden` when hidden
 - every page: `div[data-message][role=alert][aria-live=polite]` first in `main`, and one `dialog[data-confirm]`
-- layouts page: `select[name=preset]` in the new-layout form, `[data-control=import-preset]`, per row
-  `[data-control=duplicate|export-structure|save-preset|delete]`, a presets section with
-  `[data-control=export-preset|delete-preset]`
+- layouts page: per row `[data-control=duplicate|export-structure]`
 """
 import json
 import re
@@ -44,7 +39,7 @@ def li_of(doc, iid):
     return doc.find("li", attrs={"data-instance-id": iid})
 
 
-# ── R-U4.1 no select multiple anywhere ──────────────────────────────────────
+# no select multiple anywhere
 
 def test_r_u4_1_no_select_multiple_on_any_page(client_v2, auth):
     new_template(client_v2, auth, name=unique("Look"))
@@ -58,7 +53,7 @@ def test_r_u4_1_no_select_multiple_on_any_page(client_v2, auth):
     assert "None selected means all" not in str(doc)
 
 
-# ── R-U4.2, R-U4.3 the all-or-list widget ───────────────────────────────────
+# the all-or-list widget
 
 def test_r_u4_2_all_or_list_radios_then_checkboxes(client_v2, auth):
     tests = v2blk("test_results", evaluations=[IDS["EVAL_A_V2"]])
@@ -88,7 +83,7 @@ def test_r_u4_3_composer_js_says_pick_at_least_one():
     assert "Pick at least one, or choose All." in JS.read_text()
 
 
-# ── R-U5.4 More options, R-V3.13 to R-V3.16 commentary ──────────────────────
+# More options, commentary
 
 def test_r_u5_4_more_options_are_a_closed_disclosure_at_the_end(client_v2, auth):
     tests = v2blk("test_results")
@@ -153,7 +148,7 @@ def test_r_u5_2_the_palette_shows_block_descriptions(client_v2, auth):
     assert "A chart drawn in the report." in palette.get_text()
 
 
-# ── R-V4.15 fields shown per value ──────────────────────────────────────────
+# fields shown per value
 
 def test_r_v4_15_show_if_fields_are_drawn_hidden(client_v2, auth):
     chart = v2blk("chart", dataset="coverage_status")
@@ -169,7 +164,7 @@ def test_r_v4_15_composer_js_toggles_from_the_annotation_and_skips_hidden_fields
     assert "hidden" in js
 
 
-# ── R-V5.8, R-V5.9 chapters in the outline ──────────────────────────────────
+# chapters in the outline
 
 def test_r_v5_9_blocks_inside_a_chapter_are_indented(client_v2, auth):
     blocks = [v2blk("cover"), v2blk("ai_card"), v2blk("chapter", title="Evidence"), v2blk("test_results"),
@@ -186,10 +181,10 @@ def test_r_v5_8_an_empty_chapter_is_a_hint_not_an_error(client_v2, auth):
     assert client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice")).json()["valid"] is True
 
 
-# ── R-V8.14 two generate buttons (the language select is gone: R2-D1.9, test_p2_english_only.py) ──
+# the generate format (no language select: test_p2_english_only.py)
 
 def test_r_v8_14_pdf_or_word_on_the_generate_page(client_v2, auth):
-    """Report modules 2026-09-28: the two Generate buttons became a format choice on the Generate page."""
+    """The format (PDF or Word) is chosen on the Generate page, not by two buttons in the editor."""
     lay, _ = editor(client_v2, auth, [v2blk("cover")])
     doc = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}/generate", headers=auth("alice")).text)
     labels = [r.parent.get_text(strip=True) for r in doc.find_all("input", attrs={"name": "format"})]
@@ -201,7 +196,7 @@ def test_r_v8_16_the_composer_screens_stay_in_english(client_v2, auth):
     assert doc.find("html").get("lang") == "en"
 
 
-# ── R-U6.2, R-U6.3, R-U6.4 the platform default look ────────────────────────
+# the platform default look
 
 def test_r_u6_2_template_select_starts_with_platform_default(client_v2, auth):
     lay, doc = editor(client_v2, auth, [v2blk("cover")], template_id=None)
@@ -226,7 +221,7 @@ def test_r_u6_4_a_deleted_template_shows_platform_default(client_v2, auth):
     assert sel.find("option", selected=True).get_text(strip=True) == "Platform default"
 
 
-# ── R-U7 no alert or confirm ────────────────────────────────────────────────
+# no alert or confirm
 
 def test_r_u7_1_no_alert_confirm_or_prompt_in_composer_js():
     js = JS.read_text()
@@ -256,7 +251,7 @@ def test_r_u7_4_leaving_with_unsaved_changes_asks_the_browser():
     assert "beforeunload" in JS.read_text()
 
 
-# ── 2.3 presets on the layouts page ─────────────────────────────────────────
+# presets on the layouts page
 
 @pytest.mark.usefixtures("clean_presets")
 def test_r_v1_screens_row_menu_editor_and_viewer(client_v2, auth):
@@ -270,7 +265,7 @@ def test_r_v1_screens_row_menu_editor_and_viewer(client_v2, auth):
 
 
 @pytest.mark.usefixtures("clean_presets")
-# ── fix round 1 (05-verify note 6): the outline after a move comes from Python ──
+# the outline after a move comes from Python
 
 def test_fix_outline_route_gives_depth_and_empty_chapter_for_any_order(client_v2, auth):
     cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
@@ -296,7 +291,7 @@ def test_fix_outline_route_is_for_editors_and_checks_its_input(client_v2, auth):
     assert client_v2.post(url, json={"blocks": []}, headers=auth("victor")).status_code in (403, 404)
 
 
-# ── fix round 2, item 4: the outline route keeps the layouts' block limit ─────
+# the outline route keeps the layouts' block limit
 
 def test_fix_r2_4_outline_route_refuses_more_blocks_than_a_layout_holds(client_v2, auth):
     from conftest import error_code
@@ -311,7 +306,7 @@ def test_fix_r2_4_outline_route_refuses_more_blocks_than_a_layout_holds(client_v
     assert r.status_code == 200 and len(r.json()["outline"]) == 50
 
 
-# ── 2026-10-01: the outline shows the report's numbers (1, 1.1, A), not the block's position ──
+# the outline shows the report's numbers (1, 1.1, A), not the block's position
 
 def test_outline_route_gives_the_report_number_when_numbering_is_on(client_v2, auth):
     cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")

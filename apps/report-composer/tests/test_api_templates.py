@@ -1,4 +1,4 @@
-"""Templates: a report's look, orthogonal to its layout (user decision, 2026-09-24).
+"""Templates: a report's look, independent of its layout.
 
 A template is font, base font size, primary and accent colour, and a logo. It belongs to one
 project; a project has any number. It can be exported as a file and imported into another
@@ -18,7 +18,7 @@ PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32).decode("ascii")
 LOGO = {"mime": "image/png", "data_base64": PNG}
 
 
-# ── templates of a project ───────────────────────────────────────────────────
+# templates of a project
 
 def test_an_editor_makes_a_template_and_the_project_lists_it(client, auth):
     t = new_template(client, auth, name="Bank X", font="liberation-serif", font_size_pt=11,
@@ -83,7 +83,7 @@ def test_a_template_of_another_project_is_not_found(client, auth):
     assert client.delete(f"/api/p/gamma/templates/{t['id']}", headers=auth("alice")).status_code == 404
 
 
-# ── export and import ────────────────────────────────────────────────────────
+# export and import
 
 def test_a_template_exports_as_one_file_with_its_logo(client, auth):
     t = new_template(client, auth, name="Bank X", font="liberation-serif", font_size_pt=11,
@@ -126,7 +126,7 @@ def test_a_viewer_cannot_import(client, auth):
     assert client.post("/api/p/alpha/templates/import", json=exported, headers=auth("victor")).status_code == 403
 
 
-# ── a layout is saved with a template ────────────────────────────────────────
+# a layout is saved with a template
 
 def test_a_layout_is_saved_without_a_template(client, auth):
     r = client.post("/api/p/alpha/layouts", json={"name": "No look", "system_id": IDS["A_V2"]}, headers=auth("alice"))
@@ -158,7 +158,7 @@ def test_deleting_a_template_leaves_its_layouts_without_one(client, auth):
     assert client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).json()["template_id"] is None
 
 
-# ── what is generated is the saved layout, in its template's look ─────────────
+# what is generated is the saved layout, in its template's look
 
 def test_the_pdf_is_made_in_the_saved_templates_look(client, auth, fake_renderer):
     t = new_template(client, auth, name="Bank X", font="liberation-serif", font_size_pt=11,

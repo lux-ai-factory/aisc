@@ -1,4 +1,4 @@
-"""The launcher's step-7 link has no trailing slash: /report-composer/p/<pid>.
+"""The launcher's step 6 link has no trailing slash: /report-composer/p/<pid>.
 
 Behind Caddy's handle_path the app only sees /p/<pid>. The redirect to the
 page's own address must keep the /report-composer prefix, or the browser lands

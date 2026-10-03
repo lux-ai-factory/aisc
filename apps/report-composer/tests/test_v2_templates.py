@@ -1,5 +1,4 @@
-"""Template fields of report run v2: header text, footer text, marking, document id (R-V5.10, R-V5.17,
-R-C.6). Database tests, v2 fake renderer.
+"""Template fields: header text, footer text, marking, document id. Database tests, v2 fake renderer.
 """
 import json
 

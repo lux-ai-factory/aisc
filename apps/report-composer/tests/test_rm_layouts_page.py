@@ -1,4 +1,4 @@
-"""The layouts page (report modules spec 2026-09-28, sections 4 and 5): New and Import in the header, the
+"""The layouts page: New and Import in the header, the
 built-in and the project's layouts in one list, no Start from, no Save as preset, no presets section."""
 import pytest
 

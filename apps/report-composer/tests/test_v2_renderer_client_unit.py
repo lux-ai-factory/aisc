@@ -1,6 +1,5 @@
-"""The composer's client for the renderer's v2 routes (R-V8.9; `languages()` goes, R2-D1.9, and
-`coverage_choices` with the coverage map, evidence links 2026-09-30). No network: httpx is replaced by a
-recorder."""
+"""The composer's client for the renderer's v2 routes (it has no `languages()` and no
+`coverage_choices`). No network: httpx is replaced by a recorder."""
 import pytest
 
 from conftest import need

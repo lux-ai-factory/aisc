@@ -1,4 +1,4 @@
-"""A deleted layout keeps its reports (ledger phase 9, M2; the user's decision of 2026-10-03).
+"""A deleted layout keeps its reports.
 
 Deleting a layout hides it: it leaves the list and every layout route, and its name is free again. Its
 generated reports stay, each still downloadable, listed on the layouts page under "Reports of deleted

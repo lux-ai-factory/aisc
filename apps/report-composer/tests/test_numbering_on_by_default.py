@@ -1,5 +1,5 @@
-"""Numbering is on by default, retroactively (2026-10-01): a new layout numbers its report, every layout and
-saved preset stored before this numbers its report too (project migration 0003, library migration 0002),
+"""Numbering is on by default, also for what was stored before: a new layout numbers its report, every
+older layout and saved preset numbers its report too (project migration 0003, library migration 0002),
 and the built-in layouts all number. The Numbering box stays, so an editor can still turn it off."""
 from __future__ import annotations
 

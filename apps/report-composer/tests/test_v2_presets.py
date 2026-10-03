@@ -1,7 +1,6 @@
-"""V1: reusable report structures (report run v2, 01-specs.md section 2: R-V1.1 to R-V1.12).
+"""Reusable report structures.
 
-Report modules 2026-09-28: the preset library and "Start from" are gone; a structure is reused by
-duplicating a layout or by exporting it as a file (format aisc-report-preset, version 2; version 1 is
+A structure is reused by duplicating a layout or by exporting it as a file (format aisc-report-preset, version 2; version 1 is
 still read) and importing that file as a layout. The built-in layouts are tested in test_rm_builtins.py.
 Database tests on the composer bed, with the v2 fake renderer (v2_fakes.py).
 """
@@ -30,9 +29,9 @@ def create(client, auth, who="alice", slug="alpha", **body):
     return client.post(f"/api/p/{slug}/layouts", json=body, headers=auth(who))
 
 
-# ── R-V1.1 built-in presets: replaced by the five built-in layouts (test_rm_builtins.py) ──
+# the built-in structures are the five built-in layouts (test_rm_builtins.py)
 
-# ── R-V1.2, R-V1.3 creating a layout from a preset ───────────────────────────
+# creating a layout from a preset
 
 @pytest.mark.parametrize("extra", [
     {"file": {"format": "aisc-report-preset", "version": 2, "name": "x", "blocks": []}, "blocks": []},
@@ -56,7 +55,7 @@ def test_r_v1_3_a_layout_from_a_preset_file_takes_its_name_from_the_file(client_
     assert r2.status_code == 201 and r2.json()["name"] == "Carried structure (2)"
 
 
-# ── R-V1.4 references are stripped; "Choose a value"; Generate refused ───────
+# references are stripped; "Choose a value"; Generate refused
 
 def test_r_v1_4_references_are_reset_and_generate_is_refused(client_v2, auth):
     doc = preset_file([{"block_type": "dashboard_chart", "options": {"chart_id": 33}},
@@ -74,7 +73,7 @@ def test_r_v1_4_references_are_reset_and_generate_is_refused(client_v2, auth):
     assert g.status_code == 422 and error_code(g) == "invalid_options"
 
 
-# ── R-V1.5 unknown block types ───────────────────────────────────────────────
+# unknown block types
 
 def test_r_v1_5_unknown_block_types_are_all_listed(client_v2, auth):
     doc = preset_file([{"block_type": "cover", "options": {}}, {"block_type": "ghost", "options": {}},
@@ -84,7 +83,7 @@ def test_r_v1_5_unknown_block_types_are_all_listed(client_v2, auth):
     assert {"ghost", "phantom"} <= set(json.dumps(r.json()["error"]["details"]).replace('"', " ").split())
 
 
-# ── R-V1.6 duplicate ─────────────────────────────────────────────────────────
+# duplicate
 
 def test_r_v1_6_duplicate_names_copy_then_copy_2(client_v2, auth):
     lay = create(client_v2, auth, name="Board pack", blocks=[v2blk("cover"), v2blk("free_text", text="x")]).json()
@@ -110,8 +109,8 @@ def test_r_v1_6_a_copy_keeps_everything_but_ids_revision_and_reports(client_v2, 
     assert copy_["id"] != src["id"] and copy_["revision"] == 1
     for key in ("template_id", "show_index", "numbering"):
         assert copy_[key] == src[key], key
-    assert "coverage" not in copy_                                       # evidence links, D5
-    assert "language" not in copy_                                       # R2-D1.13: no language copied
+    assert "coverage" not in copy_                                       # evidence links
+    assert "language" not in copy_                                       # no language copied
     assert [b["options"] for b in copy_["blocks"]] == [b["options"] for b in src["blocks"]]
     assert not {b["instance_id"] for b in copy_["blocks"]} & {b["instance_id"] for b in src["blocks"]}
     assert client_v2.get(f"/api/p/alpha/layouts/{copy_['id']}/reports", headers=auth("alice")).json() == []
@@ -123,7 +122,7 @@ def test_r_v1_6_a_viewer_cannot_duplicate(client_v2, auth):
                           headers=auth("victor")).status_code == 403
 
 
-# ── R-V1.7, R-V1.9 export as a preset file ───────────────────────────────────
+# export as a preset file
 
 def _texty_layout(client, auth):
     blocks = [v2blk("cover", report_title="Kept title", subtitle="Kept subtitle"),
@@ -160,7 +159,7 @@ def test_r_v1_9_texts_become_placeholders_unless_kept(client_v2, auth):
     assert kept["blocks"][1]["options"]["commentary"] == "An aside"
 
 
-# ── R-V1.8, R-V1.11 saved presets ────────────────────────────────────────────
+# saved presets
 
 def test_r_v1_8_import_a_file_and_the_name_gets_a_suffix(client_v2, auth):
     doc = preset_file([{"block_type": "cover", "options": {}}], name="Imported look")
@@ -170,7 +169,7 @@ def test_r_v1_8_import_a_file_and_the_name_gets_a_suffix(client_v2, auth):
     assert (r1.json()["name"], r2.json()["name"]) == ("Imported look", "Imported look (2)")
 
 
-# ── R-V1.10 import checks ────────────────────────────────────────────────────
+# import checks
 
 @pytest.mark.parametrize("doc", [
     {"format": "aisc-report-template", "version": 1, "name": "x", "blocks": []},
@@ -207,9 +206,9 @@ def test_r_v1_10_a_preset_with_two_covers_is_refused(client_v2, auth):
     assert r.status_code == 422 and error_code(r) == "duplicate_cover"
 
 
-# ── R-V1.12 no link to the preset ────────────────────────────────────────────
+# no link to the preset
 
-# ── 2.5 edge cases ───────────────────────────────────────────────────────────
+# edge cases
 
 def test_r_v1_edge_zero_block_preset_starts_empty_and_is_not_generated(client_v2, auth):
     lay = create(client_v2, auth, preset_file=preset_file([])).json()
@@ -219,7 +218,7 @@ def test_r_v1_edge_zero_block_preset_starts_empty_and_is_not_generated(client_v2
 
 
 def test_r_v1_edge_a_language_no_longer_offered_falls_back_to_english_with_a_notice(client_v2, auth):
-    """Changed by R2-D1.13 (D1): any language in a preset file is ignored, with no notice."""
+    """Any language in a preset file is ignored, with no notice."""
     r = create(client_v2, auth, preset_file=preset_file([{"block_type": "cover", "options": {}}], language="de"))
     assert r.status_code == 201, r.text[:300]
     assert "language" not in r.json()
@@ -227,7 +226,7 @@ def test_r_v1_edge_a_language_no_longer_offered_falls_back_to_english_with_a_not
         "language" not in json.dumps(r.json().get("notices") or [])
 
 
-# ── fix round 1, finding 4: every free text is dropped unless "Keep texts" ────
+# every free text is dropped unless "Keep texts"
 
 def _chapter_layout(client, auth):
     blocks = [v2blk("cover", report_title="Kept title"),

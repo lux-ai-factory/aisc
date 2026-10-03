@@ -1,4 +1,4 @@
-"""The templates screen in a browser (2026-09-28): one editor for a new template, a reopened one and a
+"""The templates screen in a browser: one editor for a new template, a reopened one and a
 just-imported one. New opens it empty, Create and Import land in it on that template, Delete in it goes
 back to the list. The real composer app runs with uvicorn on the bed; the system Chrome drives it through
 Playwright, as in test_v2_browser.py. RC_SCREENSHOTS=<dir> also saves a picture of each state.

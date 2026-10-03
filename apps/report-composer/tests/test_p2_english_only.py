@@ -1,6 +1,6 @@
-"""Part 2, D1: all reports in English (10-specs-part2.md R2-D1.9 to R2-D1.13, R2-C.1).
+"""All reports are in English.
 
-The composer has no language choice any more: no Language control, no call to GET /v1/languages, a
+The composer has no language choice: no Language control, no call to GET /v1/languages, a
 `language` key sent by an older client is accepted and ignored, nothing is written to or read from the
 `language` columns, and no snapshot carries a language. Rows and files that still hold "fr" load and render
 (in English). Database tests on the composer bed with the v2 fake renderer.
@@ -35,7 +35,7 @@ def put(client, auth, layout, **changes):
     return client.put(f"/api/p/alpha/layouts/{layout['id']}", json=body, headers=auth("alice"))
 
 
-# ── R2-D1.9 no Language control, no languages call ──────────────────────────
+# no Language control, no languages call
 
 def test_r2_d1_9_the_editor_has_no_language_control(client_v2, auth):
     lay_ = lay(client_v2, auth)
@@ -56,7 +56,7 @@ def test_r2_d1_9_the_composer_no_longer_calls_get_v1_languages():
     assert not hasattr(renderer_client.HttpRendererClient, "languages")
 
 
-# ── R2-D1.10 a language key is accepted and ignored ─────────────────────────
+# a language key is accepted and ignored
 
 @pytest.mark.parametrize("value", ["fr", "de", "xx", "en"])
 def test_r2_d1_10_post_accepts_and_ignores_a_language(client_v2, auth, value):
@@ -100,7 +100,7 @@ def test_r2_d1_10_unknown_language_is_never_an_error(client_v2, auth):
     assert error_code(r) != "unknown_language" and r.status_code == 200, r.text[:300]
 
 
-# ── R2-D1.11 the language columns are neither written nor read ──────────────
+# the language columns are neither written nor read
 
 def test_r2_d1_11_db_default_settings_have_no_language():
     from report_composer import db
@@ -108,7 +108,7 @@ def test_r2_d1_11_db_default_settings_have_no_language():
     assert "language" not in db.DEFAULT_SETTINGS
 
 
-# ── R2-D1.12 no snapshot carries a language ─────────────────────────────────
+# no snapshot carries a language
 
 def test_r2_d1_12_preview_and_generate_snapshots_carry_no_language(client_v2, auth, fake_v2, bed):
     lay_ = lay(client_v2, auth)
@@ -124,7 +124,7 @@ def test_r2_d1_12_preview_and_generate_snapshots_carry_no_language(client_v2, au
         assert "language" not in stored, fmt
 
 
-# ── R2-D1.13 presets carry no language ──────────────────────────────────────
+# presets carry no language
 
 @pytest.mark.parametrize("preset_id", ["summary", "management-overview", "assessment-report", "eu-ai-act",
                                        "technical-dossier"])

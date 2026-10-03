@@ -1,4 +1,4 @@
-"""The report composer's layout flows in a browser (report modules spec 2026-09-28, sections 4 to 6): a new
+"""The report composer's layout flows in a browser: a new
 layout saved and generated, a built-in duplicated, an old layout file imported. The real composer app runs
 with uvicorn on the bed; the system Chrome drives it through Playwright. RC_SCREENSHOTS=<dir> also saves a
 picture of each screen.
