@@ -107,3 +107,6 @@ webapp src/pluginCatalogue/PluginInstallContext.tsx T8: install target by mode
 webapp src/pluginCatalogue/installUri.ts T8: catalogue slug of an install link
 webapp src/pluginCatalogue/testing.tsx T8: test helpers without a new dependency (Ruling 34)
 webapp src/seansFilesUnchanged.test.ts T7: Sean's files the configurator no longer edits equal master (adapt plan 2026-09-28, task 5)
+backend README.md docs: what the branch changes and how the engine runs inside AISC (documentation pass 2026-10-03)
+eval README.md docs: what the branch changes and how the worker runs inside AISC (documentation pass 2026-10-03)
+webapp README.md docs: what the branch changes and how the frontend runs inside AISC (documentation pass 2026-10-03)
