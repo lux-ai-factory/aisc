@@ -15,7 +15,7 @@ FILES = ["docker-compose.plugin_downloader.yml", "docker-compose-infra.developme
 HOLDERS = {
     "PLATFORM_LEDGER_ENGINE_TOKEN": {"platform"},
     "PLATFORM_LEDGER_DASHBOARD_TOKEN": {"platform"},
-    "PLATFORM_LEDGER_AGENTS_TOKEN": {"platform"},
+    "PLATFORM_LEDGER_AGENTS_TOKEN": {"platform", "qualification-agents"},          # phase 5
     "PLATFORM_LEDGER_KEYS": {"platform"},
     "LEDGER_IMMUDB_PASSWORD": {"platform"},
     "AISC_WITNESS_GATEWAY_SECRET": {"caddy", "platform"},

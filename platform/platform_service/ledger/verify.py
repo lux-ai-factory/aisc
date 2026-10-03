@@ -35,6 +35,8 @@ class Report:
     index_mismatches: int = 0
     #: entries of the log with no index row, and index rows with no entry
     index_missing: int = 0
+    #: agent runs started longer than RUN_WINDOW ago with no end (a killed agent; phase 5 drill)
+    open_runs: int = 0
 
 
 def verify(pid: str) -> Report:
@@ -88,6 +90,12 @@ def verify(pid: str) -> Report:
         report.action_id_conflicts = conn.execute(
             "SELECT count(*) AS n FROM ledger.event_index WHERE log = %s AND reason = 'action_id'",
             (log,)).fetchone()["n"]
+        report.open_runs = conn.execute(
+            "SELECT count(*) AS n FROM ledger.event_index s WHERE s.log = %s AND s.action = 'agent.run_started'"
+            " AND s.reason IS NULL AND s.occurred_at < %s AND NOT EXISTS (SELECT 1 FROM ledger.event_index e"
+            "  WHERE e.log = s.log AND e.run_id = s.run_id AND e.reason IS NULL"
+            "  AND e.action IN ('agent.run_finished', 'agent.run_failed'))",
+            (log, datetime.now(timezone.utc) - settings.RUN_WINDOW)).fetchone()["n"]
         cutoff = datetime.now(timezone.utc) - settings.WINDOW
         report.witness_without_event = conn.execute(
             "SELECT count(*) AS n FROM ledger.witness w WHERE w.project_pid = %s AND w.at < %s"

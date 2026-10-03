@@ -340,6 +340,9 @@ services:
       # its own tokens for the two services it calls: the app's /extracted and the ontology
       QUALIFICATION_AGENTS_TO_WEB_TOKEN: ${QUALIFICATION_AGENTS_TO_WEB_TOKEN:?run scripts/secrets.sh first}
       QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
+      # the ledger (phase 5): a run's events go to the platform's internal route with this, its own token
+      LEDGER_MODE: ${LEDGER_MODE:-off}
+      PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
     extra_hosts:
       # for a project that chose a model served by ollama on the host
       - "host.docker.internal:host-gateway"
@@ -420,6 +423,8 @@ services:
       AISC_BACKEND_URL: http://aisc-backend:8000
       # The card agent, which the save starts and the card page polls.
       AGENT_SERVICE_URL: http://qualification-agents:8012
+      # The ledger (phase 5): each change writes its event with ledger.emit in its own transaction
+      LEDGER_MODE: ${LEDGER_MODE:-off}
       # Where an uploaded document is turned into the form's answers.
       PREFILL_URL: http://qualification-prefill:8012
       # One token per service it calls, and the card agent's token for the two
