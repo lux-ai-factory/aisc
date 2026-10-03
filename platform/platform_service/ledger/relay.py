@@ -165,21 +165,32 @@ def _relay_log(pid: str | None, stats: RelayStats) -> None:
 
 
 def _pending(pid, project) -> list[dict]:
-    """Everything not delivered yet for this log, oldest first (time, then kind, then id)."""
-    items = []
+    """The next batch not delivered yet for this log, oldest first (time, then kind, then id). Each source
+    gives at most RELAY_BATCH rows in time order; a source cut short sets a cutoff, and only what is
+    before every cutoff is relayed this pass, so the merged order is never wrong (review M1)."""
+    limit = settings.RELAY_BATCH
+    sources = []
     with _db().pool().connection() as conn:
         where = "project_pid IS NULL" if pid is None else "project_pid = %s"
         args = () if pid is None else (pid,)
-        for row in conn.execute(f"SELECT * FROM ledger.witness WHERE {where} AND delivered_seq IS NULL", args):
-            items.append({"kind": "witness", "at": row["at"], "row": dict(row)})
-        for row in conn.execute(f"SELECT * FROM core.outbox WHERE {where} AND delivered_at IS NULL", args):
-            items.append({"kind": "core", "at": row["occurred_at"], "row": dict(row)})
+        sources.append([{"kind": "witness", "at": row["at"], "row": dict(row)} for row in conn.execute(
+            f"SELECT * FROM ledger.witness WHERE {where} AND delivered_seq IS NULL ORDER BY at, request_id LIMIT %s",
+            (*args, limit))])
+        sources.append([{"kind": "core", "at": row["occurred_at"], "row": dict(row)} for row in conn.execute(
+            f"SELECT * FROM core.outbox WHERE {where} AND delivered_at IS NULL ORDER BY occurred_at, event_id LIMIT %s",
+            (*args, limit))])
     if project is not None:
-        for row in project.execute("SELECT o.* FROM ledger.outbox o LEFT JOIN ledger.delivered d"
-                                   " ON d.event_id = o.event_id WHERE d.event_id IS NULL"):
-            items.append({"kind": "project", "at": row["occurred_at"], "row": dict(row)})
+        sources.append([{"kind": "project", "at": row["occurred_at"], "row": dict(row)} for row in project.execute(
+            "SELECT o.* FROM ledger.outbox o LEFT JOIN ledger.delivered d ON d.event_id = o.event_id"
+            " WHERE d.event_id IS NULL ORDER BY o.occurred_at, o.event_id LIMIT %s", (limit,))])
+    cutoffs = [rows[-1]["at"] for rows in sources if len(rows) >= limit]
     order = {"witness": 0, "core": 1, "project": 2}
-    return sorted(items, key=lambda i: (i["at"], order[i["kind"]], str(i["row"].get("event_id") or i["row"].get("request_id"))))
+    items = sorted((i for rows in sources for i in rows),
+                   key=lambda i: (i["at"], order[i["kind"]], str(i["row"].get("event_id") or i["row"].get("request_id"))))
+    if cutoffs:
+        cutoff = min(cutoffs)
+        items = [i for i in items if i["at"] <= cutoff]
+    return items
 
 
 def _process(item: dict, pid, log: str, project, stats: RelayStats) -> None:

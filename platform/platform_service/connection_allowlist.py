@@ -179,12 +179,18 @@ def entries(pid) -> list[dict]:
 
 
 def put(pid, entry: str, note: str | None, subject: str) -> dict:
-    """Add or update an entry; InvalidEntry or DeniedEntry, and nothing is written, when it may not be."""
+    """Add or update an entry; InvalidEntry or DeniedEntry, and nothing is written, when it may not be.
+    The ledger's item is the entry as the route got it, so it matches the witnessed path."""
+    from platform_service.ledger import outbox
+
     host = normalise(entry)
     reason = why_denied(host)
     if reason:
         raise DeniedEntry(reason)
-    with connection_store.connect(pid) as conn:
+    with connection_store.connect(pid) as conn, conn.transaction():
+        old = conn.execute("SELECT note FROM connection.allowed_host WHERE host = %s", (host,)).fetchone()
+        outbox.emit_project(conn, "allowlist.host.allowed", item_type="allowed_host", item_id=entry,
+                            details={"note_before": old["note"] if old else None, "note_after": note})
         return conn.execute(
             "INSERT INTO connection.allowed_host (host, note, updated_by) VALUES (%s, %s, %s)"
             " ON CONFLICT (host) DO UPDATE SET note = EXCLUDED.note, updated_by = EXCLUDED.updated_by,"
@@ -192,7 +198,12 @@ def put(pid, entry: str, note: str | None, subject: str) -> dict:
 
 
 def remove(pid, entry: str) -> bool:
+    from platform_service.ledger import outbox
+
     host = normalise(entry)
-    with connection_store.connect(pid) as conn:
-        return conn.execute("DELETE FROM connection.allowed_host WHERE host = %s RETURNING host",
+    with connection_store.connect(pid) as conn, conn.transaction():
+        gone = conn.execute("DELETE FROM connection.allowed_host WHERE host = %s RETURNING host",
                             (host,)).fetchone() is not None
+        if gone:
+            outbox.emit_project(conn, "allowlist.host.removed", item_type="allowed_host", item_id=entry)
+        return gone

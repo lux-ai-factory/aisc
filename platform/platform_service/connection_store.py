@@ -46,7 +46,16 @@ def save(pid, name: str, fields: dict, *, ciphertext=KEEP, subject: str | None) 
     insert_cols = ", ".join(["name", *cols, "secret_ciphertext", "updated_by"])
     insert_vals = ", ".join(["%(name)s", *[f"%({c})s" for c in cols], "%(ciphertext)s", "%(subject)s"])
     updates = ", ".join([f"{c} = EXCLUDED.{c}" for c in cols])
-    with connect(pid) as conn:
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        before = conn.execute(f"SELECT {_SELECT}, deleted_at FROM connection.endpoint WHERE name = %s",
+                              (name,)).fetchone()
+        changed = sorted(c for c in fields if before is None or before.get(c) != fields[c]
+                         or before.get("deleted_at") is not None)
+        outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
+                            details={"changed": changed,
+                                     "secret": "kept" if ciphertext is KEEP else ("removed" if ciphertext is None else "set")})
         return conn.execute(
             f"INSERT INTO connection.endpoint ({insert_cols}) VALUES ({insert_vals})"
             f" ON CONFLICT (name) DO UPDATE SET {updates},"
@@ -78,13 +87,33 @@ def set_engine_component(pid, name: str, component: str) -> None:
 
 def delete(pid, name: str) -> bool:
     """Mark it deleted; the row stays for the evaluations that used it."""
-    with connect(pid) as conn:
-        return conn.execute("UPDATE connection.endpoint SET deleted_at = now() WHERE name = %s"
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        gone = conn.execute("UPDATE connection.endpoint SET deleted_at = now() WHERE name = %s"
                             " AND deleted_at IS NULL RETURNING name", (name,)).fetchone() is not None
+        if gone:
+            outbox.emit_project(conn, "connection.deleted", item_type="connection", item_id=name)
+        return gone
 
 
-def record_test(pid, name: str, ok: bool, detail: str) -> None:
-    with connect(pid) as conn:
+def record_link(pid, name: str, retired: bool) -> None:
+    """The link route changes the engine's side only; its event says whether a component was retired."""
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
+                            details={"changed": ["engine_component"] if retired else [], "secret": "kept"})
+
+
+def record_test(pid, name: str, ok: bool, detail: str, result: str | None = None) -> None:
+    """The probe's outcome; the ledger keeps only `result` (ok, refused, or the error's code), never the
+    answer or the error text, which can quote the system under test."""
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        outbox.emit_project(conn, "connection.tested", item_type="connection", item_id=name,
+                            details={"result": result or ("ok" if ok else "error")})
         conn.execute("UPDATE connection.endpoint SET last_test_at = now(), last_test_ok = %s,"
                      " last_test_detail = %s WHERE name = %s", (ok, detail[:500], name))
 

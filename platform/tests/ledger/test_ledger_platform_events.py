@@ -207,3 +207,170 @@ def test_a_drain_that_cannot_count_refuses_the_drop(project, call, memory_ledger
     assert _delete(call, project).status_code == 503
     with psycopg.connect(DSN) as conn:
         assert conn.execute("SELECT 1 FROM core.project WHERE pid = %s", (project["pid"],)).fetchone()
+
+
+# phase 3 review M6, m15: every platform write has its event --------------------------------------------
+
+def _events(store, pid, prefix):
+    return [(e.action, e.item_id, e.details) for e in actions(store, pid) if e.action.startswith(prefix)]
+
+
+def test_llm_provider_and_choice_changes_are_recorded(project, call, memory_ledger, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("PLATFORM_SECRETS_KEY", Fernet.generate_key().decode())
+    slug = project["slug"]
+    for method, path, body in [("PUT", "/llm/providers/ollama", {"base_url": "http://ollama.example:11434"}),
+                               ("PUT", "/llm/systems/card_agent", {"provider": "ollama", "model": "llama3"}),
+                               ("DELETE", "/llm/systems/card_agent", None),
+                               ("DELETE", "/llm/providers/ollama", None)]:
+        r = call(ADMIN, method, f"/projects/{slug}{path}", roles=ADMIN_ROLES, **({"json": body} if body else {}))
+        assert r.status_code in (200, 201, 204), r.text
+    relay_all(project["pid"])
+    got = _events(memory_ledger, project["pid"], "llm.")
+    assert [(a, i) for a, i, _ in got] == [("llm.provider.saved", "ollama"), ("llm.choice.saved", "card_agent"),
+                                          ("llm.choice.removed", "card_agent"), ("llm.provider.removed", "ollama")]
+    assert got[1][2] == {"provider_before": None, "provider_after": "ollama", "model_before": None,
+                         "model_after": "llama3"}
+    assert rejected_reasons(memory_ledger, project["pid"]) == []
+
+
+def test_connection_changes_are_recorded(project, call, memory_ledger, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("PLATFORM_SECRETS_KEY", Fernet.generate_key().decode())
+    slug = project["slug"]
+    body = {"label": "Chat", "kind": "rest", "base_url": "https://chat.example.org", "path": "/ask",
+            "body_template": {"question": "{{input}}"}, "response_path": "answer",
+            "secret_header": "Authorization: Bearer {{secret}}", "secret": "sk-test-0123456789abcdefghijklmnop"}
+    assert call(ADMIN, "PUT", f"/projects/{slug}/connections/chat", roles=ADMIN_ROLES, json=body).status_code == 200
+    assert call(ADMIN, "POST", f"/projects/{slug}/connections/chat/link", roles=ADMIN_ROLES).status_code == 200
+    assert call(ADMIN, "DELETE", f"/projects/{slug}/connections/chat", roles=ADMIN_ROLES).status_code == 204
+    relay_all(project["pid"])
+    got = _events(memory_ledger, project["pid"], "connection.")
+    assert [(a, i) for a, i, _ in got] == [("connection.saved", "chat"), ("connection.saved", "chat"),
+                                          ("connection.deleted", "chat")]
+    assert got[0][2]["secret"] == "set" and "base_url" in got[0][2]["changed"]
+    assert rejected_reasons(memory_ledger, project["pid"]) == []
+    for x in entries(memory_ledger, log_of(project["pid"])):
+        assert b"sk-test-0123" not in canonical(x.as_dict())
+
+
+def test_a_connection_test_keeps_only_its_result(project, memory_ledger, mode):
+    """The probe's answer can quote the system under test: the ledger keeps ok, refused or the error code."""
+    from platform_service import connection_store
+
+    mode("record")
+    connection_store.save(project["pid"], "chat", {"label": "Chat", "kind": "rest", "base_url": "https://x.example"},
+                          subject="t")
+    connection_store.record_test(project["pid"], "chat", False, "boom: the system said a secret", result="timeout")
+    rows = as_superuser_rows(project["pid"], "SELECT action, details FROM ledger.outbox WHERE action = 'connection.tested'")
+    assert rows == [("connection.tested", {"result": "timeout"})]
+
+
+def test_allowlist_changes_are_recorded(project, call, memory_ledger):
+    slug = project["slug"]
+    assert call(OWNER, "PUT", f"/projects/{slug}/allowed-hosts/chat.internal", json={"note": "the chatbot"}).status_code in (200, 201)
+    assert call(OWNER, "DELETE", f"/projects/{slug}/allowed-hosts/chat.internal").status_code == 204
+    relay_all(project["pid"])
+    got = _events(memory_ledger, project["pid"], "allowlist.")
+    assert got == [("allowlist.host.allowed", "chat.internal", {"note_before": None, "note_after": "the chatbot"}),
+                   ("allowlist.host.removed", "chat.internal", {})]
+    assert rejected_reasons(memory_ledger, project["pid"]) == []
+
+
+def test_a_target_sync_is_recorded_with_its_counts(project, mode):
+    from platform_service import target_store, targets
+
+    mode("record")
+    before = {t["key"]: t["label"] for t in target_store.all_targets(project["pid"])}
+    targets.ensure_system(project["pid"], "the system")
+    targets._record_sync(project["pid"], before)
+    rows = as_superuser_rows(project["pid"], "SELECT details FROM ledger.outbox WHERE action = 'targets.synced'")
+    assert rows == [({"added": len(target_store.all_targets(project["pid"])) - len(before), "renamed": 0},)]
+
+
+@pytest.mark.parametrize("url, kept", [
+    ("https://api.example.org/v1", "https://api.example.org/v1"),
+    ("https://api.example.org/v1?api-key=sk-123", "https://api.example.org/v1#hmac:v1:"),
+    ("https://user:pw@api.example.org:8443/v1", "https://api.example.org:8443/v1#hmac:v1:")])
+def test_a_base_url_is_logged_without_its_query_or_user(project, url, kept):
+    """m15: an OpenAI-compatible URL can carry its key in the query."""
+    from platform_service import llm_store
+
+    logged = llm_store.logged_url(project["pid"], url)
+    assert logged.startswith(kept) and "sk-123" not in logged and "pw" not in logged
+
+
+def rejected_reasons(store, pid):
+    return [e.details["reason"] for e in entries(store, log_of(pid)) if e.action == "ledger.rejected"]
+
+
+def as_superuser_rows(pid, statement):
+    from tests.ledger.test_ledger_outbox import as_superuser
+
+    return [tuple(r) for r in as_superuser(pid, statement)]
+
+
+# phase 3 review m9, m11, m12 -------------------------------------------------------------------------
+
+def test_a_platform_request_id_presented_on_another_route_is_refused(project, client, as_user, witnessed, mode):
+    """m9: the person's own id, but witnessed for another platform route."""
+    mode("enforce")
+    request_id = witnessed(OWNER, "POST", "platform", f"/api/projects/{project['slug']}/members")
+    r = client.put(f"/projects/{project['slug']}/members/{MEMBER}", json={"role": "viewer"},
+                   headers={**as_user(OWNER), "X-AISC-Request-Id": request_id})
+    assert r.status_code == 401
+
+
+def test_in_record_mode_someone_elses_request_id_is_not_cited(project, client, as_user, witnessed, mode):
+    """m9: in record, a presented id that fails the check is not used: the event cites no request (and
+    the relay rejects it as missing_request), rather than another person's request."""
+    mode("record")
+    theirs = witnessed(MEMBER, "POST", "platform", f"/api/projects/{project['slug']}/members")
+    other = "00000000-0000-0000-0000-0000000000e1"
+    r = client.post(f"/projects/{project['slug']}/members", json={"subject": other, "role": "viewer"},
+                    headers={**as_user(OWNER), "X-AISC-Request-Id": theirs})
+    assert r.status_code in (200, 201)
+    with psycopg.connect(DSN) as conn:
+        cited = conn.execute("SELECT request_id FROM core.outbox WHERE action = 'member.added' AND item_id = %s",
+                             (other,)).fetchone()[0]
+    assert cited is None
+
+
+def test_the_emit_functions_search_path_ends_with_pg_temp(project):
+    """m11: a later unqualified name can't be shadowed by a caller's temporary table."""
+    from tests.ledger.test_ledger_outbox import as_superuser
+
+    [(config,)] = as_superuser(project["pid"], "SELECT proconfig FROM pg_proc WHERE oid = 'ledger.emit(jsonb)'::regprocedure")
+    path = next(c for c in config if c.startswith("search_path="))
+    assert path.replace(" ", "").endswith(",pg_temp")
+
+
+@pytest.mark.parametrize("variant, reaches", [("pid_upper", True), ("pid_percent", False), ("slug_upper", False)])
+def test_a_changed_case_or_percent_encoded_project_path(project, witnessed, memory_ledger, mode, variant, reaches):
+    """Phase 2 m7, pinned. A pid is case-insensitive, so an upper-case pid is the same project. The witness
+    neither decodes percent-encoding nor folds a slug's case: such a request lands in the platform log,
+    and an event citing it is rejected for the project (it fails safe)."""
+    from platform_service.ledger import registry
+    from tests.ledger.test_ledger_outbox import emit
+
+    mode("enforce")
+    pid, slug = project["pid"], project["slug"]
+    saved = registry.Action(name="qualification.test.saved", step=1, emitters=("qualification", "control_objectives"), item_type="t",
+                            caused_by=(("qualification", "POST", r"^/qualification/p/[^/]+/x$"),
+                                       ("control_objectives", "POST", r"^/control-objectives/p/[^/]+/x$")),
+                            details_keys=(), per_request=1)
+    if variant == "slug_upper":
+        app, role, uri = "qualification", "qualification_rw", f"/qualification/p/{slug.upper()}/x"
+    else:
+        shown = pid.upper() if variant == "pid_upper" else f"%{ord(pid[0]):02X}" + pid[1:]
+        app, role, uri = "control_objectives", "control_objectives_rw", f"/control-objectives/p/{shown}/x"
+    with registry.override({saved.name: saved}):
+        request_id = witnessed(MEMBER, "POST", app, uri)
+        emit(pid, role, {"event_id": str(uuid.uuid4()), "request_id": request_id, "action": saved.name,
+                         "item_type": "t", "item_id": "x"})
+        relay_all(pid)
+    accepted = [e for e in entries(memory_ledger, log_of(pid)) if e.action == saved.name]
+    assert bool(accepted) is reaches
+    assert rejected_reasons(memory_ledger, pid) == ([] if reaches else ["project_mismatch"])

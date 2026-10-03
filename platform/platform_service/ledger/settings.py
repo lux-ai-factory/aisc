@@ -34,6 +34,8 @@ KEEP_STRANGER_REQUESTS = True
 LEDGER_POOL = 20
 #: How often the relay worker passes over every log (spec 7.2).
 RELAY_EVERY = timedelta(seconds=5)
+#: How many rows the relay reads from each source of a log per pass (phase 3 review M1).
+RELAY_BATCH = 500
 #: How often page views past PAGE_VIEW_RETENTION are deleted (D10).
 EXPIRE_EVERY = timedelta(hours=24)
 #: The relay's limit on open project connections (spec 7.2).

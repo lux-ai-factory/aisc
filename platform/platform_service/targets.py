@@ -132,6 +132,7 @@ def sync(pid, token: str) -> dict:
     from platform_service import db
 
     reasons: list[str] = []
+    before = {t["key"]: t["label"] for t in target_store.all_targets(pid)}
     ensure_system(pid, "the system")
     _exists, latest = db.latest_version(str(pid))
     number = latest["number"] if latest else None
@@ -147,7 +148,21 @@ def sync(pid, token: str) -> dict:
     mirrored = ensure_mirrors(pid, token, number)
     if mirrored:
         reasons.append(mirrored)
+    _record_sync(pid, before)
     return {"reason": "; ".join(reasons) or None, "latest_card": number}
+
+
+def _record_sync(pid, before: dict) -> None:
+    """targets.synced: how many targets were added or renamed. A sync spans several writes and calls to
+    the engine, so its event has a transaction of its own, after them (phase 3 review M6)."""
+    from platform_service import connection_store
+    from platform_service.ledger import outbox
+
+    after = {t["key"]: t["label"] for t in target_store.all_targets(pid)}
+    with connection_store.connect(pid) as conn, conn.transaction():
+        outbox.emit_project(conn, "targets.synced", item_type="project", item_id=str(pid),
+                            details={"added": len(set(after) - set(before)),
+                                     "renamed": sum(1 for k in set(after) & set(before) if after[k] != before[k])})
 
 
 def view(pid, latest_card: int | None) -> list[dict]:

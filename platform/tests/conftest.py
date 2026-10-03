@@ -69,8 +69,15 @@ def _leave_the_database_as_we_found_it():
         # members and systems follow their project: both are ON DELETE CASCADE.
         conn.execute("DELETE FROM core.project WHERE slug LIKE %s", (TEST_PREFIX + "%",))
         conn.commit()
+    superuser = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
     for pid in pids:
-        projectdb.drop(DSN, pid)
+        try:
+            projectdb.drop(DSN, pid)
+        except psycopg.errors.InsufficientPrivilege:
+            # another role's session was still closing; platform_rw may not end it, the superuser may
+            if not superuser:
+                raise
+            projectdb.drop(superuser, pid)
 
 
 @pytest.fixture(scope="session")

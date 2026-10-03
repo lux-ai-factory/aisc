@@ -211,7 +211,11 @@ content_required, per_request, runs, run_window, registry_version)`:
 ### 4.2 The relay's checks for a person's event
 
 An outbox or internal event citing `request_id` is accepted only if all of these hold. Otherwise it
-becomes `ledger.rejected` with the first failing reason:
+becomes `ledger.rejected` with the first failing reason. As built (phase 3 review m2, M2): the
+content checks of item 9 come first, then items 1 to 4 and 6 to 8, and the action id (item 5) last,
+so the binding of section 4.5 learns only from an event that passed everything else; it is written
+after the append. A value canonical JSON refuses is `unencodable`, an entry over `MAX_ENTRY_BYTES`
+`too_large`: a bad row is a rejection, never a stall of its log.
 
 1. `missing_request` / `unknown_request`: the event cites a request, and its witness record exists.
 2. `project_mismatch`: its `project_pid` equals the event's project.
@@ -249,7 +253,11 @@ When an app calls another app's write route on behalf of the person (qualificati
   answers 401 in `enforce`.
 - The relay applies section 4.2. The cited request's app is the originating one, which is why
   `caused_by` is separate from `emitters`.
-- The platform checks every presented id against the presenter's subject and route (R1.5).
+- The platform checks every presented id against the presenter's subject and route (R1.5). In
+  `enforce` a failing id refuses the write (401); in `record` it is not used, so the platform's event
+  cites no request rather than someone else's (phase 3 review m9). The route is compared for an id the
+  launcher's gateway gave (app `platform`); an id forwarded by another app was witnessed for that
+  app's own route, so for it only the subject is compared.
 
 ### 4.4 AI and worker runs (R1.8)
 
@@ -502,8 +510,12 @@ evidence_ref, depends_on, outcome, details, registry_version`.
   - It runs in the app's own transaction, so a rollback leaves no event.
 - In the project database, `ledger.delivered` and `ledger.action_binding` are reachable only by the
   platform; `ledger.witness`, `ledger.event_index`, `ledger.actor` and `ledger.pool` live in the
-  platform database, which no module role can reach (n2). Every other role (`engine_rw`, `dashboard_ro`, `report_ro`, `inspector_ro`
-  included) has neither EXECUTE nor any table right (R4.6).
+  platform database, which no module role can reach (n2). Every other module role (`engine_rw`,
+  `dashboard_ro`, `report_ro`) has neither EXECUTE nor any table right (R4.6). `inspector_ro`
+  (pgAdmin, SchemaSpy) reads every table it can connect to through `pg_read_all_data`, which can't be
+  narrowed per schema; as decided in S8 it may read these tables, which hold only random references,
+  and the one table that names people lives where it can't connect (`ledger_identity`). It has no
+  EXECUTE on `ledger.emit` and no write right (phase 3 review m7).
 - `core.outbox` in the platform database has the same shape plus `project_pid` (null for the
   platform log). Member and project changes write to it in their own transaction (R2.4).
 - **Project delete** runs `relay_once(pid)` first, and refuses (409, "the log still has undelivered

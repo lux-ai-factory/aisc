@@ -119,7 +119,9 @@ def save_provider(pid, provider: str, *, ciphertext=KEEP, base_url=KEEP, subject
     with connect(pid) as conn, conn.transaction():
         details = {"key": key_fingerprint} if key_fingerprint else {}
         if base_url is not KEEP:
-            details["base_url_after"] = base_url
+            old = conn.execute("SELECT base_url FROM llm.provider WHERE provider = %s", (provider,)).fetchone()
+            details["base_url_before"] = logged_url(pid, old["base_url"] if old else None)
+            details["base_url_after"] = logged_url(pid, base_url)
         outbox.emit_project(conn, "llm.provider.saved", item_type="llm_provider", item_id=provider, details=details)
         return conn.execute(
             "INSERT INTO llm.provider (provider, ciphertext, base_url, updated_by)"
@@ -142,6 +144,10 @@ def delete_provider(pid, provider: str) -> list[str] | bool:
             return users
         gone = conn.execute("DELETE FROM llm.provider WHERE provider = %s RETURNING provider",
                             (provider,)).fetchone()
+        if gone is not None:
+            from platform_service.ledger import outbox
+
+            outbox.emit_project(conn, "llm.provider.removed", item_type="llm_provider", item_id=provider)
         return gone is not None
 
 
@@ -154,7 +160,13 @@ def choices(pid) -> dict[str, dict]:
 
 def save_choice(pid, system: str, provider: str, model: str, *, subject: str | None,
                 keyless_row: bool) -> None:
+    from platform_service.ledger import outbox
+
     with connect(pid) as conn, conn.transaction():
+        old = conn.execute("SELECT provider, model FROM llm.system_choice WHERE system = %s", (system,)).fetchone()
+        outbox.emit_project(conn, "llm.choice.saved", item_type="llm_choice", item_id=system,
+                            details={"provider_before": old["provider"] if old else None, "provider_after": provider,
+                                     "model_before": old["model"] if old else None, "model_after": model})
         if keyless_row:
             conn.execute("INSERT INTO llm.provider (provider, updated_by) VALUES (%s, %s)"
                          " ON CONFLICT (provider) DO NOTHING", (provider, subject))
@@ -167,9 +179,32 @@ def save_choice(pid, system: str, provider: str, model: str, *, subject: str | N
 
 
 def delete_choice(pid, system: str) -> bool:
-    with connect(pid) as conn:
-        return conn.execute("DELETE FROM llm.system_choice WHERE system = %s RETURNING system",
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        gone = conn.execute("DELETE FROM llm.system_choice WHERE system = %s RETURNING system",
                             (system,)).fetchone() is not None
+        if gone:
+            outbox.emit_project(conn, "llm.choice.removed", item_type="llm_choice", item_id=system)
+        return gone
+
+
+def logged_url(pid, url: str | None) -> str | None:
+    """A base URL as the ledger keeps it (phase 3 review m15): scheme, host and path; a user part or a
+    query (an OpenAI-compatible URL can carry `?api-key=...`) only as its fingerprint."""
+    if not url:
+        return url
+    from urllib.parse import urlsplit, urlunsplit
+
+    from platform_service.ledger import secrets
+
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    hidden = "".join(x for x in (parts.username or "", parts.password or "", parts.query, parts.fragment) if x)
+    tail = f"#{secrets.fingerprint(pid, hidden)}" if hidden else ""
+    return urlunsplit((parts.scheme, host, parts.path, "", "")) + tail
 
 
 def resolve_choice(pid, system: str) -> dict | None:

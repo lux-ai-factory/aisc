@@ -248,3 +248,44 @@ def test_a_secret_in_a_state_is_rejected(project, memory_ledger, closing, field)
     emit(project["pid"], "controls_rw", ev(closing, **{field: {"token": "Bearer eyJhbGciOiJSUzI1NiJ9.e30.sig"}}))
     relay_all(project["pid"])
     assert reasons(memory_ledger, project["pid"]) == [f"secret_in:{field}"]
+
+
+# m3: a key rotation is not a chain break ----------------------------------------------------------------
+
+def test_a_key_rotation_between_two_events_is_not_a_chain_break(project, memory_ledger, witnessed, monkeypatch):
+    from platform_service.ledger import verify
+    from platform_service.ledger.registry import Action
+    from tests.ledger.conftest import LEDGER_KEYS, OWNER
+    from tests.ledger.test_ledger_relay import CLOSE
+
+    many = Action(name=CLOSE.name, step=4, emitters=CLOSE.emitters, item_type="submission",
+                  caused_by=CLOSE.caused_by, routes=(), actor_kinds=("user",), details_keys=(), per_request=None)
+    with registry.override({CLOSE.name: many}):
+        first = witnessed(MEMBER, "POST", "controls", close_uri(project))
+        emit(project["pid"], "controls_rw", ev(first, before={"state": "open"}, after={"state": "closed"}))
+        relay_all(project["pid"])
+        monkeypatch.setenv("PLATFORM_LEDGER_KEYS", LEDGER_KEYS + ",v2:" + "b2" * 32)
+        second = witnessed(OWNER, "POST", "controls", close_uri(project))
+        emit(project["pid"], "controls_rw", ev(second, before={"state": "closed"}, after={"state": "reopened"}))
+        relay_all(project["pid"])
+        third = witnessed(OWNER, "POST", "controls", close_uri(project))
+        emit(project["pid"], "controls_rw", ev(third, before={"state": "draft"}, after={"state": "closed"}))
+        relay_all(project["pid"])
+    assert verify.verify(project["pid"]).chain_breaks == 1          # only the real one (third), not the rotation
+
+
+# M1 (second half): the relay reads in batches, in time order ---------------------------------------------
+
+def test_a_backlog_is_relayed_in_batches_in_time_order(project, memory_ledger, witnessed, settings, monkeypatch):
+    monkeypatch.setattr(settings, "RELAY_BATCH", 3)
+    ids = []
+    for n in range(5):
+        request_id = witnessed(MEMBER, "POST", "controls", close_uri(project, f"s{n}"))
+        emit(project["pid"], "controls_rw", ev(request_id, item_id=f"s{n}"))
+        ids.append(request_id)
+    first = relay_all(project["pid"])
+    assert 0 < first.delivered <= 2 * 3                              # one batch per source at most
+    for _ in range(6):
+        relay_all(project["pid"])
+    assert [e.item_id for e in trusted(memory_ledger, project["pid"])] == [f"s{n}" for n in range(5)]
+    assert rejected(memory_ledger, project["pid"]) == []             # each event after its own witness

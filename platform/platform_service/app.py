@@ -95,13 +95,17 @@ async def ledger_request(request: Request, call_next):
     from platform_service.ledger import outbox, witness as ledger_witness
 
     request_id = request.headers.get("x-aisc-request-id") or None
+    mode = ledger_witness.mode()
+    if (request.method in _LEDGER_WRITES and not request.url.path.startswith(_LEDGER_EXEMPT)
+            and mode != "off"):
+        problem = await run_in_threadpool(_ledger_presented, request, request_id)
+        if problem and mode == "enforce":
+            return JSONResponse({"detail": problem}, status_code=401)
+        if problem and request_id:                                    # record: never cite a request that
+            logger.warning("ledger: a presented request id was not used: %s", problem)   # isn't this one
+            request_id = None                                         # (phase 3 review m9)
     token = outbox.current_request.set(request_id)
     try:
-        if (request.method in _LEDGER_WRITES and not request.url.path.startswith(_LEDGER_EXEMPT)
-                and ledger_witness.mode() == "enforce"):
-            problem = await run_in_threadpool(_ledger_presented, request, request_id)
-            if problem:
-                return JSONResponse({"detail": problem}, status_code=401)
         return await call_next(request)
     finally:
         outbox.current_request.reset(token)
@@ -289,9 +293,15 @@ def _ledger_drain_or_refuse(pid) -> None:
         for grantee in grantees:
             conn.execute(f'REVOKE CONNECT ON DATABASE "{name}" FROM {grantee}')
     try:
-        with db.pool().connection() as conn:
-            others = conn.execute("SELECT count(*) AS n FROM pg_stat_activity WHERE datname = %s"
-                                  " AND usename IS DISTINCT FROM current_user", (name,)).fetchone()["n"]
+        import time
+
+        for _ in range(10):                                           # a closing session leaves in a moment
+            with db.pool().connection() as conn:
+                others = conn.execute("SELECT count(*) AS n FROM pg_stat_activity WHERE datname = %s"
+                                      " AND usename IS DISTINCT FROM current_user", (name,)).fetchone()["n"]
+            if not others:
+                break
+            time.sleep(0.2)
         if others:
             raise HTTPException(status_code=409, detail="the project's database is still in use by an app: try again")
         try:
@@ -993,6 +1003,7 @@ def link_connection(slug: str, name: str, request: Request, caller: Caller = Dep
     if row is None:
         raise HTTPException(status_code=404, detail=f"no connection {name!r}")
     retire_engine_component(pid, row, request)
+    connection_store.record_link(pid, name, retired=row.get("engine_component") is not None)
     return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
 
 
@@ -1041,10 +1052,10 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     except client.EndpointError as exc:
         error = next((code for cls, code in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
         message = str(exc).replace(descriptor.secret, "***") if descriptor.secret else str(exc)
-        connection_store.record_test(pid, name, False, message)
+        connection_store.record_test(pid, name, False, message, result=error)
         return {"ok": False, "error": error, "detail": message}
     if answer.refused:
-        connection_store.record_test(pid, name, True, f"refused: {answer.refusal_reason}")
+        connection_store.record_test(pid, name, True, f"refused: {answer.refusal_reason}", result="refused")
         return {"ok": True, "refused": True, "refusal_reason": answer.refusal_reason, "status": answer.status,
                 "latency_ms": answer.latency_ms}
     text = str(answer.text)
@@ -1830,7 +1841,7 @@ def ledger_reanchor(body: ReanchorIn, caller: Caller = Depends(requires_role(ADM
 LEDGER_CALLERS = {"qualification_agents": "PLATFORM_LEDGER_AGENTS_TOKEN", "engine": "PLATFORM_LEDGER_ENGINE_TOKEN",
                   "dashboard": "PLATFORM_LEDGER_DASHBOARD_TOKEN"}
 _INTERNAL_COLUMNS = ("event_id", "request_id", "run_id", "action", "item_type", "item_id", "item_version",
-                     "card_version", "content", "before", "after", "details", "outcome", "model")
+                     "card_version", "content", "before", "after", "details", "outcome", "model", "registry_version")
 
 
 def _ledger_caller(request: Request) -> tuple[str | None, JSONResponse | None]:
@@ -1876,6 +1887,9 @@ def _malformed(event) -> str | None:
         value = event.get(field)
         if value is not None and (not isinstance(value, str) or len(value) > LEDGER_FIELD_MAX):
             return f"{field}: text of at most {LEDGER_FIELD_MAX} characters"
+    if event.get("registry_version") is not None and (not isinstance(event["registry_version"], int)
+                                                      or isinstance(event["registry_version"], bool)):
+        return "registry_version: a number"
     if event.get("outcome", "ok") not in EMITTER_OUTCOMES:
         return f"outcome: one of {', '.join(EMITTER_OUTCOMES)}"
     action = registry.REGISTRY.get(event["action"])
@@ -1916,7 +1930,7 @@ async def ledger_internal_event(pid: str, request: Request) -> JSONResponse:
     return await run_in_threadpool(_queue_internal, pid, caller, event)
 
 
-_OUTBOX_SENT = ("emitter", "project_pid", "request_id", "run_id", "action", "item_type", "item_id", "item_version",
+_OUTBOX_SENT = ("emitter", "project_pid", "request_id", "run_id", "action", "item_type", "item_id", "item_version", "registry_version",
                 "card_version", "content", "before", "after", "details", "outcome", "model", "extra")
 
 
@@ -1940,7 +1954,8 @@ def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
                   content=event.get("content"), before=event.get("before"), after=event.get("after"),
                   item_version=event.get("item_version"), card_version=event.get("card_version"),
                   request_id=event["request_id"], emitter=caller, run_id=event.get("run_id"), model=event.get("model"),
-                  event_id=event["event_id"], outcome=event.get("outcome") or "ok", extra=extra)
+                  event_id=event["event_id"], outcome=event.get("outcome") or "ok", extra=extra,
+                  registry_version=event.get("registry_version"))
     with db.pool().connection() as conn:
         try:
             with conn.transaction():

@@ -237,3 +237,16 @@ def test_a_run_whose_index_row_names_another_person_is_rejected(client, project,
     post(client, project["pid"], ai_event(*run))
     relay_all(project["pid"])
     assert trusted(memory_ledger, project["pid"]) == [] and reasons(memory_ledger, project["pid"]) == ["index_mismatch"]
+
+
+def test_an_internal_event_from_a_newer_registry_is_held(client, project, memory_ledger, run):
+    """Phase 3 review M4: the internal route keeps registry_version, so the hold applies to it too."""
+    from platform_service.ledger import registry
+
+    post(client, project["pid"], ai_event(*run, action="agent.run_paused", registry_version=registry.VERSION + 1))
+    stats = relay_all(project["pid"])
+    assert stats.held == 1 and "unknown_action" not in reasons(memory_ledger, project["pid"])
+
+
+def test_a_registry_version_must_be_a_number(client, project, run):
+    assert post(client, project["pid"], ai_event(*run, registry_version="2")).status_code == 422

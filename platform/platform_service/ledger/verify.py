@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from platform_service.ledger import settings
+from platform_service.ledger.canonical import canonical
 from platform_service.ledger.store import LedgerError, TamperAlarm
 
 
@@ -72,16 +73,18 @@ def verify(pid: str) -> Report:
             report.index_mismatches = sum(1 for seq in set(logged) & set(indexed)
                                           if not index.agrees(indexed[seq], logged[seq]))
         rows = conn.execute(
-            "SELECT item_type, item_id, before_sha256, after_sha256 FROM ledger.event_index WHERE log = %s"
+            "SELECT event_id, item_type, item_id, before_sha256, after_sha256 FROM ledger.event_index WHERE log = %s"
             " AND reason IS NULL AND item_id IS NOT NULL AND action NOT LIKE 'request.%%'"
             " AND (before_sha256 IS NOT NULL OR after_sha256 IS NOT NULL) ORDER BY seq", (log,)).fetchall()
+        states = {r["event_id"]: r for r in conn.execute(
+            "SELECT event_id, before, after FROM ledger.content WHERE log = %s", (log,))}
         last: dict = {}
         for r in rows:
             key = (r["item_type"], r["item_id"])
-            if key in last and r["before_sha256"] is not None and r["before_sha256"] != last[key]:
+            if key in last and r["before_sha256"] is not None and _differs(last[key], r, states):
                 report.chain_breaks += 1
             if r["after_sha256"] is not None:
-                last[key] = r["after_sha256"]
+                last[key] = r
         report.action_id_conflicts = conn.execute(
             "SELECT count(*) AS n FROM ledger.event_index WHERE log = %s AND reason = 'action_id'",
             (log,)).fetchone()["n"]
@@ -92,3 +95,19 @@ def verify(pid: str) -> Report:
             "  WHERE i.log = %s AND i.request_id = w.request_id AND i.action NOT LIKE 'request.%%')",
             (pid, cutoff, log)).fetchone()["n"]
     return report
+
+
+def _version(digest: str | None) -> str | None:
+    return digest.split(":")[1] if digest and digest.count(":") == 2 else None
+
+
+def _differs(previous: dict, current: dict, states: dict) -> bool:
+    """Whether an event's `before` is not its item's previous `after`. Digests under one key version are
+    compared as they are; across a key rotation they can't be, so the frozen states are compared instead
+    (phase 3 review m3), and a pair with no frozen state is not counted as a break."""
+    if _version(previous["after_sha256"]) == _version(current["before_sha256"]):
+        return previous["after_sha256"] != current["before_sha256"]
+    was, now = states.get(previous["event_id"]), states.get(current["event_id"])
+    if was is None or now is None or was["after"] is None or now["before"] is None:
+        return False
+    return canonical(was["after"]) != canonical(now["before"])
