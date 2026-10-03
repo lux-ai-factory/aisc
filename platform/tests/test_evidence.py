@@ -40,7 +40,10 @@ CREATE TABLE IF NOT EXISTS engine.aisc_backend_plugin (
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_project (id serial PRIMARY KEY, name text NOT NULL, project_id uuid);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_pluginconfig (id serial PRIMARY KEY, plugin_id int NOT NULL, name text);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluation (
-    id serial PRIMARY KEY, status text NOT NULL, system_id uuid);
+    id serial PRIMARY KEY, status text NOT NULL, system_id uuid, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_aicomponent (id serial PRIMARY KEY, pid uuid NOT NULL);
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationinput (
+    id serial PRIMARY KEY, evaluation_plugin_id int NOT NULL, name text NOT NULL, component_id int);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationplugin (
     id serial PRIMARY KEY, evaluation_id int NOT NULL, plugin_config_id int, status text NOT NULL);
 CREATE TABLE IF NOT EXISTS controls.checklist (id text PRIMARY KEY, "catalogueId" text, title text NOT NULL);
@@ -61,7 +64,8 @@ GRANT SELECT ON control_objectives.project, control_objectives.objective_selecti
     control_objectives.objective_set_version, control_objectives.objective_set_version_item,
     engine.aisc_backend_plugin, controls.checklist, engine.aisc_backend_project,
     engine.aisc_backend_evaluation, engine.aisc_backend_evaluationplugin, controls.checklist_question,
-    controls.submission, controls.submission_answer TO report_ro;
+    controls.submission, controls.submission_answer, engine.aisc_backend_aicomponent,
+    engine.aisc_backend_evaluationinput TO report_ro;
 GRANT SELECT (id, plugin_id, name) ON engine.aisc_backend_pluginconfig TO report_ro;
 """
 
@@ -658,3 +662,90 @@ def test_a_deleted_checklist_has_no_questions_and_no_submission(client, as_user,
     sql(dsn, project["pid"], "DELETE FROM controls.checklist WHERE id = 'ck1'")
     ck = {c["key"]: c for c in get(client, as_user, project).json()["controls"]}["ck1"]
     assert ck["stale"] == "deleted" and ck["questions"] is None and ck["submission"] is None
+
+
+# ── results navigation (2026-10-03, docs/superpowers/results-nav-2026-10-03/01-specs.md R2) ──
+
+COMP = "component:aaaaaaaa-0000-4000-8000-000000000001"
+GONE = "component:aaaaaaaa-0000-4000-8000-000000000002"
+ENG_COMP, ENG_GONE = "bbbbbbbb-0000-4000-8000-000000000001", "bbbbbbbb-0000-4000-8000-000000000002"
+
+
+@pytest.fixture
+def targets(engine, dsn):
+    """The system (MCAS), a current component (Explanation assistant, LLM, in card 2) and one the
+    latest card no longer lists (Old model, last in card 1), each mirrored in the engine."""
+    pid = engine["pid"]
+    sql(dsn, pid, "UPDATE target.target SET label = 'MCAS', last_card_number = 2 WHERE key = 'system'")
+    sql(dsn, pid, "INSERT INTO target.target (key, kind, component_kind, label, first_card_number,"
+                  " last_card_number, engine_component) VALUES"
+                  " (%s, 'component', 'llm', 'Explanation assistant', 1, 2, %s),"
+                  " (%s, 'component', 'model', 'Old model', 1, 1, %s)", (COMP, ENG_COMP, GONE, ENG_GONE))
+    sql(dsn, pid, "INSERT INTO engine.aisc_backend_aicomponent (id, pid) VALUES (1, %s), (2, %s)",
+        (ENG_COMP, ENG_GONE))
+    return engine
+
+
+def _run(dsn, pid, package, version, status, component=None, when="2026-10-01 10:00+00"):
+    """One evaluation of `version` running `package` once, on the engine component `component`
+    (an evaluation input named target), or with no target input."""
+    plugin = sql(dsn, pid, "SELECT id FROM engine.aisc_backend_plugin WHERE package_name = %s", (package,))[0][0]
+    config = sql(dsn, pid, "INSERT INTO engine.aisc_backend_pluginconfig (plugin_id, name) VALUES (%s, 'c')"
+                           " RETURNING id", (plugin,))[0][0]
+    ev = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluation (status, system_id, created_at)"
+                       " VALUES ('Done', %s, %s) RETURNING id", (version, when))[0][0]
+    ep = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationplugin (evaluation_id, plugin_config_id, status)"
+                       " VALUES (%s, %s, %s) RETURNING id", (ev, config, status))[0][0]
+    if component is not None:
+        sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, component_id)"
+                      " VALUES (%s, 'target', %s)", (ep, component))
+
+
+def _targets(client, as_user, project, version=None):
+    url = f"/projects/{project['slug']}/evidence" + (f"?version={version}" if version else "")
+    return client.get(url, headers=as_user(ALICE)).json()["targets"]
+
+
+def test_r2_1_targets_are_listed_system_first_then_components_by_label(client, as_user, targets):
+    got = _targets(client, as_user, targets)
+    assert [(t["key"], t["kind"], t["component_kind"], t["label"], t["stale"]) for t in got] == [
+        ("system", "system", None, "MCAS", False),
+        (COMP, "component", "llm", "Explanation assistant", False),
+        (GONE, "component", "model", "Old model", True),
+    ]
+    assert all(t["tools"] == [] for t in got)
+
+
+def test_r2_2_r2_3_each_target_counts_its_tools_runs_on_the_version_shown(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    _run(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, when="2026-09-30 08:00+00")
+    _run(dsn, pid, "aisc-plugin-langbite", V2, "Failed", component=1, when="2026-10-01 09:30+00")
+    _run(dsn, pid, "aisc-plugin-langbite", V2, "Running", component=1, when="2026-09-29 08:00+00")
+    _run(dsn, pid, "aisc-plugin-promptfoo", V2, "Done", component=1)
+    _run(dsn, pid, "aisc-plugin-langbite", V1, "Done", component=1)          # another version
+    _run(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=2)          # the stale component
+    got = {t["key"]: t for t in _targets(client, as_user, targets)}
+    assert got[COMP]["tools"] == [
+        {"key": "aisc-plugin-langbite", "label": "LangBiTe", "executed": 1, "failed": 1, "running": 1,
+         "last_run": "2026-10-01T09:30:00+00:00"},
+        {"key": "aisc-plugin-promptfoo", "label": "Promptfoo", "executed": 1, "failed": 0, "running": 0,
+         "last_run": "2026-10-01T10:00:00+00:00"},
+    ]
+    assert [t["key"] for t in got[GONE]["tools"]] == ["aisc-plugin-langbite"]
+    assert got["system"]["tools"] == []
+    older = {t["key"]: t for t in _targets(client, as_user, targets, V1)}
+    assert [(t["key"], t["executed"]) for t in older[COMP]["tools"]] == [("aisc-plugin-langbite", 1)]
+
+
+def test_r2_4_runs_with_no_target_are_one_more_entry_last_only_when_there_are_some(client, as_user, targets, dsn):
+    assert all(t["kind"] != "unassigned" for t in _targets(client, as_user, targets))
+    _run(dsn, targets["pid"], "aisc-plugin-langbite", V2, "Done")
+    last = _targets(client, as_user, targets)[-1]
+    assert (last["key"], last["kind"], last["label"]) == (None, "unassigned", "No target")
+    assert [(t["key"], t["executed"]) for t in last["tools"]] == [("aisc-plugin-langbite", 1)]
+
+
+def test_r2_6_no_target_table_reads_as_no_targets(client, as_user, project, dsn):
+    sql(dsn, project["pid"], "DROP TABLE engine.aisc_backend_evaluationinput")
+    sql(dsn, project["pid"], "ALTER TABLE target.target RENAME TO target_gone")
+    assert _targets(client, as_user, project) == []

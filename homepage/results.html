@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Results - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  /* The launcher's look (homepage/project.html): same tokens, header and session line.
+     Everything this page decides is decided by the platform; the page only shows it. */
+  :root{
+    --bg:#fbfbfd; --panel:#ffffff;
+    --text:#000000; --muted:#474c60; --faint:#6b7288;
+    --primary:#000fdf; --primary-hover:#000079;
+    --accent:#ff007e;
+    --border:#d3d8e6; --border-strong:#a9b0c6;
+    --radius:0px;
+    --gutter:40px;
+    --col-centre:calc((100% - 2 * var(--gutter)) / 6);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --error:#b3123c;
+    --ok:#0a7a45;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    position:relative; min-height:100vh;
+    background:var(--bg); color:var(--text);
+    font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(to right, rgba(0,15,223,.065) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0,15,223,.065) 1px, transparent 1px);
+    background-size:40px 40px;
+    -webkit-mask-image:radial-gradient(ellipse 90% 70% at 50% 42%, #000 35%, transparent 100%);
+            mask-image:radial-gradient(ellipse 90% 70% at 50% 42%, #000 35%, transparent 100%);
+  }
+  .shell{position:relative; z-index:1}
+
+  /* ---- header ---- */
+  .topbar{
+    display:flex; align-items:center; gap:22px;
+    padding:16px 32px; border-bottom:1px solid var(--border);
+    background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
+    position:sticky; top:0; z-index:10;
+  }
+  .topbar img{height:32px; width:auto; display:block}
+  .topbar .back{
+    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--primary); text-decoration:none; border:1px solid var(--border-strong);
+    padding:7px 11px; white-space:nowrap;
+  }
+  .topbar .back:hover{background:var(--primary); color:#fff; border-color:var(--primary)}
+  .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
+  .topbar h1{
+    margin:0; font-size:12px; font-weight:600; text-transform:uppercase;
+    letter-spacing:.14em; color:var(--text);
+  }
+  .session{
+    margin-left:auto;
+    display:flex; align-items:center; gap:14px;
+    font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
+  }
+  .session b{color:var(--text); font-weight:500}
+  .session a{color:var(--primary); text-decoration:none; border-bottom:1px solid transparent}
+  .session a:hover{border-bottom-color:var(--primary)}
+
+  main{max-width:1180px; margin:0 auto; padding:40px 32px 64px}
+  .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
+  .subtitle{margin:0 0 30px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .note{
+    margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);
+    color:var(--muted); font-size:13px; background:rgba(0,15,223,.02);
+  }
+  section{margin-top:34px}
+  section h2{
+    margin:0 0 6px; font-size:13px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  section > p{margin:0 0 16px; color:var(--muted); font-size:13.5px; max-width:80ch}
+
+  /* the hidden attribute wins over any display rule (Save on a read-only version, for a viewer) */
+  [hidden]{display:none !important}
+  /* ---- the two ways on, and the grid ---- */
+  .ways{display:flex; flex-wrap:wrap; align-items:flex-start; gap:24px; margin:4px 0 8px}
+  .way-col{display:flex; flex-direction:column; gap:12px; flex:1 1 300px; max-width:520px}
+  a.way{
+    display:flex; align-items:center; justify-content:center; min-height:96px; padding:26px 34px; text-decoration:none;
+    border:1px solid var(--primary); background:var(--primary); color:#fff;
+    font-family:var(--mono); font-size:20px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  }
+  /* step 4 test tiles (2026-10-03): one per installed test, under Execute tests */
+  .tiles{display:flex; flex-direction:column; gap:8px}
+  .tile{display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border);
+        border-left:4px solid var(--primary); background:var(--panel)}
+  .tile-main{flex:1; min-width:0}
+  .tile-name{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .tile-runs{font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:3px}
+  .tile-runs .failed{color:#b02424}
+  .tile-runs .running{color:var(--primary)}
+  a.tile-btn{display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px;
+             border:1px solid var(--primary); color:var(--primary); background:var(--panel); text-decoration:none;
+             font-family:var(--mono); font-weight:700}
+  a.tile-btn:hover{background:var(--primary); color:#fff}
+  a.tile-open{width:auto; padding:0 12px; font-size:12px; letter-spacing:.06em; text-transform:uppercase}
+  .tile-bar{height:4px; background:var(--border); margin-top:6px}
+  .tile-bar > span{display:block; height:100%; background:var(--primary)}
+  a.tile-link{color:inherit; text-decoration:none}
+  a.tile-link:hover{border-color:var(--primary)}
+  .tile-kind{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--primary)}
+  .tile.is-off{background:#f3f4f8; border-left-color:var(--border-strong); border-style:dashed; color:var(--muted)}
+  .tile.is-off .tile-kind{color:var(--muted)}
+  .tile-go{color:var(--primary); font-size:18px}
+  .tile-off{font-size:12px; color:var(--muted); font-style:italic}
+  .tiles .empty{margin:0; font-size:13px; color:var(--muted)}
+  /* the link tables fold away under their title */
+  details.fold{margin-top:34px}
+  details.fold > summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px}
+  details.fold > summary::-webkit-details-marker{display:none}
+  details.fold > summary::before{content:"\25B8"; color:var(--primary); font-size:14px}
+  details.fold[open] > summary::before{content:"\25BE"}
+  details.fold > summary h2{margin:0}
+  details.fold > summary .fold-n{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  details.fold > .fold-body{margin-top:12px}
+  a.way:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
+  /* the grid: objectives frozen on the left, header rows frozen on top, columns scroll under them */
+  .grid-wrap{--obj-w:320px; --group-h:32px; overflow:auto; max-height:72vh; width:fit-content; max-width:100%;
+             border:1px solid var(--border); background:var(--panel)}
+  .grid-wrap.more{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent);
+                  mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent)}
+  table{border-collapse:separate; border-spacing:0}
+  table th:last-child, table td:last-child{border-right:0}
+  th, td{padding:9px 12px; border-bottom:1px solid var(--border); border-right:1px solid var(--border);
+         text-align:left; vertical-align:middle; background:var(--panel)}
+  thead th{
+    position:sticky; z-index:2;
+    font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.06em;
+    color:var(--muted); background:#f7f8fc; white-space:nowrap;
+  }
+  thead tr.groups th{top:0; height:var(--group-h); box-sizing:border-box;
+                     text-transform:uppercase; letter-spacing:.12em; color:var(--faint)}
+  thead tr.groups th span{position:sticky; left:calc(var(--obj-w) + 12px); display:inline-block}
+  thead tr.heads th{top:var(--group-h); vertical-align:bottom}
+  thead th.item{white-space:normal; width:148px; min-width:148px; max-width:148px; line-height:1.35}
+  th.item .label{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden}
+  th.item .stale{margin:4px 0 0}
+  .frozen{position:sticky; left:0; z-index:1; background:var(--panel);
+          width:var(--obj-w); min-width:var(--obj-w); max-width:var(--obj-w); box-sizing:border-box}
+  thead th.frozen{z-index:3; background:#f7f8fc}
+  .grid-wrap.scrolled .frozen{box-shadow:8px 0 10px -8px rgba(20,24,60,.28)}
+  th.objective{font-weight:400}
+  th.objective b{font-family:var(--mono); font-size:12px; margin-right:8px}
+  th.objective .title{color:var(--text); font-size:13.5px}
+  th.objective .count{display:block; font-family:var(--mono); font-size:11px; color:var(--faint)}
+  th.objective .count.none{color:var(--error)}
+  tbody tr:hover > *, .col-hover{background:#f3f5ff}
+  tbody tr:hover > th.frozen{background:#eef1ff}
+  td.cell{text-align:center}
+  /* one block per trustworthiness dimension, tagged in the catalogue's colours as in step 2 */
+  .dim-block{margin-top:26px}
+  .dim-block:first-child{margin-top:4px}
+  .dim-head{display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:0 0 10px}
+  .dim-n{font-family:var(--mono); font-size:11px; color:var(--faint)}
+  .dim-tag{display:inline-block; padding:3px 10px; border-radius:999px; border:1px solid;
+           font-size:12.5px; font-weight:600; white-space:nowrap}
+  .dim-tag.r1{background:#fff3e0; border-color:#ffd8a8; color:#a33a00}
+  .dim-tag.r2{background:#e7f0ff; border-color:#bcd0fb; color:#2f4bb8}
+  .dim-tag.r3{background:#e8f5e9; border-color:#b9dfbd; color:#256b29}
+  .dim-tag.r4{background:#e0f7fa; border-color:#a8e3ea; color:#00695c}
+  .dim-tag.r5{background:#fce4ec; border-color:#f5b8cb; color:#b02424}
+  .dim-tag.r6{background:#f3e5f5; border-color:#ddbde3; color:#6a1b9a}
+  .dim-tag.r7{background:#fff8e1; border-color:#f2dc95; color:#7a4a00}
+  .dim-tag.r8{background:#e8eaf6; border-color:#c3c8ea; color:#283593}
+  .dim-tag.r9{background:#efebe9; border-color:#d5cbc6; color:#4e342e}
+  .dim-tag.r10{background:#eceff1; border-color:#cbd3d8; color:#37474f}
+  .dim-tag.r11{background:#f4f4f4; border-color:#d6d6d6; color:#424242}
+  .version-bar{display:flex; align-items:center; gap:10px; margin:8px 0 0}
+  .version-bar label{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  select.version{font:inherit; font-size:14px; font-weight:700; color:var(--text); background:var(--panel);
+                 border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer}
+  .missing{margin-top:26px; padding:14px 18px; border:1px dashed var(--border-strong); background:var(--panel)}
+  .missing-head{margin:0 0 8px; font-size:13.5px; color:var(--text)}
+  .missing ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .missing .dim-tag{font-family:"Inter",sans-serif; margin-right:6px}
+  .h2-row{display:flex; align-items:center; gap:10px; margin:0 0 12px}
+  .h2-row h2{margin:0}
+  .help{width:24px; height:24px; border-radius:50%; border:1px solid var(--border); background:var(--panel); color:var(--primary);
+        font-weight:700; cursor:pointer; padding:0; font-family:"Inter",sans-serif; font-size:13px; letter-spacing:0; text-transform:none;
+        display:inline-flex; align-items:center; justify-content:center; gap:0; line-height:1}
+  .help:hover{border-color:var(--primary); background:var(--panel)}
+  .help-pop{max-width:460px; padding:14px 16px; border:1px solid var(--border); background:var(--panel); color:var(--text);
+            font-size:13.5px; line-height:1.55; box-shadow:0 8px 24px rgba(20,24,60,.18)}
+  .unclassified{margin-top:22px; font-size:13px; color:var(--muted)}
+  .unclassified b{font-weight:600; color:var(--text)}
+  .stale{display:inline-block; margin-left:6px; padding:1px 6px; font-family:var(--mono); font-size:10px;
+         letter-spacing:.06em; text-transform:uppercase; color:var(--error); border:1px solid var(--error)}
+  tr.is-stale th.objective, .item.is-stale{opacity:.6}
+  input[type="checkbox"]{width:16px; height:16px; margin:0; cursor:pointer}
+  input[type="checkbox"]:disabled{cursor:not-allowed}
+  .actions{display:flex; align-items:center; gap:14px; margin-top:16px}
+  button{
+    display:inline-flex; align-items:center; gap:8px; padding:8px 14px; cursor:pointer;
+    border:1px solid var(--primary); background:var(--primary); color:#fff;
+    font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+  }
+  button:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
+  button:disabled{opacity:.5; cursor:default}
+  .msg{font-size:12.5px; color:var(--muted); white-space:pre-wrap}
+  .msg.err{color:var(--error)} .msg.ok{color:var(--ok)}
+  .empty{padding:18px; color:var(--muted); font-size:13.5px}
+
+  @media (max-width:820px){
+    .topbar{padding:12px 18px; gap:14px}
+    main{padding:28px 18px 40px}
+    .grid-wrap{--obj-w:200px}
+  }
+  /* ---- results navigation (2026-10-03): one target's tools, each opening the dashboard filtered ---- */
+  .crumb{font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .crumb b{color:var(--text)}
+  .tools-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:34px 0 12px; flex-wrap:wrap}
+  .tools-head span{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.1em; color:var(--muted)}
+  .tools-head a{font-family:var(--mono); font-size:12px; letter-spacing:.06em}
+  .tools{display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:18px}
+  a.tool{display:flex; flex-direction:column; gap:10px; min-height:150px; padding:24px 26px; box-sizing:border-box;
+         background:var(--primary); color:#fff; text-decoration:none}
+  a.tool:hover{background:var(--primary-hover)}
+  .tool-name{font-size:24px; font-weight:700}
+  .tool-runs{font-family:var(--mono); font-size:13px}
+  .tool-open{margin-top:auto; font-family:var(--mono); font-size:13px; letter-spacing:.08em; text-align:right}
+  .tool.is-off{background:#f3f4f8; color:var(--muted); border:2px dashed var(--border-strong); min-height:110px}
+  .tool.is-off .tool-name{font-size:20px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to the project">&larr; Project</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="crumb" id="crumb"></p>
+  <p class="note" id="page-message" hidden></p>
+  <div class="tools-head" id="tools-head" hidden>
+    <span>TOOLS RUN ON THIS TARGET</span>
+    <a id="all-tools" href="#"></a>
+  </div>
+  <div class="tools" id="tools"></div>
+</main>
+</div>
+
+<script>
+  var params = new URLSearchParams(location.search);
+  var slug = params.get('project') || '';
+  var targetKey = params.get('target') || '';
+  var version = params.get('version');
+  var enc = encodeURIComponent;
+  var DASHBOARD = 'http://localhost:8188';   // Superset, as the launcher's other pages name it
+  var NOT_ANSWERING = 'The platform is not answering.';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text) node.textContent = text;
+    return node;
+  }
+  function show(id, text) { var node = $(id); if (text !== undefined) node.textContent = text; node.hidden = false; }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function day(iso) {
+    var d = new Date(iso);
+    return [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join('.');
+  }
+
+  // the project dashboard opened with its fixed filters set (results-dashboard aisc_ext/projects.py):
+  // Target on the target's label as the dashboard's data has it, Tool on the tool's name
+  function rison(value) { return "'" + String(value).replace(/!/g, '!!').replace(/'/g, "!'") + "'"; }
+  function mask(id, col, value) {
+    return id + ':(id:' + id + ',extraFormData:(filters:!((col:' + col + ',op:IN,val:!(' + rison(value) + ')))),' +
+      'filterState:(value:!(' + rison(value) + ')),ownState:())';
+  }
+  function dashboard(pid, target, tool) {
+    var masks = [mask('NATIVE_FILTER-target', 'target_label', target.key === null ? 'unassigned' : target.label)];
+    if (tool) masks.push(mask('NATIVE_FILTER-tool', 'tool', tool.label));
+    return DASHBOARD + '/superset/dashboard/aisc-' + pid.replace(/-/g, '') + '/?native_filters=' + enc('(' + masks.join(',') + ')');
+  }
+
+  function kindOf(t) {
+    if (t.kind === 'system') return 'system';
+    if (t.kind === 'unassigned') return 'no target';
+    return (t.component_kind || 'component').replace(/_/g, ' ');
+  }
+
+  function render(pid, data) {
+    var crumb = $('crumb');
+    var back = el('a', null, 'AI Assessment Sandbox · Visualisation');
+    back.href = '/evidence.html?project=' + enc(slug) + (version ? '&version=' + enc(version) : '');
+    crumb.appendChild(back);
+    var target = (data.targets || []).filter(function (t) {
+      return (t.key === null ? 'none' : t.key) === targetKey;
+    })[0];
+    if (!target) { show('page-message', 'No such target in this project.'); return; }
+    crumb.appendChild(el('span', null, '›'));
+    crumb.appendChild(el('b', null, target.label + ' (' + kindOf(target) + ')'));
+    if (data.version) crumb.appendChild(el('span', null, '· Version ' + data.version.number));
+
+    show('tools-head');
+    var all = $('all-tools');
+    all.textContent = 'All tools on this target →';
+    all.href = dashboard(pid, target, null);
+
+    var box = $('tools');
+    target.tools.forEach(function (it) {
+      var a = el('a', 'tool');
+      a.href = dashboard(pid, target, it);
+      a.appendChild(el('span', 'tool-name', it.label));
+      a.appendChild(el('span', 'tool-runs', it.executed + ' executed · ' + it.failed + ' failed · ' +
+        it.running + ' running' + (it.last_run ? ' · last run ' + day(it.last_run) : '')));
+      a.appendChild(el('span', 'tool-open', 'Open charts →'));
+      box.appendChild(a);
+    });
+    // installed tools with no run on this target, greyed (the step 4 test tiles' list)
+    var ran = {};
+    target.tools.forEach(function (it) { ran[it.key] = true; });
+    (data.tests || []).filter(function (it) { return it.runs && !ran[it.key]; }).forEach(function (it) {
+      var off = el('div', 'tool is-off');
+      off.appendChild(el('span', 'tool-name', it.label));
+      off.appendChild(el('span', 'tool-runs', 'Installed, not run on this target yet'));
+      box.appendChild(off);
+    });
+    if (!box.children.length) box.appendChild(el('p', 'note', 'No tool is installed yet: pick them in step 3, the catalogue.'));
+  }
+
+  function boot() {
+    if (!slug) { show('page-message', 'No project given.'); return; }
+    $('back').href = '/evidence.html?project=' + enc(slug);
+    $('back').textContent = '\u2190 Sandbox';
+    var project;
+    fetch('/api/projects/' + enc(slug), {credentials: 'same-origin'})
+      .then(function (res) {
+        if (!res.ok) { show('page-message', 'No project with the handle ' + slug + '.'); return null; }
+        return res.json();
+      })
+      .then(function (p) {
+        if (!p) return null;
+        project = p;
+        $('project-name').textContent = p.name;
+        document.title = p.name + ' - Results';
+        return fetch('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''),
+                     {credentials: 'same-origin'});
+      })
+      .then(function (res) {
+        if (!res) return null;
+        if (!res.ok) { show('page-message', NOT_ANSWERING); return null; }
+        return res.json();
+      })
+      .then(function (data) { if (data) render(project.pid, data); })
+      .catch(function () { show('page-message', NOT_ANSWERING); });
+    fetch('/oauth2/userinfo', {credentials: 'same-origin'})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { $('who').textContent = d ? (d.preferredUsername || d.user || d.email || 'user') : 'signed in'; })
+      .catch(function () { $('who').textContent = 'signed in'; });
+  }
+  boot();
+</script>
+</body>
+</html>

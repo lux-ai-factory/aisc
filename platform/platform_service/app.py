@@ -35,6 +35,7 @@ from aisc_identity.headers import token_from_headers
 
 from platform_service import (connection_allowlist, connection_facade, connection_store, target_store, targets, dashboard_bridge, db, evidence, llm_catalogue, llm_store,
                               projectdb)
+from platform_service import catalogue
 from platform_service.membership import (
     InvalidMembership,
     at_least,
@@ -1228,6 +1229,122 @@ def get_evidence(slug: str, version: str | None = None, caller: Caller = Depends
     if found is None:
         raise no_project(slug)
     return _evidence_answer(found["pid"], role, version)
+
+
+# ── a project's catalogue, public or private, chosen once (local-catalogue 2026-10-03, P1 to P4) ──
+
+class CatalogueChoiceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: StrictStr
+
+
+class LocalDimensionsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dimensions: list[StrictStr]
+
+
+def _catalogue_project(slug: str, caller: Caller, needed: str = "viewer") -> dict:
+    role_or_404(slug, caller, needed)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    return found
+
+
+def _catalogue_answer(pid, caller: Caller) -> dict:
+    found = catalogue.mode(pid)
+    return {"mode": found["mode"] if found else None,
+            "chosen_at": found["chosen_at"].isoformat() if found else None,
+            "updated_at": found["updated_at"].isoformat() if found and found["updated_at"] else None,
+            "can_update": caller.has_role(ADMIN_ROLE)}
+
+
+def _private_reads(pid, read):
+    try:
+        return read()
+    except catalogue.NotPrivate as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/projects/{slug}/catalogue")
+def get_catalogue(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """P1.1: the project's catalogue mode (none until it chooses) and whether the caller may update it."""
+    return _catalogue_answer(_catalogue_project(slug, caller)["pid"], caller)
+
+
+@app.post("/projects/{slug}/catalogue")
+def choose_catalogue(slug: str, body: CatalogueChoiceIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """P1.2, P1.3: an owner or editor chooses public or private, once; private makes the copy now."""
+    found = _catalogue_project(slug, caller, "editor")
+    if body.mode not in catalogue.MODES:
+        raise HTTPException(status_code=422, detail="mode is public or private")
+    try:
+        catalogue.choose(found["pid"], body.mode, caller.subject)
+    except catalogue.AlreadyChosen as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except catalogue.PublicUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"{exc}; nothing was created")
+    return _catalogue_answer(found["pid"], caller)
+
+
+@app.post("/projects/{slug}/catalogue/update")
+def update_catalogue(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    """P2.2: an admin refreshes the project's private copy from the public catalogue."""
+    found = _catalogue_project(slug, caller)
+    if not caller.has_role(ADMIN_ROLE):
+        raise HTTPException(status_code=403, detail="updating the catalogue takes an admin")
+    try:
+        return _private_reads(found["pid"], lambda: catalogue.update(found["pid"], token_from_headers(request.headers) or ""))
+    except catalogue.PublicUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"{exc}; nothing was changed")
+
+
+@app.get("/projects/{slug}/catalogue/api/tool/")
+def catalogue_tools(slug: str, request: Request, detailed: bool = False,
+                    caller: Caller = Depends(caller_dependency)) -> list:
+    """P3.1: the copy's tools, then the local ones, in the public catalogue's own shapes."""
+    pid = _catalogue_project(slug, caller)["pid"]
+    token = token_from_headers(request.headers) or ""
+    return jsonable_encoder(_private_reads(pid, lambda: catalogue.tools(pid, token, detailed)))
+
+
+@app.get("/projects/{slug}/catalogue/api/tags/")
+def catalogue_tags(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
+    pid = _catalogue_project(slug, caller)["pid"]
+    return _private_reads(pid, lambda: catalogue.tags(pid))
+
+
+@app.get("/projects/{slug}/catalogue/api/metric/")
+def catalogue_metrics(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
+    pid = _catalogue_project(slug, caller)["pid"]
+    return _private_reads(pid, lambda: catalogue.metrics(pid))
+
+
+@app.get("/projects/{slug}/catalogue/api/metadata/")
+def catalogue_metadata(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
+    pid = _catalogue_project(slug, caller)["pid"]
+    return _private_reads(pid, lambda: catalogue.metadata(pid))
+
+
+@app.get("/projects/{slug}/catalogue/api/project-dimensions")
+def catalogue_project_dimensions(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
+    """P3.3: the catalogue's dimension tags of the project's selected control objectives."""
+    pid = _catalogue_project(slug, caller)["pid"]
+    return _private_reads(pid, lambda: (catalogue._require_private(pid), catalogue.project_dimensions(pid))[1])
+
+
+@app.put("/projects/{slug}/catalogue/local/{package}/dimensions")
+def put_local_dimensions(slug: str, package: str, body: LocalDimensionsIn,
+                         caller: Caller = Depends(caller_dependency)) -> dict:
+    """P4.2: an admin gives a local entry its dimensions (R1 to R11)."""
+    found = _catalogue_project(slug, caller)
+    if not caller.has_role(ADMIN_ROLE):
+        raise HTTPException(status_code=403, detail="classifying a local plugin takes an admin")
+    try:
+        dims = _private_reads(found["pid"], lambda: catalogue.set_local_dimensions(found["pid"], package, body.dimensions))
+    except catalogue.InvalidDimensions as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"package_name": package, "dimensions": dims}
 
 
 @app.put("/projects/{slug}/evidence/links")

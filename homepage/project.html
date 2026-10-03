@@ -101,29 +101,19 @@
     border-left:7px solid var(--border-strong);
   }
 
-  /* the wrap from step 3 back to step 4, drawn as a path with square nodes */
-  .wrap{position:relative; height:58px}
-  .wrap::before{
-    content:""; position:absolute; top:0; height:29px;
-    left:calc(100% - var(--col-centre));
-    border-left:1px solid var(--border-strong);
-  }
-  .wrap::after{
-    content:""; position:absolute; top:29px; bottom:0;
-    left:var(--col-centre); right:var(--col-centre);
-    border-top:1px solid var(--border-strong);
-    border-left:1px solid var(--border-strong);
-  }
-  .wrap i{
-    position:absolute; width:5px; height:5px; background:var(--border-strong);
-    top:26.5px;
-  }
-  .wrap i:nth-of-type(1){left:calc(100% - var(--col-centre)); transform:translateX(-2.5px)}
-  .wrap i:nth-of-type(2){left:var(--col-centre); transform:translateX(-2.5px)}
-  .wrap span{
-    position:absolute; bottom:0; left:var(--col-centre); transform:translateX(-50%);
-    width:0; height:0;
-    border-left:4px solid transparent; border-right:4px solid transparent;
+  /* two blocks (2026-10-03): the planning steps, then the sandbox, an arrow down between them */
+  .block{border:1px solid var(--border); padding:22px 24px 26px; background:rgba(255,255,255,.55)}
+  .block-title{margin:0 0 18px; font-family:var(--mono); font-size:13.2px; font-weight:600;
+               letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  .block.sandbox{border:0; padding:0; background:transparent}
+  .row.one{grid-template-columns:1fr}
+  .row.one .card{padding:44px 48px 38px}
+  .row.one .card h2{font-size:34px; margin-top:28px}
+  .down{position:relative; height:58px}
+  .down::before{content:""; position:absolute; left:50%; top:6px; bottom:9px; border-left:1px solid var(--border-strong)}
+  .down::after{
+    content:""; position:absolute; left:50%; bottom:1px; transform:translateX(-50%);
+    width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent;
     border-top:7px solid var(--border-strong);
   }
 
@@ -136,21 +126,13 @@
     background:var(--panel); color:inherit; text-decoration:none;
     transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
   }
-  /* the numeral belongs to the sheet, not to a badge */
-  .card .n{
-    position:absolute; top:9.6px; right:21.6px;
-    font-family:var(--mono); font-weight:600; font-size:129.6px; line-height:1;
-    color:rgba(0,15,223,.46); font-variant-numeric:tabular-nums;
-    pointer-events:none; user-select:none;
-  }
-  .row:last-of-type .card:last-child .n{color:rgba(255,0,126,.50)}
   /* a rule that draws itself along the top edge on hover */
   a.card::before{
     content:""; position:absolute; top:0; left:0; right:0; height:3px;
     background:var(--primary); transform:scaleX(0); transform-origin:left;
     transition:transform .22s cubic-bezier(.22,.61,.36,1);
   }
-  .row:last-of-type a.card:last-child::before{background:var(--accent)}
+  .sandbox a.card::before{background:var(--accent)}
   a.card:hover::before{transform:scaleX(1)}
   a.card:hover{
     border-color:var(--primary);
@@ -165,7 +147,7 @@
     letter-spacing:.1em; text-transform:uppercase; color:var(--faint);
   }
   .svc svg{width:20.4px; height:20.4px; flex:none; stroke:var(--primary); stroke-width:1.6; fill:none}
-  .row:last-of-type .card:last-child .svc svg{stroke:var(--accent)}
+  .sandbox .card .svc svg{stroke:var(--accent)}
 
   .card h2{
     margin:36px 0 12px; font-size:26.4px; font-weight:600;
@@ -178,14 +160,13 @@
     font-family:var(--mono); font-size:12.6px; font-weight:500;
     letter-spacing:.12em; text-transform:uppercase; color:var(--primary);
   }
-  .row:last-of-type a.card:last-child .open{color:var(--accent)}
+  .sandbox a.card .open{color:var(--accent)}
   .open svg{width:15.6px; height:15.6px; stroke:currentColor; stroke-width:1.8; fill:none;
             transition:transform .16s ease}
   a.card:hover .open svg{transform:translateX(4px)}
 
   /* a module that is not part of this install: in the sequence, not a link */
   .card.off{border-style:dashed; background:transparent; cursor:default}
-  .card.off .n{color:rgba(0,0,0,.26)}
   .card.off .svc svg{stroke:var(--faint)}
   .card.off h2{color:var(--muted)}
   .card.off .tag{
@@ -227,12 +208,10 @@
 
   @media (prefers-reduced-motion:no-preference){
     .card{animation:rise .42s cubic-bezier(.22,.61,.36,1) both}
-    .row:first-child .card:nth-child(1){animation-delay:.03s}
-    .row:first-child .card:nth-child(3){animation-delay:.09s}
-    .row:first-child .card:nth-child(5){animation-delay:.15s}
-    .row:last-of-type .card:nth-child(1){animation-delay:.21s}
-    .row:last-of-type .card:nth-child(3){animation-delay:.27s}
-    .row:last-of-type .card:nth-child(5){animation-delay:.33s}
+    #plan-block .card:nth-child(1){animation-delay:.03s}
+    #plan-block .card:nth-child(3){animation-delay:.09s}
+    #plan-block .card:nth-child(5){animation-delay:.15s}
+    .sandbox .card{animation-delay:.21s}
     @keyframes rise{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
   }
 
@@ -241,7 +220,6 @@
     main{padding:33.6px 21.6px 38.4px; min-height:0; display:block}
     .row{grid-template-columns:1fr}
     .card{min-height:0}
-    .card .n{font-size:91.2px; top:4.8px}
     .arrow{height:34px}
     .arrow::before{top:0; bottom:0; left:50%; right:auto; border-top:0; border-left:1px solid var(--border-strong)}
     .arrow::after{
@@ -249,10 +227,6 @@
       border-left:4px solid transparent; border-right:4px solid transparent;
       border-top:7px solid var(--border-strong); border-bottom:0;
     }
-    .wrap{height:34px}
-    .wrap::before{left:50%; height:100%}
-    .wrap::after,.wrap i{display:none}
-    .wrap span{left:50%}
   }
 
   /* ---- projects ---- */
@@ -395,9 +369,10 @@
     </dialog>
 
 
+  <section class="block" id="plan-block">
+  <h2 class="block-title">Plan the assessment</h2>
   <div class="row">
     <a class="card" id="qualification-card" href="http://localhost/qualification">
-      <span class="n">1</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM6 7h12v13H6z"/><path d="m9 13 2 2 4-4"/></svg>
         Qualification
@@ -408,7 +383,6 @@
     </a>
     <div class="arrow" aria-hidden="true"></div>
     <a class="card" id="control-objectives-card" href="http://localhost/control-objectives">
-      <span class="n">2</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
         Control objectives
@@ -419,7 +393,6 @@
     </a>
     <div class="arrow" aria-hidden="true"></div>
     <a class="card" id="catalogue-card" data-engine="http://localhost/" href="https://sandboxconfigurator.aifactory.lu/catalogue">
-      <span class="n">3</span>
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><path d="M8 5v14"/></svg>
         Catalogue
@@ -429,43 +402,23 @@
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
   </div>
+  </section>
 
-  <div class="wrap" aria-hidden="true"><i></i><i></i><span></span></div>
+  <div class="down" aria-hidden="true"></div>
 
-  <div class="row">
-    <a class="card" id="evidence-card" href="/evidence.html" data-controls="http://localhost/controls">
-      <span class="n">4</span>
+  <section class="block sandbox">
+  <div class="row one">
+    <a class="card" id="sandbox-card" href="/evidence.html" data-controls="http://localhost/controls">
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="m9 13 2 2 4-4"/></svg>
-        Evidence
+        Sandbox
       </span>
-      <h2>Collect evidence</h2>
-      <p>Link tests and controls to the objectives, then run the tests and score the checklists.</p>
-      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
-    </a>
-    <div class="arrow" aria-hidden="true"></div>
-    <a class="card" href="http://localhost:8188/">
-      <span class="n">5</span>
-      <span class="svc">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20V11m5 9V5m5 15v-6"/></svg>
-        Dashboard
-      </span>
-      <h2>Analyse results</h2>
-      <p>Read results, charts and commentary.</p>
-      <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
-    </a>
-    <div class="arrow" aria-hidden="true"></div>
-    <a class="card" id="report-composer-card" href="http://localhost/report-composer/">
-      <span class="n">6</span>
-      <span class="svc">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-        Report
-      </span>
-      <h2>Compose the report</h2>
-      <p>Assemble, preview and export the PDF.</p>
+      <h2>AI Assessment Sandbox</h2>
+      <p>Run the tests, address the controls, see the results and compose the report, in one place.</p>
       <span class="open">Open <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-7 7 7-7 7"/></svg></span>
     </a>
   </div>
+  </section>
 
   </div>
 </main>
@@ -534,8 +487,7 @@
       // that lists anything says whose it is.
       var inProject = {
         'control-objectives-card': 'http://localhost/control-objectives/p/',
-        'qualification-card': 'http://localhost/qualification/p/',
-        'report-composer-card': 'http://localhost/report-composer/p/'
+        'qualification-card': 'http://localhost/qualification/p/'
       };
       Object.keys(inProject).forEach(function (id) {
         var card = document.getElementById(id);
@@ -543,7 +495,7 @@
       });
       // Step 4 is a page of the launcher: it links the evidence and leads on to
       // the engine and the controls app.
-      document.getElementById('evidence-card').href = '/evidence.html?project=' + encodeURIComponent(slug);
+      document.getElementById('sandbox-card').href = '/evidence.html?project=' + encodeURIComponent(slug);
     })
     .catch(function () {
       document.getElementById('project-name').textContent = 'Unknown project';
@@ -565,7 +517,7 @@
   // place to change it.
   function controlsBase() {
     var fallback = 'http://localhost/controls';
-    var card = document.getElementById('evidence-card');
+    var card = document.getElementById('sandbox-card');
     var base = String((card && card.dataset.controls) || '').replace(/\/+$/, '');
     return /^https?:\/\/[^/]/.test(base) ? base : fallback;
   }
@@ -579,20 +531,34 @@
   (function () {
     var card = document.getElementById('catalogue-card');
     if (!card) return;
-    card.addEventListener('click', function (e) {
+    // the hosted catalogue, told where to return and where the engine and controls are
+    function hosted() {
       try {
-        // `back` is this project's page: the catalogue is one of the six
-        // steps and is entered from here, so it is told where to return.
         var payload = { url: card.dataset.engine.replace(/\/+$/, ''),
                         expires: Date.now() + 60 * 60 * 1000,
                         back: window.location.origin + window.location.pathname,
                         project: window.aiscProject,
                         controls: controlsBase() };
-        e.preventDefault();
         window.location.href = card.getAttribute('href').replace(/\/+$/, '')
           + '/#env=' + btoa(JSON.stringify(payload));
-      } catch (err) { /* fall through to the plain href */ }
+      } catch (err) { window.location.href = card.getAttribute('href'); }
+    }
+    // the project's catalogue is public or private, chosen once (local catalogue 2026-10-03): no choice
+    // yet, or a private copy, opens the catalogue page; public, or no answer, the hosted one as before
+    card.addEventListener('click', function (e) {
+      e.preventDefault();
+      fetch('/api/projects/' + encodeURIComponent(slug) + '/catalogue', {credentials: 'same-origin'})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (d && d.mode !== 'public') {
+            window.location.href = '/catalogue.html?project=' + encodeURIComponent(slug);
+            return;
+          }
+          hosted();
+        })
+        .catch(function () { hosted(); });
     });
+    if (new URLSearchParams(window.location.search).get('open') === 'catalogue') card.click();
   })();
 
   fetch('/oauth2/userinfo', {credentials:'same-origin'})

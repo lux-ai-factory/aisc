@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Collect evidence - AI Assessment Sandbox Configurator</title>
+<title>AI Assessment Sandbox - AI Assessment Sandbox Configurator</title>
 <link rel="icon" href="/assets/laif-logo.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -71,9 +71,15 @@
   .session a{color:var(--primary); text-decoration:none; border-bottom:1px solid transparent}
   .session a:hover{border-bottom-color:var(--primary)}
 
-  main{max-width:1180px; margin:0 auto; padding:40px 32px 64px}
+  main{max-width:none; margin:0 auto; padding:40px 32px 64px}   /* the whole page width (2026-10-03) */
   .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
   .subtitle{margin:0 0 30px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  /* the project name, and the Reports button at the top right level with it (2026-10-03) */
+  .title-row{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  a.reports{display:inline-flex; align-items:center; padding:12px 26px; background:var(--accent); color:#fff;
+            text-decoration:none; font-family:var(--mono); font-size:14px; font-weight:600; letter-spacing:.1em;
+            text-transform:uppercase}
+  a.reports:hover{background:#c40061}
   .note{
     margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);
     color:var(--muted); font-size:13px; background:rgba(0,15,223,.02);
@@ -88,8 +94,8 @@
   /* the hidden attribute wins over any display rule (Save on a read-only version, for a viewer) */
   [hidden]{display:none !important}
   /* ---- the two ways on, and the grid ---- */
-  .ways{display:flex; flex-wrap:wrap; align-items:flex-start; gap:24px; margin:4px 0 8px}
-  .way-col{display:flex; flex-direction:column; gap:12px; flex:1 1 340px; max-width:520px}
+  .ways{display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); align-items:start; gap:24px; margin:4px 0 8px}
+  .way-col{display:flex; flex-direction:column; gap:12px; min-width:0}
   a.way{
     display:flex; align-items:center; justify-content:center; min-height:96px; padding:26px 34px; text-decoration:none;
     border:1px solid var(--primary); background:var(--primary); color:#fff;
@@ -111,6 +117,12 @@
   a.tile-open{width:auto; padding:0 12px; font-size:12px; letter-spacing:.06em; text-transform:uppercase}
   .tile-bar{height:4px; background:var(--border); margin-top:6px}
   .tile-bar > span{display:block; height:100%; background:var(--primary)}
+  a.tile-link{color:inherit; text-decoration:none}
+  a.tile-link:hover{border-color:var(--primary)}
+  .tile-kind{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--primary)}
+  .tile.is-off{background:#f3f4f8; border-left-color:var(--border-strong); border-style:dashed; color:var(--muted)}
+  .tile.is-off .tile-kind{color:var(--muted)}
+  .tile-go{color:var(--primary); font-size:18px}
   .tile-off{font-size:12px; color:var(--muted); font-style:italic}
   .tiles .empty{margin:0; font-size:13px; color:var(--muted)}
   /* the link tables fold away under their title */
@@ -213,6 +225,7 @@
     .topbar{padding:12px 18px; gap:14px}
     main{padding:28px 18px 40px}
     .grid-wrap{--obj-w:200px}
+    .ways{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -228,8 +241,11 @@
 </div>
 
 <main>
-  <h1 class="title" id="project-name">&hellip;</h1>
-  <p class="subtitle">Step 4 &middot; Collect evidence</p>
+  <div class="title-row">
+    <h1 class="title" id="project-name">&hellip;</h1>
+    <a class="reports" id="reports" href="http://localhost/report-composer/">Reports</a>
+  </div>
+  <p class="subtitle">AI Assessment Sandbox</p>
   <div class="version-bar" hidden id="version-bar">
     <label for="version">AI card version</label>
     <select class="version" id="version" aria-label="AI card version"></select>
@@ -246,6 +262,10 @@
       <div class="way-col">
         <a class="way" id="address-controls" href="http://localhost/controls">Address controls</a>
         <div class="tiles" id="control-tiles" aria-label="Installed checklists"></div>
+      </div>
+      <div class="way-col">
+        <a class="way" id="visualise" href="http://localhost:8188/">Visualisation</a>
+        <div class="tiles" id="target-tiles" aria-label="The system and its components"></div>
       </div>
     </div>
   </section>
@@ -401,9 +421,43 @@
     });
   }
 
+  // one tile per assessment target under Visualisation (results navigation 2026-10-03): the system,
+  // its components and, when some runs have none, "No target"; each opens the results page of its
+  // target, which lists its tools. A target with no run on this card version is greyed, no link.
+  function renderTargetTiles() {
+    var box = $('target-tiles');
+    box.textContent = '';
+    if (!data.targets) return;
+    data.targets.forEach(function (t) {
+      var runs = 0, failed = 0;
+      t.tools.forEach(function (it) { runs += it.executed + it.failed + it.running; failed += it.failed; });
+      var kind = t.kind === 'system' ? 'SYSTEM' : t.kind === 'unassigned' ? 'NO TARGET'
+        : (t.component_kind || 'component').replace(/_/g, ' ').toUpperCase();
+      var main = el('div', 'tile-main');
+      main.appendChild(el('div', 'tile-kind', kind));
+      main.appendChild(el('div', 'tile-name', t.label));
+      var tile;
+      if (!runs) {
+        tile = el('div', 'tile is-off');
+        main.appendChild(el('div', 'tile-runs', t.stale ? 'Not in the latest card' : 'No runs yet'));
+        tile.appendChild(main);
+      } else {
+        tile = el('a', 'tile tile-link');
+        tile.href = '/results.html?project=' + enc(slug) + '&target=' + enc(t.key === null ? 'none' : t.key) +
+          (version ? '&version=' + enc(version) : '');
+        main.appendChild(el('div', 'tile-runs', plural(t.tools.length, 'tool') + ' · ' + plural(runs, 'run') +
+          (failed ? ' · ' + failed + ' failed' : '')));
+        tile.appendChild(main);
+        tile.appendChild(el('span', 'tile-go', '→'));
+      }
+      box.appendChild(tile);
+    });
+  }
+
   function render() {
     renderTiles();
     renderControlTiles();
+    renderTargetTiles();
     $('links-n').textContent = plural(data.links.length, 'link');
     var grid = $('grid');
     grid.textContent = '';
@@ -630,11 +684,14 @@
       .then(function (p) {
         if (!p) return null;
         $('project-name').textContent = p.name;
-        document.title = p.name + ' - Collect evidence';
+        document.title = p.name + ' - AI Assessment Sandbox';
+        $('reports').href = 'http://localhost/report-composer/p/' + enc(p.pid);
         // the engine takes the project as a query; the controls app has it in the path
         pid = p.pid;
         $('execute-tests').href = 'http://localhost/?project=' + enc(p.pid);
         $('address-controls').href = 'http://localhost/controls/p/' + enc(p.pid);
+        // the project's dashboard, as the dashboard bridge names it (results-dashboard aisc_ext/projects.py)
+        $('visualise').href = 'http://localhost:8188/superset/dashboard/aisc-' + p.pid.replace(/-/g, '') + '/';
         return load();
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });

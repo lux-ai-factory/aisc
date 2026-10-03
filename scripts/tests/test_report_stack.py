@@ -276,14 +276,13 @@ def test_r5_4_1_caddy_never_routes_the_renderer():
 
 
 def test_r4_1_2_launcher_card_seven():
-    """R4.1.2, D11: homepage/project.html has the report card (id report-composer-card) and an inProject
-    entry that rewrites it to /report-composer/p/{pid}. It is step 6 since the launcher (2026-09-25)
-    shows controls and test execution as the two ways into one "Evidence" step (4)."""
-    html = (ROOT / "homepage/project.html").read_text()
-    m = re.search(r'<a class="card" id="report-composer-card"[^>]*>(.*?)</a>', html, re.S)
-    assert m, "missing feature: no report-composer-card on the launcher"
-    assert re.search(r'<span class="n">6</span>', m.group(1))
-    assert re.search(r"'report-composer-card':\s*'http://localhost/report-composer/p/'", html)
+    """R4.1.2, D11, as changed 2026-10-03 (results-nav 02-sandbox-specs.md S2.2): the report composer is
+    the Reports button of the AI Assessment Sandbox page, rewritten to /report-composer/p/{pid}; the
+    project page has no report card any more."""
+    page = (ROOT / "homepage/evidence.html").read_text()
+    assert re.search(r'<a class="reports" id="reports" href="[^"]*">Reports</a>', page)
+    assert re.search(r"\$\('reports'\)\.href\s*=\s*'http://localhost/report-composer/p/'\s*\+\s*enc\(p\.pid\)", page)
+    assert 'id="report-composer-card"' not in (ROOT / "homepage/project.html").read_text()
 
 
 def test_r7_3_5_secrets_script_makes_the_report_secrets():

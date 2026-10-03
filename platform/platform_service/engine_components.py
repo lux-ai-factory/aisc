@@ -33,6 +33,12 @@ def _call(method: str, path: str, pid, token: str, body: dict | None = None) -> 
     return r.json()
 
 
+def available_plugins(pid, token: str) -> list[dict]:
+    """The packages the engine can install, `{package_name, version, source}` each ("local": the
+    local_plugins/ folder, "registry": the stack's package index): its own GET /api/v1/plugins."""
+    return list(_call("GET", "/api/v1/plugins", pid, token) or [])
+
+
 def engine_project(pid, token: str) -> str:
     """The engine's pid of this platform project."""
     return str(_call("POST", f"/api/v1/projects/for-platform/{pid}", pid, token)["pid"])

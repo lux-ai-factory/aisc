@@ -101,6 +101,28 @@ _SUBMISSIONS = (
     '   AND NOT EXISTS (SELECT 1 FROM controls.submission n WHERE n."previousVersionId" = s.id)'
     ' ORDER BY s."checklistId", s.updated_at DESC'
 )
+#: Results navigation (2026-10-03, docs/superpowers/results-nav-2026-10-03/01-specs.md R2): the
+#: project's assessment targets, and each tool's runs on each of them on one card version. A run's
+#: target is its evaluation input named target, through its engine component, as the dashboard's
+#: SQL resolves it; a run with no target input is unassigned; archived evaluations are not counted.
+_TARGETS = "SELECT key, kind, component_kind, label, last_card_number FROM target.target"
+_TARGET_RUNS = (
+    "SELECT t.key AS target_key, ti.id IS NULL AS unassigned, pl.package_name,"
+    " COALESCE(pl.display_name, pl.name, pl.package_name) AS label,"
+    " count(*) FILTER (WHERE ep.status = 'Done') AS executed,"
+    " count(*) FILTER (WHERE ep.status = 'Failed') AS failed,"
+    " count(*) FILTER (WHERE ep.status IN ('Pending', 'Running')) AS running,"
+    " max(e.created_at) AS last_run"
+    " FROM engine.aisc_backend_evaluationplugin ep"
+    " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id"
+    " JOIN engine.aisc_backend_pluginconfig pc ON pc.id = ep.plugin_config_id"
+    " JOIN engine.aisc_backend_plugin pl ON pl.id = pc.plugin_id"
+    " LEFT JOIN engine.aisc_backend_evaluationinput ti ON ti.evaluation_plugin_id = ep.id AND ti.name = 'target'"
+    " LEFT JOIN engine.aisc_backend_aicomponent tc ON tc.id = ti.component_id"
+    " LEFT JOIN target.target t ON t.engine_component = tc.pid"
+    " WHERE e.system_id::text = %s AND e.status <> 'Archived'"
+    " GROUP BY 1, 2, 3, 4"
+)
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
 #: The project's own objectives (objective sets, 2026-10-01), each as its latest published version words it.
 _OWN_OBJECTIVES = (
@@ -152,6 +174,10 @@ class Choices:
     questions: dict[str, int] = field(default_factory=dict)
     #: checklist id -> its latest answers: {"id", "version", "status", "readiness", "answered"}
     submissions: dict[str, dict] = field(default_factory=dict)
+    #: the rows of target.target
+    targets: list[dict] = field(default_factory=list)
+    #: each tool's runs per target on the card version asked for (_TARGET_RUNS rows)
+    target_runs: list[dict] = field(default_factory=list)
 
 
 def _reader(pid) -> psycopg.Connection:
@@ -196,6 +222,8 @@ def choices(pid, version_pid: str | None) -> Choices:
         workspace = _rows(conn, _WORKSPACE)
         questions = _rows(conn, _QUESTIONS)
         submissions = _rows(conn, _SUBMISSIONS)
+        targets = _rows(conn, _TARGETS)
+        target_runs = _rows(conn, _TARGET_RUNS, (version_pid,)) if version_pid and targets else []
     return Choices(
         selected=sorted(selected[0]["objective_ids"], key=_objective_order) if selected else [],
         plugins={r["package_name"]: (r["display_name"] or r["package_name"], r["enabled"]) for r in plugins},
@@ -210,7 +238,32 @@ def choices(pid, version_pid: str | None) -> Choices:
         submissions={r["checklist_id"]: {"id": r["id"], "version": r["version"], "status": r["status"],
                                          "readiness": readiness(r["mean_score"]), "answered": r["answered"]}
                      for r in submissions},
+        targets=targets,
+        target_runs=target_runs,
     )
+
+
+def target_view(found: Choices, latest_number: int | None) -> list[dict]:
+    """The targets with their tools' runs (R2.1 to R2.4): the system first, then the components by
+    label, then, only when some run has no target input, a "No target" entry."""
+    def tools(rows):
+        return sorted(({"key": r["package_name"], "label": r["label"], "executed": r["executed"],
+                        "failed": r["failed"], "running": r["running"],
+                        "last_run": r["last_run"].isoformat() if r["last_run"] else None} for r in rows),
+                      key=lambda t: t["label"].lower())
+
+    out = []
+    for t in sorted(found.targets, key=lambda t: (t["kind"] != "system", t["label"].lower())):
+        stale = (t["kind"] == "component" and latest_number is not None
+                 and t["last_card_number"] is not None and t["last_card_number"] < latest_number)
+        out.append({"key": t["key"], "kind": t["kind"], "component_kind": t["component_kind"],
+                    "label": t["label"], "stale": stale,
+                    "tools": tools(r for r in found.target_runs if not r["unassigned"] and r["target_key"] == t["key"])})
+    unassigned = [r for r in found.target_runs if r["unassigned"]]
+    if unassigned:
+        out.append({"key": None, "kind": "unassigned", "component_kind": None, "label": "No target",
+                    "stale": False, "tools": tools(unassigned)})
+    return out
 
 
 def readiness(mean_score) -> int | None:
@@ -390,6 +443,7 @@ def view(pid, version: str | None = None) -> dict:
         "read_only": read_only,
         "carried_from": carried_from,
         "engine_workspace": found.workspace,
+        "targets": target_view(found, all_versions[0]["number"] if all_versions else None),
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
         "dimensions_known": catalogue is not None and bool(dims),
         "objectives": [{"id": o, "title": names.get(o, ""), "dimension": dims.get(o),

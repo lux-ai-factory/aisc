@@ -22,7 +22,7 @@ def test_text_is_bigger():
     assert px("body", "font-size") == "18px"
     assert px(".card h2", "font-size") == "26.4px"
     assert px(".card p", "font-size") == "17.4px"
-    assert px(".card .n", "font-size") == "129.6px"
+    # the step numbers went with the two blocks (2026-10-03, test_project_page_sandbox.py)
 
 
 def test_boxes_are_bigger():

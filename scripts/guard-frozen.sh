@@ -79,8 +79,8 @@ ENGINE_REF=$(intended_base backend)   # G1, G5: Sean's origin/master of the back
 ORDERS_ENGINE_REF=e34fca3   # --orders only: the pre-isolation reference its six orders are compared with
 [ -n "$ENGINE_REF" ] || { echo "no 'base backend' line in $INTENDED" >&2; exit 2; }
 QUAL_REF=e112001            # qualification before the card-versions migration
-PI_REF=97eddea              # G4's engine references: scripts/guard-frozen-intended.txt
-PM_REF=46e1867              # plugin-manager: Méril's origin/feat/dev-catalogue-staging (public index without login), not master
+PI_REF=d0fd916              # plugin-interface as of 2026-10-03: connections, the target input, docs (G4's engine references: scripts/guard-frozen-intended.txt)
+PM_REF=ac8d397              # plugin-manager as of 2026-10-03: Méril's feat/dev-catalogue-staging (public index without login), local plugins listed as +local, docs
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679

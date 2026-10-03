@@ -110,3 +110,5 @@ webapp src/seansFilesUnchanged.test.ts T7: Sean's files the configurator no long
 backend README.md docs: what the branch changes and how the engine runs inside AISC (documentation pass 2026-10-03)
 eval README.md docs: what the branch changes and how the worker runs inside AISC (documentation pass 2026-10-03)
 webapp README.md docs: what the branch changes and how the frontend runs inside AISC (documentation pass 2026-10-03)
+webapp src/pages/OpenPluginFromUrl.tsx T8: the execution page opens the test ?plugin= names (step 4's E link)
+webapp src/pages/OpenPluginFromUrl.test.tsx T8: its test

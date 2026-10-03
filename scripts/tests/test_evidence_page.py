@@ -25,20 +25,19 @@ def markup_of(html):
 
 # ── step 4 on the project page ──────────────────────────────────────────────
 
-def test_step_4_is_one_card_that_opens_the_evidence_page():
+def test_the_sandbox_card_opens_this_page():
+    """2026-10-03: the project page's sandbox card (test_project_page_sandbox.py) opens this page."""
     html = read(PROJECT_PAGE)
-    card = re.search(r'<a\b[^>]*id="evidence-card"[^>]*>(.*?)</a>', html, re.S)
-    assert card, "step 4 is not a link"
-    assert "<h2>Collect evidence</h2>" in card.group(1)
-    assert re.search(r'<span class="n">4</span>', card.group(1))
-    assert re.search(r"getElementById\('evidence-card'\)\.href\s*=\s*'/evidence\.html\?project='\s*\+\s*"
+    card = re.search(r'<a\b[^>]*id="sandbox-card"[^>]*>(.*?)</a>', html, re.S)
+    assert card and "<h2>AI Assessment Sandbox</h2>" in card.group(1)
+    assert re.search(r"getElementById\('sandbox-card'\)\.href\s*=\s*'/evidence\.html\?project='\s*\+\s*"
                      r"encodeURIComponent\(slug\)", script_of(html))
 
 
 def test_the_two_links_moved_to_the_evidence_page():
     html = read(PROJECT_PAGE)
     assert 'id="controls-card"' not in html and 'id="engine-card"' not in html
-    # the catalogue still learns where the controls app is, from the step 4 card
+    # the catalogue still learns where the controls app is, from the sandbox card
     assert 'data-controls="http://localhost/controls"' in html
     assert "dataset.controls" in script_of(html)
 
@@ -52,7 +51,7 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
     assert len(scripts) == 1 and "src" not in scripts[0].lower()
-    assert re.search(r"<title>Collect evidence\b", html)
+    assert re.search(r"<title>AI Assessment Sandbox\b", html)
 
 
 def test_it_has_the_two_buttons_into_the_project():
@@ -364,3 +363,87 @@ def test_a_control_tile_opens_its_answers_or_the_checklist():
     assert re.search(r"CONTROLS \+ '/p/' \+ enc\(pid\) \+ '/submissions/' \+ enc\(sub\.id\)", body)
     assert re.search(r"CONTROLS \+ '/p/' \+ enc\(pid\) \+ '/checklists/' \+ enc\(it\.key\) \+ '/fill'", body)
     assert "renderControlTiles();" in script_of(read(PAGE))
+
+
+# ── step 4 third button (2026-10-03): the project's dashboard ───────────────
+
+def test_a_third_big_button_opens_the_projects_dashboard():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    assert re.search(r'<div class="way-col">\s*<a class="way" id="visualise" href="[^"]+">Visualisation</a>', markup)
+    # the dashboard bridge names each project's dashboard aisc-<pid without dashes> (results-dashboard projects.py)
+    assert re.search(r"\$\('visualise'\)\.href\s*=\s*'http://localhost:8188/superset/dashboard/aisc-'\s*\+\s*"
+                     r"p\.pid\.replace\(/-/g, ''\)\s*\+\s*'/'", script)
+    assert len(re.findall(r'<a class="way" ', markup)) == 3
+
+
+# ── results navigation (2026-10-03, docs/superpowers/results-nav-2026-10-03/01-specs.md R3.1, R3.2) ──
+
+def _target_tiles_body():
+    body = re.search(r"function renderTargetTiles\(\) \{(.*?)\n  \}", script_of(read(PAGE)), re.S)
+    assert body, "no renderTargetTiles"
+    return body.group(1)
+
+
+def test_r3_1_the_target_tiles_are_a_column_under_visualisation():
+    markup = markup_of(read(PAGE))
+    assert re.search(r'<a class="way" id="visualise" href="[^"]+">Visualisation</a>\s*'
+                     r'<div class="tiles" id="target-tiles"', markup), "no tiles under Visualisation"
+    assert "renderTargetTiles();" in script_of(read(PAGE))
+
+
+def test_r3_1_a_target_tile_shows_kind_label_tools_and_runs():
+    body = _target_tiles_body()
+    assert "t.kind === 'system'" in body and "'SYSTEM'" in body
+    assert "t.component_kind" in body and "toUpperCase()" in body
+    assert "plural(t.tools.length, 'tool')" in body and "plural(runs, 'run')" in body
+    assert "' failed'" in body
+
+
+def test_r3_1_a_target_without_runs_is_greyed_and_not_a_link():
+    body = _target_tiles_body()
+    assert "'No runs yet'" in body and "'Not in the latest card'" in body
+    assert re.search(r"if \(!runs\)", body)
+
+
+def test_r3_2_a_tile_opens_the_results_page_of_its_target():
+    body = _target_tiles_body()
+    assert re.search(r"'/results\.html\?project=' \+ enc\(slug\) \+ '&target=' \+ "
+                     r"enc\(t\.key === null \? 'none' : t\.key\)", body)
+    assert re.search(r"\(version \? '&version=' \+ enc\(version\) : ''\)", body)
+
+
+def test_r3_1_an_old_platform_without_targets_draws_no_tiles():
+    assert re.search(r"if \(!data\.targets\) return;", _target_tiles_body())
+
+
+# ── the three columns use the whole page width (2026-10-03) ─────────────────
+
+def test_the_three_columns_sit_side_by_side_across_the_whole_page():
+    html = read(PAGE)
+    css = re.sub(r"@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}", "", style_of(html))   # the wide-screen rules
+    assert re.search(r"(?<![\w.-])main\{[^}]*max-width:\s*none", css), "the page is still capped"
+    ways = rule(css, ".ways")
+    assert "display:grid" in ways.replace(" ", "") and "repeat(3,minmax(0,1fr))" in ways.replace(" ", "")
+    assert "max-width" not in rule(css, ".way-col")
+    narrow = re.search(r"@media \(max-width:820px\)\{(.*?)\n  \}", style_of(html), re.S).group(1)
+    assert re.search(r"\.ways\{[^}]*grid-template-columns:\s*1fr", narrow), "no single column on a phone"
+
+
+# ── the AI Assessment Sandbox (2026-10-03, 02-sandbox-specs.md S2) ──────────
+
+def test_s2_1_the_page_is_the_ai_assessment_sandbox():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    assert '<p class="subtitle">AI Assessment Sandbox</p>' in markup
+    assert "Step 4" not in markup and "Collect evidence" not in markup
+    assert "document.title = p.name + ' - AI Assessment Sandbox'" in script
+
+
+def test_s2_2_a_reports_button_top_right_level_with_the_project_name():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    assert re.search(r'<div class="title-row">\s*<h1 class="title" id="project-name">&hellip;</h1>\s*'
+                     r'<a class="reports" id="reports" href="[^"]+">Reports</a>\s*</div>', markup)
+    assert re.search(r"\$\('reports'\)\.href\s*=\s*'http://localhost/report-composer/p/'\s*\+\s*enc\(p\.pid\)", script)
+    assert re.search(r"\.title-row\{[^}]*justify-content:\s*space-between", style_of(html))
