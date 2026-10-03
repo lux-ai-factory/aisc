@@ -199,6 +199,12 @@ class MemoryLedger:
             d = self._db(db)
             return Head(len(d["rows"]), d["chain"][-1].hex())
 
+    def seq_of(self, db: str, event_id: str) -> int | None:
+        """The seq the store gave this event id, or None (spec T9: checked before judging again)."""
+        with self._lock:
+            known = self._db(db)["ids"].get(event_id)
+            return known[0] if known else None
+
     def state(self, db: str) -> State:
         with self._lock:
             d = self._db(db)
@@ -467,6 +473,14 @@ class ImmudbLedger:
 
     def get(self, db: str, seq: int) -> Entry:
         return self._call(db, lambda client: Entry(json.loads(self._verified(client, f"e:{seq:020d}".encode()))))
+
+    def seq_of(self, db: str, event_id: str) -> int | None:
+        def run(client):
+            try:
+                return json.loads(self._verified(client, f"id:{event_id}".encode()))["seq"]
+            except KeyError:
+                return None
+        return self._call(db, run)
 
     def scan(self, db: str, after_seq: int = 0, limit: int = 100) -> list[Entry]:
         def run(client):

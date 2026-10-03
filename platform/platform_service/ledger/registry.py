@@ -338,8 +338,9 @@ def check(event: dict, emitter: str | None = None) -> list[str]:
         if action.content_required and not event.get("content"):
             problems.append("content_required")
     problems += [f"secret_in:{key}" for key, value in details.items() if _holds_secret(value)]
-    if _holds_secret(event.get("content")):
-        problems.append("secret_in:content")
+    for field in ("content", "before", "after"):                      # states too (phase 3 review m6)
+        if _holds_secret(event.get(field)):
+            problems.append(f"secret_in:{field}")
     return problems
 
 

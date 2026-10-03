@@ -266,24 +266,53 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
 def _ledger_drain_or_refuse(pid) -> None:
     """Before a project database is dropped, its outbox must be in the log: the drop would destroy what
     hasn't been delivered (spec 6.4, R2.4). Platform-database rows (members, this delete's own event)
-    don't block: they outlive the drop."""
+    don't block: they outlive the drop.
+
+    No event may commit after the count (phase 3 review M5): CONNECT is revoked first, so no new app
+    session starts, and a session another role still holds makes the delete wait (409): the platform
+    can't end another role's session, and that session could still commit. A count that fails while
+    the database exists is never "nothing to lose" (503). On a refusal the database is opened again."""
     from platform_service.ledger import relay, witness as ledger_witness
     from platform_service.ledger.store import LedgerError
 
     if ledger_witness.mode() == "off":
         return
+    name = projectdb.database_name(pid)
+    with db.pool().connection() as conn:
+        if conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone() is None:
+            return                                                    # no project database: nothing to lose
+        # every role that may connect but the owner (each module role has its own grant, PUBLIC may too)
+        grantees = [r["grantee"] for r in conn.execute(
+            "SELECT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(r.rolname) END AS grantee"
+            " FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a LEFT JOIN pg_roles r ON r.oid = a.grantee"
+            " WHERE d.datname = %s AND a.privilege_type = 'CONNECT' AND a.grantee <> d.datdba", (name,))]
+        for grantee in grantees:
+            conn.execute(f'REVOKE CONNECT ON DATABASE "{name}" FROM {grantee}')
     try:
-        relay.relay_once(str(pid))
-    except LedgerError:
-        pass                                                          # counted below
-    try:
-        with projectdb_connection(pid) as conn:
-            left = conn.execute("SELECT count(*) AS n FROM ledger.outbox o LEFT JOIN ledger.delivered d"
-                                " ON d.event_id = o.event_id WHERE d.event_id IS NULL").fetchone()["n"]
-    except Exception:
-        left = 0                                                      # no project database: nothing to lose
-    if left:
-        raise HTTPException(status_code=409, detail=f"the log still has {left} undelivered events: try again soon")
+        with db.pool().connection() as conn:
+            others = conn.execute("SELECT count(*) AS n FROM pg_stat_activity WHERE datname = %s"
+                                  " AND usename IS DISTINCT FROM current_user", (name,)).fetchone()["n"]
+        if others:
+            raise HTTPException(status_code=409, detail="the project's database is still in use by an app: try again")
+        try:
+            relay.relay_once(str(pid))
+        except LedgerError:
+            pass                                                      # counted below
+        try:
+            with projectdb_connection(pid) as conn:
+                left = conn.execute("SELECT count(*) AS n FROM ledger.outbox o LEFT JOIN ledger.delivered d"
+                                    " ON d.event_id = o.event_id WHERE d.event_id IS NULL").fetchone()["n"]
+        except Exception:
+            logger.exception("project %s: the undelivered events could not be counted", pid)
+            raise HTTPException(status_code=503, detail="the project's undelivered events could not be counted:"
+                                " nothing was deleted") from None
+        if left:
+            raise HTTPException(status_code=409, detail=f"the log still has {left} undelivered events: try again soon")
+    except HTTPException:
+        with db.pool().connection() as conn:                          # refused: the apps may connect again
+            for grantee in grantees:
+                conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {grantee}')
+        raise
 
 
 def projectdb_connection(pid):

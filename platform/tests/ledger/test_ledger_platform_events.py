@@ -142,3 +142,68 @@ def test_member_events_wait_in_the_platform_databases_outbox(project, call):
         [(n,)] = conn.execute("SELECT count(*) FROM core.outbox WHERE action = 'member.added'"
                               " AND project_pid = %s", (project["pid"],)).fetchall()
     assert n >= 1
+
+
+# phase 3 review M5: the drain closes the database to the apps before it counts -----------------------
+
+def _delete(call, project):
+    return call(ADMIN, "DELETE", f"/projects/{project['slug']}", roles=ADMIN_ROLES, json={"confirm_name": project["name"]})
+
+
+def test_a_delete_while_another_role_is_connected_is_refused_and_changes_nothing(project, call, memory_ledger):
+    """An app with an open session could still commit an event after the count; the platform can't end
+    another role's session, so it refuses (409) and lets the database be used again."""
+    from platform_service import projectdb
+    from tests.ledger.test_ledger_outbox import connect
+
+    def acl():
+        with psycopg.connect(DSN) as conn:
+            return set(conn.execute("SELECT a.grantee, a.privilege_type FROM pg_database d"
+                                    " CROSS JOIN LATERAL aclexplode(d.datacl) a WHERE d.datname = %s",
+                                    (projectdb.database_name(project["pid"]),)).fetchall())
+    before = acl()
+    with connect(project["pid"]) as app_session:                       # another role, connected
+        app_session.execute("SELECT 1")
+        r = _delete(call, project)
+        assert r.status_code == 409 and "in use" in r.text.lower()
+    assert acl() == before                                              # every app may connect again
+    with connect(project["pid"]) as again:                              # still usable, and still there
+        again.execute("SELECT 1")
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute("SELECT 1 FROM core.project WHERE pid = %s", (project["pid"],)).fetchone()
+    assert _delete(call, project).status_code in (200, 204)
+
+
+def test_during_the_drain_no_new_app_session_can_start(project, call, memory_ledger, monkeypatch):
+    """CONNECT is revoked before the count: an app trying to connect meanwhile is refused."""
+    from psycopg.conninfo import make_conninfo
+
+    from platform_service import projectdb
+    from platform_service.ledger import relay
+
+    tried = []
+    real = relay.relay_once
+
+    def app_connects_meanwhile(pid=None):
+        dsn = make_conninfo(DSN, user="controls_rw", password="controls_rw", dbname=projectdb.database_name(pid))
+        try:
+            psycopg.connect(dsn).close()
+            tried.append("connected")
+        except psycopg.OperationalError as exc:
+            tried.append("refused" if "permission denied" in str(exc).lower() else f"other: {exc}")
+        return real(pid)
+    monkeypatch.setattr(relay, "relay_once", app_connects_meanwhile)
+    assert _delete(call, project).status_code in (200, 204)
+    assert tried == ["refused"], tried
+
+
+def test_a_drain_that_cannot_count_refuses_the_drop(project, call, memory_ledger, monkeypatch):
+    """Review M5: a failure to count is not "nothing to lose" while the database exists."""
+    from platform_service import app
+
+    def cannot(_pid):
+        raise psycopg.OperationalError("too many connections (test)")
+    monkeypatch.setattr(app, "projectdb_connection", cannot)
+    assert _delete(call, project).status_code == 503
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute("SELECT 1 FROM core.project WHERE pid = %s", (project["pid"],)).fetchone()
