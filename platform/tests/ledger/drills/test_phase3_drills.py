@@ -1,4 +1,4 @@
-"""Phase 3 drills (03-coding-plan.md), on a real immudb with the state in Postgres, opt-in:
+"""Failure drills for the relay, on a real immudb with the state in Postgres, opt-in:
 LEDGER_DRILLS=1 (and LEDGER_DRILL_OUTAGE_SECONDS for the outage, 600 by default).
 
 - the relay killed (SIGKILL) in the middle of a batch, several times;
@@ -109,7 +109,7 @@ def test_drill_immudb_down_for_a_long_stretch(immudb_ledger, busy_project):
     relay_all(p["pid"])
     subprocess.run(["docker", "stop", CONTAINER], check=True, capture_output=True)
     try:
-        # monotonic: a suspended host must not count as outage time (the first rerun did)
+        # monotonic: a suspended host must not count as outage time
         started, pending = time.monotonic(), []
         while time.monotonic() - started < seconds:
             emitted += work(3)

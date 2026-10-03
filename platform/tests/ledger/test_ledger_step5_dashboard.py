@@ -1,7 +1,7 @@
-"""D1-D2 (phase 9): the dashboard's events, as its extension sends them (apps/results-dashboard/aisc_ext/ledger.py)
+"""The dashboard's events, as its extension sends them (apps/results-dashboard/aisc_ext/ledger.py)
 through the internal route with the dashboard's token, are accepted by the relay against the REAL registry,
 each citing the witnessed request. A project's dashboard is `aisc-<pid hex>`: the witness finds the project
-of a dashboard request from that slug, in the path or in the query (the "bridge" rule, spec 3.4)."""
+of a dashboard request from that slug, in the path or in the query (the "bridge" rule)."""
 from __future__ import annotations
 
 import uuid

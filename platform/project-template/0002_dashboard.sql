@@ -1,4 +1,4 @@
--- WP11, the dashboard: it reads this project's answers as dashboard_ro, so it may connect
+-- The dashboard reads this project's answers as dashboard_ro, so it may connect
 -- and look into the controls schema. The SELECT on the tables is granted by controls' own
 -- migration (20260923210100_dashboard_reads_controls), because controls_rw owns them.
 -- Nothing here lets it write.

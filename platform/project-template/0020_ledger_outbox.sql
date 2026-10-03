@@ -1,4 +1,4 @@
--- The ledger's outbox in each project database (docs/superpowers/ledger-2026-10-02/02-spec.md 6.4).
+-- The ledger's outbox in each project database.
 -- An app records what a request did by calling ledger.emit(event) in its own transaction, so a rolled
 -- back change leaves no event. Apps hold no right on the tables: emit stamps the role that called it
 -- (session_user) and the database's own time, keeps any field it doesn't know in `extra` for the relay
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS ledger.delivered (
     delivered_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
--- a Next.js action id and the actions its first request carried (spec 4.5)
+-- a Next.js action id and the actions its first request carried
 CREATE TABLE IF NOT EXISTS ledger.action_binding (
     app           text NOT NULL,
     next_action   text NOT NULL,

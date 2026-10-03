@@ -1,10 +1,8 @@
 """Saved AI card versions of a project's one AI system, through the API.
 
-WP2 of pipeline-2026-09-23 (03-specs.md): the versions 1, 2, ... of a project;
-only the latest may change; old ones are read-only. Since the isolation
-(2026-09-25, 01-specs.md I2.2) they are rows of project.system in the project's
-own database, so the direct reads and writes below go there (S-D13: the rows
-moved, the assertions are the same). A project whose database is gone has no
+The versions 1, 2, ... of a project; only the latest may change, old ones are
+read-only. They are rows of project.system in the project's own database, so
+the direct reads and writes below go there. A project whose database is gone has no
 versions.
 """
 import threading
@@ -59,9 +57,7 @@ def rows(dsn, project):
         return conn.execute("select pid, number, name, version from project.system order by number").fetchall()
 
 
-# ── S2.1 ────────────────────────────────────────────────────────────────────
-
-
+# Two saves make versions 1 and 2
 def test_s2_1_two_saves_make_versions_1_and_2_even_with_identical_name_and_version(client, as_user, project, dsn):
     first = save(client, as_user, project)
     second = save(client, as_user, project)
@@ -104,9 +100,7 @@ def test_s2_1_systems_pid_answers_with_number_and_created_by(client, as_user, pr
     assert response.json()["created_by"] == ALICE
 
 
-# ── S2.2 ────────────────────────────────────────────────────────────────────
-
-
+# Viewers read, editors save
 def test_s2_2_a_viewer_may_read_but_not_save(client, as_user, project, viewer, dsn):
     assert save(client, as_user, project, who=viewer).status_code == 403
     assert rows(dsn, project) == []
@@ -132,9 +126,7 @@ def test_s2_2_an_unknown_project_is_404(client, as_user):
     assert client.get("/projects/pytest-no-such-project/system-versions/latest", headers=admin).status_code == 404
 
 
-# ── S2.3 ────────────────────────────────────────────────────────────────────
-
-
+# Concurrent saves
 def test_s2_3_concurrent_saves_get_1_and_2_without_duplicate_or_gap(client, as_user, project, dsn):
     from platform_service.app import app
 
@@ -156,9 +148,7 @@ def test_s2_3_concurrent_saves_get_1_and_2_without_duplicate_or_gap(client, as_u
     assert [r[1] for r in rows(dsn, project)] == [1, 2]
 
 
-# ── S2.4 ────────────────────────────────────────────────────────────────────
-
-
+# Only the latest version changes
 def test_s2_4_version_1_cannot_change_once_2_exists_and_2_can(client, as_user, project, dsn):
     v1 = save(client, as_user, project).json()
     v2 = save(client, as_user, project).json()
@@ -168,9 +158,7 @@ def test_s2_4_version_1_cannot_change_once_2_exists_and_2_can(client, as_user, p
         conn.execute("update project.system set description = 'fine' where pid = %s", (v2["pid"],))
 
 
-# ── S2.5 ────────────────────────────────────────────────────────────────────
-
-
+# Deleting the project deletes its versions
 def test_s2_5_deleting_the_project_deletes_its_versions(client, as_user, project, dsn):
     save(client, as_user, project)
     save(client, as_user, project)
@@ -181,9 +169,7 @@ def test_s2_5_deleting_the_project_deletes_its_versions(client, as_user, project
     assert rows(dsn, project) == []
 
 
-# ── S2.9 and "POST /projects creates no system row" ─────────────────────────
-
-
+# The latest version, and POST /projects creates no system row
 def test_s2_9_latest_is_the_highest_number(client, as_user, project, dsn):
     for _ in range(3):
         save(client, as_user, project)
@@ -202,9 +188,7 @@ def test_s2_9_a_new_project_has_no_version_and_latest_is_null(client, as_user, p
     assert response.json() is None
 
 
-# ── removed routes ──────────────────────────────────────────────────────────
-
-
+# Removed routes
 @pytest.mark.parametrize("method, path", [
     ("POST", "/projects/{slug}/systems"),
     ("GET", "/projects/{slug}/systems"),
@@ -222,7 +206,7 @@ def test_wp2_the_old_version_routes_are_gone(client, as_user, project, dsn):
     made = save(client, as_user, project)
     if made.status_code == 201:
         pid = made.json()["pid"]
-    else:  # before WP2: the draft 0002 made for the project, which the old routes do answer for
+    else:  # an older platform: the draft 0002 made for the project, which the old routes do answer for
         with psycopg.connect(dsn) as conn:
             pid = str(conn.execute(
                 "select v.pid from core.ai_system_version v join core.ai_system a on a.pid = v.ai_system_id"

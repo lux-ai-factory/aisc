@@ -1,8 +1,8 @@
-"""PV1-PV7, phase 1: the pool (I9, T23; spec 6.1, 7.1; second review N1, third review M1, n-c).
-Called directly, with no HTTP and no relay, so phase 1 can go green on its own. The operator's
+"""The pool of ledger databases.
+Called directly, with no HTTP and no relay. The operator's
 script pre-creates databases (the platform never holds the immudb superuser); `provision.assign(pid)`
 takes a free one of the current store's server, inside the caller's transaction, and keeps it for ever.
-Project creation, events waiting on an empty pool and the delete are phase 3:
+Project creation, events waiting on an empty pool and the delete are in
 test_ledger_provision_flow.py."""
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def test_the_server_id_is_the_servers_own_identity(memory_ledger):
 
 
 def test_with_immudb_unreachable_assign_waits_and_never_blocks(memory_ledger):
-    """M4: project creation must not depend on immudb being up (I6). With the store unreachable,
+    """Project creation must not depend on immudb being up. With the store unreachable,
     assign answers None (pending) quickly instead of raising or hanging."""
     import time
 

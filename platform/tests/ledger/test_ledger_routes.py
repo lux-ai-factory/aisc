@@ -1,8 +1,8 @@
-"""A1-A4: reading the ledger (I4, I9, T12, T21; spec 6.3). Members list and filter their project's
+"""Reading the ledger. Members list and filter their project's
 ledger from the index, and every entry is verified against immudb before it is shown. An index row
 that disagrees is an alarm. The export carries each entry's inclusion proof and the server-signed
-state, so the offline checker verifies against the signing key, not against the file's own claims
-(R4.9). Strangers get 404."""
+state, so the offline checker verifies against the signing key, not against the file's own claims.
+Strangers get 404."""
 from __future__ import annotations
 
 import json
@@ -25,7 +25,7 @@ CHECKER = ROOT / "scripts" / "verify-ledger-export.py"
 
 def seed(pid, n=3, **over):
     """Entries written the way the relay writes them: to immudb and to the read index, `actor_sub`
-    turned into its `actor_ref` and mapping (I10)."""
+    turned into its `actor_ref` and mapping."""
     events = []
     for i in range(n):
         e = {"event_id": str(uuid.uuid4()), "action": "risk.rated", "item_type": "risk", "item_id": f"risk{i}",
@@ -149,7 +149,7 @@ def test_only_an_admin_can_reanchor_and_it_is_recorded(client, as_user, project,
 
 
 def test_a_project_on_immudb_exports_a_file_the_checker_accepts(client, as_user, immudb_ledger, make_project, tmp_path):
-    """S9: the export route on the real store: immudb's transactions and signed state, checked offline."""
+    """The export route on the real store: immudb's transactions and signed state, checked offline."""
     import os
 
     from tests.ledger.conftest import need
@@ -167,10 +167,8 @@ def test_a_project_on_immudb_exports_a_file_the_checker_accepts(client, as_user,
     assert checked.returncode == 0, checked.stdout + checked.stderr
 
 
-# phase 4 review M1, m1, M3, m13 ---------------------------------------------------------------------
-
 def test_a_deleted_index_row_is_an_alarm(client, as_user, project, memory_ledger):
-    """M1: deleting a row would hide an entry; the index must account for every seq of the log."""
+    """Deleting a row would hide an entry; the index must account for every seq of the log."""
     seqs = seed(project["pid"], n=3)
     with psycopg.connect(DSN) as conn:
         conn.execute("DELETE FROM ledger.event_index WHERE project_pid = %s AND seq = %s", (project["pid"], seqs[1]))
@@ -181,7 +179,7 @@ def test_a_deleted_index_row_is_an_alarm(client, as_user, project, memory_ledger
 @pytest.mark.parametrize("column, value", [("occurred_at", "2000-01-01T00:00:00+00:00"), ("actor_kind", "ai"),
                                            ("project_pid", "00000000-0000-4000-8000-000000000000")])
 def test_an_index_row_edited_in_a_filter_column_is_an_alarm(client, as_user, project, memory_ledger, column, value):
-    """M1: the from/to and ai filters read these columns, so they are compared too."""
+    """The from/to and ai filters read these columns, so they are compared too."""
     [seq] = seed(project["pid"], n=1, occurred_at="2026-10-02T10:00:00+00:00")
     with psycopg.connect(DSN) as conn:
         conn.execute(f"UPDATE ledger.event_index SET {column} = %s WHERE log = %s AND seq = %s",
@@ -191,7 +189,7 @@ def test_an_index_row_edited_in_a_filter_column_is_an_alarm(client, as_user, pro
 
 
 def test_the_verifier_counts_index_rows_that_disagree(project, memory_ledger):
-    """M1: a row hidden by an edited filter column is never shown, so the reconciliation finds it."""
+    """A row hidden by an edited filter column is never shown, so the reconciliation finds it."""
     from platform_service.ledger import verify
 
     [seq] = seed(project["pid"], n=1, occurred_at="2026-10-02T10:00:00+00:00")
@@ -216,7 +214,7 @@ def _rolled_back(memory_ledger, log):
 
 
 def test_a_reanchor_that_cannot_be_recorded_changes_nothing(client, as_user, project, memory_ledger):
-    """M3: record first. With the platform log rolled back too, the project's trust is not reset."""
+    """Record first. With the platform log rolled back too, the project's trust is not reset."""
     from platform_service.ledger.naming import PLATFORM_DB
 
     seed(project["pid"], n=1)

@@ -1,4 +1,4 @@
-"""Tools reaching a connection through a standard protocol (connections plan, revision 3): run keys
+"""Tools reaching a connection through a standard protocol: run keys
 issued to a run, and the AISC-native, OpenAI-compatible, A2A (1.0 and 0.3) and Open Inference
 Protocol endpoints in front of one connection; plus the a2a and oip connection kinds. Runs on the
 throwaway; the system under test is a local stub."""
@@ -81,8 +81,7 @@ def one(dsn, project, sql, params=()):
         return conn.execute(sql, params).fetchone()
 
 
-# ── run keys ────────────────────────────────────────────────────────────────
-
+# Run keys
 def test_run_keys_are_issued_with_every_protocols_endpoint_and_stored_hashed(client, admin, project, stub, dsn):
     name = connection(client, admin, project, stub)
     r = issue(client, project, name)
@@ -139,8 +138,7 @@ def test_every_call_counts_on_its_run_key(client, admin, project, stub, dsn):
     assert uses == 3 and last is not None
 
 
-# ── AISC-native ─────────────────────────────────────────────────────────────
-
+# AISC-native
 def test_aisc_ask_answers_and_passes_the_history(client, admin, project, stub):
     stub.route("POST", "/chat", (200, {"answer": "Up to 5,000 EUR (POL-ELIG-001)."}))
     name = connection(client, admin, project, stub)
@@ -163,8 +161,7 @@ def test_aisc_ask_reports_a_refusal_and_an_upstream_failure(client, admin, proje
     assert r.status_code == 502 and r.json()["error"] == "auth"
 
 
-# ── OpenAI-compatible ───────────────────────────────────────────────────────
-
+# OpenAI-compatible
 def test_openai_chat_completions_maps_messages_to_input_and_history(client, admin, project, stub):
     stub.route("POST", "/chat", (200, {"answer": "No, it is not."}))
     name = connection(client, admin, project, stub)
@@ -210,8 +207,7 @@ def test_openai_models_lists_the_connection(client, admin, project, stub):
     assert d["object"] == "list" and [m["id"] for m in d["data"]] == [name]
 
 
-# ── A2A ─────────────────────────────────────────────────────────────────────
-
+# A2A
 def test_a2a_agent_card_is_a_1_0_card_with_the_jsonrpc_interface(client, admin, project, stub):
     name = connection(client, admin, project, stub)
     key = issue(client, project, name).json()["key"]
@@ -272,8 +268,7 @@ def test_a2a_unknown_methods_bad_params_and_upstream_failures_are_jsonrpc_errors
     assert err["code"] == -32603 and "auth" in err["message"]
 
 
-# ── Open Inference Protocol ─────────────────────────────────────────────────
-
+# Open Inference Protocol
 def test_oip_server_and_model_metadata_and_health(client, admin, project, stub):
     name = connection(client, admin, project, stub)
     key = issue(client, project, name).json()["key"]
@@ -314,8 +309,7 @@ def test_oip_a_bad_request_or_an_upstream_failure_is_an_error_object(client, adm
     assert r.status_code == 502 and "auth" in r.json()["error"]
 
 
-# ── the a2a and oip connection kinds ────────────────────────────────────────
-
+# The a2a and oip connection kinds
 def test_an_a2a_connection_is_saved_and_tested(client, admin, project, stub):
     stub.route("POST", "/rpc", (200, lambda r: {"jsonrpc": "2.0", "id": r["json"]["id"], "result": {
         "message": {"messageId": "m", "role": "ROLE_AGENT", "parts": [{"text": "pong"}]}}}))

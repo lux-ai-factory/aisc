@@ -2,7 +2,7 @@
 
 A key is encrypted with Fernet before it is written and is only decrypted for the
 internal resolve route. `PLATFORM_SECRETS_KEY` is a comma list of Fernet keys, newest
-first (the connectors vault pattern): the newest encrypts, any of them decrypts.
+first: the newest encrypts, any of them decrypts.
 
 Rotation, from `platform/`:
 
@@ -49,9 +49,7 @@ class KeyUnreadable(RuntimeError):
         super().__init__(f"the stored key for {provider} cannot be decrypted; enter it again")
 
 
-# ── environment, read on every call ──────────────────────────────────────────
-
-
+# environment, read on every call
 def ollama_default() -> str:
     return os.environ.get("PLATFORM_OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL
 
@@ -79,9 +77,7 @@ def decrypt(provider: str, token: str) -> str:
         raise KeyUnreadable(provider) from None
 
 
-# ── queries on one project's database ────────────────────────────────────────
-
-
+# queries on one project's database
 def connect(pid) -> psycopg.Connection:
     return psycopg.connect(make_conninfo(db.dsn(), dbname=projectdb.database_name(pid)),
                            row_factory=dict_row)
@@ -190,7 +186,7 @@ def delete_choice(pid, system: str) -> bool:
 
 
 def logged_url(pid, url: str | None) -> str | None:
-    """A base URL as the ledger keeps it (phase 3 review m15): scheme, host and path; a user part or a
+    """A base URL as the ledger keeps it: scheme, host and path; a user part or a
     query (an OpenAI-compatible URL can carry `?api-key=...`) only as its fingerprint."""
     if not url:
         return url
@@ -216,9 +212,7 @@ def resolve_choice(pid, system: str) -> dict | None:
             " WHERE c.system = %s", (system,)).fetchone()
 
 
-# ── rotation ─────────────────────────────────────────────────────────────────
-
-
+# rotation
 def rotate_all(base_dsn: str) -> dict[str, int]:
     """Re-encrypt every stored key of every project under the newest Fernet key.
 
@@ -236,7 +230,7 @@ def rotate_all(base_dsn: str) -> dict[str, int]:
             counts["unreachable"] += 1
             continue
         with conn:
-            # the connection keys (Manage → Connections) are made with the same key list
+            # the connection keys (Manage, Connections) are made with the same key list
             from platform_service import connection_store
             rotated_here, unreadable = connection_store.rotate(conn, multi)
             counts["unreadable"] += unreadable

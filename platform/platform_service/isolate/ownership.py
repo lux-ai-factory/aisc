@@ -1,4 +1,4 @@
-"""Which project each source row belongs to (01-specs.md I12.3..I12.5, open issue 3).
+"""Which project each source row belongs to.
 
 The rows' keys and foreign-key values are read once, in the run's snapshot, and the
 placement is a fixpoint over the foreign-key graph child -> parent:
@@ -7,7 +7,7 @@ placement is a fixpoint over the foreign-key graph child -> parent:
 - owned(P): root rows of P, then every row with a foreign key to an owned(P) row;
 - needed(P): a row (not shared) referenced by a foreign key of a copied(P) row, an
   identifying child (its primary key holds the foreign key's columns) of a copied(P)
-  row, and a link row (rule L) that references a copied(P) row;
+  row, and a link row (see catalog.is_link) that references a copied(P) row;
 - copied(P) = owned(P) + needed(P).
 
 Conflicts are collected, never resolved: a row owned by two projects, a copied row
@@ -189,7 +189,7 @@ def place(graph: RowGraph, tables: dict[str, Table], cls: Classification) -> Pla
     in_some = {(t, k) for p in copied.values() for t, ks in p.items() for k in ks}
     for table in sorted(placeable):
         if table in LIBRARY:
-            continue  # every row of a library table has the library as its target (I12.5)
+            continue  # every row of a library table has the library as its target
         for key in graph.keys.get(table, []):
             node = (table, key)
             if node in in_some or owners.get(node):

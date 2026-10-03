@@ -1,4 +1,4 @@
-"""Targets follow the AI card (targets plan v2, TG2 to TG5, TG9, TG10): the platform reads the
+"""Targets follow the AI card: the platform reads the
 latest card version's graph from qualification with the caller's own token, takes the components
 of its Components block (the nodes that carry qual:componentKey) and keeps one target per key,
 mirrored in the engine. Runs on the throwaway; qualification and the engine are local fakes."""
@@ -78,7 +78,7 @@ def by_key(d):
     return {t["key"]: t for t in d["targets"]}
 
 
-# ── TG2 from the card ───────────────────────────────────────────────────────
+# From the card
 
 def test_tg2_every_keyed_component_of_the_latest_card_becomes_a_target(client, as_user, project, stub):
     engine = EngineFake(stub, project["pid"])
@@ -114,7 +114,7 @@ def test_tg2_the_system_target_is_named_after_the_latest_card(client, as_user, p
     assert engine.named(f"target:{project['pid']}/system")["name"] == "Target · System: MicroCredit Assist Score"
 
 
-# ── TG3 and TG4 a later card ────────────────────────────────────────────────
+# A later card
 
 def test_tg3_a_component_the_latest_card_no_longer_has_stays_flagged(client, as_user, project, stub):
     engine = EngineFake(stub, project["pid"])
@@ -144,7 +144,7 @@ def test_tg4_a_renamed_component_is_the_same_target_renamed(client, as_user, pro
     assert renamed["pid"] == mirror and renamed["name"].startswith("Target · Component: Credit scoring model")
 
 
-# ── TG5 when the card cannot be read ────────────────────────────────────────
+# When the card cannot be read
 
 def test_tg5_no_card_yet_leaves_the_system_target_only(client, as_user, project, stub):
     EngineFake(stub, project["pid"])
@@ -171,7 +171,7 @@ def test_tg5_a_version_without_a_card_adds_no_component(client, as_user, project
     assert set(by_key(sync(client, as_user, project).json())) == {"system"}
 
 
-# ── TG9 and TG10 who sees and who refreshes ─────────────────────────────────
+# Who sees and who refreshes
 
 def member(client, as_user, project, subject, role):
     r = client.post(f"/projects/{project['slug']}/members", json={"subject": subject, "role": role}, headers=as_user(ALICE))

@@ -142,8 +142,7 @@ def rotate(conn: psycopg.Connection, multi) -> tuple[int, int]:
     return rotated, unreadable
 
 
-# ── run keys ─────────────────────────────────────────────────────────────────
-
+# run keys
 def issue_run_key(pid, name: str, key_hash: str, fingerprint: str, ttl_s: int):
     """Store a run key's hash; returns its expiry."""
     with connect(pid) as conn:

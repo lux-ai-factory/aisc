@@ -1,4 +1,4 @@
-"""Checks made before anything is written (01-specs.md I12.6, I13.4).
+"""Checks made before anything is written.
 
 Every function returns a list of refusals (dicts of the report); none writes.
 The head lists are copied here, not imported from the tests.
@@ -29,8 +29,9 @@ OLD_QUALIFICATION = [
 ]
 FORMS_MIGRATIONS = ["20260925090000_forms_are_data", "20260925120000_the_default_form_is_fixed"]
 OLD_ALEMBIC = "7c3e5a9b1d24"
-# The OLD chain on purpose: an old install (the source) was migrated by the engine of before the
-# adapt plan (2026-09-28), whose 0024 dropped the login tables. Today's chain ends at 0021.
+# The old chain on purpose: an install in the shared layout (the source) was migrated by an
+# earlier engine migration chain, whose 0024 dropped the login tables. The current chain ends
+# at 0021.
 OLD_DJANGO_HEAD = "0024_no_login_of_its_own"
 OLD_COMPOSER = [
     "0001_report_composer.sql", "0002_templates_are_looks.sql",
@@ -43,9 +44,9 @@ OLD_CORE = [
 ]
 NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
-# Today's chain (Sean's 0001..0014, ours 0015..0021) ends at the mode marker: only a target
-# with its last migration is at the new head (0020, the project database layout, was 0025 before
-# the adapt plan of 2026-09-28; a target at 0020 without 0021 stopped halfway).
+# The current chain (upstream 0001..0014, the Configurator's 0015..0021) ends at the mode marker:
+# only a target with its last migration is at the new head (a target at 0020, the project
+# database layout, without 0021 stopped halfway).
 NEW_DJANGO = "0021_engine_deployment_marker"
 NEW_COMPOSER = "0001_project_database.sql"
 CONTROLS_HEAD = [
@@ -53,7 +54,7 @@ CONTROLS_HEAD = [
     "20260923210000_answers_carry_the_system_version",
     "20260923210100_dashboard_reads_controls",
 ]
-#: Roles whose sessions must be gone before a copy (I12.6, I13.4).
+#: Roles whose sessions must be gone before a copy.
 SESSION_ROLES = ("platform_rw", "report_ro", "dashboard_ro")
 
 
@@ -87,7 +88,7 @@ def source_has_forms(conn) -> bool:
 
 
 def old_heads(conn) -> list[dict]:
-    """The source is at the pre-isolation heads of this branch (S-D3: forms optional)."""
+    """The source is at the shared-layout heads of this branch (the forms migrations are optional)."""
     out = []
 
     def need(what: str, have: set[str] | None, names) -> None:

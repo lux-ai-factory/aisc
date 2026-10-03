@@ -1,6 +1,5 @@
-"""W1-W6: the witness (I1, I2, I9, I10, T5, T6, T18-T20, T23), called exactly as Caddy calls it
-(06-spike.md G8). The platform verifies the person's token itself and records the request in its
-Postgres before the app sees it; immudb is not on this path (M16). The app never names a person: it
+"""The witness, called exactly as Caddy calls it. The platform verifies the person's token itself and records the request in its
+Postgres before the app sees it; immudb is not on this path. The app never names a person: it
 cites the request id the witness gave."""
 from __future__ import annotations
 
@@ -22,7 +21,7 @@ def ratings(pid):
     return f"/control-objectives/p/{pid}/api/projects/abc123/ratings"
 
 
-# W1: a write with a valid token ---------------------------------------------------------------------
+# A write with a valid token
 
 def test_a_write_is_witnessed_in_postgres_and_numbered(call_witness, gateway_token, project, memory_ledger, mode):
     mode("enforce")
@@ -51,7 +50,7 @@ def test_every_witnessed_request_gets_its_own_id(call_witness, gateway_token, pr
     assert len(ids) == 3
 
 
-# W2: the gateway secret (T18) -----------------------------------------------------------------------
+# The gateway secret
 
 @pytest.mark.parametrize("gateway", [None, "", "guess", "test-gateway-secret-0123456789abcdeX"])
 def test_a_call_without_the_gateway_secret_is_refused_and_leaves_no_record(call_witness, gateway_token, project,
@@ -85,7 +84,7 @@ def test_an_app_name_outside_the_known_apps_is_refused(client, gateway_token, pr
     assert client.get("/authz/witness", headers=headers).status_code == 400
 
 
-# W3: tokens (T5, T20, R1.12, R1.15) -----------------------------------------------------------------
+# Tokens
 
 def _forged(subject, **claims):
     other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -122,13 +121,13 @@ def test_record_mode_lets_a_bad_token_through_and_says_so(call_witness, key, gat
     mode("record")
     r = call_witness(_bad_token(kind, key, gateway_token), "POST", "control_objectives", ratings(project["pid"]))
     assert r.status_code == 200
-    rec = record(r.headers["X-AISC-Request-Id"])                    # an id even now, so Caddy overwrites (G3)
+    rec = record(r.headers["X-AISC-Request-Id"])                    # an id even now, so Caddy overwrites
     assert rec.verified is False and rec.reason and rec.actor_ref is None
 
 
 def test_a_refused_page_load_is_sent_to_sign_in(client, gateway_token, project, mode):
     """forward_auth passes a non-2xx answer through, so the witness itself redirects a document load
-    (spec 3.1; Caddy's handle_response can't see the request's Sec-Fetch-Dest)."""
+    (Caddy's handle_response can't see the request's Sec-Fetch-Dest)."""
     mode("enforce")
     uri = f"/control-objectives/p/{project['pid']}/projects/a1"
     expired = gateway_token(MEMBER, exp=int(time.time()) - 3600)
@@ -177,7 +176,7 @@ def test_a_forged_bearer_next_to_a_good_gateway_token_is_refused(call_witness, g
     assert r.status_code == 401
 
 
-# W4: which app, which project (T6, T23, I9; G1) ------------------------------------------------------
+# Which app, which project
 
 @pytest.mark.parametrize("app, uri_of", [
     ("control_objectives", lambda p: f"/control-objectives/p/{p['pid']}/api/projects/a1/ratings"),
@@ -214,7 +213,7 @@ def test_an_unknown_project_id_goes_to_the_platform_log_and_creates_nothing(witn
     before = provision.assigned()
     rec = record(witnessed(MEMBER, "POST", "control_objectives", ratings(ghost)))
     assert rec.project_pid is None
-    assert provision.assigned() == before                          # no database for a random pid (T23)
+    assert provision.assigned() == before                          # no database for a random pid
 
 
 def test_a_strangers_request_never_enters_the_projects_log(witnessed, project, mode):
@@ -229,7 +228,7 @@ def test_a_request_outside_any_project_goes_to_the_platform_log(witnessed, mode)
     assert rec.project_pid is None and rec.app == "platform"
 
 
-# W5: what is kept of the request (I8, G6, G10) -------------------------------------------------------
+# What is kept of the request
 
 def test_the_query_string_is_kept_only_as_a_keyed_fingerprint(witnessed, project, mode):
     mode("enforce")
@@ -254,7 +253,7 @@ def test_off_mode_does_not_witness(call_witness, gateway_token, project, mode):
     assert r.status_code == 200 and "X-AISC-Request-Id" not in r.headers
 
 
-# W6: the witness never waits on immudb (I6, M16) -----------------------------------------------------
+# The witness never waits on immudb
 
 def test_the_witness_works_while_immudb_is_down(call_witness, gateway_token, project, memory_ledger, mode):
     mode("enforce")
@@ -264,7 +263,7 @@ def test_the_witness_works_while_immudb_is_down(call_witness, gateway_token, pro
 
 
 def test_the_witness_table_has_no_column_for_a_person(platform_dsn):
-    """I10, phase 2 review m8: not only the record object; the table itself can't hold a name."""
+    """Not only the record object; the table itself can't hold a name."""
     import psycopg
 
     with psycopg.connect(platform_dsn) as conn:

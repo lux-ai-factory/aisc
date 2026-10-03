@@ -1,6 +1,5 @@
-"""WP2 (pipeline-2026-09-23): the engine no longer calls the platform for
-versions, so aisc-backend loses the PLATFORM_URL that c0f460e gave it. A text
-check of docker-compose.development.yml; nothing is started."""
+"""The engine does not call the platform for versions, so aisc-backend has no
+PLATFORM_URL. A text check of docker-compose.development.yml; nothing is started."""
 from pathlib import Path
 
 COMPOSE = Path(__file__).resolve().parents[2] / "docker-compose.development.yml"

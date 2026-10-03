@@ -1,7 +1,7 @@
-"""B1-B2: the browser beacon (spec 3.5, I10). Page views and browser-only moments are best effort: the
+"""The browser beacon. Page views and browser-only moments are best effort: the
 beacon request is witnessed, so who sent it is certain; what it says comes from the browser and is
 marked so. They are kept in Postgres with a retention limit, never in immudb. Each site has its own
-beacon route, and the body is text/plain so no CORS preflight is needed (R3.6)."""
+beacon route, and the body is text/plain so no CORS preflight is needed."""
 from __future__ import annotations
 
 import json
@@ -106,10 +106,8 @@ def test_with_the_ledger_off_a_beacon_keeps_nothing(client, as_user, project, mo
     assert r.status_code == 204 and pageviews.recent(project["pid"]) == []
 
 
-# phase 4 review m5, m6, m16 ------------------------------------------------------------------------
-
 def test_the_rate_limit_is_per_person_across_projects(client, as_user, make_project, project, witnessed, mode, settings):
-    """m5: two projects don't double a person's allowance."""
+    """Two projects don't double a person's allowance."""
     mode("enforce")
     other = make_project(OWNER, editors=(MEMBER,))
     codes = []
@@ -124,13 +122,13 @@ def test_the_rate_limit_is_per_person_across_projects(client, as_user, make_proj
 @pytest.mark.parametrize("details", [{"page": {"nested": "x"}}, {"page": "Bearer eyJhbGciOiJSUzI1NiJ9.e30.sig"},
                                      {"page": "/x", "seconds": "x" * 600}])
 def test_a_detail_value_must_be_a_short_scalar_and_no_secret(beacon, project, details):
-    """m6: keys are the registry's, and values are short scalars without anything secret-looking."""
+    """Keys are the registry's, and values are short scalars without anything secret-looking."""
     assert beacon(page(project, action="page.left", details=details)).status_code == 422
 
 
 @pytest.mark.parametrize("who", ["nobody", "someone_else"])
 def test_in_record_mode_a_beacon_still_needs_its_own_witnessed_request(client, as_user, project, witnessed, mode, who):
-    """m16: the middleware refuses only in enforce; the beacon's own check holds in record."""
+    """The middleware refuses only in enforce; the beacon's own check holds in record."""
     mode("record")
     headers = {**as_user(MEMBER), "Content-Type": "text/plain;charset=UTF-8"}
     if who == "someone_else":

@@ -1,13 +1,13 @@
-"""The one door through which the template sets a module role's search_path (isolation 2026-09-25).
+"""The one door through which the template sets a module role's search_path.
 
-03-coding-plan.md P1-D1: platform_rw applies the template but cannot run
+platform_rw applies the template but cannot run
 `ALTER ROLE <another role> IN DATABASE ... SET` on PG14, so templates 0007..0010 call
 aisc_setup.apply_role_setting, a SECURITY DEFINER function owned by the superuser that
 init/project-databases.sql puts into template1. It must run that one statement for the four
 module roles, each with its own schema, in the database it is called in, and refuse anything
 else; only platform_rw may call it. `projectdb.install_setup_function` puts it into a database
 made before template1 had it, and `projectdb.provision_as` provisions as the superuser the way the
-platform would (both for the move tool, WP P2).
+platform would (both for the isolate tool).
 
 Needs PLATFORM_TEST_DATABASE_URL (platform_rw) and PLATFORM_TEST_SUPERUSER_URL on a throwaway.
 """
@@ -146,7 +146,7 @@ def test_install_setup_function_puts_it_into_a_database_made_without_it():
 
 @needs_superuser
 def test_provision_as_the_superuser_makes_what_the_platform_would():
-    """S-D4: a database the move tool provisions is owned by platform_rw, and so is every schema
+    """A database the isolate tool provisions is owned by platform_rw, and so is every schema
     the template makes in it."""
     pid = str(uuid.uuid4())
     name = projectdb.database_name(pid)

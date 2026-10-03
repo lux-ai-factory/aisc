@@ -1,6 +1,6 @@
 """Migration 0003: core.system becomes the saved versions of a project's AI card.
 
-WP2 of pipeline-2026-09-23 (03-specs.md). Each test makes its own scratch
+Each test makes its own scratch
 database (tests/core_scratch.py), so the state before the migration is known.
 """
 import psycopg
@@ -43,11 +43,11 @@ def _applied(dsn):
         return {r[0] for r in conn.execute("select name from core.schema_migration").fetchall()}
 
 
-# ── D1 / A2: the superuser hands core.system to the platform ────────────────
+# The superuser hands core.system to the platform
 
 
 def test_d1_project_databases_sql_gives_core_system_to_platform_rw():
-    """D1: one idempotent line in init/project-databases.sql, in the platform database."""
+    """One idempotent line in init/project-databases.sql, in the platform database."""
     assert "ALTER TABLE core.system OWNER TO platform_rw" in project_databases_platform_part()
 
 
@@ -60,7 +60,7 @@ def test_d1_running_the_platform_part_twice_makes_platform_rw_the_owner():
         assert owner == ("platform_rw",)
 
 
-# ── S2.6 fresh database ─────────────────────────────────────────────────────
+# Fresh database
 
 
 def test_s2_6_on_a_fresh_database_0003_succeeds_and_core_system_is_empty():
@@ -115,7 +115,7 @@ def test_s2_6_grants_on_core_system_are_kept():
                 assert conn.execute("select has_table_privilege(%s, 'core.system', 'REFERENCES')", (role,)).fetchone()[0], role
 
 
-# ── S2.7 the live shape ─────────────────────────────────────────────────────
+# The live shape
 
 
 def _live_shaped(su, rw):
@@ -157,7 +157,7 @@ def test_s2_7_on_the_live_shape_every_pid_is_kept_and_mcas_is_number_1():
         assert _one(rw, "select count(*) from pg_proc where proname = 'ai_system_version_is_frozen'") == (0,)
 
 
-# ── S2.8 the ownership guard ────────────────────────────────────────────────
+# The ownership guard
 
 
 def test_s2_8_without_ownership_0003_fails_with_the_guard_message_and_is_not_recorded():
@@ -173,7 +173,7 @@ def test_s2_8_without_ownership_0003_fails_with_the_guard_message_and_is_not_rec
         assert M0003 in _applied(rw)
 
 
-# ── S2.4 only the latest version changes (the trigger itself) ───────────────
+# Only the latest version changes (the trigger itself)
 
 
 def test_s2_4_the_trigger_refuses_changes_to_an_older_version_and_to_number_or_project():

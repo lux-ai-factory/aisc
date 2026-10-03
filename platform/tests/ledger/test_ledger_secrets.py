@@ -1,4 +1,4 @@
-"""K1-K8, phase 1: the ledger's keys and digests (I8, I10, T22; spec 6.1 `secrets`, 7.5).
+"""The ledger's keys and digests (`platform_service.ledger.secrets`).
 
 Per-project, per-purpose keys are derived with HKDF-SHA256 from versioned master keys
 (`PLATFORM_LEDGER_KEYS="v1:<hex>,v2:<hex>"`, read on every call). Every digest names its version

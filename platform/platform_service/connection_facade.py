@@ -17,8 +17,7 @@ class BadRequest(ValueError):
     """The tool's request cannot be translated; the message says why."""
 
 
-# ── OpenAI-compatible ────────────────────────────────────────────────────────
-
+# OpenAI-compatible
 def openai_to_core(body: dict) -> tuple[str, list]:
     """(input, history) from a chat.completions request: the last user message is the input, the ones
     before it the history."""
@@ -56,8 +55,7 @@ def openai_models(model: str) -> dict:
     return {"object": "list", "data": [{"id": model, "object": "model", "created": 0, "owned_by": "aisc"}]}
 
 
-# ── A2A ──────────────────────────────────────────────────────────────────────
-
+# A2A
 def a2a_card(label: str, rpc_url: str) -> dict:
     return {
         "name": label,
@@ -121,8 +119,7 @@ def jsonrpc_error(rid, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": message}}
 
 
-# ── Open Inference Protocol ──────────────────────────────────────────────────
-
+# Open Inference Protocol
 def oip_server() -> dict:
     return {"name": "aisc-connection", "version": "1", "extensions": []}
 

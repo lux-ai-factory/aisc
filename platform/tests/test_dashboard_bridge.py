@@ -1,8 +1,8 @@
-"""The platform side of the dashboard (WP11 of pipeline-2026-09-23).
+"""The platform side of the dashboard.
 
 A project's database lets the dashboard in (template 0002_dashboard.sql), and
 making or deleting a project tells the dashboard bridge, which makes or removes
-that project's datasets, connection, role and dashboard (S11.5). The bridge is
+that project's datasets, connection, role and dashboard. The bridge is
 a stub HTTP server here; a bridge that is down never stops the platform.
 """
 import http.server
@@ -82,9 +82,7 @@ def _delete(client, as_user, project):
                           headers=as_user("root", roles=("admin",)))
 
 
-# ── template 0002_dashboard.sql ─────────────────────────────────────────────
-
-
+# Template 0002_dashboard.sql
 def test_wp11_the_dashboard_may_connect_to_a_project_database_and_use_its_controls_schema(
         client, as_user, unique, dsn, bridge):
     created = _make(client, as_user, unique)
@@ -103,9 +101,7 @@ def test_wp11_the_dashboard_still_writes_nothing_in_a_project_database(client, a
         assert not conn.execute("select has_schema_privilege('controls', 'CREATE')").fetchone()[0]
 
 
-# ── the bridge calls (S11.5, platform side) ────────────────────────────────
-
-
+# The bridge calls, platform side
 def test_s11_5_making_a_project_registers_it_with_the_dashboard_bridge(client, as_user, unique, bridge):
     created = _make(client, as_user, unique)
     posts = [c for c in bridge.calls if c[0] == "POST"]

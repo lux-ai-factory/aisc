@@ -1,8 +1,8 @@
-"""L3: the event registry (I2, I7, I8, T13).
+"""The event registry.
 
 Every event the ledger accepts is in the registry; the registry says which app may emit it, what it
 is about, which witnessed requests may cause it (`caused_by`, which may name another app than the
-emitter, spec 4.1), where the code handles it (`routes`, by file and function), who may act, which
+emitter), where the code handles it (`routes`, by file and function), who may act, which
 details are allowed. `check(event, emitter)` lists the problems of one event; an event with problems
 is recorded as `ledger.rejected`, never trusted.
 """
@@ -50,7 +50,7 @@ REQUIRED = [
     "objective.key.set", "assessment.profile.switched", "objective_set.created", "objective_set.published",
     "objective_profile.created", "objective_profile.version_saved",
     # step 3: only the local installs. The catalogue is hosted elsewhere and never passes this gateway,
-    # so its tool and ingest events belong in its own log (spec 3.1, R1.10).
+    # so its tool and ingest events belong in its own log.
     "plugin.installed", "control.installed",
     # step 4
     "evidence.links.saved", "engine.evaluation.run_requested", "engine.evaluation.status_changed",
@@ -72,7 +72,7 @@ def test_the_registry_holds_every_event_the_user_asked_for(name):
 
 
 def test_the_registry_imports_only_the_standard_library():
-    """The repo-level coverage test loads it with no platform dependencies installed (R3.7)."""
+    """The repo-level coverage test loads it with no platform dependencies installed."""
     platform = Path(__file__).resolve().parents[2]
     code = ("import sys; sys.path.insert(0, %r); import platform_service.ledger.registry, "
             "platform_service.ledger.settings, platform_service.ledger.canonical, platform_service.ledger.naming"
@@ -195,13 +195,13 @@ def test_an_app_setting_a_platform_field_is_a_problem(key):
 
 @pytest.mark.parametrize("field", ["content_sha256", "before_sha256", "after_sha256", "recorded_at", "seq"])
 def test_an_app_sending_what_only_the_platform_computes_is_a_problem(field):
-    """Digests are keyed with keys only the platform holds (second review N4)."""
+    """Digests are keyed with keys only the platform holds."""
     assert f"platform_field:{field}" in check(_event(**{field: "x"}), emitter=_emitter())
 
 
 def test_content_may_carry_its_own_authors():
     """A frozen review legitimately says who reviewed it; only details and top-level fields are actor
-    fields (R4.3)."""
+    fields."""
     name = next(n for n, a in REGISTRY.items() if a.content_required)
     event = _event(name, content={"reviewed_by": "someone"})
     assert "actor_supplied" not in check(event, emitter=_emitter(name))
@@ -228,7 +228,7 @@ def test_an_action_that_freezes_content_needs_it():
 
 
 def test_override_merges_over_the_real_registry_and_restores_it():
-    """Tests declare their own actions; every real action stays known meanwhile (third review M2)."""
+    """Tests declare their own actions; every real action stays known meanwhile."""
     from platform_service.ledger import registry
     from platform_service.ledger.registry import Action
 
@@ -242,7 +242,7 @@ def test_override_merges_over_the_real_registry_and_restores_it():
 
 
 def test_browser_reported_actions_have_their_own_origin():
-    """`page.*` come through the beacon, never through an app's `ledger.emit` (fourth review 2)."""
+    """`page.*` come through the beacon, never through an app's `ledger.emit`."""
     assert {n for n, a in REGISTRY.items() if a.origin == "browser"} >= {"page.opened", "page.left"}
     assert all(a.origin != "app" for n, a in REGISTRY.items() if n.startswith(("page.", "request.", "ledger.")))
 
@@ -250,7 +250,7 @@ def test_browser_reported_actions_have_their_own_origin():
 @pytest.mark.parametrize("bad", [{"details": "x"}, {"details": ["a"]}, {"action": ["risk.rated"]},
                                  {"action": {"a": 1}}, {"content": 5}])
 def test_a_malformed_event_is_a_problem_never_a_crash(bad):
-    """Review minor 8: check() answers for anything an app sends."""
+    """Check() answers for anything an app sends."""
     event = {**_event(), **bad}
     problems = check(event, emitter=_emitter())
     assert problems

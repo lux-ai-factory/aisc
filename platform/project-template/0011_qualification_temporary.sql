@@ -1,7 +1,7 @@
 -- qualification may make temporary tables in this project's database.
 --
 -- 0001 revokes every database right from PUBLIC, TEMPORARY included, and the module templates
--- give back CONNECT only. qualification's two-level forms migration (20260925150000) keeps its
+-- give back CONNECT only. qualification's migration 20260925150000 (two-level forms) keeps its
 -- bookkeeping in a temporary table (ON COMMIT DROP), so its role needs TEMPORARY here. A
 -- temporary table lives in its session only: no other role sees it, and nothing is kept.
 DO $grant$

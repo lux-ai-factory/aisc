@@ -1,4 +1,4 @@
-"""PR1-PR8: minimisation and keys (I8, I10, T22, D9; spec 6.1, 7.5; second review N4, N5).
+"""Minimisation and keys.
 
 - immudb holds an `actor_ref`, never a subject or a name. The reference is **random**, one per
   (project, person), so no key and no list of users can recompute it: deleting the mapping row
@@ -7,7 +7,7 @@
 - Keys are derived per project and per purpose (HKDF) from versioned master keys
   (`PLATFORM_LEDGER_KEYS="v1:...,v2:..."`). Every digest says its version (`hmac:v1:...`), new ones use
   the newest, and old ones keep checking after a rotation.
-- Apps send plain content; the platform computes every keyed digest (N4). An auditor gets the
+- Apps send plain content; the platform computes every keyed digest. An auditor gets the
   project's own content key in the export, never another project's, never the master.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ def entries_of(pid):
     return entries(ledger.current(), log_of(pid))
 
 
-# PR1-PR4: the actor reference -----------------------------------------------------------------------
+# The actor reference
 
 def test_immudb_never_holds_the_subject_or_the_name(project, rate):
     rate()
@@ -84,7 +84,7 @@ def test_the_same_person_keeps_one_reference_in_a_project(rate):
 @pytest.mark.parametrize("scope", ["project", "platform"])
 def test_first_sightings_at_once_make_one_reference(project, scope):
     """Unique on (scope, sub): two requests at the same moment can't mint two, also in the platform's
-    own scope, where a NULL project would not be unique (n-g, fourth review 3)."""
+    own scope, where a NULL project would not be unique."""
     import threading
     import uuid as _uuid
 
@@ -138,7 +138,7 @@ def test_erasure_is_real(project, rate):
     assert rate(n=2).actor_ref != e.actor_ref                        # a new link, unrelated to the old one
 
 
-# PR5-PR6: digests are the platform's (N4) -------------------------------------------------------------
+# Digests are the platform's
 
 def test_the_platform_computes_the_content_digest(project, rate):
     e = rate()
@@ -149,7 +149,7 @@ def test_the_platform_computes_the_content_digest(project, rate):
 
 def test_before_and_after_states_are_digested_by_the_platform_under_a_key_never_exported(project, rate):
     """The chain check needs only equality, and the content key goes to auditors: states use their own
-    `state` key, so a rating history can't be brute-forced from an export (third review n-e)."""
+    `state` key, so a rating history can't be brute-forced from an export."""
     e = rate(before={"impact": 3}, after={"impact": 5})
     assert e.before_sha256 == secrets.state_digest(project["pid"], {"impact": 3})
     assert e.after_sha256 == secrets.state_digest(project["pid"], {"impact": 5})
@@ -168,7 +168,7 @@ def test_the_same_content_digests_differently_in_two_projects(project, make_proj
     assert secrets.content_digest(project["pid"], {"a": 1}) != secrets.content_digest(other["pid"], {"a": 1})
 
 
-# PR7: rotation (T22) -------------------------------------------------------------------------------
+# Rotation
 
 def test_after_a_rotation_new_digests_use_the_new_key_and_old_ones_still_check(project, rate, monkeypatch):
     old = rate(n=1)
@@ -186,7 +186,7 @@ def test_a_digest_of_a_retired_version_no_longer_checks(project, rate, monkeypat
     assert not secrets.check(project["pid"], "content", canonical({"answer": "yes"}), old.content_sha256)
 
 
-# PR8: the auditor's key ------------------------------------------------------------------------------
+# The auditor's key
 
 def test_the_export_carries_only_this_projects_content_key(client, as_user, project, make_project, rate, tmp_path,
                                                            memory_ledger):
@@ -214,7 +214,7 @@ def test_the_export_carries_only_this_projects_content_key(client, as_user, proj
     assert tampered.returncode != 0
 
 
-# S8 (decided 2026-10-02): the person mapping is beyond the inspector --------------------------------
+# The person mapping is beyond the inspector
 
 def test_the_person_mapping_lives_where_the_inspector_cannot_connect():
     """pgAdmin's role reads everything it can connect to (pg_read_all_data), so the only table naming

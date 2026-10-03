@@ -1,7 +1,7 @@
 -- Card versions are rows of core.system, numbered per project.
 --
--- The decided model (pipeline 2026-09-23): a project has one AI system, and what is
--- versioned is its AI card, the system's description. Each saved card version is one
+-- A project has one AI system, and what is versioned is its AI card, the system's
+-- description. Each saved card version is one
 -- row of core.system, numbered 1, 2, ... per project; only the latest version may
 -- change. The freeze model of 0002 (core.ai_system, core.ai_system_version, drafts
 -- and frozen versions) goes: its versions are carried back into core.system under the
@@ -10,12 +10,11 @@
 -- Runs as platform_rw, which must own core.system: init/project-databases.sql hands
 -- it over as the superuser.
 
--- Isolation 2026-09-25 (03-coding-plan.md P1-D2): a volume made after the isolation has no
--- core.system (card versions live in each project database, project.system). Then everything
--- about core.system is skipped and only step 6 runs; where core.system exists (every volume that
--- already applied this file, and the pre-isolation layout the tests rebuild) the statements are
--- the same as before, in one block. plpgsql plans lazily, so the block may name tables that are
--- absent.
+-- A volume made with one database per project has no core.system (card versions live in each
+-- project database, in project.system). Then everything about core.system is skipped and only
+-- step 6 runs. Where core.system exists (every volume that already applied this file, and the
+-- shared-database layout the tests rebuild) the statements run unchanged, in one block. plpgsql
+-- plans lazily, so the block may name tables that are absent.
 DO $m$
 BEGIN
   IF to_regclass('core.system') IS NULL THEN

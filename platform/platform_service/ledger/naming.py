@@ -1,4 +1,4 @@
-"""Ledger database names (spec 6.1, 7.1). A name never carries a pid: the operator's pool makes
+"""Ledger database names. A name never carries a pid: the operator's pool makes
 databases before projects exist, and immudb can't rename one, so a project's log is found by lookup
 (`provision.database_for`). Every name is checked before it reaches immudb."""
 from __future__ import annotations

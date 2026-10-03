@@ -1,13 +1,13 @@
--- Step 4, the engine: its schema in this project's database (isolation 2026-09-25, 01-specs.md I1.2, I2.1).
+-- The engine: its schema in this project's database.
 --
--- The schema is made here and owned by platform_rw (D10); the tables are made only by the module's
+-- The schema is made here and owned by platform_rw; the tables are made only by the module's
 -- own migrations, as engine_rw, which may connect, use and create in this schema and nowhere else.
--- The readers get USAGE only: SELECT on the tables comes from the module's migrations (I2.6).
+-- The readers get USAGE only: SELECT on the tables comes from the module's migrations.
 --
 -- The search_path setting: platform_rw cannot run ALTER ROLE <another role> IN DATABASE on PG14
 -- (it needs SUPERUSER or CREATEROLE), so the statement goes through aisc_setup.apply_role_setting,
 -- a SECURITY DEFINER function that runs only this exact kind of statement for this database
--- (init/project-databases.sql puts it in template1; isolate provision into an older database).
+-- (init/project-databases.sql puts it in template1; `isolate provision` adds it to an older database).
 DO $grant$
 BEGIN
   IF to_regproc('aisc_setup.apply_role_setting') IS NULL THEN

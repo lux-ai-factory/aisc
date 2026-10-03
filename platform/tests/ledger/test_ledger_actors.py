@@ -1,5 +1,5 @@
-"""AC1-AC6, phase 2: the person mapping on its own (spec 6.1 `actors`, 7.5; I10, S8; phase 2 review
-m12). The privacy suite checks the same rules through events (phase 3); these call `actors` directly."""
+"""The person mapping on its own. The privacy suite checks the same rules through events; these
+call `actors` directly."""
 from __future__ import annotations
 
 import threading
@@ -66,7 +66,7 @@ def test_first_sightings_at_once_make_one_reference(platform_dsn):
 
 
 def test_the_mapping_reuses_its_connections(platform_dsn):
-    """Phase 2 review m3: the witness asks for a reference on every request; no fresh login each time."""
+    """The witness asks for a reference on every request without a fresh database login each time."""
     import psycopg
 
     from tests.conftest import DSN
@@ -85,7 +85,7 @@ def test_the_mapping_reuses_its_connections(platform_dsn):
 
 
 def test_an_unreachable_mapping_fails_fast_and_leaks_nothing(platform_dsn, monkeypatch):
-    """Phase 2 re-review n1: a failed first use closes its pool, and the next call doesn't wait 30 s."""
+    """A failed first use closes its pool, and the next call does not wait 30 s."""
     import time
 
     monkeypatch.setenv("PLATFORM_DATABASE_URL", "postgresql://platform_rw:x@127.0.0.1:1/platform")

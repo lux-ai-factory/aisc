@@ -3,7 +3,7 @@
 No database and no FastAPI here: `app.py` checks the caller and the project, reads the
 stored key through `llm_store`, then calls `list_models`.
 
-Rules (docs/superpowers/pipeline-2026-09-24-llm-keys/01-specs.md, S2.15 to S2.19):
+Rules:
 - A hosted provider is only ever called at its constant URL in `MODELS_URL`; only
   `ollama` and `compatible` use a base URL the admin stored.
 - Redirects are never followed, so a key cannot travel to another host.
@@ -52,7 +52,7 @@ PROVIDERS: dict[str, Provider] = {
 }
 
 #: Where each hosted provider lists its models. Constants on purpose: no environment
-#: variable can send a stored key somewhere else (S2.18).
+#: variable can send a stored key somewhere else.
 MODELS_URL: dict[str, str] = {
     "openai": "https://api.openai.com/v1/models",
     "anthropic": "https://api.anthropic.com/v1/models",
@@ -120,9 +120,7 @@ def list_models(provider: str, api_key: str | None = None, base_url: str | None 
     return {"models": _clean(ids), "error": None}
 
 
-# ── one lister per kind ─────────────────────────────────────────────────────
-
-
+# one lister per kind
 def _fetch_ids(client, provider, entry, api_key, base_url) -> list:
     kind = entry.lister
     if kind == "openai":
@@ -193,9 +191,7 @@ def _google(client, label, url, api_key) -> list:
     return ids
 
 
-# ── one bounded GET ─────────────────────────────────────────────────────────
-
-
+# one bounded GET
 def _get_json(client, label, url, headers, params=None):
     """GET one page and decode it, within the size bound; any status but 2xx is an error."""
     not_a_list = ListingFailed(f"{label} did not send a model list")

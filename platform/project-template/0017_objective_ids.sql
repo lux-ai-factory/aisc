@@ -1,7 +1,7 @@
--- Objective ids O1 ... O50 (2026-10-01): the control objectives are numbered in catalogue order
--- instead of R1.1 ... R11.4. A stored link is renamed by the table below (a copy of the
--- control-objectives service's data/objective_id_renames.csv); an id the table does not know is left
--- as it is. From here on only an O id is taken: the check is NOT VALID so such a left-over row stays.
+-- Objective ids O1 ... O50: the control objectives are numbered in catalogue order, replacing
+-- R1.1 ... R11.4. A stored link is renamed by the table below (a copy of the control-objectives
+-- service's data/objective_id_renames.csv); an id the table does not know is left as it is. Only
+-- an O id is accepted afterwards: the check is NOT VALID so such a left-over row stays.
 -- Safe to run again.
 ALTER TABLE evidence.link DROP CONSTRAINT IF EXISTS link_objective_id_check;
 

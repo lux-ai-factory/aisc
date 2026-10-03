@@ -1,8 +1,8 @@
-"""The relay worker (spec 7.2; phase 4 review M4): what moves witness records and events into the logs.
+"""The relay worker: what moves witness records and events into the logs.
 
 One per platform process, started with the app. Each pass relays every log (the per-log advisory lock
-keeps several processes safe together, as the phase 3 drill shows) and, once a day, deletes page views
-older than PAGE_VIEW_RETENTION (D10). Nothing runs while LEDGER_MODE is off; turning it on needs no
+keeps several processes safe together) and, once a day, deletes page views older than
+PAGE_VIEW_RETENTION. Nothing runs while LEDGER_MODE is off; turning it on needs no
 restart. A failing pass is logged and the next one runs: the worker never dies of one error.
 """
 from __future__ import annotations

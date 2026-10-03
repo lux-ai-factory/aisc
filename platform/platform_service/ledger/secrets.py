@@ -1,4 +1,4 @@
-"""The ledger's keys and digests (spec 6.1 `secrets`, 7.5; I8, I10, T22).
+"""The ledger's keys and digests.
 
 Master keys are versioned and kept for ever: `PLATFORM_LEDGER_KEYS="v1:<64 hex>,v2:<64 hex>"`, read
 on every call so a new version needs no code change (scripts/secrets.sh --add-ledger-key adds one).
@@ -101,10 +101,10 @@ def content_digest(pid, content) -> str:
 
 
 def state_digest(pid, state) -> str:
-    """Before/after states, under a key that is never exported (spec 6.1, review n-e)."""
+    """Before/after states, under a key that is never exported."""
     return digest(pid, "state", canonical(state))
 
 
 def fingerprint(pid, value) -> str:
-    """A secret's fingerprint: never the value (I8)."""
+    """A secret's fingerprint: never the value."""
     return digest(pid, "fingerprint", value)

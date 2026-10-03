@@ -1,6 +1,6 @@
-"""The operator's pool of ledger databases (spec 7.1; spike M1-M7).
+"""The operator's pool of ledger databases.
 
-Only the immudb superuser can create databases and grant on them (M1-M5), and the platform never
+Only the immudb superuser can create databases and grant on them, and the platform never
 holds it. So an operator runs `scripts/ledger-pool.sh`, which calls `create_databases` with the
 superuser's password and `register` to list them in `ledger.pool`; projects then take them
 (`provision.assign`).
@@ -13,7 +13,7 @@ from platform_service.ledger.naming import is_ledger_name
 def create_databases(url: str, *, admin_user: str = "immudb", admin_password: str, names: list[str],
                      grantee: str, grantee_password: str, login_database: str = "defaultdb") -> list[str]:
     """Create `names` in immudb and give `grantee` read-write on each, creating the user if needed.
-    PermissionError when `admin_user` may not (anyone but the superuser, M1)."""
+    PermissionError when `admin_user` may not (anyone but the superuser)."""
     from immudb import ImmudbClient, constants
     from immudb.datatypesv2 import DatabaseSettingsV2
 
@@ -34,7 +34,7 @@ def create_databases(url: str, *, admin_user: str = "immudb", admin_password: st
         _refused(exc, admin_user)
         raise
     # An existing user keeps its own password: check the platform can log in with the one it holds,
-    # or the pool would be unusable (found by the phase-1 drill).
+    # or the pool would be unusable.
     try:
         ImmudbClient(url).login(grantee, grantee_password, database=names[0].encode())
     except Exception as exc:

@@ -1,4 +1,4 @@
-"""F1-F3: no event is lost while a part is down (I6, spec 5.3, R5.2). The gateway half (platform down:
+"""No event is lost while a part is down. The gateway half (platform down:
 witnessed requests fail, others work) is the real-Caddy suite, scripts/tests/test_ledger_gateway.py."""
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def test_an_internal_event_is_queued_when_immudb_is_down(client, project, witnes
 
 
 def test_in_enforce_an_app_refuses_a_write_with_no_request_id(client, as_user, project, mode):
-    """Defence in depth (spec 5.3): a write that reached an app without passing Caddy changes nothing."""
+    """Defence in depth: a write that reached an app without passing Caddy changes nothing."""
     mode("enforce")
     r = client.put(f"/projects/{project['slug']}/evidence", json={"links": []}, headers=as_user(MEMBER))
     assert r.status_code == 401

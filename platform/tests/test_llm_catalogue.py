@@ -1,9 +1,9 @@
-"""The provider catalogue and the live model listers (01-specs.md S2.3, S2.15 to S2.19, S5.3, S5.6, S5.8).
+"""The provider catalogue and the live model listers.
 
 No database. Every provider call goes to a fake server on 127.0.0.1; the hosted URLs
-are constants in `llm_catalogue.MODELS_URL`, monkeypatched per test (S2.18).
+are constants in `llm_catalogue.MODELS_URL`, monkeypatched per test.
 
-Interface pinned by these tests (stage 2 decision, see 02-tests.md):
+Interface pinned by these tests:
   llm_catalogue.PROVIDERS[id]    -> entry with label, key_required, base_url_editable, lister
   llm_catalogue.MODELS_URL[id]   -> the listing URL of each hosted provider (not ollama/compatible)
   llm_catalogue.list_models(provider, api_key=None, base_url=None) -> {"models": [...], "error": str|None}
@@ -24,7 +24,7 @@ IDS = {"anthropic", "compatible", "deepseek", "google", "groq", "meta", "mistral
        "ollama", "openai", "openrouter", "qwen", "together", "xai"}
 KEYLESS = {"ollama", "compatible"}
 
-#: S2.19, the listing URL of each hosted provider
+#: The listing URL of each hosted provider
 REAL_URLS = {
     "openai": "https://api.openai.com/v1/models",
     "anthropic": "https://api.anthropic.com/v1/models",
@@ -64,7 +64,7 @@ def point(cat, monkeypatch, provider, fake, path="/v1/models"):
     return path
 
 
-# ── S2.3 the catalogue ───────────────────────────────────────────────────────
+# The catalogue
 
 
 def test_s2_3_the_catalogue_is_exactly_the_agents_thirteen_providers(cat):
@@ -90,7 +90,7 @@ def test_s2_18_no_env_variable_overrides_a_hosted_url(cat, monkeypatch, fake):
     assert cat.MODELS_URL["openai"] == REAL_URLS["openai"]
 
 
-# ── S2.19 the request each lister makes ──────────────────────────────────────
+# The request each lister makes
 
 
 @pytest.mark.parametrize("provider", BEARER_DATA)
@@ -204,7 +204,7 @@ def test_s2_19_compatible_without_a_key_sends_no_authorization_and_accepts_a_bar
     assert fake.seen("/v1/models")[0].header("Authorization") is None
 
 
-# ── S2.17 bounds ─────────────────────────────────────────────────────────────
+# Bounds
 
 
 def test_s2_17_ids_are_deduplicated_sorted_and_bad_ones_dropped(cat, monkeypatch, fake):
@@ -270,7 +270,7 @@ def test_s2_17_s2_16_a_slow_provider_times_out_with_a_fixed_message(cat, monkeyp
                             f"{label(cat, 'openai')} did not answer within 1.0 s"}
 
 
-# ── S2.16 fixed error messages, bodies never echoed ──────────────────────────
+# Fixed error messages, bodies never echoed
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -308,7 +308,7 @@ def test_s2_16_not_json_or_the_wrong_shape_is_not_a_model_list(cat, monkeypatch,
     assert got == {"models": [], "error": f"{label(cat, 'openai')} did not send a model list"}
 
 
-# ── S5.3 no key in logs, S5.6 hosted keys go only to their constant URL, S5.8 SSRF bound ──
+# No key in logs; hosted keys go only to their constant URL; the SSRF bound
 
 
 def test_s5_3_listing_never_logs_the_key_on_success_or_any_error(cat, monkeypatch, fake, caplog):

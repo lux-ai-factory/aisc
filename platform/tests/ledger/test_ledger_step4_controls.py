@@ -1,4 +1,4 @@
-"""K4: the controls app's events, in the shapes its actions send (apps/controls/src/app/**/actions.ts),
+"""The controls app's events, in the shapes its actions send (apps/controls/src/app/**/actions.ts),
 are accepted by the relay against the REAL registry, each citing the witnessed request of the page the
 action is posted from, as controls_rw. A draft's save and its close are one server action (same_action)."""
 from __future__ import annotations

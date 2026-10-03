@@ -1,7 +1,6 @@
 """python -m platform_service.isolate: the command line and the run of each subcommand.
 
-The interface is pinned by platform/tests/test_isolate.py (its docstring); the rules by
-01-specs.md section 12 and 03-coding-plan.md WP P2.
+platform/tests/test_isolate.py describes the interface in its docstring and pins it.
 """
 from __future__ import annotations
 
@@ -86,7 +85,7 @@ class Run:
         self.rep = REP.new(args.subcommand, bool(args.dry_run))
         self.refusals = self.rep["refusals"]
 
-    # ── common part: snapshot, catalog, classification, placement ──────────
+    # common part: snapshot, catalog, classification, placement
     def open_source(self) -> None:
         self.src = _connect(self.source_dsn, read_only=True, snapshot=True)
         self.src.execute("SELECT 1")
@@ -138,7 +137,7 @@ class Run:
         for name, lib in sorted(LIBRARY.items()):
             src = self.tables.get(name)
             if src is None:
-                continue  # S-D3: the forms tables may be absent
+                continue  # the forms tables may be absent
             tgt = ltables.get(lib)
             refusals += P.column_coverage(src, tgt, lib, None)
             if tgt is not None:
@@ -158,10 +157,10 @@ class Run:
     def library_dsn(self) -> str:
         return self.su
 
-    # ── plan and copy ────────────────────────────────────────────────────────
+    # plan and copy
     def check_targets(self, *, need_databases: bool) -> dict[str, tuple[list[C.Map], C.Outcome]]:
         """Read-only pass over every selected target: heads, templates, coverage, and what a copy
-        would do (I12.6, I12.8). Nothing is committed anywhere."""
+        would do. Nothing is committed anywhere."""
         plans = {}
         for pid in self.selected:
             entry = self.project_entry(pid)
@@ -234,7 +233,7 @@ class Run:
         self.check_sessions()
         if self.refusals or not copying:
             return 1 if self.refusals else 0
-        for pid in self.selected:  # pid order; stop at the first failed project (G8, D15)
+        for pid in self.selected:  # pid order; stop at the first failed project
             maps, _ = plans[pid]
             entry = self.project_entry(pid)
             tgt = _connect(self.target_dsn(pid))
@@ -286,7 +285,7 @@ class Run:
         return 0
 
     def not_attempted(self, failed: str) -> None:
-        """G8: after a failed project nothing later runs; the report says so."""
+        """After a failed project nothing later runs; the report says so."""
         for pid in self.selected:
             if pid > failed:
                 self.project_entry(pid)["status"] = "planned"
@@ -295,7 +294,7 @@ class Run:
             self.rep["library"]["status"] = "planned"
             self.rep["library"]["note"] = "not attempted"
 
-    # ── verify, report ───────────────────────────────────────────────────────
+    # verify, report
     def verify(self, *, failing: bool = True) -> int:
         self.open_source()
         verified: dict[str, set] = {}
@@ -348,7 +347,7 @@ class Run:
         return 1 if self.refusals else 0
 
     def coverage(self, verified: dict[str, set]) -> list[dict]:
-        """I12.13: every source row is in a target (verified equal), unowned, or bookkeeping."""
+        """Every source row is in a target (verified equal), unowned, or bookkeeping."""
         out = []
         unowned: dict[str, set] = {}
         for u in self.placement.unowned:
@@ -390,7 +389,7 @@ def provision(a, su: str, rep: dict) -> int:
             code = 1
             continue
         name = projectdb.database_name(pid)
-        if name in dbs:  # a database made before the setup function existed (S-D4)
+        if name in dbs:  # a database made before the setup function existed
             with psycopg.connect(make_conninfo(su, dbname=name)) as t:
                 if projectdb.install_setup_function(t, su):
                     log.info("project %s: setup function installed", pid)

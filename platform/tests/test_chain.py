@@ -1,9 +1,9 @@
-"""The platform's steps of the pipeline chain (scripts/test-pipeline-chain.sh, 03 WP12).
+"""The platform's steps of the pipeline chain (scripts/test-pipeline-chain.sh).
 
 Skipped unless CHAIN_JSON names the chain's shared state. Step 1 makes the project
 and card version 1; step 6 saves version 2. Both go through the API, as a user would.
 The project's slug starts `chain-`, never `pytest-`: the suite's cleanup deletes
-those at the end of every session (F14a).
+those at the end of every session.
 """
 import json
 import os

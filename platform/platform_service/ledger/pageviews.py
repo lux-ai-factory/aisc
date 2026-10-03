@@ -1,4 +1,4 @@
-"""Page views and browser-reported moments (spec 3.5; D10, I10): kept in Postgres, never in immudb, for
+"""Page views and browser-reported moments: kept in Postgres, never in immudb, for
 PAGE_VIEW_RETENTION. Who sent the beacon is certain (its request is witnessed); what it says is the
 browser's word, so every row reads `reported_by=browser`."""
 from __future__ import annotations
@@ -35,7 +35,7 @@ def recent(project_pid: str, limit: int = 100) -> list:
 
 
 def expire(older_than: timedelta) -> int:
-    """Delete what is older than `older_than` (D10's retention, run daily)."""
+    """Delete what is older than `older_than` (the retention, run daily)."""
     from platform_service import db
 
     with db.pool().connection() as conn:

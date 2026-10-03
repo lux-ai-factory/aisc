@@ -1,10 +1,9 @@
-"""The per-project LLM routes and the internal resolve route (01-specs.md section 2 and 5).
+"""The per-project LLM routes and the internal resolve route.
 
-Proves S2.1, S2.2, S2.4 to S2.10, S2.11 (API side), S2.12, S2.14, S2.15, S2.20 to S2.26,
-S5.1, S5.3 (API), S5.4, S5.5 (token, forwarded), S5.7. Runs against the throwaway
+Runs against the throwaway
 database (PLATFORM_TEST_DATABASE_URL) with the `client`/`as_user` fixtures; a platform
 admin is `roles=("admin",)`. Provider listing calls go to a fake server: the hosted
-URL constants in `llm_catalogue.MODELS_URL` are monkeypatched (S2.18).
+URL constants in `llm_catalogue.MODELS_URL` are monkeypatched.
 """
 from __future__ import annotations
 
@@ -135,7 +134,7 @@ def call(client, method, path, body, headers):
     return client.request(method, path, json=body, headers=headers)
 
 
-# ── S2.1 admin only, S2.2 signed in ──────────────────────────────────────────
+# Admin only; signed in
 
 
 def test_s2_1_a_member_who_is_not_an_admin_gets_403_on_every_llm_route(client, as_user, project):
@@ -172,7 +171,7 @@ def test_s2_2_an_unauthenticated_call_is_401(client, project):
         assert r.status_code == 401, (method, path, r.status_code)
 
 
-# ── S2.4 and S2.5 the catalogue as the page sees it ──────────────────────────
+# The catalogue as the page sees it
 
 
 def test_s2_4_the_listing_has_every_provider_and_both_systems(client, admin, project):
@@ -216,7 +215,7 @@ def test_s2_5_ollama_default_comes_from_platform_ollama_base_url(client, admin, 
     assert provider_entry(client, project, admin, "ollama")["base_url"] == "http://10.1.2.3:11434"
 
 
-# ── S2.7 to S2.10 keys and endpoints ─────────────────────────────────────────
+# Keys and endpoints
 
 
 def test_s2_7_saving_a_key_answers_the_provider_entry(client, admin, project):
@@ -325,7 +324,7 @@ def test_s2_10_deleting_a_key_a_system_uses_is_409_naming_it(client, admin, proj
     assert len(rows(dsn, project)) == 1
 
 
-# ── S2.11 and S2.12 the Fernet key ───────────────────────────────────────────
+# The Fernet key
 
 
 def test_s2_11_without_platform_secrets_key_a_key_write_is_503(client, admin, project, monkeypatch, dsn):
@@ -372,7 +371,7 @@ def test_s2_12_an_unreadable_key_is_reported_by_models_and_resolve(client, admin
     assert r.json()["detail"] == message
 
 
-# ── S2.14 and S5.7 request validation never echoes, writes are JSON only ─────
+# Request validation never echoes, writes are JSON only
 
 
 def _no_echo(response, value):
@@ -425,7 +424,7 @@ def test_s5_7_the_platform_has_no_cors_middleware(client):
     assert "access-control-allow-origin" not in {k.lower() for k in r.headers}
 
 
-# ── S2.15 the models route ───────────────────────────────────────────────────
+# The models route
 
 
 def test_s2_15_models_are_listed_live_with_the_stored_key(client, admin, project, fake, cat, monkeypatch):
@@ -467,7 +466,7 @@ def test_s2_15_ollama_lists_from_the_stored_base_url(client, admin, project, fak
     assert r.json() == {"models": ["gemma3"], "error": None}
 
 
-# ── S2.20 and S2.21 the per-system choice ────────────────────────────────────
+# The per-system choice
 
 
 def test_s2_20_a_choice_is_saved_and_shown(client, admin, project, fake, cat, monkeypatch):
@@ -476,7 +475,7 @@ def test_s2_20_a_choice_is_saved_and_shown(client, admin, project, fake, cat, mo
     r = put_system(client, project, "card_agent", admin, "openai", "a-model-no-list-mentions")
     assert r.status_code == 200, r.text
     assert r.json() == {"system": "card_agent", "provider": "openai", "model": "a-model-no-list-mentions"}
-    assert fake.requests == []  # D6: the model is not checked against the live list
+    assert fake.requests == []  # the model is not checked against the live list
     systems = {s["id"]: s for s in client.get(base(project), headers=admin).json()["systems"]}
     assert systems["card_agent"]["choice"] == {"provider": "openai", "model": "a-model-no-list-mentions"}
     assert systems["risk_mapper"]["choice"] is None
@@ -514,7 +513,7 @@ def test_s2_21_removing_a_choice_goes_back_to_the_environment(client, admin, pro
     assert client.delete(f"{base(project)}/systems/card_agent", headers=admin).status_code == 404
 
 
-# ── S2.22 to S2.26 and S5.5 the internal resolve route ───────────────────────
+# The internal resolve route
 
 
 def test_s2_22_the_project_must_be_a_pid(client, project):
@@ -559,7 +558,7 @@ def test_s2_23_the_token_is_compared_in_constant_time():
     assert "PLATFORM_CARD_AGENT_TOKEN" in source and "PLATFORM_RISK_MAPPER_TOKEN" in source
 
 
-# ── each agentic system resolves only itself (2026-09-25) ──────────────────
+# Each agentic system resolves only itself
 
 
 def test_each_system_resolves_with_its_own_token(client, project):
@@ -647,7 +646,7 @@ def test_s2_26_the_resolve_answer_is_not_cached(client, project):
     assert resolve(client, project["pid"]).headers.get("cache-control") == "no-store"
 
 
-# ── S2.6 and S5.1 write-only, S5.3 logs, S5.4 isolation ──────────────────────
+# Write-only, nothing in the logs, isolation between projects
 
 
 def test_s2_6_s5_1_no_page_facing_response_holds_the_key_or_its_ciphertext(client, admin, project, dsn, fake, cat,

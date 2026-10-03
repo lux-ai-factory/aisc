@@ -1,16 +1,14 @@
 """A synthetic old-layout platform and its project databases, for tests/test_isolate.py.
 
-Isolation 2026-09-25, stage 2 (docs/superpowers/isolation-2026-09-25/01-specs.md section 12).
-
 A *world* is:
 
 - a source database `isosrc_<hex>` on the throwaway cluster, shaped exactly like the live
   `platform` at its old-layout heads: scripts/tests/fixtures/isolation/live_shape.sql (schema-only
-  dump of the live moving schemas and core) plus report_composer 0003..0005 (cutover step C4 runs
-  them before the copy, D13), plus the two install-wide libraries the new code creates in
-  `platform` (`form_library.*`, I4.1/I4.2, and `report_library.preset`, I8.2/D4);
-- two projects A < B (pid order) with rows in every moving schema, chosen to exercise every rule of
-  I12.3..I12.5: a self-reference (form_question.copied_from_id, ai_component.source_dataset_id), an
+  dump of the live moving schemas and core) plus report_composer 0003..0005 (the cutover runs
+  them before the copy), plus the two install-wide libraries the new layout keeps in `platform`
+  (`form_library.*` and `report_library.preset`);
+- two projects A < B (pid order) with rows in every moving schema, chosen to exercise every copy
+  rule: a self-reference (form_question.copied_from_id, ai_component.source_dataset_id), an
   identifying child (engine.aisc_backend_derived, engine.aisc_backend_direct, form_version_question), shared "needed" rows
   (the default form, metric 1), a historical row a trigger would refuse (answers of card version 1),
   unowned rows (engine project with no platform project, its plugin, metric 4, metric category 2),
@@ -19,14 +17,13 @@ A *world* is:
 - one target database per project made by `platform_service.projectdb.provision` (the real
   template), into which this module then creates the module tables at their *new* heads.
 
-Why this module creates the target module tables itself: the module migrations of the new layout
-(qualification baseline, alembic baseline, Django 0025, composer migrations/project, template
-0006..0010) are written in stage 4, not yet. The target shape is therefore derived from the same
-live shape by the rules of I1.5..I1.7 (project_id dropped from the five tables and from core.system,
-core.system -> project.system with the column order of I1.5, FKs to core.project dropped, FKs to
-core.system re-pointed at project.system, composite keys dropped) and the bookkeeping tables get the
-new head names pinned by the spec. Everything is IF NOT EXISTS / ON CONFLICT DO NOTHING, so once the
-real template files exist the helper only fills what they did not make.
+The target module tables are created here rather than by the modules' own migrations, so the
+tests do not depend on every module's migration files. Their shape is derived from the same live
+shape: project_id dropped from the five tables and from core.system, core.system becomes
+project.system, foreign keys to core.project dropped, foreign keys to core.system re-pointed at
+project.system, composite keys dropped; the bookkeeping tables get the new head names. Everything
+is IF NOT EXISTS / ON CONFLICT DO NOTHING, so the helper only fills what the real template files
+did not make.
 
 Every value that must never appear in the tool's output carries MARK (a per-world random token).
 """
@@ -58,7 +55,7 @@ SUPERUSER_DSN = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
 PLATFORM_RW_DSN = os.environ.get("PLATFORM_TEST_DATABASE_URL")
 
 MOVING_SCHEMAS = ("qualification", "control_objectives", "engine", "report_composer")
-#: I1.7: the tables whose platform-project column is dropped (and core.system, I1.5).
+#: The tables whose platform-project column is dropped (core.system loses it too).
 DROPPED_PROJECT_ID = {
     "qualification.qualification",
     "control_objectives.project",
@@ -66,7 +63,7 @@ DROPPED_PROJECT_ID = {
     "report_composer.template",
     "report_composer.generated_report",
 }
-#: I12.1, the whole hand-written knowledge the tool may have.
+#: The tables that stay in `platform`: the only hand-written knowledge the tool may have.
 STAYS_SHARED = {"core.project", "core.project_member", "core.schema_migration"}
 BOOKKEEPING = {
     "qualification._prisma_migrations",
@@ -77,9 +74,9 @@ BOOKKEEPING = {
 }
 FORM_TABLES = ("form", "form_version", "form_question", "form_version_question")
 
-# ── heads (I12.6) ────────────────────────────────────────────────────────────
-# Old layout: the pre-isolation histories of this branch, pinned here by name because the
-# isolation deletes the old qualification and alembic directories (I3.5, I5.4).
+# Migration heads.
+# Old layout: the pre-isolation migration histories, pinned here by name because the old
+# qualification and alembic migration directories are gone from the repo.
 OLD_QUALIFICATION = [
     "20260430105826_add_qualification",
     "20260430112359_add_system_card",
@@ -124,12 +121,12 @@ OLD_CORE = [
     "0001_project_membership.sql", "0002_one_ai_system_per_project.sql",
     "0003_card_versions_in_core_system.sql", "0004_card_version_of_its_project.sql",
 ]
-# New layout (I3.5, I5.4, I7.7, I8.2, controls head before I6.2's FK migration, C7/C8b).
+# New layout: the heads a project database records after the copy.
 NEW_QUALIFICATION_BASELINE = "20260925000000_project_database"
 NEW_ALEMBIC = "20260926000000_project_database"
-NEW_DJANGO = "0021_engine_deployment_marker"   # the last of today's chain (before the adapt plan this was 0025_the_database_is_the_project)
-# What migrate_projects records in a project database today: Sean's 0001..0014 (origin/master)
-# and ours 0015..0021. OLD_DJANGO above is the old chain on purpose (the source, an old install).
+NEW_DJANGO = "0021_engine_deployment_marker"   # the last migration of the engine's chain
+# What migrate_projects records in a project database: the engine's 0001..0014 (its master) and
+# this branch's 0015..0021. OLD_DJANGO above is the old chain on purpose (the source, an old install).
 NEW_DJANGO_CHAIN = [
     "0001_initial", "0002_evaluationplugin_evaluation_config",
     "0003_remove_evaluationplugin_evaluation_config_and_more",
@@ -156,7 +153,7 @@ NEW_TEMPLATE = [
 
 T0 = "2026-09-01 10:00:00+00"
 
-#: Session settings of I12.7, used by the tests' own checksums too.
+#: The session settings the tool reads rows with, used by the tests' own checksums too.
 ROW_TEXT_SETTINGS = (
     "SET TimeZone = 'UTC'; SET DateStyle = 'ISO'; SET extra_float_digits = 3; SET bytea_output = 'hex'"
 )
@@ -176,7 +173,7 @@ def password_of(dsn: str) -> str:
     return str(conninfo_to_dict(dsn).get("password") or "")
 
 
-# ── splitting a pg_dump into statements ──────────────────────────────────────
+# Splitting a pg_dump into statements.
 
 
 def split_sql(text: str) -> list[str]:
@@ -273,7 +270,7 @@ def without_forms(stmts: list[str]) -> list[str]:
 def _schemas_then_functions_first(stmts: list[str]) -> list[str]:
     """The fixture defines core.system_only_latest_changes() after the trigger that calls it."""
     rank = lambda s: 0 if s.startswith("CREATE SCHEMA") else 1 if re.match(r"CREATE (OR REPLACE )?FUNCTION", s) else 2
-    return sorted(stmts, key=rank)  # stable
+    return sorted(stmts, key=rank)  # sorted() is stable
 
 
 def source_statements(forms: bool) -> list[str]:
@@ -323,7 +320,7 @@ END $$"""
 
 
 def target_statements(forms: bool) -> list[str]:
-    """The new-layout module tables of a project database (I1.1, I1.5..I1.7, I7.9)."""
+    """Create the new-layout module tables of a project database."""
     out = []
     for s in source_statements(forms):
         if _SHARED_CORE.search(s) or s.startswith("COMMENT ON"):
@@ -348,8 +345,8 @@ def target_statements(forms: bool) -> list[str]:
 
 
 def library_statements() -> list[str]:
-    """form_library.* (I4.1: the four form tables, their constraints and triggers) and
-    report_library.preset (I8.2: source_project_id without a foreign key)."""
+    """Create form_library.* (the four form tables, their constraints and triggers) and
+    report_library.preset (source_project_id without a foreign key)."""
     out = ["CREATE SCHEMA IF NOT EXISTS form_library"]
     for s in split_sql(LIVE_SHAPE.read_text()):
         if not _FORMS.search(s) or table_of(s) == "qualification.qualification":
@@ -372,7 +369,7 @@ def library_statements() -> list[str]:
     return out
 
 
-# ── the world ────────────────────────────────────────────────────────────────
+# The world.
 
 
 @dataclass
@@ -494,7 +491,7 @@ def source_rows(w: World) -> list[tuple[str, dict]]:
         if w.forms:
             r["form_version_id"] = fv
         rows.append(("qualification.qualification", r))
-    # ansA0 answers card version 1, which is no longer the latest: its trigger would refuse it (D14).
+    # ansA0 answers card version 1, which is not the latest: its trigger would refuse it.
     for aid, qid, q, text in (("ansA0", "qA1", "q1", "old"), ("ansA1", "qA2", "q1", f"answer {M}"),
                               ("ansA2", "qA2", "q2", "second"), ("ansB1", "qB1", "q1", "beta")):
         add("qualification.qualification_answer", id=aid, qualificationId=qid, toolId="tool", questionId=q, answer=text)
@@ -588,7 +585,7 @@ def source_rows(w: World) -> list[tuple[str, dict]]:
     return rows
 
 
-#: Which primary keys each project's database must end up with (I12.2, I12.3).
+#: Which primary keys each project's database must end up with.
 def expected_placement(w: World) -> dict[str, dict[str, set]]:
     i = w.ids
     a = {
@@ -734,7 +731,7 @@ def _build_world(forms: bool, tag: str) -> World:
         c.execute("SELECT setval('control_objectives.risk_id_seq', 10, true)")
         c.execute("SELECT setval('control_objectives.mapped_objective_id_seq', 1, true)")
         c.execute("SELECT setval('engine.aisc_backend_project_id_seq', 72, true)")
-        # below max(id) on purpose: the target takes max(source last_value, max(target id)) (I12.7)
+        # below max(id) on purpose: the target takes max(source last_value, max(target id))
         c.execute("SELECT setval('engine.aisc_backend_metric_id_seq', 1, true)")
         c.execute("SELECT setval('engine.aisc_backend_plugin_id_seq', 30, false)")
     _PENDING_TARGETS[tag] = [w.target_db(p) for p in w.pids]
@@ -771,7 +768,7 @@ def world(forms: bool = True):
         drop_world(w)
 
 
-# ── observing databases ──────────────────────────────────────────────────────
+# Observing databases.
 
 
 def user_tables(conn) -> list[str]:
@@ -788,7 +785,7 @@ def columns(conn, table: str) -> list[str]:
 
 
 def checksum(conn, table: str, cols: list[str], where: sql.Composable | None = None) -> tuple[int, str]:
-    """I12.10: count and md5(string_agg(row_text, E'\\n' ORDER BY row_text)), row_text = ROW(cols)::text."""
+    """Count and md5(string_agg(row_text, E'\\n' ORDER BY row_text)), row_text = ROW(cols)::text."""
     conn.execute(ROW_TEXT_SETTINGS)
     q = sql.SQL(
         "SELECT count(*), md5(coalesce(string_agg(r, E'\\n' ORDER BY r), '')) FROM"
@@ -847,9 +844,9 @@ def fk_orphans(conn) -> list[str]:
 
 def written_tuples(dbnames: list[str]) -> dict[str, tuple[int, int, int]]:
     """Rows inserted, updated and deleted per database (pg_stat_database), read from the cluster's
-    `postgres` database. Test correction T9: xact_commit moved on every new connection, which the
-    tool needs to read its targets, so it could not tell reading from writing; these counters only
-    move when a row is written. Waits for the stats to settle."""
+    `postgres` database. xact_commit moves on every new connection, which the tool needs to read
+    its targets, so it cannot tell reading from writing; these counters only move when a row is
+    written. Waits for the stats to settle."""
     time.sleep(2.0)
     with psycopg.connect(dsn_for("postgres"), autocommit=True) as c:
         c.execute("SELECT pg_stat_clear_snapshot()")
@@ -876,7 +873,7 @@ def quiet_cluster() -> None:
         c.execute("SELECT pg_reload_conf()")
 
 
-# ── running the tool ─────────────────────────────────────────────────────────
+# Running the tool.
 
 
 class Result:
@@ -894,15 +891,14 @@ class Result:
         return ((self.report or {}).get("projects") or {}).get(pid, {}).get("status")
 
 
-#: Stage-2 self-check only: ISOLATE_TESTS_PROBE=1 makes the tests run their setup and mutations
-#: without the tool (every run "fails" with code 99), so a broken fixture shows before stage 4.
+#: Fixture self-check: ISOLATE_TESTS_PROBE=1 makes the tests run their setup and mutations
+#: without the tool (every run "fails" with code 99), so a broken fixture shows on its own.
 PROBE = os.environ.get("ISOLATE_TESTS_PROBE") == "1"
 
 
 def require_tool():
-    """The tool under test. Imported here, inside each test, so the rest of the platform suite
-    collects and runs while it does not exist, and each test fails on its own with
-    ModuleNotFoundError until stage 4 writes platform_service/isolate.py."""
+    """Import the tool under test (platform_service.isolate), inside each test, so a broken
+    import fails those tests only and the rest of the platform suite still collects."""
     if PROBE:
         return None
     import importlib
@@ -915,8 +911,8 @@ def run(w: World, *args: str, report: Path | None = None, env: dict | None = Non
     """python -m platform_service.isolate <args> [--report <path>], as the superuser of the
     throwaway cluster, the world's source database standing for `platform`.
 
-    Every run is checked for leaks (I12.15, I12.16, I18.7): no row value (MARK) and no password in
-    stdout, stderr or the report file, whatever the test is about."""
+    Every run is checked for leaks: no row value (MARK) and no password in stdout, stderr or the
+    report file, whatever the test is about."""
     argv = [shutil.which("python") or "python", "-m", "platform_service.isolate", *args]
     if report is not None:
         argv += ["--report", str(report)]
@@ -939,7 +935,7 @@ def run(w: World, *args: str, report: Path | None = None, env: dict | None = Non
 
 def assert_refused(res: Result, reasons: str | set[str], *, table: str | None = None,
                    projects: tuple[str, ...] = ()) -> dict:
-    """A refusal: non-zero exit (I12.16), a named reason in the report and in the output."""
+    """Assert a refusal: non-zero exit, a named reason in the report and in the output."""
     reasons = {reasons} if isinstance(reasons, str) else reasons
     assert res.returncode != 0, f"expected a refusal ({sorted(reasons)}), exit was 0:\n{res.output[-2000:]}"
     hits = [r for r in res.refusals() if r.get("reason") in reasons

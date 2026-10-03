@@ -1,4 +1,4 @@
--- The ledger's Postgres side, phase 1 (docs/superpowers/ledger-2026-10-02/02-spec.md 6.1, 7.1-7.3).
+-- The ledger's Postgres side: the pool of immudb databases and their last verified state.
 -- In schema `ledger`, which init/platform-db.sql (a fresh volume) and init/project-databases.sql
 -- (postgres-setup, every start) make, owned by this service; no module role can reach it.
 
@@ -11,7 +11,7 @@ END
 $guard$;
 
 -- The operator's pool of immudb databases (scripts/ledger-pool.sh adds rows). A project takes one at
--- creation and keeps it for ever (D2); the row is also the expected-databases list (R2.10).
+-- creation and keeps it for ever; the table is also the list of databases expected to exist.
 -- server_id is the server's own identity (immudb's UUID, or memory:<uuid> in tests), never its
 -- address, so a database of another server is never handed out.
 CREATE TABLE IF NOT EXISTS ledger.pool (
@@ -28,8 +28,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS pool_one_per_project ON ledger.pool (assigned_
 CREATE INDEX IF NOT EXISTS pool_free ON ledger.pool (server_id, created_at)
     WHERE assigned_pid IS NULL;
 
--- The last verified immudb state of each database, kept outside immudb (M11, M13-M15). It only moves
--- forward, by compare-and-set.
+-- The last verified immudb state of each database, kept outside immudb. It only moves forward, by
+-- compare-and-set.
 CREATE TABLE IF NOT EXISTS ledger.state (
     db         text PRIMARY KEY,
     tx_id      bigint NOT NULL CHECK (tx_id >= 0),

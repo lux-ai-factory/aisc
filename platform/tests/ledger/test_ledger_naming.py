@@ -1,5 +1,5 @@
-"""L2: ledger database names (I9; spec 6.1, 7.1). immudb can't rename a database, and the operator's pool
-makes databases before any project exists, so a name never carries a pid (second review N1): it is
+"""Ledger database names. immudb can't rename a database, and the operator's pool
+makes databases before any project exists, so a name never carries a pid: it is
 random, and a project's log is found through `provision.database_for(pid)`. A name is checked before
 any immudb call, so nothing else ever reaches immudb as a database name."""
 from __future__ import annotations

@@ -1,14 +1,14 @@
-"""The event registry (spec 4.1, 6.1): every event the ledger accepts, who may emit it, which witnessed
+"""The event registry: every event the ledger accepts, who may emit it, which witnessed
 requests may cause it, who may act and which details it may carry.
 
 Standard library only: the repo-level coverage test loads it without the platform's dependencies.
 
-Cause paths are the **unstripped** gateway paths (06-spike.md G1), matched from the start. A named
-group `item` binds the event's `item_id` to the path; `project` names the project's place in it.
-`routes` (where the code handles each action, for the coverage test) are filled in by each app's
-phase, when its emitter is written.
+Cause paths are the **unstripped** gateway paths, matched from the start. A named group `item` binds
+the event's `item_id` to the path; `project` names the project's place in it. `routes` names where
+the code handles each action, for the coverage test; an action whose emitter is not written yet has
+none.
 
-The catalogue is hosted elsewhere and never passes this gateway (spec 3.1, R1.10), so its own events
+The catalogue is hosted elsewhere and never passes this gateway, so its own events
 belong in its own log; only the local installs (`plugin.installed`, `control.installed`) are here.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 
-#: Raised when the registry changes in a way an older platform can't read (spec R2.12).
+#: Raised when the registry changes in a way an older platform can't read.
 VERSION = 1
 
 
@@ -38,7 +38,7 @@ class Action:
     run_window: timedelta = timedelta(hours=24)
     origin: str = "app"
     registry_version: int = VERSION
-    #: other actions the SAME server action makes on another branch (spec 4.5): an action id bound to
+    #: other actions the SAME server action makes on another branch: an action id bound to
     #: one of them accepts the others too (a save that creates, or saves the next version)
     same_action: tuple = ()
 
@@ -50,12 +50,12 @@ INTERNAL_APPS = ("engine_worker", "connectors", "report_renderer", "qualificatio
                  "qualification_prefill", "qualification_ontology", "qualification_llm", "qualification_pdf")
 KNOWN_APPS = GATEWAY_APPS + INTERNAL_APPS
 
-#: How the witness finds the project of a request, per app (spec 3.4), against the unstripped path.
+#: How the witness finds the project of a request, per app, against the unstripped path.
 APP_PROJECT_RULES = {
     "qualification": ("slug", r"^/qualification/p/(?P<project>[^/]+)(/|$)"),
     "controls": ("slug", r"^/controls/p/(?P<project>[^/]+)(/|$)"),
     "control_objectives": ("pid", r"^/control-objectives/p/(?P<project>[^/]+)(/|$)"),
-    # its pages at /report-composer/p/<slug>, its API at /report-composer/api/p/<slug> (phase 9)
+    # its pages at /report-composer/p/<slug>, its API at /report-composer/api/p/<slug>
     "report_composer": ("slug", r"^/report-composer(?:/api)?/p/(?P<project>[^/]+)(/|$)"),
     "platform": ("slug", r"^/api/projects/(?P<project>[^/]+)(/|$)"),
     "launcher": ("slug", r"^/p/(?P<project>[^/]+)(/|$)"),
@@ -89,7 +89,7 @@ def _co(method, tail):
 
 
 _ACTIONS = [
-    # --- the ledger's own, and the witness's (origin platform: no app emits them) -------------------
+    # the ledger's own, and the witness's (origin platform: no app emits them)
     _a("request.witnessed", 0, (), "request", origin="platform", per_request=None),
     _a("request.unverified", 0, (), "request", origin="platform", per_request=None),
     _a("flower.request", 0, (), "request", origin="platform", per_request=None),
@@ -98,18 +98,18 @@ _ACTIONS = [
        details_keys=("reason", "digest")),
     _a("ledger.reanchored", 0, (), "ledger", origin="platform",
        caused_by=(("platform", "POST", r"^/api/ledger/reanchor$"),), details_keys=("old_head", "new_head", "project")),
-    # --- browser-reported, through the beacon (spec 3.5) --------------------------------------------
+    # browser-reported, through the beacon
     _a("page.opened", 0, ("platform",), "page", origin="browser", per_request=1, details_keys=("page",),
        caused_by=(("platform", "POST", r"^/api/ledger/beacon$"),)),
     _a("page.left", 0, ("platform",), "page", origin="browser", per_request=1,
        details_keys=("page", "unsaved_changes", "seconds"),
        caused_by=(("platform", "POST", r"^/api/ledger/beacon$"),)),
-    # --- session and refusals (the platform records them) ---------------------------------------------
+    # session and refusals (the platform records them)
     _a("session.signed_in", 0, ("platform",), "session", details_keys=("client",), per_request=None),
     _a("session.signed_out", 0, ("platform",), "session", details_keys=("client",), per_request=None),
     _a("access.refused", 0, ("platform",), "request", actor_kinds=("system",), per_request=None,
        details_keys=("status", "path", "role_needed")),
-    # --- step 0: projects and Manage ---------------------------------------------------------------
+    # step 0: projects and Manage
     _a("project.created", 0, ("platform",), "project", caused_by=(("platform", "POST", r"^/api/projects$"),),
        details_keys=("name",)),
     _a("project.deleted", 0, ("platform",), "project",
@@ -121,9 +121,9 @@ _ACTIONS = [
        details_keys=("role_before", "role_after")),
     _a("member.removed", 0, ("platform",), "member",
        caused_by=(("platform", "DELETE", _LAUNCH + r"/members/(?P<item>[^/]+)$"),), details_keys=("role",)),
-    # a card version is saved by the platform, on step 1's submit (spec 4.3)
+    # a card version is saved by the platform, on step 1's submit
     _a("card_version.created", 1, ("platform",), "card_version",
-       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page (B1)
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "POST", _LAUNCH + "/system-versions$")),
        details_keys=("number", "name", "version", "provider")),
     _a("targets.synced", 0, ("platform",), "project",
@@ -153,7 +153,7 @@ _ACTIONS = [
        details_keys=("note_before", "note_after")),
     _a("allowlist.host.removed", 0, ("platform",), "allowed_host",
        caused_by=(("platform", "DELETE", _LAUNCH + r"/allowed-hosts/(?P<item>[^/]+)$"),)),
-    # --- step 1: qualify ---------------------------------------------------------------------------
+    # step 1: qualify
     _a("question_set.created", 1, ("qualification",), "question_set",
        caused_by=(("qualification", "ACTION", _QU + r"/question-sets(/.*)?$"),
                   ("qualification", "ACTION", _QU + r"/questionnaires/import$")), details_keys=("version",),
@@ -184,7 +184,7 @@ _ACTIONS = [
        caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),),
        details_keys=("version", "read_only")),
     _a("qualification.created", 1, ("qualification",), "qualification",
-       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page (B1)
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page
        details_keys=("questionnaire_version", "risks", "components"), content_required=True,
        routes=(("qualification", "apps/qualification/src/app/p/[project]/qualify/new/actions.ts", "submitQualification"),)),
     _a("card.node_corrected", 1, ("qualification",), "qualification",
@@ -226,7 +226,7 @@ _ACTIONS = [
                    _QU + r"/api/qualifications/(?P<item>[^/]+)/(ai-card|system-card)\.pdf$"),),
        details_keys=("format",),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/api/qualifications/[id]/ai-card.pdf/route.ts", "GET"),)),
-    # --- step 2: control objectives ----------------------------------------------------------------
+    # step 2: control objectives
     _a("assessment.started", 2, ("control_objectives",), "assessment",
        caused_by=(_co("POST", "projects"),), details_keys=("card_version", "risks", "profile_version"),
        routes=(("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/app.py", "start_assessment_form"),)),
@@ -234,7 +234,7 @@ _ACTIONS = [
        caused_by=(("control_objectives", "DELETE", _CO + r"/api/projects/(?P<item>[^/]+)$"),),
        routes=(("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/app.py", "delete_project"),)),
     # a risk's rating, its comment and its mapping are three items, each `<assessment>/risks/<risk>`:
-    # risk ids repeat across a project's card versions (phase 6 review M3)
+    # risk ids repeat across a project's card versions
     _a("risk.rated", 2, ("control_objectives",), "risk_rating", per_request=None,
        caused_by=(_co("POST", rf"projects/{_P}/(ratings|severity)"),),
        details_keys=("rating", "band"),
@@ -295,7 +295,7 @@ _ACTIONS = [
        caused_by=(_co("POST", r"profiles/(?P<item>[^/]+)(/versions)?"),), details_keys=("version", "dropped"),
        content_required=True,
        routes=(("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/library_routes.py", "save_profile_form"), ("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/library_routes.py", "save_profile"),)),
-    # --- step 3: local installs ------------------------------------------------------------------
+    # step 3: local installs
     _a("plugin.installed", 3, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/?$"),), details_keys=("package", "version", "reused")),
     _a("control.installed", 3, ("controls",), "checklist",
@@ -305,7 +305,7 @@ _ACTIONS = [
        routes=(("controls", "apps/controls/src/app/p/[project]/catalogue/actions.ts", "installHere"),
                ("controls", "apps/controls/src/app/p/[project]/install/actions.ts", "installFromCatalogue"),
                ("controls", "apps/controls/src/app/api/install/route.ts", "POST"))),
-    # --- step 4: evidence, engine, controls --------------------------------------------------------
+    # step 4: evidence, engine, controls
     _a("evidence.links.saved", 4, ("platform",), "evidence",
        caused_by=(("platform", "PUT", _LAUNCH + "/evidence/links$"),),
        details_keys=("added", "removed", "carried"), content_required=True),
@@ -349,17 +349,17 @@ _ACTIONS = [
        details_keys=("version", "questions", "answers_removed", "closed_answers_removed"), content_required=True,
        same_action=("controls.checklist.edited",),
        routes=(("controls", "apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts", "saveReviewedQuestions"),)),
-    # the same review when its questions stay as they are: only the checklist's own fields (phase 7 review M1)
+    # the same review when its questions stay as they are: only the checklist's own fields
     _a("controls.checklist.edited", 4, ("controls",), "checklist",
        caused_by=(("controls", "ACTION", _CT + r"/checklists/(?P<item>[^/]+)/review$"),),
        same_action=("controls.checklist.questions_revised",),
        routes=(("controls", "apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts", "saveReviewedQuestions"),)),
-    # --- step 5: dashboard -----------------------------------------------------------------------
-    # (page views are best effort, D6: dashboard.viewed is declared, not yet sent)
+    # step 5: dashboard
+    # (page views are best effort: dashboard.viewed is declared, not yet sent)
     _a("dashboard.viewed", 5, ("dashboard",), "dashboard", per_request=None,
        caused_by=(("dashboard", "GET", r"^/superset/dashboard/(?P<item>[^/]+)/?$"),)),
     # the dashboard queues these in Superset's database with the change (its own outbox) and posts them
-    # through the internal route; its slug, aisc-<pid hex>, names the project (phase 9, D1-D2)
+    # through the internal route; its slug, aisc-<pid hex>, names the project
     _a("dashboard.comment.created", 5, ("dashboard",), "comment",
        caused_by=(("dashboard", "POST", _DB + r"/aisc_comment/?$"),), details_keys=("dashboard", "chart"),
        content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/comments/api.py", "post"),)),
@@ -372,7 +372,7 @@ _ACTIONS = [
     _a("dashboard.review.resolved", 5, ("dashboard",), "review_request",
        caused_by=(("dashboard", "PATCH", _DB + r"/aisc_review_request/(?P<item>[0-9]+)$"),),
        details_keys=("status_before", "status_after"), routes=(("dashboard", "apps/results-dashboard/aisc_ext/reviews/api.py", "patch"),)),
-    # --- step 6: the report ----------------------------------------------------------------------
+    # step 6: the report
     _a("report.layout.created", 6, ("report_composer",), "layout",
        caused_by=(("report_composer", "POST", _RC + "/layouts$"),
                   ("report_composer", "POST", _RC + rf"/layouts/{_P}/duplicate$")),
@@ -382,12 +382,12 @@ _ACTIONS = [
        caused_by=(("report_composer", "PUT", _RC + r"/layouts/(?P<item>[^/]+)$"),),
        details_keys=("revision",), content_required=True,
        routes=(("report_composer", "apps/report-composer/report_composer/api.py", "put_layout"),)),
-    # a deleted layout is hidden and keeps its reports (phase 9, M2): the event names them, content `reports`
+    # a deleted layout is hidden and keeps its reports: the event names them, content `reports`
     _a("report.layout.deleted", 6, ("report_composer",), "layout",
        caused_by=(("report_composer", "DELETE", _RC + r"/layouts/(?P<item>[^/]+)$"),),
        details_keys=("reports",), content_required=True,
        routes=(("report_composer", "apps/report-composer/report_composer/api.py", "delete_layout"),)),
-    # a template's delete takes it from each layout drawn in it: that layout's next revision (phase 9 review M1)
+    # a template's delete takes it from each layout drawn in it: that layout's next revision
     _a("report.layout.template_removed", 6, ("report_composer",), "layout", per_request=None,
        caused_by=(("report_composer", "DELETE", _RC + r"/templates/[^/]+$"),), details_keys=("revision", "template"),
        content_required=True, routes=(("report_composer", "apps/report-composer/report_composer/api.py",
@@ -433,7 +433,7 @@ _SECRET = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_-]{16,}|\beyJ[A-Za-z0-
 
 
 def check(event: dict, emitter: str | None = None) -> list[str]:
-    """The problems of one event as `emitter` sent it; empty means it may be relayed (spec 6.1)."""
+    """The problems of one event as `emitter` sent it; empty means it may be relayed."""
     problems = [f"missing:{field}" for field in _EVENT_FIELDS if not event.get(field)]
     name = event.get("action")
     action = REGISTRY.get(name) if isinstance(name, str) else None
@@ -457,7 +457,7 @@ def check(event: dict, emitter: str | None = None) -> list[str]:
         if action.content_required and not event.get("content"):
             problems.append("content_required")
     problems += [f"secret_in:{key}" for key, value in details.items() if _holds_secret(value)]
-    for field in ("content", "before", "after"):                      # states too (phase 3 review m6)
+    for field in ("content", "before", "after"):                      # states too
         if _holds_secret(event.get(field)):
             problems.append(f"secret_in:{field}")
     return problems
@@ -475,7 +475,7 @@ def _holds_secret(value) -> bool:
 
 @contextmanager
 def override(actions: dict):
-    """Tests only: merge `actions` over the real registry, and restore it afterwards (third review M2).
+    """Tests only: merge `actions` over the real registry, and restore it afterwards.
     The dict is changed in place, so every module that imported REGISTRY sees the same entries."""
     saved = dict(REGISTRY)
     REGISTRY.update(actions)

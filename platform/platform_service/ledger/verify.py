@@ -1,4 +1,4 @@
-"""The verifier and the reconciliation (spec 7.3, 7.4; I4, I11, R2.6, R2.10).
+"""The verifier and the reconciliation.
 
 `verify(pid)` reads a project's log back, verified, and reports what reconciliation looks for:
 - entries that don't verify;
@@ -8,7 +8,7 @@
 - a database the pool assigned that the store no longer has.
 
 Evidence checks (the frozen content against the evidence store) and changes made outside the apps
-come with phase 10; their counts stay 0 until then.
+are not implemented yet; their counts stay 0.
 """
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ class Report:
     index_mismatches: int = 0
     #: entries of the log with no index row, and index rows with no entry
     index_missing: int = 0
-    #: AI runs started longer than RUN_WINDOW ago with no end (a killed agent, phase 5 drill; a mapping
-    #: whose process died before its save, phase 6)
+    #: AI runs started longer than RUN_WINDOW ago with no end (a killed agent, or a mapping whose
+    #: process died before its save)
     open_runs: int = 0
 
 
@@ -114,8 +114,8 @@ def _version(digest: str | None) -> str | None:
 
 def _differs(previous: dict, current: dict, states: dict) -> bool:
     """Whether an event's `before` is not its item's previous `after`. Digests under one key version are
-    compared as they are; across a key rotation they can't be, so the frozen states are compared instead
-    (phase 3 review m3), and a pair with no frozen state is not counted as a break."""
+    compared as they are; across a key rotation they can't be, so the frozen states are compared instead,
+    and a pair with no frozen state is not counted as a break."""
     if _version(previous["after_sha256"]) == _version(current["before_sha256"]):
         return previous["after_sha256"] != current["before_sha256"]
     was, now = states.get(previous["event_id"]), states.get(current["event_id"])

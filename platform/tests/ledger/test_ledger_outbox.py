@@ -1,7 +1,7 @@
-"""O1-O3: the outbox of a project database (T7, I3). Apps hold no right on the outbox table; they call
+"""The outbox of a project database. Apps hold no right on the outbox table; they call
 `ledger.emit(event jsonb)`, which stamps the role that called it and the database's own time, so an app
-can't pass itself off as another or back-date an event (R2.1). The call returns nothing, so no ORM
-RETURNING is involved (R3.3). Only the platform reads, marks and keeps delivery state."""
+can't pass itself off as another or back-date an event. The call returns nothing, so no ORM
+RETURNING is involved. Only the platform reads, marks and keeps delivery state."""
 from __future__ import annotations
 
 import json
@@ -125,7 +125,7 @@ def test_roles_that_are_not_emitters_cannot_emit(project, role):
 @pytest.mark.parametrize("role", APPS + OTHERS)
 def test_delivery_state_is_the_platforms_alone(project, role, table):
     """No app reads or writes the relay's state. pgAdmin's inspector_ro reads every table of a project
-    database by design (pg_read_all_data, S8: only the names behind references are kept from it), so for
+    database by design (pg_read_all_data; only the names behind references are kept from it), so for
     it only the write is refused."""
     statements = [f"INSERT INTO {table} DEFAULT VALUES"] + ([] if role == "inspector_ro" else [f"SELECT * FROM {table}"])
     for statement in statements:
@@ -139,8 +139,7 @@ def test_a_malformed_event_is_refused_in_the_apps_transaction(project):
 
 
 def test_emit_refuses_every_action_whose_origin_is_not_an_app(project):
-    """The SQL list is generated from the registry (origin platform or browser), so they can't drift
-    (third review n11, fourth review 2)."""
+    """The SQL list is generated from the registry (origin platform or browser), so they can't drift."""
     from platform_service.ledger.registry import REGISTRY
 
     platform_only = sorted(name for name, action in REGISTRY.items() if action.origin != "app")

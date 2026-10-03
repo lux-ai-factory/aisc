@@ -1,8 +1,8 @@
-"""The verified state of each ledger database, kept outside immudb (spec 6.1; spike M11, M13-M15).
+"""The verified state of each ledger database, kept outside immudb.
 
 A state is immudb's (tx id, tx hash) the platform last verified. It only moves forward: `put` is a
 compare-and-set, so two workers can't move it back, and a server answering from before it is a
-rollback (TamperAlarm in the store). Keyed by database name only, never by server address (M11).
+rollback (TamperAlarm in the store). Keyed by database name only, never by server address.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ class MemoryStateStore:
             self._states[db] = state
 
     def forget(self, db: str) -> None:
-        """The re-anchor (spec T21): the next read trusts the server again."""
+        """The re-anchor: the next read trusts the server again."""
         with self._lock:
             self._states.pop(db, None)
 

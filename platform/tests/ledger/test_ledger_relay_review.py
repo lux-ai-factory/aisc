@@ -1,4 +1,4 @@
-"""R9-R16: the relay's answers to the phase 3 review (16-phase3-review.md). A bad row is a rejection,
+"""The relay's edge cases. A bad row is a rejection,
 never a stall; one project never stops another; the action binding learns from accepted events only;
 run events inherit their start's verified; newer-registry rows are held for HOLD_UNKNOWN only; the
 crash and lock guards are pinned."""
@@ -24,7 +24,7 @@ def reasons(store, pid):
     return [r.details["reason"] for r in rejected(store, pid)]
 
 
-# B1: a bad row is a rejection; one project never stops another ---------------------------------------
+# A bad row is a rejection; one project never stops another
 
 @pytest.mark.parametrize("field", ["content", "before", "details"])
 def test_a_value_canonical_json_refuses_is_rejected_and_the_log_goes_on(project, memory_ledger, closing, witnessed,
@@ -66,7 +66,7 @@ def test_one_projects_failure_never_stops_another_or_the_platform_log(project, m
 def test_a_witness_entry_rebuilt_after_a_registry_upgrade_is_not_a_poison(project, memory_ledger, closing,
                                                                            monkeypatch):
     """A crash after the witness append and before `delivered_seq`, then a deploy raising VERSION: the
-    rebuilt entry differs from the stored one. The stored one is the record (review B1)."""
+    rebuilt entry differs from the stored one. The stored one is the record."""
     relay_all(project["pid"])
     with psycopg.connect(DSN) as conn:
         conn.execute("UPDATE ledger.witness SET delivered_seq = NULL WHERE request_id = %s", (closing,))
@@ -80,7 +80,7 @@ def test_a_witness_entry_rebuilt_after_a_registry_upgrade_is_not_a_poison(projec
                             (closing,)).fetchone()[0] == mine[0].seq
 
 
-# M2: the binding learns from accepted events only ------------------------------------------------------
+# The binding learns from accepted events only
 
 def test_a_rejected_event_teaches_the_action_id_nothing(project, memory_ledger, witnessed, settings):
     page = f"/controls/p/{project['slug']}/submissions/s1"
@@ -97,7 +97,7 @@ def test_a_rejected_event_teaches_the_action_id_nothing(project, memory_ledger, 
     assert reasons(memory_ledger, project["pid"]) == ["stale_request", "action_id"]
 
 
-# M3, m4: runs ---------------------------------------------------------------------------------------
+# Runs
 
 def _start_run(project, request_id):
     run_id = str(uuid.uuid4())
@@ -162,7 +162,7 @@ def test_a_non_start_event_cannot_shadow_the_runs_start(project, memory_ledger, 
     assert len(trusted(memory_ledger, project["pid"], "ai.mapping.failed")) == 1
 
 
-# M4: newer-registry rows are held for HOLD_UNKNOWN only -----------------------------------------------
+# Newer-registry rows are held for HOLD_UNKNOWN only
 
 def test_a_held_row_is_rejected_after_hold_unknown(project, memory_ledger, closing, settings):
     emit(project["pid"], "controls_rw", ev(closing, action="controls.submission.forwarded",   # an action no registry has yet
@@ -181,7 +181,7 @@ def test_a_version_far_ahead_is_not_held(project, memory_ledger, closing):
     assert stats.held == 0 and reasons(memory_ledger, project["pid"]) == ["unknown_action"]
 
 
-# M7, m1, m5: the crash and lock guards -----------------------------------------------------------------
+# The crash and lock guards
 
 def test_a_crash_between_indexing_and_marking_neither_rejects_nor_duplicates(project, memory_ledger, closing,
                                                                              monkeypatch):
@@ -205,7 +205,7 @@ def test_a_crash_between_indexing_and_marking_neither_rejects_nor_duplicates(pro
 
 
 def test_a_log_another_relay_holds_is_skipped_not_waited_on(project, memory_ledger, closing):
-    """m1: a try-lock. A busy log is left for the next pass; nothing blocks on it."""
+    """A try-lock. A busy log is left for the next pass; nothing blocks on it."""
     emit(project["pid"], "controls_rw", ev(closing))
     log = log_of(project["pid"])
     with psycopg.connect(DSN) as holder:
@@ -218,7 +218,7 @@ def test_a_log_another_relay_holds_is_skipped_not_waited_on(project, memory_ledg
 
 
 def test_an_event_the_store_already_holds_is_indexed_not_judged_again(project, memory_ledger, closing, monkeypatch):
-    """m5: after a crash between the append and the index, a key rotation would change the digest and the
+    """After a crash between the append and the index, a key rotation would change the digest and the
     verdict; the store's own copy is the record."""
     from tests.ledger.conftest import LEDGER_KEYS
 
@@ -241,7 +241,7 @@ def test_an_event_the_store_already_holds_is_indexed_not_judged_again(project, m
     assert rejected(memory_ledger, project["pid"]) == [] and accepted.content_sha256.startswith("hmac:v1:")
 
 
-# m6: before and after are scanned for secrets too ----------------------------------------------------
+# Before and after are scanned for secrets too
 
 @pytest.mark.parametrize("field", ["before", "after"])
 def test_a_secret_in_a_state_is_rejected(project, memory_ledger, closing, field):
@@ -250,7 +250,7 @@ def test_a_secret_in_a_state_is_rejected(project, memory_ledger, closing, field)
     assert reasons(memory_ledger, project["pid"]) == [f"secret_in:{field}"]
 
 
-# m3: a key rotation is not a chain break ----------------------------------------------------------------
+# A key rotation is not a chain break
 
 def test_a_key_rotation_between_two_events_is_not_a_chain_break(project, memory_ledger, witnessed, monkeypatch):
     from platform_service.ledger import verify
@@ -274,7 +274,7 @@ def test_a_key_rotation_between_two_events_is_not_a_chain_break(project, memory_
     assert verify.verify(project["pid"]).chain_breaks == 1          # only the real one (third), not the rotation
 
 
-# M1 (second half): the relay reads in batches, in time order ---------------------------------------------
+# The relay reads in batches, in time order
 
 def test_a_backlog_is_relayed_in_batches_in_time_order(project, memory_ledger, witnessed, settings, monkeypatch):
     monkeypatch.setattr(settings, "RELAY_BATCH", 3)

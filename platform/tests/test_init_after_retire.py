@@ -1,11 +1,11 @@
-"""The every-start init file cannot undo the retirement of core.system (isolation 2026-09-25).
+"""The every-start init file cannot undo the retirement of core.system.
 
-03-coding-plan.md P1-D3 and G4: cutover C9 retires core.system (owner to the superuser, every
-privilege revoked, a comment beginning with `retired:`) and stage 7 drops it. postgres-setup runs
-init/project-databases.sql as the superuser on every start; before the isolation that file gave
-core.system back to platform_rw. These tests build the pre-isolation layout, retire it the way C9
-does, run the file again and check that nothing came back; then drop it the way stage 7 does and
-run the file again. They are the non-vacuous form of the I2.8 guard tests (section 4, W-1).
+The cutover retires core.system (owner to the superuser, every privilege revoked, a comment
+beginning with `retired:`) and a later step drops it. postgres-setup runs
+init/project-databases.sql as the superuser on every start, and an older version of that file
+gave core.system back to platform_rw. These tests build the pre-isolation layout, retire it the
+way the cutover does, run the file again and check that nothing came back; then drop it and run
+the file again. They are the non-vacuous form of the guard tests in test_project_system.py.
 
 Needs PLATFORM_TEST_SUPERUSER_URL (a throwaway superuser DSN, never the live database).
 """
@@ -38,7 +38,7 @@ def _existing_roles(conn) -> list[str]:
 
 
 def _retire(su: str) -> None:
-    """What cutover C9 does to core.system and the shared module schemas (01-specs.md C9, G4)."""
+    """What the cutover does to core.system and the shared module schemas."""
     with psycopg.connect(su, autocommit=True) as conn:
         roles = _existing_roles(conn)
         conn.execute("ALTER TABLE core.system OWNER TO CURRENT_USER")
@@ -112,7 +112,7 @@ def test_the_setup_and_the_platform_migrations_run_after_the_stage_7_drop():
 
 @needs_superuser
 def test_a_platform_that_never_had_core_system_migrates_without_it():
-    """P1-D2: on a fresh volume (the new init/platform-db.sql) platform migrations 0002..0005
+    """On a fresh volume (the new init/platform-db.sql) platform migrations 0002..0005
     run and make no core.system; the setup that follows does not either."""
     with scratch_database() as (su, rw):
         _setup_part(su)

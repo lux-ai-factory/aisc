@@ -1,4 +1,4 @@
-"""What an assessment is about (targets plan v2, 2026-09-29).
+"""What an assessment is about.
 
 A project's targets are its system and each component its AI card lists (the card's Components
 block, keyed by the card's stable component key, so a renamed component stays the same target).
@@ -71,8 +71,7 @@ def ensure_mirrors(pid, token: str, latest_card: int | None = None) -> str | Non
     return None
 
 
-# ── following the AI card ────────────────────────────────────────────────────
-
+# following the AI card
 QUAL = "https://lux-ai-factory.github.io/qualification/ns#"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 GATEWAY_TOKEN_HEADER = "X-Auth-Request-Access-Token"
@@ -154,7 +153,7 @@ def sync(pid, token: str) -> dict:
 
 def _record_sync(pid, before: dict) -> None:
     """targets.synced: how many targets were added or renamed. A sync spans several writes and calls to
-    the engine, so its event has a transaction of its own, after them (phase 3 review M6)."""
+    the engine, so its event has a transaction of its own, after them."""
     from platform_service import connection_store
     from platform_service.ledger import outbox
 

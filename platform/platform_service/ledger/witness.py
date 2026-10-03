@@ -1,7 +1,7 @@
-"""The witness (spec 3; I1, I2, I9, T5, T6, T18-T20, T23): Caddy's forward_auth asks it about every
-write before the app sees it, and it records who made the request.
+"""The witness: Caddy's forward_auth asks it about every write before the app sees it, and it
+records who made the request.
 
-Caddy sends (06-spike.md G8): the gateway secret, the app the handle names (`X-AISC-App`), the
+Caddy sends: the gateway secret, the app the handle names (`X-AISC-App`), the
 unstripped URI (`X-AISC-Original-Uri`), the method, the person's gateway token and, for a Next.js
 server action, its `Next-Action` id. The witness trusts nothing else.
 
@@ -72,7 +72,7 @@ def _project(app: str, path: str, headers, query: str = "") -> str | None:
         identifier = m.group("project") if m else None
     elif kind == "header":
         identifier = _header(headers, rule) or None
-    elif kind == "bridge":                                           # the dashboard (phase 9)
+    elif kind == "bridge":                                           # the dashboard
         identifier = _bridge(path, query)
     else:
         identifier = None
@@ -132,10 +132,10 @@ def witness(headers) -> Answer:
             roles = (who.claims.get("realm_access") or {}).get("roles") or []
             member = db.role_in_project(pid, who.subject) is not None or "admin" in roles
             if not member:
-                pid = None                                           # a stranger's request: platform log (D11)
+                pid = None                                           # a stranger's request: platform log
     elif current == "record":
         # record mode observes before enforcing: an unverified request keeps the project its path names,
-        # as no member, so the events it caused land in that log marked unverified (spec 3.4, 4.2)
+        # as no member, so the events it caused land in that log marked unverified
         pid = _project(app, path, headers, parts.query)
     actor_ref = None
     if who is not None:
@@ -167,7 +167,7 @@ def _insert(record: dict) -> str:
 
 
 def record(request_id: str):
-    """The stored record of one request, or None. Never a subject or a name (I10)."""
+    """The stored record of one request, or None. Never a subject or a name."""
     from platform_service import db
 
     try:

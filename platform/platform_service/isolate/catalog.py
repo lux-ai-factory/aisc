@@ -1,15 +1,15 @@
 """The shape of the source and target databases, read from the catalog at run time.
 
 Nothing here names a module table: the tables, their columns, keys, foreign keys and
-sequences come from pg_class, pg_attribute and pg_constraint (01-specs.md I12.1). The
-only hand-written knowledge is the handful of constant sets below (I12.1, S-D2).
+sequences come from pg_class, pg_attribute and pg_constraint. The only hand-written
+knowledge is the handful of constant sets below.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 MOVING_SCHEMAS = ("qualification", "control_objectives", "engine", "report_composer")
-#: core moves only this table; it becomes project.system in each project database (D1).
+#: core moves only this table; it becomes project.system in each project database.
 CORE_SYSTEM = "core.system"
 CORE_PROJECT = "core.project"
 STAYS_SHARED = {"core.project", "core.project_member", "core.schema_migration"}
@@ -21,7 +21,7 @@ BOOKKEEPING = {
     "engine.django_content_type",
     "report_composer.schema_migration",
 }
-#: Install-wide libraries in `platform` (D3, D4, I12.9): source table -> library table.
+#: Install-wide libraries in `platform`: source table -> library table.
 LIBRARY = {
     "qualification.form": "form_library.form",
     "qualification.form_version": "form_library.form_version",
@@ -29,9 +29,9 @@ LIBRARY = {
     "qualification.form_version_question": "form_library.form_version_question",
     "report_composer.preset": "report_library.preset",
 }
-#: Library tables that are never copied into a project and are never a root (S-D2).
+#: Library tables that are never copied into a project and are never a root.
 LIBRARY_ONLY = {"report_composer.preset"}
-#: I1.5, I1.7: the only source columns a target may lack.
+#: The only source columns a target may lack.
 DROPPED_COLUMNS = {
     "core.system": {"project_id"},
     "qualification.qualification": {"project_id"},
@@ -43,7 +43,7 @@ DROPPED_COLUMNS = {
 
 
 def target_of(table: str) -> str:
-    """I12.2: where a source table's rows go inside a project database."""
+    """Where a source table's rows go inside a project database."""
     return "project.system" if table == CORE_SYSTEM else table
 
 
@@ -146,7 +146,7 @@ def read_tables(conn, schemas) -> dict[str, Table]:
 
 
 def source_tables(conn) -> dict[str, Table]:
-    """The moving tables of the source (I12.1) plus the shared core tables they reference."""
+    """The moving tables of the source plus the shared core tables they reference."""
     tables = read_tables(conn, MOVING_SCHEMAS + ("core",))
     return {n: t for n, t in tables.items()
             if n.split(".")[0] in MOVING_SCHEMAS or n == CORE_SYSTEM or n in STAYS_SHARED}
@@ -183,7 +183,7 @@ class Classification:
 
 
 def classify(tables: dict[str, Table]) -> Classification:
-    """I12.1/I12.3 at table level: which rule places each moving table's rows."""
+    """Which rule places each moving table's rows (root, owned, needed), at table level."""
     labels: dict[str, str] = {}
     rest: set[str] = set()
     for n in moving(tables):

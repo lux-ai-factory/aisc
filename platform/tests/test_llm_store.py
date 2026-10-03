@@ -1,8 +1,8 @@
-"""Where the keys live: the `llm` schema of each project database (01-specs.md S1.1 to S1.6),
-Fernet at rest (S2.11, S5.2) and rotation (S2.13).
+"""Where the keys live: the `llm` schema of each project database,
+Fernet at rest and rotation.
 
-Runs against the throwaway database. For S1.6 the throwaway also needs report_ro and
-inspector_ro (init/report-roles.sql, init/inspector-role.sql, see 02-tests.md); a role
+Runs against the throwaway database. For the read-rights tests the throwaway also needs report_ro
+and inspector_ro (init/report-roles.sql, init/inspector-role.sql); a role
 that is missing there is skipped rather than failed.
 """
 from __future__ import annotations
@@ -69,7 +69,7 @@ def columns(dsn, project, table):
             " where table_schema = 'llm' and table_name = %s", (table,)).fetchall()}
 
 
-# ── S1.1 to S1.4 the template file ──────────────────────────────────────────
+# The template file
 
 
 def test_s1_4_the_template_file_exists_and_is_idempotent_sql():
@@ -155,7 +155,7 @@ def test_s1_3_system_and_model_are_checked_and_the_provider_is_restricted(projec
         conn.rollback()
 
 
-# ── S1.5 existing and new projects get it ───────────────────────────────────
+# Existing and new projects get it
 
 
 def test_s1_5_a_new_project_gets_the_llm_tables_at_creation(project, dsn):
@@ -193,7 +193,7 @@ def test_s1_5_deleting_a_project_drops_its_keys_with_its_database(client, admin,
                             (projectdb.database_name(project["pid"]),)).fetchone() is None
 
 
-# ── S1.6 who can read it ─────────────────────────────────────────────────────
+# Who can read it
 
 
 @pytest.mark.parametrize("role", ["controls_rw", "dashboard_ro", "report_ro"])
@@ -224,7 +224,7 @@ def test_s1_6_the_inspector_reads_only_ciphertext(client, admin, project, dsn):
     assert found and all(key not in r[0] for r in found)
 
 
-# ── S2.11, S5.2 Fernet at rest ───────────────────────────────────────────────
+# Fernet at rest
 
 
 def test_s5_2_s2_11_only_fernet_ciphertext_is_stored(client, admin, project, dsn):
@@ -256,7 +256,7 @@ def test_s2_11_the_newest_key_encrypts_and_older_ones_still_decrypt(client, admi
     assert Fernet(SECRETS_KEY.encode()).decrypt(token.encode()).decode() == second
 
 
-# ── S2.13 rotation ───────────────────────────────────────────────────────────
+# Rotation
 
 
 def test_s2_13_rotate_re_encrypts_every_key_and_prints_counts_only(client, admin, project, dsn, monkeypatch):

@@ -1,9 +1,9 @@
-"""M1-M3 (phase 9): the report composer's events, in the shapes its handlers send
+"""The report composer's events, in the shapes its handlers send
 (apps/report-composer/report_composer/api.py, pages.py, reports.py), are accepted by the relay against the
 REAL registry, each citing the witnessed request of the route it is posted to, as report_composer_rw.
 The composer's API is served at /report-composer/api/p/<slug>/..., its pages at /report-composer/p/<slug>/...:
 the witness finds the project in both. A report prints the log's head (GET /projects/{slug}/ledger/head),
-and an export of the log proves both the head and the report's document offline (the drill)."""
+and an export of the log proves both the head and the report's document offline."""
 from __future__ import annotations
 
 import hashlib
@@ -128,7 +128,7 @@ def _checker(tmp_path, export_text, key_pem, *args):
 
 
 def test_drill_a_report_is_verified_offline(client, as_user, project, memory_ledger, witnessed, tmp_path):
-    """The phase 9 drill: a report prints the head it was generated under; with only the PDF, an export of
+    """A report prints the head it was generated under; with only the PDF, an export of
     the log and the signing key, a reader proves both that the head is in the log and that the log
     recorded this very document, generated under that head."""
     page = f"/report-composer/api/p/{project['slug']}/layouts"
@@ -166,7 +166,7 @@ def test_drill_a_report_is_verified_offline(client, as_user, project, memory_led
 
 
 def test_a_template_delete_records_every_layout_it_leaves(project, memory_ledger, witnessed):
-    """One delete, several layouts: one event each, under one request (phase 9 review M1)."""
+    """One delete, several layouts: one event each, under one request."""
     request_id = witnessed(MEMBER, "DELETE", "report_composer",
                            f"/report-composer/api/p/{project['slug']}/templates/{T}")
     for layout in (str(uuid.uuid4()), str(uuid.uuid4())):
@@ -210,7 +210,7 @@ def _two_entries_then_a_report(client, as_user, project, memory_ledger, witnesse
 def test_a_document_whose_entry_names_another_anchor_fails(client, as_user, project, memory_ledger, witnessed,
                                                            tmp_path):
     """The printed anchor is a real entry of the log, but the document's entry names an older one: refused
-    (phase 9 review m5: this, not the digest, is what the check is for)."""
+    (this, not the digest, is what the check is for)."""
     heads, pdf, export = _two_entries_then_a_report(client, as_user, project, memory_ledger, witnessed, tmp_path,
                                                     cite_older=True)
     printed = f"{heads[1]['seq']}:{heads[1]['entry_sha256'][:16]}"

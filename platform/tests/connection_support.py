@@ -1,4 +1,4 @@
-"""Test helpers for Manage → Connections (connections plan 2026-09-29). Not a test module.
+"""Test helpers for Manage → Connections. Not a test module.
 
 A local HTTP stub that records requests and serves canned answers per path: it stands in for the
 system under test (the Test button) and for the engine (the component the platform mirrors)."""
@@ -89,7 +89,7 @@ def private_address() -> str | None:
 
 
 class EngineFake:
-    """The engine's component API as the platform uses it (targets plan v2): the engine project
+    """The engine's component API as the platform uses it: the engine project
     of a platform project (made on first use, POST /api/v1/projects/for-platform/<pid>, whose pid
     is the engine's own), its components (GET .../aisystem), creating one and renaming one."""
 

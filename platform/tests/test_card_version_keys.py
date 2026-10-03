@@ -91,9 +91,7 @@ def _project_with_version(conn, slug):
     return project, system
 
 
-# ── fresh volumes ───────────────────────────────────────────────────────────
-
-
+# Fresh volumes
 def test_init_makes_core_system_unique_on_pid_and_project():
     """Before any migration: a module migrating first on a fresh volume finds it."""
     with scratch_database(old_layout=True) as (su, _rw):
@@ -114,16 +112,14 @@ def test_0004_on_a_fresh_database_is_recorded_and_leaves_one_constraint():
         assert n == 1
 
 
-# ── the existing (live) shape ───────────────────────────────────────────────
-
-
+# The existing (live) shape
 def test_0004_adds_the_unique_where_init_did_not():
     with scratch_database(old_layout=True) as (su, rw):
         _drop_unique(su)
         give_core_system_to_platform(su)
         apply_platform_migrations(rw, upto="0003")
         assert _unique_def(rw) is None
-        # up to 0004: the isolation added 0005 (the composer reads members), which is not this test's
+        # up to 0004: 0005 (the composer reads members) is not this test's
         assert apply_platform_migrations(rw, upto="0004") == [M0004]
         assert _unique_def(rw) == "UNIQUE (pid, project_id)"
 
@@ -145,9 +141,7 @@ def test_a_key_into_the_pair_refuses_a_version_of_another_project():
                 conn.execute("insert into qualification.qualification values ('q', %s, %s)", (a, b_v1))
 
 
-# ── postgres-setup (init/project-databases.sql) ─────────────────────────────
-
-
+# Postgres-setup (init/project-databases.sql)
 def test_project_databases_adds_the_unique_when_missing_and_is_idempotent():
     with scratch_database(old_layout=True) as (su, _rw):
         _drop_unique(su)

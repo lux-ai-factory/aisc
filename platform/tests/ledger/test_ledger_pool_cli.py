@@ -1,4 +1,4 @@
-"""PO1: the operator's pool command, end to end on a throwaway immudb (spec 7.1, M1-M7). The superuser's
+"""The operator's pool command, end to end on a throwaway immudb. The superuser's
 password is only in the command's own environment; the platform, as aisc_ledger, then takes one of the
 databases and writes to it. This is what scripts/ledger-pool.sh runs."""
 from __future__ import annotations

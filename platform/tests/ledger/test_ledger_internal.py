@@ -1,8 +1,8 @@
-"""I1-I3: the internal route for callers without an outbox: the engine backend, the dashboard, the AI
-services (I2, T3, T17; spec 4.4, 6.3). The caller is known by its own token, and each token may emit
+"""The internal route for callers without an outbox: the engine backend, the dashboard, the AI
+services. The caller is known by its own token, and each token may emit
 only its own actions. An AI or worker event belongs to a run: it cites the person's request and the
 run id of an accepted start event, inside the run window. The person it acted for is that start
-event's, never a field it sends. A refused event is recorded (202 + `ledger.rejected`), as I2 says."""
+event's, never a field it sends. A refused event is recorded (202 + `ledger.rejected`)."""
 from __future__ import annotations
 
 import uuid
@@ -76,7 +76,7 @@ def test_the_route_needs_the_callers_own_token(client, project, run, given, stat
 
 
 def test_a_wrong_token_is_401_even_while_a_caller_is_unconfigured(client, project, run, monkeypatch):
-    """Review m4: a prober learns nothing about the configuration."""
+    """A prober learns nothing about the configuration."""
     monkeypatch.delenv("PLATFORM_LEDGER_AGENTS_TOKEN")
     assert post(client, project["pid"], ai_event(*run)).status_code == 401
 
@@ -88,7 +88,7 @@ def test_with_no_caller_token_set_the_route_is_closed_503(client, project, run, 
 
 
 def test_two_callers_with_one_token_is_503(client, project, run, monkeypatch):
-    """Review m3: equal tokens would file one caller's events as the other's."""
+    """Equal tokens would file one caller's events as the other's."""
     monkeypatch.setenv("PLATFORM_LEDGER_DASHBOARD_TOKEN", AGENTS_TOKEN)
     assert post(client, project["pid"], ai_event(*run)).status_code == 503
 
@@ -124,7 +124,7 @@ def test_an_ai_event_after_the_run_window_is_rejected(client, project, memory_le
 
 
 def test_an_action_the_run_does_not_produce_is_rejected(client, project, memory_ledger, run):
-    """An action the agents may emit, but not one this run produces. Every agents action today belongs to
+    """An action the agents may emit, but not one this run produces. Every agents action belongs to
     the refinement run, so the test adds one (ai.mapping.completed is the risk mapper's: `emitter`)."""
     from dataclasses import replace
 
@@ -138,7 +138,7 @@ def test_an_action_the_run_does_not_produce_is_rejected(client, project, memory_
 
 
 def test_a_token_may_emit_only_its_own_apps_actions(client, project, memory_ledger, run):
-    """The agents' token can't pass off an engine event (R4.10)."""
+    """The agents' token can't pass off an engine event."""
     post(client, project["pid"], ai_event(*run, action="engine.measures.recorded", item_type="evaluation"))
     relay_all(project["pid"])
     assert "emitter" in reasons(memory_ledger, project["pid"])
@@ -157,8 +157,6 @@ def test_an_ai_event_naming_a_person_is_rejected(client, project, memory_ledger,
     assert reasons(memory_ledger, project["pid"]) == ["actor_supplied"]
 
 
-# phase 4 review M2, M5, m2, m17, m18 -----------------------------------------------------------------
-
 def test_the_same_event_sent_twice_is_accepted_once(client, project, memory_ledger, run):
     event = ai_event(*run)
     assert post(client, project["pid"], event).status_code == 202
@@ -169,7 +167,7 @@ def test_the_same_event_sent_twice_is_accepted_once(client, project, memory_ledg
 
 @pytest.mark.parametrize("change", [{"item_id": "q2"}, {"model": "other/model"}])
 def test_an_event_id_reused_with_other_content_is_refused_never_dropped(client, project, run, change):
-    """M2 / I3: not a silent 202 keeping the first copy."""
+    """A duplicate is refused, not a silent 202 keeping the first copy."""
     event = ai_event(*run)
     assert post(client, project["pid"], event).status_code == 202
     r = post(client, project["pid"], {**event, **change})
@@ -183,14 +181,14 @@ def test_an_event_id_reused_by_another_caller_is_refused(client, project, run):
 
 
 def test_a_large_body_is_413_and_a_long_field_422(client, project, run):
-    """M5: the route caps what reaches the relay."""
+    """The route caps what reaches the relay."""
     assert post(client, project["pid"], ai_event(*run, details={"flagged": "x" * 40_000})).status_code == 413
     assert post(client, project["pid"], ai_event(*run, item_id="q" * 300)).status_code == 422
 
 
 def test_an_entry_too_large_for_the_log_is_rejected_and_the_log_goes_on(client, project, memory_ledger, run,
                                                                         settings, monkeypatch):
-    """M5: an event the store refuses for size is a `too_large` rejection, never a stall of the log.
+    """An event the store refuses for size is a `too_large` rejection, never a stall of the log.
     (The cap is lowered for the test, below the route's own body limit.)"""
     relay_all(project["pid"])                                         # the run's start event
     monkeypatch.setattr(settings, "MAX_ENTRY_BYTES", 2048)
@@ -204,19 +202,19 @@ def test_an_entry_too_large_for_the_log_is_rejected_and_the_log_goes_on(client, 
 
 @pytest.mark.parametrize("outcome", ["refused", "anything"])
 def test_a_caller_may_not_choose_a_refused_outcome(client, project, run, outcome):
-    """m2: `refused` is the relay's word; emitters say ok or failed."""
+    """`refused` is the relay's word; emitters say ok or failed."""
     assert post(client, project["pid"], ai_event(*run, outcome=outcome)).status_code == 422
 
 
 def test_the_route_is_not_served_through_the_gateway(client, project, run):
-    """m17: X-Forwarded-* means it came through Caddy: 404."""
+    """X-Forwarded-* means it came through Caddy: 404."""
     r = client.post(f"/internal/projects/{project['pid']}/ledger/events", json=ai_event(*run),
                     headers={"X-AISC-Service-Token": AGENTS_TOKEN, "X-Forwarded-For": "1.2.3.4"})
     assert r.status_code == 404
 
 
 def test_the_emitter_is_the_tokens_never_the_bodys(client, project, memory_ledger, run):
-    """m18: a body naming another emitter changes nothing about who sent it."""
+    """A body naming another emitter changes nothing about who sent it."""
     post(client, project["pid"], ai_event(*run, emitter="engine", source_app="engine"))
     relay_all(project["pid"])
     assert [e.source_app for e in trusted(memory_ledger, project["pid"])] in ([], ["qualification_agents"])
@@ -225,7 +223,7 @@ def test_the_emitter_is_the_tokens_never_the_bodys(client, project, memory_ledge
 
 
 def test_a_run_whose_index_row_names_another_person_is_rejected(client, project, memory_ledger, run):
-    """m12: the run's person is the logged start event's, never the index row's."""
+    """The run's person is the logged start event's, never the index row's."""
     import psycopg
 
     from tests.conftest import DSN
@@ -240,7 +238,7 @@ def test_a_run_whose_index_row_names_another_person_is_rejected(client, project,
 
 
 def test_an_internal_event_from_a_newer_registry_is_held(client, project, memory_ledger, run):
-    """Phase 3 review M4: the internal route keeps registry_version, so the hold applies to it too."""
+    """The internal route keeps registry_version, so the hold applies to it too."""
     from platform_service.ledger import registry
 
     post(client, project["pid"], ai_event(*run, action="agent.run_paused", registry_version=registry.VERSION + 1))

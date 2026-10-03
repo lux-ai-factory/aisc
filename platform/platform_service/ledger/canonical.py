@@ -5,7 +5,7 @@
   controls as \\u00xx (lowercase hex). `/` and DEL stay as they are.
 - Numbers in the ECMAScript Number.prototype.toString form.
 
-Stricter than JSON on purpose (spec 6.1): integers beyond +-2**53 (a TypeScript twin couldn't hold
+Stricter than JSON on purpose: integers beyond +-2**53 (a TypeScript twin couldn't hold
 them), lone surrogates, NaN and infinities, and every type JSON has no form for are refused.
 """
 from __future__ import annotations

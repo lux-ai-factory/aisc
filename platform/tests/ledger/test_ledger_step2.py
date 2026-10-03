@@ -1,4 +1,4 @@
-"""S4: step 2's events, in the shapes apps/control-objectives' handlers send (api/app.py,
+"""Step 2's events, in the shapes apps/control-objectives' handlers send (api/app.py,
 api/library_routes.py, api/ledger_events.py), are accepted by the relay against the REAL registry, each
 citing the witnessed request of its route, as control_objectives_rw. The AI mapping is one run, written
 in the request that asked for it: requested, each model call, then completed."""
@@ -122,7 +122,7 @@ def _age_witness(request_id: str, minutes: int) -> None:
 
 
 def test_a_long_mapping_keeps_its_run(project, memory_ledger, witnessed):
-    """Phase 6 review M1: the request is recorded before the first model call, so a run whose calls take
+    """The request is recorded before the first model call, so a run whose calls take
     longer than the relay's 5-minute window still has an accepted start, and its events are accepted
     (they are checked against the run's window, not the request's)."""
     request_id = witnessed(MEMBER, "POST", "control_objectives", co(project, f"/projects/{A}/map"))
@@ -144,7 +144,7 @@ def test_a_long_mapping_keeps_its_run(project, memory_ledger, witnessed):
 
 
 def test_a_mapping_run_with_no_end_is_an_open_run(project, memory_ledger, witnessed, monkeypatch):
-    """A mapping whose process died between its start and its save: verify counts it (phase 6 review M1)."""
+    """A mapping whose process died between its start and its save: verify counts it."""
     from datetime import timedelta
 
     from platform_service.ledger import settings, verify

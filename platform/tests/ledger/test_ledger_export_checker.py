@@ -1,4 +1,4 @@
-"""A5: the offline checker on its own (spec 7.4, R4.9). It trusts only the public key it is given: a
+"""The offline checker on its own. It trusts only the public key it is given: a
 reordered, shortened or re-signed file fails, and its canonical JSON is the platform's byte for byte."""
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ def test_an_unreadable_file_is_exit_2(tmp_path):
     assert r.returncode == 2
 
 
-# S9: the export from immudb itself ------------------------------------------------------------------
+# The export from immudb itself
 # Every transaction of the log's database, 1..N, with its entries: the checker recomputes each one's
 # entries root and hash link, compares the last with immudb's signed state, and so sees every write.
 
@@ -192,10 +192,8 @@ def test_a_memory_store_signs_only_its_whole_chain():
         store.export_head(log, 2, lines[1]["proof"]["chain"])
 
 
-# phase 4 review M6, m15 ----------------------------------------------------------------------------
-
 def test_a_duplicate_key_is_refused(tmp_path):
-    """M6: json.loads keeps the last of two equal keys; a first-wins reader would show the forged one."""
+    """Json.loads keeps the last of two equal keys; a first-wins reader would show the forged one."""
     store, _, lines = _export()
     text = "\n".join(json.dumps(line) for line in lines)
     forged = text.replace('"item_id": "r1"', '"item_id": "FORGED", "item_id": "r1"', 1)
@@ -208,7 +206,7 @@ def test_a_duplicate_key_is_refused(tmp_path):
 
 
 def test_content_is_checked_by_default(tmp_path):
-    """M6: without a flag, a forged content line must not print ok."""
+    """Without a flag, a forged content line must not print ok."""
     store, _, lines = _export()
     lines[0]["content"] = {"answer": "forged"}
     r = _run(tmp_path, lines, store.public_key_pem())
@@ -216,7 +214,7 @@ def test_content_is_checked_by_default(tmp_path):
 
 
 def test_the_checker_names_the_log_and_can_require_it(tmp_path):
-    """M6: an export of another log passes only if the auditor didn't say which log they expect."""
+    """An export of another log passes only if the auditor didn't say which log they expect."""
     store, log, lines = _export()
     r = _run(tmp_path, lines, store.public_key_pem())
     assert r.returncode == 0 and log in r.stdout
@@ -233,7 +231,7 @@ def test_an_unknown_field_on_a_line_is_refused(tmp_path):
 
 
 def test_entries_edited_with_their_proofs_under_the_original_head_fail(tmp_path):
-    """m15: the head match itself, not only the signature (proofs re-hashed, head kept as signed)."""
+    """The head match itself, not only the signature (proofs re-hashed, head kept as signed)."""
     store, _, lines = _export()
     lines[1]["entry"]["item_id"] = "r9"
     chain = lines[0]["proof"]["chain"]

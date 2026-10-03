@@ -1,4 +1,4 @@
-"""Helpers for the ledger's own tests (spec 6.1). Never used by the service."""
+"""Helpers for the ledger's own tests. Never used by the service."""
 from __future__ import annotations
 
 from platform_service.ledger import pool

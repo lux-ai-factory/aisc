@@ -1,8 +1,6 @@
-"""The live data move: python -m platform_service.isolate (01-specs.md section 12, D5, D13..D15).
+"""The data move into per-project databases: python -m platform_service.isolate.
 
-Isolation 2026-09-25, stage 2: written before the tool. Every test below except the three
-`test_fixture_*` ones fails with ModuleNotFoundError (platform_service.isolate) until stage 4
-writes it; the fixture tests pass now and prove the synthetic source they run on is what it says.
+The three `test_fixture_*` tests prove that the synthetic source the others run on is what it says.
 
 The world each test runs on is built by tests/isolate_support.py (read its docstring): a throwaway
 source database shaped like the live `platform` at its old-layout heads, two projects A < B with
@@ -11,8 +9,8 @@ rows in every moving schema, and their project databases at the new heads.
 Needs PLATFORM_TEST_SUPERUSER_URL (throwaway superuser, never port 5432) and
 PLATFORM_TEST_DATABASE_URL (platform_rw on the same cluster); skips without them.
 
-Interface pinned by these tests (stage 3/4 implement exactly this)
-------------------------------------------------------------------
+Interface pinned by these tests
+-------------------------------
 CLI: ``python -m platform_service.isolate <subcommand> (--project PID [--project PID ...] | --all)
 [--dry-run] [--report PATH]``, run from ``platform/``.
 
@@ -21,7 +19,7 @@ CLI: ``python -m platform_service.isolate <subcommand> (--project PID [--project
 - Connection: env ``ISOLATE_SUPERUSER_URL``, a superuser DSN whose database is the source
   (``platform`` live, a throwaway here). Target databases are ``project_<hex>`` on the same server
   (projectdb.database_name). ``form_library.*`` and ``report_library.*`` are in the source database.
-- Exit code 0 on success; non-zero on any refusal, conflict, mismatch or failure (I12.16).
+- Exit code 0 on success; non-zero on any refusal, conflict, mismatch or failure.
 - stdout: the human summary; stderr: logs. Neither ever contains a row value or a credential.
 - ``verify-dump`` restores the dump files with ``pg_restore`` found on PATH (``--no-owner``) into a
   database it creates and drops, reads the moving tables from it and core.project from
@@ -29,7 +27,7 @@ CLI: ``python -m platform_service.isolate <subcommand> (--project PID [--project
 - Reads of a target that change nothing end in ROLLBACK, so ``plan``, ``copy --dry-run`` and an
   ``already done`` project leave the rows written in every target (pg_stat_database tup_inserted/updated/deleted) unchanged.
 
-Report JSON (``--report``; keys and counts only, never row values, I12.15)::
+Report JSON (``--report``; keys and counts only, never row values)::
 
     {
       "subcommand": "copy", "dry_run": false, "snapshot_time": "<ISO 8601>",
@@ -54,17 +52,17 @@ Report JSON (``--report``; keys and counts only, never row values, I12.15)::
 
 ``source_md5``/``target_md5`` are md5(string_agg(ROW(<shared columns in target column order>)::text,
 E'\\n' ORDER BY row_text)) under TimeZone=UTC, DateStyle=ISO, extra_float_digits=3, bytea_output=hex,
-over the copied set of that project (I12.10). ``coverage`` is written by ``verify`` (I12.13).
+over the copied set of that project. ``coverage`` is written by ``verify``.
 
 Named refusal reasons: ``unclassified table``, ``owned by two projects``, ``cross-project reference``,
 ``unknown project``, ``missing database``, ``source not at old head``, ``target not at new head``,
 ``missing template``, ``active sessions``, ``column coverage``, ``target not empty and not equal``,
 ``count mismatch``, ``checksum mismatch``.
 
-Decisions taken here (recorded in 02-tests.md):
-- report_composer.preset (composer 0005, platform-wide by D4) is a library table: every row goes to
+Behaviour these tests also pin:
+- report_composer.preset (composer 0005, install-wide) is a library table: every row goes to
   ``report_library.preset`` in platform, none into a project (its FK to core.project would otherwise
-  make it a root table; the spec's I12.1/I12.2 do not name it).
+  make it a root table).
 - With the forms tables absent (the old head before the forms migrations), the old-head check
   accepts the pre-forms qualification history and the library copy is skipped.
 - ``copy`` refuses (``missing database``) when a project in core.project has no database; ``plan``
@@ -130,7 +128,7 @@ def moving_tables(conn) -> list[str]:
             if t.split(".")[0] in S.MOVING_SCHEMAS or t == "core.system"]
 
 
-# ── the fixture itself (these pass now) ──────────────────────────────────────
+# The fixture itself.
 
 
 def test_fixture_source_is_the_live_shape_with_the_synthetic_rows(make_world):
@@ -156,7 +154,7 @@ def test_fixture_targets_hold_only_the_seed_and_the_new_heads(make_world):
         with w.target(pid) as c:
             assert S.columns(c, "project.system")[:2] == ["pid", "number"]
             assert "project_id" not in S.columns(c, "qualification.qualification")
-            assert "project_id" in S.columns(c, "engine.aisc_backend_project")  # I7.9: engine keeps it
+            assert "project_id" in S.columns(c, "engine.aisc_backend_project")  # the engine keeps it
             assert c.execute("SELECT count(*) FROM qualification.form").fetchone()[0] == 1
             assert c.execute("SELECT count(*) FROM qualification.qualification_answer").fetchone()[0] == 0
             names = {r[0] for r in c.execute("SELECT name FROM provision.template_migration")}
@@ -172,7 +170,7 @@ def test_fixture_forms_absent_world_builds(make_world):
         assert S.fk_orphans(c) == []
 
 
-# ── I12.1..I12.3 classification and placement ────────────────────────────────
+# Classification and placement.
 
 
 def test_I12_1_plan_classifies_every_table_of_the_live_shape_from_the_catalog(make_world, rpt):
@@ -242,7 +240,7 @@ def test_I12_2_I12_3_every_row_lands_in_its_own_project_database(make_world, rpt
 def test_I12_3_D14_self_references_identifying_children_and_historical_rows(make_world, rpt):
     """cq1 copies dq1 (self-reference): B needs dq1 and its owner form; ai_component 2's dataset
     is component 1; derived 3 is an identifying child of metric 3 and needs its base metric 2;
-    ansA0 answers a card version that is no longer the latest, which its trigger would refuse."""
+    ansA0 answers a card version that is not the latest, which its trigger would refuse."""
     S.require_tool()
     w = make_world()
     copied(w, S.run(w, "copy", "--all", report=rpt()))
@@ -257,7 +255,7 @@ def test_I12_3_D14_self_references_identifying_children_and_historical_rows(make
         assert S.fk_orphans(c) == []
 
 
-# ── I12.4 conflicts abort before any write ───────────────────────────────────
+# Conflicts abort before any write.
 
 
 def _no_write_anywhere(w, before):
@@ -313,7 +311,7 @@ def test_I12_4_a_root_row_of_a_project_not_in_core_project_aborts(make_world, rp
     _no_write_anywhere(w, before)
 
 
-# ── I12.5 unowned rows ───────────────────────────────────────────────────────
+# Unowned rows.
 
 
 def test_I12_5_unowned_rows_are_reported_by_key_and_reason_and_not_moved(make_world, rpt):
@@ -324,7 +322,7 @@ def test_I12_5_unowned_rows_are_reported_by_key_and_reason_and_not_moved(make_wo
     got = {(u["table"], next(iter(u["key"].values()))) for u in res.report["unowned"]}
     assert got == S.UNOWNED, got
     assert all(u.get("reason") for u in res.report["unowned"])
-    # the unused form is not unowned: it is in the library target (I12.5)
+    # the unused form is not unowned: it is in the library target
     assert not any(u["table"].startswith("qualification.form") for u in res.report["unowned"])
     for pid in w.pids:
         assert 3 not in target_keys(w, pid, "engine.aisc_backend_project")
@@ -344,7 +342,7 @@ def test_I12_5_I12_6_a_project_without_a_database_is_reported_and_refuses_copy(m
     _no_write_anywhere(w, before)
 
 
-# ── I12.6 preconditions ──────────────────────────────────────────────────────
+# Preconditions.
 
 OLD_HEAD_BREAKS = {
     "engine 0024 missing": "DELETE FROM engine.django_migrations WHERE name = '0024_no_login_of_its_own'",
@@ -379,7 +377,7 @@ NEW_HEAD_BREAKS = {
     "forms migration missing": ("target not at new head", "DELETE FROM qualification._prisma_migrations"
                                 " WHERE migration_name = '20260925090000_forms_are_data'"),
     "alembic baseline missing": ("target not at new head", "DELETE FROM control_objectives.alembic_version"),
-    # a partial migrate_projects: at 0020, without today's head 0021 (adapt plan 2026-09-28)
+    # a partial migrate_projects: at 0020, without the head 0021
     "django 0021 missing": ("target not at new head",
                             "DELETE FROM engine.django_migrations WHERE name = '0021_engine_deployment_marker'"),
     "composer baseline missing": ("target not at new head", "DELETE FROM report_composer.schema_migration"),
@@ -464,11 +462,11 @@ def test_I12_6_a_target_only_column_with_a_default_is_allowed(make_world, rpt):
         assert c.execute("SELECT DISTINCT extra FROM control_objectives.risk").fetchall() == [("d",)]
 
 
-# ── I12.7 the copy itself ────────────────────────────────────────────────────
+# The copy itself.
 
 
 def test_I12_7_values_survive_exactly_and_checksums_are_the_spec_formula(make_world, rpt):
-    """floats, bytea, jsonb, arrays and timestamps compare equal row by row; the report's md5 is
+    """Floats, bytea, jsonb, arrays and timestamps compare equal row by row; the report's md5 is
     md5(string_agg(ROW(shared columns in target order)::text, E'\\n' ORDER BY row_text))."""
     S.require_tool()
     w = make_world()
@@ -544,7 +542,7 @@ def test_I12_7_D15_a_failure_rolls_back_that_project_and_a_rerun_resumes(make_wo
     assert S.run(w, "verify", "--all", report=rpt()).returncode == 0
 
 
-# ── I12.8 idempotent, target not empty ───────────────────────────────────────
+# Idempotence, and a target that is not empty.
 
 
 def test_I12_8_a_second_copy_is_already_done_and_writes_nothing(make_world, rpt):
@@ -599,7 +597,7 @@ def test_I12_8_a_seed_that_differs_from_the_source_aborts(make_world, rpt):
                      projects=(w.A,))
 
 
-# ── I12.9 the form library, and presets (D3, D4) ─────────────────────────────
+# The form library, and presets.
 
 
 def test_I12_9_every_form_row_is_copied_to_the_library_and_the_equal_seed_is_allowed(make_world, rpt):
@@ -650,7 +648,7 @@ def test_I12_2_the_forms_tables_may_be_absent(make_world, rpt):
     assert S.run(w, "verify", "--all", report=rpt()).returncode == 0
 
 
-# ── I12.10, I12.13 verification ──────────────────────────────────────────────
+# Verification.
 
 
 def test_I12_10_verify_catches_a_target_row_corrupted_after_the_copy(make_world, rpt):
@@ -715,7 +713,7 @@ def test_I12_13_verify_flags_a_source_row_that_no_target_holds(make_world, rpt):
                      projects=(w.A,))
 
 
-# ── I12.11, I12.12 no writes where none are allowed ──────────────────────────
+# No writes where none are allowed.
 
 
 def test_I12_11_copy_never_writes_deletes_or_locks_the_source(make_world, rpt):
@@ -761,7 +759,7 @@ def test_I12_12_plan_and_dry_run_compute_everything_and_write_nothing(make_world
     assert res.report["unowned"] and res.report["refusals"] == []
 
 
-# ── I12.14 verify-dump ───────────────────────────────────────────────────────
+# verify-dump
 
 
 def _docker_pg(tmp_path: Path) -> Path:
@@ -784,8 +782,8 @@ def test_I12_14_verify_dump_proves_the_stage_7_dump_row_by_row(make_world, rpt, 
     w = make_world()
     bin_dir = _docker_pg(tmp_path)
     copied(w, S.run(w, "copy", "--all", report=rpt()))
-    # Two files: pg_dump ignores -n when -t is given, so I15.2's single command would dump
-    # core.system alone (spec gap recorded in 02-tests.md).
+    # Two files: pg_dump ignores -n when -t is given, so a single command with both would dump
+    # core.system alone.
     schemas, system = tmp_path / "schemas.dump", tmp_path / "core_system.dump"
     subprocess.run([str(bin_dir / "pg_dump"), "-Fc", "-n", "qualification", "-n", "control_objectives",
                     "-n", "engine", "-n", "report_composer", "-f", str(schemas), w.source_dsn],
@@ -806,7 +804,7 @@ def test_I12_14_verify_dump_proves_the_stage_7_dump_row_by_row(make_world, rpt, 
     assert databases() == dbs_before, "verify-dump left its restore database behind"
 
 
-# ── I12.15, I12.16 report and logs ───────────────────────────────────────────
+# Report and logs.
 
 
 def test_I12_15_the_report_holds_keys_and_counts_never_row_values(make_world, rpt):
@@ -852,7 +850,7 @@ def test_I12_16_one_project_at_a_time_on_request(make_world, rpt):
     assert target_keys(w, w.A, "qualification.qualification") == set()
 
 
-# ── the other subcommands ────────────────────────────────────────────────────
+# The other subcommands.
 
 
 def test_I12_C6_provision_makes_a_missing_project_database_with_every_template_file(make_world, rpt):

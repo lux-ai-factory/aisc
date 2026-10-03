@@ -1,4 +1,4 @@
-"""verify-dump: the stage-7 dump files proven row by row before the drop (01-specs.md I12.14, G7).
+"""verify-dump: prove the dump files taken before the shared schemas are dropped, row by row.
 
 The dump files (one of the four module schemas, one of core.system; pg_dump ignores -n
 when -t is given) are restored with `pg_restore` from PATH into a database made for it,

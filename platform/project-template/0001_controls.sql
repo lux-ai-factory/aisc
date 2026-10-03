@@ -1,4 +1,4 @@
--- Step 5, controls: its schema in this project's database, owned by its role.
+-- Controls: its schema in this project's database, used by its role.
 --
 -- This database is one project. Nothing in it names a project, and nothing
 -- outside it can be reached from here. The database name is not known when

@@ -29,8 +29,8 @@ from platform_service.migrate import MIGRATIONS, migrate
 
 REPO = Path(__file__).resolve().parents[2]
 PLATFORM_DB_SQL = REPO / "init" / "platform-db.sql"
-#: The pre-isolation init/platform-db.sql (f01288a), which still made core.system and the module
-#: schemas: the layout the migration tests of core.system pin (03-coding-plan.md G3).
+#: The pre-isolation init/platform-db.sql, which made core.system and the module
+#: schemas: the layout the migration tests of core.system pin.
 PRE_ISOLATION_PLATFORM_DB_SQL = REPO / "scripts" / "tests" / "fixtures" / "isolation" / "pre_isolation_platform_db.sql"
 PROJECT_DATABASES_SQL = REPO / "init" / "project-databases.sql"
 
@@ -85,7 +85,7 @@ def scratch_database(old_layout: bool = False):
     old_layout: prepared by the pre-isolation init/platform-db.sql instead, which
     made core.system and the module schemas in the platform database. The tests of
     the migrations of core.system pin that history, which exists only there
-    (isolation 2026-09-25: a fresh volume no longer makes core.system, I2.8)."""
+    (a fresh volume does not make core.system)."""
     _refuse_live(SUPERUSER_DSN)
     name = f"pytest_core_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(SUPERUSER_DSN, autocommit=True) as conn:
@@ -119,6 +119,6 @@ def apply_platform_migrations(rw_dsn: str, upto: str | None = None) -> list[str]
 
 
 def give_core_system_to_platform(su_dsn: str) -> None:
-    """What the ownership line in init/project-databases.sql does (D1)."""
+    """What the ownership line in init/project-databases.sql does."""
     with psycopg.connect(su_dsn, autocommit=True) as conn:
         conn.execute("ALTER TABLE core.system OWNER TO platform_rw")

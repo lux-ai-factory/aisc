@@ -1,7 +1,7 @@
-"""Endpoints belong to targets (targets plan v2, TG6 to TG9): a connection is the endpoint of one
+"""Endpoints belong to targets: a connection is the endpoint of one
 target (the system or a card component), exactly one per target; a plugin run reaches the
-endpoint of its evaluation's target through the platform. Connections are no longer engine
-components of their own (O1): the target's mirror is what an evaluation picks. Runs on the
+endpoint of its evaluation's target through the platform. Connections are not engine
+components of their own: the target's mirror is what an evaluation picks. Runs on the
 throwaway; the system under test is a local stub."""
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def internal(client, project, path, method="GET", token=CONNECTIONS_TOKEN):
                           headers={"X-AISC-Service-Token": token})
 
 
-# ── TG6 one endpoint per target ─────────────────────────────────────────────
+# One endpoint per target
 
 def test_tg6_a_connection_is_the_endpoint_of_the_target_it_names(client, admin, project, stub):
     r = put(client, project, "mcas-chat", admin, body(stub, target="system"))
@@ -107,7 +107,7 @@ def test_tg6_the_targets_list_names_each_targets_endpoint(client, admin, as_user
     assert t["system"]["endpoint"] is None
 
 
-# ── TG7 and TG8 a run reaches its target's endpoint ─────────────────────────
+# A run reaches its target's endpoint
 
 def test_tg7_the_internal_route_gives_the_endpoint_of_a_target(client, admin, project, stub):
     put(client, project, "mcas-chat", admin, body(stub, target="system"))
@@ -140,7 +140,7 @@ def test_tg8_run_keys_are_issued_by_target(client, admin, project, stub):
     assert internal(client, project, f"component:{K2}/run-keys", method="POST").status_code == 404
 
 
-# ── TG9 connections are no engine components of their own (O1) ──────────────
+# Connections are no engine components of their own
 
 def test_tg9_a_new_connection_makes_no_engine_component(client, admin, project, stub):
     engine = EngineFake(stub, project["pid"])

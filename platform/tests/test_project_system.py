@@ -1,9 +1,7 @@
-"""Isolation 2026-09-25, platform side: the card versions and the module schemas
-live in each project's own database.
+"""The card versions and the module schemas live in each project's own database.
 
-docs/superpowers/isolation-2026-09-25/01-specs.md sections 1 and 2. Written
-before the code (stage 2): every test here names its requirement, and a missing
-template file, table or behaviour makes it fail with a message that names it.
+A missing template file, table or behaviour makes a test fail with a message
+that names it.
 
 Runs against the throwaway test database (PLATFORM_TEST_DATABASE_URL, as
 platform_rw) and, for the fresh-volume checks, PLATFORM_TEST_SUPERUSER_URL.
@@ -38,7 +36,7 @@ BOB = "00000000-0000-0000-0000-0000000000b0"
 MALLORY = "00000000-0000-0000-0000-0000000000ma"
 
 OLD_TEMPLATE = ["0001_controls.sql", "0002_dashboard.sql", "0003_report.sql", "0004_inspector.sql", "0005_llm.sql"]
-#: I2.1: the new files, and which module role and schema each one opens.
+#: The template files that open a project database to a module: which role and schema each one opens.
 NEW_TEMPLATE = {
     "0006_project_system.sql": (None, "project"),
     "0007_qualification.sql": ("qualification_rw", "qualification"),
@@ -47,12 +45,12 @@ NEW_TEMPLATE = {
     "0010_report_composer.sql": ("report_composer_rw", "report_composer"),
 }
 MODULE_SCHEMAS = {role: schema for role, schema in NEW_TEMPLATE.values() if role}
-#: I2.1: who may read and reference the card versions.
+#: Who may read and reference the card versions.
 VERSION_READERS = ["qualification_rw", "control_objectives_rw", "controls_rw", "engine_rw", "report_composer_rw"]
 READERS = ["report_ro", "dashboard_ro"]
 
 
-# ── helpers ─────────────────────────────────────────────────────────────────
+# Helpers.
 
 
 def missing_new_template() -> list[str]:
@@ -106,7 +104,7 @@ def project_system_rows(dsn, pid) -> list[tuple]:
 
 def insert_version(dsn, pid, number: int, name="MCAS", version="v1") -> str:
     """A card version written straight into the project's database, as platform_rw
-    (the only writer, I2.1). Returns its pid."""
+    (the only writer). Returns its pid."""
     with in_project(dsn, pid, role="platform_rw") as conn:
         return str(conn.execute(
             "insert into project.system (number, name, version) values (%s, %s, %s) returning pid",
@@ -132,23 +130,23 @@ def save(client, as_user, project, who=ALICE, **body):
     return client.post(f"/projects/{project['slug']}/system-versions", json=body, headers=as_user(who))
 
 
-# ── I1.8 the one name rule ──────────────────────────────────────────────────
+# The one rule from a pid to a database name.
 
 
 @pytest.mark.parametrize("given", [PID, PID.upper(), PID.title()])
 def test_i1_8_the_example_pid_names_the_same_database_in_any_case(given):
-    """I1.8: green by design (the rule exists); pinned here with the shared example."""
+    """The pid of the shared example names the same database in any letter case."""
     assert projectdb.database_name(given) == "project_3f2b8c1e0d4a4e7b9a551c2d3e4f5a6b"
 
 
 @pytest.mark.parametrize("bad", [PID.replace("-", ""), "{" + PID + "}", " " + PID, PID[:-1] + "g"])
 def test_i1_8_only_the_hyphenated_uuid_form_is_a_pid(bad):
-    """I1.8: green by design; anything that becomes part of a database name matches the uuid regex first."""
+    """Anything that becomes part of a database name must match the uuid regex first."""
     with pytest.raises(projectdb.NotAPid):
         projectdb.database_name(bad)
 
 
-# ── I2.1 the template files (static) ────────────────────────────────────────
+# The template files, read as text.
 
 
 @pytest.mark.parametrize("name", list(NEW_TEMPLATE))
@@ -181,7 +179,7 @@ def test_i2_1_a_module_file_opens_the_database_and_its_schema_to_its_role_only(n
         "I2.6/D10: reader grants come from the table owner's migrations, never default privileges"
 
 
-# ── I2.1, I2.4, I2.9 a made project gets every file ─────────────────────────
+# A new project gets every template file.
 
 
 @needs_database
@@ -194,7 +192,7 @@ def test_i2_4_making_a_project_applies_every_template_file_0001_to_0010(project,
 
 @needs_database
 def test_i2_9_a_database_that_had_0001_to_0005_gets_0006_to_0010_at_the_next_provision(project, dsn, monkeypatch):
-    """I2.9: a database made with the old template (only 0001..0005) is brought up to
+    """A database made with the old template (only 0001..0005) is brought up to
     date by provision() and by provision_all at the first query after start."""
     # a second project whose database is made from the old template only
     pid = str(uuid.uuid4())
@@ -230,7 +228,7 @@ def test_i2_9_a_database_that_had_0001_to_0005_gets_0006_to_0010_at_the_next_pro
     assert missing == [], f"I2.9: provision_all did not bring the project to {missing}"
 
 
-# ── I1.5 project.system ─────────────────────────────────────────────────────
+# project.system
 
 
 @needs_database
@@ -288,7 +286,7 @@ def test_i1_5_only_the_latest_version_may_change_and_no_number_ever_changes(proj
     assert trigger, "I1.5: trigger project.system_only_latest_changes"
 
 
-# ── I2.1, I1.2, I1.4, I1.6 who may do what in a project database ────────────
+# Who may do what in a project database.
 
 
 @needs_database
@@ -314,7 +312,7 @@ def test_i2_1_only_platform_rw_writes_project_system_and_the_modules_read_and_re
 @needs_database
 @pytest.mark.parametrize("role", list(MODULE_SCHEMAS))
 def test_i1_2_a_module_role_connects_and_has_its_own_schema_only(project, dsn, role):
-    """I1.1/I1.2: each module's schema exists in the project database, owned by
+    """Each module's schema exists in the project database, owned by
     platform_rw, and only that module's role may create in it."""
     require_new_template("I1.2")
     own = MODULE_SCHEMAS[role]
@@ -350,7 +348,7 @@ def test_i1_2_a_module_role_connects_and_has_its_own_schema_only(project, dsn, r
 
 @needs_database
 def test_i1_6_a_module_may_point_a_foreign_key_at_project_system(project, dsn):
-    """I1.6 (platform side): REFERENCES lets each module recreate its FK on project.system(pid)."""
+    """REFERENCES lets each module recreate its FK on project.system(pid)."""
     require_new_template("I1.6")
     with in_project(dsn, project["pid"], role="qualification_rw") as conn:
         conn.execute("create table qualification.probe_i1_6 (s uuid references project.system (pid) on delete cascade)")
@@ -377,7 +375,7 @@ def test_i2_1_readers_get_usage_on_every_module_schema(project, dsn):
 
 @needs_database
 def test_i18_5_no_module_role_or_reader_reaches_llm_once_every_module_may_connect(project, dsn):
-    """I18.5: with 0006..0010 every module role connects; still none of them, nor a
+    """With 0006..0010 every module role connects; still none of them, nor a
     reader, has any right on llm.* (the keys)."""
     require_new_template("I18.5")
     with in_project(dsn, project["pid"]) as conn:
@@ -390,7 +388,7 @@ def test_i18_5_no_module_role_or_reader_reaches_llm_once_every_module_may_connec
                     f"I18.5: {role} reads {table}"
 
 
-# ── I2.2 the card-version functions use project.system ──────────────────────
+# The card-version functions use project.system.
 
 
 @needs_database
@@ -439,7 +437,7 @@ def test_i2_2_two_saves_at_once_get_n_and_n_plus_1_in_the_project_database(clien
     assert sorted(r[1] for r in project_system_rows(dsn, project["pid"])) == [1, 2]
 
 
-# ── I2.3 GET /systems/{pid} scans only the caller's projects ────────────────
+# GET /systems/{pid} scans only the caller's projects.
 
 
 @needs_database
@@ -464,12 +462,12 @@ def test_i2_3_a_version_is_found_in_the_callers_project_database(client, as_user
     assert client.get(f"/systems/{uuid.uuid4()}", headers=admin).status_code == 404
 
 
-# ── I2.5 delete: order unchanged, a dropped database is 404 ─────────────────
+# Deleting a project: the order of the steps, and a dropped database answers 404.
 
 
 @needs_database
 def test_i2_5_delete_unregisters_then_drops_then_deletes_the_row(client, as_user, project, monkeypatch):
-    """I2.5: green by design today; pins the order the isolation keeps."""
+    """Deleting a project unregisters it, drops its database, then deletes its row, in that order."""
     from platform_service import app as app_module
 
     calls = []
@@ -486,7 +484,7 @@ def test_i2_5_delete_unregisters_then_drops_then_deletes_the_row(client, as_user
 
 @needs_database
 def test_i2_5_versions_of_a_project_whose_database_is_gone_are_404_not_500(client, as_user, project, dsn):
-    """I2.5: between DROP DATABASE and the core.project delete, the card-version
+    """Between DROP DATABASE and the core.project delete, the card-version
     routes answer 404 for that pid (the database is the project)."""
     projectdb.drop(dsn, project["pid"])
     for path in (f"/projects/{project['slug']}/system-versions",
@@ -496,7 +494,7 @@ def test_i2_5_versions_of_a_project_whose_database_is_gone_are_404_not_500(clien
     assert save(client, as_user, project).status_code == 404
 
 
-# ── I17.1 one connection per call to a project database ─────────────────────
+# One connection per call to a project database.
 
 
 @needs_database
@@ -524,12 +522,12 @@ def test_i17_1_the_platform_opens_the_project_database_per_call_and_closes_it(cl
     assert lingering == 0, "I17.1: no pooled platform_rw session stays open on a project database"
 
 
-# ── I11.2 the diagrams gate keeps its regex for the new schemas ─────────────
+# The diagrams gate covers the project database schemas.
 
 
 @needs_database
 def test_i11_2_a_member_sees_the_new_schemas_of_their_project_and_a_stranger_does_not(client, as_user, project):
-    """I11.2: green by design (regex unchanged); the rest of I11.2 is test_authz_schema.py."""
+    """A member sees the schemas of their project's database and a stranger does not (more in test_authz_schema.py)."""
     database = projectdb.database_name(project["pid"])
     for schema in ("project", "qualification", "control_objectives", "engine", "report_composer"):
         uri = f"/{database}/{schema}/index.html"
@@ -537,7 +535,7 @@ def test_i11_2_a_member_sees_the_new_schemas_of_their_project_and_a_stranger_doe
         assert client.get("/authz/schema", headers={**as_user(MALLORY), "X-Forwarded-Uri": uri}).status_code == 403
 
 
-# ── I1.3, I1.4, I2.8 (platform side) a fresh platform database ──────────────
+# A fresh platform database.
 
 
 def _setup_part(su: str) -> None:
@@ -557,7 +555,7 @@ def _fresh_platform(su: str, rw: str) -> None:
 
 @needs_superuser
 def test_i2_8_a_fresh_platform_database_has_no_module_schema_and_no_core_system():
-    """I1.3/I2.8: init/platform-db.sql, the platform migrations and
+    """init/platform-db.sql, the platform migrations and
     init/project-databases.sql on an empty database leave only the shared schemas."""
     with scratch_database() as (su, rw):
         _fresh_platform(su, rw)
@@ -574,18 +572,18 @@ def test_i2_8_a_fresh_platform_database_has_no_module_schema_and_no_core_system(
         f"I2.8: platform-db.sql still makes module schemas: {sorted(schemas)}"
     # core.outbox is the platform's own ledger outbox (migration 0008), not a module's table
     assert core == {"project", "project_member", "schema_migration", "outbox"}, f"I1.3: core has {sorted(core)}"
-    # (forms are per project since the user's decision of 2026-09-25: no form library in platform)
+    # (forms are per project: there is no form library in platform)
     assert "form_library" not in schemas and "report_library" in schemas, "I2.8: report_library only"
     assert owners.get("report_library") == "report_composer_rw", "I1.4: report_composer_rw owns report_library"
 
 
 @needs_superuser
 def test_i2_8_project_databases_sql_still_runs_once_core_system_is_gone():
-    """I2.8: after the drop step, the core.system owner line and the composite-key
+    """Once core.system is dropped, the core.system owner line and the composite-key
     block of init/project-databases.sql run only when core.system exists."""
     with scratch_database() as (su, rw):
-        # today's layout first (the setup hands core.system over, then migrate),
-        # then the stage-7 drop, then the setup of the next start
+        # the current layout first (the setup hands core.system over, then migrate),
+        # then core.system is dropped, then the setup of the next start runs
         _setup_part(su)
         apply_platform_migrations(rw)
         with psycopg.connect(su, autocommit=True) as conn:

@@ -1,6 +1,6 @@
-"""L4: the store (I3, I4, I9, T8, T11, T21, T24; spec 6.1, 7.1-7.3). Each contract test runs on the
+"""The ledger store. Each contract test runs on the
 memory store and on a throwaway immudb 1.11.1 as `aisc_ledger` (never the superuser), each test on
-databases of its own (R4.4). The immudb-only tests reproduce what the spike saw (06-spike.md M1-M15)."""
+databases of its own. The immudb-only tests reproduce failure modes seen on a real server."""
 from __future__ import annotations
 
 import threading
@@ -23,8 +23,7 @@ def entry(**over):
     return base
 
 
-# the contract, on both stores -----------------------------------------------------------------------
-
+# The contract, on both stores
 def test_appending_gives_increasing_numbers(any_store):
     store, (a, _) = any_store
     first, second = store.append(a, entry()), store.append(a, entry())
@@ -98,7 +97,7 @@ def test_an_entry_just_under_the_cap_round_trips(any_store, settings):
 
 
 def test_two_threads_on_two_databases_never_cross(any_store):
-    """The spike's shared client put 18% of entries in the wrong database, without an error (M9)."""
+    """A client shared between databases put 18% of entries in the wrong database, without an error."""
     store, (a, b) = any_store
     errors = []
 
@@ -118,7 +117,7 @@ def test_two_threads_on_two_databases_never_cross(any_store):
 
 
 def test_a_rolled_back_state_raises_the_alarm(any_store):
-    """The verified state the platform keeps claims more than the server holds: a restore (M13)."""
+    """The verified state the platform keeps claims more than the server holds: a restore."""
     store, (a, _) = any_store
     seq = store.append(a, entry())
     state = store.state(a)
@@ -128,7 +127,7 @@ def test_a_rolled_back_state_raises_the_alarm(any_store):
 
 
 def test_a_reanchor_after_a_restore_trusts_the_server_again(any_store):
-    """Spec T21 / runbook ledger-restore.md: after the alarm, an admin's re-anchor; reads work again and
+    """After the alarm, an admin's re-anchor; reads work again and
     the head is what the server holds."""
     store, (a, _) = any_store
     seq = store.append(a, entry())
@@ -141,8 +140,7 @@ def test_a_reanchor_after_a_restore_trusts_the_server_again(any_store):
     assert store.append(a, entry()) > seq
 
 
-# memory only: tampering with storage ----------------------------------------------------------------
-
+# Memory only: tampering with storage
 def test_a_changed_entry_raises_the_alarm():
     store = MemoryLedger()
     a = "ledger" + uuid.uuid4().hex
@@ -153,8 +151,7 @@ def test_a_changed_entry_raises_the_alarm():
         store.get(a, seq)
 
 
-# immudb only: what the spike saw --------------------------------------------------------------------
-
+# Immudb only: failure modes seen on a real server
 @pytest.fixture
 def immudb():
     need(IMMUDB_URL and IMMUDB_ADMIN_PASSWORD,
@@ -165,7 +162,7 @@ def immudb():
 
 def test_the_ledger_user_cannot_create_a_database(immudb):
     """Refused for lack of the right, not for a failed login: aisc_ledger logs in to a database it
-    may use, and is refused the creation itself (review minor 13)."""
+    may use, and is refused the creation itself."""
     from platform_service.ledger import pool
 
     [mine] = fresh_databases(1)
@@ -179,12 +176,12 @@ def test_a_database_granted_after_login_is_usable(immudb):
     store = immudb()
     [a] = fresh_databases(1)
     store.append(a, entry())
-    [b] = fresh_databases(1)                                        # granted after the store logged in (M7)
+    [b] = fresh_databases(1)                                        # granted after the store logged in
     assert store.append(b, entry()) >= 1
 
 
 def test_the_state_survives_a_new_store_and_a_rollback_is_caught_by_it(immudb):
-    """The state lives outside immudb (Postgres in production) and is keyed by database only (M11)."""
+    """The state lives outside immudb (Postgres in production) and is keyed by database only."""
     state = MemoryStateStore()
     [a] = fresh_databases(1)
     seq = immudb(state).append(a, entry())
@@ -206,7 +203,7 @@ def test_the_state_store_is_compare_and_set(immudb):
 
 def test_the_pool_refuses_when_the_ledger_users_password_is_not_the_one_given(immudb):
     """An existing aisc_ledger with another password would make a pool the platform can't use: the
-    operator's command checks the login and says so (found by the phase-1 drill)."""
+    operator's command checks the login and says so."""
     from platform_service.ledger import pool
     from platform_service.ledger.naming import pool_name
 
@@ -227,8 +224,7 @@ def test_a_wrong_password_is_a_credentials_error_not_an_unknown_database(immudb)
 
 def test_the_ledger_user_sees_its_server_and_its_databases(immudb):
     """As aisc_ledger, which has no right on immudb's defaultdb: the server id needs no login, and the
-    database list logs in to the platform log, which the pool command always makes (found by the
-    phase-1 drill)."""
+    database list logs in to the platform log, which the pool command always makes."""
     from platform_service.ledger import pool
     from platform_service.ledger.naming import PLATFORM_DB
 
@@ -240,10 +236,10 @@ def test_the_ledger_user_sees_its_server_and_its_databases(immudb):
     assert {a, PLATFORM_DB} <= store.databases()
 
 
-# phase 1 review (11-phase1-review.md): what the first tests missed --------------------------------
+# Session loss, concurrent writers and the shared state
 
 def test_the_store_logs_in_again_after_losing_its_session(immudb):
-    """B1: an immudb restart drops every session; the same store must recover on its own, not until
+    """An immudb restart drops every session; the same store must recover on its own, not until
     the platform restarts. Losing the session is simulated by logging the cached client out."""
     [a] = fresh_databases(1)
     store = immudb()
@@ -255,7 +251,7 @@ def test_the_store_logs_in_again_after_losing_its_session(immudb):
 
 
 def test_two_stores_writing_one_database_lose_nothing(immudb):
-    """B2: two platform workers append to one database at once; every acknowledged event is in the log
+    """Two platform workers append to one database at once; every acknowledged event is in the log
     exactly once, with no gap and no number used twice."""
     [a] = fresh_databases(1)
     stores, ids, errors = (immudb(), immudb()), [], []
@@ -278,7 +274,7 @@ def test_two_stores_writing_one_database_lose_nothing(immudb):
 
 
 def test_a_reader_and_a_writer_sharing_the_state_raise_no_false_alarm(immudb, platform_dsn):
-    """M1: two workers share the verified state (Postgres). A reader proving an older, valid state
+    """Two workers share the verified state (Postgres). A reader proving an older, valid state
     than the one the writer just stored is not tampering."""
     from platform_service.ledger.state import PostgresStateStore
 
@@ -306,7 +302,7 @@ def test_a_reader_and_a_writer_sharing_the_state_raise_no_false_alarm(immudb, pl
 
 
 def test_the_postgres_state_catches_a_rollback_across_stores(immudb, platform_dsn):
-    """M2: the production state store, across a new store, with immudb."""
+    """The production state store, across a new store, with immudb."""
     from platform_service.ledger.state import PostgresStateStore
 
     [a] = fresh_databases(1)
@@ -337,7 +333,7 @@ def test_the_postgres_state_store_is_compare_and_set(platform_dsn):
 
 
 def test_after_a_rollback_the_memory_store_refuses_appends_too():
-    """Minor 2: as immudb does, a store whose verified state is ahead of it writes nothing more."""
+    """As immudb does, a store whose verified state is ahead of it writes nothing more."""
     store = MemoryLedger()
     a = "ledger" + uuid.uuid4().hex
     store.create(a)
@@ -348,7 +344,7 @@ def test_after_a_rollback_the_memory_store_refuses_appends_too():
 
 
 def test_a_signed_server_is_checked_against_its_public_key(immudb):
-    """S3: with immudb's --signingKey on, every state carries a signature the store checks; a store
+    """With immudb's --signingKey on, every state carries a signature the store checks; a store
     holding another key raises the alarm. The throwaway immudb is started with a signing key and its
     public key is in LEDGER_TEST_IMMUDB_PUBLIC_KEY."""
     import os
@@ -373,7 +369,7 @@ def test_a_signed_server_is_checked_against_its_public_key(immudb):
 
 
 def test_a_half_configured_store_is_unavailable_never_a_crash(monkeypatch):
-    """Re-review minor 2: the URL set but not the password must not block project creation."""
+    """The URL set but not the password must not block project creation."""
     from platform_service.ledger.store import LedgerUnavailable, from_environment
 
     monkeypatch.setenv("LEDGER_IMMUDB_URL", "127.0.0.1:1")
@@ -383,7 +379,7 @@ def test_a_half_configured_store_is_unavailable_never_a_crash(monkeypatch):
 
 
 def test_every_immudb_call_has_a_deadline():
-    """Re-review minor 3: a black-holed immudb must not hang the caller. The store's clients are made
+    """A black-holed immudb must not hang the caller. The store's clients are made
     with a deadline, and a failed server id is remembered for a while instead of waited for again."""
     import time
 
@@ -404,7 +400,7 @@ def test_every_immudb_call_has_a_deadline():
 
 
 def test_an_unreachable_server_drops_the_cached_client(immudb):
-    """Found by the 10-minute outage drill: a cached client's gRPC channel stays in reconnect backoff
+    """A cached client's gRPC channel stays in reconnect backoff
     (up to about 2 minutes) after the server is back. An UNAVAILABLE answer must drop the client, so the
     next call dials afresh."""
     import grpc

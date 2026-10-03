@@ -1,5 +1,4 @@
-"""The internal hosts a project's connections may reach, managed from the UI (allowlist task
-2026-09-29, A1 to A12): per project, edited by its owners and platform admins; the deployment's
+"""The internal hosts a project's connections may reach, managed from the UI: per project, edited by its owners and platform admins; the deployment's
 CONNECTIONS_ALLOWED_HOSTS stays as a floor nobody can remove here; the stack's own services and
 cloud metadata addresses are never allowed from the UI, checked when an entry is saved and again,
 on the resolved address, at every call. Changes apply at once, with no restart. Runs on the
@@ -89,7 +88,7 @@ def member(client, as_user, project, subject, role):
     assert r.status_code == 201, r.text
 
 
-# ── A1 to A3 the list and who edits it ──────────────────────────────────────
+# The list and who edits it
 
 def test_a1_an_owner_adds_an_entry_and_sees_it_with_who_and_when(client, as_user, project, names):
     r = client.put(f"{hosts(project)}/host.docker.internal:8500", json={"note": "MCAS-lite"}, headers=as_user(ALICE))
@@ -134,7 +133,7 @@ def test_a3_removing_an_entry(client, as_user, project, names):
     assert client.delete(f"{hosts(project)}/mcas.internal", headers=as_user(ALICE)).status_code == 404
 
 
-# ── A4 the deny list, when saving ───────────────────────────────────────────
+# The deny list, when saving
 
 @pytest.mark.parametrize("denied", ["postgres", "postgres:5432", "Keycloak:8080", "platform", "aisc-backend",
                                     "minio:9000", "169.254.169.254", "metadata.google.internal", "localhost:8000",
@@ -152,7 +151,7 @@ def test_a4_a_name_that_resolves_to_a_stack_service_is_refused(client, as_user, 
     assert client.put(f"{hosts(project)}/172.20.0.5", json={}, headers=as_user(ALICE)).status_code == 422
 
 
-# ── A5 the deployment's floor ───────────────────────────────────────────────
+# The deployment's floor
 
 def test_a5_the_env_entries_are_listed_read_only(client, as_user, project, names, monkeypatch):
     monkeypatch.setenv("CONNECTIONS_ALLOWED_HOSTS", "host.docker.internal:8500, ollama:11434")
@@ -163,7 +162,7 @@ def test_a5_the_env_entries_are_listed_read_only(client, as_user, project, names
     assert client.put(f"{hosts(project)}/ollama:11434", json={}, headers=as_user(ALICE)).status_code == 409
 
 
-# ── A6 to A9 changes apply at once, everywhere the platform calls ───────────
+# Changes apply at once, everywhere the platform calls
 
 def test_a6_the_test_button_follows_the_list_without_a_restart(client, admin, project, stub, names):
     name = connect(client, admin, project, stub)
@@ -206,7 +205,7 @@ def test_a9_one_projects_list_opens_nothing_for_another(client, admin, as_user, 
     assert probe(client, admin, other)["error"] == "blocked"
 
 
-# ── A10 and A11 the deny list at call time, and the floor's exemption ───────
+# The deny list at call time, and the floor's exemption
 
 def test_a10_an_entry_later_pointing_at_a_stack_service_is_refused_at_the_call(client, admin, project, stub, names):
     name = connect(client, admin, project, stub)
@@ -225,7 +224,7 @@ def test_a11_the_floor_may_still_allow_what_the_ui_never_can(client, admin, proj
     assert probe(client, admin, project, name)["ok"] is True
 
 
-# ── A12 stored in the project's own database ────────────────────────────────
+# Stored in the project's own database
 
 def test_a12_entries_live_in_the_projects_database(client, as_user, project, names, dsn):
     client.put(f"{hosts(project)}/mcas.internal:8500", json={"note": "n"}, headers=as_user(ALICE))

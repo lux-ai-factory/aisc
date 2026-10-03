@@ -1,7 +1,7 @@
--- The witness's records (docs/superpowers/ledger-2026-10-02/02-spec.md 3.4): one row per request the
--- gateway asked about, written in the request itself (immudb is off the request path; the relay copies
--- each row into its project's log). The person is a random reference only: the mapping to a name is
--- in the separate database ledger_identity, beyond pgAdmin's read-all role (S8).
+-- The witness's records: one row per request the gateway asked about, written in the request itself
+-- (immudb is off the request path; the relay copies each row into its project's log). The person is a
+-- random reference only: the mapping to a name is in the separate database ledger_identity, beyond
+-- pgAdmin's read-all role.
 DO $guard$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ledger') THEN

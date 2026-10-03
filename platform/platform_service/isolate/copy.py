@@ -1,5 +1,4 @@
-"""Comparing, copying and verifying one target: a project database or the library
-(01-specs.md I12.7..I12.10, D14, D15).
+"""Comparing, copying and verifying one target: a project database or the library.
 
 A target is a set of maps (source table -> target table) and, per map, the keys of the
 source rows that belong there (the copied set). The source connection is the run's one
@@ -41,7 +40,7 @@ class Map:
 
     @property
     def cols(self) -> list[str]:
-        """Shared columns in target column order (the row text of I12.10)."""
+        """Shared columns in target column order (the order the row text is built in)."""
         src = set(self.source.column_names)
         return [c.name for c in self.target.columns if c.name in src]
 
@@ -97,7 +96,7 @@ def begin_target(conn) -> None:
 
 
 def compare(src: SourceCache, tgt, m: Map) -> TableState:
-    """The target rows against the copied set (I12.8): present and equal, missing, or bad
+    """The target rows against the copied set: present and equal, missing, or bad
     (a copied key that differs, or an extra row that is not an equal copy of a source row)."""
     cols, pk = m.cols, m.source.pk
     s = src.md5s(m.source, cols)
@@ -175,7 +174,7 @@ def _max(conn, table: str, col: str, pk=None, keys=None):
 
 
 def plan_sequences(src_conn, tgt, maps: list[Map], *, after_insert: bool) -> dict[str, tuple[str, int, bool]]:
-    """I12.7: each target sequence takes the source's value, or the target's maximum when that
+    """Each target sequence takes the source's value, or the target's maximum when that
     is at or past the source's next value (then is_called = true). Returns
     {report name: (sequence, last_value, is_called)}."""
     out = {}
@@ -214,7 +213,7 @@ class Outcome:
 
 
 def check(src: SourceCache, tgt, maps: list[Map], label: dict) -> tuple[dict[str, TableState], list[dict]]:
-    """Compare every map; the refusals of I12.8 (`target not empty and not equal`)."""
+    """Compare every map; a bad row is the refusal `target not empty and not equal`."""
     states, refusals = {}, []
     for m in maps:
         st = compare(src, tgt, m)
@@ -271,7 +270,7 @@ def write(src: SourceCache, tgt, maps: list[Map], label: dict) -> Outcome:
 
 
 def verify(src: SourceCache, tgt, maps: list[Map], label: dict) -> Outcome:
-    """I12.10 from scratch: count and checksum of every map, plus the extra rows of I12.8."""
+    """Verify from scratch: count and checksum of every map, plus extra rows that are not equal copies."""
     R.apply_settings(tgt, local=True)
     states, refusals = check(src, tgt, maps, label)
     for m in maps:

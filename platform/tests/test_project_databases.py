@@ -54,7 +54,7 @@ def test_two_projects_share_nothing(client, as_user, unique, dsn):
 
 @needs_database
 def test_nobody_but_the_listed_roles_may_connect(client, as_user, unique, dsn):
-    # Isolation 2026-09-25 (01-specs.md I2.1): the template now lists every module role
+    # The template lists every module role
     # (0007..0010 let qualification_rw, control_objectives_rw, engine_rw and
     # report_composer_rw connect), so the role that must be refused is one it never
     # lists: the catalogue's, which holds no project's data.

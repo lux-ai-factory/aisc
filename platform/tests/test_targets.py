@@ -1,4 +1,4 @@
-"""Assessment targets (targets plan v2, 2026-09-29, TG1 and the store): what an evaluation is
+"""Assessment targets: what an evaluation is
 about, the system or one of its components. One row per target in the project's own database
 (schema `target`, template 0014), each mirrored in the engine as a `resource` component that the
 evaluation form offers. Runs on the throwaway; the engine is a local fake."""
@@ -39,8 +39,7 @@ def make(client, as_user, unique, stub, engine=False):
     return made.json(), None
 
 
-# ── the table ───────────────────────────────────────────────────────────────
-
+# The table
 def test_the_target_schema_is_made_in_every_project_database(client, as_user, unique, stub, dsn):
     project, _ = make(client, as_user, unique, stub, engine=False)
     cols = one(dsn, project["pid"], "select column_name from information_schema.columns where table_schema = 'target'"
@@ -58,7 +57,7 @@ def test_the_readers_read_targets_and_nothing_else_of_the_platform(client, as_us
     assert rows and all(sel and not secret for _, sel, secret in rows)
 
 
-# ── TG1 the system target, from the start ───────────────────────────────────
+# The system target, from the start
 
 def test_tg1_a_new_project_has_its_system_target(client, as_user, unique, stub, dsn):
     project, _ = make(client, as_user, unique, stub, engine=False)

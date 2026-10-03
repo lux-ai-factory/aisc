@@ -1,4 +1,4 @@
-"""The targets of one project, in its own database (schema `target`, template 0014)."""
+"""The targets of one project, in its own database (schema `target`, project-template/0014_target.sql)."""
 from __future__ import annotations
 
 from platform_service import connection_store

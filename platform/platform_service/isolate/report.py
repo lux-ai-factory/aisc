@@ -1,4 +1,4 @@
-"""The report (JSON, mode 600) and the human summary (01-specs.md I12.15, I12.16).
+"""The report (JSON, mode 600) and the human summary.
 
 Both hold pids, table names, keys, counts, statuses, md5s and refusal reasons: never a
 row value and never a credential.

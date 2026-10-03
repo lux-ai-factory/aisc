@@ -1,8 +1,8 @@
-"""Which internal hosts a project's connections may reach (allowlist task 2026-09-29).
+"""Which internal hosts a project's connections may reach.
 
 Public addresses need no entry. An internal one (loopback, private, link-local, ...) is refused
 by the plugin-side guard (aisc_plugin_interface.connections.guard_url) unless it is allowed:
-by the deployment's CONNECTIONS_ALLOWED_HOSTS (the floor, set by the operator, not editable
+by the deployment's CONNECTIONS_ALLOWED_HOSTS (the floor, set by the operator and not editable
 here) or by the project's own entries (connection.allowed_host, edited by its owners and
 platform admins). Some addresses are never allowed from the UI: the stack's own services,
 loopback (the platform itself) and cloud metadata. They are refused when an entry is saved and
@@ -22,7 +22,8 @@ import socket
 from platform_service import connection_store
 
 #: Every name the stack's services answer to on its networks, in every compose file of the repo
-#: (service, container and alias names), and localhost. scripts/tests/test_connections_allowlist_stack.py checks it against the compose files.
+#: (service, container and alias names), and localhost. scripts/tests/test_connections_stack.py
+#: checks it against the compose files.
 STACK_SERVICES = frozenset({
     "aisc-backend", "aisc-backend-migrate", "aisc-backend-standalone", "aisc-eval", "aisc-eval-flower",
     "aisc-eval-worker", "aisc-eval-worker-standalone", "aisc-webapp", "aisc-webapp-standalone",
@@ -170,8 +171,7 @@ def _valid(entry: str) -> bool:
         return False
 
 
-# ── the project's entries (connection.allowed_host) ──────────────────────────
-
+# the project's entries (connection.allowed_host)
 def entries(pid) -> list[dict]:
     with connection_store.connect(pid) as conn:
         return conn.execute("SELECT host, note, updated_at, updated_by FROM connection.allowed_host"

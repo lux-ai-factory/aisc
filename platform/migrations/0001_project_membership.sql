@@ -1,6 +1,6 @@
 -- A project belongs to the people in it.
 --
--- Before this, every signed-in account could list, read and change every
+-- Without it, every signed-in account could list, read and change every
 -- project on the platform. Membership is data rather than a realm role because
 -- there is one of these per project per person: as roles it would put the shape
 -- of the work into Keycloak, where no module can see it without asking.

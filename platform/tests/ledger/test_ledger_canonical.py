@@ -1,4 +1,4 @@
-"""L1: canonical JSON (RFC 8785), so the same content always gives the same bytes and the same hash."""
+"""Canonical JSON (RFC 8785), so the same content always gives the same bytes and the same hash."""
 from __future__ import annotations
 
 import hashlib
@@ -54,7 +54,7 @@ def test_the_hash_is_the_sha256_of_the_canonical_bytes():
     assert sha256_hex({"a": "x", "b": [1, 2]}) == sha256_hex(value)
 
 
-# version 2 additions (R2.11, R4.1) ------------------------------------------------------------------
+# The shared test vectors, and the inputs canonical JSON refuses
 
 import json as _json
 from datetime import datetime, timezone
@@ -66,7 +66,7 @@ VECTORS = _json.loads((Path(__file__).parent / "fixtures" / "canonical_vectors.j
 
 @pytest.mark.parametrize("vector", VECTORS, ids=[v["name"] for v in VECTORS])
 def test_the_shared_vectors(vector):
-    """The same file is read by the TypeScript twin in phase 5."""
+    """The same file is read by the TypeScript implementations in apps/controls and apps/qualification."""
     assert canonical(_json.loads(vector["input_json"])) == vector["canonical"].encode("utf-8")
 
 
@@ -76,7 +76,7 @@ def test_a_boolean_is_never_a_number():
 
 @pytest.mark.parametrize("big", [2 ** 53 + 1, -(2 ** 53) - 1, 10 ** 30])
 def test_integers_beyond_two_to_the_53_are_refused(big):
-    """The TypeScript twin can't hold them exactly."""
+    """The TypeScript implementations cannot hold them exactly."""
     with pytest.raises(ValueError):
         canonical({"n": big})
 

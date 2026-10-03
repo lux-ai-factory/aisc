@@ -1,12 +1,12 @@
--- The card versions of this project (isolation 2026-09-25, 01-specs.md I1.5, I2.1, D1, D2).
+-- The card versions of this project.
 --
--- One row per saved AI card, numbered 1, 2, ... in this database. It used to be core.system in the
--- shared platform database, with a project_id column; here the database is the project, so the
--- column is gone. The platform (platform_rw, the owner of this database) is the only writer; every
--- module reads it and points its own keys at project.system (pid). Only the latest version may
--- change, and no version changes its number.
+-- One row per saved AI card, numbered 1, 2, ... in this database. The database is the project, so
+-- there is no project_id column (the shared-database layout had one, in core.system). The platform
+-- (platform_rw, the owner of this database) is the only writer; every module reads it and points
+-- its own keys at project.system (pid). Only the latest version may change, and no version changes
+-- its number.
 --
--- Column order is exactly I1.5: the move tool compares rows in target column order.
+-- Keep the column order: the move tool (platform_service.isolate) compares rows in target column order.
 CREATE SCHEMA IF NOT EXISTS project;
 COMMENT ON SCHEMA project IS 'This project''s AI card versions: one row per saved card, numbered 1, 2, ...';
 

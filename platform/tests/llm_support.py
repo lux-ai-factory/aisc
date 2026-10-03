@@ -1,4 +1,4 @@
-"""Test helpers for the per-project LLM keys (pipeline 2026-09-24-llm-keys, 01-specs.md section 8).
+"""Test helpers for the per-project LLM keys.
 
 Not a test module. A fake HTTP server on 127.0.0.1 that records every request and
 serves canned answers, so no test reaches a real provider or uses a real key, and

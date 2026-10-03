@@ -1,4 +1,4 @@
-"""Manage → Connections on the platform (connections plan 2026-09-29, tests P1 to P10).
+"""Manage → Connections on the platform.
 
 The systems a project assesses over the network live in the `connection` schema of the project's
 database, owned by the platform like `llm`; the key is Fernet ciphertext, written and never read
@@ -92,7 +92,7 @@ def resolve(client, project, name, token=CONNECTIONS_TOKEN, headers=None):
                       headers={"X-AISC-Service-Token": token, **(headers or {})})
 
 
-# ── P1 the template file ────────────────────────────────────────────────────
+# The template file
 
 def test_p1_the_template_file_exists_and_is_idempotent_sql():
     assert TEMPLATE_FILE.is_file(), "missing platform/project-template/0012_connection.sql"
@@ -128,7 +128,7 @@ def test_p1_module_and_reader_roles_cannot_read_it(project, dsn, role):
         conn.execute("select * from connection.endpoint")
 
 
-# ── P7 existing projects get it ─────────────────────────────────────────────
+# Existing projects get it
 
 def test_p7_a_project_made_before_0012_gets_it_at_the_next_start(client, as_user, unique, dsn, monkeypatch, tmp_path):
     import shutil
@@ -147,7 +147,7 @@ def test_p7_a_project_made_before_0012_gets_it_at_the_next_start(client, as_user
     assert one(dsn, made, "select to_regclass('connection.endpoint')") == ("connection.endpoint",)
 
 
-# ── P3 routes and who may use them ──────────────────────────────────────────
+# Routes and who may use them
 
 def test_p3_a_member_who_is_not_an_admin_gets_403_everywhere(client, as_user, project, stub):
     alice = as_user(ALICE)
@@ -202,7 +202,7 @@ def test_p3_a_bad_name_is_refused(client, admin, project, stub, name):
     assert put(client, project, name, admin, rest_body(stub)).status_code in (404, 422)
 
 
-# ── P2, P4 the key: Fernet, write-only ──────────────────────────────────────
+# The key: Fernet, write-only
 
 def test_p2_the_key_is_stored_only_as_fernet_ciphertext(client, admin, project, stub, dsn):
     engine_component(stub, project["pid"])
@@ -231,7 +231,7 @@ def test_p4_no_route_ever_answers_with_the_key_or_its_ciphertext(client, admin, 
         assert key not in text and token not in text and "secret_ciphertext" not in text
 
 
-# ── P5 the Test button ──────────────────────────────────────────────────────
+# The Test button
 
 def test_p5_test_calls_the_system_and_stores_the_result(client, admin, project, stub, dsn):
     engine_component(stub, project["pid"])
@@ -271,7 +271,7 @@ def test_p5_testing_an_unknown_connection_is_404(client, admin, project):
     assert client.post(f"{base(project)}/nope/test", json={}, headers=admin).status_code == 404
 
 
-# ── P9 outbound safety on the Test button ───────────────────────────────────
+# Outbound safety on the Test button
 
 @pytest.mark.parametrize("url", ["http://127.0.0.1:9", "http://10.0.0.1", "http://169.254.169.254",
                                  "http://[::1]:8000", "http://postgres:5432"])
@@ -283,7 +283,7 @@ def test_p9_the_test_refuses_internal_addresses(client, admin, project, stub, mo
     assert out["ok"] is False and out["error"] == "blocked", out
 
 
-# ── P8 the internal route the plugin-side client uses ───────────────────────
+# The internal route the plugin-side client uses
 
 def test_p8_resolve_returns_the_descriptor_with_the_key(client, admin, project, stub):
     engine_component(stub, project["pid"])
@@ -324,11 +324,11 @@ def test_p8_the_key_never_appears_in_the_service_log(client, admin, project, stu
     assert key not in caplog.text
 
 
-# ── P10 the engine sees it as a resource component ──────────────────────────
+# The engine sees it as a resource component
 
-# Targets plan v2 (O1): a connection is the endpoint of an assessment target, and evaluations pick
-# the target's engine component; a connection no longer makes one of its own
-# (test_connection_targets.py, TG9, covers the legacy rename).
+# A connection is the endpoint of an assessment target, and evaluations pick the target's
+# engine component; a connection makes no component of its own (test_connection_targets.py
+# covers the rename of older ones).
 
 def test_p10_saving_a_connection_makes_no_engine_component(client, admin, project, stub, dsn):
     r = put(client, project, "mcas-chat", admin, rest_body(stub))
@@ -350,7 +350,7 @@ def test_p10_deleting_keeps_the_engine_component(client, admin, project, stub):
     assert stub.requests("DELETE") == []
 
 
-# ── P6 rotation covers the connection keys ──────────────────────────────────
+# Rotation covers the connection keys
 
 def test_p6_rotate_re_encrypts_connection_keys_and_prints_counts_only(client, admin, project, stub, dsn, monkeypatch):
     engine_component(stub, project["pid"])

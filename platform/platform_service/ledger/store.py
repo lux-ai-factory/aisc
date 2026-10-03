@@ -1,19 +1,18 @@
-"""The ledger store (spec 6.1, 6.2; spike M1-M16): one log per project database, append-only, every
-read verified.
+"""The ledger store: one log per project database, append-only, every read verified.
 
 The contract, kept by both stores and tested on both:
 - `append(db, entry) -> seq`: increasing per database; the same event id with the same content is a
-  no-op returning the first seq, with other content `DuplicateEvent` (I3); over `MAX_ENTRY_BYTES`
+  no-op returning the first seq, with other content `DuplicateEvent`; over `MAX_ENTRY_BYTES`
   `EntryTooLarge`; a database the pool never made `UnknownDatabase`.
 - `get(db, seq)`, `scan(db, after_seq, limit)`: verified; anything that doesn't verify, a rolled-back
-  server included, is `TamperAlarm`, never "unavailable" (M13, M14).
+  server included, is `TamperAlarm`, never "unavailable".
 - `head(db)`, `state(db)`, `set_state(db, state)` (the last two are test hooks), `databases()`,
   `server_id`.
 
-`ImmudbLedger` uses immudb's key-value API only (M8): `e:<seq>` holds the canonical entry, `id:<event
+`ImmudbLedger` uses immudb's key-value API only: `e:<seq>` holds the canonical entry, `id:<event
 id>` its seq and digest, `seq:last` the head, all three written in one transaction. It keeps one
 client per database, each behind its own lock, and never switches a shared client between databases:
-the spike's shared client put 18% of entries in the wrong database without an error (M9). The
+a shared client was seen to put entries in the wrong database without an error. The
 verified state lives in a `StateStore` outside immudb, moved forward by compare-and-set.
 """
 from __future__ import annotations
@@ -31,7 +30,7 @@ from platform_service.ledger.canonical import canonical
 from platform_service.ledger.naming import is_ledger_name
 from platform_service.ledger.state import State
 
-#: Every field an entry may have (spec 6.2); a missing one reads as None.
+#: Every field an entry may have; a missing one reads as None.
 ENTRY_FIELDS = ("seq", "event_id", "occurred_at", "recorded_at", "project_pid", "card_version", "step",
                 "source_app", "action", "actor_kind", "actor_ref", "on_behalf_of_ref", "program", "model",
                 "request_id", "run_id", "next_action", "verified", "reported_by", "item_type", "item_id",
@@ -48,7 +47,7 @@ class TamperAlarm(LedgerError):
 
 
 class DuplicateEvent(LedgerError):
-    """The same event id with other content (I3)."""
+    """The same event id with other content."""
 
 
 class EntryTooLarge(LedgerError):
@@ -68,7 +67,7 @@ class HeadChanged(LedgerError):
 
 
 class LedgerUnavailable(LedgerError):
-    """The store can't be reached now: the caller keeps the event pending (I6)."""
+    """The store can't be reached now: the caller keeps the event pending."""
 
 
 class Entry:
@@ -110,9 +109,7 @@ def _prepare(entry: dict) -> tuple[dict, str]:
     return body, digest
 
 
-# ---------------------------------------------------------------------------------------------------
 # In memory (tests)
-# ---------------------------------------------------------------------------------------------------
 
 class MemoryLedger:
     """The contract in memory, with a hash chain so tampering is detected as in immudb. Test hooks:
@@ -200,7 +197,7 @@ class MemoryLedger:
             return Head(len(d["rows"]), d["chain"][-1].hex())
 
     def seq_of(self, db: str, event_id: str) -> int | None:
-        """The seq the store gave this event id, or None (spec T9: checked before judging again)."""
+        """The seq the store gave this event id, or None (checked before judging an event again)."""
         with self._lock:
             known = self._db(db)["ids"].get(event_id)
             return known[0] if known else None
@@ -261,7 +258,7 @@ class MemoryLedger:
             return {"tx": v, "hash": d["chain"][v].hex() if v < len(d["chain"]) else None}
 
     def reanchor(self, db: str, expected: dict) -> tuple[dict, dict]:
-        """After a restore: trust what the store holds now, if it is what the admin checked (spec T21).
+        """After a restore: trust what the store holds now, if it is what the admin checked.
         Returns (old, new) heads; HeadChanged if the store moved since."""
         with self._lock:
             new = self.server_head(db)
@@ -285,9 +282,7 @@ class MemoryLedger:
         return self._key
 
 
-# ---------------------------------------------------------------------------------------------------
 # immudb
-# ---------------------------------------------------------------------------------------------------
 
 class _StateAdapter:
     """immudb-py's RootService, backed by the platform's state store (compare-and-set)."""
@@ -311,7 +306,7 @@ class _StateAdapter:
 
     def set(self, root):
         """Move the verified state forward, never back. An older proof than the stored state is not
-        tampering: another worker sharing the state moved it on meanwhile (review M1). A rollback is
+        tampering: another worker sharing the state moved it on meanwhile. A rollback is
         caught by immudb's own proof against the stored state, before this is called."""
         new = State(self._db, int(root.txId), bytes(root.txHash), bytes(getattr(root, "signature", b"") or b"") or None)
         for _ in range(5):
@@ -326,15 +321,15 @@ class _StateAdapter:
 
 
 class ImmudbLedger:
-    """The contract on immudb 1.11, as the `aisc_ledger` user (never the superuser, M1)."""
+    """The contract on immudb 1.11, as the `aisc_ledger` user (never the superuser)."""
 
-    #: How long an unreachable server is remembered before it is tried again (re-review minor 3).
+    #: How long an unreachable server is remembered before it is tried again.
     DOWN_FOR = 30.0
 
     def __init__(self, url: str, *, user: str, password: str, state_store, public_key_file: str | None = None,
                  timeout: float = 10):
         self._url, self._user, self._password, self._states = url, user, password, state_store
-        self._public_key_file = public_key_file                      # immudb's --signingKey, public half (S3)
+        self._public_key_file = public_key_file                      # immudb's --signingKey, public half
         self._timeout = timeout                                      # every gRPC call: a black hole never hangs
         self._down_until = 0.0
         self._clients: dict[str, tuple] = {}
@@ -343,7 +338,7 @@ class ImmudbLedger:
 
     @property
     def server_id(self) -> str:
-        """immudb's own server UUID, sent in every response's metadata (open item S7, settled)."""
+        """immudb's own server UUID, sent in every response's metadata."""
         if self._server_id is None:
             import time
 
@@ -353,7 +348,7 @@ class ImmudbLedger:
             if time.monotonic() < self._down_until:
                 raise LedgerUnavailable(f"immudb at {self._url} was unreachable moments ago")
             # Health needs no login, and aisc_ledger has no right on immudb's defaultdb anyway. A short
-            # deadline: an unreachable server must never hold up project creation (review M4).
+            # deadline: an unreachable server must never hold up project creation.
             try:
                 _, call = ImmudbClient(self._url)._stub.Health.with_call(empty_pb2.Empty(),
                                                                          timeout=min(self._timeout, 5))
@@ -379,7 +374,7 @@ class ImmudbLedger:
         return {d.name for d in listed if is_ledger_name(d.name)}
 
     def _client(self, db: str):
-        """One client and one lock per database; a new database gets its own login (M7)."""
+        """One client and one lock per database; a new database gets its own login."""
         if not is_ledger_name(db):
             raise UnknownDatabase(db)
         with self._lock:
@@ -402,9 +397,9 @@ class ImmudbLedger:
 
     def _call(self, db: str, fn):
         """Run `fn` with the database's client. A lost session (an immudb restart) is logged in again
-        once and retried, so the same store recovers on its own (review B1). An unreachable server
-        drops the client too: its gRPC channel would stay in reconnect backoff, up to about 2 minutes,
-        after the server is back (the phase 3 outage drill); the next call dials afresh."""
+        once and retried, so the same store recovers on its own. An unreachable server drops the
+        client too: its gRPC channel would stay in reconnect backoff, up to about 2 minutes, after
+        the server is back; the next call dials afresh."""
         for attempt in (1, 2):
             client, lock = self._client(db)
             with lock:
@@ -448,7 +443,7 @@ class ImmudbLedger:
             except KeyError:
                 pass
             # Two writers may race for a number: the entry's key and the event's key must not exist yet,
-            # or immudb refuses the whole transaction and the loser looks again (review B2).
+            # or immudb refuses the whole transaction and the loser looks again.
             for _ in range(50):
                 seq = self._last(client) + 1
                 body["seq"] = seq
@@ -505,7 +500,7 @@ class ImmudbLedger:
 
     def export(self, db: str) -> list[dict]:
         """Every transaction of the database, 1..N, with its entries, then each ledger entry, then the
-        head: the state immudb signed at N (format `immudb`, open item S9). Checked here before it
+        head: the state immudb signed at N (format `immudb`). Checked here before it
         leaves: the chain must hold, end at the signed state, and pass through the state this platform
         verified (a server rolled back behind it is a TamperAlarm, never a file)."""
         import base64
@@ -614,8 +609,8 @@ class ImmudbLedger:
         return {"tx": saved.tx_id, "hash": saved.tx_hash.hex()} if saved else {"tx": 0, "hash": None}
 
     def reanchor(self, db: str, expected: dict) -> tuple[dict, dict]:
-        """After a restore: trust the server's current state, if it is the one the admin checked (spec
-        T21). The new state is saved, so reads verify against it from now on (not trust on first use).
+        """After a restore: trust the server's current state, if it is the one the admin checked.
+        The new state is saved, so reads verify against it from now on (not trust on first use).
         Returns (old, new) heads; HeadChanged if the server moved since."""
         new = self.server_head(db)
         if new != expected:
@@ -657,7 +652,7 @@ def _session_lost(exc: Exception) -> bool:
 
 
 def _classify(exc: Exception, db: str, login: bool = False) -> Exception:
-    """immudb's errors, sorted by what the caller must do (spike M1-M15, review minor 1)."""
+    """immudb's errors, sorted by what the caller must do."""
     text = f"{type(exc).__name__}: {exc}"
     details = getattr(exc, "details", lambda: "")() or ""
     code = getattr(getattr(exc, "code", lambda: None)(), "name", "")

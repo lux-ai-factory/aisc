@@ -1,6 +1,5 @@
-"""W1-W3: the relay worker (spec 7.2; phase 4 review M4). Nothing moved events in production before it:
-the platform runs one per process, each pass relays every log (the per-log lock makes processes safe
-together, as the phase 3 drill shows) and, once a day, expires page views past PAGE_VIEW_RETENTION."""
+"""The relay worker: the platform runs one per process, each pass relays every log (the per-log lock makes processes safe
+together) and, once a day, expires page views past PAGE_VIEW_RETENTION."""
 from __future__ import annotations
 
 import json

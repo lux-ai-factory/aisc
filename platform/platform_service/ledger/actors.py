@@ -1,4 +1,4 @@
-"""Who is behind an actor reference (spec 6.1, 7.5; I10, S8).
+"""Who is behind an actor reference.
 
 The ledger, the witness records and every index hold only `actor_ref`, a random `actor:` + 32 hex, one
 per (scope, person); the scope is the project's pid, or `platform` for requests outside any project.
@@ -44,7 +44,7 @@ _pools: dict = {}
 
 def _connect():
     """A pooled connection to ledger_identity, its table migrated on first use (platform_rw owns it).
-    The witness asks for a reference on every write: no new login each time (phase 2 review m3)."""
+    The witness asks for a reference on every write, so the connection is pooled rather than opened each time."""
     from psycopg_pool import ConnectionPool
 
     dsn = _dsn()
@@ -123,7 +123,7 @@ def resolve(pid, actor_ref) -> tuple[str, str] | None:
 
 
 def erase(pid, sub: str) -> int:
-    """Delete a person's mapping in this scope; their entries stay, now unlinkable (I10)."""
+    """Delete a person's mapping in this scope; their entries stay, and can no longer be linked to them."""
     with _connect() as conn:
         return conn.execute("DELETE FROM identity.actor WHERE scope = %s AND sub = %s", (_scope(pid), sub)).rowcount
 

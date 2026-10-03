@@ -1,12 +1,12 @@
-"""Shared pieces of the ledger tests (docs/superpowers/ledger-2026-10-02/04-test-plan.md, spec v2).
+"""Shared pieces of the ledger tests.
 
 The ledger is written by the platform alone. The witness is called the way Caddy calls it, header for
-header (06-spike.md G8): the gateway secret, the app named by the handle, the unstripped original URI,
+header: the gateway secret, the app named by the handle, the unstripped original URI,
 the stripped X-Forwarded-Uri. Witness records live in the platform's Postgres; the relay copies them
 and the apps' events into immudb. These tests use an in-memory ledger except the immudb store tests,
 which need a throwaway immudb 1.11.1 (LEDGER_TEST_IMMUDB_URL, host:port, and its superuser password in
 LEDGER_TEST_IMMUDB_ADMIN_PASSWORD). With LEDGER_TESTS_REQUIRED=1 a missing service fails instead of
-skipping (spec section 9). Nothing here touches the live stack.
+skipping. Nothing here touches the live stack.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ SUPERUSER_DSN = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
 REQUIRED = os.environ.get("LEDGER_TESTS_REQUIRED") == "1"
 
 GATEWAY_SECRET = "test-gateway-secret-0123456789abcdef"
-#: The master keys, versioned: per-project, per-purpose keys are derived from them (spec 6.1, N5).
+#: The master keys, versioned: per-project, per-purpose keys are derived from them.
 LEDGER_KEYS = "v1:" + "a1" * 32
 GATEWAY_CLIENT = "aisc-gateway"
 
@@ -33,16 +33,16 @@ ADMIN_ROLES = ("primary-user", "admin")
 MEMBER = "00000000-0000-0000-0000-0000000000b2"
 STRANGER = "00000000-0000-0000-0000-0000000000c3"
 
-#: The site each app is served on, as X-Forwarded-Host shows it (port kept, G1).
+#: The site each app is served on, as X-Forwarded-Host shows it (port kept).
 HOSTS = {"launcher": "localhost:8100", "platform": "localhost:8100", "schema": "localhost:8100",
          "pgadmin": "localhost:8100", "dashboard": "localhost:8088"}
-#: The prefix Caddy's handle_path strips before forward_auth runs (G1).
+#: The prefix Caddy's handle_path strips before forward_auth runs.
 STRIPPED = {"control_objectives": "/control-objectives", "report_composer": "/report-composer",
             "platform": "/api", "schema": "/inspect/schema"}
 
 
 def need(condition, reason: str):
-    """Skip without a service, or fail when the run says every service is there (spec section 9)."""
+    """Skip without a service, or fail when the run says every service is there."""
     if not condition:
         if REQUIRED:
             pytest.fail(f"LEDGER_TESTS_REQUIRED=1 but {reason}")
@@ -61,13 +61,12 @@ def _database_required():
 
 
 #: The ledger's own "needs a database": a fixture, so LEDGER_TESTS_REQUIRED=1 turns it into a failure.
-#: The platform's `needs_database` is a collection-time skipif, which nothing can (second review 6.2).
+#: The platform's `needs_database` is a collection-time skipif, which cannot be turned into a failure.
 needs_db = pytest.mark.usefixtures("_database_required")
 
 
-#: What these tests made in the platform database, so the session can remove exactly that (third review
-#: M4, fourth review 1). A row is deleted only if its id was recorded here: project ids, request ids,
-#: the stores' server ids and the subjects of the tokens the tests made. Never a pattern on real data.
+#: What these tests made in the platform database, so the session can remove exactly that. A row
+#: is deleted only if its id was recorded here: project ids, request ids, the stores' server ids and the subjects of the tokens the tests made. Never a pattern on real data.
 MADE: dict[str, set] = {"pids": set(), "requests": set(), "servers": set(), "subs": set()}
 
 CLEANUP = [
@@ -88,7 +87,7 @@ CLEANUP = [
 
 def remove_made(dsn: str, made: dict) -> list[str]:
     """Delete exactly what `made` names, one statement per transaction; returns the failures, so a
-    caller can't miss them (fourth review 1)."""
+    caller cannot miss them."""
     import psycopg
 
     params = {k: sorted(v) for k, v in made.items()}
@@ -127,7 +126,7 @@ def _ledger_settings(monkeypatch):
 
 @pytest.fixture
 def settings():
-    """The named settings (WINDOW, CLOCK_SKEW, ...): tests use them, never the numbers (R6.8)."""
+    """The named settings (WINDOW, CLOCK_SKEW, ...): tests use them, never the numbers."""
     from platform_service.ledger import settings
 
     return settings
@@ -136,8 +135,8 @@ def settings():
 @pytest.fixture
 def memory_ledger(_database_required):
     """The platform's ledger, in memory, for one test, with a small pool of databases made the way the
-    operator's script makes them (spec 7.1). Pool rows name their server, so a later test's store is
-    never handed this store's databases (second review N1). Projects are made after it."""
+    operator's script makes them. Pool rows name their server, so a later test's store is
+    never handed this store's databases. Projects are made after it."""
     from platform_service import ledger
     from platform_service.ledger import testing
     from platform_service.ledger.store import MemoryLedger
@@ -153,7 +152,7 @@ def memory_ledger(_database_required):
 @pytest.fixture
 def own_store(memory_ledger):
     """own_store(n) -> a ledger with a pool of n databases, made current until the test ends. It
-    depends on memory_ledger so it is torn down first and restores it in order (third review n-a)."""
+    depends on memory_ledger so it is torn down first and restores it in order."""
     from platform_service import ledger
     from platform_service.ledger import testing
     from platform_service.ledger.store import MemoryLedger
@@ -182,7 +181,7 @@ def platform_dsn(_database_required, dsn):
 
 
 def log_of(pid: str) -> str:
-    """The immudb database a project's log lives in: looked up, never derived from the pid (N1)."""
+    """The immudb database a project's log lives in: looked up, never derived from the pid."""
     from platform_service.ledger import provision
 
     db = provision.database_for(pid)
@@ -191,8 +190,8 @@ def log_of(pid: str) -> str:
 
 
 def fresh_databases(n: int) -> list[str]:
-    """New immudb databases made the way the operator's pool script makes them (spec 7.1), with
-    aisc_ledger granted RW; unique per test, so a persistent server never shares them (R4.4)."""
+    """New immudb databases made the way the operator's pool script makes them, with
+    aisc_ledger granted RW; unique per test, so a persistent server never shares them."""
     from platform_service.ledger import pool
 
     from platform_service.ledger.naming import pool_name
@@ -209,7 +208,7 @@ LEDGER_USER_PASSWORD = "Ledger-test-pw-123!"
 @pytest.fixture(params=["memory", "immudb"])
 def any_store(request):
     """Each store test runs on both stores: the behaviour is the contract, not the backend. The immudb
-    store logs in as aisc_ledger, never the superuser (R3.1). Returns (store, [db, db])."""
+    store logs in as aisc_ledger, never the superuser. Returns (store, [db, db])."""
     from platform_service.ledger.state import MemoryStateStore
     from platform_service.ledger.store import ImmudbLedger, MemoryLedger
 
@@ -236,8 +235,8 @@ def mode(monkeypatch):
 def through_gateway(client, as_user, call_witness, gateway_token):
     """A platform API call as the launcher's gateway makes it, in whatever mode is set: the witness
     first (app `platform`, path `/api` + path), then the call citing the id it gave, if it gave one.
-    Tests create their projects this way, so a test may set `enforce` before it has a project
-    (second review N2): no route is exempt from the witness to make setup work."""
+    Tests create their projects this way, so a test may set `enforce` before it has a project:
+    no route is exempt from the witness to make setup work."""
     def run(subject, method, path, roles=("primary-user",), **kwargs):
         w = call_witness(gateway_token(subject, roles=roles), method, "platform", "/api" + path)
         assert w.status_code == 200, w.text
@@ -291,7 +290,7 @@ def gateway_token(key):
 def caddy_headers(token: str | None, method: str, app: str, original_uri: str, *, gateway=GATEWAY_SECRET,
                   bearer: str | None = None, project_header: str | None = None,
                   next_action: str | None = None) -> dict:
-    """Exactly what Caddy's witness forward_auth sends to /authz/witness (06-spike.md G8)."""
+    """Exactly what Caddy's witness forward_auth sends to /authz/witness."""
     prefix = STRIPPED.get(app, "")
     stripped = original_uri[len(prefix):] if prefix and original_uri.startswith(prefix) else original_uri
     headers = {"X-Forwarded-Method": method, "X-Forwarded-Uri": stripped or "/",
@@ -311,7 +310,7 @@ def caddy_headers(token: str | None, method: str, app: str, original_uri: str, *
 
 
 def witness_path(original_uri: str) -> str:
-    """forward_auth appends the client's query to the witness URI (G10)."""
+    """forward_auth appends the client's query to the witness URI."""
     _, _, query = original_uri.partition("?")
     return "/authz/witness" + (f"?{query}" if query else "")
 
@@ -348,7 +347,7 @@ def record(request_id: str):
 
 
 def person(pid: str | None, actor_ref: str | None):
-    """Who an actor reference stands for, while the mapping exists: (sub, name) or None (I10)."""
+    """Who an actor reference stands for, while the mapping exists: (sub, name) or None."""
     from platform_service.ledger import actors
 
     return actors.resolve(pid, actor_ref)

@@ -1,10 +1,10 @@
--- Step 4, collect evidence (evidence links plan 2026-09-30): which test or control gives evidence for
--- which control objective, many to many. Per project, not per card version (D3): a link survives a
--- new version; one whose objective is no longer selected is shown stale, not dropped (D7).
+-- Step 4, collect evidence: which test or control gives evidence for which control objective, many
+-- to many. A link whose objective is no longer selected is shown stale, not dropped. (0019 ties
+-- each link to one AI card version.)
 -- Written only by the platform. A test is named by its plugin's package_name, a control by its
 -- checklist id (controls.checklist.id): the names the report matches runs and answers on.
 -- The readers (report renderer, dashboard) read it to say how each objective is covered, and the report
--- composer copies it into a report's snapshot when it issues one (D5).
+-- composer copies it into a report's snapshot when it issues one.
 CREATE SCHEMA IF NOT EXISTS evidence;
 
 CREATE TABLE IF NOT EXISTS evidence.link (

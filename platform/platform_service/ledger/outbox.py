@@ -1,4 +1,4 @@
-"""The platform's own events (spec 6.4; R2.4): written to core.outbox in the same transaction as the
+"""The platform's own events: written to core.outbox in the same transaction as the
 change they describe, citing the request the witness gave. The relay moves them into the right log.
 
 `request_id` is the request being served, set per request by the platform's ledger middleware

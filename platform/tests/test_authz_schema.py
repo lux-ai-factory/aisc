@@ -1,4 +1,4 @@
-"""Who may see which database diagrams (2026-09-25).
+"""Who may see which database diagrams.
 
 Caddy asks GET /authz/schema with forward_auth before /inspect/schema/*, and passes
 the path it was asked for in X-Forwarded-Uri. The diagrams show structure, never

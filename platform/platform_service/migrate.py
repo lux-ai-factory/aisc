@@ -1,10 +1,9 @@
 """Migrations for `core`, the one schema every module reads.
 
-Deliberately small: ordered .sql files, applied once, recorded in a table. The
-platform service is the only writer of core, so it is the thing that migrates
-it, and it does so before serving the first request.
+Ordered .sql files, applied once, recorded in a table. The platform service is
+the only writer of core, so it migrates it, before serving the first request.
 
-init/platform-db.sql still makes the database, the schemas, the roles and their
+init/platform-db.sql makes the database, the schemas, the roles and their
 grants, because those need a superuser and only happen on a fresh volume.
 Everything after that is a file in migrations/.
 """

@@ -1,4 +1,4 @@
-"""The read index against the log (spec 6.3; I4, T12; phase 4 review M1).
+"""The read index against the log.
 
 `ledger.event_index` is a convenience for filtering: every row shown is compared with its verified
 entry, column by column, including the columns the filters read (time, actor kind, project), so an

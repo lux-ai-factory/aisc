@@ -1,5 +1,5 @@
--- Page views and other browser-reported moments (ledger spec 3.5, D10): best effort, never in immudb,
--- kept for PAGE_VIEW_RETENTION. The person is a random reference (I10).
+-- Page views and other browser-reported moments: best effort, never in immudb, kept for
+-- PAGE_VIEW_RETENTION. The person is a random reference.
 DO $guard$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ledger') THEN
@@ -8,7 +8,7 @@ BEGIN
 END
 $guard$;
 
--- The read routes (spec 6.3): who acted, by kind, in the read index (the `ai` filter).
+-- For the read routes: who acted, by kind, in the read index (the `ai` filter).
 ALTER TABLE ledger.event_index ADD COLUMN IF NOT EXISTS actor_kind text;
 
 CREATE TABLE IF NOT EXISTS ledger.page_view (

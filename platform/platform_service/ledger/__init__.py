@@ -1,8 +1,8 @@
-"""The ledger: who did what, in each project's own immudb log (docs/superpowers/ledger-2026-10-02/).
+"""The ledger: who did what, in each project's own immudb log.
 
 The platform is the only writer. This package keeps the store it writes to; `use` swaps it (tests),
 `current` returns it. Standard library only, so the repo-level tests can import the registry without
-the platform's dependencies (spec 6.1).
+the platform's dependencies.
 """
 from __future__ import annotations
 

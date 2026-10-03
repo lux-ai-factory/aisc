@@ -1,7 +1,7 @@
--- The systems a project assesses over the network (Manage → Connections, connections plan 2026-09-29).
+-- The systems a project assesses over the network (Manage, Connections on the project page).
 -- Owned by the platform, like schema llm: no module or reader role gets USAGE. The key is stored as
 -- a Fernet token only, and only the internal resolve route decrypts it. A deleted connection keeps
--- its row (deleted_at): past evaluations still name it, and it no longer resolves.
+-- its row (deleted_at): past evaluations still name it, but it does not resolve.
 CREATE SCHEMA IF NOT EXISTS connection;
 REVOKE ALL ON SCHEMA connection FROM PUBLIC;
 COMMENT ON SCHEMA connection IS 'The systems this project assesses over the network (Manage, Connections); keys stored as Fernet tokens only';

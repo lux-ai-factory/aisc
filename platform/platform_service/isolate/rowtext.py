@@ -1,4 +1,4 @@
-"""Row text, checksums and key filters (01-specs.md I12.7, I12.10).
+"""Row text, checksums and key filters.
 
 Both sides of every comparison run under SETTINGS, so ROW(...)::text is the same text
 for the same value on the source and on the target (floats, bytea, timestamps).
@@ -43,7 +43,7 @@ def key_filter(pk: tuple[str, ...], keys) -> sql.Composable:
 
 def checksum(conn, table: str, cols, pk, keys=None) -> tuple[int, str]:
     """count and md5(string_agg(ROW(cols)::text, E'\\n' ORDER BY row_text)) over the rows with
-    these keys (every row when keys is None), exactly the formula of I12.10."""
+    these keys (every row when keys is None). Source and target are compared with this one formula."""
     where = sql.SQL("") if keys is None else sql.SQL(" WHERE ") + key_filter(pk, keys)
     q = sql.SQL(
         "SELECT count(*), md5(coalesce(string_agg(r, E'\\n' ORDER BY r), '')) FROM"

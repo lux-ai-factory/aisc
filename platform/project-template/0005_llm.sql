@@ -1,4 +1,4 @@
--- The per-project LLM keys and model choices (docs/superpowers/pipeline-2026-09-24-llm-keys).
+-- The per-project LLM keys and model choices.
 -- Only the platform, the owner of this database, reads or writes them: no module role gets USAGE.
 -- A key is stored as a Fernet token only; there is no plaintext, masked or partial form of it.
 CREATE SCHEMA IF NOT EXISTS llm;

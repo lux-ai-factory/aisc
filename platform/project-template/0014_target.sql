@@ -1,4 +1,4 @@
--- What an assessment is about (targets plan v2, 2026-09-29): the system, and each component the AI
+-- What an assessment is about: the system, and each component the AI
 -- card lists (its Components block, keyed by the card's stable component key). Every evaluation
 -- names one, so every result says what it assessed. Written only by the platform; mirrored in the
 -- engine as one `resource` component each (engine_component), which the evaluation form offers.

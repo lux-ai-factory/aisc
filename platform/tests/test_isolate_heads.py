@@ -1,9 +1,9 @@
-"""The engine migration names the isolate tool checks (adapt plan 2026-09-28, Ruling 7).
+"""The engine migration names the isolate tool checks.
 
 No database: these run in every platform suite, while tests/test_isolate.py skips without a
 throwaway cluster. The source of an isolate run is an old install, at the OLD chain's head
-(0024_no_login_of_its_own, from before the adapt plan): that name stays. A target is a project
-database made by today's engine, whose chain is Sean's 0001..0014 and ours 0015..0021.
+(0024_no_login_of_its_own): that name stays. A target is a project database made by the current
+engine, whose chain is the engine's 0001..0014 and this branch's 0015..0021.
 """
 from pathlib import Path
 

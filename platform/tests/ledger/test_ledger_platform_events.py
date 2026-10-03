@@ -1,7 +1,7 @@
-"""P1-P4: the platform's own events (I3, I7, I8; spec 4.3, 6.4). A platform write cites the request the
+"""The platform's own events. A platform write cites the request the
 witness gave (Caddy forwards X-AISC-Request-Id). Member and project changes go through `core.outbox` in
-the platform database, in their own transaction (R2.4). A card version is saved by the qualification
-app on the person's behalf, so its cause is qualification's witnessed request (R1.6)."""
+the platform database, in their own transaction. A card version is saved by the qualification
+app on the person's behalf, so its cause is qualification's witnessed request."""
 from __future__ import annotations
 
 import uuid
@@ -75,7 +75,7 @@ def test_a_platform_write_without_a_witnessed_request_is_refused_in_enforce(proj
 
 
 def test_a_request_id_presented_by_someone_else_is_refused(project, client, as_user, witnessed, mode):
-    """Inside the network the id and the token can travel apart: the platform checks they match (R1.5)."""
+    """Inside the network the id and the token can travel apart: the platform checks they match."""
     mode("enforce")
     owners = witnessed(OWNER, "POST", "platform", f"/api/projects/{project['slug']}/members")
     r = client.post(f"/projects/{project['slug']}/members", json={"subject": STRANGER, "role": "viewer"},
@@ -85,7 +85,7 @@ def test_a_request_id_presented_by_someone_else_is_refused(project, client, as_u
 
 def test_a_card_version_saved_by_step_1_is_the_persons(project, client, as_user, witnessed, memory_ledger, mode):
     """The browser submits a server action to qualification; qualification calls the platform with the
-    person's token and the forwarded id (06-spike.md G11)."""
+    person's token and the forwarded id."""
     mode("enforce")
     submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/system/edit",
                        next_action="60b7a2efb1d3fb3ac1825abb501965ed20949d5936")
@@ -119,12 +119,12 @@ def test_a_project_db_with_undelivered_events_is_not_dropped_until_they_are_deli
     assert call(ADMIN, "DELETE", f"/projects/{project['slug']}", roles=ADMIN_ROLES, json={"confirm_name": project["name"]}).status_code in (200, 204)
     relay_all(project["pid"])
     kept = [e.action for e in entries(memory_ledger, log_of(project["pid"]))]
-    assert "risk.rated" in kept and "project.deleted" in kept       # the log outlives the project (D2)
+    assert "risk.rated" in kept and "project.deleted" in kept       # the log outlives the project
 
 
 def test_pending_platform_database_rows_never_block_a_delete(project, call, memory_ledger):
     """Member events and the delete's own witness and `project.deleted` live in the platform database,
-    which the drop doesn't touch: they are delivered later (spec 6.4, third review M3)."""
+    which the drop doesn't touch: they are delivered later."""
     call(OWNER, "POST", f"/projects/{project['slug']}/members",
          json={"subject": "00000000-0000-0000-0000-0000000000d5", "role": "viewer"})
     memory_ledger.down = True
@@ -144,8 +144,7 @@ def test_member_events_wait_in_the_platform_databases_outbox(project, call):
     assert n >= 1
 
 
-# phase 3 review M5: the drain closes the database to the apps before it counts -----------------------
-
+# The drain closes the database to the apps before it counts
 def _delete(call, project):
     return call(ADMIN, "DELETE", f"/projects/{project['slug']}", roles=ADMIN_ROLES, json={"confirm_name": project["name"]})
 
@@ -198,7 +197,7 @@ def test_during_the_drain_no_new_app_session_can_start(project, call, memory_led
 
 
 def test_a_drain_that_cannot_count_refuses_the_drop(project, call, memory_ledger, monkeypatch):
-    """Review M5: a failure to count is not "nothing to lose" while the database exists."""
+    """A failure to count is not "nothing to lose" while the database exists."""
     from platform_service import app
 
     def cannot(_pid):
@@ -209,8 +208,7 @@ def test_a_drain_that_cannot_count_refuses_the_drop(project, call, memory_ledger
         assert conn.execute("SELECT 1 FROM core.project WHERE pid = %s", (project["pid"],)).fetchone()
 
 
-# phase 3 review M6, m15: every platform write has its event --------------------------------------------
-
+# Every platform write has its event
 def _events(store, pid, prefix):
     return [(e.action, e.item_id, e.details) for e in actions(store, pid) if e.action.startswith(prefix)]
 
@@ -295,7 +293,7 @@ def test_a_target_sync_is_recorded_with_its_counts(project, mode):
     ("https://api.example.org/v1?api-key=sk-123", "https://api.example.org/v1#hmac:v1:"),
     ("https://user:pw@api.example.org:8443/v1", "https://api.example.org:8443/v1#hmac:v1:")])
 def test_a_base_url_is_logged_without_its_query_or_user(project, url, kept):
-    """m15: an OpenAI-compatible URL can carry its key in the query."""
+    """An OpenAI-compatible URL can carry its key in the query."""
     from platform_service import llm_store
 
     logged = llm_store.logged_url(project["pid"], url)
@@ -312,10 +310,8 @@ def as_superuser_rows(pid, statement):
     return [tuple(r) for r in as_superuser(pid, statement)]
 
 
-# phase 3 review m9, m11, m12 -------------------------------------------------------------------------
-
 def test_a_platform_request_id_presented_on_another_route_is_refused(project, client, as_user, witnessed, mode):
-    """m9: the person's own id, but witnessed for another platform route."""
+    """The person's own id, but witnessed for another platform route."""
     mode("enforce")
     request_id = witnessed(OWNER, "POST", "platform", f"/api/projects/{project['slug']}/members")
     r = client.put(f"/projects/{project['slug']}/members/{MEMBER}", json={"role": "viewer"},
@@ -324,7 +320,7 @@ def test_a_platform_request_id_presented_on_another_route_is_refused(project, cl
 
 
 def test_in_record_mode_someone_elses_request_id_is_not_cited(project, client, as_user, witnessed, mode):
-    """m9: in record, a presented id that fails the check is not used: the event cites no request (and
+    """In record, a presented id that fails the check is not used: the event cites no request (and
     the relay rejects it as missing_request), rather than another person's request."""
     mode("record")
     theirs = witnessed(MEMBER, "POST", "platform", f"/api/projects/{project['slug']}/members")
@@ -339,7 +335,7 @@ def test_in_record_mode_someone_elses_request_id_is_not_cited(project, client, a
 
 
 def test_the_emit_functions_search_path_ends_with_pg_temp(project):
-    """m11: a later unqualified name can't be shadowed by a caller's temporary table."""
+    """A later unqualified name can't be shadowed by a caller's temporary table."""
     from tests.ledger.test_ledger_outbox import as_superuser
 
     [(config,)] = as_superuser(project["pid"], "SELECT proconfig FROM pg_proc WHERE oid = 'ledger.emit(jsonb)'::regprocedure")
@@ -349,7 +345,7 @@ def test_the_emit_functions_search_path_ends_with_pg_temp(project):
 
 @pytest.mark.parametrize("variant, reaches", [("pid_upper", True), ("pid_percent", False), ("slug_upper", False)])
 def test_a_changed_case_or_percent_encoded_project_path(project, witnessed, memory_ledger, mode, variant, reaches):
-    """Phase 2 m7, pinned. A pid is case-insensitive, so an upper-case pid is the same project. The witness
+    """A pid is case-insensitive, so an upper-case pid is the same project. The witness
     neither decodes percent-encoding nor folds a slug's case: such a request lands in the platform log,
     and an event citing it is rejected for the project (it fails safe)."""
     from platform_service.ledger import registry

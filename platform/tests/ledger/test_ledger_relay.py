@@ -1,4 +1,4 @@
-"""R1-R8: the relay (I2, I3, I6, I9, I11, T1-T4, T6, T8, T9, T24; spec 4.2-4.5). An event becomes a
+"""The relay. An event becomes a
 trusted entry only if the request it cites was witnessed for the same project, through an app and route
 its action may be caused by, for the same item and action id, within the window measured on the
 databases' clocks; the actor is the witness's, never the app's.
@@ -84,17 +84,17 @@ def closing(project, witnessed):
     return witnessed(MEMBER, "POST", "controls", close_uri(project), username="bob")
 
 
-# R1: the actor comes from the witness ----------------------------------------------------------------
+# The actor comes from the witness
 
 def test_an_event_citing_its_request_gets_the_witnesss_actor(project, memory_ledger, closing):
     content = {"answers": [{"q": 1, "a": "yes"}]}
     emit(project["pid"], "controls_rw", ev(closing, content=content))
     relay_all(project["pid"])
     mine = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.request_id == closing]
-    assert sorted(x.action for x in mine) == ["controls.submission.closed", "request.witnessed"]  # only its own (M2)
+    assert sorted(x.action for x in mine) == ["controls.submission.closed", "request.witnessed"]  # only its own
     [e] = trusted(memory_ledger, project["pid"])
     assert (e.actor_kind, e.source_app, e.request_id, e.verified) == ("user", "controls", closing, True)
-    assert e.content_sha256 == secrets.content_digest(project["pid"], content)      # the platform's (N4)
+    assert e.content_sha256 == secrets.content_digest(project["pid"], content)      # the platform's
     assert person(project["pid"], e.actor_ref) == (MEMBER, "bob")
     [w] = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.action == "request.witnessed"
            and x.request_id == closing]                              # the fixture's member-add is witnessed too
@@ -116,7 +116,7 @@ def test_a_rejection_is_the_relays_never_the_cited_persons(project, memory_ledge
     assert (r.actor_kind, r.program, r.actor_ref, r.request_id) == ("system", "relay", None, closing)
 
 
-# R2: the binding checks, in order -----------------------------------------------------------------
+# The binding checks, in order
 
 @pytest.mark.parametrize("case, reason", [
     ("no_request", "missing_request"),
@@ -147,7 +147,7 @@ def test_an_event_that_does_not_fit_its_request_is_rejected(make_project, projec
     elif case == "unknown_action":
         over["action"] = "controls.submission.vanished"
     elif case == "app_digest":
-        over.update(content={"answers": []}, content_sha256="0" * 64)        # only the platform digests (N4)
+        over.update(content={"answers": []}, content_sha256="0" * 64)        # only the platform digests
     emit(pid, role, ev(request_id, **over))
     relay_all(pid)
     assert trusted(memory_ledger, pid) == []
@@ -162,7 +162,7 @@ def test_a_request_may_not_cause_more_events_than_its_action_allows(project, mem
     assert [r.details["reason"] for r in rejected(memory_ledger, project["pid"])] == ["per_request"]
 
 
-# R3: the window uses the databases' clocks, never the relay's (R2.2) -----------------------------
+# The window uses the databases' clocks, never the relay's
 
 def test_an_event_long_after_its_request_is_stale(project, memory_ledger, closing, settings):
     shift_witness(closing, -(settings.WINDOW + timedelta(minutes=1)))
@@ -188,7 +188,7 @@ def test_a_relay_backlog_never_makes_an_event_stale(project, memory_ledger, clos
     assert len(trusted(memory_ledger, project["pid"])) == 1
 
 
-# R4: a request that travels on (spec 4.3) ------------------------------------------------------------
+# A request that travels on
 
 def test_a_platform_event_caused_by_a_qualification_request_is_accepted(project, memory_ledger, witnessed):
     request_id = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/qualify/new",
@@ -209,7 +209,7 @@ def test_the_same_event_caused_by_another_apps_request_is_rejected(project, memo
     assert [r.details["reason"] for r in rejected(memory_ledger, project["pid"])] == ["cause"]
 
 
-# R5: server actions (spec 4.5, G6) -------------------------------------------------------------------
+# Server actions
 
 def test_one_action_id_binds_to_one_event_action(project, memory_ledger, witnessed):
     page = f"/controls/p/{project['slug']}/submissions/s1"
@@ -227,7 +227,7 @@ def test_one_action_id_binds_to_one_event_action(project, memory_ledger, witness
 
 
 def test_an_action_id_binds_to_every_action_of_its_first_request(project, memory_ledger, witnessed):
-    """A server action that saves and renames in one call: both are its actions from then on (N3)."""
+    """A server action that saves and renames in one call: both are its actions from then on."""
     page = f"/controls/p/{project['slug']}/submissions/s1"
     first = witnessed(MEMBER, "POST", "controls", page, next_action="40cd")
     emit(project["pid"], "controls_rw", ev(first, action="controls.submission.draft_saved"))
@@ -243,7 +243,7 @@ def test_an_action_id_binds_to_every_action_of_its_first_request(project, memory
 
 def test_another_apps_event_on_the_same_request_is_not_bound(project, memory_ledger, witnessed):
     """A step-1 submit: qualification records its own event and the platform the card version, both
-    citing one request with one action id. Only the serving app's events bind the id (N3)."""
+    citing one request with one action id. Only the serving app's events bind the id."""
     submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/qualify/new",
                        next_action="60ee")
     emit(project["pid"], "qualification_rw", ev(submit, action="qualification.created", item_type="qualification",
@@ -263,7 +263,7 @@ def test_a_server_action_event_needs_an_action_id(project, memory_ledger, witnes
     assert [r.details["reason"] for r in rejected(memory_ledger, project["pid"])] == ["action_id"]
 
 
-# R6: exactly once (I3, T8, T9) -----------------------------------------------------------------------
+# Exactly once
 
 def test_running_the_relay_again_adds_nothing(project, memory_ledger, closing):
     emit(project["pid"], "controls_rw", ev(closing))
@@ -296,7 +296,7 @@ def test_the_same_event_id_with_other_content_is_an_alarm_not_a_silent_drop(proj
 
 
 def test_a_late_commit_is_not_skipped(project, memory_ledger, witnessed):
-    """Rows commit out of order: no high-water mark may skip the one that committed last (R4.7)."""
+    """Rows commit out of order: no high-water mark may skip the one that committed last."""
     a = witnessed(MEMBER, "POST", "controls", close_uri(project, "sa"))
     b = witnessed(MEMBER, "POST", "controls", close_uri(project, "sb"))
     with connect(project["pid"]) as slow:
@@ -309,7 +309,7 @@ def test_a_late_commit_is_not_skipped(project, memory_ledger, witnessed):
     assert {e.item_id for e in trusted(memory_ledger, project["pid"])} == {"sa", "sb"}
 
 
-# R7: availability and concurrency (I6, T24) ----------------------------------------------------------
+# Availability and concurrency
 
 def test_while_immudb_is_down_events_wait_and_none_is_rejected(project, memory_ledger, closing):
     emit(project["pid"], "controls_rw", ev(closing))
@@ -342,7 +342,7 @@ def test_two_relays_at_once_still_honour_per_request(project, memory_ledger, clo
     assert seqs == sorted(set(seqs))
 
 
-# R8: modes, registry versions, item chain (R2.12, R2.14, I11) ---------------------------------------
+# Modes, registry versions, item chain
 
 def test_in_record_mode_an_unverified_request_gives_an_unverified_event(project, memory_ledger, call_witness, mode):
     mode("record")

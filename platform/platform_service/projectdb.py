@@ -44,8 +44,7 @@ def provision_as(base_dsn: str, pid: str | UUID, *, set_role: str | None = None,
     The move tool (`python -m platform_service.isolate provision`) connects as the
     superuser: `owner` makes the database owned by that role (as if the platform had
     made it), and `set_role` applies the template as that role, so every schema the
-    template makes is owned by it too (01-specs.md D10, 02-tests.md S-D4). Without
-    either this is exactly provision()."""
+    template makes is owned by it too. Without either this is exactly provision()."""
     name = database_name(pid)
     with psycopg.connect(base_dsn, autocommit=True) as conn:
         exists = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone()
@@ -67,7 +66,7 @@ def provision_as(base_dsn: str, pid: str | UUID, *, set_role: str | None = None,
 
 def sync_platform_actions(conn) -> None:
     """Keep ledger.platform_action equal to the registry's actions no app may emit (origin platform or
-    browser), so ledger.emit refuses exactly those (template 0020; spec 6.4, n11)."""
+    browser), so ledger.emit refuses exactly those (project-template/0020_ledger_outbox.sql)."""
     from platform_service.ledger.registry import REGISTRY
 
     if conn.execute("SELECT to_regclass('ledger.platform_action')").fetchone()[0] is None:
@@ -80,7 +79,7 @@ def sync_platform_actions(conn) -> None:
 
 
 #: The one function templates 0007..0010 call to set a module role's search_path in
-#: their database (init/project-databases.sql, 03-coding-plan.md P1-D1).
+#: their database (made by init/project-databases.sql).
 SETUP_FUNCTION = "aisc_setup.apply_role_setting(text)"
 
 

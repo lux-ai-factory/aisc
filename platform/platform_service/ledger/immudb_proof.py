@@ -1,4 +1,4 @@
-"""immudb's transaction hashes, recomputed (open item S9; immudb 1.11, tx header version 1).
+"""immudb's transaction hashes, recomputed (immudb 1.11, tx header version 1).
 
 An export from immudb carries every transaction of the log's database, 1..N. From each one's entries the
 checker recomputes the entries root (eH), then the header's accumulated hash (Alh), chained by prevAlh

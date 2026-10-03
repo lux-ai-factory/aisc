@@ -1,13 +1,13 @@
-"""A project's log as a file an auditor checks offline (spec 6.3, 7.4; I4, R4.9, PR8).
+"""A project's log as a file an auditor checks offline.
 
 JSON lines, then `{"head": ...}`; the store decides the proof (`head.format`):
 - `immudb`: every transaction of the log's database with its entries, then each entry with its
-  transaction; the head is the state immudb signed (immudb_proof.py, open item S9);
+  transaction; the head is the state immudb signed (see immudb_proof.py);
 - `chain` (the memory store): each entry with its hash link, `sha256(previous + canonical(entry))`
   from 32 zero bytes, and a head `{log, seq, chain}` signed by the store's key.
 Every entry line may carry its frozen `content`. The head also carries `keys.content`: this project's
-  content key in every kept version, so `--check-content` can recompute each `content_sha256`.
-  Never another project's key, never a master key, never the `state` key (spec 6.1).
+content key in every kept version, so `--check-content` can recompute each `content_sha256`.
+Never another project's key, never a master key, never the `state` key.
 
 The checker is scripts/verify-ledger-export.py: it trusts only the public key it is given.
 """

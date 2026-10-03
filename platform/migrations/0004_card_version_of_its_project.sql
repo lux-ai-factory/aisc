@@ -18,8 +18,7 @@
 
 SELECT pg_advisory_xact_lock(8190233523);
 
--- Isolation 2026-09-25 (03-coding-plan.md P1-D2): without core.system (a volume made after the
--- isolation) there is nothing to constrain.
+-- Without core.system (a volume made with one database per project) there is nothing to constrain.
 DO $$
 BEGIN
   IF to_regclass('core.system') IS NULL THEN

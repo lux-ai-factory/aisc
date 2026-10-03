@@ -1,8 +1,8 @@
-"""A project's ledger database (spec 6.1, 7.1; second review N1, third review M1, n-c).
+"""A project's ledger database.
 
 A project takes a free pool database of the current store's server at creation, inside the creation's
-own transaction, and keeps it for ever (D2). The project's log is always found here, never derived
-from its pid. With the pool empty the project is still created and its events wait (I6).
+own transaction, and keeps it for ever. The project's log is always found here, never derived
+from its pid. With the pool empty the project is still created and its events wait.
 `assign` neither looks the project up nor holds a foreign key to it, so it stands alone.
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _assign(conn, pid: str, server_id: str) -> str | None:
 
 def assign(pid: str, conn=None) -> str | None:
     """The project's database, taken from the pool if it has none yet; None when the pool is empty or
-    the store can't be reached now: the project waits (I6, review M4), it is never blocked."""
+    the store can't be reached now: the project waits, it is never blocked."""
     from platform_service.ledger.store import LedgerError
 
     try:
@@ -70,7 +70,7 @@ def assign_pending(pid: str) -> bool:
 
 
 def assigned() -> dict[str, str]:
-    """Every assignment: pid -> database (the expected-databases list, R2.10)."""
+    """Every assignment: pid -> database (the list of databases expected to exist)."""
     with db.pool().connection() as conn:
         rows = conn.execute("SELECT assigned_pid::text AS pid, db FROM ledger.pool"
                             " WHERE assigned_pid IS NOT NULL").fetchall()

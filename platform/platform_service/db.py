@@ -1,9 +1,7 @@
 """The platform database: a connection pool and the queries on `core`.
 
-Deliberately thin. A handful of tables (projects and their members here; the
-AI card versions in each project's own database), so an ORM would be more
-machinery than the problem needs, and the SQL is easier to read than its
-abstraction.
+A handful of tables (projects and their members here; the AI card versions in
+each project's own database), so plain SQL rather than an ORM.
 """
 from __future__ import annotations
 
@@ -159,11 +157,11 @@ def create_project(name: str, slug: str, description: str | None,
             " values (%s, %s, %s, 'owner')",
             (created["pid"], owner, email),
         )
-        # the project's ledger database, from the operator's pool, in the same transaction (spec 7.1)
+        # the project's ledger database, from the operator's pool, in the same transaction
         from platform_service.ledger import outbox, provision
 
         provision.assign(str(created["pid"]), conn=conn)
-        # recorded in the platform log: the request that made it named no project yet (spec 4.2)
+        # recorded in the platform log: the request that made it named no project yet
         outbox.emit(conn, "project.created", project_pid=None, item_type="project", item_id=created["pid"],
                     details={"name": name})
         return created
@@ -230,21 +228,19 @@ def _register_pending(known: dict[str, dict]) -> None:
             _unregistered.add(pid)
 
 
-# ── card versions ────────────────────────────────────────────────────────────
+# card versions
 # The saved versions of a project's AI card, one row each in project.system of
-# that project's own database (isolation 2026-09-25, 01-specs.md I1.5, I2.2, D1,
-# D2). Written only here, as platform_rw, the owner of every project database:
-# one writer keeps the numbering in one place. The shared table they used to be
-# rows of is never read or written again. Every call opens that database, uses
-# it and closes it (I17.1), like llm_store: nothing pooled is left on a
-# database that may be dropped.
+# that project's own database. Written only here, as platform_rw, the owner of
+# every project database: one writer keeps the numbering in one place. Every
+# call opens that database, uses it and closes it, like llm_store: nothing
+# pooled is left on a database that may be dropped.
 
 
 class ProjectDatabaseGone(LookupError):
     """The project's row exists, its database does not (between drop and delete)."""
 
 
-#: The order of a version in every response (unchanged by the isolation).
+#: The order of a version in every response.
 _VERSION_COLUMNS = "pid, project_id, number, name, version, provider, description, created_at, created_by"
 #: What project.system has of those: every column but project_id (the database is the project).
 _STORED = "pid, number, name, version, provider, description, created_at, created_by"
@@ -282,7 +278,7 @@ def _project_ref(conn, identifier: str) -> dict | None:
 
 
 def _as_version(row: dict | None, project_pid) -> dict | None:
-    """A project.system row in the response shape of before: project_id is the project's pid."""
+    """A project.system row in the response shape, with project_id set to the project's pid."""
     if row is None:
         return None
     out = {"pid": row["pid"], "project_id": project_pid}
@@ -344,7 +340,7 @@ def latest_version(project: str) -> tuple[bool, dict | None]:
 
 def get_system(version_pid: str, project_pids: list[str]) -> dict | None:
     """One saved card version by its own id, looked for only in these projects'
-    databases (the caller's, or every one for an admin: I2.3). A project whose
+    databases (the caller's, or every one for an admin). A project whose
     database is gone, or has no project.system yet, is skipped."""
     for pid in project_pids:
         try:
@@ -361,7 +357,7 @@ def get_system(version_pid: str, project_pids: list[str]) -> dict | None:
     return None
 
 
-# ── membership ───────────────────────────────────────────────────────────────
+# membership
 # A project belongs to the people in it. Every query that returns a project, or
 # anything inside one, passes through here: filtering in one place is what makes
 # it hard to add an endpoint that forgets.

@@ -1,4 +1,4 @@
-"""The relay (spec 4.2-4.5, 7.2; I2, I3, I6, I9, I11): moves witness records and events into their logs.
+"""The relay: moves witness records and events into their logs.
 
 For each log (a project's database, or the platform's own), under that log's advisory lock:
 - witness records (`ledger.witness`) become `request.witnessed` / `request.unverified` entries;
@@ -32,7 +32,7 @@ from platform_service.ledger.store import DuplicateEvent, EntryTooLarge, LedgerE
 
 logger = logging.getLogger(__name__)
 
-#: Which app a project database role is (spec 6.5).
+#: Which app a project database role is.
 ROLE_APP = {"qualification_rw": "qualification", "controls_rw": "controls",
             "control_objectives_rw": "control_objectives", "report_composer_rw": "report_composer",
             "platform_rw": "platform"}
@@ -50,7 +50,7 @@ class RelayStats:
 
 
 class _Hold(Exception):
-    """Not yet: an action from a newer registry (R2.12)."""
+    """Not yet: an action from a newer registry."""
 
 
 def _db():
@@ -75,8 +75,8 @@ def _iso(value) -> str | None:
 
 @contextmanager
 def _log_lock(log: str, wait: bool = True):
-    """The log's relay lock (spec 7.2): two relays never interleave on one log. On its own connection,
-    never one of the platform pool's (review m1). The relay tries it (`wait=False`) and leaves a busy
+    """The log's relay lock: two relays never interleave on one log. On its own connection,
+    never one of the platform pool's. The relay tries it (`wait=False`) and leaves a busy
     log for its next pass; an admin's re-anchor waits for it. Yields whether it is held."""
     key = "ledger-relay:" + log
     with psycopg.connect(_db().dsn(), autocommit=True) as conn:
@@ -93,7 +93,7 @@ def _log_lock(log: str, wait: bool = True):
 
 
 def _after_index(item) -> None:
-    """Test hook (review M7): a crash between the index and the mark."""
+    """Test hook: a crash between the index and the mark."""
 
 
 def _project_dsn(pid: str) -> str:
@@ -118,7 +118,7 @@ def relay_once(pid: str | None = None) -> RelayStats:
     for each in [*_projects_with_work(), None]:                       # the platform log last
         try:
             _relay_log(each, stats)
-        except LedgerError:                                           # never abort the batch (M4)
+        except LedgerError:                                           # never abort the batch
             stats.pending += 1
         except Exception:                                             # a bug in one log never stops the others
             logger.exception("ledger: relaying %s failed", each or "the platform log")
@@ -167,7 +167,7 @@ def _relay_log(pid: str | None, stats: RelayStats) -> None:
 def _pending(pid, project) -> list[dict]:
     """The next batch not delivered yet for this log, oldest first (time, then kind, then id). Each source
     gives at most RELAY_BATCH rows in time order; a source cut short sets a cutoff, and only what is
-    before every cutoff is relayed this pass, so the merged order is never wrong (review M1)."""
+    before every cutoff is relayed this pass, so the merged order is never wrong."""
     limit = settings.RELAY_BATCH
     sources = []
     with _db().pool().connection() as conn:
@@ -200,8 +200,7 @@ def _process(item: dict, pid, log: str, project, stats: RelayStats) -> None:
         _deliver_event(item, pid, log, project, stats)
 
 
-# --- witness records ---------------------------------------------------------------------------------
-
+# witness records
 def _indexed(log: str, event_id: str, digest: str) -> dict | None:
     """The index row of this very row, already relayed (accepted, or rejected): same event id, same
     content. A re-sent row whose content differs is not it, and goes on to the duplicate alarm."""
@@ -226,7 +225,7 @@ def _deliver_witness(w: dict, pid, log: str, stats: RelayStats) -> None:
     try:
         seq = _store().append(log, entry)
     except DuplicateEvent:                                            # rebuilt after an upgrade: the stored
-        seq = _store().seq_of(log, entry["event_id"])                 # entry is the record (review B1)
+        seq = _store().seq_of(log, entry["event_id"])                 # entry is the record
         entry = _store().get(log, seq).as_dict()
     _index(log, seq, entry, pid)
     with _db().pool().connection() as conn:
@@ -234,8 +233,7 @@ def _deliver_witness(w: dict, pid, log: str, stats: RelayStats) -> None:
     stats.delivered += 1
 
 
-# --- events -----------------------------------------------------------------------------------------
-
+# events
 def _event_of(item: dict, pid) -> tuple[dict, str | None]:
     """The event as the emitter sent it, and the emitting app."""
     row = item["row"]
@@ -263,9 +261,9 @@ def _deliver_event(item: dict, pid, log: str, project, stats: RelayStats) -> Non
     held = _store().seq_of(log, ev["event_id"])
     if held is not None:                                              # the store has this id already
         if _index_has(log, ev["event_id"]):
-            _reject(item, ev, app, pid, log, project, "duplicate_event_id", stats)   # other content (I3)
+            _reject(item, ev, app, pid, log, project, "duplicate_event_id", stats)   # other content
             return
-        entry = _store().get(log, held).as_dict()                     # a crash after the append (review m5):
+        entry = _store().get(log, held).as_dict()                     # a crash after the append:
         _index(log, held, entry, pid, row_digest=digest)              # the stored entry is the record,
         _freeze(log, entry["event_id"], pid, ev)                      # never judged again
         _after_index(item)
@@ -277,7 +275,7 @@ def _deliver_event(item: dict, pid, log: str, project, stats: RelayStats) -> Non
     except _Rejected as rejection:
         _reject(item, ev, app, pid, log, project, rejection.reason, stats)
         return
-    except (ValueError, TypeError):                                   # canonical JSON refuses a value (B1)
+    except (ValueError, TypeError):                                   # canonical JSON refuses a value
         _reject(item, ev, app, pid, log, project, "unencodable", stats)
         return
     bind = entry.pop("_bind", None)
@@ -286,13 +284,13 @@ def _deliver_event(item: dict, pid, log: str, project, stats: RelayStats) -> Non
     except DuplicateEvent:
         _reject(item, ev, app, pid, log, project, "duplicate_event_id", stats)
         return
-    except EntryTooLarge:                                             # never a stall of the log (review M5)
+    except EntryTooLarge:                                             # never a stall of the log
         _reject(item, ev, app, pid, log, project, "too_large", stats)
         return
     except (ValueError, TypeError):
         _reject(item, ev, app, pid, log, project, "unencodable", stats)
         return
-    if bind is not None:                                              # learnt from accepted events only (M2)
+    if bind is not None:                                              # learnt from accepted events only
         _learn_action(*bind)
     _index(log, seq, entry, pid, row_digest=digest)
     _freeze(log, entry["event_id"], pid, ev)
@@ -314,12 +312,12 @@ class _Rejected(Exception):
 
 
 def _judge(ev: dict, app: str | None, pid, log: str, project) -> dict:
-    """The trusted entry for an event, or _Rejected with the first failing check (spec 4.2), or _Hold."""
+    """The trusted entry for an event, or _Rejected with the first failing check, or _Hold."""
     action = registry.REGISTRY.get(ev["action"])
     if action is None:
         version = ev.get("registry_version") or 0
         age = datetime.now(timezone.utc) - ev["occurred_at"] if ev.get("occurred_at") else None
-        # one version ahead (the next deploy), for HOLD_UNKNOWN at most (R2.12; review M4)
+        # one version ahead (the next deploy), for HOLD_UNKNOWN at most
         if version == registry.VERSION + 1 and (age is None or age < settings.HOLD_UNKNOWN):
             raise _Hold()
         raise _Rejected("unknown_action")
@@ -370,7 +368,7 @@ def _judge_request(ev, app, action, pid, log, project) -> dict:
     if action.per_request is not None and _accepted_count(log, ev["request_id"], ev["action"]) >= action.per_request:
         raise _Rejected("per_request")
     bind = None
-    if method == "ACTION" and app == w["app"]:                        # the action id last (review M2)
+    if method == "ACTION" and app == w["app"]:                        # the action id last
         _check_action(w, ev["action"], project)
         bind = (w, ev["action"], project)
     return {"actor_kind": "user", "actor_ref": w["actor_ref"], "verified": bool(w["verified"]),
@@ -378,7 +376,7 @@ def _judge_request(ev, app, action, pid, log, project) -> dict:
 
 
 def _judge_run(ev, app, action, log) -> dict:
-    """An AI or worker event (spec 4.4): its run's start event, accepted, citing the same request."""
+    """An AI or worker event: its run's start event, accepted, citing the same request."""
     if not ev["request_id"] or not ev["run_id"]:
         raise _Rejected("run")
     w = _witness(ev["request_id"])
@@ -389,11 +387,11 @@ def _judge_run(ev, app, action, log) -> dict:
             "SELECT seq, action, actor_ref, occurred_at FROM ledger.event_index WHERE log = %s AND run_id = %s"
             " AND request_id = %s AND reason IS NULL AND action NOT LIKE 'request.%%' ORDER BY seq",
             (log, ev["run_id"], ev["request_id"])).fetchall()
-    # the start is the first accepted event of the run whose action starts runs (review m4)
+    # the start is the first accepted event of the run whose action starts runs
     start = next((r for r in rows if r["action"] in registry.REGISTRY and registry.REGISTRY[r["action"]].runs), None)
     if start is None:
         raise _Rejected("run")
-    logged = _store().get(log, start["seq"]).as_dict()               # the person comes from the log (review m12)
+    logged = _store().get(log, start["seq"]).as_dict()               # the person comes from the log
     if (logged.get("action"), logged.get("actor_ref"), logged.get("run_id"), logged.get("request_id")) != \
             (start["action"], start["actor_ref"], ev["run_id"], ev["request_id"]):
         logger.error("ledger %s: the index row of run %s disagrees with the log", log, ev["run_id"])
@@ -402,14 +400,14 @@ def _judge_run(ev, app, action, log) -> dict:
     if starter is None or ev["action"] not in starter.runs:
         raise _Rejected("run")
     if ev.get("item_type") == logged.get("item_type") and ev.get("item_id") != logged.get("item_id"):
-        raise _Rejected("run")                                        # the run's own item, never another (m4)
+        raise _Rejected("run")                                        # the run's own item, never another
     if ev["occurred_at"] - start["occurred_at"] > starter.run_window:
         raise _Rejected("run_window")
-    if ev["occurred_at"] < start["occurred_at"] - settings.CLOCK_SKEW:   # no run event before its start (m4)
+    if ev["occurred_at"] < start["occurred_at"] - settings.CLOCK_SKEW:   # no run event before its start
         raise _Rejected("run")
     kind = "ai" if "ai" in action.actor_kinds else "worker"
     return {"actor_kind": kind, "actor_ref": None, "on_behalf_of_ref": start["actor_ref"], "program": app,
-            "model": ev.get("model"), "verified": bool(logged.get("verified"))}   # the start's (review M3)
+            "model": ev.get("model"), "verified": bool(logged.get("verified"))}   # the start's
 
 
 def _witness(request_id: str) -> dict | None:
@@ -433,8 +431,8 @@ def _cause(action, w) -> tuple | None:
 
 
 def _check_action(w, action_name: str, project) -> None:
-    """Spec 4.5: an action id is bound to the actions of the first request that has accepted events. This
-    only checks; the binding learns after the event is accepted (`_learn_action`, review M2)."""
+    """An action id is bound to the actions of the first request that has accepted events. This
+    only checks; the binding learns after the event is accepted (`_learn_action`)."""
     if not w["next_action"]:
         raise _Rejected("action_id")
     if project is None:
@@ -530,7 +528,7 @@ def _uuid(value):
 
 
 def _freeze(log: str, event_id: str, pid, ev: dict) -> None:
-    """The content itself, outside the log (until the evidence store, phase 10)."""
+    """The content itself, kept outside the log."""
     if ev["content"] is None and ev["before"] is None and ev["after"] is None:
         return
     with _db().pool().connection() as conn:

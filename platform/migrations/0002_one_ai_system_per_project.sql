@@ -67,10 +67,10 @@ INSERT INTO core.ai_system (project_id)
 SELECT pid FROM core.project;
 
 --
--- Isolation 2026-09-25 (03-coding-plan.md P1-D2): a volume made after the isolation has no
--- core.system (card versions live in each project database), so the carry-over runs only when it
--- exists; where it exists (every volume that already applied this file) it is the same statement.
--- plpgsql plans lazily, so the branch may name a table that is absent.
+-- A volume made with one database per project has no core.system (card versions live in each
+-- project database), so the carry-over runs only when core.system exists; where it exists (every
+-- volume that already applied this file) it is the same statement. plpgsql plans lazily, so the
+-- branch may name a table that is absent.
 DO $$
 BEGIN
   IF to_regclass('core.system') IS NOT NULL THEN

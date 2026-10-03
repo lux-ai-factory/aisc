@@ -1,6 +1,6 @@
--- Step 4 links belong to one AI card version (2026-10-02): a link is (card version, objective, test or
--- control). A link from before is given the project's latest version, the one step 4 showed. Deleting a
--- card version deletes its links. Safe to run again.
+-- Step 4 links belong to one AI card version: a link is (card version, objective, test or control).
+-- A link without a version is given the project's latest one. Deleting a card version deletes its
+-- links. Safe to run again.
 ALTER TABLE evidence.link ADD COLUMN IF NOT EXISTS system_id uuid;
 
 UPDATE evidence.link SET system_id = (SELECT pid FROM project.system ORDER BY number DESC LIMIT 1)

@@ -1,5 +1,5 @@
-"""CL1: the test suite's own cleanup removes exactly what it recorded (fourth review 1). Phase 1 makes
-`ledger.pool` and `ledger.state`; the other tables join as their phases build them."""
+"""The test suite's own cleanup removes exactly what it recorded, table by
+table (`ledger.pool`, `ledger.state` and the others listed in conftest.CLEANUP)."""
 from __future__ import annotations
 
 import uuid
