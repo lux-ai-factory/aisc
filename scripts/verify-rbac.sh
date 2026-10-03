@@ -69,7 +69,7 @@ echo
 echo "1. the catalogue is the hosted one: none runs here, so it has nothing to check in this stack"
 
 # The engine keeps every project in its own database and its API names the project in
-# X-AISC-Project (isolation E2): the checks below act in the ordinary account's project,
+# X-AISC-Project: the checks below act in the ordinary account's project,
 # and installs name the engine's own project for it, as the install dialog does.
 MINE=$(docker exec platform python -c "
 import json, urllib.request
@@ -130,7 +130,7 @@ print(json.load(urllib.request.urlopen(req, timeout=20)).get('role'))
 " 2>/dev/null | tail -1)
   is "and says they are nothing to it"            None "$role"
   # Through the platform, which drops the project's database too: deleting the row alone
-  # left a project_<hex> database behind on every run.
+  # would leave a project_<hex> database behind on every run.
   is "the scratch project is deleted by the platform" 204 \
      "$(call platform $PLAT/projects/$STRANGER DELETE "$ADMIN" '{"confirm_name":"verify rbac scratch"}')"
 else
@@ -166,8 +166,8 @@ if [ -n "$PROJECT" ]; then
   is "and not for a project nobody is in"        404 "$(page qualification-web:3000/qualification/p/$NOBODY/qualifications "$USER")"
   CTRL="controls-web:3000/controls/p"
   is "a path that is not a project is not found"  404 "$(page $CTRL/abc/checklists "$USER")"
-  # A control is installed through one dialog (/controls/install, controls ca6d20f), which asks
-  # for the project; the per-project install page is gone, so it is not checked here.
+  # A control is installed through one dialog (/controls/install), which asks for the
+  # project; there is no per-project install page to check.
   is "the project chooser opens for anyone signed in" 200 "$(page "controls-web:3000/controls/install?slug=accuracy-checklist" "$USER")"
   echo "the controls schema no longer lives in the shared database"
   left=$(docker exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select count(*) from pg_namespace where nspname = \$\$controls\$\$"')

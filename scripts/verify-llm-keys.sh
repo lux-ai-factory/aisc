@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Read-only checks of the per-project LLM keys on a deployed stack
-# (docs/superpowers/pipeline-2026-09-24-llm-keys, 01-specs.md S5.5).
+# Read-only checks of the per-project LLM keys on a deployed stack: the internal resolve route
+# is not served by the launcher, and a non-admin cannot read a project's LLM settings.
 # Run by hand after a deployment; it changes nothing.
 #
 #   ./scripts/verify-llm-keys.sh [project-slug]

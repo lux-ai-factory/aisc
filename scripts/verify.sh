@@ -33,7 +33,7 @@ run(){ # name | command
 if [ "$ONLY" != "--modules" ]; then
   line "the running stack"
   # verify-catalogue-mapping.sh is not run: it traces installs through a local catalogue's
-  # install-info API, and the catalogue is now the hosted one, which has none.
+  # install-info API, and the stack uses the hosted catalogue, which has none.
   for s in verify-db-access.sh verify-project-databases.sh verify-sso.sh verify-rbac.sh; do
     if [ -x "scripts/$s" ]; then run "$s" "scripts/$s"; else skipped "$s" "not executable"; fi
   done

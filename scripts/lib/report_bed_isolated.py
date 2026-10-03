@@ -1,8 +1,8 @@
-"""The report test bed in the ISOLATED layout (isolation 2026-09-25, 01-specs.md I1.1, I1.3, I1.5..I1.7).
+"""The report test bed in the isolated layout: one database per project.
 
 Test infrastructure only. It builds the state that `python -m platform_service.isolate copy` plus the
-stage-7 drop leave behind, so the report composer's and the renderer's tests can run against one
-database per project before the real tool exists:
+cutover's final drop (its stage 7) leave behind, so the report composer's and the renderer's tests can
+run against one database per project without running that tool:
 
     from report_bed_isolated import build_isolated
     bed = build_isolated("iso-rep-renderer")          # modules=True: qualification, CO, engine seeded
@@ -17,13 +17,14 @@ What it does, in order:
  3. Per project P, in P's database: the moving schemas (qualification, control_objectives, engine,
     report_composer when present) and core.system are restored from a pg_dump of `platform`, then
     every row that is not P's is removed (core.project cascade, then an FK-driven prune of engine,
-    whose Django keys have no ON DELETE), `project_id` is dropped from the five tables of I1.7,
-    core.system becomes project.system (I1.5, FKs follow it, I1.6), and schema core goes.
- 4. Owners and grants: schemas owned by platform_rw, tables by their module role; the reader list of
-    I2.6 for report_ro and dashboard_ro. When the platform's template files 0006..0010 exist they
+    whose Django keys have no ON DELETE), `project_id` is dropped from the five root tables in
+    DROPPED_PROJECT_ID, core.system becomes project.system (the foreign keys follow it), and schema
+    core goes.
+ 4. Owners and grants: schemas owned by platform_rw, tables by their module role; the reader list
+    (READERS) for report_ro and dashboard_ro. When the platform's template files 0006..0010 exist they
     are applied by step 2 and this step only adds what the modules' migrations would add; when they
     do not, the bed stands in for them and records it in `bed.applied["templates 0006..0010"] = False`.
- 5. In `platform`: the moving schemas and core.system are dropped (stage 7, I1.3); schema
+ 5. In `platform`: the moving schemas and core.system are dropped (the cutover's stage 7); schema
     report_library is made (owner report_composer_rw) when init/platform-db.sql did not make it.
 
 Never the host's 5432 (the bed's own port). Never prints a password or a row.
@@ -44,12 +45,12 @@ project_db = report_bed.project_db
 MOVING = ("qualification", "control_objectives", "engine", "report_composer")
 MODULE_ROLE = {"qualification": "qualification_rw", "control_objectives": "control_objectives_rw",
                "engine": "engine_rw", "report_composer": "report_composer_rw"}
-#: the platform project's column in each root table (I1.7); engine keeps its column (I7.9)
+#: the root tables that lose their platform-project column; engine keeps its project_id
 DROPPED_PROJECT_ID = ("qualification.qualification", "control_objectives.project",
                       "report_composer.layout", "report_composer.template", "report_composer.generated_report")
 NEW_TEMPLATES = ("0006_project_system.sql", "0007_qualification.sql", "0008_control_objectives.sql",
                  "0009_engine.sql", "0010_report_composer.sql")
-#: I2.6, the one reader list for report_ro and dashboard_ro
+#: the one reader list for report_ro and dashboard_ro
 READERS = {
     "project": ["system"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
@@ -154,7 +155,7 @@ def _isolate_one(bed, pid, schemas, templates_applied) -> None:
                 conn.execute("ALTER TABLE core.system SET SCHEMA project")
                 conn.execute("ALTER TABLE project.system DROP COLUMN project_id CASCADE")
                 conn.execute("ALTER TABLE project.system ADD CONSTRAINT system_number_key UNIQUE (number)")
-            else:  # the template made project.system: fill it and point the keys at it (I1.6)
+            else:  # the template made project.system: fill it and point the keys at it
                 cols = [r[0] for r in conn.execute(
                     "SELECT column_name FROM information_schema.columns WHERE table_schema = 'project'"
                     " AND table_name = 'system' AND column_name IN (SELECT column_name FROM"
@@ -184,7 +185,7 @@ def _isolate_one(bed, pid, schemas, templates_applied) -> None:
                     " LANGUAGE sql STABLE AS $f$ SELECT EXISTS (SELECT 1 FROM project.system s"
                     " WHERE s.pid = version_pid AND s.number = (SELECT max(o.number) FROM project.system o)) $f$")
             conn.execute("DROP SCHEMA core CASCADE")
-            # owners (D10): schemas platform_rw, tables the module role, project.system platform_rw
+            # owners: schemas platform_rw, tables the module role, project.system platform_rw
             conn.execute("ALTER SCHEMA project OWNER TO platform_rw")
             conn.execute("ALTER TABLE project.system OWNER TO platform_rw")
             for s in MOVING:

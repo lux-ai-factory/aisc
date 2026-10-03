@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a ledger export offline (docs/superpowers/ledger-2026-10-02/02-spec.md 6.3, 7.4).
+"""Check a ledger export offline.
 
     verify-ledger-export.py --public-key immudb-signing.pub [--log ledger...] [--project PID] export.jsonl
 
@@ -30,7 +30,7 @@ GENESIS = "00" * 32
 _DIGEST = re.compile(r"hmac:(v[1-9][0-9]*):([0-9a-f]{32})")
 
 
-# RFC 8785, the same rules as platform_service/ledger/canonical.py (a test keeps the two equal) --------
+# RFC 8785, the same rules as platform_service/ledger/canonical.py (a test keeps the two equal)
 _SHORT = {'"': '\\"', "\\": "\\\\", "\b": "\\b", "\f": "\\f", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 
 
@@ -98,7 +98,7 @@ def _number(x):
     return sign + digits[0] + ("." + digits[1:] if k > 1 else "") + "e" + ("+" if e >= 0 else "-") + str(abs(e))
 
 
-# the checks -----------------------------------------------------------------------------------------
+# The checks.
 
 def _verify_signature(public_key_pem: bytes, signature_b64, message: bytes) -> bool:
     from cryptography.exceptions import InvalidSignature
@@ -113,7 +113,7 @@ def _verify_signature(public_key_pem: bytes, signature_b64, message: bytes) -> b
         return False
 
 
-# immudb's transaction hashes (tx header version 1), as platform_service/ledger/immudb_proof.py ------
+# immudb's transaction hashes (tx header version 1), as platform_service/ledger/immudb_proof.py
 _FIRST_PREV_ALH = hashlib.sha256(b"").hexdigest()
 
 
@@ -288,7 +288,7 @@ _PRINTED = re.compile(r"^\s*Ledger entry (\d+) \u00b7 ([0-9a-f]+)\s*$")
 def anchor_problems(lines, printed: str) -> tuple[list[str], int | None]:
     """A report's printed anchor, as its foot prints it ("Ledger entry N · DIGEST") or as `N:DIGEST`, the
     digest's first 16 hex digits or more: the entry N of this (checked) export must hash to it, sha256 over
-    its canonical form (ledger phase 9). It proves the report was generated after entry N existed, not that
+    its canonical form. It proves the report was generated after entry N existed, not that
     N was the newest entry then."""
     m = _PRINTED.match(printed)
     seq_text, _, digest = (m.group(1), ":", m.group(2)) if m else printed.partition(":")

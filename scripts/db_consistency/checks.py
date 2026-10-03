@@ -1,11 +1,11 @@
 """The checks, C1 to C8. Each takes a Cluster and returns a list of findings; an empty list
 means the check passed. Only SELECTs, on read-only connections (cluster.py).
 
-Isolation (2026-09-25, 01-specs.md I16.6): every module's tables and the card versions
-(project.system) live in the project's own database `project_<hex>`; `platform` keeps only
-core.project, core.project_member, core.schema_migration, the catalogue and the report library. So
-C3, C4, C6 and C7 run per project database, and a reference that crosses projects cannot exist
-(foreign keys); what can still go wrong is a pid that does not resolve in its own database."""
+Every module's tables and the card versions (project.system) live in the project's own
+database `project_<hex>`; `platform` keeps only core.project, core.project_member,
+core.schema_migration, the catalogue and the report library. So C3, C4, C6 and C7 run per project
+database. A reference that crosses projects cannot exist (foreign keys); what can still go wrong is
+a pid that does not resolve in its own database."""
 
 from __future__ import annotations
 
@@ -42,8 +42,6 @@ def _dbs(cl: Cluster) -> list[tuple[str, str, str]]:
     return [(db, *projects[db]) for db in sorted(project_databases(cl)) if db in projects]
 
 
-# ── C1 ───────────────────────────────────────────────────────────────────────
-
 def c1_orphan_databases(cl: Cluster) -> list[Finding]:
     """Every project database belongs to a project, and every project has its database."""
     dbs = set(project_databases(cl))
@@ -55,17 +53,16 @@ def c1_orphan_databases(cl: Cluster) -> list[Finding]:
     return out
 
 
-# ── C2 ───────────────────────────────────────────────────────────────────────
-
 KNOWN_DATABASES = {"platform", "keycloak", "superset", "postgres", "control_objectives_test"}
 #: The standalone databases the modules used before the one platform database. Reported until
 #: someone decides to drop them.
 LEFTOVER_DATABASES = {"aisc", "controls", "qualification", "control_objectives"}
-#: I1.3: what stays in `platform`.
+#: What stays in `platform`.
 KNOWN_PLATFORM_SCHEMAS = {"core", "catalogue", "report_library", "public"}
-#: The module schemas the cutover retires (C9) and stage 7 drops (I15.2).
+#: The module schemas that moved into the project databases and are dropped at the end of the
+#: cutover (its stage 7).
 RETIRED_PLATFORM_SCHEMAS = {"engine", "qualification", "control_objectives", "report_composer"}
-#: I1.3: core's tables after the drop step.
+#: core's tables once the cutover has dropped the rest.
 CORE_TABLES = {"project", "project_member", "schema_migration"}
 
 
@@ -101,8 +98,6 @@ def c2_unknown_databases_and_schemas(cl: Cluster) -> list[Finding]:
                                   " pending the stage-7 drop"))
     return out
 
-
-# ── C3 ───────────────────────────────────────────────────────────────────────
 
 #: qualification.qualification column, the project.system column it repeats
 CARD_FIELDS = (("systemName", "name"), ("systemVersion", "version"), ("company", "provider"))
@@ -140,8 +135,6 @@ def c3_system_identity(cl: Cluster) -> list[Finding]:
                     for spid, number, aid, name, want in rows]
     return out
 
-
-# ── C4 ───────────────────────────────────────────────────────────────────────
 
 #: (table, id column, version column): every module row that names a card version of its database.
 STAMPED = (("qualification.qualification", "id", "system_id"),
@@ -200,7 +193,7 @@ def _engine_projects(cl: Cluster, db: str, pid: str) -> list[Finding]:
 
 
 def _card_components(cl: Cluster, db: str) -> list[Finding]:
-    """I16.6: a card's component is one of the engine's components of the same database."""
+    """A card's component is one of the engine's components of the same database."""
     rows = cl.rows(db, """
         SELECT c.id, c.component_pid::text FROM qualification.card_component c
          WHERE NOT EXISTS (SELECT 1 FROM engine.aisc_backend_aicomponent a WHERE a.pid = c.component_pid)
@@ -229,8 +222,6 @@ def c4_references(cl: Cluster) -> list[Finding]:
             out += _card_components(cl, db)
     return out
 
-
-# ── C5 ───────────────────────────────────────────────────────────────────────
 
 def _columns(cl: Cluster, db: str, where: str) -> list[tuple[str, str, str]]:
     """(schema, table, column) of information_schema.columns matching `where`."""
@@ -274,8 +265,6 @@ def c5_users(cl: Cluster) -> list[Finding]:
             for sub, where in sorted(_subjects(cl).items()) if sub not in users]
 
 
-# ── C6 ───────────────────────────────────────────────────────────────────────
-
 def c6_stale_graph(cl: Cluster) -> list[Finding]:
     """In each project database, an assessment's graph (control_objectives.graph, step 2) is
     still its card's current knowledge graph. The two digests are not comparable: qualification's
@@ -305,8 +294,6 @@ def c6_stale_graph(cl: Cluster) -> list[Finding]:
                                       f"{uploaded:%Y-%m-%d %H:%M}, card graph built {built:%Y-%m-%d %H:%M})"))
     return out
 
-
-# ── C7 ───────────────────────────────────────────────────────────────────────
 
 def _behind(cl: Cluster, db: str, tracker: heads.Tracker) -> list[Finding]:
     if not cl.exists(db, tracker.table):
@@ -345,8 +332,6 @@ def c7_migrations(cl: Cluster) -> list[Finding]:
             out += _behind(cl, cl.platform_db, tracker)
     return out
 
-
-# ── C8 ───────────────────────────────────────────────────────────────────────
 
 #: Schemas of the platform database that follow the convention (the catalogue is out of scope).
 LINTED_PLATFORM_SCHEMAS = ("core", "report_library")
@@ -396,8 +381,6 @@ def c8_naming(cl: Cluster) -> list[Finding]:
                      cl.superset_db)
     return out
 
-
-# ── the registry ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class Check:

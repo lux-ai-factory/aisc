@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The access contract of the databases, asserted by connecting as each role.
 #
-# Since the isolation (2026-09-25, I16.1, I19.1) each project has its own database
+# Each project has its own database
 # project_<pid without hyphens>, where every module owns a schema, reads the card versions in
 # project.system, and is refused the rest. `platform` keeps only the list of projects and their
 # members. These are the assertions that make that a fact rather than an intention, so a stray

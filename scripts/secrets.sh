@@ -21,7 +21,7 @@
 #   python -m platform_service.llm_store rotate
 # in the platform container, then drop the old key from the list.
 #
-# The ledger's two (docs/superpowers/ledger-2026-10-02/02-spec.md 7.1, 7.5) survive --rotate too:
+# The ledger's two secrets survive --rotate too:
 # - PLATFORM_LEDGER_KEYS is versioned ("v1:<hex>,v2:<hex>") and every version is kept for ever,
 #   because the digests in immudb were made with them. Rotating means adding the next version
 #   (--add-ledger-key) and restarting the platform; new digests use it, old ones still check.
@@ -73,7 +73,7 @@ PLATFORM_CARD_AGENT_TOKEN=rand
 PLATFORM_RISK_MAPPER_TOKEN=rand
 # the plugin-side client of Manage -> Connections resolves a connection with it (platform, eval worker)
 PLATFORM_CONNECTIONS_TOKEN=rand
-# One token per caller edge of the service-only APIs (API auth, 2026-09-25): each
+# One token per caller edge of the service-only APIs: each
 # is held by its caller and its callee only, so no service can call another with
 # a token it was not given.
 QUALIFICATION_AGENTS_TO_WEB_TOKEN=rand
@@ -86,16 +86,16 @@ QUALIFICATION_WEB_TO_PDF_TOKEN=rand
 CONTROLS_WEB_TO_PDF_TOKEN=rand
 PLATFORM_SECRETS_KEY=fernet
 # immudb's superuser: compose starts immudb with IMMUDB_FORCE_ADMIN_PASSWORD, so a new value is applied
-# at its next start (it used to be committed in env.development; rotated 2026-10-02)
+# at its next start
 IMMUDB_ADMIN_PASSWORD=immudbpw
 # the ledger: the platform's immudb user, and its versioned master keys (both kept by --rotate)
 LEDGER_IMMUDB_PASSWORD=immudbpw
 PLATFORM_LEDGER_KEYS=ledgerkey
 # platform_rw, the platform service's database role: postgres-setup applies it on every start
 PLATFORM_RW_PASSWORD=rand
-# the witness: Caddy sends it, the platform checks it (ledger spec 3.1, T18)
+# the ledger witness: Caddy sends it, the platform checks it
 AISC_WITNESS_GATEWAY_SECRET=rand
-# one token per caller that posts ledger events, held by it and the platform only (spec 6.5, T17)
+# one token per caller that posts ledger events, held by it and the platform only
 PLATFORM_LEDGER_ENGINE_TOKEN=rand
 PLATFORM_LEDGER_DASHBOARD_TOKEN=rand
 PLATFORM_LEDGER_AGENTS_TOKEN=rand
@@ -222,7 +222,7 @@ else
   echo "setfacl is missing: let uid 1000 (Keycloak) read $RENDERED, or Keycloak will not start" >&2
 fi
 
-# immudb signs its states with this key (ledger spec 7.3); the platform checks them with the public
+# immudb signs its states with this key; the platform checks them with the public
 # half. Made once and never replaced, --rotate included: a new key would make every saved state
 # unverifiable. Private to this user, readable by immudb's uid 3322 only.
 SIGNING_KEY=immudb-signing.key

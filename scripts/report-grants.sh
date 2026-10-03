@@ -1,13 +1,13 @@
 #!/bin/sh
-# The report-grants one-shot, the superuser's repair of the readers' grants (isolation I2.6, I2.7).
+# The report-grants one-shot: the superuser's repair of the readers' grants.
 #
-# Since the isolation every module's tables live in each project's own database project_<hex>,
-# and each module grants report_ro and dashboard_ro the tables of the I2.6 list from its own
-# migrations. This one-shot is the backstop: in every project database it (re)grants exactly that
+# Every module's tables live in each project's own database project_<hex>, and each module grants
+# report_ro and dashboard_ro its tables of the reader list (below) from its own migrations. This
+# one-shot is the backstop: in every project database it (re)grants exactly that
 # list to both readers and takes away anything else, so a database migrated before a reader
 # existed, or a grant revoked by hand, is repaired on the next start. It also grants report_ro the
 # superset tables of init/report-ro-grants.sql. `platform` gets nothing from here: the readers'
-# rights there come from the init files (I1.4).
+# rights there come from the init files.
 #
 # Superuser, idempotent, safe on a project database whose modules have not migrated yet (a table
 # that is not there is skipped). Prints database names only. Runs after the module migrate
@@ -19,8 +19,8 @@ until pg_isready -q; do sleep 1; done
 
 psql -v ON_ERROR_STOP=1 -d postgres -f "$HERE/report-ro-grants.sql"
 
-# Databases made later are copies of template1: the pre-isolation default privilege for report_ro
-# on controls_rw's tables (it also covered _prisma_migrations and any later table) is taken away.
+# Databases made later are copies of template1, so an old default privilege there for report_ro on
+# controls_rw's tables (it would also cover _prisma_migrations and any later table) is taken away.
 psql -v ON_ERROR_STOP=1 -d template1 <<'SQL'
 DO $undo$
 BEGIN

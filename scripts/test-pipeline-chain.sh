@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The pipeline, step 1 to step 8, on one throwaway database (docs/superpowers/pipeline-2026-09-23/03-specs.md).
+# The pipeline, step 1 to step 8, on one throwaway database.
 #
 #   scripts/test-pipeline-chain.sh                 # the whole chain; exit 0 when every step passes
 #   scripts/test-pipeline-chain.sh --break <link>  # break one link; exit 0 when the run fails at
@@ -8,7 +8,7 @@
 # Links: qualification_fk, co_fk, engine_stamp, controls_stamp, card_component.
 #
 # One postgres:15-alpine container (scripts/lib/throwaway-pg.sh) with the platform's init files
-# and migrations at HEAD. Since the isolation (I19.2) every module lives in the project's own
+# and migrations at HEAD. Every module lives in the project's own
 # database: step 1 makes the project through the platform's API (which provisions project_<hex>),
 # then tpg_project_db tops its template up and every module's own migrate one-shot runs against
 # it (qualification, controls, control objectives, engine, report composer), exactly as
@@ -115,7 +115,7 @@ step_cmd() {
     1|6) echo "$plat" ;;
     2) echo "cd apps/qualification && PROJECT_DATABASE_URL='postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification' npx vitest run -t chain_step$n" ;;
     3) echo "cd apps/control-objectives && DATABASE_URL=postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform PROJECT_DATABASE_URL='postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}' uv run pytest -q -p no:cacheprovider -m chain -k chain_step$n" ;;
-    # N7: the label narrows the run to the chain module (the whole suite's other DB tests need a test database)
+    # the label narrows the run to the chain module (the whole suite's other DB tests need a test database)
     # The engine runs in configurator mode, as the stack runs it (project databases, the door).
     4) echo "cd apps/backend && AISC_DEPLOYMENT=configurator DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
     5|7) echo "$ctrl" ;;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Is what must not change still unchanged? (docs/superpowers/pipeline-2026-09-23/03-specs.md)
+# Is what must not change still unchanged?
 #
 #   scripts/guard-frozen.sh                    # G1..G5
 #   scripts/guard-frozen.sh --only G3,G4       # a subset
@@ -8,29 +8,29 @@
 #                                              # (the old chain, on the pre-isolation trees; its reference is e34fca3)
 #
 # G1  engine schema at HEAD, migrated by migrate_projects into a project database, equals the
-#     schema Sean's origin/master makes up to exactly the differences g1_allowed lists (adapt plan
-#     2026-09-28, Ruling 6): our three columns with their indexes and keys, the mode marker table,
-#     and in configurator minus the login tables 0019 drops
-# G2  retired 2026-09-30: it froze qualification.knowledge_graph and qualification_risk, which are
+#     schema Sean's origin/master makes up to exactly the differences g1_allowed lists: our three
+#     columns with their indexes and keys, the mode marker table, and in configurator minus the
+#     login tables 0019 drops
+# G2  retired: it froze qualification.knowledge_graph and qualification_risk, which are
 #     our own tables (the VAIR form added columns to the second). The freeze is there so we never
 #     diverge from the originals: the authors' AIRO/VAIR files (G3) and Sean's code (G1, G4, G5).
 # G3  the vendored AIRO/VAIR files, as their authors published them, hash as pinned
 # G4  backend, eval and webapp byte-identical to Sean's origin/master (the base of
 #     feat/deployment-modes) but for the files scripts/guard-frozen-intended.txt names with their
-#     task and reason (Ruling 36); plugin-interface without new commits, plugin-manager clean
-#     and at PM_REF (Task 9b: Méril's feat/dev-catalogue-staging, not master)
+#     task and reason; plugin-interface without new commits, plugin-manager clean and at PM_REF
+#     (Méril's feat/dev-catalogue-staging, not master)
 # G5  engine models equal Sean's origin/master but for the files G4's list names for the backend;
 #     makemigrations has nothing to make
 #
 # Every database is a throwaway postgres:15-alpine container (scripts/lib/throwaway-pg.sh) on a
-# port the kernel picks, removed on exit. Since the isolation (2026-09-25, I7.12, I19.2) the
-# candidate's engine and qualification tables are made where the stack makes them: in a project
-# database (tpg_project_db, then manage.py migrate_projects and prisma migrate deploy there). The
-# reference and the --orders fixture are the pre-isolation shared layout, built from the trees of
-# the top-level commit f01288a (03-coding-plan.md G3), since the current init files no longer make
-# the module schemas in platform. Dumps are --no-privileges: grants are proven by
-# scripts/tests/test_project_grants.py and verify-project-databases.sh I16.1. The host's 5432 (the live stack) is never a target and
-# no `docker compose` command is run.
+# port the kernel picks, removed on exit. The candidate's engine and qualification tables are
+# made where the stack makes them: in a project database (tpg_project_db, then manage.py
+# migrate_projects and prisma migrate deploy there). The reference and the --orders fixture are
+# the shared layout of before the project databases, built from the trees of the top-level commit
+# f01288a, since the current init files do not make the module schemas in platform. Dumps are
+# --no-privileges: grants are proven by scripts/tests/test_project_grants.py and
+# verify-project-databases.sh I16.1. The host's 5432 (the live stack) is never a target and no
+# `docker compose` command is run.
 #
 # Sources: committed trees (`git archive <rev>`), so other people's uncommitted files do not
 # change the verdict. GUARD_SOURCE=worktree reads the working trees instead (to check before
@@ -80,7 +80,7 @@ ORDERS_ENGINE_REF=e34fca3   # --orders only: the pre-isolation reference its six
 [ -n "$ENGINE_REF" ] || { echo "no 'base backend' line in $INTENDED" >&2; exit 2; }
 QUAL_REF=e112001            # qualification before the card-versions migration
 PI_REF=97eddea              # G4's engine references: scripts/guard-frozen-intended.txt
-PM_REF=46e1867              # plugin-manager: Task 9b, Méril's origin/feat/dev-catalogue-staging (public index without login), not master
+PM_REF=46e1867              # plugin-manager: Méril's origin/feat/dev-catalogue-staging (public index without login), not master
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679
@@ -127,7 +127,8 @@ prepare_trees() {
   tree "$BACKEND" "$LIVE_ENGINE" "$WORK/live/backend"
 }
 
-# --orders: the pre-isolation trees (the backend and qualification commits of f01288a's gitlinks).
+# --orders: the trees from before the project databases (the backend and qualification commits of
+# f01288a's gitlinks).
 # Its E and Q steps cannot run on the isolated candidate: the engine's default database is a dummy
 # there, and qualification's card-versions migration was folded into the project baseline.
 prepare_order_trees() {
@@ -178,7 +179,7 @@ engine_dump() { # db
   tpg_dump "$1" --schema-only --schema=engine --no-privileges \
     | grep -v -E '^(CREATE SCHEMA|ALTER SCHEMA|COMMENT ON SCHEMA) |^-- Name: (SCHEMA )?engine; Type: (SCHEMA|COMMENT); Schema: -; Owner: '
 }
-# G1's allowed differences (adapt plan 2026-09-28, Ruling 6): what the candidate, migrated by
+# G1's allowed differences: what the candidate, migrated by
 # migrate_projects into a project database (configurator), may add to or lack from the schema
 # Sean's master makes. One line each: `<+|-> <kind> <name>`, and for an addition ` | <definition>`,
 # which must then match too. Kinds: table, column <table>.<column>, constraint <table>.<name>,
@@ -401,7 +402,7 @@ changed_names() { # repo base paths...
   git -C "$repo" diff --name-only "$base" $(cand_head) -- "$@"
 }
 
-# G4 (controller Ruling 36): since feat/deployment-modes the engine repos are Sean's
+# G4: since feat/deployment-modes the engine repos are Sean's
 # origin/master plus a configurator mode, so their reference is that base, and every file the
 # branch adds or changes is named, with its task and reason, in $INTENDED. Any other file that
 # differs from the base (added, changed or removed) fails G4.
@@ -448,8 +449,8 @@ g5() {
 }
 
 # Migration orders (--orders): engine 0023 (E), qualification's card versions (Q) and platform
-# 0003 (P), applied in every order on a live-shaped fixture. A historical regression since the
-# isolation: the three steps are those of the pre-isolation trees ($ORDERS_TOP_REF).
+# 0003 (P), applied in every order on a live-shaped fixture. A regression check of history: the
+# three steps are those of the trees from before the project databases ($ORDERS_TOP_REF).
 seed_live_shape() {
   # platform 0001; one project and its system (so 0002 carries it over under the same pid, as
   # it did live); 0002; qualification up to 20260923180000 with the MCAS card, 14 answers and 1
@@ -470,7 +471,7 @@ seed_live_shape() {
     INSERT INTO qualification_risk (id, \"qualificationId\", position, risk, source, consequence, affected, control)
       VALUES ('r1', 'card-mcas', 0, 'risk', 'src', 'c', 'a', 'ctl');" >/dev/null || return 1
   ENGINE_PY=$(reference_python "$ORDERS_ENGINE_REF" "$WORK/ord/ref-backend") engine_migrate "$WORK/live/backend" || return 1
-  # control objectives as it was before the isolation (its alembic now refuses `platform`)
+  # control objectives as it was before the project databases (the current alembic refuses `platform`)
   (cd "$WORK/ord/co" && DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform" \
      PYTHONPATH="$WORK/ord/co/src" "$CO/.venv/bin/python" -m alembic upgrade "$CO_LIVE_REV") || return 1
 }
@@ -533,7 +534,7 @@ orders() {
   [ $s41 = 1 ] && pass S4.1 || fail S4.1 "see order lines above"
   [ $s42 = 1 ] && pass S4.2 || fail S4.2 "see order lines above"
   [ $s43 = 1 ] && pass S4.3 || fail S4.3 "see order lines above"
-  # S4.4: without the ownership fix, E and Q pass and P fails on core.system's owner; after the
+  # Without the ownership fix, E and Q pass and P fails on core.system's owner; after the
   # fix P succeeds on a re-run.
   restore fixture
   local e q p1 p2 rec

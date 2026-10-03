@@ -3,12 +3,12 @@
 #
 #   ./scripts/verify-db-consistency.sh [--only C1,C3]
 #
-# What this asserts, against the RUNNING stack's Postgres (or the one PG* points at). Since the
-# isolation every module and the card versions (project.system) live in each project's own
-# database project_<hex>; platform keeps core.project, core.project_member and the libraries:
+# What this asserts, against the RUNNING stack's Postgres (or the one PG* points at). Every module
+# and the card versions (project.system) live in each project's own database project_<hex>;
+# platform keeps core.project, core.project_member and the libraries:
 #   C1 every project database belongs to a project, and every project has its database,
 #   C2 no database or platform schema outside the known list (the old standalone ones too; a
-#      retired module schema or an extra core table is a WARN until the stage-7 drop),
+#      retired module schema or an extra core table is a WARN until the cutover drops it),
 #   C3 a card version's name, version and provider read the same in every module of its database,
 #   C4 every card-version pid, stamp and card component resolves in its own project database,
 #   C5 every stored Keycloak subject is a user of the aisc realm (WARN),

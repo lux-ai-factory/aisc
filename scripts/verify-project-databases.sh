@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Is every project completely isolated? The "done" check of the isolation (01-specs.md I16, I19.1).
+# Is every project completely isolated in its own database? Each check prints its label, I16.x.
 #
 #   ./scripts/verify-project-databases.sh                  # I16.1 .. I16.7
-#   ./scripts/verify-project-databases.sh --privileges     # only I16.1 and I16.2 (cutover C9)
+#   ./scripts/verify-project-databases.sh --privileges     # only I16.1 and I16.2 (the cutover runs this)
 #   ./scripts/verify-project-databases.sh --final-layout   # also I16.2's exact layout after stage 7
 #
 # What it proves, against the cluster PG* points at (the running stack's Postgres by default):
-#   I16.1 privileges: I1.4 in platform for every role; in each project_<hex> database each module
-#         role has rights on its own schema only, USAGE on project and SELECT, REFERENCES on
-#         project.system, nothing on llm, provision or another module; the readers (report_ro,
-#         dashboard_ro) read exactly the I2.6 list and nothing by a default privilege; PUBLIC may
-#         not connect; inspector_ro writes nothing
+#   I16.1 privileges: in platform every role has exactly its listed rights (PLATFORM_TABLES); in
+#         each project_<hex> database each module role has rights on its own schema only, USAGE on
+#         project and SELECT, REFERENCES on project.system, nothing on llm, provision or another
+#         module; the readers (report_ro, dashboard_ro) read exactly READER_TABLES and nothing by a
+#         default privilege; PUBLIC may not connect; inspector_ro writes nothing
 #   I16.2 placement: the retired module schemas of platform (and core.system) are unreachable by
-#         every role but the superuser and inspector_ro (pg_read_all_data, I11.1, by design);
-#         with --final-layout platform has exactly the schemas of I1.3 and core its three tables
+#         every role but the superuser and inspector_ro (pg_read_all_data, by design); with
+#         --final-layout platform has exactly PLATFORM_SCHEMAS and core its three tables
 #   I16.3 every project has its database, with every template file, every module at its head,
 #         unique positive card version numbers, and every system_id resolving in the same database
 #   I16.4 the running containers' DSNs name project databases (docker inspect; values are never
@@ -108,24 +108,24 @@ def databases():
     return {r[0] for r in rows("platform", "SELECT datname FROM pg_database")}
 
 
-# ── the lists of the design ──────────────────────────────────────────────────
+# The lists the checks compare with.
 
 MODULE_ROLES = ["qualification_rw", "control_objectives_rw", "controls_rw", "engine_rw", "report_composer_rw",
                 "catalogue_rw"]
-#: I1.4: what a role may do on tables of platform it does not own
+#: what a role may do on tables of platform it does not own
 PLATFORM_TABLES = {r: {("core.project", "SELECT"), ("core.project_member", "SELECT")} for r in MODULE_ROLES}
 PLATFORM_TABLES["dashboard_ro"] = {("core.project_member", "SELECT")}
 PLATFORM_TABLES["report_ro"] = {("core.project", "SELECT")}
-#: I1.4: the platform schema each of these roles holds by design (its owner, or made for it)
+#: the platform schema each of these roles holds by design (its owner, or made for it)
 HOLDS = {"report_composer_rw": "report_library", "catalogue_rw": "catalogue"}
-#: I1.3
+#: the schemas of platform in the final layout
 PLATFORM_SCHEMAS = {"core", "catalogue", "report_library", "public"}
 CORE_TABLES = {"project", "project_member", "schema_migration"}
-#: I1.1: module schema of a project database -> its role
+#: module schema of a project database -> its role
 MODULES = {"qualification": "qualification_rw", "control_objectives": "control_objectives_rw",
            "engine": "engine_rw", "report_composer": "report_composer_rw", "controls": "controls_rw"}
 READERS = ("report_ro", "dashboard_ro")
-#: I2.6, exhaustive
+#: what the readers may read, exhaustive
 READER_TABLES = {
     "project": ["system"],
     "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer"],
@@ -143,7 +143,7 @@ PLUGIN_CONFIG_COLUMNS = ("id", "plugin_id")
 #: table-level rights has_table_privilege is asked about; the rest are read with aclexplode
 TABLE_RIGHTS = ("SELECT", "INSERT", "UPDATE", "DELETE", "REFERENCES", "TRIGGER")
 WRITE_RIGHTS = ("INSERT", "UPDATE", "DELETE")
-#: (table, id column, version column): every module row that names a card version (I16.3)
+#: (table, id column, version column): every module row that names a card version
 STAMPED = (("qualification.qualification", "id", "system_id"), ("control_objectives.project", "id", "system_id"),
            ("report_composer.layout", "id", "system_id"), ("report_composer.generated_report", "id", "system_id"),
            ("engine.aisc_backend_evaluation", "pid", "system_id"), ("controls.submission_answer", "id", "system_version_pid"))
@@ -174,7 +174,7 @@ def table_rights(db, role, where):
     return got | {(r, p) for r, p in other_rights(db, role, where)}
 
 
-# ── I16.1 ────────────────────────────────────────────────────────────────────
+# I16.1: privileges
 
 def i16_1_platform(present):
     ok = True
@@ -288,7 +288,7 @@ def i16_1_inspector(dbs, present):
         say("PASS", "I16.1", "inspector_ro writes nothing")
 
 
-# ── I16.2 ────────────────────────────────────────────────────────────────────
+# I16.2: placement
 
 def i16_2(present):
     ok = True
@@ -326,7 +326,7 @@ def i16_2(present):
                              + ("; platform has exactly the layout of I1.3" if FINAL_LAYOUT else ""))
 
 
-# ── I16.3 ────────────────────────────────────────────────────────────────────
+# I16.3: every project has its database, at head
 
 def i16_3(project_list, dbs):
     """Every core.project has its database; provision.template_migration equals the repository's
@@ -369,9 +369,9 @@ def i16_3(project_list, dbs):
         say("PASS", "I16.3", f"{len(project_list)} projects: each has its database, at every head, versions resolve")
 
 
-# ── I16.4 ────────────────────────────────────────────────────────────────────
+# I16.4: the containers name project databases
 
-#: container -> the variables that may name `platform` (test_compose_isolation.py, I3.8 .. I10.2)
+#: container -> the variables that may name `platform` (as scripts/tests/test_compose_isolation.py)
 CONTAINERS = {
     "qualification-web": set(),
     "control-objectives": {"DATABASE_URL"},
@@ -427,7 +427,7 @@ def i16_4():
         say("PASS", "I16.4", "every module's DSNs name project databases; platform only where I16.4 allows")
 
 
-# ── I16.5 ────────────────────────────────────────────────────────────────────
+# I16.5: two projects through the APIs
 
 def _http(method, path, token, body=None, project=None, form=False):
     base = os.environ.get("VERIFY_BASE_URL", "http://localhost:8100").rstrip("/")
@@ -516,7 +516,7 @@ def i16_5():
                 say("WARN", "I16.5", f"the throwaway project {p['slug']} could not be taken away ({status})")
 
 
-# ── I16.6 and I16.7 ──────────────────────────────────────────────────────────
+# I16.6 and I16.7: the consistency check and the connection budget
 
 def i16_6():
     r = subprocess.run([sys.executable, "-m", "db_consistency"], capture_output=True, text=True,

@@ -115,13 +115,12 @@ esac
 
 echo "2d. the gateway is the only session (wave 1)"
 # Every request already passes through oauth2-proxy, which holds a session it
-# refreshes. Nothing behind it should keep a second session of its own: the
-# engine's page does, which is why it dies after the realm's 30 idle minutes
-# while every other module keeps working, and why an install fails with 401s.
+# refreshes. Nothing behind it may keep a second session of its own: one that did
+# would die after the realm's 30 idle minutes while every other module kept
+# working, and installs would fail with 401s.
 #
-# What that costs to fix is config: oauth2-proxy passes the token it already
-# has, Caddy copies that header onto the proxied request, and the engine's page
-# stops holding one. These assertions describe that end state.
+# So oauth2-proxy passes the token it already has, Caddy copies that header onto
+# the proxied request, and the engine's page holds none. These assertions check that.
 cmd=$(docker inspect oauth2-proxy --format '{{json .Config.Cmd}}' 2>/dev/null)
 case "$cmd" in
   *pass-access-token*) ok "the gateway passes the token it holds to what it protects" ;;
@@ -148,7 +147,7 @@ case "$who" in
 esac
 # The observable end of it: a signed-in browser, holding only the gateway's
 # cookie and no token of its own, can use the engine's API.
-# Every engine route that belongs to a project names it in X-AISC-Project (isolation E2).
+# Every engine route that belongs to a project names it in X-AISC-Project.
 c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
 [ "$c" = "200" ] && ok "a session with no token of its own can read the engine's API ($c)" \
   || no "the engine's API refuses a gateway session that holds no token ($c)"

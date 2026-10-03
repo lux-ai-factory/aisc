@@ -1,13 +1,13 @@
-"""Step 8 of the pipeline chain: the two dashboard datasets of 03 WP11 (11a).
+"""Step 8 of the pipeline chain: the dashboard's two datasets carry the right card version.
 
-S12.1: a test result read through `engine_results_<hex>` carries the version that was the
+A test result read through `engine_results_<hex>` carries the version that was the
 latest when its evaluation started (v1), and a control answer read through
 `controls_answers_<hex>` carries the version under which it was answered (v2).
 
-Since the isolation (I10.1, I19.3) both datasets run on the project's own database, as dashboard_ro
-does through the project's "AISC Controls <slug>" connection: the engine dataset reads
-engine.aisc_backend_measurement and project.system of that database and filters by nothing, since
-the database is the project. The engine query below is the dashboard's own SQL (aisc_ext.projects.engine_results_sql).
+Both datasets run on the project's own database, as dashboard_ro does through the project's
+"AISC Controls <slug>" connection: the engine dataset reads engine.aisc_backend_measurement and
+project.system of that database and filters by nothing, since the database is the project. The
+engine query below is the dashboard's own SQL (aisc_ext.projects.engine_results_sql).
 
 Two modes.
 - Inside scripts/test-pipeline-chain.sh ($CHAIN_JSON names the container and the ids the
@@ -17,7 +17,7 @@ Two modes.
   projects P and Q get their databases (platform_rw with the project template, as
   tpg_project_db), `manage.py migrate_projects` makes the engine's tables in both, P is seeded
   with v1 and v2 in its project.system, an evaluation stamped v1 and an answer stamped v2, and Q
-  with its own version and evaluation, whose rows must never appear in P's (S11.4). The container
+  with its own version and evaluation, whose rows must never appear in P's. The container
   is removed afterwards.
 """
 
@@ -125,12 +125,12 @@ def _standalone() -> Ctx:
     if t.scalar(db, "SELECT to_regclass('project.system') IS NOT NULL") != "t":
         ctx.problems.append("project.system (template 0006_project_system.sql)")
         return ctx
-    # the card versions, written as the platform writes them (I2.2)
+    # the card versions, written as the platform writes them
     t.psql(db, f"INSERT INTO project.system (pid, number, name) VALUES ('{v1}', 1, 'S'), ('{v2}', 2, 'S')",
            role="platform_rw")
     t.psql(other, f"INSERT INTO project.system (pid, number, name) VALUES ('{w1}', 1, 'T')", role="platform_rw")
 
-    # the engine's tables in both databases, as its one-shot makes them (I7.6). migrate_projects
+    # the engine's tables in both databases, as its one-shot makes them. migrate_projects
     # (aisc_backend/deployment.py) only migrates a database per project in configurator mode.
     env = dict(os.environ, AISC_DEPLOYMENT="configurator",
                DB_ENGINE="django.db.backends.postgresql", DB_NAME="platform",
@@ -174,7 +174,7 @@ def ctx():
     try:
         c = _standalone()
     except BaseException:
-        # a failed setup must not leave its container behind (S12.3)
+        # a failed setup must not leave its container behind
         subprocess.run("docker ps -aq --filter name=aisc-t-dashq- | xargs -r docker rm -f",
                        shell=True, capture_output=True)
         raise
@@ -185,7 +185,7 @@ def ctx():
 
 
 def test_i19_3_the_engine_dataset_is_the_dashboards_own_sql():
-    """I19.3: the query here is the one the dashboard registers (aisc_ext.projects.engine_results_sql),
+    """The query here is the one the dashboard registers (aisc_ext.projects.engine_results_sql),
     whitespace aside."""
     sys.path.insert(0, str(DASHBOARD))
     from aisc_ext import projects
@@ -194,7 +194,7 @@ def test_i19_3_the_engine_dataset_is_the_dashboards_own_sql():
 
 
 def test_s12_1_engine_results_carry_the_version_of_the_evaluation(ctx):
-    """S12.1 (and S11.1, engine half): the test result reads system_version = 1, in the project's database."""
+    """The test result reads system_version = 1, in the project's database."""
     ctx.require()
     rows = ctx.t.rows(ctx.project_db, ENGINE_RESULTS_SQL, role="dashboard_ro")
     assert rows, "engine_results returned no rows for the project"
@@ -202,7 +202,7 @@ def test_s12_1_engine_results_carry_the_version_of_the_evaluation(ctx):
 
 
 def test_s12_1_controls_answers_carry_the_version_they_were_answered_under(ctx):
-    """S12.1 (and S11.1, controls half): the answer reads system_version_number = 2."""
+    """The controls answer reads system_version_number = 2."""
     ctx.require()
     rows = ctx.t.rows(ctx.project_db, CONTROLS_ANSWERS_SQL, role="dashboard_ro")
     assert rows, "controls_answers returned no rows"
@@ -210,7 +210,7 @@ def test_s12_1_controls_answers_carry_the_version_they_were_answered_under(ctx):
 
 
 def test_s11_4_engine_results_never_return_another_projects_rows(ctx):
-    """S11.4: P's database returns no evaluation of Q's; each project's dataset reads its own database."""
+    """P's database returns no evaluation of Q's; each project's dataset reads its own database."""
     ctx.require()
     if ctx.other_db is None:
         pytest.skip("chain mode seeds one project only")

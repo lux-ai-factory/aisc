@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Make more ledger databases for new projects (docs/superpowers/ledger-2026-10-02/02-spec.md 7.1).
+# Make more ledger databases in immudb, ready for new projects to take.
 #
 #   IMMUDB_ADMIN_PASSWORD=... ./scripts/ledger-pool.sh [N]     # default 20
 #
-# Only immudb's superuser can create databases (spike M1), and the platform service must never hold
+# Only immudb's superuser can create databases, and the platform service must never hold
 # its password. So an operator runs this: the password goes from this shell's environment into one
 # short-lived container's environment, never into a file, never onto the command line, never
 # printed. The platform's own immudb user (aisc_ledger, LEDGER_IMMUDB_PASSWORD from env.secrets) is

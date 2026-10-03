@@ -11,6 +11,10 @@
 #   and nothing that belongs to no project (reference data) names one.
 # Then the rules that hold across schemas: the dashboard reads and never
 # writes, one naming convention, and one name for each link into core.
+#
+# These are the rules of the shared layout, where every module had a schema of
+# `platform`. A stack with one database per project fails them; verify.sh runs
+# verify-project-databases.sh instead.
 set -uo pipefail
 S=$(mktemp); trap 'rm -f "$S"' EXIT
 PGDB=${PLATFORM_DB:-platform}; PGUSER=${PGUSER:-aisc-postgres-user}

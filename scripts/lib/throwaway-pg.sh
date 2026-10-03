@@ -126,8 +126,8 @@ tpg_copy_db() { # template, new
   tpg_su postgres -c "GRANT CONNECT ON DATABASE \"$new\" TO qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, platform_rw, dashboard_ro" >/dev/null
 }
 
-# A project's database, made the way the platform provisions one (platform_service.projectdb,
-# isolation I2.4, I19.2): created by platform_rw, then every pending file of the project template
+# A project's database, made the way the platform provisions one (platform_service.projectdb):
+# created by platform_rw, then every pending file of the project template
 # applied as platform_rw in one transaction under the platform's advisory lock, each recorded in
 # provision.template_migration. Idempotent: a second call applies only files added since.
 # The cluster needs init/project-databases.sql first (tpg_init_platform): templates 0007..0010 call

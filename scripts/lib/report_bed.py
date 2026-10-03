@@ -1,7 +1,6 @@
 """The report test bed: one throwaway Postgres with every database the report reads.
 
-Design: docs/superpowers/report-2026-09-23/02-architecture.md, section 5. Used by the
-renderer's tests (aisc-report-generator), the composer's tests (apps/report-composer) and the
+Used by the renderer's tests (aisc-report-generator), the composer's tests (apps/report-composer) and the
 stack tests (scripts/tests). Test infrastructure only: it builds data, it implements nothing of
 the report.
 
@@ -11,12 +10,12 @@ the report.
     bed.stop()
 
 What it builds, in order (each step as the stack does it):
- 1. the pre-isolation init/platform-db.sql (scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql,
-    isolation 03-coding-plan.md G3: this bed is the OLD shared layout on purpose, step 1 of
-    report_bed_isolated and the bed of every report test not yet converted), init/project-databases.sql,
-    init/superset-db.sql (superuser)
+ 1. the init/platform-db.sql of the shared layout, before every project had its own database
+    (scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql). This bed is that old shared
+    layout on purpose: it is step 1 of report_bed_isolated and the bed of every report test not yet
+    converted. Then init/project-databases.sql and init/superset-db.sql (superuser)
  2. init/report-roles.sql (superuser), when present and report_files is on, plus what its
-    pre-isolation version made in `platform` and the current one no longer does (the shared
+    shared-layout version made in `platform` and the current one does not (the shared
     report_composer schema, core.system grants, the composer's search_path)
  3. platform migrations 0001.. as platform_rw
  4. the module schemas from the read-only dumps in scripts/tests/fixtures/report/, each restored
@@ -45,9 +44,9 @@ sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
 from throwaway import Throwaway, platform_migration  # noqa: E402
 
 REPORT_ROLES_SQL = ROOT / "init/report-roles.sql"
-#: The pre-isolation init/platform-db.sql (f01288a): core.system and the module schemas in `platform`.
+#: init/platform-db.sql of the shared layout: core.system and the module schemas in `platform`.
 PRE_ISOLATION_PLATFORM_DB_SQL = ROOT / "scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql"
-#: What the pre-isolation init/report-roles.sql (f01288a) made in `platform` that the isolated one does
+#: What init/report-roles.sql of the shared layout made in `platform` that the current one does
 #: not: the shared composer schema, core.system for both roles, and the composer's search_path.
 PRE_ISOLATION_REPORT_ROLES_EXTRA = """
 CREATE SCHEMA IF NOT EXISTS report_composer AUTHORIZATION report_composer_rw;
@@ -61,7 +60,7 @@ ALTER ROLE report_composer_rw IN DATABASE platform SET search_path = report_comp
 REPORT_GRANTS_SQL = ROOT / "init/report-ro-grants.sql"
 REPORT_GRANTS_SH = ROOT / "scripts/report-grants.sh"
 PROJECT_TEMPLATE = ROOT / "platform/project-template"
-#: I2.6: the five controls tables for both readers, as apps/controls' migration
+#: The five controls tables for both readers, as apps/controls' migration
 #: 20260926000100_readers_read_the_listed_tables grants them (a missing reader is skipped).
 CONTROLS_READERS_SQL = """
 DO $$
@@ -99,7 +98,7 @@ IDS = {
     "EVAL_B_V1": "b1e00000-0000-4000-8000-000000000051",
     "EVAL_E_V1": "e1e00000-0000-4000-8000-000000000061",
     "EVAL_E_V2": "e2e00000-0000-4000-8000-000000000062",
-    # report run v2 (seed_tools.sql): project Mike with the three Mijke tools, project Delta with no evaluation
+    # seed_tools.sql: project Mike with the three Mijke tools, project Delta with no evaluation
     "M": "f0000000-0000-4000-8000-000000000001",
     "M_V1": "f1000000-0000-4000-8000-000000000001",
     "M_V2": "f2000000-0000-4000-8000-000000000002",
@@ -217,8 +216,8 @@ def _project_database(t: Throwaway, pid: str) -> str:
                role="platform_rw")
     _as_file(t, name, "controls_rw", FIXTURES / "schema_controls.sql")
     # What controls' own migration 20260926000100_readers_read_the_listed_tables grants, as the
-    # tables' owner: the fixture above is the schema only. Before the isolation a default privilege
-    # in template1 did this for every later database; I2.6 forbids it (report-grants.sh removes it).
+    # tables' owner: the fixture above is the schema only. A default privilege in template1 must not
+    # do this for every later database (report-grants.sh removes such a privilege).
     _run(t, name, CONTROLS_READERS_SQL, "controls_rw", "controls reader grants")
     return name
 
@@ -271,7 +270,7 @@ def build(label: str = "report", *, seed: bool = True, modules: bool = True,
                 _su_file(t, project_db(IDS["A"]), FIXTURES / "seed_controls_alpha.sql")
                 _su_file(t, project_db(IDS["B"]), FIXTURES / "seed_controls_beta.sql")
                 _su_file(t, project_db(IDS["E"]), FIXTURES / "seed_controls_echo.sql")
-                # report run v2: the Mijke tools (Mike) and a version with no evaluation (Delta)
+                # the Mijke tools (Mike) and a version with no evaluation (Delta)
                 _su_file(t, "platform", FIXTURES / "seed_tools.sql")
                 _su_file(t, project_db(IDS["M"]), FIXTURES / "seed_controls_mike.sql")
                 _su_file(t, project_db(IDS["D"]), FIXTURES / "seed_controls_delta.sql")

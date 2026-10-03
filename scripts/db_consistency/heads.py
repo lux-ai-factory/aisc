@@ -1,4 +1,4 @@
-"""What "at head" means for every migration history a project database has (isolation 2026-09-25, I16.3, I16.6 C7).
+"""What "at head" means for every migration history a project database has (used by check C7).
 
 Read from the repository, never from a database: the template files of the platform, each module's own
 migrations directory, and control objectives' alembic revisions (the heads are the revisions no
