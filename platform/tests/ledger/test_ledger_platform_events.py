@@ -87,7 +87,7 @@ def test_a_card_version_saved_by_step_1_is_the_persons(project, client, as_user,
     """The browser submits a server action to qualification; qualification calls the platform with the
     person's token and the forwarded id (06-spike.md G11)."""
     mode("enforce")
-    submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/qualify/new",
+    submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/system/edit",
                        next_action="60b7a2efb1d3fb3ac1825abb501965ed20949d5936")
     r = client.post(f"/projects/{project['slug']}/system-versions", json={"name": "MCAS", "version": "1.2.0"},
                     headers={**as_user(MEMBER), "X-AISC-Request-Id": submit})

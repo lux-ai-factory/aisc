@@ -51,10 +51,14 @@ CASES = [
      {"before": {"n1": {"label": "x"}}, "after": {}}),
     ("PUT", f"/api/qualifications/{CARD}/extracted", "card.extracted_replaced_by_user", "qualification", CARD,
      {"content": {"techniques": []}}),
-    ("POST", "/qualify/new", "qualification.created", "qualification", CARD,
+    ("POST", "/system/edit", "qualification.created", "qualification", CARD,     # the form's real page (review B1)
      {"details": {"questionnaire_version": "v1", "risks": 0, "components": 1}, "content": {"systemName": "MCAS"}}),
     ("POST", "/question-sets/new", "question_set.created", "question_set", "s1",
      {"details": {"version": 1}, "content": {"set": {}}}),
+    ("POST", "/questionnaires/import", "question_set.created", "question_set", "s2",     # an import's set (M1)
+     {"details": {"version": 1}, "content": {"set": {}}}),
+    ("POST", "/question-sets/new", "questionnaire.created", "questionnaire", "qn2",       # "also a questionnaire"
+     {"details": {"version": 1}, "content": {"q": {}}}),
     ("POST", "/question-sets/s1", "question_set.version_created", "question_set", "s1",
      {"item_version": "2", "details": {"version": 2, "added": 1, "removed": 0, "reworded": 0},
       "content": {"version": {"number": 2}}}),
@@ -71,7 +75,8 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize("method, tail, action, item_type, item_id, over", CASES, ids=[c[2] for c in CASES])
+@pytest.mark.parametrize("method, tail, action, item_type, item_id, over", CASES,
+                         ids=[f"{c[2]}@{c[1]}" for c in CASES])
 def test_an_event_as_the_app_sends_it_is_accepted(project, memory_ledger, witnessed, method, tail, action, item_type,
                                                   item_id, over):
     request_id = witnessed(MEMBER, method, "qualification", page(project, tail), next_action="7f01aa")
@@ -139,3 +144,56 @@ def test_a_run_with_no_end_after_the_run_window_is_reported(project, memory_ledg
     testing.seed(project["pid"], [{"event_id": str(uuid.uuid4()), "action": "agent.run_failed", "item_type": "agent_run",
                                    "item_id": run_id, "run_id": run_id, "actor_kind": "ai"}])
     assert verify.verify(project["pid"]).open_runs == 0
+
+
+# phase 5 review -------------------------------------------------------------------------------------
+
+def test_one_save_action_makes_a_set_then_its_next_version(project, memory_ledger, witnessed):
+    """M3: saveQuestionSet is one server action (one action id) for both branches."""
+    first = witnessed(MEMBER, "POST", "qualification", page(project, "/question-sets/new"), next_action="7f0c01")
+    emit(project["pid"], "qualification_rw", body(first, "question_set.created", "question_set", "s1",
+                                                  details={"version": 1}, content={"set": {}}))
+    relay_all(project["pid"])
+    later = witnessed(MEMBER, "POST", "qualification", page(project, "/question-sets/s1/edit"), next_action="7f0c01")
+    emit(project["pid"], "qualification_rw", body(later, "question_set.version_created", "question_set", "s1",
+                                                  details={"version": 2, "added": 1, "removed": 0, "reworded": 0},
+                                                  content={"version": {"number": 2}}))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+    assert len(accepted(memory_ledger, project["pid"], "question_set.version_created")) == 1
+
+
+def test_an_action_id_still_refuses_an_action_of_another_server_action(project, memory_ledger, witnessed):
+    first = witnessed(MEMBER, "POST", "qualification", page(project, "/question-sets/new"), next_action="7f0c02")
+    emit(project["pid"], "qualification_rw", body(first, "question_set.created", "question_set", "s1",
+                                                  details={"version": 1}, content={"set": {}}))
+    relay_all(project["pid"])
+    other = witnessed(MEMBER, "POST", "qualification", page(project, "/question-sets/s1"), next_action="7f0c02")
+    emit(project["pid"], "qualification_rw", body(other, "question_set.retired", "question_set", "s1"))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == ["action_id"]
+
+
+def test_a_run_event_for_another_card_than_the_runs_is_rejected(project, memory_ledger, witnessed):
+    """m4: the run was opened on CARD; the agent's draft can't land on another card."""
+    request_id = witnessed(MEMBER, "POST", "qualification", page(project, "/qualify/" + CARD), next_action="7f0c03")
+    run_id = str(uuid.uuid4())
+    emit(project["pid"], "qualification_rw", body(request_id, "card.ai_refinement_requested", "qualification", CARD,
+                                                  run_id=run_id))
+    relay_all(project["pid"])
+    emit(project["pid"], "qualification_rw", body(request_id, "card.augmented_by_ai", "qualification", "cmother000",
+                                                  run_id=run_id, model="m", details={"flagged": 0},
+                                                  content={"techniques": []}))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == ["run"]
+
+
+def test_a_refinement_whose_run_never_got_going_is_reported(project, memory_ledger):
+    """M4, m3: an agent down, busy, or failing before its model is known leaves a start with no end."""
+    from platform_service.ledger import testing, verify
+
+    run_id = str(uuid.uuid4())
+    testing.seed(project["pid"], [{"event_id": str(uuid.uuid4()), "action": "card.ai_refinement_requested",
+                                   "item_type": "qualification", "item_id": CARD, "run_id": run_id,
+                                   "actor_kind": "user", "occurred_at": "2026-01-01T00:00:00+00:00"}])
+    assert verify.verify(project["pid"]).open_runs == 1

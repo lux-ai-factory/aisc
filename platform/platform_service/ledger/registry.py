@@ -38,6 +38,9 @@ class Action:
     run_window: timedelta = timedelta(hours=24)
     origin: str = "app"
     registry_version: int = VERSION
+    #: other actions the SAME server action makes on another branch (spec 4.5): an action id bound to
+    #: one of them accepts the others too (a save that creates, or saves the next version)
+    same_action: tuple = ()
 
 
 #: Every app the gateway serves, and every app that serves routes inside the network.
@@ -119,11 +122,11 @@ _ACTIONS = [
        caused_by=(("platform", "DELETE", _LAUNCH + r"/members/(?P<item>[^/]+)$"),), details_keys=("role",)),
     # a card version is saved by the platform, on step 1's submit (spec 4.3)
     _a("card_version.created", 1, ("platform",), "card_version",
-       caused_by=(("qualification", "ACTION", _QU + "/qualify/new$"),
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page (B1)
                   ("platform", "POST", _LAUNCH + "/system-versions$")),
        details_keys=("number", "name", "version", "provider")),
     _a("targets.synced", 0, ("platform",), "project",
-       caused_by=(("qualification", "ACTION", _QU + "/qualify/new$"),
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),
                   ("platform", "POST", _LAUNCH + "/targets/sync$")), details_keys=("added", "renamed")),
     _a("llm.provider.saved", 0, ("platform",), "llm_provider",
        caused_by=(("platform", "PUT", _LAUNCH + r"/llm/providers/(?P<item>[^/]+)$"),),
@@ -151,20 +154,26 @@ _ACTIONS = [
        caused_by=(("platform", "DELETE", _LAUNCH + r"/allowed-hosts/(?P<item>[^/]+)$"),)),
     # --- step 1: qualify ---------------------------------------------------------------------------
     _a("question_set.created", 1, ("qualification",), "question_set",
-       caused_by=(("qualification", "ACTION", _QU + r"/question-sets(/.*)?$"),), details_keys=("version",),
+       caused_by=(("qualification", "ACTION", _QU + r"/question-sets(/.*)?$"),
+                  ("qualification", "ACTION", _QU + r"/questionnaires/import$")), details_keys=("version",),
+       same_action=("question_set.version_created",),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/question-sets/actions.ts", "saveQuestionSet"), ("qualification", "apps/qualification/src/app/p/[project]/questionnaires/import/actions.ts", "importSelfContained"),)),
     _a("question_set.version_created", 1, ("qualification",), "question_set",
        caused_by=(("qualification", "ACTION", _QU + r"/question-sets(/.*)?$"),),
+       same_action=("question_set.created", "questionnaire.created"),
        details_keys=("version", "added", "removed", "reworded"), content_required=True,
        routes=(("qualification", "apps/qualification/src/app/p/[project]/question-sets/actions.ts", "saveQuestionSet"),)),
     _a("question_set.retired", 1, ("qualification",), "question_set",
        caused_by=(("qualification", "ACTION", _QU + r"/question-sets(/.*)?$"),),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/question-sets/actions.ts", "retireQuestionSet"),)),
     _a("questionnaire.created", 1, ("qualification",), "questionnaire",
-       caused_by=(("qualification", "ACTION", _QU + r"/questionnaires(/.*)?$"),), details_keys=("version",),
+       caused_by=(("qualification", "ACTION", _QU + r"/questionnaires(/.*)?$"),
+                  ("qualification", "ACTION", _QU + r"/question-sets(/.*)?$")), details_keys=("version",),
+       same_action=("questionnaire.version_created", "question_set.version_created"),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/questionnaires/actions.ts", "saveQuestionnaire"), ("qualification", "apps/qualification/src/app/p/[project]/questionnaires/actions.ts", "useQuestionnaireOnce"),)),
     _a("questionnaire.version_created", 1, ("qualification",), "questionnaire",
        caused_by=(("qualification", "ACTION", _QU + r"/questionnaires(/.*)?$"),),
+       same_action=("questionnaire.created",),
        details_keys=("version", "items", "blocks"), content_required=True,
        routes=(("qualification", "apps/qualification/src/app/p/[project]/questionnaires/actions.ts", "saveQuestionnaire"),)),
     _a("questionnaire.retired", 1, ("qualification",), "questionnaire",
@@ -174,7 +183,7 @@ _ACTIONS = [
        caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),),
        details_keys=("version", "read_only")),
     _a("qualification.created", 1, ("qualification",), "qualification",
-       caused_by=(("qualification", "ACTION", _QU + "/qualify/new$"),),
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page (B1)
        details_keys=("questionnaire_version", "risks", "components"), content_required=True,
        routes=(("qualification", "apps/qualification/src/app/p/[project]/qualify/new/actions.ts", "submitQualification"),)),
     _a("card.node_corrected", 1, ("qualification",), "qualification",

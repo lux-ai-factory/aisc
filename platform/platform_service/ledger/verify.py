@@ -91,7 +91,8 @@ def verify(pid: str) -> Report:
             "SELECT count(*) AS n FROM ledger.event_index WHERE log = %s AND reason = 'action_id'",
             (log,)).fetchone()["n"]
         report.open_runs = conn.execute(
-            "SELECT count(*) AS n FROM ledger.event_index s WHERE s.log = %s AND s.action = 'agent.run_started'"
+            "SELECT count(*) AS n FROM ledger.event_index s WHERE s.log = %s"
+            " AND s.action IN ('agent.run_started', 'card.ai_refinement_requested')"
             " AND s.reason IS NULL AND s.occurred_at < %s AND NOT EXISTS (SELECT 1 FROM ledger.event_index e"
             "  WHERE e.log = s.log AND e.run_id = s.run_id AND e.reason IS NULL"
             "  AND e.action IN ('agent.run_finished', 'agent.run_failed'))",

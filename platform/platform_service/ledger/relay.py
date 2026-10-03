@@ -401,6 +401,8 @@ def _judge_run(ev, app, action, log) -> dict:
     starter = registry.REGISTRY.get(start["action"])
     if starter is None or ev["action"] not in starter.runs:
         raise _Rejected("run")
+    if ev.get("item_type") == logged.get("item_type") and ev.get("item_id") != logged.get("item_id"):
+        raise _Rejected("run")                                        # the run's own item, never another (m4)
     if ev["occurred_at"] - start["occurred_at"] > starter.run_window:
         raise _Rejected("run_window")
     if ev["occurred_at"] < start["occurred_at"] - settings.CLOCK_SKEW:   # no run event before its start (m4)
@@ -441,7 +443,9 @@ def _check_action(w, action_name: str, project) -> None:
                           (w["app"], w["next_action"])).fetchone()
     if row is None or str(row["first_request"]) == str(w["request_id"]):
         return
-    if action_name not in row["actions"]:
+    action = registry.REGISTRY.get(action_name)
+    same = {action_name, *(action.same_action if action else ())}
+    if not same & set(row["actions"]):                                # another branch of the same action is fine
         raise _Rejected("action_id")
 
 
