@@ -119,13 +119,14 @@ def test_a_refinement_run_the_app_opened_takes_the_agents_events_and_the_apps_dr
     assert {e.action for e in entries(memory_ledger, log_of(project["pid"]))} >= {"agent.run_started", "ai.llm_call"}
 
 
+@pytest.mark.parametrize("app", ["qualification", "controls"])
 @pytest.mark.parametrize("name", ["canonical_vectors.json", "canonical_vectors_random.json"])
-def test_the_typescript_twin_checks_the_platforms_own_vectors(name):
-    """Q2: the copies the qualification app's tests read are the platform's files, unchanged."""
+def test_the_typescript_twin_checks_the_platforms_own_vectors(name, app):
+    """Q2: the copies each TypeScript app's tests read are the platform's files, unchanged."""
     from pathlib import Path
 
     here = Path(__file__).parent / "fixtures" / name
-    there = Path(__file__).resolve().parents[3] / "apps/qualification/test/fixtures/ledger" / name
+    there = Path(__file__).resolve().parents[3] / f"apps/{app}/test/fixtures/ledger" / name
     assert there.read_bytes() == here.read_bytes(), f"copy {here} to {there}"
 
 
