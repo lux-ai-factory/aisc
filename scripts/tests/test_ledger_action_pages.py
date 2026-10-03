@@ -11,8 +11,8 @@ import pytest
 from conftest import ROOT
 
 sys.path.insert(0, str(ROOT / "platform"))
-APP = ROOT / "apps" / "qualification"
-SRC = APP / "src"
+#: app -> its source folder and the path it is served under
+APPS = {"qualification": ("apps/qualification/src", "/qualification"), "controls": ("apps/controls/src", "/controls")}
 IMPORT = re.compile(r"""from\s+["']([^"']+)["']""")
 #: Action modules no page renders today, and why. Each must really have no page: once one is mounted
 #: again, it is checked like the rest.
@@ -22,9 +22,9 @@ UNMOUNTED = {
 }
 
 
-def _resolve(importer: Path, spec: str) -> Path | None:
+def _resolve(importer: Path, spec: str, src: Path) -> Path | None:
     if spec.startswith("@/"):
-        base = SRC / spec[2:]
+        base = src / spec[2:]
     elif spec.startswith("."):
         base = (importer.parent / spec).resolve()
     else:
@@ -35,11 +35,11 @@ def _resolve(importer: Path, spec: str) -> Path | None:
     return None
 
 
-def _importers() -> dict[Path, set[Path]]:
+def _importers(src: Path) -> dict[Path, set[Path]]:
     out: dict[Path, set[Path]] = {}
-    for f in SRC.rglob("*.ts*"):
+    for f in src.rglob("*.ts*"):
         for spec in IMPORT.findall(f.read_text(errors="replace")):
-            target = _resolve(f, spec)
+            target = _resolve(f, spec, src)
             if target is not None:
                 out.setdefault(target, set()).add(f.resolve())
     return out
@@ -60,10 +60,10 @@ def pages_of(module: Path, importers, depth: int = 4) -> set[Path]:
     return found
 
 
-def url_of(page: Path) -> str:
-    parts = [p for p in page.parent.relative_to(SRC / "app").parts if not p.startswith("(")]
+def url_of(page: Path, src: Path, prefix: str) -> str:
+    parts = [p for p in page.parent.relative_to(src / "app").parts if not p.startswith("(")]
     sample = ["slug" if p == "[project]" else ("x1" if p.startswith("[") else p) for p in parts]
-    return "/qualification/" + "/".join(sample)
+    return (prefix + "/" + "/".join(sample)).rstrip("/")
 
 
 def server_actions():
@@ -71,20 +71,22 @@ def server_actions():
 
     out = []
     for action in REGISTRY.values():
-        causes = [re.compile(c[2]) for c in action.caused_by if c[0] == "qualification" and c[1] == "ACTION"]
         for app, file, function in action.routes:
-            if app == "qualification" and causes:
-                out.append((action.name, ROOT / file, function, causes))
+            causes = [re.compile(c[2]) for c in action.caused_by if c[0] == app and c[1] == "ACTION"]
+            # server actions only ("use server"): a route handler is posted to its own path
+            if app in APPS and causes and '"use server"' in (ROOT / file).read_text(errors="replace")[:200]:
+                out.append((app, action.name, ROOT / file, function, causes))
     return out
 
 
-@pytest.mark.parametrize("name, module, function, causes", server_actions(),
-                         ids=[f"{a[0]}:{a[2]}" for a in server_actions()])
-def test_every_page_a_server_action_is_mounted_on_is_a_cause_of_its_action(name, module, function, causes):
-    pages = pages_of(module, _importers())
+@pytest.mark.parametrize("app, name, module, function, causes", server_actions(),
+                         ids=[f"{a[0]}:{a[1]}:{a[3]}" for a in server_actions()])
+def test_every_page_a_server_action_is_mounted_on_is_a_cause_of_its_action(app, name, module, function, causes):
+    src, prefix = ROOT / APPS[app][0], APPS[app][1]
+    pages = pages_of(module, _importers(src))
     if str(module.relative_to(ROOT)) in UNMOUNTED:
         assert not pages, f"{module.relative_to(ROOT)} is mounted again: take it off UNMOUNTED"
         return
     assert pages, f"{module.relative_to(ROOT)} is rendered by no page"
-    wrong = sorted(url_of(p) for p in pages if not any(c.match(url_of(p)) for c in causes))
+    wrong = sorted(url_of(p, src, prefix) for p in pages if not any(c.match(url_of(p, src, prefix)) for c in causes))
     assert not wrong, f"{name} ({function}) is posted from {wrong}, which its caused_by does not name"

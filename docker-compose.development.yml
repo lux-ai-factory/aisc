@@ -248,6 +248,8 @@ services:
     container_name: controls-web
     env_file: apps/controls/env.development
     environment:
+      # The ledger (phase 7): each change records its event with ledger.emit in its own transaction
+      LEDGER_MODE: ${LEDGER_MODE:-off}
       # the server-side audit forwarder posts here (service name on the backend network, not localhost)
       AISC_BACKEND_URL: http://aisc-backend:8000
       # Who may be in this project, and who may change it. Asked once per
@@ -489,6 +491,8 @@ services:
       - ./shared/identity:/app/shared/identity:ro,z
     environment:
       PYTHONPATH: /app/src:/app/shared/identity
+      # The ledger (phase 6): each write records its event with ledger.emit in its own transaction
+      LEDGER_MODE: ${LEDGER_MODE:-off}
       # A project belongs to the people in it, and this service holds somebody's
       # risk ratings, so it has to know who is asking.
       AUTH_ENABLED: "true"

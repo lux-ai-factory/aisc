@@ -15,3 +15,6 @@ qualification_prefill	apps/qualification/services/prefill/app.py	questionnaires_
 qualification_ontology	apps/qualification/services/ontology/app.py	build	stateless: builds a graph from what it is sent; keeps nothing
 qualification_pdf	apps/qualification/services/system_card_renderer/app.py	render_pdf	stateless: renders the card it is sent; the download is card.pdf_downloaded
 qualification_pdf	apps/qualification/services/system_card_renderer/app.py	render_html	stateless: renders the card it is sent; keeps nothing
+controls	apps/controls/src/app/install/actions.ts	installChosen	delegates to installFromCatalogue (p/[project]/install/actions.ts), which records control.installed
+controls	apps/controls/services/pdf_renderer/app.py	render_html	stateless: renders the submission it is sent; keeps nothing
+controls	apps/controls/services/pdf_renderer/app.py	render_pdf	stateless: renders the submission it is sent; keeps nothing
