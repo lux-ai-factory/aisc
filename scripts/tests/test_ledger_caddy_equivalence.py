@@ -41,7 +41,8 @@ def _is_strip(handler):
 
 def _is_authz(route):
     """Only the intended block: /api/authz/* answered by a static 404 and nothing else."""
-    if not any("/api/authz/*" in (m.get("path") or []) for m in route.get("match") or []):
+    # exactly the allow-list: every /api/authz/* path but the pages' role route (phase 4 review B1)
+    if route.get("match") != [{"path": ["/api/authz/*"], "not": [{"path": ["/api/authz/projects/*"]}]}]:
         return False
     handlers = []
     for h in route.get("handle") or []:
@@ -128,7 +129,9 @@ def _mutated(tmp_path, old, new):
 
 @pytest.mark.parametrize("old, new", [
     # the launcher's witness block proxying instead of refusing
-    ("    handle /api/authz/* {\n      respond 404\n    }", "    handle /api/authz/* {\n      reverse_proxy platform:8000\n    }"),
+    ("    handle @caddy_only {\n      respond 404\n    }", "    handle @caddy_only {\n      reverse_proxy platform:8000\n    }"),
+    # the allow-list widened to every /api/authz/* path but one more
+    ("      not path /api/authz/projects/*\n", "      not path /api/authz/projects/* /api/authz/witness\n"),
     # the strip moved after sign-in, where it would delete oauth2-proxy's identity headers
     ("  request_header -X-Auth-Request-*\n  forward_auth host.docker.internal:4180 {",
      "  forward_auth host.docker.internal:4180 {"),

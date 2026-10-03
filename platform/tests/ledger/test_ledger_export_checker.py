@@ -190,3 +190,55 @@ def test_a_memory_store_signs_only_its_whole_chain():
     store, log, lines = _export(3)
     with pytest.raises(TamperAlarm):
         store.export_head(log, 2, lines[1]["proof"]["chain"])
+
+
+# phase 4 review M6, m15 ----------------------------------------------------------------------------
+
+def test_a_duplicate_key_is_refused(tmp_path):
+    """M6: json.loads keeps the last of two equal keys; a first-wins reader would show the forged one."""
+    store, _, lines = _export()
+    text = "\n".join(json.dumps(line) for line in lines)
+    forged = text.replace('"item_id": "r1"', '"item_id": "FORGED", "item_id": "r1"', 1)
+    assert forged != text
+    path, key = tmp_path / "e.jsonl", tmp_path / "k.pub"
+    path.write_text(forged)
+    key.write_text(store.public_key_pem())
+    r = subprocess.run([sys.executable, str(CHECKER), "--public-key", str(key), str(path)], capture_output=True, text=True)
+    assert r.returncode != 0 and "duplicate" in (r.stdout + r.stderr).lower()
+
+
+def test_content_is_checked_by_default(tmp_path):
+    """M6: without a flag, a forged content line must not print ok."""
+    store, _, lines = _export()
+    lines[0]["content"] = {"answer": "forged"}
+    r = _run(tmp_path, lines, store.public_key_pem())
+    assert r.returncode != 0
+
+
+def test_the_checker_names_the_log_and_can_require_it(tmp_path):
+    """M6: an export of another log passes only if the auditor didn't say which log they expect."""
+    store, log, lines = _export()
+    r = _run(tmp_path, lines, store.public_key_pem())
+    assert r.returncode == 0 and log in r.stdout
+    other = "ledger" + "0" * 32
+    r = subprocess.run([sys.executable, str(CHECKER), "--public-key", str(tmp_path / "k.pub"), "--log", other,
+                        str(tmp_path / "e.jsonl")], capture_output=True, text=True)
+    assert r.returncode != 0
+
+
+def test_an_unknown_field_on_a_line_is_refused(tmp_path):
+    store, _, lines = _export()
+    lines[0]["note"] = "unsigned"
+    assert _run(tmp_path, lines, store.public_key_pem()).returncode != 0
+
+
+def test_entries_edited_with_their_proofs_under_the_original_head_fail(tmp_path):
+    """m15: the head match itself, not only the signature (proofs re-hashed, head kept as signed)."""
+    store, _, lines = _export()
+    lines[1]["entry"]["item_id"] = "r9"
+    chain = lines[0]["proof"]["chain"]
+    for line in lines[1:-1]:
+        previous, chain = chain, export.link(chain, line["entry"])
+        line["proof"] = {"previous": previous, "chain": chain}
+    r = _run(tmp_path, lines, store.public_key_pem())
+    assert r.returncode != 0 and "head" in r.stdout

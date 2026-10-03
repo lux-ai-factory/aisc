@@ -30,6 +30,10 @@ class Report:
     witness_without_event: int = 0
     outside_changes: int = 0
     missing_database: bool = False
+    #: index rows that say something else than their entry (an edited filter column hides a row)
+    index_mismatches: int = 0
+    #: entries of the log with no index row, and index rows with no entry
+    index_missing: int = 0
 
 
 def verify(pid: str) -> Report:
@@ -45,6 +49,7 @@ def verify(pid: str) -> Report:
         report.missing_database = log not in store.databases()
     except LedgerError:
         report.missing_database = True
+    logged = {}
     if not report.missing_database:
         after = 0
         while True:
@@ -56,8 +61,16 @@ def verify(pid: str) -> Report:
             if not page:
                 break
             report.entries_ok += len(page)
+            logged.update((e.seq, e.as_dict()) for e in page)
             after = page[-1].seq
     with db.pool().connection() as conn:
+        if logged:
+            from platform_service.ledger import index
+
+            indexed = {r["seq"]: r for r in conn.execute("SELECT * FROM ledger.event_index WHERE log = %s", (log,))}
+            report.index_missing = len(set(logged) ^ set(indexed))
+            report.index_mismatches = sum(1 for seq in set(logged) & set(indexed)
+                                          if not index.agrees(indexed[seq], logged[seq]))
         rows = conn.execute(
             "SELECT item_type, item_id, before_sha256, after_sha256 FROM ledger.event_index WHERE log = %s"
             " AND reason IS NULL AND item_id IS NOT NULL AND action NOT LIKE 'request.%%'"

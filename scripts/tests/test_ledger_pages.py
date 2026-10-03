@@ -57,3 +57,11 @@ def test_the_scripts_parse(tmp_path, page):
         f.write_text(body)
         r = subprocess.run(["node", "--check", str(f)], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
+
+
+def test_paging_keeps_the_submitted_filters_and_a_new_list_starts_empty():
+    """Review m11: "Older entries" pages the list on screen, and a reset clears its rows before fetching."""
+    html = LOGS.read_text()
+    assert "var q = new URLSearchParams(submitted);" in html
+    start = html.index("if (reset || !submitted) {")
+    assert html.index("document.getElementById('rows').textContent = '';", start) < html.index("fetch(base", start)

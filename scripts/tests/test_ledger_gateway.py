@@ -162,6 +162,19 @@ def test_the_launcher_never_serves_the_witness(gateway):
     assert status == 404
 
 
+@pytest.mark.parametrize("path", ["/api/authz/witness", "/api/authz/admin", "/api/authz/schema", "/api/authz/new-check"])
+def test_the_launcher_serves_none_of_caddys_own_checks(gateway, path):
+    """Allow-list: every /api/authz/* path but the pages' role route is Caddy's alone (T18)."""
+    assert send(gateway, "launcher", "GET", path)[0] == 404
+
+
+def test_the_launcher_serves_the_pages_role_route(gateway):
+    """Phase 4 review B1: the Manage menu, the Activity log and the export link read the caller's role
+    at /api/authz/projects/<slug>. Blocking all of /api/authz/* hid them from everyone."""
+    status, got, _ = send(gateway, "launcher", "GET", "/api/authz/projects/demo")
+    assert status == 200 and got["who"] == "platform" and got["path"] == "/authz/projects/demo"
+
+
 def test_with_the_platform_down_reads_work_and_writes_fail_only_with_the_witness_on(gateway):
     name = f"{gateway['tag']}-platform"
     docker("stop", name)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check a ledger export offline (docs/superpowers/ledger-2026-10-02/02-spec.md 6.3, 7.4).
 
-    verify-ledger-export.py --public-key immudb-signing.pub [--check-content] export.jsonl
+    verify-ledger-export.py --public-key immudb-signing.pub [--log ledger...] [--project PID] export.jsonl
 
 Trusts nothing in the file but the public key it is given (immudb's --signingKey, public half):
 - format `immudb`: every transaction of the log's database, 1..N, is recomputed from its entries
@@ -10,8 +10,10 @@ Trusts nothing in the file but the public key it is given (immudb's --signingKey
   the transaction it names, and every `e:` key of every transaction must be in the file, numbered 1..N;
 - format `chain` (the platform's memory store, tests): every hash link from the first entry, and the
   head signed over {log, seq, chain}.
-With --check-content it recomputes each frozen content's keyed digest with the project's content key
-the head carries. Exit 0 only if every check passes. Needs Python 3.10+ and the `cryptography`
+It also recomputes each frozen content's keyed digest with the project's content key the head carries
+(--no-content-check skips that, and says so). It refuses duplicate JSON keys, NaN, unknown fields and
+entries of more than one project, and prints the log and the project it checked; --log and --project
+make it refuse any other. Exit 0 only if every check passes. Needs Python 3.10+ and the `cryptography`
 package; nothing from the platform.
 """
 import argparse
@@ -193,18 +195,47 @@ def _check_immudb(lines, head, public_key_pem) -> tuple[list[str], list]:
     return problems, entry_lines
 
 
-def check(lines, public_key_pem: bytes, check_content: bool) -> list[str]:
+_FIELDS = {"chain": ({"entry", "proof"}, {"content"}), "immudb": ({"entry", "tx"}, {"content"})}
+
+
+def _shape(lines, fmt) -> list[str]:
+    """Every line exactly as the format has it: nothing unsigned rides along unnoticed."""
+    problems = []
+    if set(lines[-1]) != {"head"}:
+        problems.append("the head line carries other fields")
+    needed, optional = _FIELDS[fmt]
+    for n, line in enumerate(lines[:-1], 1):
+        if fmt == "immudb" and set(line) == {"tx"}:
+            continue
+        if not needed <= set(line) or set(line) - needed - optional:
+            problems.append(f"line {n}: unexpected fields {sorted(set(line) ^ needed - optional)}")
+    projects = {(line.get("entry") or {}).get("project_pid") for line in lines[:-1] if "entry" in line}
+    if len(projects) > 1:
+        problems.append(f"entries of more than one project: {sorted(map(str, projects))}")
+    return problems
+
+
+def project_of(lines):
+    found = {(line.get("entry") or {}).get("project_pid") for line in lines[:-1] if "entry" in line}
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def check(lines, public_key_pem: bytes, check_content: bool = True) -> list[str]:
     problems = []
     if not lines or "head" not in lines[-1]:
         return ["the file has no head line"]
     head, body = lines[-1]["head"], lines[:-1]
     if any("head" in line for line in body):
         return ["a head line before the end"]
+    fmt = head.get("format") or "chain"
+    if fmt not in _FIELDS:
+        return [f"unknown export format {fmt!r}"]
+    shape = _shape(lines, fmt)
+    if shape:
+        return shape
     if head.get("format") == "immudb":
         problems, entry_lines = _check_immudb(body, head, public_key_pem)
         return problems + (_check_contents(entry_lines, head) if check_content else [])
-    if head.get("format") not in (None, "chain"):
-        return [f"unknown export format {head.get('format')!r}"]
     chain = GENESIS
     for n, line in enumerate(body, 1):
         entry, proof = line.get("entry"), line.get("proof") or {}
@@ -250,24 +281,56 @@ def _check_contents(body, head) -> list[str]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--public-key", required=True, help="the immudb signing key's public half (PEM)")
-    parser.add_argument("--check-content", action="store_true", help="also check each frozen content")
+    parser.add_argument("--check-content", action="store_true", help="(the default; kept for old scripts)")
+    parser.add_argument("--no-content-check", action="store_true", help="skip the frozen contents, and say so")
+    parser.add_argument("--log", help="refuse an export of any other log (its ledger database name)")
+    parser.add_argument("--project", help="refuse an export of any other project (its pid)")
     parser.add_argument("export", help="the .jsonl file the platform exported")
     args = parser.parse_args(argv)
     try:
         with open(args.export, encoding="utf-8") as f:
-            lines = [json.loads(line) for line in f if line.strip()]
+            lines = [json.loads(line, object_pairs_hook=_no_duplicates, parse_constant=_no_constant)
+                     for line in f if line.strip()]
         with open(args.public_key, "rb") as f:
             pem = f.read()
+    except _Malformed as exc:
+        print(f"refused: {exc}")
+        return 1
     except (OSError, ValueError) as exc:
         print(f"cannot read: {exc}", file=sys.stderr)
         return 2
-    problems = check(lines, pem, args.check_content)
+    if not lines or not isinstance(lines[-1], dict) or "head" not in lines[-1]:
+        print("the file has no head line")
+        return 1
+    head = lines[-1]["head"]
+    problems = check(lines, pem, not args.no_content_check)
+    if args.log and head.get("log") != args.log:
+        problems.append(f"this is the export of {head.get('log')!r}, not of {args.log!r}")
+    if args.project and str(project_of(lines)) != args.project:
+        problems.append(f"this is the export of project {project_of(lines)!r}, not of {args.project!r}")
     for p in problems:
         print(p)
     if problems:
         return 1
-    print(f"ok: {len(lines) - 1} entries, head {lines[-1]['head'].get('seq')}, signed")
+    print(f"ok: log {head.get('log')}, project {project_of(lines)}, {head.get('seq')} entries, "
+          f"format {head.get('format') or 'chain'}, signed"
+          + ("; frozen contents NOT checked" if args.no_content_check else "; frozen contents checked"))
     return 0
+
+
+class _Malformed(ValueError):
+    pass
+
+
+def _no_duplicates(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise _Malformed(f"duplicate key {sorted(k for k in keys if keys.count(k) > 1)[0]!r}")
+    return dict(pairs)
+
+
+def _no_constant(name):
+    raise _Malformed(f"{name} is not JSON")
 
 
 if __name__ == "__main__":

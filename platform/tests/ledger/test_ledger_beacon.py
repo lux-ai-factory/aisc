@@ -15,6 +15,16 @@ from tests.ledger.conftest import log_of, needs_db, MEMBER, OWNER, entries, pers
 pytestmark = needs_db
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rate_limit():
+    """The limit is per person and per process: each test starts with none spent."""
+    from platform_service import app
+
+    app._beacon_times.clear()
+    yield
+    app._beacon_times.clear()
+
+
 @pytest.fixture
 def beacon(client, as_user, project, witnessed, mode):
     mode("enforce")
@@ -94,3 +104,35 @@ def test_with_the_ledger_off_a_beacon_keeps_nothing(client, as_user, project, mo
     r = client.post("/ledger/beacon", content=json.dumps(page(project)),
                     headers={**as_user(MEMBER), "Content-Type": "text/plain;charset=UTF-8"})
     assert r.status_code == 204 and pageviews.recent(project["pid"]) == []
+
+
+# phase 4 review m5, m6, m16 ------------------------------------------------------------------------
+
+def test_the_rate_limit_is_per_person_across_projects(client, as_user, make_project, project, witnessed, mode, settings):
+    """m5: two projects don't double a person's allowance."""
+    mode("enforce")
+    other = make_project(OWNER, editors=(MEMBER,))
+    codes = []
+    for n in range(settings.BEACON_PER_MINUTE + 4):
+        target = project if n % 2 else other
+        headers = {**as_user(MEMBER), "Content-Type": "text/plain;charset=UTF-8",
+                   "X-AISC-Request-Id": witnessed(MEMBER, "POST", "platform", "/api/ledger/beacon")}
+        codes.append(client.post("/ledger/beacon", content=json.dumps(page(target)), headers=headers).status_code)
+    assert codes.count(429) >= 4
+
+
+@pytest.mark.parametrize("details", [{"page": {"nested": "x"}}, {"page": "Bearer eyJhbGciOiJSUzI1NiJ9.e30.sig"},
+                                     {"page": "/x", "seconds": "x" * 600}])
+def test_a_detail_value_must_be_a_short_scalar_and_no_secret(beacon, project, details):
+    """m6: keys are the registry's, and values are short scalars without anything secret-looking."""
+    assert beacon(page(project, action="page.left", details=details)).status_code == 422
+
+
+@pytest.mark.parametrize("who", ["nobody", "someone_else"])
+def test_in_record_mode_a_beacon_still_needs_its_own_witnessed_request(client, as_user, project, witnessed, mode, who):
+    """m16: the middleware refuses only in enforce; the beacon's own check holds in record."""
+    mode("record")
+    headers = {**as_user(MEMBER), "Content-Type": "text/plain;charset=UTF-8"}
+    if who == "someone_else":
+        headers["X-AISC-Request-Id"] = witnessed(OWNER, "POST", "platform", "/api/ledger/beacon")
+    assert client.post("/ledger/beacon", content=json.dumps(page(project)), headers=headers).status_code == 401

@@ -136,7 +136,7 @@ def test_a_reanchor_after_a_restore_trusts_the_server_again(any_store):
     store.set_state(a, state.claiming(tx_id=state.tx_id + 1_000_000))
     with pytest.raises(TamperAlarm):
         store.get(a, seq)
-    store.reanchor(a)
+    store.reanchor(a, store.server_head(a))
     assert store.get(a, seq).seq == seq and store.head(a).seq >= seq
     assert store.append(a, entry()) > seq
 

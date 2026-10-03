@@ -25,14 +25,6 @@ def record(project_pid: str, actor_ref: str, action: str, details: dict, request
             raise AlreadyUsed(request_id) from None
 
 
-def count_recent(actor_ref: str, within: timedelta) -> int:
-    from platform_service import db
-
-    with db.pool().connection() as conn:
-        return conn.execute("SELECT count(*) AS n FROM ledger.page_view WHERE actor_ref = %s AND at > %s",
-                            (actor_ref, datetime.now(timezone.utc) - within)).fetchone()["n"]
-
-
 def recent(project_pid: str, limit: int = 100) -> list:
     from platform_service import db
 

@@ -43,7 +43,7 @@ EXPECTED_APP = {
     (3, "handle"): "dashboard",
 }
 #: Handles that answer without reaching anything: they must never proxy or serve files.
-REFUSING = {(1, "handle /api/v1/internal/*"), (2, "handle /api/internal/*"), (2, "handle /api/authz/*")}
+REFUSING = {(1, "handle /api/v1/internal/*"), (2, "handle /api/internal/*"), (2, "handle @caddy_only")}
 
 
 def blocks(text: str):
@@ -163,7 +163,7 @@ def test_refusing_handles_never_serve():
 def test_the_launcher_blocks_the_witness_before_its_api():
     launcher = dict(sites())[2]
     order = [h for h, _ in launcher]
-    assert order.index("handle /api/authz/*") < order.index("handle_path /api/*")
+    assert order.index("handle @caddy_only") < order.index("handle_path /api/*")
 
 
 def test_protect_reads_is_protect_plus_listed_reads():

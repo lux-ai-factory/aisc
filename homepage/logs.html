@@ -161,9 +161,16 @@
     if (a.erased) return 'erased';
     return a.name || a.sub || a.kind || '';
   }
+  var submitted = null;   // the filters of the list on screen: "Older entries" pages that list, not the form
   function load(reset) {
-    var q = new URLSearchParams(new FormData(document.getElementById('filters')));
-    [].slice.call(q.keys()).forEach(function (k) { if (!q.get(k)) q.delete(k); });
+    if (reset || !submitted) {
+      submitted = new URLSearchParams(new FormData(document.getElementById('filters')));
+      [].slice.call(submitted.keys()).forEach(function (k) { if (!submitted.get(k)) submitted.delete(k); });
+      cursor = null;
+      document.getElementById('rows').textContent = '';   // a new list never shows the old one's rows
+      document.getElementById('more').hidden = true;
+    }
+    var q = new URLSearchParams(submitted);
     if (!reset && cursor) q.set('cursor', cursor);
     var msg = document.getElementById('msg');
     msg.className = 'msg'; msg.textContent = 'loading...';
@@ -176,7 +183,6 @@
         return;
       }
       var rows = document.getElementById('rows');
-      if (reset) rows.textContent = '';
       res.body.events.forEach(function (e) {
         var tr = document.createElement('tr');
         tr.appendChild(cell(e.seq, 'mono'));
@@ -196,7 +202,7 @@
       msg.textContent = rows.children.length ? '' : 'nothing yet';
     }).catch(function () { msg.className = 'msg err'; msg.textContent = 'the log could not be read'; });
   }
-  document.getElementById('filters').addEventListener('submit', function (ev) { ev.preventDefault(); cursor = null; load(true); });
+  document.getElementById('filters').addEventListener('submit', function (ev) { ev.preventDefault(); load(true); });
   document.getElementById('more').addEventListener('click', function () { load(false); });
   fetch('/api/authz/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
     .then(function (r) { return r.ok ? r.json() : null; })

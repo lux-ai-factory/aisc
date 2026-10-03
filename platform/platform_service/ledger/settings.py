@@ -32,5 +32,9 @@ EXPORT_ROLES = frozenset({"owner"})
 KEEP_STRANGER_REQUESTS = True
 #: How many databases the operator's pool script makes at a time (spec 7.1).
 LEDGER_POOL = 20
+#: How often the relay worker passes over every log (spec 7.2).
+RELAY_EVERY = timedelta(seconds=5)
+#: How often page views past PAGE_VIEW_RETENTION are deleted (D10).
+EXPIRE_EVERY = timedelta(hours=24)
 #: The relay's limit on open project connections (spec 7.2).
 RELAY_CONNECTIONS = 4

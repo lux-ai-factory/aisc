@@ -1,7 +1,7 @@
 # Runbook: the ledger after an immudb restore
 
-Spec: `docs/superpowers/ledger-2026-10-02/02-spec.md` 7.3 (T21). Phase 1 version: the re-anchor
-route (`POST /ledger/reanchor`, phase 4) and the locked archive (phase 10) don't exist yet.
+Spec: `docs/superpowers/ledger-2026-10-02/02-spec.md` 7.3 (T21). Phase 4 version: the re-anchor
+route exists (`POST /ledger/reanchor`); the locked archive (phase 10) doesn't yet.
 
 ## What you will see
 
@@ -21,10 +21,19 @@ the state is re-anchored. Nothing is lost on the apps' side: events wait in the 
    nobody did, stop: treat it as an incident.
 2. **Record the decision**: who decided, the backup's time, and the databases affected.
 3. **Re-anchor** each affected database, so the platform trusts the restored server from now on:
-   - From phase 4: an admin calls `POST /ledger/reanchor {"pid": ...}`, which records
-     `ledger.reanchored` with the old and the new head in the platform log.
-   - Until then, by hand, in the platform database as `platform_rw`. Delete the state, and the next
-     read takes the server's current state as the new anchor:
+   - As a platform admin, first read what each server holds now: `GET /api/ledger/projects` lists, for
+     every project and for the platform log, `server_head` (`{tx, hash}`, not trusted yet) next to
+     `trusted_head` (what the platform verified) and `head` (or the alarm). Compare `server_head`
+     with the backup you restored, and put it in the decision record.
+   - **The platform log first**, if it was restored too: `POST /api/ledger/reanchor
+     {"pid": "platform", "expected_head": <its server_head>}`. Each re-anchor is recorded in the
+     platform log, so that log must be trusted before it can take the others' records.
+   - Then each project: `POST /api/ledger/reanchor {"pid": "<pid>", "expected_head": <its
+     server_head>}`. The record (`ledger.reanchored`, both heads, who) is written first; if the
+     platform log can't take it, nothing changes and the answer is 409. If the server moved since you
+     looked, the answer is 409 too: look again.
+   - By hand only if the platform itself can't run, in the platform database as `platform_rw`.
+     Nothing records it, so the decision record is the only trace:
      ```sql
      -- keep the old anchor in the decision record first
      SELECT db, tx_id, encode(tx_hash, 'hex') FROM ledger.state WHERE db = '<db>';

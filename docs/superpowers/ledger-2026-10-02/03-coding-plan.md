@@ -44,5 +44,15 @@ phases 0b to 4 and the coverage, Caddy and credential tests are written and red.
 | 9 | Steps 5 and 6 | dashboard events and soft deletes, admin views; composer layout revisions, no cascade, report anchoring | D1-D2, M1-M3, C4[dashboard], C4[report_composer] | a report verified offline |
 | 10 | Keycloak logins, evidence bucket with lock (`LEDGER_ARCHIVE_LOCK`), published heads, hourly entry archive and `archive.rebuild`, verifier | | V1-V5 (V5: delete a project's immudb database, rebuild it from the archive, verify against the heads) | a row changed directly in Postgres raises the alarm |
 
+**Moved out of phase 4 (review `17-phase4-review.md` m10, 2026-10-03):**
+- `page.left`, `dialog.cancelled` and `unsaved_changes` beacons: sent by each app's pages, in that app's
+  phase (5 to 9); the launcher pages send `page.opened` from phase 4, and every site can load
+  `/assets/ledger-beacon.js` the same way.
+- `GET .../events/{seq}` with its witness record, and `POST /projects/{slug}/ledger/verify`: phase 10,
+  with the verifier.
+- "Last verification, alarms" in `/ledger/projects`: phase 10, from the verifier's runs.
+- Reading the read index and its entries in batches (m14): phase 10.
+
+
 Phases 5 to 9 depend on phase 3's `caused_by` and runs, not on each other. A DPIA is done before
 `record` is switched on in staging (spec 7.5).

@@ -63,6 +63,10 @@ class LedgerCredentials(LedgerError):
     """immudb refused the platform's user name or password: a configuration error, not a database."""
 
 
+class HeadChanged(LedgerError):
+    """A re-anchor's expected head is not the store's any more: look again."""
+
+
 class LedgerUnavailable(LedgerError):
     """The store can't be reached now: the caller keeps the event pending (I6)."""
 
@@ -238,13 +242,28 @@ class MemoryLedger:
                 lines.append({"entry": e.as_dict(), "proof": {"previous": previous, "chain": chain}})
             return lines + [{"head": {"format": "chain", **self.export_head(db, len(rows), chain)}}]
 
-    def reanchor(self, db: str) -> tuple:
-        """After a restore: trust what the store holds now (spec T21). Returns (old, new) verified seq."""
+    def server_head(self, db: str) -> dict:
+        """What the store holds now, not yet trusted: {tx, hash} (the memory store counts entries)."""
         with self._lock:
-            d = self._dbs[db]
-            old = d["verified"]
-            d["verified"] = len(d["rows"])
-            return old, d["verified"]
+            d = self._db(db)
+            return {"tx": len(d["rows"]), "hash": d["chain"][len(d["rows"])].hex()}
+
+    def trusted_head(self, db: str) -> dict:
+        with self._lock:
+            d = self._db(db)
+            v = d["verified"]
+            return {"tx": v, "hash": d["chain"][v].hex() if v < len(d["chain"]) else None}
+
+    def reanchor(self, db: str, expected: dict) -> tuple[dict, dict]:
+        """After a restore: trust what the store holds now, if it is what the admin checked (spec T21).
+        Returns (old, new) heads; HeadChanged if the store moved since."""
+        with self._lock:
+            new = self.server_head(db)
+            if new != expected:
+                raise HeadChanged(f"{db}: the store holds {new}, not {expected}")
+            old = self.trusted_head(db)
+            self._dbs[db]["verified"] = new["tx"]
+            return old, new
 
     def public_key_pem(self) -> str:
         from cryptography.hazmat.primitives import serialization
@@ -555,13 +574,44 @@ class ImmudbLedger:
                           "signature": base64.b64encode(state.signature.signature).decode()}}
         return lines + [{"head": head}]
 
-    def reanchor(self, db: str) -> tuple:
-        """After a restore: forget the saved state, so the next read anchors on the server (spec T21)."""
-        old = self._states.get(db)
-        self._states.forget(db)
+    def server_head(self, db: str) -> dict:
+        """immudb's current state, not yet trusted: {tx, hash}, its signature checked when a key is set."""
+        from google.protobuf import empty_pb2
+
+        state = self._call(db, lambda client: client._stub.CurrentState(empty_pb2.Empty(), timeout=self._timeout))
+        if self._public_key_file:
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import ec
+
+            from platform_service.ledger import immudb_proof
+
+            with open(self._public_key_file, "rb") as f:
+                key = serialization.load_pem_public_key(f.read())
+            try:
+                key.verify(state.signature.signature,
+                           immudb_proof.state_message(state.db, state.txId, bytes(state.txHash)),
+                           ec.ECDSA(hashes.SHA256()))
+            except Exception:
+                raise TamperAlarm(f"{db}: the server's state is not signed by its key") from None
+        return {"tx": int(state.txId), "hash": bytes(state.txHash).hex()}
+
+    def trusted_head(self, db: str) -> dict:
+        saved = self._states.get(db)
+        return {"tx": saved.tx_id, "hash": saved.tx_hash.hex()} if saved else {"tx": 0, "hash": None}
+
+    def reanchor(self, db: str, expected: dict) -> tuple[dict, dict]:
+        """After a restore: trust the server's current state, if it is the one the admin checked (spec
+        T21). The new state is saved, so reads verify against it from now on (not trust on first use).
+        Returns (old, new) heads; HeadChanged if the server moved since."""
+        new = self.server_head(db)
+        if new != expected:
+            raise HeadChanged(f"{db}: the server holds {new}, not {expected}")
+        old = self.trusted_head(db)
+        current = self._states.get(db)
+        self._states.put(db, State(db, new["tx"], bytes.fromhex(new["hash"]), None), expected=current)
         with self._lock:
             self._clients.pop(db, None)
-        return (old.tx_id if old else 0), 0
+        return old, new
 
 
 class _Taken(Exception):

@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 
 import psycopg
+import pytest
 
 from platform_service.ledger import testing
 from tests.conftest import DSN
@@ -138,9 +139,11 @@ def test_only_an_admin_can_reanchor_and_it_is_recorded(client, as_user, project,
 
     seed(project["pid"], n=1)
     assert client.post("/ledger/reanchor", json={"pid": project["pid"]}, headers=as_user(OWNER)).status_code == 403
-    r = client.post("/ledger/reanchor", json={"pid": project["pid"]},
+    head = next(p for p in client.get("/ledger/projects", headers=as_user("admin-sub", roles=("primary-user", "admin")))
+                .json()["projects"] if p["pid"] == project["pid"])["server_head"]
+    r = client.post("/ledger/reanchor", json={"pid": project["pid"], "expected_head": head},
                     headers=as_user("admin-sub", roles=("primary-user", "admin")))
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     [e] = [x for x in memory_ledger.scan(PLATFORM_DB, after_seq=0, limit=100) if x.action == "ledger.reanchored"]
     assert {"old_head", "new_head"} <= set(e.details)
 
@@ -162,3 +165,99 @@ def test_a_project_on_immudb_exports_a_file_the_checker_accepts(client, as_user,
     checked = subprocess.run([sys.executable, str(CHECKER), "--public-key", key_path, "--check-content", str(path)],
                              capture_output=True, text=True)
     assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+# phase 4 review M1, m1, M3, m13 ---------------------------------------------------------------------
+
+def test_a_deleted_index_row_is_an_alarm(client, as_user, project, memory_ledger):
+    """M1: deleting a row would hide an entry; the index must account for every seq of the log."""
+    seqs = seed(project["pid"], n=3)
+    with psycopg.connect(DSN) as conn:
+        conn.execute("DELETE FROM ledger.event_index WHERE project_pid = %s AND seq = %s", (project["pid"], seqs[1]))
+    r = client.get(f"/projects/{project['slug']}/ledger/events?step=2", headers=as_user(MEMBER))
+    assert r.status_code == 409 and "index" in r.text.lower()
+
+
+@pytest.mark.parametrize("column, value", [("occurred_at", "2000-01-01T00:00:00+00:00"), ("actor_kind", "ai"),
+                                           ("project_pid", "00000000-0000-4000-8000-000000000000")])
+def test_an_index_row_edited_in_a_filter_column_is_an_alarm(client, as_user, project, memory_ledger, column, value):
+    """M1: the from/to and ai filters read these columns, so they are compared too."""
+    [seq] = seed(project["pid"], n=1, occurred_at="2026-10-02T10:00:00+00:00")
+    with psycopg.connect(DSN) as conn:
+        conn.execute(f"UPDATE ledger.event_index SET {column} = %s WHERE log = %s AND seq = %s",
+                     (value, log_of(project["pid"]), seq))
+    r = client.get(f"/projects/{project['slug']}/ledger/events", headers=as_user(MEMBER))
+    assert r.status_code == 409 and "index" in r.text.lower()
+
+
+def test_the_verifier_counts_index_rows_that_disagree(project, memory_ledger):
+    """M1: a row hidden by an edited filter column is never shown, so the reconciliation finds it."""
+    from platform_service.ledger import verify
+
+    [seq] = seed(project["pid"], n=1, occurred_at="2026-10-02T10:00:00+00:00")
+    with psycopg.connect(DSN) as conn:
+        conn.execute("UPDATE ledger.event_index SET occurred_at = '2000-01-01' WHERE log = %s AND seq = %s",
+                     (log_of(project["pid"]), seq))
+    report = verify.verify(project["pid"])
+    assert report.index_mismatches == 1 and report.index_missing == 0
+
+
+@pytest.mark.parametrize("query", ["step=abc", "from=notadate", "card_version=x", "cursor=-1"])
+def test_a_malformed_filter_is_422(client, as_user, project, memory_ledger, query):
+    seed(project["pid"], n=1)
+    assert client.get(f"/projects/{project['slug']}/ledger/events?{query}", headers=as_user(MEMBER)).status_code == 422
+
+
+ADMIN_HEADERS = ("admin-sub", ("primary-user", "admin"))
+
+
+def _rolled_back(memory_ledger, log):
+    memory_ledger.set_state(log, memory_ledger.state(log).claiming(tx_id=memory_ledger.state(log).tx_id + 50))
+
+
+def test_a_reanchor_that_cannot_be_recorded_changes_nothing(client, as_user, project, memory_ledger):
+    """M3: record first. With the platform log rolled back too, the project's trust is not reset."""
+    from platform_service.ledger.naming import PLATFORM_DB
+
+    seed(project["pid"], n=1)
+    log = log_of(project["pid"])
+    _rolled_back(memory_ledger, log)
+    _rolled_back(memory_ledger, PLATFORM_DB)
+    before = memory_ledger.state(log)
+    server = client.get("/ledger/projects", headers=as_user(*ADMIN_HEADERS)).json()
+    expected = next(p for p in server["projects"] if p["pid"] == project["pid"])["server_head"]
+    r = client.post("/ledger/reanchor", json={"pid": project["pid"], "expected_head": expected},
+                    headers=as_user(*ADMIN_HEADERS))
+    assert r.status_code in (409, 503) and memory_ledger.state(log) == before
+
+
+def test_the_platform_log_is_reanchored_first_then_the_project(client, as_user, project, memory_ledger):
+    from platform_service.ledger.naming import PLATFORM_DB
+
+    seed(project["pid"], n=1)
+    log = log_of(project["pid"])
+    _rolled_back(memory_ledger, log)
+    _rolled_back(memory_ledger, PLATFORM_DB)
+    heads = client.get("/ledger/projects", headers=as_user(*ADMIN_HEADERS)).json()
+    r = client.post("/ledger/reanchor", json={"pid": "platform", "expected_head": heads["platform"]["server_head"]},
+                    headers=as_user(*ADMIN_HEADERS))
+    assert r.status_code == 200, r.text
+    expected = next(p for p in heads["projects"] if p["pid"] == project["pid"])["server_head"]
+    r = client.post("/ledger/reanchor", json={"pid": project["pid"], "expected_head": expected},
+                    headers=as_user(*ADMIN_HEADERS))
+    assert r.status_code == 200, r.text
+    recorded = [e for e in memory_ledger.scan(PLATFORM_DB, after_seq=0, limit=100) if e.action == "ledger.reanchored"]
+    assert [e.item_id for e in recorded] == [PLATFORM_DB, log]
+    assert recorded[-1].details["new_head"] == expected and recorded[-1].details["old_head"]["tx"] > expected["tx"]
+    assert memory_ledger.get(log, 1).seq == 1                        # trusted again
+
+
+def test_a_reanchor_refuses_a_head_other_than_the_one_the_admin_checked(client, as_user, project, memory_ledger):
+    seed(project["pid"], n=1)
+    from platform_service.ledger.naming import PLATFORM_DB
+
+    r = client.post("/ledger/reanchor", json={"pid": project["pid"], "expected_head": {"tx": 99, "hash": "00" * 32}},
+                    headers=as_user(*ADMIN_HEADERS))
+    assert r.status_code == 409
+    assert [e for e in memory_ledger.scan(PLATFORM_DB, after_seq=0, limit=100)
+            if e.action == "ledger.reanchored"] == []                # no record of a re-anchor that didn't happen

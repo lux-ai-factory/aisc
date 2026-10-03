@@ -93,7 +93,7 @@ _ACTIONS = [
     _a("ledger.rejected", 0, (), "event", origin="platform", actor_kinds=("system",), per_request=None,
        details_keys=("reason", "digest")),
     _a("ledger.reanchored", 0, (), "ledger", origin="platform",
-       caused_by=(("platform", "POST", r"^/api/ledger/reanchor$"),), details_keys=("old_head", "new_head")),
+       caused_by=(("platform", "POST", r"^/api/ledger/reanchor$"),), details_keys=("old_head", "new_head", "project")),
     # --- browser-reported, through the beacon (spec 3.5) --------------------------------------------
     _a("page.opened", 0, ("platform",), "page", origin="browser", per_request=1, details_keys=("page",),
        caused_by=(("platform", "POST", r"^/api/ledger/beacon$"),)),

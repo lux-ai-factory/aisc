@@ -75,10 +75,21 @@ def test_the_route_needs_the_callers_own_token(client, project, run, given, stat
     assert post(client, project["pid"], ai_event(*run), token=given).status_code == status
 
 
-def test_an_unset_token_is_503(client, project, run, monkeypatch):
-    """While a caller's token is unset, an unknown token may be that caller's: 503 says "not configured",
-    not "wrong token". With every token set, an unknown one is 401 (above)."""
+def test_a_wrong_token_is_401_even_while_a_caller_is_unconfigured(client, project, run, monkeypatch):
+    """Review m4: a prober learns nothing about the configuration."""
     monkeypatch.delenv("PLATFORM_LEDGER_AGENTS_TOKEN")
+    assert post(client, project["pid"], ai_event(*run)).status_code == 401
+
+
+def test_with_no_caller_token_set_the_route_is_closed_503(client, project, run, monkeypatch):
+    for name in ("PLATFORM_LEDGER_AGENTS_TOKEN", "PLATFORM_LEDGER_ENGINE_TOKEN", "PLATFORM_LEDGER_DASHBOARD_TOKEN"):
+        monkeypatch.delenv(name)
+    assert post(client, project["pid"], ai_event(*run)).status_code == 503
+
+
+def test_two_callers_with_one_token_is_503(client, project, run, monkeypatch):
+    """Review m3: equal tokens would file one caller's events as the other's."""
+    monkeypatch.setenv("PLATFORM_LEDGER_DASHBOARD_TOKEN", AGENTS_TOKEN)
     assert post(client, project["pid"], ai_event(*run)).status_code == 503
 
 
@@ -144,3 +155,85 @@ def test_an_ai_event_naming_a_person_is_rejected(client, project, memory_ledger,
     post(client, project["pid"], ai_event(*run, on_behalf_of_ref="actor:" + "0" * 32))
     relay_all(project["pid"])
     assert reasons(memory_ledger, project["pid"]) == ["actor_supplied"]
+
+
+# phase 4 review M2, M5, m2, m17, m18 -----------------------------------------------------------------
+
+def test_the_same_event_sent_twice_is_accepted_once(client, project, memory_ledger, run):
+    event = ai_event(*run)
+    assert post(client, project["pid"], event).status_code == 202
+    assert post(client, project["pid"], event).status_code == 202   # a retry after a lost answer
+    relay_all(project["pid"])
+    assert len(trusted(memory_ledger, project["pid"])) == 1
+
+
+@pytest.mark.parametrize("change", [{"item_id": "q2"}, {"model": "other/model"}])
+def test_an_event_id_reused_with_other_content_is_refused_never_dropped(client, project, run, change):
+    """M2 / I3: not a silent 202 keeping the first copy."""
+    event = ai_event(*run)
+    assert post(client, project["pid"], event).status_code == 202
+    r = post(client, project["pid"], {**event, **change})
+    assert r.status_code == 409 and "event_id" in r.text
+
+
+def test_an_event_id_reused_by_another_caller_is_refused(client, project, run):
+    event = ai_event(*run)
+    assert post(client, project["pid"], event).status_code == 202
+    assert post(client, project["pid"], event, token=ENGINE_TOKEN).status_code == 409
+
+
+def test_a_large_body_is_413_and_a_long_field_422(client, project, run):
+    """M5: the route caps what reaches the relay."""
+    assert post(client, project["pid"], ai_event(*run, details={"flagged": "x" * 40_000})).status_code == 413
+    assert post(client, project["pid"], ai_event(*run, item_id="q" * 300)).status_code == 422
+
+
+def test_an_entry_too_large_for_the_log_is_rejected_and_the_log_goes_on(client, project, memory_ledger, run,
+                                                                        settings, monkeypatch):
+    """M5: an event the store refuses for size is a `too_large` rejection, never a stall of the log.
+    (The cap is lowered for the test, below the route's own body limit.)"""
+    relay_all(project["pid"])                                         # the run's start event
+    monkeypatch.setattr(settings, "MAX_ENTRY_BYTES", 2048)
+    big = ai_event(*run, action="agent.run_failed", item_type="agent_run", details={"error": "e" * 4000})
+    assert post(client, project["pid"], big).status_code == 202
+    assert post(client, project["pid"], ai_event(*run)).status_code == 202
+    relay_all(project["pid"])
+    assert reasons(memory_ledger, project["pid"]) == ["too_large"]
+    assert len(trusted(memory_ledger, project["pid"])) == 1          # the later event was not held up
+
+
+@pytest.mark.parametrize("outcome", ["refused", "anything"])
+def test_a_caller_may_not_choose_a_refused_outcome(client, project, run, outcome):
+    """m2: `refused` is the relay's word; emitters say ok or failed."""
+    assert post(client, project["pid"], ai_event(*run, outcome=outcome)).status_code == 422
+
+
+def test_the_route_is_not_served_through_the_gateway(client, project, run):
+    """m17: X-Forwarded-* means it came through Caddy: 404."""
+    r = client.post(f"/internal/projects/{project['pid']}/ledger/events", json=ai_event(*run),
+                    headers={"X-AISC-Service-Token": AGENTS_TOKEN, "X-Forwarded-For": "1.2.3.4"})
+    assert r.status_code == 404
+
+
+def test_the_emitter_is_the_tokens_never_the_bodys(client, project, memory_ledger, run):
+    """m18: a body naming another emitter changes nothing about who sent it."""
+    post(client, project["pid"], ai_event(*run, emitter="engine", source_app="engine"))
+    relay_all(project["pid"])
+    assert [e.source_app for e in trusted(memory_ledger, project["pid"])] in ([], ["qualification_agents"])
+    assert [e.source_app for e in entries(memory_ledger, log_of(project["pid"]))
+            if e.action != "request.witnessed"] != ["engine"]
+
+
+def test_a_run_whose_index_row_names_another_person_is_rejected(client, project, memory_ledger, run):
+    """m12: the run's person is the logged start event's, never the index row's."""
+    import psycopg
+
+    from tests.conftest import DSN
+
+    relay_all(project["pid"])
+    with psycopg.connect(DSN) as conn:
+        conn.execute("UPDATE ledger.event_index SET actor_ref = %s WHERE run_id = %s",
+                     ("actor:" + "9" * 32, run[1]))
+    post(client, project["pid"], ai_event(*run))
+    relay_all(project["pid"])
+    assert trusted(memory_ledger, project["pid"]) == [] and reasons(memory_ledger, project["pid"]) == ["index_mismatch"]

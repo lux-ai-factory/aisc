@@ -23,10 +23,14 @@ import psycopg
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 
+import logging
+
 from platform_service.ledger import registry, secrets, settings
 from platform_service.ledger.canonical import canonical
 from platform_service.ledger.naming import PLATFORM_DB
-from platform_service.ledger.store import DuplicateEvent, LedgerError, LedgerUnavailable, UnknownDatabase
+from platform_service.ledger.store import DuplicateEvent, EntryTooLarge, LedgerError, LedgerUnavailable, UnknownDatabase
+
+logger = logging.getLogger(__name__)
 
 #: Which app a project database role is (spec 6.5).
 ROLE_APP = {"qualification_rw": "qualification", "controls_rw": "controls",
@@ -234,6 +238,9 @@ def _deliver_event(item: dict, pid, log: str, project, stats: RelayStats) -> Non
     except DuplicateEvent:
         _reject(item, ev, app, pid, log, project, "duplicate_event_id", stats)
         return
+    except EntryTooLarge:                                             # never a stall of the log (review M5)
+        _reject(item, ev, app, pid, log, project, "too_large", stats)
+        return
     _index(log, seq, entry, pid, row_digest=digest)
     _freeze(log, entry["event_id"], pid, ev)
     _mark(item, project, seq, None)
@@ -314,11 +321,16 @@ def _judge_run(ev, app, action, log) -> dict:
         raise _Rejected("project_mismatch")                           # a run cites its own project's request
     with _db().pool().connection() as conn:
         start = conn.execute(
-            "SELECT action, actor_ref, occurred_at FROM ledger.event_index WHERE log = %s AND run_id = %s"
+            "SELECT seq, action, actor_ref, occurred_at FROM ledger.event_index WHERE log = %s AND run_id = %s"
             " AND request_id = %s AND reason IS NULL AND action NOT LIKE 'request.%%' ORDER BY seq LIMIT 1",
             (log, ev["run_id"], ev["request_id"])).fetchone()
     if start is None:
         raise _Rejected("run")
+    logged = _store().get(log, start["seq"]).as_dict()               # the person comes from the log (review m12)
+    if (logged.get("action"), logged.get("actor_ref"), logged.get("run_id"), logged.get("request_id")) != \
+            (start["action"], start["actor_ref"], ev["run_id"], ev["request_id"]):
+        logger.error("ledger %s: the index row of run %s disagrees with the log", log, ev["run_id"])
+        raise _Rejected("index_mismatch")
     starter = registry.REGISTRY.get(start["action"])
     if starter is None or ev["action"] not in starter.runs:
         raise _Rejected("run")

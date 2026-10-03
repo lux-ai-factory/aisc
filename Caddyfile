@@ -217,8 +217,14 @@
     handle /api/internal/* {
       respond 404
     }
-    # The witness is Caddy's alone (T18).
-    handle /api/authz/* {
+    # Caddy's own checks (the witness, admin, schema) are Caddy's alone (T18): an allow-list, so a
+    # new check is closed here by default. The one exception is the role pages read to show their
+    # menus (project, llm, connections, logs).
+    @caddy_only {
+      path /api/authz/*
+      not path /api/authz/projects/*
+    }
+    handle @caddy_only {
       respond 404
     }
     # The platform's projects, on the launcher's own origin so the page can read
