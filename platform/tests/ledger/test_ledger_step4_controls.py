@@ -31,6 +31,9 @@ def rejected(store, pid):
 
 
 STATE = {"label": "Run", "status": "Draft", "answers": [{"questionId": "q1", "answer": "yes", "score": None}]}
+QUESTION = {"id": "cmq1", "order": 1, "text": "Is it logged?", "article": None, "category": None}
+META = {"title": "Accuracy", "sourceId": "cmsrc", "controlTopic": "Accuracy", "description": None,
+        "sourceUpdatedAt": None, "countryIds": ["lu"], "regulationIds": ["eu-ai-act"]}
 CASES = [
     (f"/checklists/{C}/fill", "controls.submission.created", "submission", S,
      {"details": {"checklist": C}, "content": STATE, "after": STATE}),
@@ -38,14 +41,23 @@ CASES = [
      {"content": STATE, "before": STATE, "after": STATE}),
     (f"/submissions/{S}", "controls.submission.closed", "submission", S,
      {"details": {"score": 3}, "content": STATE, "before": STATE, "after": {**STATE, "status": "Closed"}}),
-    (f"/submissions/{S}", "controls.submission.reopened", "submission", S, {"details": {"next": "cmnext", "version": 2}}),
+    (f"/submissions/{S}", "controls.submission.reopened", "submission", S,
+     {"details": {"next": "cmnext", "version": 2}, "content": {"next": STATE}}),
     (f"/submissions/{S}", "controls.submission.archived", "submission", S, {}),
     (f"/submissions/{S}", "controls.submission.restored", "submission", S, {}),
     ("/sources/new", "controls.source.created", "source", "cmsrc", {"content": {"name": "EU AI Act"}}),
     (f"/checklists/{C}/review", "controls.checklist.questions_revised", "checklist", C,
      {"item_version": "2", "details": {"version": 2, "questions": 3, "answers_removed": 4, "closed_answers_removed": 2},
-      "content": {"before": [], "after": [], "removed_answers": []}}),
-    ("/catalogue", "control.installed", "checklist", C, {"details": {"package": "eu-ai-act-art-9", "questions": 12}}),
+      "content": {"before": [QUESTION], "after": [{**QUESTION, "id": "cmq2", "text": "Reworded?"}],
+                  "checklist": {"before": META, "after": META},
+                  "removed_answers": [{"submission": S, "status": "Closed", "version": 1, "question": "cmq1",
+                                       "answer": "yes", "score": None}]}}),
+    (f"/checklists/{C}/review", "controls.checklist.edited", "checklist", C,
+     {"before": META, "after": {**META, "title": "Retitled"}}),
+    ("/catalogue", "control.installed", "checklist", C,
+     {"details": {"package": "eu-ai-act-art-9", "questions": 12},
+      "content": {"package_sha256": "a" * 64, "source": {"id": "cmsrc", "name": "AESIA", "url": None},
+                  "questions": [QUESTION]}}),
 ]
 
 
@@ -67,5 +79,21 @@ def test_a_drafts_save_and_its_close_share_one_action_id(project, memory_ledger,
     later = witnessed(MEMBER, "POST", "controls", f"/controls/p/{project['pid']}/submissions/{S}", next_action="7f0d02")
     emit(project["pid"], "controls_rw", body(later, "controls.submission.closed", "submission", S,
                                              details={"score": 1}, content=STATE))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+
+
+def test_a_reviews_edit_and_its_question_revision_share_one_action_id(project, memory_ledger, witnessed):
+    """saveReviewedQuestions records `edited` when the questions stay, `questions_revised` when they change."""
+    page = f"/controls/p/{project['pid']}/checklists/{C}/review"
+    first = witnessed(MEMBER, "POST", "controls", page, next_action="7f0d03")
+    emit(project["pid"], "controls_rw", body(first, "controls.checklist.edited", "checklist", C,
+                                             before=META, after=META))
+    relay_all(project["pid"])
+    later = witnessed(MEMBER, "POST", "controls", page, next_action="7f0d03")
+    emit(project["pid"], "controls_rw", body(later, "controls.checklist.questions_revised", "checklist", C,
+                                             item_version="2", content={"before": [], "after": []},
+                                             details={"version": 2, "questions": 1, "answers_removed": 0,
+                                                      "closed_answers_removed": 0}))
     relay_all(project["pid"])
     assert rejected(memory_ledger, project["pid"]) == []

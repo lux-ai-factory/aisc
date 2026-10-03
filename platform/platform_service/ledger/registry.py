@@ -343,6 +343,12 @@ _ACTIONS = [
     _a("controls.checklist.questions_revised", 4, ("controls",), "checklist",
        caused_by=(("controls", "ACTION", _CT + r"/checklists/(?P<item>[^/]+)/review$"),),
        details_keys=("version", "questions", "answers_removed", "closed_answers_removed"), content_required=True,
+       same_action=("controls.checklist.edited",),
+       routes=(("controls", "apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts", "saveReviewedQuestions"),)),
+    # the same review when its questions stay as they are: only the checklist's own fields (phase 7 review M1)
+    _a("controls.checklist.edited", 4, ("controls",), "checklist",
+       caused_by=(("controls", "ACTION", _CT + r"/checklists/(?P<item>[^/]+)/review$"),),
+       same_action=("controls.checklist.questions_revised",),
        routes=(("controls", "apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts", "saveReviewedQuestions"),)),
     # --- step 5: dashboard -----------------------------------------------------------------------
     _a("dashboard.viewed", 5, ("dashboard",), "dashboard", per_request=None,
