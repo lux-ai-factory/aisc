@@ -108,6 +108,9 @@
              border:1px solid var(--primary); color:var(--primary); background:var(--panel); text-decoration:none;
              font-family:var(--mono); font-weight:700}
   a.tile-btn:hover{background:var(--primary); color:#fff}
+  a.tile-open{width:auto; padding:0 12px; font-size:12px; letter-spacing:.06em; text-transform:uppercase}
+  .tile-bar{height:4px; background:var(--border); margin-top:6px}
+  .tile-bar > span{display:block; height:100%; background:var(--primary)}
   .tile-off{font-size:12px; color:var(--muted); font-style:italic}
   .tiles .empty{margin:0; font-size:13px; color:var(--muted)}
   /* the link tables fold away under their title */
@@ -242,6 +245,7 @@
       </div>
       <div class="way-col">
         <a class="way" id="address-controls" href="http://localhost/controls">Address controls</a>
+        <div class="tiles" id="control-tiles" aria-label="Installed checklists"></div>
       </div>
     </div>
   </section>
@@ -279,6 +283,7 @@
   var data = null;                          // the platform's answer: objectives, tests, controls, links, can_edit
   var pid = '';                             // the project's pid: the engine's pages take it as ?project=
   var ENGINE = 'http://localhost';          // the engine web app, as the launcher's other pages name it
+  var CONTROLS = 'http://localhost/controls';  // the controls app
 
   function api(path, opts) {
     opts = opts || {};
@@ -357,8 +362,48 @@
     return a;
   }
 
+  // one tile per installed checklist (2026-10-03): its latest answers as the controls app lists them, the
+  // version, the readiness score and how much is answered, and a button to them (or to the checklist, when
+  // it was never answered). A deleted checklist, kept only for its links, has no questions and no tile.
+  function renderControlTiles() {
+    var box = $('control-tiles');
+    box.textContent = '';
+    // a platform from before 2026-10-03 sends no question counts: no tiles rather than a wrong "none installed"
+    if ((data.controls || []).some(function (it) { return it.questions === undefined; })) return;
+    var checklists = (data.controls || []).filter(function (it) { return it.questions !== null && it.questions !== undefined; });
+    if (!checklists.length) {
+      box.appendChild(el('p', 'empty', 'No checklists installed yet: pick them in step 3, the catalogue.'));
+      return;
+    }
+    checklists.forEach(function (it) {
+      var tile = el('div', 'tile'), main = el('div', 'tile-main'), sub = it.submission;
+      main.appendChild(el('div', 'tile-name', it.label));
+      var href;
+      if (sub) {
+        var done = it.questions ? Math.round(100 * sub.answered / it.questions) : 0;
+        main.appendChild(el('div', 'tile-runs', 'v' + sub.version + ' · ' + sub.status + ' · score ' +
+          (sub.readiness === null ? '–' : sub.readiness + '%') + ' · ' + sub.answered + '/' + it.questions +
+          ' answered (' + done + '%)'));
+        var bar = el('div', 'tile-bar'), fill = el('span');
+        fill.style.width = done + '%';
+        bar.appendChild(fill);
+        main.appendChild(bar);
+        href = CONTROLS + '/p/' + enc(pid) + '/submissions/' + enc(sub.id);
+      } else {
+        main.appendChild(el('div', 'tile-runs', 'Not answered yet' + ' · ' + plural(it.questions, 'question')));
+        href = CONTROLS + '/p/' + enc(pid) + '/checklists/' + enc(it.key) + '/fill';
+      }
+      tile.appendChild(main);
+      var open = tileLink('Open', 'Open ' + it.label, href);
+      open.classList.add('tile-open');
+      tile.appendChild(open);
+      box.appendChild(tile);
+    });
+  }
+
   function render() {
     renderTiles();
+    renderControlTiles();
     $('links-n').textContent = plural(data.links.length, 'link');
     var grid = $('grid');
     grid.textContent = '';

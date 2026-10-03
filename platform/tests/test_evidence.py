@@ -44,6 +44,14 @@ CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluation (
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationplugin (
     id serial PRIMARY KEY, evaluation_id int NOT NULL, plugin_config_id int, status text NOT NULL);
 CREATE TABLE IF NOT EXISTS controls.checklist (id text PRIMARY KEY, "catalogueId" text, title text NOT NULL);
+CREATE TABLE IF NOT EXISTS controls.checklist_question (
+    id text PRIMARY KEY, "checklistId" text NOT NULL, "order" int NOT NULL, text text NOT NULL DEFAULT 'q');
+CREATE TABLE IF NOT EXISTS controls.submission (
+    id text PRIMARY KEY, "checklistId" text NOT NULL, label text NOT NULL DEFAULT 's', status text NOT NULL,
+    version int NOT NULL DEFAULT 1, "previousVersionId" text UNIQUE, archived_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS controls.submission_answer (
+    id text PRIMARY KEY, "submissionId" text NOT NULL, "questionId" text NOT NULL, answer text, score int);
 CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version (
     id varchar(32) PRIMARY KEY, set_id varchar(32) NOT NULL, number int NOT NULL);
 CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version_item (
@@ -52,7 +60,8 @@ CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version_item (
 GRANT SELECT ON control_objectives.project, control_objectives.objective_selection,
     control_objectives.objective_set_version, control_objectives.objective_set_version_item,
     engine.aisc_backend_plugin, controls.checklist, engine.aisc_backend_project,
-    engine.aisc_backend_evaluation, engine.aisc_backend_evaluationplugin TO report_ro;
+    engine.aisc_backend_evaluation, engine.aisc_backend_evaluationplugin, controls.checklist_question,
+    controls.submission, controls.submission_answer TO report_ro;
 GRANT SELECT (id, plugin_id, name) ON engine.aisc_backend_pluginconfig TO report_ro;
 """
 
@@ -597,3 +606,55 @@ def test_no_engine_tables_yet_reads_as_no_runs(client, as_user, project, dsn):
     body = get(client, as_user, project).json()
     assert body["engine_workspace"] is None
     assert all(t["runs"] == {"executed": 0, "failed": 0, "running": 0} for t in body["tests"])
+
+
+# ── step 4 control tiles (2026-10-03): each checklist's latest answers, as the controls app shows them ──
+
+def _questions(dsn, pid, checklist, n):
+    for i in range(n):
+        sql(dsn, pid, "INSERT INTO controls.checklist_question (id, \"checklistId\", \"order\") VALUES (%s, %s, %s)",
+            (f"{checklist}-q{i}", checklist, i))
+
+
+def _submission(dsn, pid, sid, checklist, version, status, answers, previous=None, archived=False, age_s=0):
+    """answers: [(score, answer text), ...] on the first questions."""
+    sql(dsn, pid, "INSERT INTO controls.submission (id, \"checklistId\", status, version, \"previousVersionId\","
+                  " archived_at, updated_at) VALUES (%s, %s, %s, %s, %s, CASE WHEN %s THEN now() END,"
+                  " now() - make_interval(secs => %s))", (sid, checklist, status, version, previous, archived, age_s))
+    for i, (score, text) in enumerate(answers):
+        sql(dsn, pid, "INSERT INTO controls.submission_answer (id, \"submissionId\", \"questionId\", answer, score)"
+                      " VALUES (%s, %s, %s, %s, %s)", (f"{sid}-a{i}", sid, f"{checklist}-q{i}", text, score))
+
+
+def test_a_checklist_never_answered_has_its_questions_and_no_submission(client, as_user, project, dsn):
+    _questions(dsn, project["pid"], "ck1", 4)
+    ck = {c["key"]: c for c in get(client, as_user, project).json()["controls"]}["ck1"]
+    assert ck["questions"] == 4 and ck["submission"] is None
+
+
+def test_a_checklist_shows_its_latest_version_score_and_completion(client, as_user, project, dsn):
+    pid = project["pid"]
+    _questions(dsn, pid, "ck1", 4)
+    _submission(dsn, pid, "s1", "ck1", 1, "Closed", [(1, "x"), (1, "x"), (1, "x"), (1, "x")], age_s=60)
+    # v2 continues v1: scores 5, 4 and a written answer without a score; the fourth question is open
+    _submission(dsn, pid, "s2", "ck1", 2, "Draft", [(5, "x"), (4, None), (None, "only words")], previous="s1")
+    ck = {c["key"]: c for c in get(client, as_user, project).json()["controls"]}["ck1"]
+    # readiness as the controls app computes it: mean of the scores / 5, rounded half up (4.5 / 5 = 90%)
+    assert ck["submission"] == {"id": "s2", "version": 2, "status": "Draft", "readiness": 90, "answered": 3}
+    assert ck["questions"] == 4
+
+
+def test_an_archived_chain_is_not_shown_and_nothing_scored_has_no_readiness(client, as_user, project, dsn):
+    pid = project["pid"]
+    _questions(dsn, pid, "ck1", 2)
+    _submission(dsn, pid, "old", "ck1", 3, "Closed", [(5, "x"), (5, "x")], archived=True)
+    _submission(dsn, pid, "new", "ck1", 1, "Draft", [(None, " ")], age_s=30)
+    ck = {c["key"]: c for c in get(client, as_user, project).json()["controls"]}["ck1"]
+    assert ck["submission"] == {"id": "new", "version": 1, "status": "Draft", "readiness": None, "answered": 0}
+
+
+def test_a_deleted_checklist_has_no_questions_and_no_submission(client, as_user, project, dsn):
+    put(client, as_user, project, [GOV])
+    sql(dsn, project["pid"], "DELETE FROM controls.checklist WHERE id = 'ck1'")
+    ck = {c["key"]: c for c in get(client, as_user, project).json()["controls"]}["ck1"]
+    assert ck["stale"] == "deleted" and ck["questions"] is None and ck["submission"] is None

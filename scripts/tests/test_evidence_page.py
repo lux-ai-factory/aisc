@@ -335,3 +335,32 @@ def test_a_disabled_test_has_no_e_since_the_execution_page_lists_only_enabled_on
     assert re.search(r"if \(it\.stale !== 'disabled'\)\s*\{?\s*tile\.appendChild\(tileLink\('E'", body), \
         "E is offered for a disabled test"
     assert "'Disabled in the engine'" in body
+
+
+# ── step 4 control tiles (2026-10-03) ───────────────────────────────────────
+
+def test_the_control_tiles_are_a_column_under_address_controls():
+    markup = markup_of(read(PAGE))
+    assert re.search(r'<div class="way-col">\s*<a\b[^>]*id="address-controls".*?</a>\s*'
+                     r'<div class="tiles" id="control-tiles"', markup, re.S), "no tiles under Address controls"
+
+
+def test_a_control_tile_shows_version_score_and_completion():
+    script = script_of(read(PAGE))
+    body = re.search(r"function renderControlTiles\(\) \{(.*?)\n  \}", script, re.S)
+    assert body, "no renderControlTiles"
+    body = body.group(1)
+    for field in ("sub.version", "sub.readiness", "sub.answered", "it.questions"):
+        assert field in body, field
+    assert "'v' + sub.version" in body
+    assert re.search(r"Math\.round\(100 \* sub\.answered / it\.questions\)", body), "completion is not answered / questions"
+    assert "'Not answered yet'" in body
+    # only installed checklists get a tile: a deleted one (kept for its links) has no questions
+    assert re.search(r"filter\(function \(it\) \{\s*return it\.questions !== null", body)
+
+
+def test_a_control_tile_opens_its_answers_or_the_checklist():
+    body = re.search(r"function renderControlTiles\(\) \{(.*?)\n  \}", script_of(read(PAGE)), re.S).group(1)
+    assert re.search(r"CONTROLS \+ '/p/' \+ enc\(pid\) \+ '/submissions/' \+ enc\(sub\.id\)", body)
+    assert re.search(r"CONTROLS \+ '/p/' \+ enc\(pid\) \+ '/checklists/' \+ enc\(it\.key\) \+ '/fill'", body)
+    assert "renderControlTiles();" in script_of(read(PAGE))

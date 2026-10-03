@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -86,6 +87,20 @@ _RUNS = (
     " WHERE e.system_id::text = %s AND e.status <> 'Archived'"
     " GROUP BY pl.package_name"
 )
+#: Step 4's control tiles (2026-10-03): each checklist's question count, and its latest answers as the
+#: controls app lists them (the last version of a chain that is not archived; of several chains, the one
+#: updated last). A question counts as answered when it has a score or a written answer.
+_QUESTIONS = 'SELECT "checklistId" AS checklist_id, count(*) AS n FROM controls.checklist_question GROUP BY 1'
+_SUBMISSIONS = (
+    'SELECT DISTINCT ON (s."checklistId") s."checklistId" AS checklist_id, s.id, s.version, s.status,'
+    ' (SELECT count(*) FROM controls.submission_answer a WHERE a."submissionId" = s.id'
+    "   AND (a.score IS NOT NULL OR btrim(coalesce(a.answer, '')) <> '')) AS answered,"
+    ' (SELECT avg(a.score) FROM controls.submission_answer a WHERE a."submissionId" = s.id) AS mean_score'
+    ' FROM controls.submission s'
+    ' WHERE s.archived_at IS NULL'
+    '   AND NOT EXISTS (SELECT 1 FROM controls.submission n WHERE n."previousVersionId" = s.id)'
+    ' ORDER BY s."checklistId", s.updated_at DESC'
+)
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
 #: The project's own objectives (objective sets, 2026-10-01), each as its latest published version words it.
 _OWN_OBJECTIVES = (
@@ -133,6 +148,10 @@ class Choices:
     runs: dict[str, dict[str, int]] = field(default_factory=dict)
     #: the engine's workspace name, None before the engine has made it
     workspace: str | None = None
+    #: checklist id -> its number of questions
+    questions: dict[str, int] = field(default_factory=dict)
+    #: checklist id -> its latest answers: {"id", "version", "status", "readiness", "answered"}
+    submissions: dict[str, dict] = field(default_factory=dict)
 
 
 def _reader(pid) -> psycopg.Connection:
@@ -175,6 +194,8 @@ def choices(pid, version_pid: str | None) -> Choices:
         own = _rows(conn, _OWN_OBJECTIVES)
         runs = _rows(conn, _RUNS, (version_pid,)) if version_pid else []
         workspace = _rows(conn, _WORKSPACE)
+        questions = _rows(conn, _QUESTIONS)
+        submissions = _rows(conn, _SUBMISSIONS)
     return Choices(
         selected=sorted(selected[0]["objective_ids"], key=_objective_order) if selected else [],
         plugins={r["package_name"]: (r["display_name"] or r["package_name"], r["enabled"]) for r in plugins},
@@ -185,7 +206,19 @@ def choices(pid, version_pid: str | None) -> Choices:
         plugin_names={r["package_name"]: r.get("name") for r in plugins},
         runs={r["package_name"]: {k: r[k] for k in ("executed", "failed", "running")} for r in runs},
         workspace=workspace[0]["name"] if workspace else None,
+        questions={r["checklist_id"]: r["n"] for r in questions},
+        submissions={r["checklist_id"]: {"id": r["id"], "version": r["version"], "status": r["status"],
+                                         "readiness": readiness(r["mean_score"]), "answered": r["answered"]}
+                     for r in submissions},
     )
+
+
+def readiness(mean_score) -> int | None:
+    """The controls app's readiness: the mean score (1 to 5) as a percentage of 5, rounded half up as
+    JavaScript's Math.round does; None when nothing is scored (apps/controls/src/lib/scoring.ts)."""
+    if mean_score is None:
+        return None
+    return math.floor(float(mean_score) / 5 * 100 + 0.5)
 
 
 def _objective_order(objective_id: str) -> tuple:
@@ -339,8 +372,9 @@ def view(pid, version: str | None = None) -> dict:
              for k, (label, enabled) in found.plugins.items()]
     tests += [{"key": k, "label": k, "stale": "removed", "engine_name": None, "runs": None}
               for k in sorted({r["item_key"] for r in stored if r["kind"] == "test"} - set(found.plugins))]
-    controls = [{"key": k, "label": title, "stale": None} for k, title in found.checklists.items()]
-    controls += [{"key": k, "label": k, "stale": "deleted"}
+    controls = [{"key": k, "label": title, "stale": None, "questions": found.questions.get(k, 0),
+                 "submission": found.submissions.get(k)} for k, title in found.checklists.items()]
+    controls += [{"key": k, "label": k, "stale": "deleted", "questions": None, "submission": None}
                  for k in sorted({r["item_key"] for r in stored if r["kind"] == "control"} - set(found.checklists))]
     catalogue = tool_dimensions()
     for item in tests:
