@@ -168,12 +168,13 @@ def list_templates(conn) -> list[dict]:
     return conn.execute(f"SELECT {_TEMPLATE} FROM report_composer.template ORDER BY name").fetchall()
 
 
-def get_template(conn, template_id, with_logo=False) -> dict | None:
+def get_template(conn, template_id, with_logo=False, for_update=False) -> dict | None:
     tid = _uuid(template_id)
     if tid is None:
         return None
     extra = ", logo_mime, logo" if with_logo else ""
-    return conn.execute(f"SELECT {_TEMPLATE}{extra} FROM report_composer.template WHERE id = %s",
+    lock = " FOR UPDATE" if for_update else ""
+    return conn.execute(f"SELECT {_TEMPLATE}{extra} FROM report_composer.template WHERE id = %s{lock}",
                         (tid,)).fetchone()
 
 
@@ -204,6 +205,27 @@ def update_template(conn, template_id, *, look, logo, who, now) -> bool:
         " logo_mime = %s, logo = %s, updated_at = %s, updated_by = %s"
         " WHERE id = %s RETURNING id",
         (*_look_values(look), mime, raw, now, who, template_id)).fetchone() is not None
+
+
+def layouts_using(conn, template_id) -> list[str]:
+    """The layouts (deleted ones too) drawn in a template, locked: its delete is about to change them."""
+    tid = _uuid(template_id)
+    if tid is None:
+        return []
+    return [r["id"] for r in conn.execute("SELECT id::text AS id FROM report_composer.layout WHERE template_id = %s"
+                                          " ORDER BY id FOR UPDATE", (tid,)).fetchall()]
+
+
+def drop_template_from(conn, layout_id, *, who, now) -> int:
+    """A layout leaves its template (being deleted) as a save would: its next revision, kept (phase 9 review
+    M1). Returns that revision."""
+    row = conn.execute("UPDATE report_composer.layout SET template_id = NULL, revision = revision + 1,"
+                       " updated_at = %s, updated_by = %s WHERE id = %s RETURNING revision",
+                       (now, who, layout_id)).fetchone()
+    if conn.execute("SELECT deleted_at IS NULL AS live FROM report_composer.layout WHERE id = %s",
+                    (layout_id,)).fetchone()["live"]:
+        keep_revision(conn, layout_id, now)
+    return row["revision"]
 
 
 def delete_template(conn, template_id) -> bool:

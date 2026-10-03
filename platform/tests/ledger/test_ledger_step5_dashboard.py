@@ -85,3 +85,10 @@ def test_an_event_as_the_dashboard_sends_it_is_accepted(client, project, memory_
     assert rejected(memory_ledger, project["pid"]) == []
     [e] = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.action == action]
     assert (e.source_app, e.item_id, e.actor_kind) == ("dashboard", item_id, "user")
+
+
+def test_the_path_names_the_project_before_the_query(project, witnessed):
+    """A dashboard in the path is the request's dashboard; a slug in the query can't override it."""
+    other = "aisc-" + uuid.uuid4().hex
+    request_id = witnessed(MEMBER, "POST", "dashboard", f"/superset/dashboard/{slug_of(project)}/?dashboard={other}")
+    assert str(record(request_id).project_pid) == str(project["pid"])

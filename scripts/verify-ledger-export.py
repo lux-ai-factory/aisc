@@ -282,10 +282,16 @@ def _entries(lines) -> list[dict]:
     return [line["entry"] for line in lines[:-1] if isinstance(line.get("entry"), dict)]
 
 
+_PRINTED = re.compile(r"^\s*Ledger entry (\d+) \u00b7 ([0-9a-f]+)\s*$")
+
+
 def anchor_problems(lines, printed: str) -> tuple[list[str], int | None]:
-    """A report's printed anchor, `SEQ:DIGEST` (the digest's first 16 hex digits or more): the entry SEQ of
-    this (checked) export must hash to it, sha256 over its canonical form (ledger phase 9)."""
-    seq_text, _, digest = printed.partition(":")
+    """A report's printed anchor, as its foot prints it ("Ledger entry N · DIGEST") or as `N:DIGEST`, the
+    digest's first 16 hex digits or more: the entry N of this (checked) export must hash to it, sha256 over
+    its canonical form (ledger phase 9). It proves the report was generated after entry N existed, not that
+    N was the newest entry then."""
+    m = _PRINTED.match(printed)
+    seq_text, _, digest = (m.group(1), ":", m.group(2)) if m else printed.partition(":")
     if not seq_text.isdigit() or len(digest) < 16 or any(c not in "0123456789abcdef" for c in digest):
         return [f"the anchor {printed!r} is not SEQ:DIGEST (16 hex digits or more)"], None
     seq = int(seq_text)
@@ -293,7 +299,7 @@ def anchor_problems(lines, printed: str) -> tuple[list[str], int | None]:
     if found is None:
         return [f"the anchor's entry {seq} is not in this export"], None
     if not hashlib.sha256(canonical(found)).hexdigest().startswith(digest):
-        return [f"the anchor doesn't match entry {seq}: the report was not made under this log's entry"], None
+        return [f"the anchor doesn't match entry {seq} of this log: the report was not generated after it"], None
     return [], seq
 
 
@@ -355,7 +361,7 @@ def main(argv=None) -> int:
         found, anchor_seq = anchor_problems(lines, args.anchor)
         problems += found
         if anchor_seq is not None:
-            notes.append(f"anchor: entry {anchor_seq} of this log")
+            notes.append(f"anchor: the report was generated after entry {anchor_seq} of this log")
     if document is not None and not problems:
         found, recorded = document_problems(lines, document, anchor_seq)
         problems += found

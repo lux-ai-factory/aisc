@@ -56,6 +56,9 @@ CASES = [
       "after": {**LAYOUT, "revision": 2}}),
     ("DELETE", f"/api/p/{{slug}}/layouts/{L}", "report.layout.deleted", "layout", L,
      {"details": {"reports": 1}, "before": LAYOUT, "content": {"layout": LAYOUT, "reports": [{"id": R}]}}),
+    ("DELETE", f"/api/p/{{slug}}/templates/{T}", "report.layout.template_removed", "layout", L,
+     {"item_version": "2", "details": {"revision": 2, "template": T}, "content": {**LAYOUT, "revision": 2},
+      "before": LAYOUT, "after": {**LAYOUT, "revision": 2}}),
     ("POST", "/api/p/{slug}/templates", "report.template.created", "template", T,
      {"details": {"from": "form"}, "content": LOOK, "after": LOOK}),
     ("POST", "/api/p/{slug}/templates/import", "report.template.created", "template", T,
@@ -149,7 +152,7 @@ def test_drill_a_report_is_verified_offline(client, as_user, project, memory_led
     printed = f"{head['seq']}:{head['entry_sha256'][:16]}"            # what the report's footer shows
     ok = _checker(tmp_path, export, memory_ledger.public_key_pem(), "--anchor", printed, "--document", str(pdf))
     assert ok.returncode == 0, ok.stdout + ok.stderr
-    assert f"anchor: entry {head['seq']}" in ok.stdout and "document: recorded by entry" in ok.stdout
+    assert f"generated after entry {head['seq']}" in ok.stdout and "document: recorded by entry" in ok.stdout
     wrong_anchor = _checker(tmp_path, export, memory_ledger.public_key_pem(), "--anchor",
                             f"{head['seq']}:{'0' * 16}")
     assert wrong_anchor.returncode == 1 and "anchor" in wrong_anchor.stdout
@@ -160,3 +163,80 @@ def test_drill_a_report_is_verified_offline(client, as_user, project, memory_led
     later = _checker(tmp_path, export, memory_ledger.public_key_pem(), "--anchor", f"{head['seq'] + 1}:"
                      + hashlib.sha256(json.dumps(head).encode()).hexdigest()[:16], "--document", str(pdf))
     assert later.returncode == 1                                       # the anchor the document's entry names
+
+
+def test_a_template_delete_records_every_layout_it_leaves(project, memory_ledger, witnessed):
+    """One delete, several layouts: one event each, under one request (phase 9 review M1)."""
+    request_id = witnessed(MEMBER, "DELETE", "report_composer",
+                           f"/report-composer/api/p/{project['slug']}/templates/{T}")
+    for layout in (str(uuid.uuid4()), str(uuid.uuid4())):
+        emit(project["pid"], "report_composer_rw", body(request_id, "report.layout.template_removed", "layout", layout,
+                                                         item_version="2", details={"revision": 2, "template": T},
+                                                         content=LAYOUT, before=LAYOUT, after=LAYOUT))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+
+
+def test_an_empty_log_has_no_head_to_print(client, as_user, project, memory_ledger):
+    r = client.get(f"/projects/{project['slug']}/ledger/head", headers=as_user(MEMBER))
+    assert r.status_code == 404 and "no entry" in r.text
+
+
+def _two_entries_then_a_report(client, as_user, project, memory_ledger, witnessed, tmp_path, cite_older):
+    """Two layout entries, then a report whose entry names the first (cite_older) or the second as its anchor."""
+    page = f"/report-composer/api/p/{project['slug']}/layouts"
+    heads = []
+    for _ in range(2):
+        made = witnessed(MEMBER, "POST", "report_composer", page)
+        emit(project["pid"], "report_composer_rw", body(made, "report.layout.created", "layout", str(uuid.uuid4()),
+                                                         item_version="1", details={"from": "empty"},
+                                                         content=LAYOUT, after=LAYOUT))
+        relay_all(project["pid"])
+        heads.append(client.get(f"/projects/{project['slug']}/ledger/head", headers=as_user(MEMBER)).json())
+    pdf = tmp_path / "report.pdf"
+    pdf.write_bytes(b"%PDF-1.7 " + uuid.uuid4().bytes)
+    named = heads[0] if cite_older else heads[1]
+    generated = witnessed(MEMBER, "POST", "report_composer", f"{page}/{L}/reports")
+    emit(project["pid"], "report_composer_rw", body(
+        generated, "report.generated", "report", R,
+        details={"card_version": None, "ledger_head": named["seq"], "blocks": 1,
+                 "document_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(), "format": "pdf"},
+        content={"anchor": named, "layout": {"id": L, "revision": 1}}))
+    relay_all(project["pid"])
+    export = client.get(f"/projects/{project['slug']}/ledger/export", headers=as_user(OWNER)).text
+    return heads, pdf, export
+
+
+def test_a_document_whose_entry_names_another_anchor_fails(client, as_user, project, memory_ledger, witnessed,
+                                                           tmp_path):
+    """The printed anchor is a real entry of the log, but the document's entry names an older one: refused
+    (phase 9 review m5: this, not the digest, is what the check is for)."""
+    heads, pdf, export = _two_entries_then_a_report(client, as_user, project, memory_ledger, witnessed, tmp_path,
+                                                    cite_older=True)
+    printed = f"{heads[1]['seq']}:{heads[1]['entry_sha256'][:16]}"
+    r = _checker(tmp_path, export, memory_ledger.public_key_pem(), "--anchor", printed, "--document", str(pdf))
+    assert r.returncode == 1 and "names anchor" in r.stdout, r.stdout
+
+
+def test_the_anchor_is_taken_as_the_report_prints_it(client, as_user, project, memory_ledger, witnessed, tmp_path):
+    heads, pdf, export = _two_entries_then_a_report(client, as_user, project, memory_ledger, witnessed, tmp_path,
+                                                    cite_older=False)
+    printed = f"Ledger entry {heads[1]['seq']} · {heads[1]['entry_sha256'][:16]}"   # the renderer's foot line
+    r = _checker(tmp_path, export, memory_ledger.public_key_pem(), "--anchor", printed, "--document", str(pdf))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"generated after entry {heads[1]['seq']}" in r.stdout
+
+
+def test_a_document_recorded_before_its_anchor_fails(tmp_path):
+    """The document's entry must come after the anchor it names (an anchor can't be printed before it exists)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("checker", CHECKER)
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    doc = b"%PDF-1.7 early"
+    lines = [{"entry": {"seq": 1, "action": "report.generated",
+                        "details": {"ledger_head": 1, "document_sha256": hashlib.sha256(doc).hexdigest()}}},
+             {"head": {}}]
+    problems, _ = checker.document_problems(lines, doc, None)
+    assert problems and "not later than" in problems[0]

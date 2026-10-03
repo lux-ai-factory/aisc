@@ -181,3 +181,23 @@ def test_protect_reads_is_protect_plus_listed_reads():
 def test_oauth_endpoints_stay_open():
     assert "handle /oauth2/*" in snippet("oauth_endpoints")
     assert "import protect" not in snippet("oauth_endpoints")
+
+
+def test_read_paths_are_written_as_the_handle_sees_them():
+    """handle_path strips its prefix before the matcher runs, so a read path under it is written without the
+    prefix; under handle it keeps it. A path with the stripped prefix would never match, and every read it
+    should witness would go unwitnessed (phase 9 review B1)."""
+    problems = []
+    for site, handles in sites():
+        for header, body in handles:
+            m = re.match(r"handle(_path)?\s+(\S+?)\*?$", header)
+            reads = re.findall(r"^\s*import protect-reads \S+ (.+)$", body, re.M)
+            if not m or not reads:
+                continue
+            stripped, prefix = bool(m.group(1)), m.group(2).rstrip("*")
+            for path in reads[0].split():
+                if stripped and path.startswith(prefix + "/"):
+                    problems.append(f"{header}: {path} keeps the prefix handle_path strips")
+                if not stripped and not path.startswith(prefix):
+                    problems.append(f"{header}: {path} is outside the handle's {prefix}")
+    assert not problems, "\n".join(problems)

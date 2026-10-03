@@ -461,7 +461,7 @@ def _save_template(request: Request, g: Guarded, body, template_id=None, rename_
     now = request.app.state.clock()
     try:
         with _project_db(request, g) as conn:
-            before = ledger.template_state(db.get_template(conn, template_id, with_logo=True)) \
+            before = ledger.template_state(db.get_template(conn, template_id, with_logo=True, for_update=True)) \
                 if template_id is not None else None
             if template_id is not None and body.get("keep_logo") and "logo" not in body:
                 current = template_or_404(conn, template_id, with_logo=True)
@@ -521,8 +521,19 @@ def put_template(request: Request, template_id: str, body: dict = Body(...),
 @router.delete("/p/{ref}/templates/{template_id}", status_code=204)
 def delete_template(request: Request, template_id: str, g: Guarded = Depends(project_guard("editor"))):
     with _project_db(request, g) as conn:
-        found = db.get_template(conn, template_id, with_logo=True)
-        if found is None or not db.delete_template(conn, template_id):
+        found = db.get_template(conn, template_id, with_logo=True, for_update=True)
+        if found is None:
+            raise ApiError(404, "not_found", NO_TEMPLATE)
+        # its layouts leave it first, each as its next revision, recorded (phase 9 review M1)
+        for lid in db.layouts_using(conn, found["id"]):
+            was = ledger.layout_state(db.get_layout(conn, lid))
+            revision = db.drop_template_from(conn, lid, who=g.caller.subject, now=request.app.state.clock())
+            now = ledger.layout_state(db.get_layout(conn, lid))
+            if was is not None:                                     # (a deleted layout has no state shown)
+                ledger.emit(conn, "report.layout.template_removed", item_type="layout", item_id=lid,
+                            item_version=str(revision), details={"revision": revision, "template": found["id"]},
+                            content=now, before=was, after=now)
+        if not db.delete_template(conn, template_id):
             raise ApiError(404, "not_found", NO_TEMPLATE)
         before = ledger.template_state(found)
         ledger.emit(conn, "report.template.deleted", item_type="template", item_id=found["id"],

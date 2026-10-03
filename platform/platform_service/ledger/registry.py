@@ -387,6 +387,11 @@ _ACTIONS = [
        caused_by=(("report_composer", "DELETE", _RC + r"/layouts/(?P<item>[^/]+)$"),),
        details_keys=("reports",), content_required=True,
        routes=(("report_composer", "apps/report-composer/report_composer/api.py", "delete_layout"),)),
+    # a template's delete takes it from each layout drawn in it: that layout's next revision (phase 9 review M1)
+    _a("report.layout.template_removed", 6, ("report_composer",), "layout", per_request=None,
+       caused_by=(("report_composer", "DELETE", _RC + r"/templates/[^/]+$"),), details_keys=("revision", "template"),
+       content_required=True, routes=(("report_composer", "apps/report-composer/report_composer/api.py",
+                                       "delete_template"),)),
     _a("report.template.created", 6, ("report_composer",), "template",
        caused_by=(("report_composer", "POST", _RC + r"/templates(/import)?$"),),
        details_keys=("from",), content_required=True,

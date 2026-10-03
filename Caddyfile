@@ -177,7 +177,8 @@
   # The report composer (apps/report-composer), step 7. handle_path strips the prefix;
   # REPORT_COMPOSER_ROOT_PATH fixes the URLs the app generates. The renderer is never routed.
   handle_path /report-composer* {
-    import protect-reads report_composer /report-composer/api/p/*/reports/*/pdf /report-composer/api/p/*/reports/*/download
+    # (handle_path strips /report-composer before the read paths are matched)
+    import protect-reads report_composer /api/p/*/reports/*/pdf /api/p/*/reports/*/download
     reverse_proxy report-composer:8095 {
       header_up X-Real-IP {remote_host}
     }

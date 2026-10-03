@@ -176,3 +176,86 @@ def test_a_request_id_that_is_not_a_uuid_is_never_cited(client, auth, bed):
                                                                              "X-AISC-Request-Id": "x; DROP"})
     assert r.status_code == 201
     assert [e["request_id"] for e in outbox(bed, r.json()["id"])] == [None]
+
+
+def test_m1_review_deleting_a_template_records_each_layout_it_leaves(client, auth, bed):
+    """Phase 9 review M1: the layouts of a deleted template lose it (they draw in the platform look); each
+    gets its next revision, kept, and an event in the delete's transaction, so its chain holds."""
+    t = new_template(client, auth, name="Going away")
+    lay = new_layout(client, auth, name="Uses it", template_id=t["id"], blocks=[blk("free_text", text="x")])
+    assert client.delete(f"/api/p/alpha/templates/{t['id']}", headers=headers(auth)).status_code == 204
+    now = client.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).json()
+    assert (now["template_id"], now["revision"]) == (None, 2)
+    created, removed = outbox(bed, lay["id"])
+    assert removed["action"] == "report.layout.template_removed" and removed["request_id"] == REQUEST
+    assert removed["before"] == created["after"] and removed["after"]["template_id"] is None
+    assert (removed["item_version"], removed["details"]) == ("2", {"revision": 2, "template": t["id"]})
+    kept = bed.rows(pdb_of("A"), "SELECT revision FROM report_composer.layout_revision"
+                                 f" WHERE layout_id = '{lay['id']}' ORDER BY revision")
+    assert [r["revision"] for r in kept] == [1, 2]
+    r = put_layout(client, auth, now, blocks=now["blocks"])                 # the next save continues it
+    assert r.status_code == 200
+    assert outbox(bed, lay["id"])[-1]["before"] == removed["after"]
+
+
+def _fail_after(monkeypatch, wanted):
+    from report_composer import ledger
+
+    real = ledger.emit
+
+    def then_fail(conn, action, **fields):
+        real(conn, action, **fields)
+        if action == wanted:
+            raise RuntimeError("a failure right after the event (test)")
+    monkeypatch.setattr(ledger, "emit", then_fail)
+
+
+def test_m1_review_an_update_that_fails_after_its_event_leaves_neither(client, auth, bed, monkeypatch):
+    lay = new_layout(client, auth, name="Stays", blocks=[blk("free_text", text="one")])
+    _fail_after(monkeypatch, "report.layout.updated")
+    with pytest.raises(RuntimeError):
+        put_layout(client, auth, lay, blocks=[blk("free_text", text="two")])
+    assert bed.scalar(pdb_of("A"), f"SELECT revision FROM report_composer.layout WHERE id = '{lay['id']}'") == "1"
+    assert [e["action"] for e in outbox(bed, lay["id"])] == ["report.layout.created"]
+
+
+def test_m1_review_a_delete_that_fails_after_its_event_leaves_neither(client, auth, bed, monkeypatch):
+    lay = new_layout(client, auth, name="Not gone")
+    _fail_after(monkeypatch, "report.layout.deleted")
+    with pytest.raises(RuntimeError):
+        client.delete(f"/api/p/alpha/layouts/{lay['id']}", headers=headers(auth))
+    assert bed.scalar(pdb_of("A"), f"SELECT deleted_at IS NULL FROM report_composer.layout WHERE id = '{lay['id']}'") == "t"
+    assert [e["action"] for e in outbox(bed, lay["id"])] == ["report.layout.created"]
+
+
+def test_m1_review_a_template_save_that_fails_after_its_event_leaves_neither(client, auth, bed, monkeypatch):
+    t = new_template(client, auth, name="Kept look")
+    _fail_after(monkeypatch, "report.template.updated")
+    body = {"name": "Changed look", "font": "inter", "font_size_pt": 11, "primary_color": "#000000",
+            "accent_color": "#ffffff"}
+    with pytest.raises(RuntimeError):
+        client.put(f"/api/p/alpha/templates/{t['id']}", json=body, headers=headers(auth))
+    assert bed.scalar(pdb_of("A"), f"SELECT name FROM report_composer.template WHERE id = '{t['id']}'") == "Kept look"
+
+
+def test_m1_review_a_finished_report_that_fails_after_its_event_stays_running(client, auth, bed, monkeypatch):
+    from report_composer import anchor
+
+    monkeypatch.setattr(anchor, "fetch", lambda request, project: None)
+    lay = new_layout(client, auth, name="Half done", blocks=[blk("free_text", text="x")])
+    _fail_after(monkeypatch, "report.generated")
+    with pytest.raises(RuntimeError):
+        _generate(client, auth, lay["id"])
+    statuses = bed.rows(pdb_of("A"), "SELECT status FROM report_composer.generated_report"
+                                     f" WHERE layout_id = '{lay['id']}'")
+    assert [s["status"] for s in statuses] == ["running"]               # not finished, and no event
+    assert [e for e in outbox(bed) if e["action"] == "report.generated"
+            and (e["content"] or {}).get("layout", {}).get("id") == lay["id"]] == []
+
+
+def test_m7_review_a_copy_name_ignores_deleted_layouts(client, auth):
+    lay = new_layout(client, auth, name="Source")
+    first = client.post(f"/api/p/alpha/layouts/{lay['id']}/duplicate", json={}, headers=auth("alice")).json()
+    assert client.delete(f"/api/p/alpha/layouts/{first['id']}", headers=auth("alice")).status_code == 204
+    again = client.post(f"/api/p/alpha/layouts/{lay['id']}/duplicate", json={}, headers=auth("alice")).json()
+    assert again["name"] == first["name"]                               # the hidden copy frees its name
