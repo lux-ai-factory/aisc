@@ -1,16 +1,16 @@
-# Sean's engine, running on its own: no Configurator services (platform, its projects, the
-# Caddy gateway) and no AISC_DEPLOYMENT. Absent, aisc_backend/deployment.py and
+# The execution engine on its own: no Configurator services (platform, its projects, the
+# Caddy gateway) and no AISC_DEPLOYMENT. Without it, aisc_backend/deployment.py and
 # aisc_eval/deployment.py both default to standalone (one database holding all projects, which
-# are created in the engine), which is what the webapp's own image defaults APP_DEPLOYMENT to as
-# well (apps/webapp/Dockerfile).
+# are created in the engine), and so does the webapp image's APP_DEPLOYMENT
+# (apps/webapp/Dockerfile).
 #
 # No secret has a default: port 8000 is published with no gateway in front, so a shipped
 # INTERNAL_API_KEY would open /api/v1/internal/* to anyone. Give them in an env file (see
 # README.md, "Two deployment modes"): docker compose --env-file <file> -f <this file> up --build
 #
-# The engine's own Dockerfile CMD already runs `manage.py migrate --noinput` before it serves,
-# so there is no separate migrate one-shot here (that split, and the per-project
-# migrate_projects command, are the Configurator's: see docker-compose.development.yml).
+# The engine's own Dockerfile CMD runs `manage.py migrate --noinput` before it serves, so
+# there is no separate migrate one-shot here (that one-shot, and the per-project
+# migrate_projects command, belong to the Configurator: see docker-compose.development.yml).
 #
 # Run: docker compose --env-file env.engine-standalone -f docker-compose.engine-standalone.yml up --build
 # The webapp is on http://localhost:8080, the API on http://localhost:8000.
@@ -43,7 +43,7 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
       BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
-      BACKEND_CRSF_TRUSTED_ORIGINS: ${BACKEND_CRSF_TRUSTED_ORIGINS:-http://localhost:8080}   # Sean's spelling (config/settings.py)
+      BACKEND_CRSF_TRUSTED_ORIGINS: ${BACKEND_CRSF_TRUSTED_ORIGINS:-http://localhost:8080}   # the backend's own spelling of the name (config/settings.py)
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY:-True}
     ports:
       - "8000:8000"
@@ -103,7 +103,7 @@ services:
     networks:
       - engine-standalone
 
-  # ── Infrastructure (docker-compose-infra.yml on Sean's own master) ──
+  # Infrastructure, as in the engine's own docker-compose-infra.yml
   minio:
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
@@ -178,8 +178,7 @@ services:
     networks:
       - engine-standalone
 
-  # The package index a plugin is installed from (no catalogue runs here; see
-  # docker-compose.development.yml's own devpi service for the fuller comment).
+  # The package index a plugin is installed from (no catalogue runs here).
   devpi:
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}

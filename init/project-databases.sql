@@ -2,18 +2,17 @@
 --
 -- Runs as the superuser, and is safe to run again: on a fresh volume from
 -- docker-entrypoint-initdb.d, and on an existing one from the postgres-setup
--- service, which runs it on every start. It must keep running after the shared
--- module schemas and core.system are retired (isolation cutover C9) and after
--- they are dropped (stage 7): every line about core.system is guarded, and
--- nothing here touches the retired module schemas of the platform database
--- (docs/superpowers/isolation-2026-09-25/01-specs.md I2.8, 03-coding-plan.md P1-D3, G4).
+-- service, which runs it on every start. It must keep working on a database
+-- whose shared module schemas and core.system are retired or dropped: every
+-- line about core.system is guarded, and nothing here touches the retired
+-- module schemas of the platform database.
 --
 -- CREATEDB is the whole of what the platform is given. It owns the databases it
 -- makes and nothing else; the module roles are granted into each one by the
 -- template it applies (platform/project-template/).
 ALTER ROLE platform_rw CREATEDB;
 
--- New databases are copies of template1. On Postgres 14 its public schema lets
+-- New databases are copies of template1. Before PostgreSQL 15 its public schema lets
 -- every role create tables, which would give each module a second, unowned place
 -- to write in every project database.
 \connect template1
@@ -22,11 +21,11 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 -- The template gives each module role its own search_path in each project database
 -- (ALTER ROLE <module role> IN DATABASE <that database> SET search_path = <its schema>). That
 -- statement needs SUPERUSER or CREATEROLE, and platform_rw, which applies the template, has
--- neither (CREATEROLE on PG14 is close to superuser). So it runs through this one function,
+-- neither (CREATEROLE before PostgreSQL 16 is close to superuser). So it runs through this one function,
 -- owned by the superuser, that executes only that exact statement, for one of the four module
 -- roles paired with its own schema, in the database it is called in, and refuses anything else.
 -- In template1, so every database made afterwards has it; `isolate provision` installs it into a
--- project database made before this existed (platform_service.projectdb.install_setup_function).
+-- project database made without it (platform_service.projectdb.install_setup_function).
 CREATE SCHEMA IF NOT EXISTS aisc_setup;
 REVOKE ALL ON SCHEMA aisc_setup FROM PUBLIC;
 GRANT USAGE ON SCHEMA aisc_setup TO platform_rw;
@@ -48,17 +47,17 @@ $fn$;
 REVOKE ALL ON FUNCTION aisc_setup.apply_role_setting(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION aisc_setup.apply_role_setting(text) TO platform_rw;
 
--- ledger_identity: the only place that names the people behind the ledger's references (ledger spec
--- 6.1, S8). Owned by the platform service; CONNECT for nobody else, so pgAdmin's read-all role
--- (pg_read_all_data) can't read it. Its table is made by the platform (platform/ledger-identity/).
+-- ledger_identity: the only place that names the people behind the ledger's references. Owned by
+-- the platform service; CONNECT for nobody else, so pgAdmin's read-all role (pg_read_all_data)
+-- cannot read it. Its table is made by the platform (platform/ledger-identity/).
 SELECT 'CREATE DATABASE ledger_identity OWNER platform_rw'
  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ledger_identity')\gexec
 REVOKE ALL ON DATABASE ledger_identity FROM PUBLIC;
 GRANT CONNECT ON DATABASE ledger_identity TO platform_rw;
 
 \connect platform
--- The install-wide library of report presets (D4), for a volume made before init/platform-db.sql
--- made it. A missing role is skipped. (Forms are per project: there is no form library.)
+-- The install-wide library of report presets, for a volume whose init/platform-db.sql did not
+-- make it. A missing role is skipped. (Forms are per project: there is no form library.)
 DO $libraries$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'report_composer_rw') THEN
@@ -67,10 +66,10 @@ BEGIN
 END
 $libraries$;
 
--- The ledger's Postgres side (docs/superpowers/ledger-2026-10-02/02-spec.md 6.1): the platform
--- service owns it and its migrations (0006 onwards) make its tables. No module role gets USAGE, so
--- none can read the witness records, the person mapping or the pool. Making a schema takes a
--- superuser, hence here (every start) and in init/platform-db.sql (a fresh volume), not in a migration.
+-- The ledger's Postgres side: the platform service owns it and its migrations (0006 onwards)
+-- make its tables. No module role gets USAGE, so none can read the witness records, the person
+-- mapping or the pool. Making a schema here takes the superuser, hence this file (every start)
+-- and init/platform-db.sql (a fresh volume), not a migration.
 DO $ledger$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ledger') THEN
@@ -80,13 +79,13 @@ END
 $ledger$;
 REVOKE ALL ON SCHEMA ledger FROM PUBLIC;
 
--- The pre-isolation core.system, only while it is in use: absent (a fresh volume, or after the
--- stage-7 drop) or retired (its comment begins with 'retired:', set by cutover C9), none of this
--- runs, so a start after the retirement cannot give it back to anyone.
+-- core.system from the shared-schema layout, only while it is in use. When it is absent (a fresh
+-- volume, or after the drop) or retired (its comment begins with 'retired:', set by the cutover),
+-- none of this runs, so a start after the retirement cannot give it back to anyone.
 --
--- While in use: core.system is the platform's to migrate (platform migration 0003 adds its
--- version number and the only-latest rule). It was made by the superuser in the pre-isolation
--- init/platform-db.sql; this hands it over, and again changes nothing.
+-- While in use, core.system is the platform's to migrate (platform migration 0003 adds its
+-- version number and the only-latest rule). The superuser made it in the older
+-- init/platform-db.sql; this hands it over, and running it again changes nothing.
 --
 -- A card version belongs to its project (platform migration 0004). core.system is unique on
 -- (pid, project_id), and the module tables that pin their work to one version point at that

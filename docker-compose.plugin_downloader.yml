@@ -26,7 +26,7 @@ services:
           fi
         done
     # Into def_plugins, the folder plugin-publisher builds and uploads to the index the engine
-    # installs from (the engine no longer pre-loads plugins from PLUGIN_PATH).
+    # installs from.
     volumes:
       - ./def_plugins:/downloads
 

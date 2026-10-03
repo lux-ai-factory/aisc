@@ -7,15 +7,15 @@
 }
 
 
-# Every module sits behind `protect <app>`. Spec v2 section 3.1, from 06-spike.md:
-# - `route` keeps the order as written (G7: without it Caddy runs the witness before sign-in and
-#   the strip after the witness);
-# - the strip removes identity and request-id headers a client sent (G3);
-# - the witness runs on writes only, with the app this handle names, the unstripped URI and the
-#   gateway secret (G1, G2, G9); LEDGER_GATEWAY=off makes it an empty snippet, and so does a Caddy
-#   started without LEDGER_GATEWAY at all ({$LEDGER_GATEWAY:off}): a restart behaves as before.
-# - A check that must see the person (admin_only, schema_gate) goes in the same `route` as protect:
-#   Caddy sorts `route` after `forward_auth`, so outside it the check would run before sign-in.
+# Every module sits behind `protect <app>`:
+# - `route` keeps the directives in the order written. Without it Caddy runs the witness before
+#   sign-in and the header strip after the witness.
+# - The strip removes the identity and request-id headers a client sent.
+# - The ledger witness runs on writes only, with the app this handle names, the unstripped URI and
+#   the gateway secret. LEDGER_GATEWAY=off, or no LEDGER_GATEWAY at all, makes it an empty snippet.
+# - A check that must know the person (admin_only, schema_gate) goes in the same `route` as
+#   protect: Caddy sorts `route` after `forward_auth`, so outside it the check would run before
+#   sign-in.
 (strip-and-sign-in) {
   request_header -X-AISC-Request-Id
   request_header -X-AISC-App
@@ -40,8 +40,8 @@
   }
 }
 
-# protect, plus a witness on the GETs listed after the app (downloads, exports). The list can't be
-# empty: an empty path matcher stops Caddy at load (S1).
+# protect, plus a witness on the GETs listed after the app (downloads, exports). The list must not
+# be empty: an empty path matcher stops Caddy at load.
 (protect-reads) {
   route {
     import strip-and-sign-in
@@ -83,8 +83,8 @@
   }
 }
 
-# After protect: the platform says whether the caller holds the admin role. 204 lets the request
-# through; its 403 goes back to the browser as it is. It reads the token protect just copied in.
+# Goes after protect: the platform says whether the caller holds the admin role, from the token
+# protect copied in. A 204 lets the request through; a 403 goes back to the browser as it is.
 (admin_only) {
   forward_auth platform:8000 {
     uri /authz/admin
@@ -127,12 +127,12 @@
   import oauth_endpoints
 
 
-  # Internal API should only be accessible inside the containers, block all external access
+  # The engine's internal API is for the containers only: refused from outside.
   handle /api/v1/internal/* {
     respond "Forbidden - Internal Service Only" 403
   }
 
-  # Should be the backend API, so forward also this path there
+  # The engine's API (apps/backend).
   handle /api/* {
     import protect engine
     reverse_proxy aisc-backend:8000 {
@@ -140,7 +140,7 @@
       }
   }
 
-  # Flower 
+  # Flower, the Celery monitor of the evaluation worker.
   handle /flower/* {
     import protect flower
     reverse_proxy aisc-eval-flower:5555 {
@@ -174,20 +174,19 @@
     }
   }
 
-  # The report composer (apps/report-composer), step 7. handle_path strips the prefix;
+  # The report composer (apps/report-composer). handle_path strips the prefix;
   # REPORT_COMPOSER_ROOT_PATH fixes the URLs the app generates. The renderer is never routed.
   handle_path /report-composer* {
-    # (handle_path strips /report-composer before the read paths are matched)
+    # The read paths are matched after handle_path has stripped /report-composer.
     import protect-reads report_composer /api/p/*/reports/*/pdf /api/p/*/reports/*/download
     reverse_proxy report-composer:8095 {
       header_up X-Real-IP {remote_host}
     }
   }
 
-  # The engine (apps/backend), running in configurator mode, reads which projects the caller
-  # may enter from the platform. GET only: this route never creates, changes or deletes
-  # anything, so no other method reaches the platform through it. Before the catch-all so it
-  # wins over the frontend below.
+  # The engine (apps/backend), in configurator mode, reads from the platform which projects the
+  # caller may enter. GET only, so no other method reaches the platform through this route. It
+  # comes before the catch-all so it wins over the frontend below.
   @platformProjects {
     method GET
     path /platform/api/projects
@@ -198,7 +197,7 @@
     reverse_proxy platform:8000
   }
 
-  # Serve the JS frontend by default
+  # Everything else is the engine's web frontend.
   handle {
     import protect engine_webapp
     reverse_proxy aisc-webapp:80 {
@@ -219,9 +218,9 @@
     handle /api/internal/* {
       respond 404
     }
-    # Caddy's own checks (the witness, admin, schema) are Caddy's alone (T18): an allow-list, so a
-    # new check is closed here by default. The one exception is the role pages read to show their
-    # menus (project, llm, connections, logs).
+    # The platform's checks for Caddy (the witness, admin, schema) answer Caddy only. This is an
+    # allow-list, so a new check is closed here by default. The one exception is the project role,
+    # which the pages (project, llm, connections, logs) read to show their menus.
     @caddy_only {
       path /api/authz/*
       not path /api/authz/projects/*
@@ -235,9 +234,8 @@
       import protect platform
       reverse_proxy platform:8000
     }
-    # A project's page: one file, the slug read from the URL by the page itself.
-    # An explicit rewrite rather than try_files, which resolved "/" to the
-    # project page because "/" is a directory.
+    # A project's page: one file, which reads the slug from the URL itself. An explicit
+    # rewrite, because try_files would also resolve "/" (a directory) to the project page.
     handle /p/* {
       import protect launcher
       root * /srv/homepage

@@ -12,9 +12,10 @@ import jwt
 
 
 class TokenRejected(Exception):
-    """The token did not verify. Deliberately one exception: a caller that is
-    about to answer 401 does not need to know which way it was wrong, and
-    saying so out loud helps whoever sent it."""
+    """The token did not verify.
+
+    One exception for every reason on purpose: a caller about to answer 401 does
+    not need to know which check failed."""
 
 
 #: RS256 only. Naming the algorithms is what stops `alg: none` and the
@@ -40,9 +41,9 @@ def verify_token(token: str, *, issuer: str, key_for: Callable[[str], Any], leew
             key,
             algorithms=ALGORITHMS,
             issuer=issuer,
-            # The audience varies by client (webapp, gateway, controls), and
-            # the realm is what we actually care about, so the issuer is the
-            # check that matters and the audience is not one.
+            # The audience varies by client (webapp, gateway, controls). The
+            # realm is what matters, so the issuer is checked and the audience
+            # is not.
             options={"verify_aud": False, "require": ["exp", "iss", "sub"]},
             leeway=leeway,
         )

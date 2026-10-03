@@ -2,9 +2,9 @@
 
 Loaded through SUPERSET_CONFIG_PATH. It runs apps/results-dashboard's
 superset_config.py unchanged and then changes one thing: who is signed in.
-Instead of Superset logging people in itself (its own Keycloak client, and a
-local admin account with a password), it takes who they are from the gateway,
-like every other module: gateway_identity.py verifies the token Caddy passes and
+Superset does not log people in itself (no Keycloak client of its own, no local
+account with a password): it takes who they are from the gateway, like every
+other module: gateway_identity.py verifies the token Caddy passes and
 sets REMOTE_USER, Flask-AppBuilder's AUTH_REMOTE_USER reads it, and the role
 sync is the dashboard's own (KeycloakSecurityManager._member_projects and
 aisc_ext.security.roles_for_login), called as it is.

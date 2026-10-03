@@ -1,8 +1,8 @@
 -- The database inspector (pgAdmin and SchemaSpy, behind the launcher's admin gate): one role that
 -- reads every table and writes none.
--- Superuser. Runs on a fresh volume from docker-entrypoint-initdb.d (70-inspector-role.sql, after
--- the superset database exists) and on every start from postgres-setup, which passes the password
--- as a psql variable. Each project database lets it connect through the project template
+-- Runs as the superuser, from docker-entrypoint-initdb.d on a fresh volume (as
+-- 70-inspector-role.sql, after the superset database exists) and on every start from
+-- postgres-setup, which passes the password as a psql variable. Each project database lets it connect through the project template
 -- (platform/project-template/0004_inspector.sql).
 \if :{?inspector_password}
 \else

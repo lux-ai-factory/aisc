@@ -1,7 +1,7 @@
 
 services:
 
-  # MinIO object storage service
+  # MinIO, the S3-compatible object storage
   minio:
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
@@ -12,18 +12,18 @@ services:
       - "9100:9000"  # S3 API port
       - "9101:9001"  # Web console port
     volumes:
-      - ../aisc-data/minio:/data  # Persistent storage
+      - ../aisc-data/minio:/data
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_USER}        # MinIO root username
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD} # MinIO root password
+      MINIO_ROOT_USER: ${S3_USER}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 10s
       retries: 5
 
-  # MinIO bucket initialization service
+  # Creates the buckets once MinIO is up, then exits
   make_buckets:
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
@@ -31,15 +31,15 @@ services:
     pull_policy: never
     depends_on:
       minio:
-        condition: service_healthy  # Wait for MinIO to be ready
+        condition: service_healthy
     environment:
-      MINIO_ROOT_USER: ${S3_USER}        # MinIO credentials for bucket creation
+      MINIO_ROOT_USER: ${S3_USER}
       MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
     volumes:
-      - ./tasks/minio_add_bucket.sh:/minio_add_bucket.sh  # Mount initialization script
+      - ./tasks/minio_add_bucket.sh:/minio_add_bucket.sh
     entrypoint: /minio_add_bucket.sh
 
-  # RabbitMQ Message queue to send the jobs
+  # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -50,7 +50,7 @@ services:
       RABBITMQ_DEFAULT_USER: ${MQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${MQ_PASSWORD}
 
-  # Redis collects the results.
+  # Redis, where the worker's Celery results are kept
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -58,7 +58,7 @@ services:
       - ${REDIS_PORT}:${REDIS_PORT}
     restart: unless-stopped
 
-  # PostgreSQL database service
+  # PostgreSQL
   postgres:
     image: postgres:15-alpine   # the backend requires PG15; a PG14 data dir needs fresh volumes
     container_name: postgres
@@ -69,5 +69,5 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - ../aisc-data/postgres:/var/lib/postgresql/data  # Persistent storage
+      - ../aisc-data/postgres:/var/lib/postgresql/data
     restart: unless-stopped

@@ -2,19 +2,17 @@
 --
 -- Runs once on a fresh Postgres volume, before any app migrates.
 --
--- One database per project (isolation 2026-09-25, docs/superpowers/isolation-2026-09-25/01-specs.md
--- I1.3, I1.4, I2.8). Every module keeps a project's data in that project's own database
+-- One database per project. Every module keeps a project's data in that project's own database
 -- (project_<pid without hyphens>, made by the platform service from platform/project-template/):
--- the card versions (project.system), qualification, control objectives, controls, the engine and
--- the report composer. What stays here is only what knows no project: the projects and who is in
--- them (core), the catalogue of tests and controls, and the install-wide library of report
--- presets (report_library, D4). Qualification forms are kept in each project's own database
--- (the user's decision of 2026-09-25, which replaced the form library of D3).
+-- the card versions (project.system), qualification and its forms, control objectives, controls,
+-- the engine and the report composer. What stays here is only what belongs to no project: the
+-- projects and who is in them (core), the catalogue of tests and controls, and the install-wide
+-- library of report presets (report_library).
 --
--- Why schemas and roles rather than trust. Each module reads the projects and their members and
--- nothing else here; the grants below are the contract, and the isolation's verify script asserts
--- it by role (has_*_privilege). The pre-isolation version of this file, which made core.system and
--- the module schemas, is kept as a test fixture at
+-- Each module reads the projects and their members and nothing else here. The grants below are
+-- that contract, and scripts/verify-project-databases.sh checks it role by role
+-- (has_*_privilege). The older shape of this file, which made core.system and the module schemas
+-- in this database, is kept as a test fixture at
 -- scripts/tests/fixtures/isolation/pre_isolation_platform_db.sql.
 --
 -- Created only if it is not already the bootstrap database: POSTGRES_DB is `platform`, and the
@@ -25,8 +23,8 @@ SELECT 'CREATE DATABASE platform'
 \connect platform
 
 -- No object creation in public: an unqualified CREATE should fail loudly rather
--- than land somewhere nobody looks. (On PG14 public also grants CREATE to
--- PUBLIC, which would make every role below able to create tables here.)
+-- than land somewhere nobody looks. (Before PostgreSQL 15, public also grants
+-- CREATE to PUBLIC, which would let every role below create tables here.)
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------
@@ -59,8 +57,9 @@ COMMENT ON SCHEMA catalogue IS 'Step 3: the registry of tests and controls. Refe
 -- roles: a module may connect here, read the projects and their members, and
 -- nothing else; everything it writes is in a project database.
 --
--- Passwords are dev values, as everywhere else in this compose. Each app is
--- given only its own role, so a mistake in one module cannot read another's
+-- Each role is made with its own name as password. Those whose password matters are
+-- given a generated one on every start (init/platform-role.sql, init/report-roles.sql).
+-- Each app is given only its own role, so a mistake in one module cannot read another's
 -- data or rewrite the project it belongs to.
 -- ---------------------------------------------------------------------------
 -- Roles are cluster-wide, so one may already exist. Creating them
@@ -99,9 +98,9 @@ GRANT USAGE ON SCHEMA core TO
     qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw,
     report_composer_rw, dashboard_ro;
 
--- A module reads core.project to resolve the project it was entered inside (I1.4): SELECT only, no
--- REFERENCES (no module table here points at it any more). dashboard_ro reads memberships only;
--- core.project_member's SELECT comes from platform migrations 0001 and 0005, which make it.
+-- A module reads core.project to resolve the project it was entered inside: SELECT only, no
+-- REFERENCES (no module table points at it). dashboard_ro reads memberships only; the SELECT on
+-- core.project_member comes from platform migrations 0001 and 0005, which make that table.
 GRANT SELECT ON core.project TO
     qualification_rw, control_objectives_rw, controls_rw, engine_rw, catalogue_rw, report_composer_rw;
 
@@ -116,15 +115,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON SEQUENCES TO platform_rw;
 GRANT USAGE, CREATE ON SCHEMA catalogue TO catalogue_rw;
 ALTER ROLE catalogue_rw IN DATABASE platform SET search_path = catalogue, core;
 
--- The install-wide library of report presets: it holds no project's data (D4). It is owned by the
+-- The install-wide library of report presets: it holds no project's data. It is owned by the
 -- module that migrates it; a project copies what it uses into its own database.
 CREATE SCHEMA report_library AUTHORIZATION report_composer_rw;
 COMMENT ON SCHEMA report_library IS 'The install-wide library of report presets (D4): no project data.';
 
--- The ledger's Postgres side (docs/superpowers/ledger-2026-10-02/02-spec.md 6.1): the platform
--- service owns it and its migrations (0006 onwards) make its tables. No module role gets USAGE, so
--- none can read the witness records, the person mapping or the pool. Making a schema takes a
--- superuser, hence here and in init/project-databases.sql (every start), not in a migration.
+-- The ledger's Postgres side: the platform service owns it and its migrations (0006 onwards)
+-- make its tables. No module role gets USAGE, so none can read the witness records, the person
+-- mapping or the pool. Making a schema here takes the superuser, hence this file and
+-- init/project-databases.sql (every start), not a migration.
 DO $ledger$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'ledger') THEN

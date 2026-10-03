@@ -29,7 +29,7 @@ def test_a_tampered_token_is_rejected(token, key_for):
 
 
 def test_an_unsigned_token_is_rejected(token, key_for):
-    """alg=none is the oldest trick there is; it must not be a way in."""
+    """A token with alg=none must not be accepted."""
     import jwt
 
     none_token = jwt.encode({"sub": "x", "iss": ISSUER}, key=None, algorithm="none")

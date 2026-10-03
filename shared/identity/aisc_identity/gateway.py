@@ -1,10 +1,10 @@
 """Who a request behind the gateway is: one rule, for the ledger's witness and for every app that
-adopts it (docs/superpowers/ledger-2026-10-02/02-spec.md 3.3; review R1.4).
+uses it.
 
 - The gateway token (X-Auth-Request-Access-Token, set by oauth2-proxy and copied in by Caddy) is
   authoritative. It must verify, and it must have been issued to the gateway's own client (`azp`).
 - A Bearer token on the same request must verify too and carry the same `sub`. It may come from
-  another client (the engine's web app sends its keycloak-js token), so its `azp` isn't checked.
+  another client (the engine's web app sends its keycloak-js token), so its `azp` is not checked.
   Otherwise the request is refused: an app that prefers the Bearer would act as another person than
   the one the gateway signed in.
 - `leeway` covers a token that expires while the request crosses the gateway.

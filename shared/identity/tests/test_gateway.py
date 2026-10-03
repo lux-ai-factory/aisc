@@ -1,4 +1,4 @@
-"""The one rule for who a gateway request is (ledger spec 3.3, review R1.4).
+"""The one rule for who a gateway request is.
 
 The gateway token (X-Auth-Request-Access-Token, set by oauth2-proxy and copied in by Caddy) is
 authoritative and must have been issued to the gateway's client (azp). A Bearer token on the same

@@ -1,9 +1,9 @@
--- SELECT for report_ro on the superset tables the report reads (report run 02 D5, D6 (b)).
--- Superuser, safe to run again, run by scripts/report-grants.sh on every start. A table that does
--- not exist yet is skipped, so it also runs where superset has not migrated.
+-- SELECT for report_ro on the superset tables the report reads.
+-- Runs as the superuser, from scripts/report-grants.sh on every start; safe to run again. A table
+-- that does not exist yet is skipped, so it also runs where superset has not migrated.
 --
--- Since the isolation (2026-09-25, I2.7) the module tables are no longer in `platform`: report_ro
--- reads them inside each project database, where report-grants.sh grants the I2.6 list.
+-- The module tables are not in `platform`: report_ro reads them inside each project database,
+-- where scripts/report-grants.sh grants them.
 DO $check$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'report_ro') THEN
@@ -12,7 +12,7 @@ BEGIN
 END
 $check$;
 
--- superset: chart ownership and the review comments (02 D5), nothing else (never ab_user)
+-- superset: chart ownership and the review comments, nothing else (never ab_user)
 SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'superset') AS has_superset \gset
 \if :has_superset
 \connect superset

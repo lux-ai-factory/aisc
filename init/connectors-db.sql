@@ -1,7 +1,8 @@
--- The connectors service's role and schema (spec 2026-09-24-connectors-design.md, D1).
--- Superuser. Runs on a fresh volume from docker-entrypoint-initdb.d (80-connectors-db.sql) and on
--- every start from postgres-setup, which passes the password as a psql variable. Idempotent.
--- Deliberately no grant on schema engine: the freeze guard (G1) dumps engine's GRANTs too.
+-- The connectors service's role and schema.
+-- Runs as the superuser, from docker-entrypoint-initdb.d on a fresh volume (as
+-- 80-connectors-db.sql) and from postgres-setup, which passes the password as a psql variable.
+-- Safe to run again. No grant on schema engine on purpose: the freeze guard
+-- (scripts/guard-frozen.sh) compares engine's GRANTs too.
 \if :{?connector_password}
 \else
 \set connector_password connector_rw
