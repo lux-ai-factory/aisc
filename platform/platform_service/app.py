@@ -1283,6 +1283,17 @@ def sync_dashboards(slug: str, request: Request, caller: Caller = Depends(caller
         raise HTTPException(status_code=502, detail=f"the results dashboard did not answer: {exc}")
 
 
+@app.get("/projects/{slug}/declared-charts")
+def declared_charts(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    """The charts each plugin configuration's plugin declares, which the report composer puts in a report's
+    snapshot (2026-10-05). Any member; the engine is asked with the caller's own token."""
+    role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    return dashboards.declared_charts(found["pid"], token_from_headers(request.headers) or "")
+
+
 @app.get("/projects/{slug}/dashboards/open")
 def open_dashboards(slug: str, request: Request, plugin: str | None = None, target: str | None = None,
                     caller: Caller = Depends(caller_dependency)):

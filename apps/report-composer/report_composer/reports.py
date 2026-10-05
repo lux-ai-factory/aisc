@@ -15,7 +15,7 @@ import uuid
 from datetime import timedelta
 
 from . import anchor as ledger_anchor
-from . import db, evidence_links, layouts
+from . import db, declared_charts, evidence_links, layouts
 from . import selection as data_selection
 from . import templates as looks
 from .errors import ApiError, fail_on
@@ -73,7 +73,7 @@ def _sent_options(block: dict) -> dict:
 
 
 def snapshot_of(project, layout, mode, caller, template=None, *, system_id, selection=None,
-                document_id=None, coverage_links=()) -> dict:
+                document_id=None, coverage_links=(), declared_charts=None) -> dict:
     """What the renderer is sent: the layout, and the data it covers (the anchor version and the
     selection); `template` (read with its logo) gives the
     report its look, and none means the platform look. `coverage_links` are the project's step 4 links
@@ -88,6 +88,8 @@ def snapshot_of(project, layout, mode, caller, template=None, *, system_id, sele
             "selection": selection or data_selection.for_snapshot(data_selection.parse_dates(None, None, False, None))}
     if template is not None:
         snap["style"] = looks.style(template)
+    if declared_charts is not None:
+        snap["declared_charts"] = declared_charts      # what each plugin declares (declared_charts.py)
     return snap
 
 
@@ -124,7 +126,8 @@ def _error(code, message, details=()) -> dict:
     return {"error": {"code": code, "message": message, "details": list(details)}}
 
 
-def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, anchor=None) -> tuple[str, dict]:
+def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, anchor=None,
+           declared=None) -> tuple[str, dict]:
     """Checks the saved layout and records a running report with its snapshot: (report id, snapshot).
 
     The layout row stays locked until the caller's transaction ends, so two generations of one
@@ -147,7 +150,8 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
     report_id = str(uuid.uuid4())
     snapshot = snapshot_of(project, layout, fmt, caller, template, system_id=system["pid"],
                            selection=data_selection.for_snapshot(sel), document_id=report_id,
-                           coverage_links=evidence_links.coverage_links(conn, system["pid"]))
+                           coverage_links=evidence_links.coverage_links(conn, system["pid"]),
+                           declared_charts=declared)
     if anchor is not None:
         snapshot["document"]["ledger_anchor"] = anchor                # printed by the renderer
     db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
@@ -192,7 +196,10 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
     projects, renderer, clock = request.app.state.projects, request.app.state.renderer, request.app.state.clock
     anchor = ledger_anchor.fetch(request, project)
     with projects.connect(project["pid"]) as conn:
-        report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor)
+        found = db.get_layout(conn, layout_id)
+    declared = declared_charts.for_snapshot(request, project, (found or {}).get("blocks"))
+    with projects.connect(project["pid"]) as conn:
+        report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor, declared)
     outcome = {"report_id": report_id, "system_id": snapshot["system_id"], "format": fmt,
                "layout": snapshot["layout"], "anchor": anchor, "selection": snapshot.get("selection")}
 

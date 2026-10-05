@@ -55,6 +55,34 @@ def visualizations(pid, token: str, run: dict) -> list[dict]:
     return list(answer.get("metric_visualizations") or [])
 
 
+#: each plugin configuration with its latest finished, not archived, run (the report's declared charts)
+_LATEST_RUN_PER_CONFIG = (
+    "SELECT DISTINCT ON (pc.id) pc.id AS config_id,"
+    " COALESCE(NULLIF(pl.display_name, ''), pl.name, pl.package_name) AS label,"
+    " ep.pid::text AS evaluation_plugin_pid, e.pid::text AS evaluation_pid"
+    " FROM engine.aisc_backend_pluginconfig pc"
+    " JOIN engine.aisc_backend_plugin pl ON pl.id = pc.plugin_id"
+    " JOIN engine.aisc_backend_evaluationplugin ep ON ep.plugin_config_id = pc.id AND ep.status = 'Done'"
+    " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id AND e.status <> 'Archived'"
+    " ORDER BY pc.id, e.created_at DESC, e.id DESC"
+)
+
+
+def declared_charts(pid, token: str) -> dict:
+    """{"configs": {config id: [chart]}, "warnings"}: what each plugin configuration's plugin declares
+    (get_metric_visualizations), for the report. The charts depend on the plugin and its configuration only,
+    so one engine call per configuration, for its latest finished run, with the caller's token."""
+    with evidence._reader(pid) as conn:
+        rows = evidence._rows(conn, _LATEST_RUN_PER_CONFIG)
+    configs, warnings = {}, []
+    for r in rows:
+        try:
+            configs[str(r["config_id"])] = visualizations(pid, token, r)
+        except engine_components.EngineUnavailable as exc:
+            warnings.append(f"{r['label']}: its declared charts were not read ({exc})")
+    return {"configs": configs, "warnings": warnings}
+
+
 def public_url() -> str:
     return (os.environ.get("DASHBOARD_PUBLIC_URL") or "http://localhost:8188").rstrip("/")
 

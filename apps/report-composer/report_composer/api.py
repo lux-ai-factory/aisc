@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import builtin_layouts, db, evidence_links, layouts, ledger, presets, preview_with, reports
+from . import builtin_layouts, db, declared_charts, evidence_links, layouts, ledger, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, project_guard, signed_in
@@ -244,7 +244,8 @@ def _render_preview(request: Request, g: Guarded, layout: dict, template, pw, li
     if pw.system is None:
         return {"html": f"<!DOCTYPE html><html><body><p>{NO_VERSION}</p></body></html>", "block_statuses": []}
     snapshot = reports.snapshot_of(g.project, layout, "preview", g.caller, template, system_id=pw.system["pid"],
-                                   selection=pw.selection, coverage_links=links)
+                                   selection=pw.selection, coverage_links=links,
+                                   declared_charts=declared_charts.for_snapshot(request, g.project, layout["blocks"]))
     return renderer_call(request.app.state.renderer.render, snapshot)
 
 
