@@ -1,28 +1,48 @@
 [submodule "apps/backend"]
 	path = apps/backend
-	url = git@github.com:lux-ai-factory/aisc-backend.git
-	branch = master
+	url = https://github.com/lux-ai-factory/aisc-backend.git
+	branch = feat/unified-modules
 [submodule "apps/eval"]
 	path = apps/eval
-	url = git@github.com:lux-ai-factory/aisc-eval.git
-	branch = master
+	url = https://github.com/lux-ai-factory/aisc-eval.git
+	branch = feat/unified-modules
 [submodule "apps/webapp"]
 	path = apps/webapp
-	url = git@github.com:lux-ai-factory/aisc-webapp.git
-	branch = master
+	url = https://github.com/lux-ai-factory/aisc-webapp.git
+	branch = feat/unified-modules
 [submodule "shared/plugin-interface"]
 	path = shared/plugin-interface
-	url = git@github.com:lux-ai-factory/aisc-plugin-interface.git
+	url = https://github.com/lux-ai-factory/aisc-plugin-interface.git
 	branch = master
 [submodule "shared/plugin-manager"]
 	path = shared/plugin-manager
-	url = git@github.com:lux-ai-factory/aisc-plugin-manager.git
+	url = https://github.com/lux-ai-factory/aisc-plugin-manager.git
 	branch = master
 [submodule "apps/controls"]
 	path = apps/controls
 	url = https://github.com/lux-ai-factory/aisc-controls.git
-	branch = main
+	branch = feat/unified-modules
 [submodule "apps/qualification"]
 	path = apps/qualification
 	url = https://github.com/lux-ai-factory/aisc-qualification.git
-	branch = main
+	branch = feat/unified-modules
+[submodule "apps/control-objectives"]
+	path = apps/control-objectives
+	url = https://github.com/lux-ai-factory/aisc-control-objectives.git
+	branch = feat/unified-modules
+[submodule "apps/results-dashboard"]
+	path = apps/results-dashboard
+	url = https://github.com/lux-ai-factory/aisc-results-dashboard.git
+	branch = feat/unified-modules
+[submodule "apps/catalogue"]
+	path = apps/catalogue
+	url = https://github.com/lux-ai-factory/catalogue.git
+	branch = feat/unified-modules
+[submodule "apps/report-generator"]
+	path = apps/report-generator
+	url = https://github.com/lux-ai-factory/aisc-report-generator.git
+	branch = feat/unified-modules
+[submodule "shared/report-plugin-interface"]
+	path = shared/report-plugin-interface
+	url = https://github.com/lux-ai-factory/aisc-report-plugin-interface.git
+	branch = feat/unified-modules

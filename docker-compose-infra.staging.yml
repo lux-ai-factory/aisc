@@ -1,5 +1,5 @@
 services:
-  # Reverse proxy
+  # Caddy, the reverse proxy
   caddy:
     image: caddy:2.10.2
     container_name: caddy
@@ -20,16 +20,19 @@ services:
     depends_on:
       - aisc-backend
 
-  # MinIO object storage service
+  # MinIO, the S3-compatible object storage
   minio:
-    image: quay.io/minio/minio
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     container_name: minio
     volumes:
-      - minio_data:/data # Persistent storage
+      - minio_data:/data
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_USER} # MinIO root username
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD} # MinIO root password
+      MINIO_ROOT_USER: ${S3_USER}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -38,14 +41,17 @@ services:
     networks:
       - backend
 
-  # MinIO bucket initialization service
+  # Creates the buckets once MinIO is up, then exits
   make_buckets:
-    image: quay.io/minio/mc
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     depends_on:
       minio:
-        condition: service_healthy # Wait for MinIO to be ready
+        condition: service_healthy
     environment:
-      MINIO_ROOT_USER: ${S3_USER} # MinIO credentials for bucket creation
+      MINIO_ROOT_USER: ${S3_USER}
       MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
     entrypoint: >
       /bin/sh -c "
@@ -58,7 +64,7 @@ services:
     networks:
       - backend
 
-  # RabbitMQ Message queue to send the jobs
+  # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -66,42 +72,42 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq # Persistent storage
+      - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - backend
 
-  # Redis collects the results.
+  # Redis, where the worker's Celery results are kept
   redis:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
     volumes:
-      - redis_data:/data # Persistent storage
+      - redis_data:/data
     networks:
       - backend
 
-  # PostgreSQL database service
+  # PostgreSQL
   postgres:
-    image: postgres:14-alpine
+    image: postgres:15-alpine   # the backend requires PG15; a PG14 data dir needs fresh volumes
     container_name: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persistent storage
-      # Create Keycloak's own DB on a fresh volume (Keycloak can't create its own database).
+      - postgres_data:/var/lib/postgresql/data
+      # Creates Keycloak's own database on a fresh volume: Keycloak cannot create it itself.
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro
     restart: unless-stopped
     networks:
       - backend
 
-  # Keycloak (SSO) — PRODUCTION mode (`start`), behind Caddy (Caddy terminates TLS; Keycloak speaks HTTP).
-  # DEPLOY NOTES (server-side, can't be done from the repo):
-  #   1. add a DNS record for KEYCLOAK_URL_EXTERNAL and a Caddy route -> http://keycloak:8080
-  #   2. the imported realm's client redirect URIs are dev localhost ones — add the real staging URLs
-  #      (https://aisctest.uni.lux/*) to each client in the Keycloak admin, or ship a staging realm file
-  #   3. for a true prod realm, remove the dev users (admin/user) and let real identity in
+  # Keycloak in production mode (`start`), behind Caddy: Caddy terminates TLS, Keycloak speaks HTTP.
+  # What a deploy must do on the server, outside this repository:
+  #   1. add a DNS record for KEYCLOAK_URL_EXTERNAL and a Caddy route to http://keycloak:8080;
+  #   2. the imported realm's client redirect URIs are the localhost ones: add the staging URLs
+  #      (https://aisctest.uni.lux/*) to each client in the Keycloak admin, or ship a staging realm file;
+  #   3. for a production realm, remove the dev users (admin, user).
   keycloak:
     image: quay.io/keycloak/keycloak:26.6.3
     container_name: keycloak
@@ -126,10 +132,10 @@ services:
       - frontend
 
 volumes:
-  minio_data: # Persistent storage for MinIO
-  postgres_data: # Persistent storage for PostgreSQL
-  rabbitmq_data: # Persistent storage for RabbitMQ
-  redis_data: # Persistent storage for Redis
+  minio_data:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
 
 networks:
   backend:

@@ -1,0 +1,433 @@
+// The report composer's one script. No logic of its own: it reads the page's data-* attributes,
+// collects the form values, calls the API and draws what Python answered. Validity, coverage,
+// labels and every decision stay in Python.
+"use strict";
+(function () {
+  const main = document.querySelector("main[data-api]");
+  if (!main) return;
+  const api = main.dataset.api;
+  const PICK_ONE = "Pick at least one, or choose All.";
+  const EMPTY_CHAPTER = "This chapter is empty.";
+  const OUTLINE_FAILED = "The chapter outline could not be updated.";
+
+  async function call(method, path, body, base) {
+    let r;
+    try {
+      r = await fetch((base || api) + path, {
+        method: method, credentials: "same-origin",
+        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {                                   // no answer at all (network down): an error like others
+      return { ok: false, status: 0, data: null };
+    }
+    let data = null;
+    try { data = await r.json(); } catch (e) { data = null; }
+    return { ok: r.ok, status: r.status, data: data };
+  }
+
+  function errorText(res) {
+    const err = res.data && res.data.error;
+    if (!err) return res.status === 0 ? "The composer could not be reached." : "Error " + res.status;
+    const ref = (err.details || []).map(function (d) { return d && d.error_ref; }).filter(Boolean)[0];
+    return err.message + (ref && err.message.indexOf(ref) < 0 ? " (ref " + ref + ")" : "");
+  }
+
+  // The message region at the top of every page (no browser alert)
+  const region = main.querySelector("[data-message]");
+  function say(text, ok, action) {                  // action {label, run}: a button that runs it once
+    if (!region) return;
+    region.querySelector("[data-message-text]").textContent = text;
+    region.classList.toggle("ok", !!ok);
+    region.hidden = !text;
+    const act = region.querySelector('[data-control="message-action"]');
+    if (!act) return;
+    act.hidden = !action;
+    act.textContent = action ? action.label : "";
+    act.onclick = action ? function () { say(""); action.run(); } : null;
+  }
+  if (region) region.querySelector('[data-control="close-message"]').addEventListener("click", function () { say(""); });
+
+  // Notices Python gave (references reset on import) are carried to the next page and shown there
+  function keepNotices(n) {
+    const texts = (n || []).map(function (x) { return x.message; });
+    try { if (texts.length) sessionStorage.setItem("rc-notices", JSON.stringify(texts)); } catch (e) { /* no storage */ }
+  }
+  function showKeptNotices() {
+    let kept = null;
+    try { kept = JSON.parse(sessionStorage.getItem("rc-notices") || "null"); sessionStorage.removeItem("rc-notices"); }
+    catch (e) { kept = null; }
+    if (Array.isArray(kept) && kept.length) say(kept.join(" "), true);
+  }
+
+  // A hint paragraph marked `attr` inside `parent`: shown with `text`, removed when `text` is empty
+  function hint(parent, attr, text, cls, before) {
+    let p = parent.querySelector("[" + attr + "]");
+    if (!text) { if (p) p.remove(); return; }
+    if (!p) p = parent.insertBefore(document.createElement("p"), before || null);
+    p.className = cls || "hint"; p.setAttribute(attr, ""); p.textContent = text;
+  }
+
+  // The one confirmation dialog: its texts come from the button that asks (data-confirm-text)
+  const dialog = main.querySelector("dialog[data-confirm]");
+  function ask(text, action) {
+    return new Promise(function (resolve) {
+      if (!dialog || !dialog.showModal) { resolve(false); return; }
+      dialog.querySelector("[data-confirm-message]").textContent = text;
+      const ok = dialog.querySelector("[data-confirm-ok]");
+      const cancel = dialog.querySelector("[data-confirm-cancel]");
+      ok.textContent = action || "Confirm";
+      function done(answer) {
+        ok.removeEventListener("click", yes); cancel.removeEventListener("click", no);
+        dialog.removeEventListener("cancel", no);
+        if (dialog.open) dialog.close();
+        resolve(answer);
+      }
+      function yes() { done(true); }
+      function no(ev) { if (ev) ev.preventDefault(); done(false); }
+      ok.addEventListener("click", yes); cancel.addEventListener("click", no);
+      dialog.addEventListener("cancel", no);   // Esc
+      dialog.showModal();
+      cancel.focus();
+    });
+  }
+  function askFor(button) { return ask(button.dataset.confirmText, button.dataset.confirmAction); }
+
+  function readFile(file, asText) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = reject;
+      if (asText) reader.readAsText(file); else reader.readAsDataURL(file);
+    });
+  }
+  async function readJson(file) {
+    try { return JSON.parse(await readFile(file, true)); } catch (e) { return null; }
+  }
+
+  // The layouts list
+  if (main.dataset.page === "layouts") {
+    const base = main.dataset.base;
+    const open = function (res) { keepNotices(res.data.notices); location.href = base + "/layouts/" + res.data.id; };
+    main.addEventListener("change", function (ev) { if (ev.target.closest('[data-control="import-layout"]')) ev.target.form.requestSubmit(); });
+    main.addEventListener("submit", async function (ev) {       // a picked layout file is imported, then opened
+      const form = ev.target;
+      if (form.dataset.control !== "import-layout") return;
+      ev.preventDefault();
+      const doc = await readJson(form.file.files[0]); form.file.value = "";
+      if (!doc) { say("This file is not a layout file."); return; }
+      const res = await call("POST", "/layouts", { file: doc });
+      if (res.ok) open(res); else say(errorText(res));
+    });
+    main.addEventListener("click", async function (ev) {        // a copy is opened in the editor
+      const button = ev.target.closest('button[data-control="duplicate"]');
+      if (!button) return;
+      const res = await call("POST", "/layouts/" + button.dataset.layout + "/duplicate", {});
+      if (res.ok) open(res); else say(errorText(res));
+    });
+    return;
+  }
+
+  // The templates (a report's look)
+  if (main.dataset.page === "templates") {
+    const openInEditor = function (id) { location.href = location.pathname + "?edit=" + encodeURIComponent(id); };
+    async function lookOf(form) {
+      const body = { name: form.name.value, font: form.font.value, font_size_pt: parseFloat(form.font_size_pt.value),
+                     primary_color: form.primary_color.value, accent_color: form.accent_color.value,
+                     header_text: form.header_text.value || null, footer_text: form.footer_text.value || null,
+                     marking: form.marking.value, show_document_id: form.show_document_id.checked };
+      const file = form.logo.files[0];
+      if (file) {
+        const url = await readFile(file, false);
+        body.logo = { mime: file.type, data_base64: url.slice(url.indexOf(",") + 1) };
+      } else if (form.drop_logo && form.drop_logo.checked) {
+        body.logo = null;
+      } else if (form.dataset.template) {
+        body.keep_logo = true;
+      }
+      return body;
+    }
+    main.addEventListener("submit", async function (ev) {
+      const form = ev.target;
+      const what = form.dataset.control;
+      if (!what) return;
+      ev.preventDefault(); let res;
+      if (what === "new-template") res = await call("POST", "/templates", await lookOf(form));
+      else if (what === "edit-template") res = await call("PUT", "/templates/" + form.dataset.template, await lookOf(form));
+      else if (what === "import-template") {
+        const doc = await readJson(form.file.files[0]); form.file.value = "";   // the same file may be picked again
+        if (!doc) { say("This file is not a template."); return; }
+        res = await call("POST", "/templates/import", doc);
+      } else return;
+      if (!res.ok) say(errorText(res)); else if (what === "edit-template") location.reload(); else openInEditor(res.data.id);
+    });
+    main.addEventListener("click", async function (ev) {
+      const button = ev.target.closest('[data-control="delete-template"]');
+      if (!button || !(await askFor(button))) return;
+      const res = await call("DELETE", "/templates/" + button.dataset.template);
+      if (res.ok) location.href = location.pathname; else say(errorText(res));
+    });
+    main.addEventListener("change", function (ev) { if (ev.target.closest('[data-control="import-template"]')) ev.target.form.requestSubmit(); });
+    return;
+  }
+
+  // The editor (a built-in one is read-only: its one action is Duplicate)
+  showKeptNotices();
+  if (main.dataset.readOnly) {
+    main.addEventListener("click", async function (ev) {
+      const b = ev.target.closest('[data-control="duplicate"]'); if (!b) return;
+      const res = await call("POST", "/layouts/" + b.dataset.layout + "/duplicate", {});
+      if (res.ok) location.href = main.dataset.base + "/layouts/" + res.data.id; else say(errorText(res));
+    });
+    return;
+  }
+  const list = document.getElementById("blocks");
+  const state = main.querySelector("[data-state]");
+  const layoutId = main.dataset.layout;
+  const frame = main.querySelector("iframe");
+  const label = main.querySelector("[data-preview-label]");
+  const control = function (name) { return main.querySelector('[data-control="' + name + '"]'); };
+  let revision = parseInt(main.dataset.revision, 10);
+  let unsaved = false;
+  function setLabel(text, error) { if (label) { label.textContent = text; label.classList.toggle("error", !!error); } }
+  function showSaved() { setLabel(unsaved ? "Preview of unsaved changes" : "Preview of revision " + revision); }
+  function dirty() {
+    unsaved = true;
+    if (state) state.textContent = "Unsaved changes";
+    showSaved();
+    schedule();
+  }
+
+  // Indentation, numbers, the empty-chapter and the not-written hints, as Python computes them (R-V5.8, R-V5.9, R2-D3.8.3)
+  let outlineAsked = 0, outlineTimer = null;             // the latest outline request; older answers are ignored
+  async function redrawOutline() {
+    const mine = ++outlineAsked;
+    const res = await call("POST", "/layouts/" + (layoutId || "new") + "/outline", { blocks: collect(), numbering: !!(control("numbering") || {}).checked });
+    if (mine !== outlineAsked) return;
+    if (!res.ok) {                                       // R2-D3.3: no stale indentation, and a way to retry
+      Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; li.dataset.number = ""; });
+      list.querySelectorAll("[data-empty-chapter], [data-unwritten]").forEach(function (p) { p.remove(); });
+      say(OUTLINE_FAILED, false, { label: "Try again", run: redrawOutline });
+      return;
+    }
+    if (region && region.querySelector("[data-message-text]").textContent === OUTLINE_FAILED) say("");
+    res.data.outline.forEach(function (o) {
+      const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
+      if (!li) return;
+      li.dataset.depth = String(o.depth);
+      li.dataset.number = o.number || "";
+      const before = li.querySelector("details, [data-problems]");
+      hint(li, "data-empty-chapter", o.empty_chapter ? EMPTY_CHAPTER : "", "hint", before);
+      hint(li, "data-unwritten", o.unwritten_hint || "", "hint", li.querySelector("details, [data-problems]"));
+    });
+  }
+  function moved() { dirty(); redrawOutline(); }
+  function edited() { dirty(); clearTimeout(outlineTimer); outlineTimer = setTimeout(redrawOutline, 800); }
+
+  function parse(value, isJson) {
+    if (!isJson) return value;
+    try { return JSON.parse(value); } catch (e) { return value; }
+  }
+  function valueOf(input) {
+    const kind = input.dataset.kind;
+    if (kind === "bool") return input.checked;
+    if (kind === "int") return input.value === "" ? null : parseInt(input.value, 10);
+    if (kind === "int-or-null") return input.value === "" ? null : parseInt(input.value, 10);
+    if (kind === "json") {
+      if (input.tagName === "SELECT") return input.value === "" ? null : parse(input.value, true);
+      return parse(input.dataset.value, true);
+    }
+    if (kind === "all-or-list") {
+      const all = input.querySelector('input[data-choice="all"]');
+      if (all && all.checked) return "all";
+      return Array.from(input.querySelectorAll('.choices input[type="checkbox"]:checked')).map(function (b) {
+        return parse(b.value, b.hasAttribute("data-json"));
+      });
+    }
+    if (kind === "list") {
+      if (input.tagName === "FIELDSET") {
+        return Array.from(input.querySelectorAll('input[type="checkbox"]:checked')).map(function (b) { return b.value; });
+      }
+      return input.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+    return input.value;
+  }
+  function optionsOf(li) {
+    const options = {};
+    li.querySelectorAll("[data-option]").forEach(function (input) {
+      if (input.closest("[data-field][hidden]")) return;          // hidden fields are not sent (R-V4.15)
+      const v = valueOf(input);
+      if (v === null && input.dataset.kind === "int-or-null") options[input.dataset.option] = null;
+      else if (v !== null && v !== "") options[input.dataset.option] = v;
+    });
+    return options;
+  }
+  function collect() {
+    return Array.from(list.children).map(function (li) {
+      return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType, options: optionsOf(li) };
+    });
+  }
+
+  function editorState() {                            // what is saved: no version, no data (report modules)
+    const box = function (name) { const c = control(name); return c ? c.checked : undefined; };
+    return { template_id: (control("template") || {}).value || null, show_index: box("show_index"),
+             numbering: box("numbering"), blocks: collect() };
+  }
+  function pickOneHints() {
+    list.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
+      const v = valueOf(set);
+      hint(set, "data-pick-one", Array.isArray(v) && v.length === 0 ? PICK_ONE : "", "inline-problem");
+    });
+  }
+  function showProblems(problems) {
+    list.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
+    const loose = [];
+    (problems || []).forEach(function (p) {
+      const text = (p.pointer ? p.pointer + ": " : "") + p.message + " ";
+      const li = p.instance_id && list.querySelector('[data-instance-id="' + p.instance_id + '"]');
+      const target = li ? li.querySelector("[data-problems]") : null;
+      if (target) target.textContent += text;
+      else loose.push(text);
+    });
+    say(loose.join(" "));
+  }
+
+  // show-if: a field is shown only while the option it names has one of the listed values
+  function applyShowIf(scope) {
+    scope.querySelectorAll("[data-show-if]").forEach(function (field) {
+      const li = field.closest("li");
+      let rule = {};
+      try { rule = JSON.parse(field.getAttribute("data-show-if")); } catch (e) { rule = {}; }
+      field.hidden = !Object.keys(rule).every(function (name) {
+        const input = li.querySelector('[data-option="' + name + '"]');
+        return input && rule[name].indexOf(valueOf(input)) >= 0;
+      });
+    });
+  }
+
+  // The preview of unsaved changes: 1.5 s after the last change, one request in flight, one queued
+  let timer = null, inFlight = false, queued = false, sent = 0, shown = 0;
+  let auto = true;
+  try { auto = localStorage.getItem("composer.autoRefresh") !== "off"; } catch (e) { auto = true; }
+  const autoBox = control("auto-refresh");
+  if (autoBox) autoBox.checked = auto;
+  function schedule() {
+    if (!auto || !frame) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 1500);
+  }
+  async function refresh() {
+    if (!frame || !control("save") || !layoutId) return;
+    if (inFlight) { queued = true; return; }
+    inFlight = true;
+    const mine = ++sent;
+    let res;
+    const draft = Object.assign({ preview_with: JSON.parse(main.dataset.previewWith || "{}") }, editorState());
+    try { res = await call("POST", "/layouts/" + layoutId + "/preview", draft); }
+    finally { inFlight = false; }                        // a failure never blocks later previews
+    if (mine > shown) {                                  // an answer to an older state is ignored
+      shown = mine;
+      if (res.ok) { frame.srcdoc = res.data.html; showSaved(); showProblems(res.data.problems); }
+      else setLabel("The preview could not be made: " + errorText(res), true);
+    }
+    if (queued) { queued = false; refresh(); }
+  }
+
+  async function save() {
+    const body = Object.assign({ name: main.querySelector('.toolbar input[name="name"]').value, revision: revision },
+                               editorState());
+    const res = await call(layoutId ? "PUT" : "POST", "/layouts/" + (layoutId || ""), body);
+    if (res.ok && !layoutId) { unsaved = false; location.href = main.dataset.base + "/layouts/" + res.data.id; return true; }
+    if (res.ok) {
+      revision = res.data.revision;
+      unsaved = false;
+      showProblems([]);
+      if (state) state.textContent = "Saved (revision " + revision + ")";
+      showSaved();
+      if (frame && frame.src) { const u = new URL(frame.src); u.searchParams.set("r", revision); frame.src = u.toString(); }
+      return true;
+    }
+    const err = res.data && res.data.error;
+    showProblems(err && err.details && err.details.length ? err.details : [{ message: errorText(res) }]);
+    return false;
+  }
+
+  main.addEventListener("click", async function (ev) {
+    const target = ev.target.closest("[data-control], [data-add]");
+    if (!target) return;
+    const li = target.closest("li[data-instance-id]");
+    const what = target.dataset.control;
+    if (target.dataset.add) {
+      const template = main.querySelector('template[data-block-template="' + target.dataset.add + '"]');
+      const item = template.content.firstElementChild.cloneNode(true);
+      item.dataset.instanceId = crypto.randomUUID();
+      item.querySelectorAll('input[type="radio"]').forEach(function (r) {
+        r.name = r.name.replace("__new__", item.dataset.instanceId);
+      });
+      list.appendChild(item);
+      applyShowIf(item);
+      moved();
+    } else if (what === "move-up" && li && li.previousElementSibling) {
+      list.insertBefore(li, li.previousElementSibling); moved();
+    } else if (what === "move-down" && li && li.nextElementSibling) {
+      list.insertBefore(li.nextElementSibling, li); moved();
+    } else if (what === "remove" && li) {
+      li.remove(); moved();
+    } else if (what === "save") {
+      await save();
+    } else if (what === "refresh-preview") {
+      clearTimeout(timer); refresh();
+    } else if (what === "delete-layout") {             // Delete is in the editor; the list is where it lands
+      if (!(await askFor(target))) return;
+      const res = await call("DELETE", "/layouts/" + layoutId);
+      if (res.ok) { unsaved = false; location.href = main.dataset.base + "/"; } else say(errorText(res));
+    }
+  });
+
+  main.addEventListener("change", function (ev) {
+    if (ev.target === autoBox) {
+      auto = autoBox.checked;
+      try { localStorage.setItem("composer.autoRefresh", auto ? "on" : "off"); } catch (e) { /* no storage */ }
+      if (auto) schedule();
+      return;
+    }
+    const li = ev.target.closest("li");
+    if (li) { applyShowIf(li); pickOneHints(); }
+    if (ev.target.closest("#blocks")) edited();
+    else if (ev.target.closest('[data-control="numbering"]')) { dirty(); redrawOutline(); }
+    else if (ev.target.closest(".toolbar")) dirty();
+  });
+  main.addEventListener("input", function (ev) {
+    const filter = ev.target.closest("[data-filter]");
+    if (filter) {
+      const needle = filter.value.toLowerCase();
+      filter.parentElement.querySelectorAll(".choices label").forEach(function (l) {
+        l.hidden = needle && l.textContent.toLowerCase().indexOf(needle) < 0;
+      });
+      return;
+    }
+    if (ev.target.closest("#blocks")) edited();
+  });
+  window.addEventListener("beforeunload", function (ev) {
+    if (unsaved) { ev.preventDefault(); ev.returnValue = ""; }
+  });
+
+  // drag and drop (HTML5)
+  let dragged = null;
+  list.addEventListener("dragstart", function (ev) {
+    dragged = ev.target.closest("li");
+    if (dragged) dragged.classList.add("dragging");
+  });
+  list.addEventListener("dragend", function () {
+    if (dragged) { dragged.classList.remove("dragging"); redrawOutline(); }
+    dragged = null;
+  });
+  list.addEventListener("dragover", function (ev) {
+    ev.preventDefault();
+    const over = ev.target.closest("li");
+    if (!dragged || !over || over === dragged) return;
+    const box = over.getBoundingClientRect();
+    list.insertBefore(dragged, ev.clientY < box.top + box.height / 2 ? over : over.nextSibling);
+    dirty();
+  });
+})();

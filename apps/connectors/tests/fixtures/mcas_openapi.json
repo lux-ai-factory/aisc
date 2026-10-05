@@ -1,0 +1,547 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "MCAS-lite",
+        "version": "v1.2.0-lite"
+    },
+    "paths": {
+        "/health": {
+            "get": {
+                "summary": "Health",
+                "operationId": "health_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/status": {
+            "get": {
+                "summary": "Status",
+                "operationId": "status_status_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/model-card": {
+            "get": {
+                "summary": "Model Card",
+                "description": "Article 13.2: the machine-readable counterpart to the human-readable IFU.",
+                "operationId": "model_card_model_card_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/policy": {
+            "get": {
+                "summary": "Policy Corpus",
+                "operationId": "policy_corpus_policy_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/score": {
+            "post": {
+                "summary": "Score",
+                "operationId": "score_score_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ScoreRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/explain": {
+            "post": {
+                "summary": "Explain Prior",
+                "description": "Re-read a logged decision. The explanation is not regenerated: an audit trail that\nanswers differently on re-reading is not an audit trail.",
+                "operationId": "explain_prior_explain_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": true,
+                                "type": "object",
+                                "title": "Payload"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chat": {
+            "post": {
+                "summary": "Chat",
+                "description": "The assistant, queried directly. The scorer is not involved: no application is\nscored, nothing is decided, and no applicant data is read.",
+                "operationId": "chat_chat_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChatRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/override": {
+            "post": {
+                "summary": "Override",
+                "operationId": "override_override_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/OverrideRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/halt": {
+            "post": {
+                "summary": "Halt",
+                "operationId": "halt_halt_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StateChangeRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/resume": {
+            "post": {
+                "summary": "Resume",
+                "operationId": "resume_resume_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StateChangeRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "ChatRequest": {
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "maxLength": 500,
+                        "minLength": 3,
+                        "title": "Question"
+                    },
+                    "request_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Request Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "question"
+                ],
+                "title": "ChatRequest"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "OverrideRequest": {
+                "properties": {
+                    "request_id": {
+                        "type": "string",
+                        "title": "Request Id"
+                    },
+                    "officer": {
+                        "type": "string",
+                        "title": "Officer"
+                    },
+                    "decision": {
+                        "type": "string",
+                        "title": "Decision"
+                    },
+                    "justification": {
+                        "type": "string",
+                        "title": "Justification"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "request_id",
+                    "officer",
+                    "decision",
+                    "justification"
+                ],
+                "title": "OverrideRequest"
+            },
+            "ScoreRequest": {
+                "properties": {
+                    "request_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Request Id"
+                    },
+                    "market": {
+                        "type": "string",
+                        "title": "Market"
+                    },
+                    "amount_eur": {
+                        "type": "number",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Amount Eur"
+                    },
+                    "term_months": {
+                        "type": "integer",
+                        "title": "Term Months"
+                    },
+                    "age": {
+                        "type": "integer",
+                        "title": "Age"
+                    },
+                    "annual_income_eur": {
+                        "type": "number",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Annual Income Eur"
+                    },
+                    "employment_length_years": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "title": "Employment Length Years"
+                    },
+                    "home_ownership": {
+                        "type": "string",
+                        "title": "Home Ownership"
+                    },
+                    "fico_score": {
+                        "type": "number",
+                        "title": "Fico Score"
+                    },
+                    "dti": {
+                        "type": "number",
+                        "maximum": 1.0,
+                        "minimum": 0.0,
+                        "title": "Dti"
+                    },
+                    "open_accounts": {
+                        "type": "integer",
+                        "minimum": 0.0,
+                        "title": "Open Accounts"
+                    },
+                    "total_accounts": {
+                        "type": "integer",
+                        "minimum": 0.0,
+                        "title": "Total Accounts"
+                    },
+                    "public_records": {
+                        "type": "integer",
+                        "minimum": 0.0,
+                        "title": "Public Records"
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "title": "Purpose"
+                    },
+                    "revolving_balance_eur": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "title": "Revolving Balance Eur"
+                    },
+                    "revolving_utilisation": {
+                        "type": "number",
+                        "maximum": 1.0,
+                        "minimum": 0.0,
+                        "title": "Revolving Utilisation"
+                    },
+                    "mortgage_accounts": {
+                        "type": "integer",
+                        "minimum": 0.0,
+                        "title": "Mortgage Accounts"
+                    },
+                    "public_record_bankruptcies": {
+                        "type": "integer",
+                        "minimum": 0.0,
+                        "title": "Public Record Bankruptcies"
+                    },
+                    "months_since_first_credit_line": {
+                        "type": "integer",
+                        "minimum": 0.0,
+                        "title": "Months Since First Credit Line"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "market",
+                    "amount_eur",
+                    "term_months",
+                    "age",
+                    "annual_income_eur",
+                    "employment_length_years",
+                    "home_ownership",
+                    "fico_score",
+                    "dti",
+                    "open_accounts",
+                    "total_accounts",
+                    "public_records",
+                    "purpose",
+                    "revolving_balance_eur",
+                    "revolving_utilisation",
+                    "mortgage_accounts",
+                    "public_record_bankruptcies",
+                    "months_since_first_credit_line"
+                ],
+                "title": "ScoreRequest",
+                "description": "Ratios are ratios (dti, revolving_utilisation); the LCLD schema's percentages are\nthe adapter's problem, not the caller's."
+            },
+            "StateChangeRequest": {
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "title": "Reason"
+                    },
+                    "actor": {
+                        "type": "string",
+                        "title": "Actor",
+                        "default": "unknown"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "reason"
+                ],
+                "title": "StateChangeRequest"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}

@@ -1,0 +1,118 @@
+# G4 (scripts/guard-frozen.sh): the files feat/deployment-modes changes on top of Sean's
+# origin/master, one per line, each with the task of the engine-modes plan
+# (docs/superpowers/plans/2026-09-27-engine-deployment-modes.md) and why. Every file of the engine
+# repos that is not listed here must be byte-identical to its base (controller Ruling 36).
+#
+#   base <repo> <commit>          origin/master of the repo, the base of feat/deployment-modes
+#   <repo> <path> T<n>: <reason>  a file feat/deployment-modes adds or changes on purpose
+#
+# Derived with `git diff --name-only <base> HEAD` in apps/backend, apps/eval and apps/webapp.
+# A new change goes in here with its reason, in the same commit as the gitlink that brings it.
+
+base backend 1b1efe9
+base eval 511432b
+base webapp ab9f19d
+
+# apps/backend
+backend aisc_backend/apps.py T3: the database-mode check at start (migrate refused in the other mode), the stamp signal loaded
+backend aisc_backend/auth/membership.py T3: platform memberships, the configurator's per-project access check
+backend aisc_backend/deployment.py T1, T3: AISC_DEPLOYMENT (standalone by default, or configurator) and its start checks
+backend aisc_backend/management/__init__.py T3: package of migrate_projects
+backend aisc_backend/management/commands/__init__.py T3: package of migrate_projects
+backend aisc_backend/management/commands/migrate_projects.py T3: migrates every project database (configurator only)
+backend aisc_backend/migrations/0015_plugin_catalogue_slug.py T2: the Configurator's migrations appended after Sean's 0014 (catalogue_slug)
+backend aisc_backend/migrations/0016_evaluation_system_id_project_platform_project_id.py T2: evaluation.system_id and project.platform_project_id
+backend aisc_backend/migrations/0017_one_project_per_platform_project.py T2: one engine project per platform project
+backend aisc_backend/migrations/0018_alter_project_platform_project_id.py T2: platform_project_id column
+backend aisc_backend/migrations/0019_no_login_of_its_own.py T2: configurator drops the login tables (Ruling 11); 0023 before the adapt plan
+backend aisc_backend/migrations/0020_the_database_is_the_project.py T2: the project database layout; 0024 before the adapt plan
+backend aisc_backend/migrations/0021_engine_deployment_marker.py T3: the database records its mode (Rulings 16, 17); 0025 before the adapt plan
+backend aisc_backend/models/evaluation.py T2: evaluation.system_id (the stamp's column); the stamp itself is set in signals/
+backend aisc_backend/models/plugin.py T2: plugin.catalogue_slug
+backend aisc_backend/models/project.py T2: project.platform_project_id (column project_id) and its constraint
+backend aisc_backend/platform_projects.py T3: reads platform project names (configurator)
+backend aisc_backend/project_door.py T3, T4: the door: admits a request to its project database and holds every configurator rule (membership, admin-only plugin routes; adapt plan 2026-09-28, task 3)
+backend aisc_backend/projectdb.py T3: project database aliases (configurator)
+backend aisc_backend/repositories/measurement_repository.py T4: vendor of the queryset's database, not default (isolation I7.1)
+backend aisc_backend/repositories/project_repository.py T4: create() takes platform_project_id
+backend aisc_backend/repositories/system_version_repository.py T3: latest card version, read by the stamp signal
+backend aisc_backend/routers/platform_project.py T4: the engine's row for a platform project, moved verbatim out of Sean's routers/project.py, mounted in configurator only (adapt plan 2026-09-28, task 3)
+backend aisc_backend/routers/target_input.py T4: (targets plan v2 of 2026-09-29, step 4, not the engine-modes plan) every evaluation form asks for its target; the frozen input-definitions handler is reused, not changed; configurator only
+backend aisc_backend/tests/test_target_input.py T4: (targets plan v2 of 2026-09-29, step 4, not the engine-modes plan) tests of the target input route (EN1, EN2, EN4)
+backend aisc_backend/routers/plugin.py T4: catalogue_slug recorded on install (the only change left to a router of Sean's; the membership and admin checks moved to the door, adapt plan 2026-09-28, task 3)
+backend aisc_backend/schemas/plugin.py T4: catalogue_slug in the plugin schema
+backend aisc_backend/services/celery_service.py T4: Sean's run_evaluation(evaluation_pid) in both modes; configurator adds the run (project, evaluation, ticket) in the Celery headers (Ruling 27; adapt plan 2026-09-28, task 4)
+backend aisc_backend/signals/__init__.py T3: package of the stamp signal
+backend aisc_backend/signals/system_stamp.py T3: the WP9 stamp, outside Sean's files (amendment A1)
+backend aisc_backend/tests/isolation_support.py T3: test support for project databases
+backend aisc_backend/tests/routers/test_plugin_admin_only.py T4: admin-only plugin routes in configurator
+backend aisc_backend/tests/routers/test_project_membership.py T3: membership on project routes
+backend aisc_backend/tests/test_celery_dispatch.py T4: the worker is sent Sean's arguments in both modes, the run in the headers in configurator (adapt plan 2026-09-28, task 4)
+backend aisc_backend/tests/test_chain.py T9: follow-up, the pipeline chain's engine step 4, from definitive a5cd80e
+backend aisc_backend/tests/test_configurator_settings.py T3: configurator settings
+backend aisc_backend/tests/test_deployment_mode.py T1, T3: the mode switch and its checks
+backend aisc_backend/tests/test_door_owns_authorization.py T4: every configurator refusal happens in the door, before a database is opened (adapt plan 2026-09-28, task 3)
+backend aisc_backend/tests/test_every_project_route_is_guarded.py T4: every project route checks membership in configurator
+backend aisc_backend/tests/test_gateway_session.py T4: the gateway's token header
+backend aisc_backend/tests/test_isolation_engine.py T3, T4: ported isolation tests
+backend aisc_backend/tests/test_isolation_engine_db.py T3, T4: ported isolation tests on Postgres
+backend aisc_backend/tests/test_isolation_result_route.py T3: ported isolation test of the result route
+backend aisc_backend/tests/test_migration_history.py T2, T3: the migration graph of the one data model
+backend aisc_backend/tests/test_modes_routes.py T4: routes by mode
+backend aisc_backend/tests/test_one_system_per_project.py T5: AI system with its components, ported tests (Ruling 24)
+backend aisc_backend/tests/test_seans_files_unchanged.py T4: Sean's routers, keycloak.py and settings the configurator no longer edits equal master (adapt plan 2026-09-28, task 3)
+backend aisc_backend/tests/test_seans_table_names.py T2: Sean's table names are kept, no migration renames his tables (adapt plan 2026-09-28, task 1)
+backend config/settings.py T1, T3: reads the mode; in configurator the door middleware, project databases and no login apps (0019 dropped their tables)
+backend config/urls.py T3: admin and allauth routes standalone only; the platform project router in configurator only (adapt plan 2026-09-28, task 3); the target input router in front of /plugins, configurator only (targets plan v2, 2026-09-29, step 4)
+
+# apps/eval
+eval aisc_eval/celery_app.py T9: Task 9b: Méril's feat/dev-catalogue-staging (Celery task limits 400/405 min for long first plugin runs)
+eval aisc_eval/celery_tasks.py T6, T9: Task 9b: Méril's feat/dev-catalogue-staging (online install from the index, index always passed, placeholder API_KEY_OPENAI); one import that registers the run header handlers (adapt plan 2026-09-28, task 4)
+eval aisc_eval/deployment.py T6: AISC_DEPLOYMENT for the worker
+eval aisc_eval/run_context.py T6: the run a task acts for, carried in the Celery headers so Sean's task signatures stay his (adapt plan 2026-09-28, task 4)
+eval aisc_eval/service/api_client.py T6: the door's project, evaluation and run headers in configurator only, read from the run context (adapt plan 2026-09-28, task 4)
+eval tests/test_deployment_mode.py T6: the worker's mode switch
+eval tests/test_run_context.py T6: the run context is set from the header and cleared after the task (adapt plan 2026-09-28, task 4)
+eval tests/test_run_context_broker.py T6: the run header travels through a broker to every task published during a run (adapt plan 2026-09-28, task 4)
+eval tests/test_run_ticket.py T6: the run ticket and project headers (configurator), from the run context
+
+# apps/webapp
+webapp .env T7: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
+webapp .env.development T7: standalone mode and launcher URL for dev
+webapp .env.test T7: the mode for plain vitest runs (Ruling 30)
+webapp Dockerfile T7: ENV APP_DEPLOYMENT=standalone by default (Ruling 28)
+webapp src/DeploymentGate.tsx T7: error page for an unknown mode
+webapp src/MyApp.tsx T7: Tasks route standalone only
+webapp src/api/installProjectHeader.test.ts T7: the start-up wrapper names the project on fetch and axios (adapt plan 2026-09-28, task 5)
+webapp src/api/installProjectHeader.ts T7: installs the X-AISC-Project wrapper over fetch and axios at start, configurator only (adapt plan 2026-09-28, task 5)
+webapp src/api/projectHeader.i7_4.test.ts T7, T8: every call names the project (I7.4), through the start-up wrapper
+webapp src/api/projectHeader.ts T7, T8: projectFetch and the axios interceptor: the X-AISC-Project header in configurator
+webapp src/components/LeftBar.tsx T7: Tasks link standalone only
+webapp src/components/PluginInstallDialog.modes.test.tsx T8: the install dialog in both modes
+webapp src/components/PluginInstallDialog.tsx T8: install into the project you came from (configurator), Sean's list standalone
+webapp src/components/TopBar.tsx T7: launcher's project in configurator, Sean's wizard standalone
+webapp src/context/AuthContext.tsx T7: the gateway's session in configurator, Sean's Keycloak login standalone
+webapp src/deployment.components.test.tsx T7: components by mode
+webapp src/deployment.test.ts T7: the mode switch
+webapp src/deployment.ts T7: APP_DEPLOYMENT read per call
+webapp src/main.tsx T7: DeploymentGate mounted (Ruling 30); the project-header wrapper installed before render in configurator
+webapp src/pages/GlobalHome.tsx T7: the launcher's project in configurator
+webapp src/pages/Plugins.modes.test.tsx T8: the Plugins page by mode (configurator lists only the project's installed tests)
+webapp src/pages/Plugins.tsx T8: the catalogue is the only place tests are found in configurator; Sean's package index standalone
+webapp src/pages/PluginEvaluations.tsx R1: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer
+webapp src/pages/PluginEvaluations.noReport.test.ts R1: no source of the app links to /report any more
+webapp src/pages/PluginStartEvaluation.tsx R2: the start button and its tooltip say Launch Evaluation (Create Evaluation before), the error toasts Failed to launch evaluation
+webapp src/pages/PluginStartEvaluation.launch.test.ts R2: the start button says Launch Evaluation
+webapp src/platform/currentProject.test.ts T7, T8: the tab's platform project
+webapp src/platform/currentProject.ts T7, T8: the tab's platform project (pid only)
+webapp src/platform/gatewaySession.test.ts T7: the gateway's session
+webapp src/platform/gatewaySession.ts T7: the gateway's session
+webapp src/pluginCatalogue/PluginInstallContext.tsx T8: install target by mode
+webapp src/pluginCatalogue/installUri.ts T8: catalogue slug of an install link
+webapp src/pluginCatalogue/testing.tsx T8: test helpers without a new dependency (Ruling 34)
+webapp src/seansFilesUnchanged.test.ts T7: Sean's files the configurator no longer edits equal master (adapt plan 2026-09-28, task 5); PluginEvaluations.tsx left the list (R1), PluginStartEvaluation.tsx too (R2)
+backend README.md T10: docs, what the branch changes and how the engine runs inside AISC (documentation pass 2026-10-03)
+eval README.md T10: docs, what the branch changes and how the worker runs inside AISC (documentation pass 2026-10-03)
+webapp README.md T10: docs, what the branch changes and how the frontend runs inside AISC (documentation pass 2026-10-03)
+webapp src/pages/OpenPluginFromUrl.tsx T8: the execution page opens the test ?plugin= names (step 4's E link)
+webapp src/pages/OpenPluginFromUrl.test.tsx T8: its test

@@ -1,2 +1,13 @@
 /.idea/
 def_plugins/
+env.secrets
+keycloak/aisc-realm.local.json
+env.runtime
+env.engine-standalone
+
+# Python bytecode
+__pycache__/
+*.pyc
+# immudb's signing key and its public half (scripts/secrets.sh)
+immudb-signing.key
+immudb-signing.pub

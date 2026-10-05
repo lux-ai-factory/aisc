@@ -7,6 +7,115 @@
 }
 
 
+# Every module sits behind `protect <app>`:
+# - `route` keeps the directives in the order written. Without it Caddy runs the witness before
+#   sign-in and the header strip after the witness.
+# - The strip removes the identity and request-id headers a client sent, and X-Middleware-Subrequest,
+#   which skips a Next.js app's middleware on unpatched versions (CVE-2025-29927).
+# - The ledger witness runs on writes only, with the app this handle names, the unstripped URI and
+#   the gateway secret. LEDGER_GATEWAY=off, or no LEDGER_GATEWAY at all, makes it an empty snippet.
+# - A check that must know the person (admin_only, schema_gate) goes in the same `route` as
+#   protect: Caddy sorts `route` after `forward_auth`, so outside it the check would run before
+#   sign-in.
+(strip-and-sign-in) {
+  request_header -X-AISC-Request-Id
+  request_header -X-AISC-App
+  request_header -X-AISC-Gateway
+  request_header -X-AISC-Original-Uri
+  request_header -X-Auth-Request-*
+  request_header -X-Middleware-Subrequest
+  forward_auth host.docker.internal:4180 {
+    uri /oauth2/auth
+    copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Preferred-Username
+    copy_headers X-Auth-Request-Access-Token
+    @unauth status 401
+    handle_response @unauth {
+      redir * /oauth2/start?rd={http.request.uri}
+    }
+  }
+}
+
+(protect) {
+  route {
+    import strip-and-sign-in
+    import witness-{$LEDGER_GATEWAY:off} {args[0]}
+  }
+}
+
+# protect, plus a witness on the GETs listed after the app (downloads, exports). The list must not
+# be empty: an empty path matcher stops Caddy at load.
+(protect-reads) {
+  route {
+    import strip-and-sign-in
+    import witness-{$LEDGER_GATEWAY:off} {args[0]}
+    import witness-reads-{$LEDGER_GATEWAY:off} {args[0:]}
+  }
+}
+
+(witness-off) {
+}
+
+(witness-on) {
+  @witnessed_{args[0]} {
+    not method GET HEAD OPTIONS
+  }
+  forward_auth @witnessed_{args[0]} platform:8000 {
+    uri /authz/witness
+    header_up X-AISC-App {args[0]}
+    header_up X-AISC-Original-Uri {http.request.orig_uri}
+    header_up X-AISC-Gateway {$AISC_WITNESS_GATEWAY_SECRET}
+    copy_headers X-AISC-Request-Id
+  }
+}
+
+(witness-reads-off) {
+}
+
+(witness-reads-on) {
+  @witnessed_reads_{args[0]} {
+    method GET
+    path {args[1:]}
+  }
+  forward_auth @witnessed_reads_{args[0]} platform:8000 {
+    uri /authz/witness
+    header_up X-AISC-App {args[0]}
+    header_up X-AISC-Original-Uri {http.request.orig_uri}
+    header_up X-AISC-Gateway {$AISC_WITNESS_GATEWAY_SECRET}
+    copy_headers X-AISC-Request-Id
+  }
+}
+
+# Goes after protect: the platform says whether the caller holds the admin role, from the token
+# protect copied in. A 204 lets the request through; a 403 goes back to the browser as it is.
+(admin_only) {
+  forward_auth platform:8000 {
+    uri /authz/admin
+  }
+}
+
+# The database diagrams: the platform reads the path Caddy passes (X-Forwarded-Uri) and lets a
+# member through to the landing page, the shared platform and their own project's database.
+(schema_gate) {
+  forward_auth platform:8000 {
+    uri /authz/schema
+  }
+}
+
+# oauth2-proxy's own endpoints stay open on every origin, or there is no way in.
+(oauth_endpoints) {
+  handle /oauth2/* {
+    reverse_proxy host.docker.internal:4180 {
+      # {host} drops the port, which makes oauth2-proxy build
+      # redirect_uri=http://localhost/oauth2/callback for the launcher too and
+      # Keycloak answer 400. {http.request.hostport} keeps it.
+      header_up Host {http.request.hostport}
+      header_up X-Forwarded-Host {http.request.hostport}
+      header_up X-Forwarded-Proto http
+      header_up X-Real-IP {remote_host}
+    }
+  }
+}
+
 {$CADDY_DOMAIN}:{$CADDY_PORT} {
   log {
     format console
@@ -17,35 +126,25 @@
   }
 
   import tls-{$CADDY_ENVIRONMENT}
+  import oauth_endpoints
 
-  # Reverse proxy to aisc-backend, Django Admin section
-  handle /admin* {
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
 
-  # Reverse proxy to aisc-backend, this will serve the static assets need by Django Admin
-  handle /static/admin/* {
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
-
-  # Internal API should only be accessible inside the containers, block all external access
+  # The engine's internal API is for the containers only: refused from outside.
   handle /api/v1/internal/* {
     respond "Forbidden - Internal Service Only" 403
   }
 
-  # Should be the backend API, so forward also this path there
+  # The engine's API (apps/backend).
   handle /api/* {
+    import protect engine
     reverse_proxy aisc-backend:8000 {
         header_up X-Real-IP {remote_host}
       }
   }
 
-  # Flower 
+  # Flower, the Celery monitor of the evaluation worker.
   handle /flower/* {
+    import protect flower
     reverse_proxy aisc-eval-flower:5555 {
         header_up X-Real-IP {remote_host}
       }
@@ -53,6 +152,7 @@
 
   # AI-compliance checklists app (apps/controls), served under /controls
   handle /controls* {
+    import protect controls
     reverse_proxy controls-web:3000 {
       header_up X-Real-IP {remote_host}
     }
@@ -60,15 +160,151 @@
 
   # EU-AI-Act qualification app (apps/qualification), served under /qualification
   handle /qualification* {
+    # reads the ledger records: a card opened (qualification.opened) and its PDF downloaded
+    import protect-reads qualification /qualification/p/*/qualify/* /qualification/p/*/api/qualifications/*/ai-card.pdf /qualification/p/*/api/qualifications/*/system-card.pdf
     reverse_proxy qualification-web:3000 {
       header_up X-Real-IP {remote_host}
     }
   }
+  # AI Act control objectives (apps/control-objectives). handle_path strips the
+  # prefix: the FastAPI app serves at /api/* and CONTROL_OBJECTIVES_ROOT_PATH only
+  # fixes the URLs it generates, so the backend's own /api/* does not collide.
+  handle_path /control-objectives* {
+    import protect control_objectives
+    reverse_proxy control-objectives:8090 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
 
-  # Serve the JS frontend by default
+  # The report composer (apps/report-composer). handle_path strips the prefix;
+  # REPORT_COMPOSER_ROOT_PATH fixes the URLs the app generates. The renderer is never routed.
+  handle_path /report-composer* {
+    # The read paths are matched after handle_path has stripped /report-composer.
+    import protect-reads report_composer /api/p/*/reports/*/pdf /api/p/*/reports/*/download
+    reverse_proxy report-composer:8095 {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
+  # The engine (apps/backend), in configurator mode, reads from the platform which projects the
+  # caller may enter. GET only, so no other method reaches the platform through this route. It
+  # comes before the catch-all so it wins over the frontend below.
+  @platformProjects {
+    method GET
+    path /platform/api/projects
+  }
+  handle @platformProjects {
+    import protect platform
+    rewrite * /projects
+    reverse_proxy platform:8000
+  }
+
+  # Everything else is the engine's web frontend.
   handle {
+    import protect engine_webapp
     reverse_proxy aisc-webapp:80 {
       header_up X-Real-IP {remote_host}
     }
   }
 }
+
+# The launcher: one page listing the assessment modules. It has a listener of
+# its own because the execution engine owns the root of the site above and
+# cannot be served under a path prefix.
+{$CADDY_DOMAIN}:{$HOMEPAGE_PORT} {
+  import tls-{$CADDY_ENVIRONMENT}
+  import oauth_endpoints
+  # `route` to keep the order explicit: the API before the static files.
+  route {
+    # The platform's internal route (service token, resolved keys) is never served here.
+    handle /api/internal/* {
+      respond 404
+    }
+    # The platform's checks for Caddy (the witness, admin, schema) answer Caddy only. This is an
+    # allow-list, so a new check is closed here by default. The one exception is the project role,
+    # which the pages (project, llm, connections, logs) read to show their menus.
+    @caddy_only {
+      path /api/authz/*
+      not path /api/authz/projects/*
+    }
+    handle @caddy_only {
+      respond 404
+    }
+    # The platform's projects, on the launcher's own origin so the page can read
+    # them with the session cookie it already has.
+    handle_path /api/* {
+      import protect platform
+      reverse_proxy platform:8000
+    }
+    # A project's catalogue, public or private: the catalogue's own pages (catalogue-private), which read
+    # it from /api/ above with the person's sign-in (the platform serves a private copy, or the public
+    # catalogue live). Under a prefix, because the launcher owns the root.
+    redir /project-catalogue /project-catalogue/
+    # `route` keeps the order written: sign-in sees the whole address (handle_path would strip the
+    # prefix first, and after signing in the browser would land on /catalogue, the launcher's 404).
+    handle /project-catalogue/* {
+      route {
+        import protect launcher
+        uri strip_prefix /project-catalogue
+        reverse_proxy catalogue-private:3000
+      }
+    }
+    # The pages' address until 2026-10-04: bookmarks and open tabs go on to the same page there.
+    handle /private-catalogue* {
+      route {
+        uri strip_prefix /private-catalogue
+        redir * /project-catalogue{uri} 308
+      }
+    }
+    # A project's page: one file, which reads the slug from the URL itself. An explicit
+    # rewrite, because try_files would also resolve "/" (a directory) to the project page.
+    handle /p/* {
+      # `route` keeps the order written: sign-in records /p/<slug>, not the rewritten /project.html
+      route {
+        import protect launcher
+        root * /srv/homepage
+        rewrite * /project.html
+        file_server
+      }
+    }
+    # pgAdmin, for admins only: it shows every project's data. It serves under this
+    # prefix itself (SCRIPT_NAME), so the path goes through unstripped.
+    handle /inspect/pgadmin* {
+      route {
+        import protect pgadmin
+        import admin_only
+      }
+      reverse_proxy pgadmin:80
+    }
+    # The diagrams show structure, never rows: members see their own project's and the
+    # shared platform's, and the platform decides which (see schema_gate).
+    handle_path /inspect/schema* {
+      route {
+        import protect schema
+        import schema_gate
+      }
+      reverse_proxy schema-docs:8080
+    }
+    # protect goes INSIDE handle: at site level it would also guard /oauth2/*,
+    # and /oauth2/start would redirect to itself for ever.
+    handle {
+      import protect launcher
+      root * /srv/homepage
+      file_server
+    }
+  }
+}
+
+# The dashboard (apps/results-dashboard, Superset). Its own listener, because Superset needs the
+# site root. Behind the gateway like every module: Superset has no login of its own and takes who
+# is signed in from the token protect copies in (dashboard-gateway/). It runs host-networked, so
+# it is reached on the Docker host address.
+{$CADDY_DOMAIN}:{$DASHBOARD_PORT} {
+  import tls-{$CADDY_ENVIRONMENT}
+  import oauth_endpoints
+  handle {
+    import protect dashboard
+    reverse_proxy {$DASHBOARD_UPSTREAM}
+  }
+}
+

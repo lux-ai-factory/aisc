@@ -1,0 +1,6012 @@
+{
+"about": "Random values through platform_service/ledger/canonical.py (phase 5), for the TypeScript twin (apps/qualification/src/server/ledger/canonical.ts). `not_ledger_safe`: valid JSON the emitter refuses before writing, because the relay would refuse it: an integer-valued number beyond 2**53 (jsonb keeps 1e21 as an integer) or a lone surrogate.",
+"vectors": [
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "\"6\\u7aa2\"",
+"canonical": "\"6\u7aa2\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "1811748842884097",
+"canonical": "1811748842884097"
+},
+{
+"json": "{\"None\": 6.791953284372696e-11, \"\\uceda\\u85cd\\u22ba\\u0000\\ub286\\u383a\": null, \"\\u146b\\uda28\\udebf\": \"\\u7a59\\ud2b6\\u9be2\\udbcc\\udc75\\u229a\"}",
+"canonical": "{\"None\":6.791953284372696e-11,\"\u146b\uda28\udebf\":\"\u7a59\ud2b6\u9be2\udbcc\udc75\u229a\",\"\uceda\u85cd\u22ba\\u0000\ub286\u383a\":null}"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "4703.251750804286",
+"canonical": "4703.251750804286"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"1e+30\": -1267495216658206, \"None\": \"\\u8c1b<\"}",
+"canonical": "{\"1e+30\":-1267495216658206,\"None\":\"\u8c1b<\"}"
+},
+{
+"json": "{\"None\": -8545589872050256}",
+"canonical": "{\"None\":-8545589872050256}"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "{\"8972724228725196\": null, \"-48593.631402579835\": null, \"None\": null}",
+"canonical": "{\"-48593.631402579835\":null,\"8972724228725196\":null,\"None\":null}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "[[\"\\ud8f4\\udeb4\\uda64\\udd65\", true]]",
+"canonical": "[[\"\ud8f4\udeb4\uda64\udd65\",true]]"
+},
+{
+"json": "-3211315988383149",
+"canonical": "-3211315988383149"
+},
+{
+"json": "{\"\\udb7f\\ude46\": [1e-07, \"\"], \"1.112797123366619e+25\": 1e+21}",
+"canonical": "{\"1.112797123366619e+25\":1e+21,\"\udb7f\ude46\":[1e-7,\"\"]}"
+},
+{
+"json": "{\"$\": true, \"\\ud822\\uddc0\\u75cb\\u7c87b~\": 1e+30, \"None\": 123.456, \"-3693939371728961\": \"\\u9a48\\u001a\\u0018\\ub908\"}",
+"canonical": "{\"$\":true,\"-3693939371728961\":\"\u9a48\\u001a\\u0018\ub908\",\"None\":123.456,\"\ud822\uddc0\u75cb\u7c87b~\":1e+30}"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "[\"\\ud83f\\uded4\\u3fc0\\u8bca\\u73fc\", 5077622578504893, true]",
+"canonical": "[\"\ud83f\uded4\u3fc0\u8bca\u73fc\",5077622578504893,true]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "-1093841173238738",
+"canonical": "-1093841173238738"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[{\"-1415784552940317\": \"\\ub3ebp\\u001fD\\ud9bc\\udeca\\uda56\\ude75\", \"\\ud8f6\\uddb4p2\": [\"\\uda20\\udf50\\u6196*\\u72fa\\ud870\\uddcb\\ucf2b\"], \"False\": [9.550838559296777e+19], \"\\u0e52m\\udba7\\udf4a\\uda97\\udeeb\\ud8ab\\udff4\\u0007\": null}, 0.1, \"\\u0006\\u0d48*\", -92534231784832]",
+"canonical": "[{\"-1415784552940317\":\"\ub3ebp\\u001fD\ud9bc\udeca\uda56\ude75\",\"False\":[95508385592967770000],\"\u0e52m\udba7\udf4a\uda97\udeeb\ud8ab\udff4\\u0007\":null,\"\ud8f6\uddb4p2\":[\"\uda20\udf50\u6196*\u72fa\ud870\uddcb\ucf2b\"]},0.1,\"\\u0006\u0d48*\",-92534231784832]"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[[], \"\\u7caf\", [-6799327478365589, false, null]]",
+"canonical": "[[],\"\u7caf\",[-6799327478365589,false,null]]"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "{\"-7862902642893794\": [null, {\"True\": 1e+21, \"None\": \"\\udb7a\\uddcd\\u1a0e\\u4f57\\u0006\\udbae\\udf46\"}, 123.456, null], \"None\": {\"0.1\": {}}}",
+"canonical": "{\"-7862902642893794\":[null,{\"None\":\"\udb7a\uddcd\u1a0e\u4f57\\u0006\udbae\udf46\",\"True\":1e+21},123.456,null],\"None\":{\"0.1\":{}}}"
+},
+{
+"json": "{\"False\": {\"\": 4222020463386499}, \"0.1\": 1e+21, \"-8968183607500724\": [[]], \"742983.4067892972\": \"}L\\u7781\\u21be\\u7e57\"}",
+"canonical": "{\"-8968183607500724\":[[]],\"0.1\":1e+21,\"742983.4067892972\":\"}L\u7781\u21be\u7e57\",\"False\":{\"\":4222020463386499}}"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"True\": {\"4.5632727726812167e+24\": {\"5e-324\": 1e-07, \"4.9628623429391494e-14\": \"#\\u7d47\\ud8ae\\udc63\"}, \"None\": [], \"\\udbe5\\udf00\": 5907287718004637}, \"\\u72d6\\u4626>\\u0019\\udbc7\\udec4\\udb71\\udf6a\": {\"671006703827649\": [7.865118583281339e+28, 630808969187, 5096204542601618]}, \"False\": true, \"1e+21\": -0.0}",
+"canonical": "{\"1e+21\":0,\"False\":true,\"True\":{\"4.5632727726812167e+24\":{\"4.9628623429391494e-14\":\"#\u7d47\ud8ae\udc63\",\"5e-324\":1e-7},\"None\":[],\"\udbe5\udf00\":5907287718004637},\"\u72d6\u4626>\\u0019\udbc7\udec4\udb71\udf6a\":{\"671006703827649\":[7.865118583281339e+28,630808969187,5096204542601618]}}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "-964697.5012812981",
+"canonical": "-964697.5012812981"
+},
+{
+"json": "[\"2\\ud84f\\udf50\"]",
+"canonical": "[\"2\ud84f\udf50\"]"
+},
+{
+"json": "{\"1e+21\": false, \"None\": false, \"True\": {}}",
+"canonical": "{\"1e+21\":false,\"None\":false,\"True\":{}}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-8391517875266876",
+"canonical": "-8391517875266876"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "67.2312772530091",
+"canonical": "67.2312772530091"
+},
+{
+"json": "\"\\u007f\\udbb3\\udfe8Ki\\u5e2d\"",
+"canonical": "\"\u007f\udbb3\udfe8Ki\u5e2d\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"*\\ud8c7\\udf46\\ud8a3\\uddf2\\ub4d7\\u278e\\u89d8\": null, \"1e+30\": null, \"None\": {}}",
+"canonical": "{\"*\ud8c7\udf46\ud8a3\uddf2\ub4d7\u278e\u89d8\":null,\"1e+30\":null,\"None\":{}}"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"False\": null}",
+"canonical": "{\"False\":null}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "8992019069196747",
+"canonical": "8992019069196747"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "{\"None\": [123.456, true], \"-5941163741432108\": [null, {\"123.456\": true, \"6.150311754044343e-24\": null, \"False\": false, \"None\": -7012347715650221}, \"\\ud939\\uddb8\\ud962\\udce6\\uda6e\\udc31\\ud8c0\\ude76\"], \"*\\u64d7\\ub739FV\": \"\\u1dfa\\u0010\\u93e8\\ud94e\\udd51p\\uc89b\"}",
+"canonical": "{\"*\u64d7\ub739FV\":\"\u1dfa\\u0010\u93e8\ud94e\udd51p\uc89b\",\"-5941163741432108\":[null,{\"123.456\":true,\"6.150311754044343e-24\":null,\"False\":false,\"None\":-7012347715650221},\"\ud939\uddb8\ud962\udce6\uda6e\udc31\ud8c0\ude76\"],\"None\":[123.456,true]}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "2391326159048311",
+"canonical": "2391326159048311"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-3236043051318296",
+"canonical": "-3236043051318296"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "4934245377191876",
+"canonical": "4934245377191876"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"`\"",
+"canonical": "\"`\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "-8087786932852899",
+"canonical": "-8087786932852899"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u919c\"",
+"canonical": "\"\u919c\""
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"1e-07\": -372543084276806}",
+"canonical": "{\"1e-07\":-372543084276806}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\u5ea2\\u2743N\\u0145\\uc705\"",
+"canonical": "\"\u5ea2\u2743N\u0145\uc705\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\ud849\\udcc2\\uda87\\udfa1\"",
+"canonical": "\"\ud849\udcc2\uda87\udfa1\""
+},
+{
+"json": "-3984498469488440",
+"canonical": "-3984498469488440"
+},
+{
+"json": "\"\\u0002\\ud94b\\ude8b\"",
+"canonical": "\"\\u0002\ud94b\ude8b\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\ud8ed\\uddd3\"",
+"canonical": "\"\ud8ed\uddd3\""
+},
+{
+"json": "\"\\u217c\"",
+"canonical": "\"\u217c\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u2138sX\"",
+"canonical": "\"\u2138sX\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"False\": {}, \"2\": \"\\ud8ca\\udd4bn\"}",
+"canonical": "{\"2\":\"\ud8ca\udd4bn\",\"False\":{}}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-1221389399593597",
+"canonical": "-1221389399593597"
+},
+{
+"json": "1372883086944951",
+"canonical": "1372883086944951"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "{\"False\": 5e-324, \"None\": false, \"123.456\": null}",
+"canonical": "{\"123.456\":null,\"False\":5e-324,\"None\":false}"
+},
+{
+"json": "\"\\u001c\\udb7d\\udee3\\uda50\\udcef\\u5e84\"",
+"canonical": "\"\\u001c\udb7d\udee3\uda50\udcef\u5e84\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"J\\udadf\\udeb1\\udb76\\udd01\\u0015\"",
+"canonical": "\"J\udadf\udeb1\udb76\udd01\\u0015\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": true}",
+"canonical": "{\"None\":true}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "4187030171538746",
+"canonical": "4187030171538746"
+},
+{
+"json": "\"\\uaa34|\\ud886\\udf6d\"",
+"canonical": "\"\uaa34|\ud886\udf6d\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[\"g=\\u2609\", null]",
+"canonical": "[\"g=\u2609\",null]"
+},
+{
+"json": "-7220177960688355",
+"canonical": "-7220177960688355"
+},
+{
+"json": "\"\\u03ec\\udabb\\udcea\\ub9b3o9\\udb5c\\udda3\"",
+"canonical": "\"\u03ec\udabb\udcea\ub9b3o9\udb5c\udda3\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"A\\udb4a\\ude82v\\u4cd1\\u0015\"",
+"canonical": "\"A\udb4a\ude82v\u4cd1\\u0015\""
+},
+{
+"json": "{\"5e-324\": {\"5e-324\": \"\"}, \"None\": true}",
+"canonical": "{\"5e-324\":{\"5e-324\":\"\"},\"None\":true}"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"-0.0\": false, \"True\": false, \"3910089943863303\": false}",
+"canonical": "{\"-0.0\":false,\"3910089943863303\":false,\"True\":false}"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "\"|x\\u927e\\udb4d\\udfab\"",
+"canonical": "\"|x\u927e\udb4d\udfab\""
+},
+{
+"json": "6155373076842164",
+"canonical": "6155373076842164"
+},
+{
+"json": "1730365871779696",
+"canonical": "1730365871779696"
+},
+{
+"json": "5006657953338226",
+"canonical": "5006657953338226"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\uda3b\\ude67\"",
+"canonical": "\"\uda3b\ude67\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"None\": 0.1, \"\\u4b73\\uda5e\\udf4d\": null}",
+"canonical": "{\"None\":0.1,\"\u4b73\uda5e\udf4d\":null}"
+},
+{
+"json": "\"\\ud911\\ude39\\ua500\\udb79\\udf38\\ud9bb\\ude88\"",
+"canonical": "\"\ud911\ude39\ua500\udb79\udf38\ud9bb\ude88\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-360582603840980",
+"canonical": "-360582603840980"
+},
+{
+"json": "-8247927402160777",
+"canonical": "-8247927402160777"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[\"l\\ud803\\udd08\\u34fc\\u0017Y\", {\"None\": [false, \"\\u0007N\\uc2f7\\u235d\"], \"4148672420855109\": null}, {\"None\": {\"False\": -4324932535354531, \"\\ua8a0\\ud188\\ud88c\\ude5e\\ua759\\u9c66\": 3743779445371469, \"\\u0017A\": 0.1}, \"5e-324\": {\"None\": true}, \"True\": false, \"1e+30\": {}}]",
+"canonical": "[\"l\ud803\udd08\u34fc\\u0017Y\",{\"4148672420855109\":null,\"None\":[false,\"\\u0007N\uc2f7\u235d\"]},{\"1e+30\":{},\"5e-324\":{\"None\":true},\"None\":{\"\\u0017A\":0.1,\"False\":-4324932535354531,\"\ua8a0\ud188\ud88c\ude5e\ua759\u9c66\":3743779445371469},\"True\":false}]"
+},
+{
+"json": "1.2952320176044052e-28",
+"canonical": "1.2952320176044052e-28"
+},
+{
+"json": "4782059306909437",
+"canonical": "4782059306909437"
+},
+{
+"json": "{\"\\u19db\": 0.1, \"\\ud9c6\\udfd6\\u0007\\n\\udaa2\\uddca[\": -6523558943811211}",
+"canonical": "{\"\u19db\":0.1,\"\ud9c6\udfd6\\u0007\\n\udaa2\uddca[\":-6523558943811211}"
+},
+{
+"json": "\"\\ud8eb\\udfb5\\udab4\\udde2\\u2388\\u2f0d#\\ud910\\ude61\"",
+"canonical": "\"\ud8eb\udfb5\udab4\udde2\u2388\u2f0d#\ud910\ude61\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-2025763960698095",
+"canonical": "-2025763960698095"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"]\\ud9a6\\udd61\\u5d0c\\u001f\\u001f\\u01e2\"",
+"canonical": "\"]\ud9a6\udd61\u5d0c\\u001f\\u001f\u01e2\""
+},
+{
+"json": "{\"0.5539744702683577\": {\"\\ud54e\\udbc2\\udead\": true, \"\\ud86c\\udc87\\udade\\udf7b\": true, \"1e+30\": false, \"\\u17421\": -814946.6389652045}, \"q\": \"\\ud860\\udff2\\uda08\\udc90\\u1bb4\\ud83d\\udd62\\u6285\", \"\\u141f\\u0c8f\\u001c\\u9b89t\": -0.0}",
+"canonical": "{\"0.5539744702683577\":{\"1e+30\":false,\"\u17421\":-814946.6389652045,\"\ud54e\udbc2\udead\":true,\"\ud86c\udc87\udade\udf7b\":true},\"q\":\"\ud860\udff2\uda08\udc90\u1bb4\ud83d\udd62\u6285\",\"\u141f\u0c8f\\u001c\u9b89t\":0}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "\"\\ubaaf\\u0002\"",
+"canonical": "\"\ubaaf\\u0002\""
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "7773749094324197",
+"canonical": "7773749094324197"
+},
+{
+"json": "{\"False\": -3327276173332287, \"\\ud8a4\\udfd8\\u73ca\\u0019\": null}",
+"canonical": "{\"False\":-3327276173332287,\"\ud8a4\udfd8\u73ca\\u0019\":null}"
+},
+{
+"json": "\"\\u000b\\udbd8\\udec9x\\u53cd\"",
+"canonical": "\"\\u000b\udbd8\udec9x\u53cd\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[false]",
+"canonical": "[false]"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[[]]",
+"canonical": "[[]]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "585434884373228",
+"canonical": "585434884373228"
+},
+{
+"json": "477686750120273",
+"canonical": "477686750120273"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-8879587538750174",
+"canonical": "-8879587538750174"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\udb51\\ude23\\ua6b4\"",
+"canonical": "\"\udb51\ude23\ua6b4\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[-8834375932833968, [], {\"0.1\": 1e+21, \"None\": -8845945289425223}, 2992052802333015]",
+"canonical": "[-8834375932833968,[],{\"0.1\":1e+21,\"None\":-8845945289425223},2992052802333015]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[[[null]], \")\\\"\\u7905\\ud8eb\\udc93\\u4ea1\"]",
+"canonical": "[[[null]],\")\\\"\u7905\ud8eb\udc93\u4ea1\"]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "5991761303932712",
+"canonical": "5991761303932712"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "{\"5e-324\": \"\\ud96e\\udfa4\\ud906\\udcee\\udb3e\\ude47\\t\\ud9f6\\udfcb\"}",
+"canonical": "{\"5e-324\":\"\ud96e\udfa4\ud906\udcee\udb3e\ude47\\t\ud9f6\udfcb\"}"
+},
+{
+"json": "[1e-07, true, {\"\\u99a8/s\": -4069927277705114, \"True\": 8216110742868365, \"-3373963466286444\": [], \"-0.0\": -4036228187097239}]",
+"canonical": "[1e-7,true,{\"-0.0\":-4036228187097239,\"-3373963466286444\":[],\"True\":8216110742868365,\"\u99a8/s\":-4069927277705114}]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\uda6d\\udd48\\u4377\\ud8a6\\udc0f\\ua947\"",
+"canonical": "\"\uda6d\udd48\u4377\ud8a6\udc0f\ua947\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "273031.41350434883",
+"canonical": "273031.41350434883"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"q\\ud91f\\uddde\\udb27\\udf51\\u001b\\ud908\\udecb\"",
+"canonical": "\"q\ud91f\uddde\udb27\udf51\\u001b\ud908\udecb\""
+},
+{
+"json": "\"\\uba61\"",
+"canonical": "\"\uba61\""
+},
+{
+"json": "[\"\\u5c4e\\ud82e\\udd9d\\ud853\\udd0bH\", true, null]",
+"canonical": "[\"\u5c4e\ud82e\udd9d\ud853\udd0bH\",true,null]"
+},
+{
+"json": "\"\\u75e2\\u71eauQ\"",
+"canonical": "\"\u75e2\u71eauQ\""
+},
+{
+"json": "\"\\udb17\\udf24\\ud873\\udf7d\\u1921\\u91c7\\ud90c\\udea9\"",
+"canonical": "\"\udb17\udf24\ud873\udf7d\u1921\u91c7\ud90c\udea9\""
+},
+{
+"json": "[null, true]",
+"canonical": "[null,true]"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "[true, {}, null, 5e-324]",
+"canonical": "[true,{},null,5e-324]"
+},
+{
+"json": "[[-5240617583355761, false, {\"\\ud85b\\udfcd&\": false, \"-0.0\": -4120413756982241, \"-7495031372809059\": 5e-324}, {\"-0.0\": 1e+30, \"None\": \"\\u4b30\"}]]",
+"canonical": "[[-5240617583355761,false,{\"-0.0\":-4120413756982241,\"-7495031372809059\":5e-324,\"\ud85b\udfcd&\":false},{\"-0.0\":1e+30,\"None\":\"\u4b30\"}]]"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "5602104067482486",
+"canonical": "5602104067482486"
+},
+{
+"json": "\"\\u0005\\ud8b4\\udf10\\udb26\\ude5f\"",
+"canonical": "\"\\u0005\ud8b4\udf10\udb26\ude5f\""
+},
+{
+"json": "[6420252535527180]",
+"canonical": "[6420252535527180]"
+},
+{
+"json": "739407645775150",
+"canonical": "739407645775150"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[\"\\ud9c1\\udf04\\uda27\\udfbe\"]",
+"canonical": "[\"\ud9c1\udf04\uda27\udfbe\"]"
+},
+{
+"json": "-1812290262862050",
+"canonical": "-1812290262862050"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"False\": null}",
+"canonical": "{\"False\":null}"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\\ud92c\\ude12\\udaf8\\udcd1\\udb33\\udfbb\\u0b57\\uda42\\udd63\\u0002\"",
+"canonical": "\"\ud92c\ude12\udaf8\udcd1\udb33\udfbb\u0b57\uda42\udd63\\u0002\""
+},
+{
+"json": "-2793179841398480",
+"canonical": "-2793179841398480"
+},
+{
+"json": "1101604720693415",
+"canonical": "1101604720693415"
+},
+{
+"json": "[true, 2329200370060924, [null, \"DR\\udb2d\\udc3a\\uda83\\udcc5\\uda3e\\udd08\\uffe0\", 4675122246476516, null], {\"7873227019794625\": \"\", \"\\u338d\\u0010\\ud53a\": null, \"-0.0\": {\"False\": \"\\u4e8a\\uc022\\u50ba\\ub064>\", \"-4041925918996570\": 0.1}}]",
+"canonical": "[true,2329200370060924,[null,\"DR\udb2d\udc3a\uda83\udcc5\uda3e\udd08\uffe0\",4675122246476516,null],{\"-0.0\":{\"-4041925918996570\":0.1,\"False\":\"\u4e8a\uc022\u50ba\ub064>\"},\"7873227019794625\":\"\",\"\u338d\\u0010\ud53a\":null}]"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "-5471256687559846",
+"canonical": "-5471256687559846"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "\"\\udb88\\udccb\\u07d4.\"",
+"canonical": "\"\udb88\udccb\u07d4.\""
+},
+{
+"json": "\"\\u1fff\\u83c0\"",
+"canonical": "\"\u1fff\u83c0\""
+},
+{
+"json": "-1690089981896953",
+"canonical": "-1690089981896953"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "{\"-6131551989942\": null, \"None\": 1e-07, \"8912887937401762\": {\"\\u92774\\u2494\\ud8ee\\ude48\\ua7f7\\u3706\": [true, \"\\u001a\"]}, \"1e+30\": 6677690365918676}",
+"canonical": "{\"-6131551989942\":null,\"1e+30\":6677690365918676,\"8912887937401762\":{\"\u92774\u2494\ud8ee\ude48\ua7f7\u3706\":[true,\"\\u001a\"]},\"None\":1e-7}"
+},
+{
+"json": "\"\\u0003\"",
+"canonical": "\"\\u0003\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "\"]b\\ud803\\uddd5^\\b\"",
+"canonical": "\"]b\ud803\uddd5^\\b\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "[[-2695346551365774], false, 1e-07]",
+"canonical": "[[-2695346551365774],false,1e-7]"
+},
+{
+"json": "{\"\\u12fd\\u0fa5\\ud86c\\udc3b\\uab03\\uda7b\\udf34\": {\"True\": 7.998699066845694e-16, \"None\": false, \"-5934448530343598\": 5324421802593124}, \"4622825219867268\": {}}",
+"canonical": "{\"4622825219867268\":{},\"\u12fd\u0fa5\ud86c\udc3b\uab03\uda7b\udf34\":{\"-5934448530343598\":5324421802593124,\"None\":false,\"True\":7.998699066845694e-16}}"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[[{\"False\": null, \"-5204649514498098\": false}]]",
+"canonical": "[[{\"-5204649514498098\":false,\"False\":null}]]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "{\"1e+30\": [656552985117723, [\"\\u5564\\u2cd1\\uda0a\\udc08\", null], -5073245807158002, [\"\\u0015\", 1e+30, 123.456]], \"123.456\": null}",
+"canonical": "{\"123.456\":null,\"1e+30\":[656552985117723,[\"\u5564\u2cd1\uda0a\udc08\",null],-5073245807158002,[\"\\u0015\",1e+30,123.456]]}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[[2736818912096228]]",
+"canonical": "[[2736818912096228]]"
+},
+{
+"json": "\"J\\u5ada\\u3bd4\"",
+"canonical": "\"J\u5ada\u3bd4\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u6371\\u3ab2z\\u0006\\udb04\\ude29\"",
+"canonical": "\"\u6371\u3ab2z\\u0006\udb04\ude29\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-3850327735358421",
+"canonical": "-3850327735358421"
+},
+{
+"json": "\"\\uda94\\ude8b\\u5dc2\\udbef\\ude07\\u0002\\u97b7\"",
+"canonical": "\"\uda94\ude8b\u5dc2\udbef\ude07\\u0002\u97b7\""
+},
+{
+"json": "[{\"False\": \"\\udba9\\udc51\", \"1e+21\": true, \"3353247343520724\": false, \"5e-324\": 916604379737375}, 1e+30]",
+"canonical": "[{\"1e+21\":true,\"3353247343520724\":false,\"5e-324\":916604379737375,\"False\":\"\udba9\udc51\"},1e+30]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"True\": {}, \"5e-324\": {\"\\udb93\\ude27\\uda69\\udfb9\\udb45\\udc84\": -8024341514721837, \"None\": -8019273172399410}, \"None\": \"&\\ud84d\\udd48\"}",
+"canonical": "{\"5e-324\":{\"None\":-8019273172399410,\"\udb93\ude27\uda69\udfb9\udb45\udc84\":-8024341514721837},\"None\":\"&\ud84d\udd48\",\"True\":{}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": {\"1496842234317161\": 6980412761268332}, \"\\udb72\\udf78~Z\\uda8a\\uddf8\\ud997\\udcd1\": [{\"None\": null, \"\": \"\\\\O\\uda7c\\udffa\\ud887\\udf04\"}, true, null], \"\\uda2a\\ude15\\ud988\\udf081\": 7340512483429806, \"False\": null}",
+"canonical": "{\"False\":null,\"None\":{\"1496842234317161\":6980412761268332},\"\uda2a\ude15\ud988\udf081\":7340512483429806,\"\udb72\udf78~Z\uda8a\uddf8\ud997\udcd1\":[{\"\":\"\\\\O\uda7c\udffa\ud887\udf04\",\"None\":null},true,null]}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"False\": 1e-07}",
+"canonical": "{\"False\":1e-7}"
+},
+{
+"json": "\"\\ubc3b\\u9825\\u3db2\"",
+"canonical": "\"\ubc3b\u9825\u3db2\""
+},
+{
+"json": "\"X\\u5863\\ud81c\\uddb0\\u417b\"",
+"canonical": "\"X\u5863\ud81c\uddb0\u417b\""
+},
+{
+"json": "\"\\u789a\\udb2e\\udfc8a\\uc9e6\\u86aa\"",
+"canonical": "\"\u789a\udb2e\udfc8a\uc9e6\u86aa\""
+},
+{
+"json": "{\"\\udbc2\\udd75\": [null], \"-7653232192034340\": {\"5e-324\": {\"2438973380218163\": \"\\u9e3e\"}}, \"True\": 5e-324}",
+"canonical": "{\"-7653232192034340\":{\"5e-324\":{\"2438973380218163\":\"\u9e3e\"}},\"True\":5e-324,\"\udbc2\udd75\":[null]}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"8274290405427013\": null, \"True\": {\"None\": false, \"False\": true}, \"1e+30\": {}}",
+"canonical": "{\"1e+30\":{},\"8274290405427013\":null,\"True\":{\"False\":true,\"None\":false}}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "{\"1e+21\": true, \"None\": \"\"}",
+"canonical": "{\"1e+21\":true,\"None\":\"\"}"
+},
+{
+"json": "{\"1e+21\": false, \"-\": [{\"8075780420714309\": null}, \"\\ud956\\udcc6y\", -713981.1949273975], \"None\": {\"None\": \"e\"}}",
+"canonical": "{\"-\":[{\"8075780420714309\":null},\"\ud956\udcc6y\",-713981.1949273975],\"1e+21\":false,\"None\":{\"None\":\"e\"}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-2678732090874484",
+"canonical": "-2678732090874484"
+},
+{
+"json": "{\"123.456\": [{\"9.279490675395944e-11\": \"g\", \"True\": \"n\\udad6\\udf66\", \"\\ud9a4\\udf32z\\ud881\\udc36\\uda92\\ude13\\udb98\\udd5a\": \"\\ubf24\\ud80e\\udc01\", \"-3686438059690487\": null}, 1e-07, null, \"9\"], \"False\": {\"-5008145398802643\": [false, 7776255775849511, true]}}",
+"canonical": "{\"123.456\":[{\"-3686438059690487\":null,\"9.279490675395944e-11\":\"g\",\"True\":\"n\udad6\udf66\",\"\ud9a4\udf32z\ud881\udc36\uda92\ude13\udb98\udd5a\":\"\ubf24\ud80e\udc01\"},1e-7,null,\"9\"],\"False\":{\"-5008145398802643\":[false,7776255775849511,true]}}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "263095.22085633874",
+"canonical": "263095.22085633874"
+},
+{
+"json": "2090172722908448",
+"canonical": "2090172722908448"
+},
+{
+"json": "[\"\\ud800\\udc6a\\ud82d\\udd36\"]",
+"canonical": "[\"\ud800\udc6a\ud82d\udd36\"]"
+},
+{
+"json": "[719380.5778615847, 4995161154946626, 3391446917770749, true]",
+"canonical": "[719380.5778615847,4995161154946626,3391446917770749,true]"
+},
+{
+"json": "2466322577284675",
+"canonical": "2466322577284675"
+},
+{
+"json": "\"\\ubfb3\"",
+"canonical": "\"\ubfb3\""
+},
+{
+"json": "-6860490318732175",
+"canonical": "-6860490318732175"
+},
+{
+"json": "\"J\\u8a07\\uba7b\"",
+"canonical": "\"J\u8a07\uba7b\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u001a\\u1f70\\udad0\\ude4b\\udaae\\udca0\\udafc\\uddfb\"",
+"canonical": "\"\\u001a\u1f70\udad0\ude4b\udaae\udca0\udafc\uddfb\""
+},
+{
+"json": "[false, -5799549734930653]",
+"canonical": "[false,-5799549734930653]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-7351104473414034",
+"canonical": "-7351104473414034"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "6120619497990161",
+"canonical": "6120619497990161"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-5832238509860900",
+"canonical": "-5832238509860900"
+},
+{
+"json": "[null, {\"\\u9b0b\\u698f<\\uda23\\udc0f\": {\"5e-324\": null}, \"-5891269185626016\": [false], \"\": \"\\u56e3\\ud87b\\uddd6\\udaca\\udd6f\"}, -3245646607209710]",
+"canonical": "[null,{\"\":\"\u56e3\ud87b\uddd6\udaca\udd6f\",\"-5891269185626016\":[false],\"\u9b0b\u698f<\uda23\udc0f\":{\"5e-324\":null}},-3245646607209710]"
+},
+{
+"json": "\"\\u2622\\ube92\"",
+"canonical": "\"\u2622\ube92\""
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"\\u42e6\\ud9f1\\udd94\\u0277\\ud804\\udf9a\": [], \"1e+21\": null, \"\": \"\\u885b\\ud94b\\udf0f\\uda4d\\uddfd\\uda35\\udc61\\ud8bf\\udcdd\\ua6ae\", \"None\": [\"\\udb8f\\udc9a\\ud995\\uddd8\\u001aF\", [false], null, {\"False\": -0.0}]}",
+"canonical": "{\"\":\"\u885b\ud94b\udf0f\uda4d\uddfd\uda35\udc61\ud8bf\udcdd\ua6ae\",\"1e+21\":null,\"None\":[\"\udb8f\udc9a\ud995\uddd8\\u001aF\",[false],null,{\"False\":0}],\"\u42e6\ud9f1\udd94\u0277\ud804\udf9a\":[]}"
+},
+{
+"json": "{\"\\uda40\\udded\\u0120\\u8239\\udbf2\\udd77\\ua35a\\u0019\": -1143492191707829, \"0.1\": -3031439788359301, \"\": 1e+30}",
+"canonical": "{\"\":1e+30,\"0.1\":-3031439788359301,\"\uda40\udded\u0120\u8239\udbf2\udd77\ua35a\\u0019\":-1143492191707829}"
+},
+{
+"json": "6.689110793897701e-24",
+"canonical": "6.689110793897701e-24"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"False\": -7311332117251517, \"4252042199771632\": -1914018713342379, \"\\udab0\\udcc1\": \"\\ud8f3\\udd1a<\\u081a\\u0012\\u6527\"}",
+"canonical": "{\"4252042199771632\":-1914018713342379,\"False\":-7311332117251517,\"\udab0\udcc1\":\"\ud8f3\udd1a<\u081a\\u0012\u6527\"}"
+},
+{
+"json": "\"\\udbc6\\udfa2R~\\u3121\\ud99a\\udecf\\u49e3\"",
+"canonical": "\"\udbc6\udfa2R~\u3121\ud99a\udecf\u49e3\""
+},
+{
+"json": "3030776318812429",
+"canonical": "3030776318812429"
+},
+{
+"json": "{\"123.456\": [\"Z)\\ud85a\\udfa5\\u57b4\\u4175\", {\"True\": null}, [false, null, \"\", 5e-324]], \"-360940019918161\": false}",
+"canonical": "{\"-360940019918161\":false,\"123.456\":[\"Z)\ud85a\udfa5\u57b4\u4175\",{\"True\":null},[false,null,\"\",5e-324]]}"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "{\"\\ud887\\udd97\\ud898\\udfa0\\u8486v\\u0002)\": true, \"1855924511052253\": \"0\\ud90a\\udf57\\u845c\\u6f3b\\u8621\\uda72\\udf33\", \"5.194665173315383e-07\": null, \"True\": true}",
+"canonical": "{\"1855924511052253\":\"0\ud90a\udf57\u845c\u6f3b\u8621\uda72\udf33\",\"5.194665173315383e-07\":null,\"True\":true,\"\ud887\udd97\ud898\udfa0\u8486v\\u0002)\":true}"
+},
+{
+"json": "754413.3293504543",
+"canonical": "754413.3293504543"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\\u7317\\u9074\"",
+"canonical": "\"\u7317\u9074\""
+},
+{
+"json": "-352420828995174",
+"canonical": "-352420828995174"
+},
+{
+"json": "-2252612600957530",
+"canonical": "-2252612600957530"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "6324675767826747",
+"canonical": "6324675767826747"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "{\"None\": 1e+21, \"\\uda05\\udcc9\\u46f2gi\": [4810757672609087, {\"None\": null}, 0.1, null], \"6317934909609858\": -8351363053874223, \"True\": -2254721729432275}",
+"canonical": "{\"6317934909609858\":-8351363053874223,\"None\":1e+21,\"True\":-2254721729432275,\"\uda05\udcc9\u46f2gi\":[4810757672609087,{\"None\":null},0.1,null]}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "[false, {\"4215930611058942\": false, \"False\": \"\"}, false]",
+"canonical": "[false,{\"4215930611058942\":false,\"False\":\"\"},false]"
+},
+{
+"json": "538513.3301582595",
+"canonical": "538513.3301582595"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[8459389296396786, -2114332537371315, \"\\u9796\\ucb16W\\u0012\\u9964Q\", {\"-106161.18011721328\": -7661424082736596, \"-0.0\": 8.407470941598889e+29, \"1739116212248813\": [5727403072470631], \"True\": [\"2\\u5231-\", null]}]",
+"canonical": "[8459389296396786,-2114332537371315,\"\u9796\ucb16W\\u0012\u9964Q\",{\"-0.0\":8.407470941598889e+29,\"-106161.18011721328\":-7661424082736596,\"1739116212248813\":[5727403072470631],\"True\":[\"2\u5231-\",null]}]"
+},
+{
+"json": "{\"None\": 1e-07, \"False\": {\"5e-324\": {\"None\": 8518619912557325}, \"\": null, \"9\\udb80\\udda5\": -2789494691106433}, \"-5812379292049114\": false, \"5e-324\": null}",
+"canonical": "{\"-5812379292049114\":false,\"5e-324\":null,\"False\":{\"\":null,\"5e-324\":{\"None\":8518619912557325},\"9\udb80\udda5\":-2789494691106433},\"None\":1e-7}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-6334942543948541",
+"canonical": "-6334942543948541"
+},
+{
+"json": "{\"\\udbd3\\udc46\\u2a0f\": null, \"None\": {}, \"3058671535755165\": null, \"991946080236.1746\": null}",
+"canonical": "{\"3058671535755165\":null,\"991946080236.1746\":null,\"None\":{},\"\udbd3\udc46\u2a0f\":null}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[123.456, {\"5749005059808888\": -8209919501218281}]",
+"canonical": "[123.456,{\"5749005059808888\":-8209919501218281}]"
+},
+{
+"json": "{\"0.1\": \"\\b\", \"\\u6530\\u2bd9\\ud9cc\\udf89\\ud8d9\\udfb3\": [{}]}",
+"canonical": "{\"0.1\":\"\\b\",\"\u6530\u2bd9\ud9cc\udf89\ud8d9\udfb3\":[{}]}"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "5551092781861981",
+"canonical": "5551092781861981"
+},
+{
+"json": "2672493131031410",
+"canonical": "2672493131031410"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "798895.6987161138",
+"canonical": "798895.6987161138"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"123.456\": \",\\u4bd9\\u0013\\udb0d\\udc12\\ubb5c\", \"-0.0\": 5e-324, \"1511511340544135\": null}",
+"canonical": "{\"-0.0\":5e-324,\"123.456\":\",\u4bd9\\u0013\udb0d\udc12\ubb5c\",\"1511511340544135\":null}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "-2720812098591687",
+"canonical": "-2720812098591687"
+},
+{
+"json": "2222379263317032",
+"canonical": "2222379263317032"
+},
+{
+"json": "-1217475395985151",
+"canonical": "-1217475395985151"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"4770440372990113\": null, \"123.456\": 6584248045897149}",
+"canonical": "{\"123.456\":6584248045897149,\"4770440372990113\":null}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\uc656\\ub30c\\u12e3 y\"",
+"canonical": "\"\uc656\ub30c\u12e3 y\""
+},
+{
+"json": "{\"\\ud951\\udc1e\\ub340\\uc74f\": null}",
+"canonical": "{\"\ud951\udc1e\ub340\uc74f\":null}"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "-2719723764311286",
+"canonical": "-2719723764311286"
+},
+{
+"json": "\"\\ub99d\\udb3a\\ude8c\\u61ec\"",
+"canonical": "\"\ub99d\udb3a\ude8c\u61ec\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"-5584239075885986\": true, \"-788236.4371500288\": \"\\ud902\\udfca\\u47bb!\", \"1e+21\": [false, true, [false, null], {\"123.456\": \"\\ud998\\udcbd\\u3af5\\u771b\\ud95c\\udfa1\", \"\\ud85a\\udc2e\\ubc46\\u6bbe\": \"\\ud8bb\\udd72\\ud97b\\udfde\\udbff\\ude20\\ud992\\udf51\"}]}",
+"canonical": "{\"-5584239075885986\":true,\"-788236.4371500288\":\"\ud902\udfca\u47bb!\",\"1e+21\":[false,true,[false,null],{\"123.456\":\"\ud998\udcbd\u3af5\u771b\ud95c\udfa1\",\"\ud85a\udc2e\ubc46\u6bbe\":\"\ud8bb\udd72\ud97b\udfde\udbff\ude20\ud992\udf51\"}]}"
+},
+{
+"json": "\"^'\\ud85b\\ude17\\ud878\\udc51\\u0ba0\\ud827\\udd69\"",
+"canonical": "\"^'\ud85b\ude17\ud878\udc51\u0ba0\ud827\udd69\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-8568070322599188",
+"canonical": "-8568070322599188"
+},
+{
+"json": "{\"123.456\": true, \"1e+30\": {\"False\": \"\\u5a1a\\uda57\\udd8fs#\\udb46\\uddb7\", \"None\": 7101064979513122, \"5e-324\": null}, \"\\u2dce\\ud901\\udc82\\u1a19\": [true]}",
+"canonical": "{\"123.456\":true,\"1e+30\":{\"5e-324\":null,\"False\":\"\u5a1a\uda57\udd8fs#\udb46\uddb7\",\"None\":7101064979513122},\"\u2dce\ud901\udc82\u1a19\":[true]}"
+},
+{
+"json": "{\"-5203471828182072\": [123.456]}",
+"canonical": "{\"-5203471828182072\":[123.456]}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "{\"-6076974541028267\": \"$N\\u5938\\udb34\\udffb\\ub720\\ud8b5\\uddb9\", \"False\": -910709.6862347907, \"\\ud816\\ude29\\u7731\": 5e-324, \"Q!\\u8c84F\\ud864\\ude73s\": null}",
+"canonical": "{\"-6076974541028267\":\"$N\u5938\udb34\udffb\ub720\ud8b5\uddb9\",\"False\":-910709.6862347907,\"Q!\u8c84F\ud864\ude73s\":null,\"\ud816\ude29\u7731\":5e-324}"
+},
+{
+"json": "\"\\ub43a\\\\\\u63e3\\udaf0\\ude59\"",
+"canonical": "\"\ub43a\\\\\u63e3\udaf0\ude59\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"7732731156374335\": 4339978626162886, \"123.456\": 0.1}",
+"canonical": "{\"123.456\":0.1,\"7732731156374335\":4339978626162886}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"None\": 0.1, \"2885698617518395\": [1e+30, []]}",
+"canonical": "{\"2885698617518395\":[1e+30,[]],\"None\":0.1}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\ua722\\uda81\\udd2a\\u1185\\u0013\\ud952\\udf0d\"",
+"canonical": "\"\ua722\uda81\udd2a\u1185\\u0013\ud952\udf0d\""
+},
+{
+"json": "{\"-450540505190576\": -5685913293419697, \"\\ua1e7U\\u4603\\ue550\\u0004\\ud8d1\\udfef\": true, \"\\u46fc\\udb56\\udd61\\u0011\": 1e-07}",
+"canonical": "{\"-450540505190576\":-5685913293419697,\"\u46fc\udb56\udd61\\u0011\":1e-7,\"\ua1e7U\u4603\ue550\\u0004\ud8d1\udfef\":true}"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "7567547845158430",
+"canonical": "7567547845158430"
+},
+{
+"json": "-3864633224676079",
+"canonical": "-3864633224676079"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "-676813275928061",
+"canonical": "-676813275928061"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"~N\\u0011\\uda00\\udd60\\ucec1\\ua9c1\"",
+"canonical": "\"~N\\u0011\uda00\udd60\ucec1\ua9c1\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "4486879543498615",
+"canonical": "4486879543498615"
+},
+{
+"json": "[\">\\udba6\\udf39\\u0015\\ud878\\udeb9\", {\"None\": 7778580184875349, \"-849266503008947\": {\"-4114772122597733\": null, \"\\udb07\\udcc6c\\uc9d6\\udbca\\udea1\\u5bf7\": null, \"True\": \"L\\u0f6d\\uda56\\uddca\"}, \"True\": \"\\u57c4m\"}, \"\", \"\"]",
+"canonical": "[\">\udba6\udf39\\u0015\ud878\udeb9\",{\"-849266503008947\":{\"-4114772122597733\":null,\"True\":\"L\u0f6d\uda56\uddca\",\"\udb07\udcc6c\uc9d6\udbca\udea1\u5bf7\":null},\"None\":7778580184875349,\"True\":\"\u57c4m\"},\"\",\"\"]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-1117007855646132",
+"canonical": "-1117007855646132"
+},
+{
+"json": "[[{\"1e+30\": \"\\u25eb\\u4e32\\udb38\\ude87\\u9425\\ud836\\uddda\", \"1e+21\": true, \"None\": 8360743559343744}, \"\\u0004\", -0.0, \"\\u7d5f\\u49dd5\"], null, [], true]",
+"canonical": "[[{\"1e+21\":true,\"1e+30\":\"\u25eb\u4e32\udb38\ude87\u9425\ud836\uddda\",\"None\":8360743559343744},\"\\u0004\",0,\"\u7d5f\u49dd5\"],null,[],true]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"1e+30\": [\"D\\u34e6\\u5a06\\u0003\", 692282788334752, 1e+21, -4920326045170809], \"None\": true}",
+"canonical": "{\"1e+30\":[\"D\u34e6\u5a06\\u0003\",692282788334752,1e+21,-4920326045170809],\"None\":true}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "[null, 5e-324, \"\\ub87e\\ud943\\uddd4\\u0dd9\\uc700\"]",
+"canonical": "[null,5e-324,\"\ub87e\ud943\uddd4\u0dd9\uc700\"]"
+},
+{
+"json": "-6789341424505133",
+"canonical": "-6789341424505133"
+},
+{
+"json": "\"\\ua33d\\udb7c\\ude32/\"",
+"canonical": "\"\ua33d\udb7c\ude32/\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"1e-07\": null, \"\\u092a\\ud866\\ude83\\uda33\\udf25\\u47b3\": null}",
+"canonical": "{\"1e-07\":null,\"\u092a\ud866\ude83\uda33\udf25\u47b3\":null}"
+},
+{
+"json": "\"\\u31ce\\u0011\\u7936\\u0013(\"",
+"canonical": "\"\u31ce\\u0011\u7936\\u0013(\""
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "{\"\\r\\u0000\\ud963\\udd7f\": null, \"6\\u779f\\uc58e\\u001b@\\u5da5\": \"\\uda6c\\udc54\\ud864\\udd43\", \"1.375934091402077e-06\": false}",
+"canonical": "{\"\\r\\u0000\ud963\udd7f\":null,\"1.375934091402077e-06\":false,\"6\u779f\uc58e\\u001b@\u5da5\":\"\uda6c\udc54\ud864\udd43\"}"
+},
+{
+"json": "-3317204732515250",
+"canonical": "-3317204732515250"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "963417.8943958178",
+"canonical": "963417.8943958178"
+},
+{
+"json": "\"\\u0ea4\\u62e5\\u5939\"",
+"canonical": "\"\u0ea4\u62e5\u5939\""
+},
+{
+"json": "{\"M\\ud1b2\\u8387\\u93c8\\udb5e\\uddb3\\ub3c5\": false, \"\\udb1f\\udc8a\\udb51\\udcf1z\": {\"1e+30\": -0.0, \"False\": -286256.52904087934}, \"-8004540060645323\": -759983497060524}",
+"canonical": "{\"-8004540060645323\":-759983497060524,\"M\ud1b2\u8387\u93c8\udb5e\uddb3\ub3c5\":false,\"\udb1f\udc8a\udb51\udcf1z\":{\"1e+30\":0,\"False\":-286256.52904087934}}"
+},
+{
+"json": "[-4195742719528651, [\"\\ub934\\\\P\"], false]",
+"canonical": "[-4195742719528651,[\"\ub934\\\\P\"],false]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\\ud92e\\udf46\\ud8f8\\udd62\\ud87d\\udf50\\ua165\\u6c41\\udb71\\udd9c\"",
+"canonical": "\"\ud92e\udf46\ud8f8\udd62\ud87d\udf50\ua165\u6c41\udb71\udd9c\""
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "\"\\u0001\\udbf2\\uddbd5\"",
+"canonical": "\"\\u0001\udbf2\uddbd5\""
+},
+{
+"json": "\"\\ua435Y\\u0630\\u0503\\ud17fc\"",
+"canonical": "\"\ua435Y\u0630\u0503\ud17fc\""
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"DQ\\ub441b\": 123.456, \"False\": [\"\\ud8b2\\udd22<\"], \"-0.0\": true, \"\\\\\\ud85a\\udccfp\\ucd92\\t\\udb3c\\udf69\": -1295242132007697}",
+"canonical": "{\"-0.0\":true,\"DQ\ub441b\":123.456,\"False\":[\"\ud8b2\udd22<\"],\"\\\\\ud85a\udccfp\ucd92\\t\udb3c\udf69\":-1295242132007697}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "{\"6575120122135616\": null, \"\": \"\\u0010\\u7387@\\ud932\\ude5a3\"}",
+"canonical": "{\"\":\"\\u0010\u7387@\ud932\ude5a3\",\"6575120122135616\":null}"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[{\"\": 5295608554263351, \"None\": null, \"True\": [1.186199827430525e-12, 4225.690173351672, 3641467506462154, 1e-07]}, \"\"]",
+"canonical": "[{\"\":5295608554263351,\"None\":null,\"True\":[1.186199827430525e-12,4225.690173351672,3641467506462154,1e-7]},\"\"]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "{\"939767484194415\": {}}",
+"canonical": "{\"939767484194415\":{}}"
+},
+{
+"json": "8200085646030159",
+"canonical": "8200085646030159"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "8032761655784124",
+"canonical": "8032761655784124"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-3783374839528945",
+"canonical": "-3783374839528945"
+},
+{
+"json": "\"\\u4519\\ub73c\\udbcd\\udc5c\\udbeb\\udcb5\\udb1d\\ude82\\ud811\\udeed\"",
+"canonical": "\"\u4519\ub73c\udbcd\udc5c\udbeb\udcb5\udb1d\ude82\ud811\udeed\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "1386471618226594",
+"canonical": "1386471618226594"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[{\"False\": -8955856474820419, \"None\": [true, \"\\udae1\\udf11\\u3b33\\uda38\\udf9f\\u0b5e\\ud804\\ude28\"]}, {\"-64778.169821464224\": \"\\uc803\\ud985\\udfc7\\ue5c2\\u1afb\", \"None\": -5582243340758066}, {\"True\": \"M/\\u24ae\\u273c\\u3b58n\"}]",
+"canonical": "[{\"False\":-8955856474820419,\"None\":[true,\"\udae1\udf11\u3b33\uda38\udf9f\u0b5e\ud804\ude28\"]},{\"-64778.169821464224\":\"\uc803\ud985\udfc7\ue5c2\u1afb\",\"None\":-5582243340758066},{\"True\":\"M/\u24ae\u273c\u3b58n\"}]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[1e+21]",
+"canonical": "[1e+21]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-1605241310010158",
+"canonical": "-1605241310010158"
+},
+{
+"json": "-695050.0532933465",
+"canonical": "-695050.0532933465"
+},
+{
+"json": "{\"126051309872477\": [false, true, {\"True\": true, \"\\u34ed\": null, \"False\": \"\"}, 5e-324], \"False\": null}",
+"canonical": "{\"126051309872477\":[false,true,{\"False\":\"\",\"True\":true,\"\u34ed\":null},5e-324],\"False\":null}"
+},
+{
+"json": "{\"\\u7208\\u49ba\\u4d83d\": \"\\\"4\\u8153\\ud939\\udf0e\\udb7a\\udf21N\"}",
+"canonical": "{\"\u7208\u49ba\u4d83d\":\"\\\"4\u8153\ud939\udf0e\udb7a\udf21N\"}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "7774258962119777",
+"canonical": "7774258962119777"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[true, -4879822957729620]",
+"canonical": "[true,-4879822957729620]"
+},
+{
+"json": "8765472549887649",
+"canonical": "8765472549887649"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "-2889003443656267",
+"canonical": "-2889003443656267"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\\u001fT\\ucde4\\ua65bB\"",
+"canonical": "\"\\u001fT\ucde4\ua65bB\""
+},
+{
+"json": "{\"None\": null, \"\\udb32\\udcfd\": true}",
+"canonical": "{\"None\":null,\"\udb32\udcfd\":true}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "2743243424191892",
+"canonical": "2743243424191892"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[910771993938311.2]",
+"canonical": "[910771993938311.2]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "8589322516422728",
+"canonical": "8589322516422728"
+},
+{
+"json": "\"\\u1617\"",
+"canonical": "\"\u1617\""
+},
+{
+"json": "\"ky\\u4854\"",
+"canonical": "\"ky\u4854\""
+},
+{
+"json": "-4412910532155763",
+"canonical": "-4412910532155763"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"\\u1966\\ud82d\\udfbbV\": false}",
+"canonical": "{\"\u1966\ud82d\udfbbV\":false}"
+},
+{
+"json": "\"\\u03e3\\u0011\\u944b\\ud1b1%1\"",
+"canonical": "\"\u03e3\\u0011\u944b\ud1b1%1\""
+},
+{
+"json": "[-5753351854375283, \"E.\\u3576\\ud918\\udd42$\\u3ba6\", -3839803726852900]",
+"canonical": "[-5753351854375283,\"E.\u3576\ud918\udd42$\u3ba6\",-3839803726852900]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-2016324578330502",
+"canonical": "-2016324578330502"
+},
+{
+"json": "{\"False\": {\"-0.0\": 5892987794807309, \"False\": 0.1, \"\\uda69\\udf9b\": [null]}, \"1e+30\": false, \"None\": {\"None\": -8092111135471013}}",
+"canonical": "{\"1e+30\":false,\"False\":{\"-0.0\":5892987794807309,\"False\":0.1,\"\uda69\udf9b\":[null]},\"None\":{\"None\":-8092111135471013}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-160172142170473",
+"canonical": "-160172142170473"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "1205182396373187",
+"canonical": "1205182396373187"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\u16f1#!r\\u21fb\\ud94b\\udf75\"",
+"canonical": "\"\u16f1#!r\u21fb\ud94b\udf75\""
+},
+{
+"json": "\"\\ud9dd\\udd3a\\u000e^\\u3b03H\"",
+"canonical": "\"\ud9dd\udd3a\\u000e^\u3b03H\""
+},
+{
+"json": "6763922485549533",
+"canonical": "6763922485549533"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[[[null, \"\\u900a\", true], null], {\"1e+21\": \"\\udbff\\udcda\\ud84e\\udde9i\\uda3f\\udc4f\"}, \"\\ub4a6b\\ud820\\udd24\\ud98f\\ude48\\u8dd2\"]",
+"canonical": "[[[null,\"\u900a\",true],null],{\"1e+21\":\"\udbff\udcda\ud84e\udde9i\uda3f\udc4f\"},\"\ub4a6b\ud820\udd24\ud98f\ude48\u8dd2\"]"
+},
+{
+"json": "\"b\\udae0\\udc84\\udb5e\\ude05\\u1fa2M\"",
+"canonical": "\"b\udae0\udc84\udb5e\ude05\u1fa2M\""
+},
+{
+"json": "\"\\ud939\\udc50\\udbb6\\udf35\\udafb\\udefb\\u0f95\\u2ee2\\ud9b1\\udd9a\"",
+"canonical": "\"\ud939\udc50\udbb6\udf35\udafb\udefb\u0f95\u2ee2\ud9b1\udd9a\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "5216539132559196",
+"canonical": "5216539132559196"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "5882516581374315",
+"canonical": "5882516581374315"
+},
+{
+"json": "\"m\\u91e8\\\\\\u0013\"",
+"canonical": "\"m\u91e8\\\\\\u0013\""
+},
+{
+"json": "-8024271859175615",
+"canonical": "-8024271859175615"
+},
+{
+"json": "506270730871996",
+"canonical": "506270730871996"
+},
+{
+"json": "[[], 4675645368327221, 1e+21, 921352078738347]",
+"canonical": "[[],4675645368327221,1e+21,921352078738347]"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "940543.142297194",
+"canonical": "940543.142297194"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "{\"1e+30\": \"\", \"None\": \"-\\uc850\\u001a\"}",
+"canonical": "{\"1e+30\":\"\",\"None\":\"-\uc850\\u001a\"}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "\"qh_\\u120c\\u001a\\ud825\\udefc\"",
+"canonical": "\"qh_\u120c\\u001a\ud825\udefc\""
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "971088867747446",
+"canonical": "971088867747446"
+},
+{
+"json": "\"\\ud9d9\\udf8d\\ud8fb\\udc85\\ud854\\udf6f\\u380e7\\ud967\\udd93\"",
+"canonical": "\"\ud9d9\udf8d\ud8fb\udc85\ud854\udf6f\u380e7\ud967\udd93\""
+},
+{
+"json": "441253.31278596516",
+"canonical": "441253.31278596516"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-8082152626316505",
+"canonical": "-8082152626316505"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "8976999371061548",
+"canonical": "8976999371061548"
+},
+{
+"json": "\"\\u13c2\\u4e8aT\"",
+"canonical": "\"\u13c2\u4e8aT\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[{\"None\": \"\\u8c34\\u8663\\ud925\\ude1b\\u2a9e\", \"False\": [null], \"1e-07\": \"_\\u1618\\u0007\\u07f6\\u5af8\"}, false, -1041095980924281]",
+"canonical": "[{\"1e-07\":\"_\u1618\\u0007\u07f6\u5af8\",\"False\":[null],\"None\":\"\u8c34\u8663\ud925\ude1b\u2a9e\"},false,-1041095980924281]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[[{\"False\": -502930.1231610039, \"1e-07\": null}, 0.1, {\"None\": null, \"\\u6d25\\u32e4\\ud9c9\\udf76n\": false, \"True\": 5111609694223357}, -1482894535745034]]",
+"canonical": "[[{\"1e-07\":null,\"False\":-502930.1231610039},0.1,{\"None\":null,\"True\":5111609694223357,\"\u6d25\u32e4\ud9c9\udf76n\":false},-1482894535745034]]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[\"\"]",
+"canonical": "[\"\"]"
+},
+{
+"json": "[false, \"\\uda58\\udfa1\", false, \"\\uc62b\"]",
+"canonical": "[false,\"\uda58\udfa1\",false,\"\uc62b\"]"
+},
+{
+"json": "-5480898275415458",
+"canonical": "-5480898275415458"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "8490106880385990",
+"canonical": "8490106880385990"
+},
+{
+"json": "[false, 3129629668567713]",
+"canonical": "[false,3129629668567713]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[6.900727108050964e+28, null, null, 0.1]",
+"canonical": "[6.900727108050964e+28,null,null,0.1]"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "6543152434151257",
+"canonical": "6543152434151257"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[[false, [1e+21], 123.456]]",
+"canonical": "[[false,[1e+21],123.456]]"
+},
+{
+"json": "[0.1]",
+"canonical": "[0.1]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[7312557005881660, {\"-348251.30471071077\": 1e+21}, false, null]",
+"canonical": "[7312557005881660,{\"-348251.30471071077\":1e+21},false,null]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-941355.8345273305",
+"canonical": "-941355.8345273305"
+},
+{
+"json": "-1927696655065231",
+"canonical": "-1927696655065231"
+},
+{
+"json": "[false, {\"True\": \"\\u77e8L\\uc8ca\\udba2\\udc30\\u7d6bE\", \"False\": \"\"}]",
+"canonical": "[false,{\"False\":\"\",\"True\":\"\u77e8L\uc8ca\udba2\udc30\u7d6bE\"}]"
+},
+{
+"json": "1092652080978418",
+"canonical": "1092652080978418"
+},
+{
+"json": "{\"None\": null, \"True\": null, \"jr\\u4f4aJ\\u860c\": {\"None\": {\"7.849108830085339e+17\": 1e-07}, \"-8637000206590878\": [false], \"False\": {}}, \"-0.0\": null}",
+"canonical": "{\"-0.0\":null,\"None\":null,\"True\":null,\"jr\u4f4aJ\u860c\":{\"-8637000206590878\":[false],\"False\":{},\"None\":{\"7.849108830085339e+17\":1e-7}}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u8d911\\udb5d\\udf71\"",
+"canonical": "\"\u8d911\udb5d\udf71\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"E\\ud985\\ude54\\u001c\\udaba\\udc68\\u9ca0\"",
+"canonical": "\"E\ud985\ude54\\u001c\udaba\udc68\u9ca0\""
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "-3927712371566974",
+"canonical": "-3927712371566974"
+},
+{
+"json": "5066435281377309",
+"canonical": "5066435281377309"
+},
+{
+"json": "{\"\\u001c\": {}}",
+"canonical": "{\"\\u001c\":{}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "{\"1.2359561644855399e-24\": true, \"1339195026471597\": -36403707434687, \"-5863566198959787\": \"v\\\"\\ud9ca\\udd27\\u9638\\u500d\"}",
+"canonical": "{\"-5863566198959787\":\"v\\\"\ud9ca\udd27\u9638\u500d\",\"1.2359561644855399e-24\":true,\"1339195026471597\":-36403707434687}"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "{\"330427.376215189\": [\"\\u460d\\u8fd8\\ud9a1\\udf55\\ud8e6\\udc3e\\u60a9\\udb2c\\udf35\", \"\\ua88c\\ud97b\\udc14\\u9268:\\u3b98\", -5736293433609181], \"\\ud9ad\\ude1e\\u6376\\ud903\\udf7dX]\\u6ebf\": [], \"4.386506134411261e+27\": null}",
+"canonical": "{\"330427.376215189\":[\"\u460d\u8fd8\ud9a1\udf55\ud8e6\udc3e\u60a9\udb2c\udf35\",\"\ua88c\ud97b\udc14\u9268:\u3b98\",-5736293433609181],\"4.386506134411261e+27\":null,\"\ud9ad\ude1e\u6376\ud903\udf7dX]\u6ebf\":[]}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"a\\u000f\\u1bd78D\\u8344\"",
+"canonical": "\"a\\u000f\u1bd78D\u8344\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "9.289864776234693e-26",
+"canonical": "9.289864776234693e-26"
+},
+{
+"json": "{\"\\ud8dd\\udd49\\uda15\\udc7c\\u0011\\u97bc\\udbc4\\udc43\": [[], false], \"False\": 1e-07, \"-6272170902498779\": [\"\\uafee\\u0010\\n\\udb7f\\udcdc\"]}",
+"canonical": "{\"-6272170902498779\":[\"\uafee\\u0010\\n\udb7f\udcdc\"],\"False\":1e-7,\"\ud8dd\udd49\uda15\udc7c\\u0011\u97bc\udbc4\udc43\":[[],false]}"
+},
+{
+"json": "[{\"None\": {\"None\": 1e+21, \"True\": 198091799877293}, \"2094525396669841\": null, \"j\\u13c9\": true}]",
+"canonical": "[{\"2094525396669841\":null,\"None\":{\"None\":1e+21,\"True\":198091799877293},\"j\u13c9\":true}]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "5692635466642143",
+"canonical": "5692635466642143"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"2040772657359863\": [0.1, [null, true, true, \"\\ud85c\\udd20\"], null, null], \"True\": false}",
+"canonical": "{\"2040772657359863\":[0.1,[null,true,true,\"\ud85c\udd20\"],null,null],\"True\":false}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[false, null, null, -0.0]",
+"canonical": "[false,null,null,0]"
+},
+{
+"json": "[false, \"\\u6454\\u0004\\u0d78\\u0014\\ud8a7\\udca50\"]",
+"canonical": "[false,\"\u6454\\u0004\u0d78\\u0014\ud8a7\udca50\"]"
+},
+{
+"json": "[-0.0, [[\"\\u042d\\u0015\\ud8ba\\udcc5\\u679f\"]]]",
+"canonical": "[0,[[\"\u042d\\u0015\ud8ba\udcc5\u679f\"]]]"
+},
+{
+"json": "[{}, {\"\\u8a05\\u5e08\\u6f46\\u9812\": null, \"M\\u760f\\u000f)\\u8135\\u17a9\": null, \"\\uda3f\\udff4\\udb34\\udeb5\\udac3\\udd18\\ueef9\": null, \"True\": true}]",
+"canonical": "[{},{\"M\u760f\\u000f)\u8135\u17a9\":null,\"True\":true,\"\u8a05\u5e08\u6f46\u9812\":null,\"\uda3f\udff4\udb34\udeb5\udac3\udd18\ueef9\":null}]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "780123.2384258965",
+"canonical": "780123.2384258965"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\uaa35\\u1ab3\\udbc8\\udf32\\ud830\\udeb1\"",
+"canonical": "\"\uaa35\u1ab3\udbc8\udf32\ud830\udeb1\""
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "[[true, {\"False\": false, \"1e+21\": \"\\udb32\\udd1a\\uda18\\udfbc\\u75e6\", \"None\": false}, -6755171965709192, null], {}, \"\"]",
+"canonical": "[[true,{\"1e+21\":\"\udb32\udd1a\uda18\udfbc\u75e6\",\"False\":false,\"None\":false},-6755171965709192,null],{},\"\"]"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "-3497313187417804",
+"canonical": "-3497313187417804"
+},
+{
+"json": "-6585878592084693",
+"canonical": "-6585878592084693"
+},
+{
+"json": "\";\\u5d35 8\"",
+"canonical": "\";\u5d35 8\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "\"\\udbd1\\ude98\\ud871\\udfce\\u90d3\\udb8b\\ude97\"",
+"canonical": "\"\udbd1\ude98\ud871\udfce\u90d3\udb8b\ude97\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[-0.0, -1989862083452957, true]",
+"canonical": "[0,-1989862083452957,true]"
+},
+{
+"json": "\";\\ucc94'\"",
+"canonical": "\";\ucc94'\""
+},
+{
+"json": "\"\\udae2\\uddff\\ud9c9\\udd7c8}i\\u55bd\"",
+"canonical": "\"\udae2\uddff\ud9c9\udd7c8}i\u55bd\""
+},
+{
+"json": "-7719631221463246",
+"canonical": "-7719631221463246"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"i\\u8594\\u69f4\\uaa10\"",
+"canonical": "\"i\u8594\u69f4\uaa10\""
+},
+{
+"json": "-14347.134220152395",
+"canonical": "-14347.134220152395"
+},
+{
+"json": "562885.1377961563",
+"canonical": "562885.1377961563"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-3591104526154030",
+"canonical": "-3591104526154030"
+},
+{
+"json": "-1180281154027967",
+"canonical": "-1180281154027967"
+},
+{
+"json": "-638872.3757238317",
+"canonical": "-638872.3757238317"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[\"\\uda15\\udc67\", \"\\ud9b2\\udef5\"]",
+"canonical": "[\"\uda15\udc67\",\"\ud9b2\udef5\"]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[null, [], {\"False\": 1e+21, \"\\u48f4\": true}]",
+"canonical": "[null,[],{\"False\":1e+21,\"\u48f4\":true}]"
+},
+{
+"json": "{\"\\u73e1\": \"Q\"}",
+"canonical": "{\"\u73e1\":\"Q\"}"
+},
+{
+"json": "\"i5 \\u1b07(\"",
+"canonical": "\"i5 \u1b07(\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "-8203829317710915",
+"canonical": "-8203829317710915"
+},
+{
+"json": "[false, -7862605020868738, false, null]",
+"canonical": "[false,-7862605020868738,false,null]"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "\"\\uabf0j\"",
+"canonical": "\"\uabf0j\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "\"\\\\\\udbbb\\ude5a\\ud97d\\ude24\\udbd6\\udf28\\u54a9\\ud978\\udf1f\"",
+"canonical": "\"\\\\\udbbb\ude5a\ud97d\ude24\udbd6\udf28\u54a9\ud978\udf1f\""
+},
+{
+"json": "61441.04344869917",
+"canonical": "61441.04344869917"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "3178214222455655",
+"canonical": "3178214222455655"
+},
+{
+"json": "-8086317927025462",
+"canonical": "-8086317927025462"
+},
+{
+"json": "\">{\\u37fb\\ud457\\u70a1\"",
+"canonical": "\">{\u37fb\ud457\u70a1\""
+},
+{
+"json": "-384400.13927690964",
+"canonical": "-384400.13927690964"
+},
+{
+"json": "2087164347827352",
+"canonical": "2087164347827352"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u825e\\u8d9d\"",
+"canonical": "\"\u825e\u8d9d\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "730015687079830",
+"canonical": "730015687079830"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\u9b97\"",
+"canonical": "\"\u9b97\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "{\"-8531024530359296\": \"\\u001c\\ucf23\\u4cca\", \"None\": \"5\\u1363\\u9bdc\"}",
+"canonical": "{\"-8531024530359296\":\"\\u001c\ucf23\u4cca\",\"None\":\"5\u1363\u9bdc\"}"
+},
+{
+"json": "[11067.03964687395]",
+"canonical": "[11067.03964687395]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "687718.2696598961",
+"canonical": "687718.2696598961"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"!\"",
+"canonical": "\"!\""
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-1385813298934125",
+"canonical": "-1385813298934125"
+},
+{
+"json": "{\"False\": 123.456}",
+"canonical": "{\"False\":123.456}"
+},
+{
+"json": "[\"\\u3821\\u2ad2\\u0006\\u390a[\", false, 0.1]",
+"canonical": "[\"\u3821\u2ad2\\u0006\u390a[\",false,0.1]"
+},
+{
+"json": "\"\\ud4fd\\udbb9\\udce47\"",
+"canonical": "\"\ud4fd\udbb9\udce47\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"False\": \"\\u0002\", \"-3582707808558840\": \"\\udb34\\udd1c\\ud9b9\\udc7cP\", \"None\": [[]]}",
+"canonical": "{\"-3582707808558840\":\"\udb34\udd1c\ud9b9\udc7cP\",\"False\":\"\\u0002\",\"None\":[[]]}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "\"\\u08d5\\uc097\"",
+"canonical": "\"\u08d5\uc097\""
+},
+{
+"json": "-7590269977000058",
+"canonical": "-7590269977000058"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"1e+30\": true, \"B\\udac9\\udc5c\\u14d2\\ud8e1\\udff9\\uda38\\udf65\": {\"\\u00129\\udb93\\ude34\\udad9\\udefdx\": {\"True\": \"\\f\", \"-1354466154407645\": \"\"}, \"3954321489033851\": [\"\\u0f3e\", true, false, \"\"], \"1e+30\": true, \"-705665533605781\": [null, 1e+21, null]}, \"-1983071258423905\": [-7290460118606917, 1e+21, -6240489128593289, 1e-07]}",
+"canonical": "{\"-1983071258423905\":[-7290460118606917,1e+21,-6240489128593289,1e-7],\"1e+30\":true,\"B\udac9\udc5c\u14d2\ud8e1\udff9\uda38\udf65\":{\"\\u00129\udb93\ude34\udad9\udefdx\":{\"-1354466154407645\":\"\",\"True\":\"\\f\"},\"-705665533605781\":[null,1e+21,null],\"1e+30\":true,\"3954321489033851\":[\"\u0f3e\",true,false,\"\"]}}"
+},
+{
+"json": "{\"\\u001a\": null, \"\": null, \"\\u65fc\\uae8e\": false}",
+"canonical": "{\"\":null,\"\\u001a\":null,\"\u65fc\uae8e\":false}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "584.7851225698056",
+"canonical": "584.7851225698056"
+},
+{
+"json": "1528426212347999",
+"canonical": "1528426212347999"
+},
+{
+"json": "702402.6672486849",
+"canonical": "702402.6672486849"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[[[null, true, 5e-324, -7573190733856476]], 0.1, 1463051030189316]",
+"canonical": "[[[null,true,5e-324,-7573190733856476]],0.1,1463051030189316]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "2.9538293783357674e-28",
+"canonical": "2.9538293783357674e-28"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-7160777186378399",
+"canonical": "-7160777186378399"
+},
+{
+"json": "-248617.9180996304",
+"canonical": "-248617.9180996304"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-1611357364790800",
+"canonical": "-1611357364790800"
+},
+{
+"json": "{\"1e-07\": {\"\\ua761\\u2cb6C\": null, \"None\": -4564581201748953, \"5e-324\": \"\\ud92c\\udc05\", \"-589544212085256\": 616734.68499821}, \"None\": {\"None\": -2433281629705465, \"3\\n\\u3856\\u6a05v*\": [null]}, \"True\": 8639182328839908}",
+"canonical": "{\"1e-07\":{\"-589544212085256\":616734.68499821,\"5e-324\":\"\ud92c\udc05\",\"None\":-4564581201748953,\"\ua761\u2cb6C\":null},\"None\":{\"3\\n\u3856\u6a05v*\":[null],\"None\":-2433281629705465},\"True\":8639182328839908}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[null]",
+"canonical": "[null]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "5011824799826614",
+"canonical": "5011824799826614"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\\uda09\\udc33\\f\\ud810\\udd40\\u0b95\\u3aa2\"",
+"canonical": "\"\uda09\udc33\\f\ud810\udd40\u0b95\u3aa2\""
+},
+{
+"json": "{\"1e-07\": -5391789655460768, \"g\\ud7c0\": false}",
+"canonical": "{\"1e-07\":-5391789655460768,\"g\ud7c0\":false}"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "3018182423702454",
+"canonical": "3018182423702454"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\uda2e\\udcc6\\u3153\\u49d6\\u538b\"",
+"canonical": "\"\uda2e\udcc6\u3153\u49d6\u538b\""
+},
+{
+"json": "-7003471722728271",
+"canonical": "-7003471722728271"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\">\\ua039\\u5a1ca\\u000b\"",
+"canonical": "\">\ua039\u5a1ca\\u000b\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"\\u0494\\u47b3\": false, \"None\": null}",
+"canonical": "{\"None\":null,\"\u0494\u47b3\":false}"
+},
+{
+"json": "-3847987197264312",
+"canonical": "-3847987197264312"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[-1382295577428039, \"L`He\\uda20\\udc3d\\u326b\"]",
+"canonical": "[-1382295577428039,\"L`He\uda20\udc3d\u326b\"]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "6219057845902556",
+"canonical": "6219057845902556"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "7289277525994445",
+"canonical": "7289277525994445"
+},
+{
+"json": "1970781986979571",
+"canonical": "1970781986979571"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "{\"\\u001b\\u8bf2\\ud82d\\udfac\\u2c73\": false, \"False\": true, \"-6905992754693814\": {\"\\udbb0\\udff5\\u44f3\": -872713583801080}}",
+"canonical": "{\"\\u001b\u8bf2\ud82d\udfac\u2c73\":false,\"-6905992754693814\":{\"\udbb0\udff5\u44f3\":-872713583801080},\"False\":true}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"None\": true, \"1e+30\": {\"1e-07\": 7815552318178677, \"None\": false, \"1e+30\": {}}, \"\\uda83\\uddd5\\udbff\\uddf0\\uda95\\udf23\\udb07\\udc94\\u974f\\ub51a\": 5e-324}",
+"canonical": "{\"1e+30\":{\"1e+30\":{},\"1e-07\":7815552318178677,\"None\":false},\"None\":true,\"\uda83\uddd5\udbff\uddf0\uda95\udf23\udb07\udc94\u974f\ub51a\":5e-324}"
+},
+{
+"json": "0.0032588119019334926",
+"canonical": "0.0032588119019334926"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-3403950407559574",
+"canonical": "-3403950407559574"
+},
+{
+"json": "[null, 1966629950297152, null, -4808198304790403]",
+"canonical": "[null,1966629950297152,null,-4808198304790403]"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[[-449607.3761452029, [-8522405227616562, 274794.2278171964, null, 123.456]], -1015072151698185]",
+"canonical": "[[-449607.3761452029,[-8522405227616562,274794.2278171964,null,123.456]],-1015072151698185]"
+},
+{
+"json": "\"7\\udaca\\ude11\"",
+"canonical": "\"7\udaca\ude11\""
+},
+{
+"json": "{\"None\": true, \"True\": true}",
+"canonical": "{\"None\":true,\"True\":true}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[1e+30, [{\"1e+21\": false, \"-5723948422179321\": -98146511930908}, false, \"\\u3145\\u5529\\udafb\\udf43\"], -2821932905581971]",
+"canonical": "[1e+30,[{\"-5723948422179321\":-98146511930908,\"1e+21\":false},false,\"\u3145\u5529\udafb\udf43\"],-2821932905581971]"
+},
+{
+"json": "2751604644852339",
+"canonical": "2751604644852339"
+},
+{
+"json": "\">\\u845e\\u0010\\u42554*\"",
+"canonical": "\">\u845e\\u0010\u42554*\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "4347813871715316",
+"canonical": "4347813871715316"
+},
+{
+"json": "\"\\udbd2\\uddb5\\u5e9c\\u0019\\ud882\\udfd9\\ud99f\\udc36R\"",
+"canonical": "\"\udbd2\uddb5\u5e9c\\u0019\ud882\udfd9\ud99f\udc36R\""
+},
+{
+"json": "850353.2419006987",
+"canonical": "850353.2419006987"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "{\"4636204895311265\": 123.456, \"5463105491023744\": false, \"-3076316934412670\": -8187524007748381, \"&l\\u60a4\\ud9e5\\udf36\\ucf55h\": {}}",
+"canonical": "{\"&l\u60a4\ud9e5\udf36\ucf55h\":{},\"-3076316934412670\":-8187524007748381,\"4636204895311265\":123.456,\"5463105491023744\":false}"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{\"-8999561928931682\": -2850697131947117, \"\\ud98f\\udcd5\": false, \"None\": 377024093283177}",
+"canonical": "{\"-8999561928931682\":-2850697131947117,\"None\":377024093283177,\"\ud98f\udcd5\":false}"
+},
+{
+"json": "6062091863889202",
+"canonical": "6062091863889202"
+},
+{
+"json": "\"\\ud964\\udf30\\u0006L\\u0012\\u557d\\u001b\"",
+"canonical": "\"\ud964\udf30\\u0006L\\u0012\u557d\\u001b\""
+},
+{
+"json": "[\"]\\u0019V\\udac2\\udc47#\\ud8c3\\udeb3\"]",
+"canonical": "[\"]\\u0019V\udac2\udc47#\ud8c3\udeb3\"]"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "[true, 0.1]",
+"canonical": "[true,0.1]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "{\"None\": false, \"1e+21\": {\"None\": 733838.8607206093, \"False\": 8746940124146774, \"5179112216412475\": 123.456}}",
+"canonical": "{\"1e+21\":{\"5179112216412475\":123.456,\"False\":8746940124146774,\"None\":733838.8607206093},\"None\":false}"
+},
+{
+"json": "-8147630784570622",
+"canonical": "-8147630784570622"
+},
+{
+"json": "\"\\ua53cW\\u1141\\u0011'\"",
+"canonical": "\"\ua53cW\u1141\\u0011'\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "\"\\u863e\"",
+"canonical": "\"\u863e\""
+},
+{
+"json": "{\"123.456\": [\"\\u0016\\u10af&\\uda96\\udd6c\", [-8712516745386786, 7161280935191349, -5421334428329940], \"\"], \"530722.8688914175\": -6504619538336121, \"None\": null, \"p\": null}",
+"canonical": "{\"123.456\":[\"\\u0016\u10af&\uda96\udd6c\",[-8712516745386786,7161280935191349,-5421334428329940],\"\"],\"530722.8688914175\":-6504619538336121,\"None\":null,\"p\":null}"
+},
+{
+"json": "{\"8454988660482446\": null}",
+"canonical": "{\"8454988660482446\":null}"
+},
+{
+"json": "-6372312447651171",
+"canonical": "-6372312447651171"
+},
+{
+"json": "\"\\u74a9\"",
+"canonical": "\"\u74a9\""
+},
+{
+"json": "[null, 1e+30, false]",
+"canonical": "[null,1e+30,false]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "8.265788675002294e+19",
+"canonical": "82657886750022940000"
+},
+{
+"json": "8189007586710958",
+"canonical": "8189007586710958"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\uda35\\udd40\\uda73\\udd28\"",
+"canonical": "\"\uda35\udd40\uda73\udd28\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": null, \"0.1\": \"\\udac3\\uded2\\u001e\", \"True\": -0.0}",
+"canonical": "{\"0.1\":\"\udac3\uded2\\u001e\",\"None\":null,\"True\":0}"
+},
+{
+"json": "\"\\ua964\\u6547\\udb26\\udc63\"",
+"canonical": "\"\ua964\u6547\udb26\udc63\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1748469733986629",
+"canonical": "1748469733986629"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "{\"1485551079104571\": {\"False\": [null], \"7552082896883578\": null}, \"1e+30\": {\"-0.0\": [], \"-6593422606309872\": false, \"-960765.2744341855\": false}, \"3207884566820557\": 123.456, \"True\": null}",
+"canonical": "{\"1485551079104571\":{\"7552082896883578\":null,\"False\":[null]},\"1e+30\":{\"-0.0\":[],\"-6593422606309872\":false,\"-960765.2744341855\":false},\"3207884566820557\":123.456,\"True\":null}"
+},
+{
+"json": "[8071862233752270]",
+"canonical": "[8071862233752270]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[{\"-2270183965324744\": null, \"False\": -1667175228544507}, \"\\ud956\\ude93R\\u6788D\", 1e+30, 1e+21]",
+"canonical": "[{\"-2270183965324744\":null,\"False\":-1667175228544507},\"\ud956\ude93R\u6788D\",1e+30,1e+21]"
+},
+{
+"json": "{\"None\": true, \"0.1\": [-34342.60614870291, null], \"-5361165935193592\": -8831346238103507, \"False\": [{\"True\": 1e-07}]}",
+"canonical": "{\"-5361165935193592\":-8831346238103507,\"0.1\":[-34342.60614870291,null],\"False\":[{\"True\":1e-7}],\"None\":true}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "6333926579227203",
+"canonical": "6333926579227203"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "-8775995403034852",
+"canonical": "-8775995403034852"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"1e+30\": null, \"None\": [], \"-7065655677489431\": 123.456, \"0.1\": 1e+21}",
+"canonical": "{\"-7065655677489431\":123.456,\"0.1\":1e+21,\"1e+30\":null,\"None\":[]}"
+},
+{
+"json": "-896599.7228626255",
+"canonical": "-896599.7228626255"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "5770809802974710",
+"canonical": "5770809802974710"
+},
+{
+"json": "[\"\\ud9b5\\udcd2\", -0.0, [null, [5883471031565657, -5157313131371755]]]",
+"canonical": "[\"\ud9b5\udcd2\",0,[null,[5883471031565657,-5157313131371755]]]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": 7805390227372788, \"\\u031c@\": 4700158446880413}",
+"canonical": "{\"None\":7805390227372788,\"\u031c@\":4700158446880413}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-4300170234075411",
+"canonical": "-4300170234075411"
+},
+{
+"json": "-994655.4656091469",
+"canonical": "-994655.4656091469"
+},
+{
+"json": "\"\\ud886\\udcc3\\ubd18\\ud91a\\udde9\\udaf3\\udfdf\\u1308\\u001e\"",
+"canonical": "\"\ud886\udcc3\ubd18\ud91a\udde9\udaf3\udfdf\u1308\\u001e\""
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "{\"1e+21\": \"\\u8558\\u4632\", \"False\": [], \"None\": null}",
+"canonical": "{\"1e+21\":\"\u8558\u4632\",\"False\":[],\"None\":null}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-1022525578277874",
+"canonical": "-1022525578277874"
+},
+{
+"json": "-7603330491109651",
+"canonical": "-7603330491109651"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[null, [], {\"-0.0\": {\"False\": false, \"True\": -532982.6281720913, \"None\": false, \"123.456\": null}, \"None\": 85401.30203918928}, [928174638.8371229, false, 8912979342575919]]",
+"canonical": "[null,[],{\"-0.0\":{\"123.456\":null,\"False\":false,\"None\":false,\"True\":-532982.6281720913},\"None\":85401.30203918928},[928174638.8371229,false,8912979342575919]]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-3382897333910706",
+"canonical": "-3382897333910706"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-2555332331257083",
+"canonical": "-2555332331257083"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\")\\u1a4a\\u21f1\"",
+"canonical": "\")\u1a4a\u21f1\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "1166815256439",
+"canonical": "1166815256439"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u0875n\\uda0f\\udc46\\ud97d\\udd0b-\\u7e4a\"",
+"canonical": "\"\u0875n\uda0f\udc46\ud97d\udd0b-\u7e4a\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"i\\ud848\\udc53#\\ua411\\ua4b7\": 0.1, \"-6618968126303649\": \"\\ud3f5+l\\udb1c\\udf12\\u3d45\\udad3\\uddd8\", \"False\": \"\\u1b7f\"}",
+"canonical": "{\"-6618968126303649\":\"\ud3f5+l\udb1c\udf12\u3d45\udad3\uddd8\",\"False\":\"\u1b7f\",\"i\ud848\udc53#\ua411\ua4b7\":0.1}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "-6866496416077998",
+"canonical": "-6866496416077998"
+},
+{
+"json": "-4391597195878183",
+"canonical": "-4391597195878183"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"q\\u000b\\ud8ad\\udea1\\ud81b\\udf53\\ud80d\\udc7e\"",
+"canonical": "\"q\\u000b\ud8ad\udea1\ud81b\udf53\ud80d\udc7e\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[-4121508364259195, true]",
+"canonical": "[-4121508364259195,true]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u0424\\ubd67\\u16df\\ud922\\udc2f\\udb0e\\udec0\"",
+"canonical": "\"\u0424\ubd67\u16df\ud922\udc2f\udb0e\udec0\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[null]",
+"canonical": "[null]"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-188378.2405681234",
+"canonical": "-188378.2405681234"
+},
+{
+"json": "-1649265935760693",
+"canonical": "-1649265935760693"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"J\\u001e\\u2672&\"",
+"canonical": "\"J\\u001e\u2672&\""
+},
+{
+"json": "\"F\\udbed\\udfd4m\\uda27\\udda8\"",
+"canonical": "\"F\udbed\udfd4m\uda27\udda8\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\u2ddd\\ud90c\\udcd4\"",
+"canonical": "\"\u2ddd\ud90c\udcd4\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"\\u71f0\\ud932\\ude7e\": [6911995218812610, null], \"-6717021729246815\": [null], \"-8545866877310596\": null, \"False\": {\"\\uc623j\\uabe0\": null, \"True\": {\"1e-07\": \"\\ud987\\udc16j\\uda17\\udd46\\ua172\", \"None\": -560548.3389153627, \"False\": \"C\\u7fa0\\udb30\\udce2\\ud925\\udd64\", \"914924241104426\": -7865155438149536}}}",
+"canonical": "{\"-6717021729246815\":[null],\"-8545866877310596\":null,\"False\":{\"True\":{\"1e-07\":\"\ud987\udc16j\uda17\udd46\ua172\",\"914924241104426\":-7865155438149536,\"False\":\"C\u7fa0\udb30\udce2\ud925\udd64\",\"None\":-560548.3389153627},\"\uc623j\uabe0\":null},\"\u71f0\ud932\ude7e\":[6911995218812610,null]}"
+},
+{
+"json": "5463654092253916",
+"canonical": "5463654092253916"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-1364124444356864",
+"canonical": "-1364124444356864"
+},
+{
+"json": "\"J\\ub883\\u17eb\\ud8b0\\ude21\"",
+"canonical": "\"J\ub883\u17eb\ud8b0\ude21\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "\"\\udbcb\\udf27\\u796b\\ud980\\ude90m\"",
+"canonical": "\"\udbcb\udf27\u796b\ud980\ude90m\""
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "-6798429632039644",
+"canonical": "-6798429632039644"
+},
+{
+"json": "3300087409137429",
+"canonical": "3300087409137429"
+},
+{
+"json": "-2338479034976634",
+"canonical": "-2338479034976634"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "{\"True\": false, \"False\": {\"\\u1672\": true}, \"3868738344937654\": \"~\\u3a9a2\\u001c\", \"\": 1904403473237623}",
+"canonical": "{\"\":1904403473237623,\"3868738344937654\":\"~\u3a9a2\\u001c\",\"False\":{\"\u1672\":true},\"True\":false}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\udac9\\udc54\"",
+"canonical": "\"\udac9\udc54\""
+},
+{
+"json": "{\"False\": {}, \"-2263785808761966\": 7.99596348237208e-16, \"True\": false}",
+"canonical": "{\"-2263785808761966\":7.99596348237208e-16,\"False\":{},\"True\":false}"
+},
+{
+"json": "8523070588335176",
+"canonical": "8523070588335176"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\u90e8\\ud82a\\uddd3 \\ub439$\"",
+"canonical": "\"\u90e8\ud82a\uddd3 \ub439$\""
+},
+{
+"json": "\"{\\udb5a\\udc90\\udaff\\udd49\\ud85f\\udce0\\u69b2\"",
+"canonical": "\"{\udb5a\udc90\udaff\udd49\ud85f\udce0\u69b2\""
+},
+{
+"json": "\"C\\u166b\\udad5\\udff4-\\udb58\\udd56\\u819b\"",
+"canonical": "\"C\u166b\udad5\udff4-\udb58\udd56\u819b\""
+},
+{
+"json": "-8356447467171609",
+"canonical": "-8356447467171609"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[true, \"G\\u74ee\\\\\\udba6\\udf3b<\", 6439349640339857, \"\\uda57\\udc92[\\uda8a\\udcf27\\ubf6f5\"]",
+"canonical": "[true,\"G\u74ee\\\\\udba6\udf3b<\",6439349640339857,\"\uda57\udc92[\uda8a\udcf27\ubf6f5\"]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "5.957798884690194e-19",
+"canonical": "5.957798884690194e-19"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "{\"True\": null, \"c\\ud8c0\\udcf8\\u4408\": false}",
+"canonical": "{\"True\":null,\"c\ud8c0\udcf8\u4408\":false}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "3547897840730461",
+"canonical": "3547897840730461"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1882281780156202",
+"canonical": "1882281780156202"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "-8006271456148919",
+"canonical": "-8006271456148919"
+},
+{
+"json": "{\"3852650426062063\": 7994073549274139, \"None\": null, \"True\": {\"600108.9135957153\": null, \"None\": [true], \"6152882600249904\": null}}",
+"canonical": "{\"3852650426062063\":7994073549274139,\"None\":null,\"True\":{\"600108.9135957153\":null,\"6152882600249904\":null,\"None\":[true]}}"
+},
+{
+"json": "7511381534526324",
+"canonical": "7511381534526324"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[null]",
+"canonical": "[null]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "[-7175938059545508, \"\\u001c\\u035d\\uda61\\udf89\", null, []]",
+"canonical": "[-7175938059545508,\"\\u001c\u035d\uda61\udf89\",null,[]]"
+},
+{
+"json": "-8292610351891120",
+"canonical": "-8292610351891120"
+},
+{
+"json": "{\"465398704238348\": null, \"True\": -8372296859594950, \"\\ud9ca\\udcdf#\\r\": {\"None\": 4.085042632020317e-07, \"False\": 7471716845953734, \"-0.0\": true}}",
+"canonical": "{\"465398704238348\":null,\"True\":-8372296859594950,\"\ud9ca\udcdf#\\r\":{\"-0.0\":true,\"False\":7471716845953734,\"None\":4.085042632020317e-7}}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "[[517803.1741265119, [], \"\\u0372\\udb99\\ude95\\udb22\\ude95\"]]",
+"canonical": "[[517803.1741265119,[],\"\u0372\udb99\ude95\udb22\ude95\"]]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"False\": {\"None\": false, \"-7718050934303313\": {\"1324127312745204\": \"\\ud976\\udfe4\\r\", \"\": false, \"-2537510325297327\": null, \"0.1\": false}, \"2521887203448915\": null}, \"None\": true}",
+"canonical": "{\"False\":{\"-7718050934303313\":{\"\":false,\"-2537510325297327\":null,\"0.1\":false,\"1324127312745204\":\"\ud976\udfe4\\r\"},\"2521887203448915\":null,\"None\":false},\"None\":true}"
+},
+{
+"json": "{\"1774953169986468\": -1408953750034089, \"True\": 1e-07, \"\\u8e36Q\\u38e1\\u8a87\": null, \"-6873221928737127\": 8273823486736093}",
+"canonical": "{\"-6873221928737127\":8273823486736093,\"1774953169986468\":-1408953750034089,\"True\":1e-7,\"\u8e36Q\u38e1\u8a87\":null}"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"None\": {\"\\uc924<D\\udb53\\udde5G\\udb17\\udfce\": {\"True\": true, \"1e-07\": null, \"2235576985095240\": null, \"\\u377cW\\u2d4d\\u8fe0\": \"a\"}, \"\\uda27\\uddb2\": {\"True\": \"\\ua310F\\ucb31r\\u16ed\", \"1855573983988634\": 1e+21, \"None\": false}, \"None\": {\"Z\\u5fb8\": null, \"True\": 9.521633825543581e-27, \"503137.37295169686\": 4.1407923989779403e-22}}, \"\\ua2f0\\u84d2\\ub3b0\\ua9d8\": 3079956189177457, \"-417225385350171\": {\"None\": true, \"-5256517899216198\": -344661071412319}}",
+"canonical": "{\"-417225385350171\":{\"-5256517899216198\":-344661071412319,\"None\":true},\"None\":{\"None\":{\"503137.37295169686\":4.1407923989779403e-22,\"True\":9.521633825543581e-27,\"Z\u5fb8\":null},\"\uc924<D\udb53\udde5G\udb17\udfce\":{\"1e-07\":null,\"2235576985095240\":null,\"True\":true,\"\u377cW\u2d4d\u8fe0\":\"a\"},\"\uda27\uddb2\":{\"1855573983988634\":1e+21,\"None\":false,\"True\":\"\ua310F\ucb31r\u16ed\"}},\"\ua2f0\u84d2\ub3b0\ua9d8\":3079956189177457}"
+},
+{
+"json": "\")^\\u5448\"",
+"canonical": "\")^\u5448\""
+},
+{
+"json": "\"\\u5649\\udad7\\udc75AU\\ud8ea\\ude88\\ud940\\udf28\"",
+"canonical": "\"\u5649\udad7\udc75AU\ud8ea\ude88\ud940\udf28\""
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\ud8fc\\udcf8\"",
+"canonical": "\"\ud8fc\udcf8\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "-7243248358510962",
+"canonical": "-7243248358510962"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\ud851\\udca9\"",
+"canonical": "\"\ud851\udca9\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "\"\\ud842\\udd7a\\ud843\\udf6c3\\u6d29\"",
+"canonical": "\"\ud842\udd7a\ud843\udf6c3\u6d29\""
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-3822923026179023",
+"canonical": "-3822923026179023"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "\"\\u0015\\u29a2<\\u6019\"",
+"canonical": "\"\\u0015\u29a2<\u6019\""
+},
+{
+"json": "3739733482987781",
+"canonical": "3739733482987781"
+},
+{
+"json": "{\"\\u000b\\u7323\": [null]}",
+"canonical": "{\"\\u000b\u7323\":[null]}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\udb21\\ude8e\\udb0b\\udce0\\u61c1\\uda64\\udc461\\u8642\"",
+"canonical": "\"\udb21\ude8e\udb0b\udce0\u61c1\uda64\udc461\u8642\""
+},
+{
+"json": "31055667.371977568",
+"canonical": "31055667.371977568"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "[[{\"-0.0\": \"\\ubede\\u001eh/qr\"}, [false, \"\\ud637'\", null, -809419543360559], \"?\\ud22a\\uc4cc\\ub0ec\\ub269\", 1e+21], {\"\\ub1ccj\\u0004\\ud8db\\udf64\\uda07\\udd3c\": []}, \"\\uda62\\udec9\\u5db5\", [-1808723644494323, 1e+21, {\"None\": -1516641075638714, \"\\u4f2d\\u8b92\": \"\\u0006i\\udbb3\\ude50\\udb3c\\udd91}\", \"False\": null, \"1e+30\": true}]]",
+"canonical": "[[{\"-0.0\":\"\ubede\\u001eh/qr\"},[false,\"\ud637'\",null,-809419543360559],\"?\ud22a\uc4cc\ub0ec\ub269\",1e+21],{\"\ub1ccj\\u0004\ud8db\udf64\uda07\udd3c\":[]},\"\uda62\udec9\u5db5\",[-1808723644494323,1e+21,{\"1e+30\":true,\"False\":null,\"None\":-1516641075638714,\"\u4f2d\u8b92\":\"\\u0006i\udbb3\ude50\udb3c\udd91}\"}]]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u0004\\ud8c3\\ude835\\u2377\\\"\"",
+"canonical": "\"\\u0004\ud8c3\ude835\u2377\\\"\""
+},
+{
+"json": "4548000975153563",
+"canonical": "4548000975153563"
+},
+{
+"json": "{\"True\": 3.0979945376512887}",
+"canonical": "{\"True\":3.0979945376512887}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-4008762487737493",
+"canonical": "-4008762487737493"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "7307156663288865",
+"canonical": "7307156663288865"
+},
+{
+"json": "\"G\"",
+"canonical": "\"G\""
+},
+{
+"json": "-2726567193984002",
+"canonical": "-2726567193984002"
+},
+{
+"json": "-1519603840394827",
+"canonical": "-1519603840394827"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "385602053006183",
+"canonical": "385602053006183"
+},
+{
+"json": "{\"4541226260247868\": null}",
+"canonical": "{\"4541226260247868\":null}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u0dbb\"",
+"canonical": "\"\u0dbb\""
+},
+{
+"json": "\"\\uc5d6\\\"{\\u439c\"",
+"canonical": "\"\uc5d6\\\"{\u439c\""
+},
+{
+"json": "3132329479369407",
+"canonical": "3132329479369407"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": \"\\u0012\\u603e\", \"True\": {\"7565966603439911\": null, \"-5528284018329821\": null}}",
+"canonical": "{\"None\":\"\\u0012\u603e\",\"True\":{\"-5528284018329821\":null,\"7565966603439911\":null}}"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "1869424384371197",
+"canonical": "1869424384371197"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "{\"1517368908560266\": \"\\u09bb8\\u098a\\u5f21\\udaed\\udd34\"}",
+"canonical": "{\"1517368908560266\":\"\u09bb8\u098a\u5f21\udaed\udd34\"}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "2235776235545737",
+"canonical": "2235776235545737"
+},
+{
+"json": "{\"None\": {\"\": -2858245330478843, \"False\": [false]}, \"\": -997510.8328225719}",
+"canonical": "{\"\":-997510.8328225719,\"None\":{\"\":-2858245330478843,\"False\":[false]}}"
+},
+{
+"json": "197451.9959691353",
+"canonical": "197451.9959691353"
+},
+{
+"json": "7106096236381175",
+"canonical": "7106096236381175"
+},
+{
+"json": "{\"None\": true, \"T\": \"J\\udb32\\udff8\\ud9f5\\ude80\\ube85\"}",
+"canonical": "{\"None\":true,\"T\":\"J\udb32\udff8\ud9f5\ude80\ube85\"}"
+},
+{
+"json": "\"\\udbf1\\udfbf\\udbd1\\udca8\\u0017E\"",
+"canonical": "\"\udbf1\udfbf\udbd1\udca8\\u0017E\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"i\\udbd2\\udf25\"",
+"canonical": "\"i\udbd2\udf25\""
+},
+{
+"json": "8154346187373598",
+"canonical": "8154346187373598"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "-1962860277188515",
+"canonical": "-1962860277188515"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "\"\\ub45eU\\ud8d8\\udfaa\"",
+"canonical": "\"\ub45eU\ud8d8\udfaa\""
+},
+{
+"json": "{\"\\udb68\\ude64\\u0494\": \"\\u0014\"}",
+"canonical": "{\"\udb68\ude64\u0494\":\"\\u0014\"}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{\"None\": true, \"False\": 1e+21}",
+"canonical": "{\"False\":1e+21,\"None\":true}"
+},
+{
+"json": "\"\\u4176w\"",
+"canonical": "\"\u4176w\""
+},
+{
+"json": "\"\\u8666\\ud8c2\\udc80\\u89bc\\udac7\\udf5cz\"",
+"canonical": "\"\u8666\ud8c2\udc80\u89bc\udac7\udf5cz\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "\"\\uac96\\uda65\\udc5f\"",
+"canonical": "\"\uac96\uda65\udc5f\""
+},
+{
+"json": "3528466602140182",
+"canonical": "3528466602140182"
+},
+{
+"json": "\"Qi\"",
+"canonical": "\"Qi\""
+},
+{
+"json": "{\"123.456\": \"\", \"\": -3065642109342861, \"None\": false}",
+"canonical": "{\"\":-3065642109342861,\"123.456\":\"\",\"None\":false}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"1e+21\": 5854962663433861, \"\\u8eea\": true}",
+"canonical": "{\"1e+21\":5854962663433861,\"\u8eea\":true}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "6.930954650330553e-20",
+"canonical": "6.930954650330553e-20"
+},
+{
+"json": "\"\\uc994\\ud868\\uddb4\\u573a\\ud865\\ude7c\"",
+"canonical": "\"\uc994\ud868\uddb4\u573a\ud865\ude7c\""
+},
+{
+"json": "-6697836892363399",
+"canonical": "-6697836892363399"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "{\"\\udba3\\udedd\": 580886.723443907, \"None\": -2076316852295403}",
+"canonical": "{\"None\":-2076316852295403,\"\udba3\udedd\":580886.723443907}"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "-1092064559322975",
+"canonical": "-1092064559322975"
+},
+{
+"json": "{\"None\": -2266607409025512}",
+"canonical": "{\"None\":-2266607409025512}"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\ud9d8\\udefe\"",
+"canonical": "\"\ud9d8\udefe\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"RR]\\udbc0\\uddb9\"",
+"canonical": "\"RR]\udbc0\uddb9\""
+},
+{
+"json": "{\"0.1\": {\"3729355820635409\": 5e-324, \"None\": {}, \"False\": false, \"True\": {\"?\\ud8ac\\udd7a\\udbe9\\udf5b\": -8890006675781270, \"None\": -452505.4339657237, \"False\": \"<\\u3371\\u4524\", \"123.456\": \"\\udb9a\\udd80\"}}, \"True\": 8885387712251507, \"None\": [-1115030015600515, 5990864297083605, 5189084959057655, -2907253824341414]}",
+"canonical": "{\"0.1\":{\"3729355820635409\":5e-324,\"False\":false,\"None\":{},\"True\":{\"123.456\":\"\udb9a\udd80\",\"?\ud8ac\udd7a\udbe9\udf5b\":-8890006675781270,\"False\":\"<\u3371\u4524\",\"None\":-452505.4339657237}},\"None\":[-1115030015600515,5990864297083605,5189084959057655,-2907253824341414],\"True\":8885387712251507}"
+},
+{
+"json": "{\"8950339918961643\": null, \"\": 0.1, \"8414609771195447\": -646797.5653259088}",
+"canonical": "{\"\":0.1,\"8414609771195447\":-646797.5653259088,\"8950339918961643\":null}"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{\"None\": {}, \"\\u9a29C\": true}",
+"canonical": "{\"None\":{},\"\u9a29C\":true}"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "{\"cv\\u42c4\\uda83\\udebb\": \"\\uf643\\f\\udb6f\\udcd40\\u001b\\u0002\", \"0.1\": 123.456, \"None\": null}",
+"canonical": "{\"0.1\":123.456,\"None\":null,\"cv\u42c4\uda83\udebb\":\"\uf643\\f\udb6f\udcd40\\u001b\\u0002\"}"
+},
+{
+"json": "5158742951111689",
+"canonical": "5158742951111689"
+},
+{
+"json": "7995833176220179",
+"canonical": "7995833176220179"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[\"\\u64b6\", -3105698040739730, {\"5e-324\": -8914817403520330, \"168881.73434166936\": 123.456, \"False\": \"\\u007f\", \"\\u1b1c\": [1e+30, 6733353766691338]}, null]",
+"canonical": "[\"\u64b6\",-3105698040739730,{\"168881.73434166936\":123.456,\"5e-324\":-8914817403520330,\"False\":\"\u007f\",\"\u1b1c\":[1e+30,6733353766691338]},null]"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "[true, true, {\"None\": \"\\uda3b\\ude11\\u5170L\"}]",
+"canonical": "[true,true,{\"None\":\"\uda3b\ude11\u5170L\"}]"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "\"\\u1fab\\ud838\\udcdaa\\ucc1b+\\u0006\"",
+"canonical": "\"\u1fab\ud838\udcdaa\ucc1b+\\u0006\""
+},
+{
+"json": "\"\\u8037\\ud97a\\udcbc\\u0004\\ud02b\"",
+"canonical": "\"\u8037\ud97a\udcbc\\u0004\ud02b\""
+},
+{
+"json": "{\"\": 1e-07, \"\\u6531\\u6ab0\\ud9ae\\udc8e\\u0016\": false, \"\\ubdaf\": {\"False\": 1e+30, \"2479958384082203\": {\"$\\u440e\": \"\\ud92f\\ude1fr\\udafe\\ude7e\\uda9c\\udd42\", \"False\": 0.1, \"-6622568529764126\": null}}}",
+"canonical": "{\"\":1e-7,\"\u6531\u6ab0\ud9ae\udc8e\\u0016\":false,\"\ubdaf\":{\"2479958384082203\":{\"$\u440e\":\"\ud92f\ude1fr\udafe\ude7e\uda9c\udd42\",\"-6622568529764126\":null,\"False\":0.1},\"False\":1e+30}}"
+},
+{
+"json": "-886185369430501",
+"canonical": "-886185369430501"
+},
+{
+"json": "\"\\ud8b3\\udfe1$\\uda84\\udf23\\u001b\\u92a1\"",
+"canonical": "\"\ud8b3\udfe1$\uda84\udf23\\u001b\u92a1\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"False\": {\"123.456\": false, \"True\": [false, false], \"-1070676064764385\": 5e-324, \"2083699909447177\": 4888773092471912}, \"\\udaf5\\udef0\\u6da3\": \"\\ubfd4\\u771c\", \"None\": false}",
+"canonical": "{\"False\":{\"-1070676064764385\":5e-324,\"123.456\":false,\"2083699909447177\":4888773092471912,\"True\":[false,false]},\"None\":false,\"\udaf5\udef0\u6da3\":\"\ubfd4\u771c\"}"
+},
+{
+"json": "{\"\": true}",
+"canonical": "{\"\":true}"
+},
+{
+"json": "\"\\ud9b3\\udc21A\"",
+"canonical": "\"\ud9b3\udc21A\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "64897.25449775183",
+"canonical": "64897.25449775183"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "[6340375780876087, 1e+30, null]",
+"canonical": "[6340375780876087,1e+30,null]"
+},
+{
+"json": "[{\"None\": []}, true]",
+"canonical": "[{\"None\":[]},true]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u0017-\\udb6f\\udd9dC\"",
+"canonical": "\"\\u0017-\udb6f\udd9dC\""
+},
+{
+"json": "-1776032088784136",
+"canonical": "-1776032088784136"
+},
+{
+"json": "2072507035796871",
+"canonical": "2072507035796871"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "186982.29434652603",
+"canonical": "186982.29434652603"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\ud80e\\udf22\\udbe4\\udfb6\\ud961\\uddfd\"",
+"canonical": "\"\ud80e\udf22\udbe4\udfb6\ud961\uddfd\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\u0d46B\\ud2b8\\u4d2b\"",
+"canonical": "\"\u0d46B\ud2b8\u4d2b\""
+},
+{
+"json": "8225087232779961",
+"canonical": "8225087232779961"
+},
+{
+"json": "{\"1e+21\": true, \"False\": {}, \"-3164589581121736\": -5049460110397762}",
+"canonical": "{\"-3164589581121736\":-5049460110397762,\"1e+21\":true,\"False\":{}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "488349382860499",
+"canonical": "488349382860499"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": false}",
+"canonical": "{\"None\":false}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[\"\\u7de5\\udb08\\udcddc\\udb17\\udf29\\u000e\\udb78\\udf98\", [{}, 123.456, -2892822768929740, true]]",
+"canonical": "[\"\u7de5\udb08\udcddc\udb17\udf29\\u000e\udb78\udf98\",[{},123.456,-2892822768929740,true]]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[true, null, \"q\\u84ba{\\udbbd\\udd14\\udab8\\udfa9\", \"q\"]",
+"canonical": "[true,null,\"q\u84ba{\udbbd\udd14\udab8\udfa9\",\"q\"]"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\\u0016\\u2f4a\\udb91\\udfc5\\u0b6aj\\ud9e3\\udd6c\"",
+"canonical": "\"\\u0016\u2f4a\udb91\udfc5\u0b6aj\ud9e3\udd6c\""
+},
+{
+"json": "\"\\ud8ec\\udf35\"",
+"canonical": "\"\ud8ec\udf35\""
+},
+{
+"json": "\"\\u40da:$\\ud9b9\\udf28\\u312b\\u2a0d\"",
+"canonical": "\"\u40da:$\ud9b9\udf28\u312b\u2a0d\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"V\"",
+"canonical": "\"V\""
+},
+{
+"json": "[2482015945458202, true, \"\\u80f9\", {}]",
+"canonical": "[2482015945458202,true,\"\u80f9\",{}]"
+},
+{
+"json": "\"\\u1ddf\"",
+"canonical": "\"\u1ddf\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "{\"None\": [\"\\u2f68@\\u0017\\ud8b8\\udd61\", -392015.52592172613, null, 0.1]}",
+"canonical": "{\"None\":[\"\u2f68@\\u0017\ud8b8\udd61\",-392015.52592172613,null,0.1]}"
+},
+{
+"json": "\"\\ud9bc\\udd64\\uc8ab\\udb00\\udc58\"",
+"canonical": "\"\ud9bc\udd64\uc8ab\udb00\udc58\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "{\"\\ud86a\\udfe3\\u176a\\u3df1\\u29e89\": \"\\u21db\\udb50\\udcfb]B\\b\", \"4947087587531173\": null}",
+"canonical": "{\"4947087587531173\":null,\"\ud86a\udfe3\u176a\u3df1\u29e89\":\"\u21db\udb50\udcfb]B\\b\"}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-8298637122270416",
+"canonical": "-8298637122270416"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[-3259903231458711, 5e-324, [true, \"\\uda0b\\uddee?\\ua822\\ud901\\udeeb\", null]]",
+"canonical": "[-3259903231458711,5e-324,[true,\"\uda0b\uddee?\ua822\ud901\udeeb\",null]]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": {\"G\": {}, \"q\\udbb7\\udc9a\\u38fc\\udb58\\udf7c\\u0019\": null}}",
+"canonical": "{\"None\":{\"G\":{},\"q\udbb7\udc9a\u38fc\udb58\udf7c\\u0019\":null}}"
+},
+{
+"json": "-2752975167333839",
+"canonical": "-2752975167333839"
+},
+{
+"json": "\"\\ud886\\udd8d\\u75c0\"",
+"canonical": "\"\ud886\udd8d\u75c0\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-4587001758541659",
+"canonical": "-4587001758541659"
+},
+{
+"json": "\"\\udb69\\udcc8\"",
+"canonical": "\"\udb69\udcc8\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"None\": [[]]}",
+"canonical": "{\"None\":[[]]}"
+},
+{
+"json": "[false]",
+"canonical": "[false]"
+},
+{
+"json": "\"+\\ud2fc\\udaa6\\ude5e\\udafb\\udc39T\\ud801\\udc56\"",
+"canonical": "\"+\ud2fc\udaa6\ude5e\udafb\udc39T\ud801\udc56\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[false, true, {\"True\": \"Ee\\uda40\\uddd7a\\ud8dd\\udfd4\", \"False\": 1e-07}, 123.456]",
+"canonical": "[false,true,{\"False\":1e-7,\"True\":\"Ee\uda40\uddd7a\ud8dd\udfd4\"},123.456]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "-7775189632475376",
+"canonical": "-7775189632475376"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "6851910234434863",
+"canonical": "6851910234434863"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "{\"1e-07\": \"Y\\u0e50U\\u0472P\", \"True\": null, \"None\": 0.1, \"False\": \"8\"}",
+"canonical": "{\"1e-07\":\"Y\u0e50U\u0472P\",\"False\":\"8\",\"None\":0.1,\"True\":null}"
+},
+{
+"json": "4909484079835064",
+"canonical": "4909484079835064"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[{\"True\": [7999098323923737, -947670.0597595479, 3402952068019483, -4604913500820282], \"-0.0\": true, \"False\": -2408195139814468}, 1e+21, 1e+30]",
+"canonical": "[{\"-0.0\":true,\"False\":-2408195139814468,\"True\":[7999098323923737,-947670.0597595479,3402952068019483,-4604913500820282]},1e+21,1e+30]"
+},
+{
+"json": "\"\\ub956\\ud9f6\\udcdaw\\u001a\\u54c6\\uda82\\udd2c\"",
+"canonical": "\"\ub956\ud9f6\udcdaw\\u001a\u54c6\uda82\udd2c\""
+},
+{
+"json": "[false]",
+"canonical": "[false]"
+},
+{
+"json": "2.554001895663879e-11",
+"canonical": "2.554001895663879e-11"
+},
+{
+"json": "[1e+30, [false, \"\", 0.1], \"\\u99cc\\u001c\\u670f\\uda31\\udfcc\\udbf7\\udf47\"]",
+"canonical": "[1e+30,[false,\"\",0.1],\"\u99cc\\u001c\u670f\uda31\udfcc\udbf7\udf47\"]"
+},
+{
+"json": "\"\\u852a\\udb73\\udd47\"",
+"canonical": "\"\u852a\udb73\udd47\""
+},
+{
+"json": "996953.8361345923",
+"canonical": "996953.8361345923"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"None\": {\"True\": \"\\ud9ab\\udfcf\\udbe3\\udcfe\"}}",
+"canonical": "{\"None\":{\"True\":\"\ud9ab\udfcf\udbe3\udcfe\"}}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\uda3a\\udf6b\\u0010\"",
+"canonical": "\"\uda3a\udf6b\\u0010\""
+},
+{
+"json": "\"\\u40e4+\\u2514\\u0012\"",
+"canonical": "\"\u40e4+\u2514\\u0012\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "-8442544329196905",
+"canonical": "-8442544329196905"
+},
+{
+"json": "[{\"2807680866893052\": 8.075150939449716e+19, \"\\ud842\\udc47\\ud960\\udcaf\\udae0\\udcd3\\ud936\\udfac\": {\"-7720669484979315\": 1e+30, \"False\": null, \"-3859816762350652\": -7354150215725332}}, null]",
+"canonical": "[{\"2807680866893052\":80751509394497160000,\"\ud842\udc47\ud960\udcaf\udae0\udcd3\ud936\udfac\":{\"-3859816762350652\":-7354150215725332,\"-7720669484979315\":1e+30,\"False\":null}},null]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\u616a\\udb75\\udeac\"",
+"canonical": "\"\u616a\udb75\udeac\""
+},
+{
+"json": "8290485297354609",
+"canonical": "8290485297354609"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-6865312158009660",
+"canonical": "-6865312158009660"
+},
+{
+"json": "\"n\\u7ea9\\u001b\\ud877\\udc1a\\udb20\\udc65\"",
+"canonical": "\"n\u7ea9\\u001b\ud877\udc1a\udb20\udc65\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "-7590782456355678",
+"canonical": "-7590782456355678"
+},
+{
+"json": "2523729557312819",
+"canonical": "2523729557312819"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"False\": null, \"-8976558223151180\": [], \"-1258209533727284\": 1946007669036805}",
+"canonical": "{\"-1258209533727284\":1946007669036805,\"-8976558223151180\":[],\"False\":null}"
+},
+{
+"json": "\"m\"",
+"canonical": "\"m\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"-0.0\": null, \"True\": [\"\", null, {\"5428065286106965\": false, \"\\ud88a\\udf4c\\ub020\": 6.11065614707012e+24, \"\\udb52\\udf95\": 5e-324, \"1e-07\": null}, true]}",
+"canonical": "{\"-0.0\":null,\"True\":[\"\",null,{\"1e-07\":null,\"5428065286106965\":false,\"\ud88a\udf4c\ub020\":6.11065614707012e+24,\"\udb52\udf95\":5e-324},true]}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "1324046059788327",
+"canonical": "1324046059788327"
+},
+{
+"json": "[[null, \"\\u001d\"], \"\"]",
+"canonical": "[[null,\"\\u001d\"],\"\"]"
+},
+{
+"json": "[\"R\\ud84c\\uded8\\u0ed1\", {\"None\": [true, false], \"False\": {}}, 5e-324, -4866190121713101]",
+"canonical": "[\"R\ud84c\uded8\u0ed1\",{\"False\":{},\"None\":[true,false]},5e-324,-4866190121713101]"
+},
+{
+"json": "7063220528579180",
+"canonical": "7063220528579180"
+},
+{
+"json": "\"\\u59cc\\u2ac9m\\u4d9b\"",
+"canonical": "\"\u59cc\u2ac9m\u4d9b\""
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-7808509060874652",
+"canonical": "-7808509060874652"
+},
+{
+"json": "[1e+21, 2963360194068215, {\"\": {\"1e+30\": false}, \"Q\\uda74\\ude56\\u3aadb\\ud80b\\udd5dw\": [\"\\tar\", 1e-07], \"\\f\\u0007\\u9f35\": true, \"None\": {}}]",
+"canonical": "[1e+21,2963360194068215,{\"\":{\"1e+30\":false},\"\\f\\u0007\u9f35\":true,\"None\":{},\"Q\uda74\ude56\u3aadb\ud80b\udd5dw\":[\"\\tar\",1e-7]}]"
+},
+{
+"json": "{\"2307920174368139\": null}",
+"canonical": "{\"2307920174368139\":null}"
+},
+{
+"json": "[2775021349651426, [-1927772599501461, \"\", \"\", true], {\"1e-07\": -0.0, \"None\": false, \"1e+21\": null}]",
+"canonical": "[2775021349651426,[-1927772599501461,\"\",\"\",true],{\"1e+21\":null,\"1e-07\":0,\"None\":false}]"
+},
+{
+"json": "1102776092849135",
+"canonical": "1102776092849135"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\ud957\\udf15\\ubc52\\udb3a\\udde5\"",
+"canonical": "\"\ud957\udf15\ubc52\udb3a\udde5\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "-3739223551250560",
+"canonical": "-3739223551250560"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "-5551130500366332",
+"canonical": "-5551130500366332"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "6152783588953481",
+"canonical": "6152783588953481"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "[\"\\u985d\\u53d1\\u7d18k\\ud83a\\udc75`\"]",
+"canonical": "[\"\u985d\u53d1\u7d18k\ud83a\udc75`\"]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\ud853\\udc6a\\udb6f\\udcd6\\ud319,J\\u16fd\"",
+"canonical": "\"\ud853\udc6a\udb6f\udcd6\ud319,J\u16fd\""
+},
+{
+"json": "\"\\udaef\\udcd6\\u91d3\\ua742\\ud938\\udf91\\u6f16\"",
+"canonical": "\"\udaef\udcd6\u91d3\ua742\ud938\udf91\u6f16\""
+},
+{
+"json": "[{\"4424907659413019\": false, \"None\": {\"None\": 9.043160066490565e+16, \"1e+30\": \"$\\ud845\\udc11\\u4f0b\\ud931\\udd5d\\ud814\\udd50\\u001f\", \"True\": -3239618319546152}}, true]",
+"canonical": "[{\"4424907659413019\":false,\"None\":{\"1e+30\":\"$\ud845\udc11\u4f0b\ud931\udd5d\ud814\udd50\\u001f\",\"None\":90431600664905650,\"True\":-3239618319546152}},true]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[true, 0.1]",
+"canonical": "[true,0.1]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\uabaa\\ucbaf\\u4444S\"",
+"canonical": "\"\uabaa\ucbaf\u4444S\""
+},
+{
+"json": "\"\\ud884\\udcc2f=\"",
+"canonical": "\"\ud884\udcc2f=\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[\"P\", false, false]",
+"canonical": "[\"P\",false,false]"
+},
+{
+"json": "-3194059091470372",
+"canonical": "-3194059091470372"
+},
+{
+"json": "-8962565587280268",
+"canonical": "-8962565587280268"
+},
+{
+"json": "{\"834780.9006569711\": false, \"None\": {\"1295244607169281\": {\"z\\ud99a\\udd9f\\ud863\\ude17\\udb3f\\udc87\": null, \"\\u2e2d\\ud885\\udf6e\": 123.456}, \"3855766781886798\": 1e+21, \"False\": 5414256319449811}}",
+"canonical": "{\"834780.9006569711\":false,\"None\":{\"1295244607169281\":{\"z\ud99a\udd9f\ud863\ude17\udb3f\udc87\":null,\"\u2e2d\ud885\udf6e\":123.456},\"3855766781886798\":1e+21,\"False\":5414256319449811}}"
+},
+{
+"json": "\"\\ubeef\\uda90\\udebb_\"",
+"canonical": "\"\ubeef\uda90\udebb_\""
+},
+{
+"json": "[false, {\"\\u7759\\ua3c6\\u0014\\u7858\": \"\\u0ab64\", \"123.456\": 7768437622312748, \"-0.0\": -0.0}]",
+"canonical": "[false,{\"-0.0\":0,\"123.456\":7768437622312748,\"\u7759\ua3c6\\u0014\u7858\":\"\u0ab64\"}]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\uda84\\udea8h\"",
+"canonical": "\"\uda84\udea8h\""
+},
+{
+"json": "[[], 4473869940717595]",
+"canonical": "[[],4473869940717595]"
+},
+{
+"json": "{\"False\": -1238063248038271, \"0.1\": [-0.0, {\"-7971409960011015\": true, \"None\": \"\", \"778221.044162601\": -6184926313571179}]}",
+"canonical": "{\"0.1\":[0,{\"-7971409960011015\":true,\"778221.044162601\":-6184926313571179,\"None\":\"\"}],\"False\":-1238063248038271}"
+},
+{
+"json": "1853533534640017",
+"canonical": "1853533534640017"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "2923859175652517",
+"canonical": "2923859175652517"
+},
+{
+"json": "2498655498710234",
+"canonical": "2498655498710234"
+},
+{
+"json": "\"1\\ud8e3\\ude64\\ube3f\"",
+"canonical": "\"1\ud8e3\ude64\ube3f\""
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{\"False\": 0.1, \"0.1\": 4772552458890384, \"\\uc9ec\\u39ec\": false, \"123.456\": -0.0}",
+"canonical": "{\"0.1\":4772552458890384,\"123.456\":0,\"False\":0.1,\"\uc9ec\u39ec\":false}"
+},
+{
+"json": "-7514280025334253",
+"canonical": "-7514280025334253"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"j)\"",
+"canonical": "\"j)\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "4209054822788175",
+"canonical": "4209054822788175"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-4192289399058351",
+"canonical": "-4192289399058351"
+},
+{
+"json": "[\"\\uab45\"]",
+"canonical": "[\"\uab45\"]"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "-5749576340350157",
+"canonical": "-5749576340350157"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"\\u2369\\ud8fb\\udeb1\\ud838\\ude6d\\udac4\\udff6\\uaa76\": null, \"False\": 1e+21, \"3824688667692209\": true, \"\\ud9dd\\udcb4\\u4202\\ud84b\\udee7X\\udba4\\udc50\\udaba\\udd9c\": []}",
+"canonical": "{\"3824688667692209\":true,\"False\":1e+21,\"\u2369\ud8fb\udeb1\ud838\ude6d\udac4\udff6\uaa76\":null,\"\ud9dd\udcb4\u4202\ud84b\udee7X\udba4\udc50\udaba\udd9c\":[]}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"\\ubc99G\": \"\\u3adf\\ud826\\udd90\", \"1e+21\": -0.0}",
+"canonical": "{\"1e+21\":0,\"\ubc99G\":\"\u3adf\ud826\udd90\"}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[1730480279074688, \"\\u0011\\u81ad\\ud879\\udd07{\\ud823\\uddd8\\u4169\", {\"-4705129312132161\": \"\", \"True\": -0.0}]",
+"canonical": "[1730480279074688,\"\\u0011\u81ad\ud879\udd07{\ud823\uddd8\u4169\",{\"-4705129312132161\":\"\",\"True\":0}]"
+},
+{
+"json": "-3760453335010559",
+"canonical": "-3760453335010559"
+},
+{
+"json": "\"z\\u46d3\\u832a\\ud914\\udc32\\ud876\\ude0c\\ub0f6\"",
+"canonical": "\"z\u46d3\u832a\ud914\udc32\ud876\ude0c\ub0f6\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "-6959602543677830",
+"canonical": "-6959602543677830"
+},
+{
+"json": "[{\"\\ud84f\\udf19\\ud9e1\\udd58\\ud98a\\udec5\": {\"None\": -7592906632990050, \"!\": \"\\u6fd9c\"}}, {\"-0.0\": -362950907891562, \"843415696597467\": true, \"-5773994280096526\": 1e+30}]",
+"canonical": "[{\"\ud84f\udf19\ud9e1\udd58\ud98a\udec5\":{\"!\":\"\u6fd9c\",\"None\":-7592906632990050}},{\"-0.0\":-362950907891562,\"-5773994280096526\":1e+30,\"843415696597467\":true}]"
+},
+{
+"json": "{\"1e+21\": {\"-0.0\": {\"None\": null}, \"6635786273829598\": null}, \"True\": false}",
+"canonical": "{\"1e+21\":{\"-0.0\":{\"None\":null},\"6635786273829598\":null},\"True\":false}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[{}, 123.456, false, true]",
+"canonical": "[{},123.456,false,true]"
+},
+{
+"json": "-4724266895576862",
+"canonical": "-4724266895576862"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "{\"\\ud801\\ude25\\u1dc8\": null}",
+"canonical": "{\"\ud801\ude25\u1dc8\":null}"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "{\"True\": -0.0}",
+"canonical": "{\"True\":0}"
+},
+{
+"json": "[[{\"True\": null, \"False\": 7731435049317346, \"C\\udaec\\udf56\": -932145353187451, \"1e+30\": 7093420781227890}]]",
+"canonical": "[[{\"1e+30\":7093420781227890,\"C\udaec\udf56\":-932145353187451,\"False\":7731435049317346,\"True\":null}]]"
+},
+{
+"json": "{\"\": {}}",
+"canonical": "{\"\":{}}"
+},
+{
+"json": "{\"1e-07\": {\"-5870584215527977\": 123.456, \"-8941166277870017\": 1e-07, \"\\uc0d5\\uc873\\ud9b9\\udec6\\u8200\": -4691170335601571}, \"123.456\": {\"None\": 7599763388780908, \"1e+21\": null}, \"1396902856186792\": {\"5e-324\": 1817161533529656, \"\\uda65\\ude8d\": 123.456, \"None\": null, \"\\ud89e\\udd7d\": {\"759312.1066527723\": 5704425295957392, \"False\": true, \"None\": 7872642579282247, \"5e-324\": null}}}",
+"canonical": "{\"123.456\":{\"1e+21\":null,\"None\":7599763388780908},\"1396902856186792\":{\"5e-324\":1817161533529656,\"None\":null,\"\ud89e\udd7d\":{\"5e-324\":null,\"759312.1066527723\":5704425295957392,\"False\":true,\"None\":7872642579282247},\"\uda65\ude8d\":123.456},\"1e-07\":{\"-5870584215527977\":123.456,\"-8941166277870017\":1e-7,\"\uc0d5\uc873\ud9b9\udec6\u8200\":-4691170335601571}}"
+},
+{
+"json": "\"\\ud824\\udcb1\\uda95\\udd34\"",
+"canonical": "\"\ud824\udcb1\uda95\udd34\""
+},
+{
+"json": "[[[], null, -0.0, {\"g\\u5547\\ud866\\ude25\\u000b\\u0741\\ub9ef\": false, \"7842702783231402\": \"\\ud069\\u9464\"}], true, null]",
+"canonical": "[[[],null,0,{\"7842702783231402\":\"\ud069\u9464\",\"g\u5547\ud866\ude25\\u000b\u0741\ub9ef\":false}],true,null]"
+},
+{
+"json": "\"A\\u0000{8\"",
+"canonical": "\"A\\u0000{8\""
+},
+{
+"json": "3700812458937646",
+"canonical": "3700812458937646"
+},
+{
+"json": "\"\\ud8b9\\ude4c\"",
+"canonical": "\"\ud8b9\ude4c\""
+},
+{
+"json": "-2664314836279827",
+"canonical": "-2664314836279827"
+},
+{
+"json": "[\"\\ud832\\udf90?\\u972e\\udbee\\ude07]\\ud9d3\\ude81\"]",
+"canonical": "[\"\ud832\udf90?\u972e\udbee\ude07]\ud9d3\ude81\"]"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"True\": false, \"None\": null}",
+"canonical": "{\"None\":null,\"True\":false}"
+},
+{
+"json": "[false, 2142737527713222]",
+"canonical": "[false,2142737527713222]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"\\u1135\\ud950\\udf1f\\u0cb0\"",
+"canonical": "\"\u1135\ud950\udf1f\u0cb0\""
+},
+{
+"json": "6.528634446711681e+24",
+"canonical": "6.528634446711681e+24"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\ud9b0\\ude41\"",
+"canonical": "\"\ud9b0\ude41\""
+},
+{
+"json": "[null, [true], -2288827846952452]",
+"canonical": "[null,[true],-2288827846952452]"
+},
+{
+"json": "2076324052317939",
+"canonical": "2076324052317939"
+},
+{
+"json": "-84257.6032555002",
+"canonical": "-84257.6032555002"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"-4379466139055206\": [{\"-4568447759382172\": \"\\u0011\", \"None\": -7443707725959811, \"False\": \"\\ud9d7\\uddd0\", \"\\uc94d4\\u1e21j\": 1e-07}, null, -0.0, null], \"\\udb00\\udfcd\\uda8a\\udcdcW\\ud879\\udfdfl}\": null}",
+"canonical": "{\"-4379466139055206\":[{\"-4568447759382172\":\"\\u0011\",\"False\":\"\ud9d7\uddd0\",\"None\":-7443707725959811,\"\uc94d4\u1e21j\":1e-7},null,0,null],\"\udb00\udfcd\uda8a\udcdcW\ud879\udfdfl}\":null}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-3469556090969559",
+"canonical": "-3469556090969559"
+},
+{
+"json": "-5061903427703433",
+"canonical": "-5061903427703433"
+},
+{
+"json": "-8194268573757961",
+"canonical": "-8194268573757961"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"None\": -3520908218161591, \"\\u9278\": 3910489178936758}",
+"canonical": "{\"None\":-3520908218161591,\"\u9278\":3910489178936758}"
+},
+{
+"json": "[false, \"1\\u0a0a:\"]",
+"canonical": "[false,\"1\u0a0a:\"]"
+},
+{
+"json": "6237662098162858",
+"canonical": "6237662098162858"
+},
+{
+"json": "4365775563866443",
+"canonical": "4365775563866443"
+},
+{
+"json": "-7444322843462649",
+"canonical": "-7444322843462649"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-6002929540061588",
+"canonical": "-6002929540061588"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "\"\\udadd\\ude6f}y\"",
+"canonical": "\"\udadd\ude6f}y\""
+},
+{
+"json": "{\"False\": {\"None\": true, \"5139089381193761\": {\"False\": \"pd\", \"1e-07\": 123.456}, \"888986137168937\": null}, \"\\ud961\\uded3\\u91a4\\u0013\": -5549770829080734}",
+"canonical": "{\"False\":{\"5139089381193761\":{\"1e-07\":123.456,\"False\":\"pd\"},\"888986137168937\":null,\"None\":true},\"\ud961\uded3\u91a4\\u0013\":-5549770829080734}"
+},
+{
+"json": "{\"\\u0013\\\\\": false, \"0.1\": {\"False\": false, \"-6973935447751784\": false, \"1e+21\": [-0.0, \"\\ud96c\\uddcd\\ud939\\udc03\\uda0e\\uddee\\u2910\"], \"7351015816817120\": {}}, \"None\": \"%\\ud91e\\udcb1\\uccd2\\u1b7d\\ud8a3\\udeb6\\u001b\", \"147857548612977\": \"\"}",
+"canonical": "{\"\\u0013\\\\\":false,\"0.1\":{\"-6973935447751784\":false,\"1e+21\":[0,\"\ud96c\uddcd\ud939\udc03\uda0e\uddee\u2910\"],\"7351015816817120\":{},\"False\":false},\"147857548612977\":\"\",\"None\":\"%\ud91e\udcb1\uccd2\u1b7d\ud8a3\udeb6\\u001b\"}"
+},
+{
+"json": "-8799857649064495",
+"canonical": "-8799857649064495"
+},
+{
+"json": "8121384008697584",
+"canonical": "8121384008697584"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "1e+21",
+"canonical": "1e+21"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "-1047618083462432",
+"canonical": "-1047618083462432"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-2402206103480194",
+"canonical": "-2402206103480194"
+},
+{
+"json": "\"\\u0858\\udb98\\ude49\\ud3ab\\u5ed8\\ud88b\\udf3d\\ud8a6\\udfe1\"",
+"canonical": "\"\u0858\udb98\ude49\ud3ab\u5ed8\ud88b\udf3d\ud8a6\udfe1\""
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "-5921529916651627",
+"canonical": "-5921529916651627"
+},
+{
+"json": "{\"True\": \"K\\ud80d\\ude53\\ud8e1\\udf001\\ud85c\\ude78\", \"None\": \"O\\ud9f8\\udd69\\ud82d\\ude63\\ud8fd\\udf70N\", \"\\udb30\\udcd2h\\u2646\": true}",
+"canonical": "{\"None\":\"O\ud9f8\udd69\ud82d\ude63\ud8fd\udf70N\",\"True\":\"K\ud80d\ude53\ud8e1\udf001\ud85c\ude78\",\"\udb30\udcd2h\u2646\":true}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"1e+21\": {\"None\": false, \"8541609840510879\": -3327623127941480, \"62493698512116.234\": null}}",
+"canonical": "{\"1e+21\":{\"62493698512116.234\":null,\"8541609840510879\":-3327623127941480,\"None\":false}}"
+},
+{
+"json": "5531901604175714",
+"canonical": "5531901604175714"
+},
+{
+"json": "-2725097817185550",
+"canonical": "-2725097817185550"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[{\"0.1\": 1e+30, \"-5654960712621023\": \"\\u0010[\\ud8d3\\udcbe\\uda66\\udec3\\uda52\\udca0y\", \"\\u0018\\udb6c\\uddf6\": \"\"}, 7997510412498843, {\"4372443196653597\": true}, true]",
+"canonical": "[{\"\\u0018\udb6c\uddf6\":\"\",\"-5654960712621023\":\"\\u0010[\ud8d3\udcbe\uda66\udec3\uda52\udca0y\",\"0.1\":1e+30},7997510412498843,{\"4372443196653597\":true},true]"
+},
+{
+"json": "-5227893709664182",
+"canonical": "-5227893709664182"
+},
+{
+"json": "[\"/~\\udbf4\\udef3\", 6217901696306754, [], {\"\\ud998\\ude2a\\u2d5e\": {\"-0.0\": false, \"\": \"\\uc3d2E\\udb1f\\udcd5\\uda8a\\udea3\\u822a\", \"\\udac2\\ude9c\\ud976\\udeec\\u8272u\\udadf\\udc8d\\udbbe\\udc65\": 5288074695162797, \"-4934307754538087\": null}}]",
+"canonical": "[\"/~\udbf4\udef3\",6217901696306754,[],{\"\ud998\ude2a\u2d5e\":{\"\":\"\uc3d2E\udb1f\udcd5\uda8a\udea3\u822a\",\"-0.0\":false,\"-4934307754538087\":null,\"\udac2\ude9c\ud976\udeec\u8272u\udadf\udc8d\udbbe\udc65\":5288074695162797}}]"
+},
+{
+"json": "[{\"None\": {\"-6957993521323445\": \"\\ucf67\\u65ee\\uda14\\udc9bD\\udad3\\udf64g\", \"True\": -261415.33210302016, \"\\u3968\\udadc\\ude50\": -3571717560069408, \"\\u1ee5\": -7342271238195596}}, [5e-324, true], [null], [-1018198875399969]]",
+"canonical": "[{\"None\":{\"-6957993521323445\":\"\ucf67\u65ee\uda14\udc9bD\udad3\udf64g\",\"True\":-261415.33210302016,\"\u1ee5\":-7342271238195596,\"\u3968\udadc\ude50\":-3571717560069408}},[5e-324,true],[null],[-1018198875399969]]"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "{\"None\": \"\\u0af6\\udbec\\udc4e\\u507b\", \"-0.0\": 828684788804318}",
+"canonical": "{\"-0.0\":828684788804318,\"None\":\"\u0af6\udbec\udc4e\u507b\"}"
+},
+{
+"json": "\"I\\udaab\\udd10\"",
+"canonical": "\"I\udaab\udd10\""
+},
+{
+"json": "1956711020107179",
+"canonical": "1956711020107179"
+},
+{
+"json": "-7328827272853133",
+"canonical": "-7328827272853133"
+},
+{
+"json": "\"\\udb0f\\udcf9\"",
+"canonical": "\"\udb0f\udcf9\""
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "123.456",
+"canonical": "123.456"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\ud996\\ude66\\ud882\\udf20?\\ud9fb\\udd45\"",
+"canonical": "\"\ud996\ude66\ud882\udf20?\ud9fb\udd45\""
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "4.891834472418448e+18",
+"canonical": "4891834472418448000"
+},
+{
+"json": "-5153522463446301",
+"canonical": "-5153522463446301"
+},
+{
+"json": "-6508838235878860",
+"canonical": "-6508838235878860"
+},
+{
+"json": "0.1",
+"canonical": "0.1"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "3675229336522040",
+"canonical": "3675229336522040"
+},
+{
+"json": "[false, {\"5e-324\": [-4134745068307550], \"2418080553953663\": null, \"-2010090619165572\": 3292314728187419}, {\"\\udbcd\\udc17\\uda82\\ude7a\\u577b\\u4644\": false}, {\"5513377893192100\": true, \"None\": 1e-07}]",
+"canonical": "[false,{\"-2010090619165572\":3292314728187419,\"2418080553953663\":null,\"5e-324\":[-4134745068307550]},{\"\udbcd\udc17\uda82\ude7a\u577b\u4644\":false},{\"5513377893192100\":true,\"None\":1e-7}]"
+},
+{
+"json": "\"\\u84dc\\ubdb98\\u122c\\udb23\\udcda\"",
+"canonical": "\"\u84dc\ubdb98\u122c\udb23\udcda\""
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[\"\\u001c\\udae2\\udd18`\\udbc2\\udc12\\u22b3\"]",
+"canonical": "[\"\\u001c\udae2\udd18`\udbc2\udc12\u22b3\"]"
+},
+{
+"json": "[]",
+"canonical": "[]"
+},
+{
+"json": "-2244671330194473",
+"canonical": "-2244671330194473"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "-5923546240348516",
+"canonical": "-5923546240348516"
+},
+{
+"json": "15.928298115247753",
+"canonical": "15.928298115247753"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-6925775695197716",
+"canonical": "-6925775695197716"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "5236716090735030",
+"canonical": "5236716090735030"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "\"$\\ud808\\ude5a\\u6749\\u000e\\udb57\\udd42\"",
+"canonical": "\"$\ud808\ude5a\u6749\\u000e\udb57\udd42\""
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "3829125166016433",
+"canonical": "3829125166016433"
+},
+{
+"json": "\"\\ud8ce\\udfac\\\\\"",
+"canonical": "\"\ud8ce\udfac\\\\\""
+},
+{
+"json": "{\"None\": {\"-4185933434491212\": 8679335525360764}, \"True\": \"\\ud8c9\\udfc8\\u001c\\u1ed5\\ud873\\udcd9\"}",
+"canonical": "{\"None\":{\"-4185933434491212\":8679335525360764},\"True\":\"\ud8c9\udfc8\\u001c\u1ed5\ud873\udcd9\"}"
+},
+{
+"json": "{\"False\": {\"True\": -628733.0968743205}}",
+"canonical": "{\"False\":{\"True\":-628733.0968743205}}"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "\"p\\f\\u001a\\u0003\\udb7d\\udc54\\ud8fd\\uddac\"",
+"canonical": "\"p\\f\\u001a\\u0003\udb7d\udc54\ud8fd\uddac\""
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "-5913118991709697",
+"canonical": "-5913118991709697"
+},
+{
+"json": "[null]",
+"canonical": "[null]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\u0019\\udbfa\\udd78=\"",
+"canonical": "\"\\u0019\udbfa\udd78=\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "-7924564077521188",
+"canonical": "-7924564077521188"
+},
+{
+"json": "\"\"",
+"canonical": "\"\""
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "12774829.873443538",
+"canonical": "12774829.873443538"
+},
+{
+"json": "-1019750887069420",
+"canonical": "-1019750887069420"
+},
+{
+"json": "\"\\ud909\\udc2f\\ud637\\u1c5e\"",
+"canonical": "\"\ud909\udc2f\ud637\u1c5e\""
+},
+{
+"json": "{\"123.456\": null, \"None\": [], \"0.1\": \"\\ud7b1\\u8d31\"}",
+"canonical": "{\"0.1\":\"\ud7b1\u8d31\",\"123.456\":null,\"None\":[]}"
+},
+{
+"json": "[true, {\"False\": true, \"0.1\": true}, false]",
+"canonical": "[true,{\"0.1\":true,\"False\":true},false]"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"-6747894954118127\": false, \"None\": {\"\\u208e\\u1430\\udb25\\udd08*\\uda83\\udda5\\u5dad\": \"}\", \"\\u1eac7\\u8ce5\\udab2\\udc11\\ud81a\\udd8d\": -6028477072881592}}",
+"canonical": "{\"-6747894954118127\":false,\"None\":{\"\u1eac7\u8ce5\udab2\udc11\ud81a\udd8d\":-6028477072881592,\"\u208e\u1430\udb25\udd08*\uda83\udda5\u5dad\":\"}\"}}"
+},
+{
+"json": "[[1e-07, true, -0.0, 5.875136783580371e+18], \"\\uda1c\\udc45\\udbef\\uddda\\u2804\", false]",
+"canonical": "[[1e-7,true,0,5875136783580371000],\"\uda1c\udc45\udbef\uddda\u2804\",false]"
+},
+{
+"json": "\"S\\u0019\\u6569\\u0007\\udab7\\ude15\"",
+"canonical": "\"S\\u0019\u6569\\u0007\udab7\ude15\""
+},
+{
+"json": "{\"-0.0\": {\"None\": {\"False\": \"c\\udb30\\udd19\\udbbb\\udf43\\uc147\\u579c\\u30af\", \")\": null}, \"0.1\": 1e-07, \"7.396551775222067e-14\": true}, \"False\": -6508080344355749}",
+"canonical": "{\"-0.0\":{\"0.1\":1e-7,\"7.396551775222067e-14\":true,\"None\":{\")\":null,\"False\":\"c\udb30\udd19\udbbb\udf43\uc147\u579c\u30af\"}},\"False\":-6508080344355749}"
+},
+{
+"json": "831377.3950376753",
+"canonical": "831377.3950376753"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[{\"True\": \"pDiS\\uc993$\", \"False\": true, \"-5628209904633689\": [null, -6010192117034303, -0.0]}, \"\\ub874\\udb6a\\udf6d\", 0.1]",
+"canonical": "[{\"-5628209904633689\":[null,-6010192117034303,0],\"False\":true,\"True\":\"pDiS\uc993$\"},\"\ub874\udb6a\udf6d\",0.1]"
+},
+{
+"json": "1606824891248695",
+"canonical": "1606824891248695"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "7.95633335981291e+27",
+"canonical": "7.95633335981291e+27"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "3059888843402088",
+"canonical": "3059888843402088"
+},
+{
+"json": "438274.7478759822",
+"canonical": "438274.7478759822"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[false, -2581853485390389, []]",
+"canonical": "[false,-2581853485390389,[]]"
+},
+{
+"json": "{\"4.400824927576295e+28\": {\"None\": true, \"6525022026350420\": -7502896751577395}, \"1e+30\": {\"5e-324\": 1e+30, \"\\ud504\\udbad\\udd48\\ub638\": null, \"2254265711049341\": false}}",
+"canonical": "{\"1e+30\":{\"2254265711049341\":false,\"5e-324\":1e+30,\"\ud504\udbad\udd48\ub638\":null},\"4.400824927576295e+28\":{\"6525022026350420\":-7502896751577395,\"None\":true}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "[{\"-0.0\": \"L'\\ud9e9\\uddc4S\\u3c95\", \"123.456\": null, \"-2947591348223494\": \"\\uda44\\udf6d\\ud9c1\\udd69\"}, 1688951706581027, false, 626950467950450]",
+"canonical": "[{\"-0.0\":\"L'\ud9e9\uddc4S\u3c95\",\"-2947591348223494\":\"\uda44\udf6d\ud9c1\udd69\",\"123.456\":null},1688951706581027,false,626950467950450]"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "{\"True\": true, \"1e+30\": {}}",
+"canonical": "{\"1e+30\":{},\"True\":true}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"847743143108911\": true, \"None\": {\"1.11681059235197e-22\": null, \"763971.7037468627\": \"\\ubcb6\\u41ea\\ud900\\ude8a\"}}",
+"canonical": "{\"847743143108911\":true,\"None\":{\"1.11681059235197e-22\":null,\"763971.7037468627\":\"\ubcb6\u41ea\ud900\ude8a\"}}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "[false, true]",
+"canonical": "[false,true]"
+},
+{
+"json": "{}",
+"canonical": "{}"
+},
+{
+"json": "[{}, false, {\"1e-07\": -2331513832074620, \"\\ud971\\udf04F\\udba1\\udd44\\ubda7\\ud8ab\\udd7e\": 0.1}]",
+"canonical": "[{},false,{\"1e-07\":-2331513832074620,\"\ud971\udf04F\udba1\udd44\ubda7\ud8ab\udd7e\":0.1}]"
+},
+{
+"json": "\"\\ud998\\udf45\\u001a\\u47a6\"",
+"canonical": "\"\ud998\udf45\\u001a\u47a6\""
+},
+{
+"json": "[null, false]",
+"canonical": "[null,false]"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "1e-07",
+"canonical": "1e-7"
+},
+{
+"json": "\"\\udb9a\\udc0d\"",
+"canonical": "\"\udb9a\udc0d\""
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "\"\\udbb5\\udd0f8\"",
+"canonical": "\"\udbb5\udd0f8\""
+},
+{
+"json": "-813720.091268017",
+"canonical": "-813720.091268017"
+},
+{
+"json": "-0.0",
+"canonical": "0"
+},
+{
+"json": "[-3484752430666373, [\"\", {\"None\": \"\", \"4650621526555195\": true, \"-4317657997521095\": 1e+21, \"True\": \"\\ud98e\\udf5f\"}, {\"6345098562796767\": \"Y\\u3653\"}], {\"-4004371808199263\": \"\\udb59\\udddd\\ub056\\ud9a0\\udf2a\\ud835\\udee7\\ucecc\", \"\\uda92\\udc36D_\\ud955\\udee6\\u165dK\": null, \"\\u4060\\u41c0\\u0012\\udb2b\\udf20\\ua4f4\\u4d92\": \"\\udbe9\\uddfb\\u000f\"}]",
+"canonical": "[-3484752430666373,[\"\",{\"-4317657997521095\":1e+21,\"4650621526555195\":true,\"None\":\"\",\"True\":\"\ud98e\udf5f\"},{\"6345098562796767\":\"Y\u3653\"}],{\"-4004371808199263\":\"\udb59\udddd\ub056\ud9a0\udf2a\ud835\udee7\ucecc\",\"\u4060\u41c0\\u0012\udb2b\udf20\ua4f4\u4d92\":\"\udbe9\uddfb\\u000f\",\"\uda92\udc36D_\ud955\udee6\u165dK\":null}]"
+},
+{
+"json": "6731136661156935",
+"canonical": "6731136661156935"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "\"\\ud832\\udd421\"",
+"canonical": "\"\ud832\udd421\""
+},
+{
+"json": "[8174916864577599, [], \"\\ud9d0\\udd9d\\n\"]",
+"canonical": "[8174916864577599,[],\"\ud9d0\udd9d\\n\"]"
+},
+{
+"json": "-1420378094077719",
+"canonical": "-1420378094077719"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "{\"-0.0\": false, \"-8517159143252972\": [942857113186.199, false, 123.456, 7606133204419506], \"-8765221921450769\": false, \"1e+21\": 5e-324}",
+"canonical": "{\"-0.0\":false,\"-8517159143252972\":[942857113186.199,false,123.456,7606133204419506],\"-8765221921450769\":false,\"1e+21\":5e-324}"
+},
+{
+"json": "-8086907236334062",
+"canonical": "-8086907236334062"
+},
+{
+"json": "[\"\\udb7b\\udc28 \\u0002\"]",
+"canonical": "[\"\udb7b\udc28 \\u0002\"]"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "[\"\\u0016\", [null, \"\\u90ef\\u14e1\\u001cg\\uda76\\udd94\\u4576\"], [null, {\"True\": null, \"S\": true, \"123.456\": null}, -7780694905004573]]",
+"canonical": "[\"\\u0016\",[null,\"\u90ef\u14e1\\u001cg\uda76\udd94\u4576\"],[null,{\"123.456\":null,\"S\":true,\"True\":null},-7780694905004573]]"
+},
+{
+"json": "5e-324",
+"canonical": "5e-324"
+},
+{
+"json": "5538565622720321",
+"canonical": "5538565622720321"
+},
+{
+"json": "false",
+"canonical": "false"
+},
+{
+"json": "-2596542522480885",
+"canonical": "-2596542522480885"
+},
+{
+"json": "{\"1364727705697463\": \"\\u782c\\udb5a\\udf87\\uda99\\udeff\\u0003\\ucbf2\"}",
+"canonical": "{\"1364727705697463\":\"\u782c\udb5a\udf87\uda99\udeff\\u0003\ucbf2\"}"
+},
+{
+"json": "1e+30",
+"canonical": "1e+30"
+},
+{
+"json": "{\"6387312959247004\": false, \"\\u49de\\ud900\\udee5\\u6384\": [null, {\"8181260050992522\": 1e-07}]}",
+"canonical": "{\"6387312959247004\":false,\"\u49de\ud900\udee5\u6384\":[null,{\"8181260050992522\":1e-7}]}"
+},
+{
+"json": "null",
+"canonical": "null"
+},
+{
+"json": "true",
+"canonical": "true"
+},
+{
+"json": "{\"-0.0\": \"\\ud997\\udff1\\udb9b\\udda1\", \"None\": [\"\\u8253w\\ud8da\\udf02\"], \"6\\ud9d1\\udce4%\\u9ffc\\u4f9a\": [\"\\ub9a9\\u133e\\u071d\"]}",
+"canonical": "{\"-0.0\":\"\ud997\udff1\udb9b\udda1\",\"6\ud9d1\udce4%\u9ffc\u4f9a\":[\"\ub9a9\u133e\u071d\"],\"None\":[\"\u8253w\ud8da\udf02\"]}"
+},
+{
+"json": "null",
+"canonical": "null"
+}
+],
+"not_ledger_safe": [
+"12345678901234567890",
+"1e21",
+"[1.7976931348623157e308]",
+"\"\\ud800\"",
+"{\"a\": \"x\\udc00\"}"
+]
+}

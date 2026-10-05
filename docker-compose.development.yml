@@ -1,15 +1,64 @@
+# The engine backend's environment, shared with its one-shot migration. An extension field so
+# aisc-backend can add what only it may hold (the ledger token) without its migration getting it.
+x-backend-env: &backend-env
+  # This engine runs inside the Configurator: one database per project, and the platform's
+  # list of projects (aisc_backend/deployment.py). Left unset, the engine runs standalone.
+  AISC_DEPLOYMENT: configurator
+  S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
+  S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
+  S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
+  S3_URL: ${S3_URL}
+  S3_USER: ${S3_USER}
+  S3_PASSWORD: ${S3_PASSWORD}
+  DB_NAME: ${DB_NAME}
+  DB_USER: ${DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DB_HOST: ${DB_HOST}
+  DB_PORT: ${DB_PORT}
+  DB_ENGINE: ${DB_ENGINE}
+  DB_SCHEMA: ${DB_SCHEMA}
+  BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
+  BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+  ENABLE_SSL_PROXY: true
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+  REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+  PLUGIN_PATH: ${PLUGIN_PATH}
+  PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
+  PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
+  PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
+  PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
+  # the immudb ledger, reached by its service name on the compose network
+  IMMUDB_URL: immudb:3322
+  IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+  # The gateway authenticates every request and passes the token it holds;
+  # the engine verifies it against the realm rather than taking the
+  # gateway's word for it. Defence in depth, and it costs a signature check.
+  AUTH_ENABLED: "true"
+  KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+  KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+  MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
+
 services:
-  # # Frontend development container
+  # The engine's web frontend (apps/webapp)
   aisc-webapp:
     build: apps/webapp/
-    image: aisc-webapp:latest
+    image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-webapp
     environment:
+      # The image defaults to standalone (apps/webapp/Dockerfile); this stack runs it inside
+      # the Configurator, so it is told so explicitly.
+      APP_DEPLOYMENT: configurator
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
-      # Keycloak URL injected into the built JS at container start (env.sh replaces APP_KEYCLOAK_URL).
-      APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
+      # Where the "Public Catalogue" button goes. The bundle ships the literal
+      # placeholder APP_CATALOG_URL and env.sh replaces it at start, so leaving
+      # this unset sends the button to the string "APP_CATALOG_URL" itself.
+      APP_CATALOG_URL: ${CATALOGUE_EXTERNAL_URL:-https://sandboxconfigurator.aifactory.lu/catalogue}
+      # The launcher: where the project was chosen and where the other steps are.
+      APP_LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
     depends_on:
       - aisc-backend
     networks:
@@ -17,37 +66,13 @@ services:
 
   aisc-backend:
     build: apps/backend/
-    image: aisc-backend:latest
+    image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-backend
+    # DB_NAME=platform is the engine's membership alias and the template its
+    # per-project aliases are copied from (project_<hex>, search_path engine).
     environment:
-      S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
-      S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
-      S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
-      S3_URL: ${S3_URL}
-      S3_USER: ${S3_USER}
-      S3_PASSWORD: ${S3_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_ENGINE: ${DB_ENGINE}
-      BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
-      BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      ENABLE_SSL_PROXY: true
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
-      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
-      PLUGIN_PATH: ${PLUGIN_PATH}
-      PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
-      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
-      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
-      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
-      # immudb audit ledger — inside docker the host is the SERVICE NAME, not localhost.
-      IMMUDB_URL: immudb:3322
-      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      <<: *backend-env
     networks:
       - backend
     depends_on:
@@ -61,26 +86,68 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      # the engine's tables live in each project's database; the one-shot below
+      # migrates them all before the engine serves
+      aisc-backend-migrate:
+        condition: service_completed_successfully
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && uv run manage.py migrate --noinput 
       && uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-access-log"
 
-  #
+  # Migrates the engine's schema in every project database engine_rw may enter,
+  # then grants the readers. Exit 2 is a permanent error: no retry.
+  aisc-backend-migrate:
+    build: apps/backend/
+    image: aisc-backend:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: aisc-backend-migrate
+    environment:
+      <<: *backend-env
+    volumes:
+      - ${PLUGIN_PATH}:/app/plugins:z
+      - ./shared:/app/shared:z
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_started
+      platform:
+        condition: service_started
+    restart: "no"
+    command: >
+      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface
+      && until uv run manage.py migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[engine] waiting for postgres'; sleep 2; done"
+
+  # The evaluation worker (apps/eval): a Celery worker that runs the plugins
   aisc-eval-worker:
     platform: linux/amd64
     build:
       context: apps/eval/
-    image: aisc-eval:latest
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-eval-worker
-    # volumes:
-    #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
+    # The image's own check pings "celery@$$HOSTNAME", which in a Dockerfile is the shell's pid
+    # followed by the word HOSTNAME, with a 3s timeout, so it never passes. This pings the worker
+    # by its real name and gives it 20s.
+    healthcheck:
+      test: ["CMD-SHELL", "celery --app aisc_eval.celery_app inspect ping -t 20 -d \"celery@$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
     environment:
-      API_URL: ${API_URL} # Address of api-backend
+      # Manage -> Connections: a plugin process inherits these and resolves the connection it was
+      # given through the platform's internal route (aisc_plugin_interface.connections); the
+      # answer carries the project's network rule too, so the worker has no allowlist of its own.
+      PLATFORM_URL: http://platform:8000
+      PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
+      # As for the backend (aisc_eval/deployment.py): the run ticket and the project headers
+      # are the Configurator's.
+      AISC_DEPLOYMENT: configurator
+      API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
@@ -103,16 +170,15 @@ services:
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=debug"
+      && celery -A aisc_eval.celery_worker worker --loglevel=info"
 
   aisc-eval-flower:
     platform: linux/amd64
-    image: aisc-eval:latest
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-eval-flower
-    # volumes:
-    #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
+      AISC_DEPLOYMENT: configurator
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
@@ -128,32 +194,45 @@ services:
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
       && celery -A aisc_eval.celery_worker flower"
+    # Flower's own health endpoint: pinging "celery@<flower's hostname>" would ask for a worker
+    # that does not exist.
     healthcheck:
-      test:
-        - "CMD-SHELL"
-        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5555/$${FLOWER_URL_PREFIX}/healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5
     networks:
       - backend
 
-  # ── AI-compliance checklists app (apps/controls submodule) ──
+  # Controls (apps/controls): the AI-compliance checklists
   controls-pdf:
     build: apps/controls/services/pdf_renderer
+    image: aisc-controls-pdf:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: controls-pdf
+    environment:
+      # its one caller's token (controls-web): everything but /health needs it
+      CONTROLS_WEB_TO_PDF_TOKEN: ${CONTROLS_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
 
   controls-migrate:
     build: apps/controls
+    image: aisc-controls-migrate:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: controls-migrate
+    # Every project database, not one shared one. No seed: a project's
+    # checklists are the ones installed into it from the catalogue.
     command: >
-      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done && npx prisma db seed"
+      sh -c "until node scripts/migrate-projects.mjs; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[controls] waiting for postgres'; sleep 2; done"
     env_file: apps/controls/env.development
     depends_on:
-      - postgres
+      # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
+      postgres-setup:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
     restart: "no"
     networks:
       - backend
@@ -163,11 +242,26 @@ services:
       context: apps/controls
       args:
         NEXT_BASE_PATH: /controls
+    image: aisc-controls-web:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: controls-web
     env_file: apps/controls/env.development
     environment:
-      # the server-side audit forwarder posts here (service name on the backend network, not localhost)
+      # The ledger: each change records its event with ledger.emit in its own transaction.
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      # the server-side audit forwarder posts here
       AISC_BACKEND_URL: http://aisc-backend:8000
+      # Who may be in this project, and who may change it. Asked once per
+      # request by the middleware over /p/:path*.
+      PLATFORM_URL: http://platform:8000
+      # A control's package comes from the platform (PLATFORM_URL above), which reads the project's own
+      # catalogue, public or its private copy: this app names no catalogue (plan 2026-10-04 D2).
+      # The pages whose install dialog may call /controls/api/install with the person's sign-in: the
+      # hosted catalogue's, and the launcher's, where this stack serves the catalogue's pages.
+      CATALOGUE_ORIGIN: ${CATALOGUE_ORIGIN:-https://sandboxconfigurator.aifactory.lu}
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      # sent to controls-pdf by the submission report route
+      CONTROLS_WEB_TO_PDF_TOKEN: ${CONTROLS_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
@@ -178,16 +272,78 @@ services:
       - backend
       - frontend
 
-  # ── EU-AI-Act qualification app (apps/qualification submodule) ──
-  # LiteLLM completion sidecar — holds the provider key; the app calls it over HTTP.
-  qualification-llm:
-    build: apps/qualification/services/llm
-    container_name: qualification-llm
+  # Pre-fill a qualification from a document somebody already wrote. Reads the
+  # file, proposes the form's answers, and hands them back for amending. Stores
+  # nothing, and needs no model: the Annex headings and the usual labels are
+  # the signal.
+  qualification-prefill:
+    build:
+      # the app root, because the field mapping lives with the form
+      context: apps/qualification
+      dockerfile: services/prefill/Dockerfile
+    image: aisc-qualification-prefill:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: qualification-prefill
     environment:
-      # Default provider is Mistral; LiteLLM picks the key matching LLM_MODEL.
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LLM_MODEL: ${QUALIFICATION_LLM_MODEL:-mistral/mistral-large-latest}
+      # its one caller's token (qualification-web)
+      QUALIFICATION_WEB_TO_PREFILL_TOKEN: ${QUALIFICATION_WEB_TO_PREFILL_TOKEN:?run scripts/secrets.sh first}
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # Qualification (apps/qualification): qualifies an AI system against the EU AI Act.
+  # The card agent: drafts the prose-fed nodes of an AI card (techniques, components) with the
+  # project's model (through BAF), and publishes the draft to qualification-web.
+  qualification-agents:
+    build:
+      context: apps/qualification/services/agents
+      dockerfile: Dockerfile.stack
+      additional_contexts:
+        ontology-prompts: apps/qualification/services/ontology/prompts
+    image: aisc-qualification-agents:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: qualification-agents
+    environment:
+      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
+      APP_URL: http://qualification-web:3000/qualification
+      # A card's project may have chosen its own model and key (launcher, Manage,
+      # "Models and API keys"): the agent asks the platform's internal route for it,
+      # with this token. A project without a choice keeps the variables above.
+      PLATFORM_URL: http://platform:8000
+      # its own system's token only: it can resolve card_agent and nothing else
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
+      # the token qualification-web sends to start and read a run
+      QUALIFICATION_WEB_TO_AGENTS_TOKEN: ${QUALIFICATION_WEB_TO_AGENTS_TOKEN:?run scripts/secrets.sh first}
+      # its own tokens for the two services it calls: the app's /extracted and the ontology
+      QUALIFICATION_AGENTS_TO_WEB_TOKEN: ${QUALIFICATION_AGENTS_TO_WEB_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
+      # the ledger: a run's events go to the platform's internal route with this token, its own
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
+    extra_hosts:
+      # for a project that chose a model served by ollama on the host
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # AIRO graph builder sidecar: turns a qualification's answers, the agent's
+  # prose extraction and a reviewer's patch into the filled AIRO graph that is
+  # the system's AI card. Pure computation, no model: without it the app can
+  # collect answers but cannot export a card, which is what step 2 reads.
+  qualification-ontology:
+    build:
+      # The app root, because the picker vocabulary in src/data is shared with
+      # the form, which is what its own Dockerfile says.
+      context: apps/qualification
+      dockerfile: services/ontology/Dockerfile
+    image: aisc-qualification-ontology:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: qualification-ontology
+    environment:
+      # two callers, a token each
+      QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
@@ -195,19 +351,34 @@ services:
   # System-card PDF renderer sidecar.
   qualification-pdf:
     build: apps/qualification/services/system_card_renderer
+    image: aisc-qualification-pdf:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-pdf
+    environment:
+      # its one caller's token (qualification-web)
+      QUALIFICATION_WEB_TO_PDF_TOKEN: ${QUALIFICATION_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     restart: unless-stopped
     networks:
       - backend
 
   qualification-migrate:
     build: apps/qualification
+    image: aisc-qualification-migrate:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-migrate
+    # Every project database; forms are per project, so nothing on platform. Exit 2 is a
+    # permanent error: no retry. No env_file: the submodule's one would bring DATABASE_URL back.
     command: >
-      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
-    env_file: apps/qualification/env.development
+      sh -c "until node scripts/migrate-projects.mjs; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[qualification] waiting for postgres'; sleep 2; done"
+    environment: &qualification-db-env
+      # a template: {database} becomes project_<pid without hyphens>
+      PROJECT_DATABASE_URL: ${QUALIFICATION_PROJECT_DATABASE_URL:-postgresql://qualification_rw:${QUALIFICATION_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2}
     depends_on:
-      - postgres
+      # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
+      postgres-setup:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
     restart: "no"
     networks:
       - backend
@@ -217,20 +388,591 @@ services:
       context: apps/qualification
       args:
         NEXT_BASE_PATH: /qualification
+    image: aisc-qualification-web:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: qualification-web
     environment:
+      <<: *qualification-db-env
+      # the settings of apps/qualification/env.development, without its DATABASE_URL
+      SYSTEM_CARD_RENDERER_URL: http://qualification-pdf:8005
+      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
+      PLATFORM_URL: http://platform:8000
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       AISC_BACKEND_URL: http://aisc-backend:8000
+      # The card agent, which the save starts and the card page polls.
+      AGENT_SERVICE_URL: http://qualification-agents:8012
+      # The ledger: each change writes its event with ledger.emit in its own transaction.
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      # Where an uploaded document is turned into the form's answers.
+      PREFILL_URL: http://qualification-prefill:8012
+      # One token per service it calls, and the card agent's token for the two
+      # /extracted routes it accepts from the agent.
+      QUALIFICATION_AGENTS_TO_WEB_TOKEN: ${QUALIFICATION_AGENTS_TO_WEB_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_AGENTS_TOKEN: ${QUALIFICATION_WEB_TO_AGENTS_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN: ${QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_PREFILL_TOKEN: ${QUALIFICATION_WEB_TO_PREFILL_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_WEB_TO_PDF_TOKEN: ${QUALIFICATION_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
     # Migration is owned by qualification-migrate; the web container only serves.
     command: ["npx", "next", "start", "-p", "3000"]
-    env_file: apps/qualification/env.development
     depends_on:
       qualification-migrate:
         condition: service_completed_successfully
-      qualification-llm:
-        condition: service_started
       qualification-pdf:
+        condition: service_started
+      qualification-ontology:
         condition: service_started
     restart: unless-stopped
     networks:
       - backend
       - frontend
+
+  # Control objectives (apps/control-objectives)
+  # Reads the AI Card the qualification app exports, ranks that system's risks
+  # and maps them onto the control objectives: the assessments, their rankings
+  # and what each mapping run cost. Its tables live in the `control_objectives`
+  # schema of each project's own database (the template makes the schema, its
+  # migrations the tables); on platform it reads only who is in which project.
+  control-objectives-migrate:
+    build: apps/control-objectives/
+    image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: control-objectives-migrate
+    # every project database the role may enter; exit 2 is a permanent error
+    command: >
+      sh -c "until python -m aisc_control_objectives.migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[control-objectives] waiting for postgres'; sleep 2; done"
+    environment:
+      # membership only (core.project, core.project_member)
+      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
+      # a template: {database} becomes project_<pid without hyphens>
+      PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
+    depends_on:
+      # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
+      postgres-setup:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
+    restart: "no"
+    networks:
+      - backend
+
+  control-objectives:
+    build: apps/control-objectives/
+    image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: control-objectives
+    env_file: apps/control-objectives/env.development
+    volumes:
+      # aisc_identity: who is calling, answered the same way by every Python
+      # service. Mounted rather than copied, so one fix reaches all of them.
+      - ./shared/identity:/app/shared/identity:ro,z
+    environment:
+      PYTHONPATH: /app/src:/app/shared/identity
+      # The ledger: each write records its event with ledger.emit in its own transaction.
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      # A project belongs to the people in it, and this service holds somebody's
+      # risk ratings, so it has to know who is asking.
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      # Served behind Caddy under /control-objectives. FastAPI's root_path only
+      # fixes the URLs the app generates; Caddy's handle_path strips the prefix.
+      CONTROL_OBJECTIVES_ROOT_PATH: /control-objectives
+      # Where projects are chosen. Reached without one, this service sends the
+      # reader there rather than asking a second time.
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      # "Start assessment" asks the platform for the latest AI card version and
+      # qualification for that version's card, with the caller's own token.
+      PLATFORM_URL: http://platform:8000
+      # Asks the platform for the model its project chose, before each map.
+      # its own system's token only: it can resolve risk_mapper and nothing else
+      PLATFORM_INTERNAL_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
+      QUALIFICATION_URL: http://qualification-web:3000/qualification
+      # membership only (core.project, core.project_member)
+      DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
+      # each project's assessments, in that project's database
+      PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
+      # The model, named the way BAF names it: the same two variables the qualification
+      # filler reads, so both services are configured alike.
+      #
+      # The default is deliberately keyless: the service refuses to start if the
+      # provider needs a key that is not set, so a first install must not default
+      # to a hosted provider. `ollama` reaches a model on the host through
+      # host.docker.internal. For a hosted provider set, in the platform env file:
+      #   CONTROL_OBJECTIVES_LLM_PROVIDER=openai
+      #   CONTROL_OBJECTIVES_LLM_MODEL=gpt-4o
+      #   OPENAI_API_KEY=...        (never commit one)
+      BAF_LLM_PROVIDER: ${CONTROL_OBJECTIVES_LLM_PROVIDER:-ollama}
+      BAF_LLM_MODEL: ${CONTROL_OBJECTIVES_LLM_MODEL:-mistral:latest}
+      BAF_LLM_BASE_URL: ${CONTROL_OBJECTIVES_LLM_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    # so the keyless default above can reach a model running on the host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      control-objectives-migrate:
+        condition: service_completed_successfully
+    # No published port on purpose: it is served at /control-objectives through Caddy, behind
+    # the gateway. Publishing 8090 would make the whole app reachable without sign-in.
+    expose:
+      - "8090"
+    networks:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+  # The report: the composer assembles a report from modules, the renderer draws it
+  report-composer:
+    build: apps/report-composer
+    image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: report-composer
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+    environment: &composer-env
+      PYTHONPATH: /app:/app/shared/identity
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      REPORT_COMPOSER_ROOT_PATH: /report-composer
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      PLATFORM_ORIGIN: ${PLATFORM_ORIGIN:-http://localhost}
+      # membership (core.project, core.project_member) and the preset library
+      REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      # a template: {database} becomes project_<pid without hyphens>
+      REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
+      REPORT_RENDERER_URL: http://report-renderer:8001
+      REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
+      # the ledger: off unless switched on; the platform answers a report's ledger anchor
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      PLATFORM_URL: http://platform:8000
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      report-composer-migrate:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
+      report-renderer:
+        condition: service_started
+    expose:
+      - "8095"
+    networks:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+  # The preset library on platform, then every project database. Exit 2 is a
+  # permanent error: no retry; any other failure (postgres not up yet) is retried.
+  report-composer-migrate:
+    image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: report-composer-migrate
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+    environment:
+      <<: *composer-env
+    command: >
+      sh -c "until python -m report_composer.migrate; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[report-composer] waiting for postgres'; sleep 2; done"
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
+    restart: "no"
+    networks:
+      - backend
+
+  report-renderer:
+    build:
+      # both are submodules of this repository; no evaluation tool's report plugin is built in
+      context: ${REPORT_GENERATOR_DIR:-./apps/report-generator}
+      additional_contexts:
+        interface: ${REPORT_INTERFACE_DIR:-./shared/report-plugin-interface}
+    image: aisc-report-renderer:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: report-renderer
+    volumes:
+      # read-only, never copied
+      - ./apps/qualification/src/data/airo_vocab.json:/data/airo_vocab.json:ro,z
+      # the labels of the VAIR terms the form's tables hold, generated from vair.ttl
+      - ./apps/qualification/src/data/vair_vocab.json:/data/vair_vocab.json:ro,z
+      - ./apps/control-objectives/src/aisc_control_objectives/data/ai_act_control_objectives.csv:/data/ai_act_control_objectives.csv:ro,z
+    environment:
+      REPORT_PLATFORM_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      REPORT_SUPERSET_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/superset
+      REPORT_PROJECT_DB_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
+      REPORT_AIRO_VOCAB_PATH: /data/airo_vocab.json
+      REPORT_VAIR_VOCAB_PATH: /data/vair_vocab.json
+      REPORT_OBJECTIVES_CSV_PATH: /data/ai_act_control_objectives.csv
+      REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
+      # chart images stay off until Superset screenshots are enabled (then set it to superset)
+      REPORT_CHART_IMAGES: "off"
+      REPORT_SUPERSET_PUBLIC_URL: ${DASHBOARD_EXTERNAL_URL:-http://localhost:8188}
+    depends_on:
+      report-grants:
+        condition: service_completed_successfully
+    # called by the composer only: not on the frontend network, not in the Caddyfile
+    expose:
+      - "8001"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # SELECT for report_ro on what the report reads, granted again on every start
+  report-grants:
+    image: postgres:15-alpine
+    container_name: report-grants
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      REPORT_GRANTS_WAIT_SECONDS: "600"
+    volumes:
+      - ./scripts/report-grants.sh:/setup/report-grants.sh:ro,Z
+      - ./init/report-ro-grants.sql:/setup/report-ro-grants.sql:ro,Z
+    command: ["sh", "/setup/report-grants.sh"]
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      qualification-migrate:
+        condition: service_completed_successfully
+      control-objectives-migrate:
+        condition: service_completed_successfully
+      controls-migrate:
+        condition: service_completed_successfully
+      aisc-backend-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  # Results dashboard (apps/results-dashboard)
+  # Superset, reading each project's own database read-only (one connection per
+  # project, made by the bridge), so the evaluation results the execution engine
+  # writes can be charted. On platform it reads only who is in which project,
+  # over a plain DSN that is never a Superset connection. Unlike the other apps it
+  # cannot be served under a path prefix: Superset 4.1 needs the site root, so
+  # it gets its own published port rather than a Caddy route.
+  #
+  # It shares the platform's Postgres, Redis and immudb instead of bringing its
+  # own, which is what its standalone docker-compose.yml does. Its metadata DB is
+  # created by init/superset-db.sql and its read-only role dashboard_ro by
+  # init/platform-db.sql, on a fresh volume.
+  dashboard-migrate:
+    build: apps/results-dashboard
+    image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: dashboard-migrate
+    user: root
+    entrypoint: ["/bin/bash", "-c"]
+    # A single argument to `bash -c`: a plain string command is split on
+    # whitespace and truncated at the first &&, which loses the rest.
+    command:
+      # No local admin account: people sign in at the gateway, and Superset takes
+      # who they are from it (dashboard-gateway/). The platform's admin is
+      # Superset's Admin through the role sync.
+      - "superset db upgrade && superset init"
+    environment: &dashboard-env
+      SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/superset
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?run scripts/secrets.sh first}
+      SUPERSET_GUEST_TOKEN_SECRET: ${SUPERSET_GUEST_TOKEN_SECRET:?run scripts/secrets.sh first}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      IMMUDB_HOST: immudb
+      IMMUDB_PORT: "3322"
+      IMMUDB_USER: immudb
+      IMMUDB_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+      AISC_AUDIT_ENABLED: "true"
+      # dashboard_ro's password, for the project connections the bridge registers (init/dashboard-role.sql)
+      DASHBOARD_RO_PASSWORD: ${DASHBOARD_RO_PASSWORD:?run scripts/secrets.sh first}
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      BRANDING_APP_NAME: ${BRANDING_APP_NAME:-}
+      BRANDING_LOGO: ${BRANDING_LOGO:-}
+      BRANDING_PRIMARY: ${BRANDING_PRIMARY:-}
+      BRANDING_SECONDARY: ${BRANDING_SECONDARY:-}
+      EMBED_ALLOWED_ORIGINS: ${EMBED_ALLOWED_ORIGINS:-}
+    volumes: &dashboard-volumes
+      - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
+      - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
+      - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
+    depends_on:
+      # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
+      postgres-setup:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: "no"
+    networks:
+      - backend
+
+  dashboard:
+    build: apps/results-dashboard
+    image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: dashboard
+    # Superset listens only on SUPERSET_BIND_ADDRESS (below), so the check asks there rather
+    # than on localhost as the image's own check does.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS \"http://$${SUPERSET_BIND_ADDRESS}:$${SUPERSET_PORT}/health\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # network_mode: host. It reaches Postgres, Redis and immudb on their published host ports
+    # (localhost), which is also how its project connections name each project's database.
+    # It listens on SUPERSET_PORT directly (the stock entrypoint honours it).
+    network_mode: host
+    # Superset logs nobody in: it sits behind the gateway like every other module. Caddy
+    # serves it on DASHBOARD_PORT after the one sign-in; the server itself listens only on the
+    # Docker host address, reachable from this machine's containers (Caddy, the platform's
+    # bridge) and not from the network.
+    volumes:
+      - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
+      - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
+      - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
+      - ./dashboard-gateway:/app/pythonpath_gateway:ro,Z
+    environment:
+      <<: *dashboard-env
+      SUPERSET_BIND_ADDRESS: ${DASHBOARD_BIND_ADDRESS:-172.17.0.1}
+      SUPERSET_PORT: ${DASHBOARD_INTERNAL_PORT:-8189}
+      # the dashboard's own config, run unchanged, then who is signed in taken
+      # from the gateway's verified token
+      SUPERSET_CONFIG_PATH: /app/pythonpath_gateway/superset_gateway_config.py
+      GATEWAY_TOKEN_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      GATEWAY_JWKS_URL: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/certs
+      SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
+      # memberships at sign-in (SELECT core.project_member only); localhost because of the host network
+      AISC_MEMBERSHIP_DB_URI: ${AISC_MEMBERSHIP_DB_URI:-postgresql+psycopg2://dashboard_ro:${DASHBOARD_RO_PASSWORD:?run scripts/secrets.sh first}@localhost:5432/platform}
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      REDIS_HOST: localhost
+      IMMUDB_HOST: localhost
+      # its own Keycloak login stays off: the gateway signs people in
+      AISC_OAUTH: "0"
+      # the shared secret the platform sends to /api/v1/aisc_project (the bridge)
+      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
+      # where a project's own database is, as this host-network container sees it
+      AISC_PROJECT_DB_HOSTPORT: localhost:5432
+      # the ledger: comments and reviews are queued in Superset's database with the change and
+      # posted to the platform's internal route with this token. While the platform is not
+      # reachable from the host network (DASHBOARD_PLATFORM_URL), they stay queued.
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      PLATFORM_URL: ${DASHBOARD_PLATFORM_URL:-http://172.17.0.1:8000}
+      PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
+    depends_on:
+      dashboard-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Publishes the bundled plugins in def_plugins/ to the stack's devpi at bring-up.
+  #
+  # Without this the index is empty on a fresh install and nothing can be installed:
+  # the engine installs plugins only from that index. Idempotent: twine skips what is
+  # already there, so a restart republishes nothing.
+  plugin-publisher:
+    image: python:3.12-slim
+    container_name: plugin-publisher
+    working_dir: /src
+    volumes:
+      - ./def_plugins:/src:ro
+      # published too: a plugin's run installs its dependencies from PyPI and this index, and takes
+      # the plugin interface from here (the first index that has it), not PyPI's release of that name
+      - ./shared/plugin-interface:/interface:ro
+    environment:
+      # the stack's devpi, the same index PACKAGE_REGISTRY_URL points the engine at
+      TWINE_USERNAME: root
+      TWINE_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+      TWINE_REPOSITORY_URL: http://devpi:3141/${DEVPI_INDEX:-root/public}/
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "pip install --quiet build twine && out=$$(mktemp -d) && for d in /src/*/ /interface/; do [ -f \"$$d/pyproject.toml\" ] || continue; python -m build --outdir $$out \"$$d\" >/tmp/build.log 2>&1 || { echo \"could not build $$d:\"; tail -n 20 /tmp/build.log; continue; }; done && twine upload --non-interactive $$out/* && echo 'plugins and the plugin interface published to the index'"
+    depends_on:
+      - devpi
+    restart: "no"
+    networks:
+      - backend
+
+  # The platform service (platform/): the projects and their members, one database per
+  # project made from platform/project-template, the launcher's API, Manage (models and
+  # API keys, connections), evidence, and the ledger. It verifies the caller's token itself
+  # (AUTH_ENABLED) and answers each request by the caller's role in the project.
+  platform:
+    build: platform
+    image: aisc-platform:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: platform
+    volumes:
+      - ./immudb-signing.pub:/keys/immudb-signing.pub:ro,Z
+      # aisc_identity: who is calling, answered the same way by every Python
+      # service. Mounted rather than copied, so one fix reaches all of them.
+      - ./shared/identity:/app/shared/identity:ro,z
+      # Manage -> Connections tests a connection with the same client the plugins use
+      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
+      # core is this service's to migrate, and the files are read at startup.
+      - ./platform/migrations:/app/migrations:ro,z
+      # what every new project database starts with, one file per module
+      - ./platform/project-template:/app/project-template:ro,z
+    environment:
+      # The ledger, on (record) unless LEDGER_MODE=off: the witness's gateway secret, immudb
+      # as aisc_ledger (never the superuser), the public key of immudb's signed states, the
+      # versioned master keys, and the tokens of the callers that post events.
+      LEDGER_MODE: ${LEDGER_MODE:-record}
+      AISC_WITNESS_GATEWAY_SECRET: ${AISC_WITNESS_GATEWAY_SECRET:?run scripts/secrets.sh first}
+      AISC_GATEWAY_CLIENT_ID: aisc-gateway
+      LEDGER_IMMUDB_URL: immudb:3322
+      LEDGER_IMMUDB_PASSWORD: ${LEDGER_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
+      LEDGER_IMMUDB_PUBLIC_KEY: /keys/immudb-signing.pub
+      PLATFORM_LEDGER_KEYS: ${PLATFORM_LEDGER_KEYS:?run scripts/secrets.sh first}
+      PLATFORM_LEDGER_ENGINE_TOKEN: ${PLATFORM_LEDGER_ENGINE_TOKEN:?run scripts/secrets.sh first}
+      PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
+      PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
+      # platform_rw's generated password: postgres-setup applies the same value to the role
+      PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
+      # A project belongs to the people in it, so this service has to know who
+      # is asking. Verified here rather than taken on the gateway's word.
+      AUTH_ENABLED: "true"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      # Who owns a project that has no members. Keycloak's subjects for the two
+      # seeded accounts; the realm file pins these ids, so they are the same on
+      # every install made from it. Only projects with nobody in them are touched.
+      PLATFORM_BOOTSTRAP_OWNERS: ${PLATFORM_BOOTSTRAP_OWNERS:-c8134e20-7078-465a-8955-f25289bd4540,9feeffe8-6e06-49c8-a7ae-c8993a1e68d4}
+      # Making or deleting a project tells the dashboard's bridge, which makes or
+      # removes that project's dashboard. The call goes straight to Superset on the
+      # Docker host, not through Caddy: the bridge has its own token and no session.
+      # The token is the shared secret the bridge checks; with none set, it refuses every call.
+      DASHBOARD_BRIDGE_URL: http://host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
+      DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
+      # Per-project LLM keys (Manage, "Models and API keys"): encrypted at rest
+      # with this Fernet key list (newest first), and handed to the two agents
+      # only on the internal route, which this token guards.
+      PLATFORM_SECRETS_KEY: ${PLATFORM_SECRETS_KEY:?run scripts/secrets.sh first}
+      # one token per agentic system: each agent resolves only its own choice and key
+      PLATFORM_CARD_AGENT_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
+      PLATFORM_RISK_MAPPER_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
+      # where a project's ollama choice is reached unless it stored its own URL
+      PLATFORM_OLLAMA_BASE_URL: ${PLATFORM_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Manage -> Connections: the token the plugin-side client resolves a connection with; the
+      # engine the platform makes each connection's component in (with the admin's own token); and
+      # the internal hosts every project's connections may call, on top of what each project allows
+      # under Manage -> Connections (host or host:port, comma list; empty: none).
+      PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
+      ENGINE_URL: http://aisc-backend:8000
+      CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}
+      # The protocol endpoints a run reaches a connection through (AISC, OpenAI-compatible, A2A,
+      # Open Inference Protocol) are announced at this internal URL; a run's key lasts this long.
+      PLATFORM_INTERNAL_URL: http://platform:8000
+      CONNECTIONS_RUN_KEY_TTL_S: ${CONNECTIONS_RUN_KEY_TTL_S:-43200}
+      # Collect evidence: what steps 2 and 3 selected is read from each project database as the
+      # report's read-only role ({database} is the project's database).
+      EVIDENCE_READER_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
+      # The public catalogue: the dimension of each test and control comes from its tags; a private
+      # copy is made from it, a public project reads it live, and a control's package comes from it.
+      CATALOGUE_URL: ${CATALOGUE_API_URL:-https://sandboxconfigurator.aifactory.lu/api/api}
+      # Its bridge token, sent with a control's package request when it sets one. Empty locally.
+      CATALOGUE_TOKEN: ${CATALOGUE_BRIDGE_TOKEN:-}
+      # A private catalogue's install-info asks the index the engine installs from.
+      PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_started
+      postgres-setup:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  # The move tool (python -m platform_service.isolate): copies each project's rows
+  # from the shared schemas into its own database. A separate one-shot so the
+  # superuser credential never sits in the long-running platform service; the
+  # profile keeps `up` from ever starting it. Run it with
+  #   docker compose --profile isolation run --rm isolate <subcommand> ...
+  # adding -v "$BACKUP:/backup" for a cutover.
+  # Tops the ledger's pool up at every start: one immudb database per project, made ahead of time
+  # because only immudb's superuser can make one and the platform never holds that password. It
+  # waits for immudb and the platform's migrations, keeps LEDGER_POOL free databases (default 20)
+  # and gives any project that waits its database, then exits.
+  ledger-pool:
+    image: aisc-platform:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    command: ["python", "-m", "platform_service.ledger.pool", "top-up", "--wait", "300", "${LEDGER_POOL:-20}"]
+    environment:
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD:?run scripts/secrets.sh first}
+      LEDGER_IMMUDB_URL: immudb:3322
+      LEDGER_IMMUDB_PASSWORD: ${LEDGER_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
+      PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+      platform:
+        condition: service_started
+      immudb:
+        condition: service_started
+    restart: "no"
+    networks:
+      - backend
+
+  isolate:
+    image: aisc-platform:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    profiles: ["isolation"]
+    entrypoint: ["python", "-m", "platform_service.isolate"]
+    environment:
+      # no password in the URL (nothing to URL-encode); libpq and pg_restore read PGPASSWORD
+      ISOLATE_SUPERUSER_URL: postgresql://${POSTGRES_USER}@postgres:5432/${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PYTHONPATH: /app/shared/identity
+    volumes:
+      - ./shared/identity:/app/shared/identity:ro,z
+      - ./platform/project-template:/app/project-template:ro,z
+    networks:
+      - backend
+    restart: "no"
+
+  # The catalogue's own pages for a project's catalogue, public or private (apps/catalogue/frontend,
+  # built with the project-catalogue switch on). Caddy serves them under /project-catalogue/ on the
+  # launcher's origin, where /api/ is the platform, so they read the project's catalogue (a private
+  # copy, or the hosted one live) with the person's own sign-in. Read-only: no add or delete.
+  catalogue-private:
+    build:
+      context: apps/catalogue/frontend
+      args:
+        VITE_ENABLE_PROJECT_CATALOGUE: "true"
+        CATALOGUE_BASE: /project-catalogue/
+        VITE_ENABLE_INSTALL: "true"
+    image: aisc-catalogue-private:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: catalogue-private
+    restart: unless-stopped
+    networks:
+      - frontend
+
+  # The package index tests are installed from. Step 3's catalogue data is the hosted one
+  # (https://sandboxconfigurator.aifactory.lu/catalogue), read through the platform; no catalogue
+  # backend runs here. The engine installs from this devpi (PACKAGE_REGISTRY_URL in
+  # env.plugin_downloader), which plugin-publisher fills from def_plugins/. Its image is built
+  # from the catalogue submodule's devpi folder.
+  devpi:
+    build: apps/catalogue/devpi
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: devpi
+    environment:
+      DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
+      DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+    volumes:
+      - devpi_data:/data
+    restart: unless-stopped
+    networks:
+      - backend
+

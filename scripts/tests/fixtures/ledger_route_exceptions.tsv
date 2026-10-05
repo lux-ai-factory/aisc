@@ -1,0 +1,29 @@
+# Routes that change nothing and so carry no ledger event (C1). Tab-separated:
+# app<TAB>file<TAB>function<TAB>reason
+# Every line is reviewed; every route here must still exist (test_ledger_coverage.py).
+qualification	apps/qualification/src/app/p/[project]/question-sets/import/actions.ts	readQuestionSetFile	reads an uploaded file and returns it; writes nothing (the save that follows is question_set.created)
+qualification	apps/qualification/src/app/p/[project]/questionnaires/import/actions.ts	readQuestionnaireFile	reads an uploaded file and resolves its references; writes nothing
+qualification	apps/qualification/src/app/p/[project]/qualify/new/prefill-actions.ts	readDocument	reads an uploaded document for the form's prefill; writes nothing (the card's save is qualification.created)
+qualification	apps/qualification/src/app/p/[project]/qualify/[id]/ontology-actions.ts	loadOntology	rebuilds the knowledge graph, a cache derived from the card's form, draft and corrections, each of which is logged when it changes
+qualification_agents	apps/qualification/services/agents/service.py	start	queues a run the app already opened (card.ai_refinement_requested); the run's own events (agent.run_started, ai.llm_call, agent.run_finished/failed) are written by _run and fill_one
+qualification_llm	apps/qualification/services/llm/app.py	generate	a stateless model call that nothing calls today (services/llm/tests/test_service_token.py); it keeps nothing
+qualification_prefill	apps/qualification/services/prefill/app.py	prefill	stateless: reads a document and answers a draft; keeps nothing
+qualification_prefill	apps/qualification/services/prefill/app.py	forms_export	stateless: renders a form as a file; keeps nothing
+qualification_prefill	apps/qualification/services/prefill/app.py	forms_import	stateless: reads a form file back; keeps nothing (its save is question_set.created)
+qualification_prefill	apps/qualification/services/prefill/app.py	questionnaires_import	stateless: reads a questionnaire file back; keeps nothing (its save is questionnaire.created)
+qualification_prefill	apps/qualification/services/prefill/app.py	questionnaires_export	stateless: renders a questionnaire as a file; keeps nothing
+qualification_ontology	apps/qualification/services/ontology/app.py	build	stateless: builds a graph from what it is sent; keeps nothing
+qualification_pdf	apps/qualification/services/system_card_renderer/app.py	render_pdf	stateless: renders the card it is sent; the download is card.pdf_downloaded
+qualification_pdf	apps/qualification/services/system_card_renderer/app.py	render_html	stateless: renders the card it is sent; keeps nothing
+controls	apps/controls/src/app/install/actions.ts	installChosen	delegates to installFromCatalogue (p/[project]/install/actions.ts), which records control.installed
+controls	apps/controls/services/pdf_renderer/app.py	render_html	stateless: renders the submission it is sent; keeps nothing
+controls	apps/controls/services/pdf_renderer/app.py	render_pdf	stateless: renders the submission it is sent; keeps nothing
+report_composer	apps/report-composer/report_composer/api.py	outline	computes the editor's outline (numbers, depths, hints) for an unsaved block order; nothing is stored
+report_composer	apps/report-composer/report_composer/api.py	preview_draft	renders the editor's unsaved draft as a preview; nothing is stored (the save that follows is report.layout.updated)
+report_composer	apps/report-composer/report_composer/api.py	validate	checks a saved layout against a version's choices and answers its problems; reads only
+report_renderer	apps/report-generator/report_service.py	choices	answers the values a block's options may take, read through report_ro; writes nothing
+report_renderer	apps/report-generator/report_service.py	coverage_choices	answers the coverage choices, read through report_ro; writes nothing
+report_renderer	apps/report-generator/report_service.py	render_route	renders a snapshot into a document and returns it, stateless (the composer stores it and records report.generated)
+dashboard	apps/results-dashboard/aisc_ext/comments/views.py	AiscCommentView	read-only (base_permissions can_list, can_show): comments are written through the API, which records dashboard.comment.*
+dashboard	apps/results-dashboard/aisc_ext/project_bridge_api.py	register	called by the platform when it provisions a project (recorded as project.created); makes the project's derived dashboard objects
+dashboard	apps/results-dashboard/aisc_ext/project_bridge_api.py	unregister	called by the platform when it deletes a project (recorded as project.deleted); removes the project's derived dashboard objects

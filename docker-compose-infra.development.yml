@@ -1,5 +1,5 @@
 services:
-  # Reverse proxy
+  # Caddy, the gateway: every browser request comes in here
   caddy:
     image: caddy:2.10.2
     container_name: caddy
@@ -7,31 +7,49 @@ services:
     ports:
       - "443:8005"
       - "80:8005"
+      # the launcher (see the second site block in the Caddyfile)
+      - "${HOMEPAGE_PORT_EXTERNAL:-8100}:8006"
+      # the dashboard (Superset), behind the gateway like the rest
+      - "${DASHBOARD_PORT_EXTERNAL:-8188}:8008"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - ./homepage:/srv/homepage:ro,Z
+    # so forward_auth can reach oauth2-proxy, which runs on the host network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
+      # The ledger's witness: on unless LEDGER_GATEWAY=off. The secret proves to the
+      # platform that a witness call comes from this gateway.
+      LEDGER_GATEWAY: ${LEDGER_GATEWAY:-on}
+      AISC_WITNESS_GATEWAY_SECRET: ${AISC_WITNESS_GATEWAY_SECRET:?run scripts/secrets.sh first}
       LOG_FILE: "/data/access.log"
       CADDY_DOMAIN: ${CADDY_DOMAIN}
       CADDY_PORT: "8005"
+      HOMEPAGE_PORT: "8006"
+      DASHBOARD_PORT: "8008"
+      DASHBOARD_UPSTREAM: host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
     networks:
       - backend
       - frontend
-    # depends_on:
-    #   - aisc-backend
+      # to reach pgadmin and schema-docs, which are on no other network
+      - inspector
 
-  # MinIO object storage service
+  # MinIO, the S3-compatible object storage for models, datasets and artifacts
   minio:
-    image: quay.io/minio/minio
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     container_name: minio
     volumes:
-      - minio_data:/data # Persistent storage
+      - minio_data:/data
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_USER} # MinIO root username
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD} # MinIO root password
+      MINIO_ROOT_USER: ${S3_USER}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"   # loopback only; nothing in a browser talks to MinIO
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -40,14 +58,17 @@ services:
     networks:
       - backend
 
-  # MinIO bucket initialization service
+  # Creates the buckets once MinIO is up, then exits
   make_buckets:
-    image: quay.io/minio/mc
+    # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    build: ./infra/minio
+    pull_policy: never
     depends_on:
       minio:
-        condition: service_healthy # Wait for MinIO to be ready
+        condition: service_healthy
     environment:
-      MINIO_ROOT_USER: ${S3_USER} # MinIO credentials for bucket creation
+      MINIO_ROOT_USER: ${S3_USER}
       MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
     entrypoint: >
       /bin/sh -c "
@@ -60,111 +81,285 @@ services:
     networks:
       - backend
 
-  # RabbitMQ Message queue to send the jobs
+  # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"
+      - "127.0.0.1:5672:5672"   # loopback only
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq # Persistent storage
+      - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - backend
 
-  # Redis collects the results.
+  # Redis, where the worker's Celery results are kept
   redis:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"   # loopback only
     volumes:
-      - redis_data:/data # Persistent storage
+      - redis_data:/data
     networks:
       - backend
     command: redis-server --protected-mode no
 
-  # PostgreSQL database service
+  # PostgreSQL: the platform database, one database per project, Keycloak's and Superset's
   postgres:
-    image: postgres:14-alpine
+    image: postgres:15-alpine   # the engine backend requires PostgreSQL 15; a 14 data directory does not start
     container_name: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # loopback only; the host-networked dashboard reads here
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persistent storage
-      # Creates the `controls` DB (apps/controls) on a fresh volume.
-      - ./init/controls-db.sql:/docker-entrypoint-initdb.d/10-controls-db.sql:ro,Z
-      # Creates the `qualification` DB (apps/qualification) on a fresh volume.
-      - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro,Z
+      - postgres_data:/var/lib/postgresql/data
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
+      # Creates the platform's own `platform` DB (projects, members, the report library).
+      # First, so it exists before any app migrates.
+      - ./init/platform-db.sql:/docker-entrypoint-initdb.d/05-platform-db.sql:ro,Z
+      # Lets the platform make one database per project. After the platform DB,
+      # because it alters the platform's role.
+      - ./init/project-databases.sql:/docker-entrypoint-initdb.d/06-project-databases.sql:ro,Z
+      # Creates the `superset` metadata DB (apps/results-dashboard) on a fresh volume.
+      - ./init/superset-db.sql:/docker-entrypoint-initdb.d/50-superset-db.sql:ro,Z
+      # The report's roles (report_ro, report_composer_rw) and the composer's schema.
+      # After 50-superset-db.sql, because it grants CONNECT on the superset database.
+      - ./init/report-roles.sql:/docker-entrypoint-initdb.d/60-report-roles.sql:ro,Z
+      # The database inspector's read-only role, and Keycloak's and Superset's databases closed to
+      # PUBLIC. After 50-superset-db.sql, because it closes the superset database.
+      - ./init/inspector-role.sql:/docker-entrypoint-initdb.d/70-inspector-role.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
+      # pgadmin and schema-docs read here as inspector_ro
+      - inspector
 
-  # Keycloak — identity & access management (single login / auth for all apps)
+  # The same grants on a volume that already exists: initdb scripts only run on
+  # an empty one. Idempotent, so it runs on every start and then exits.
+  postgres-setup:
+    image: postgres:15-alpine
+    container_name: postgres-setup
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      # the database roles' passwords, from scripts/secrets.sh
+      REPORT_RO_PASSWORD: ${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}
+      PLATFORM_RW_PASSWORD: ${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}
+      QUALIFICATION_RW_PASSWORD: ${QUALIFICATION_RW_PASSWORD:?run scripts/secrets.sh first}
+      CONTROL_OBJECTIVES_RW_PASSWORD: ${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}
+      DASHBOARD_RO_PASSWORD: ${DASHBOARD_RO_PASSWORD:?run scripts/secrets.sh first}
+      REPORT_COMPOSER_PASSWORD: ${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}
+      # the database inspector's password
+      INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
+    volumes:
+      - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
+      - ./init/report-roles.sql:/setup/report-roles.sql:ro,Z
+      - ./init/inspector-role.sql:/setup/inspector-role.sql:ro,Z
+      - ./init/platform-role.sql:/setup/platform-role.sql:ro,Z
+      - ./init/qualification-role.sql:/setup/qualification-role.sql:ro,Z
+      - ./init/control-objectives-role.sql:/setup/control-objectives-role.sql:ro,Z
+      - ./init/dashboard-role.sql:/setup/dashboard-role.sql:ro,Z
+    command: >
+      sh -c "until pg_isready -q; do sleep 1; done
+      && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql
+      && psql -v ON_ERROR_STOP=1 -v report_ro_password=\"$$REPORT_RO_PASSWORD\"
+      -v report_composer_password=\"$$REPORT_COMPOSER_PASSWORD\" -f /setup/report-roles.sql
+      && psql -v ON_ERROR_STOP=1 -v inspector_password=\"$$INSPECTOR_PASSWORD\" -f /setup/inspector-role.sql
+      && psql -v ON_ERROR_STOP=1 -v platform_rw_password=\"$$PLATFORM_RW_PASSWORD\" -f /setup/platform-role.sql
+      && psql -v ON_ERROR_STOP=1 -v qualification_rw_password=\"$$QUALIFICATION_RW_PASSWORD\" -f /setup/qualification-role.sql
+      && psql -v ON_ERROR_STOP=1 -v control_objectives_rw_password=\"$$CONTROL_OBJECTIVES_RW_PASSWORD\" -f /setup/control-objectives-role.sql
+      && psql -v ON_ERROR_STOP=1 -v dashboard_ro_password=\"$$DASHBOARD_RO_PASSWORD\" -f /setup/dashboard-role.sql"
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - backend
+
+  # oauth2-proxy holds the session that makes one sign-in cover every module.
+  #
+  # Caddy asks it about every request with forward_auth: 2xx passes the request
+  # through, 401 becomes a redirect to Keycloak. After the login its cookie is
+  # set for domain `localhost`, and cookies ignore ports, so the same session
+  # covers the platform on :80 and the launcher on :8100.
+  #
+  # network_mode: host on purpose. The issuer URL it talks to must be the same
+  # string the browser is redirected to (http://localhost:8081/realms/aisc); from
+  # inside a bridge network `localhost` would be the container itself and
+  # Keycloak's issuer check would fail.
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0
+    container_name: oauth2-proxy
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - keycloak
+    command:
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --skip-provider-button=true
+      # The gateway holds the session and refreshes it, so what it protects need
+      # not keep a second one. These put the identity and the token it already
+      # has on the auth response, which Caddy copies onto the request.
+      # The ACCESS token, not the id token: the realm puts a user's roles in the
+      # access token, and role-gated endpoints read them from what they verify.
+      - --set-xauthrequest=true
+      - --pass-access-token=true
+      # Keeps the session alive while someone is working, rather than letting the realm
+      # drop it after its idle timeout. Shorter than the 5-minute token lifespan, so a
+      # token never expires in the middle of a request.
+      - --cookie-refresh=4m
+      - --email-domain=*
+      # the realm's users have no email claim
+      - --oidc-email-claim=preferred_username
+      - --scope=openid profile
+      # Signing out ends the Keycloak session too. Without it /oauth2/sign_out only
+      # drops this cookie, and the next page signs the same person straight back in
+      # from Keycloak's own session. {id_token} is the session's, filled in by oauth2-proxy.
+      - --backend-logout-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/logout?id_token_hint={id_token}
+      - --client-id=aisc-gateway
+      - --client-secret=${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
+      - --cookie-secret=${GATEWAY_COOKIE_SECRET:?run scripts/secrets.sh first}
+      - --cookie-domain=localhost
+      - --cookie-secure=false
+      - --cookie-samesite=lax
+      - --whitelist-domain=localhost
+      - --whitelist-domain=localhost:8100
+      - --whitelist-domain=localhost:8188
+      - --set-xauthrequest=true
+      # it proxies nothing itself; Caddy does the proxying
+      - --upstream=static://202
+
+  # Keycloak: the identity provider behind the one sign-in of every module.
   keycloak:
-    # Pin a version. VERIFY the latest stable at https://www.keycloak.org/downloads
+    # A pinned version.
     image: quay.io/keycloak/keycloak:26.6.3
     container_name: keycloak
-    # --import-realm imports any realm file in /opt/keycloak/data/import/ on startup,
-    # but ONLY creates realms that don't already exist (existing realms are left untouched).
-    # So on a FRESH keycloak DB this recreates the whole `aisc` realm automatically.
+    # --import-realm imports the realm files in /opt/keycloak/data/import/ at start, but only
+    # creates realms that do not exist yet. On a fresh keycloak database it creates the whole
+    # `aisc` realm; an existing realm is left as it is.
     command: start-dev --import-realm
     volumes:
       # Mount the exported realm into Keycloak's import dir (read-only).
-      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      - ./keycloak/aisc-realm.local.json:/opt/keycloak/data/import/aisc-realm.json:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
-      # --- first-run admin user for the Keycloak admin console (Keycloak 26+) ---
-      # (For Keycloak < 26 these were KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD.)
+      # the first-run admin user of the Keycloak admin console
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      # --- database: the SHARED Postgres server, Keycloak's OWN 'keycloak' database ---
-      KC_DB: postgres                                       # use Postgres as the DB engine
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak   # service-name:port/<the keycloak db>
-      KC_DB_USERNAME: ${POSTGRES_USER}                      # reuse the Postgres credentials
+      # Keycloak's own `keycloak` database on the shared Postgres server
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}                      # the Postgres superuser's credentials
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "8081:8080"             # host 8081 (8080 is already taken on this machine) -> Keycloak's 8080
+      - "8081:8080"             # host 8081, because 8080 is often taken on the host
     depends_on:
-      - postgres                # Keycloak needs its database up first
+      - postgres
     networks:
       - backend
 
-  # immudb — the tamper-proof AUDIT LOG ledger. Every app's "who did what" lands here (via the backend's
-  # /audit endpoint). Self-contained (its own embedded storage — no external DB needed, unlike Keycloak).
-  # Verified vs docs.immudb.io: gRPC 3322, web console 8080, env vars IMMUDB_*, data dir IMMUDB_DIR.
+  # immudb, the tamper-evident ledger of who did what. It keeps its own embedded storage.
+  # gRPC on 3322; its web console (8080) is not published.
   immudb:
-    image: codenotary/immudb:1.11.1     # pinned; latest stable on Docker Hub
+    image: codenotary/immudb:1.11.1
     container_name: immudb
     environment:
-      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}   # dev admin password (from env)
-      IMMUDB_FORCE_ADMIN_PASSWORD: "true"               # apply that password at startup (skip change-on-first-login)
-      IMMUDB_DIR: /var/lib/immudb                        # data folder (default ./data) -> the mounted volume
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD:?run scripts/secrets.sh first}
+      IMMUDB_FORCE_ADMIN_PASSWORD: "true"               # applies that password at every start
+      IMMUDB_DIR: /var/lib/immudb
+      # It signs every state it hands out, with the key scripts/secrets.sh makes once.
+      IMMUDB_SIGNINGKEY: /keys/signing.key
     volumes:
-      - immudb_data:/var/lib/immudb     # persist the ledger
+      - immudb_data:/var/lib/immudb
+      - ./immudb-signing.key:/keys/signing.key:ro,Z
     ports:
-      - "3322:3322"             # gRPC — the Django Python SDK connects here
-      - "8086:8080"             # web console (host 8086 -> container 8080; 8080/8081 already taken)
+      # gRPC, bound to the loopback: the dashboard runs with network_mode: host
+      # (so its OIDC issuer matches the browser's) and reaches immudb here.
+      # Everything else uses the compose network.
+      - "127.0.0.1:3322:3322"
+      # The web console is not published: it would serve the ledger to anyone who could
+      # reach the port, with no gateway in front of it.
     networks:
       - backend
 
 
+  # The database inspector, for the launcher's admins (Manage > Inspect database on a project page).
+  # Reached only through Caddy at :8100/inspect/pgadmin, behind the sign-in and the platform's
+  # admin gate, so it runs in desktop mode with no login of its own. It connects as inspector_ro
+  # (init/inspector-role.sql): SELECT everywhere it may connect, read-only sessions. The image keeps
+  # /var/lib/pgadmin in a volume, which outlives the container, so the password file is rewritten
+  # and the server list reloaded on every start rather than only on the first.
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: pgadmin
+    environment:
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      # The entrypoint insists on these even in desktop mode, where nobody logs in with them.
+      PGADMIN_DEFAULT_EMAIL: inspector@aisc.example.org
+      PGADMIN_DEFAULT_PASSWORD: unused-in-desktop-mode
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+      PGPASS_FILE: /tmp/pgpass
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      SCRIPT_NAME: /inspect/pgadmin
+      INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
+    # The password file is written from the environment, so the secret never sits in the repo.
+    entrypoint: >
+      sh -c "printf 'postgres:5432:*:inspector_ro:%s\\n' \"$$INSPECTOR_PASSWORD\" > /tmp/pgpass
+      && chmod 600 /tmp/pgpass && cp /tmp/pgpass /var/lib/pgadmin/.pgpass
+      && chmod 600 /var/lib/pgadmin/.pgpass && exec /entrypoint.sh"
+    volumes:
+      - ./inspector/pgadmin-servers.json:/pgadmin4/servers.json:ro,Z
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      # Only caddy (the admin gate at /inspect/*) and postgres share this network, so no plugin
+      # or other service can reach it.
+      - inspector
+
+  # Schema diagrams, the other half of the inspector: SchemaSpy's pages for one database (the
+  # platform's or a project's), made on the first visit and again after ten minutes. Behind the same
+  # admin gate, at :8100/inspect/schema/<database>/. Reads as inspector_ro.
+  schema-docs:
+    build: inspector/schema-docs/
+    image: aisc-schema-docs:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: schema-docs
+    environment:
+      PGHOST: postgres
+      INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      # Only caddy (the admin gate at /inspect/*) and postgres share this network, so no plugin
+      # or other service can reach it.
+      - inspector
+
 volumes:
-  immudb_data: # Persistent storage for the immudb ledger
-  minio_data: # Persistent storage for MinIO
-  postgres_data: # Persistent storage for PostgreSQL
-  rabbitmq_data: # Persistent storage for RabbitMQ
-  redis_data: # Persistent storage for Redis
+  immudb_data:
+  minio_data:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
+  catalogue_sqlite: # not mounted by any service: no catalogue runs in this stack
+  devpi_data: # the stack's package index (devpi), which the engine installs plugins from
 
 networks:
   backend:
   frontend:
+  # pgadmin, schema-docs, caddy and postgres only
+  inspector:

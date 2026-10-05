@@ -1,0 +1,83 @@
+{% extends "base.html.j2" %}
+{% from "_ui.html.j2" import message_region %}
+{% set here = "layouts" %}
+{% block title %}Reports: {{ project.name }}{% endblock %}
+{% block main %}
+{% set api = root ~ "/api/p/" ~ project.slug %}
+{% set base = root ~ "/p/" ~ project.slug %}
+<main data-api="{{ api }}" data-page="layouts" data-base="{{ base }}">
+  {{ message_region() }}
+  <div class="rc-header rc-header-row">
+    <div>
+      <p class="rc-eyebrow">Step 7: the report</p>
+      <h1>Reports of {{ project.name }}</h1>
+      <p>A layout is a report's structure: its modules, their order and its template. Open one to inspect it and preview it with a version of the AI system; the data is chosen when you generate the report. To adapt a built-in layout, duplicate it; or make your own.</p>
+    </div>
+    {% if editor %}
+    {# the page's two actions: both open the layout in the editor #}
+    <div class="page-actions">
+      <a class="btn" data-control="start-new-layout" href="{{ base }}/layouts/new">New layout</a>
+      <form data-control="import-layout" class="import-action">
+        <label class="btn ghost" title="A layout file exported from this or another project">Import from file
+          <input class="visually-hidden" name="file" type="file" accept="application/json,.json"></label>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  <section class="qf-section">
+    <table class="layouts">
+      <thead><tr><th>Layout</th><th>Template</th><th>Revision</th><th>Updated</th><th>Last report</th><th></th></tr></thead>
+      <tbody>
+      {% for l in builtins %}
+        <tr data-layout="{{ l.id }}" class="built-in">
+          <td><a data-control="open-layout" href="{{ base }}/layouts/{{ l.id }}">{{ l.name }}</a> <span class="badge">Built-in</span>
+            <span class="row-help">{{ l.description }}</span></td>
+          <td class="muted">Platform default</td>
+          <td class="muted">built-in</td>
+          <td class="muted"></td>
+          <td class="muted"></td>
+          <td class="actions">
+            {% if editor %}<button type="button" class="small ghost" data-control="duplicate" data-layout="{{ l.id }}">Duplicate</button>{% endif %}
+            <a class="btn ghost small" data-control="export-structure" href="{{ api }}/builtin-layouts/{{ l.id }}/export" download>Export</a>
+          </td>
+        </tr>
+      {% endfor %}
+      {% for l in layouts %}
+        <tr data-layout="{{ l.id }}">
+          <td><a data-control="open-layout" href="{{ base }}/layouts/{{ l.id }}">{{ l.name }}</a></td>
+          <td class="muted">{{ l.template_name or "Platform default" }}</td>
+          <td class="muted">revision {{ l.revision }}</td>
+          <td class="muted">{{ l.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="muted">{% if l.last_report %}{{ l.last_report.created_at[:16] | replace("T", " ") }} ({{ l.last_report.status }}){% endif %}</td>
+          <td class="actions">
+            {% if editor %}<button type="button" class="small ghost" data-control="duplicate" data-layout="{{ l.id }}">Duplicate</button>{% endif %}
+            <a class="btn ghost small" data-control="export-structure" href="{{ api }}/layouts/{{ l.id }}/export" download>Export</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if not layouts %}<p class="muted table-note">This project has no layout of its own yet.{% if editor %} Duplicate a built-in one, or start with New layout.{% endif %}</p>{% endif %}
+  </section>
+  {% if deleted %}
+  <section class="qf-section" data-section="deleted-layouts">
+    <h2>Reports of deleted layouts</h2>
+    <p class="muted">A deleted layout is gone from the list above; the reports made with it are kept here.</p>
+    <table class="layouts">
+      <thead><tr><th>Layout</th><th>Deleted</th><th>Report</th><th></th></tr></thead>
+      <tbody>
+      {% for l in deleted %}{% for r in l.reports %}
+        <tr data-deleted-layout="{{ l.id }}">
+          <td>{{ l.name }}</td>
+          <td class="muted">{{ l.deleted_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="muted">{{ r.created_at[:16] | replace("T", " ") }} ({{ r.status }}, {{ r.format }})</td>
+          <td class="actions">{% if r.status in ("done", "partial") %}<a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/download" download>Download</a>{% endif %}</td>
+        </tr>
+      {% endfor %}{% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+{% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}

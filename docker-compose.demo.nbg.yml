@@ -1,5 +1,5 @@
 services:
-  # # Frontend development container
+  # The engine's web frontend
   aisc-webapp:
     build: ../aisc-webapp/
     ports:
@@ -52,7 +52,7 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
-      API_URL: ${API_URL} # Address of api-backend
+      API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
@@ -72,7 +72,7 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
-      API_URL: ${API_URL} # Address of api-backend
+      API_URL: ${API_URL} # the engine backend's API
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
@@ -97,7 +97,7 @@ services:
     # volumes:
     #   - ./eval-logging.yaml:/app/config/logging.yaml:ro
     environment:
-      API_URL: ${API_URL} # Address of api-backend
+      API_URL: ${API_URL} # the engine backend's API
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"

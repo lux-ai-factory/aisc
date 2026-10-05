@@ -1,0 +1,129 @@
+{% extends "base.html.j2" %}
+{% from "_form.html.j2" import render_form %}
+{% from "_ui.html.j2" import message_region, confirm_dialog %}
+{% block title %}{{ layout.name }}: {{ project.name }}{% endblock %}
+{% macro block_controls() -%}
+<span class="controls">
+  <button type="button" data-control="move-up" title="Move up">Up</button>
+  <button type="button" data-control="move-down" title="Move down">Down</button>
+  <button type="button" data-control="remove" title="Remove">Remove</button>
+</span>
+{%- endmacro %}
+{% block main %}
+{% set base = root ~ "/p/" ~ project.slug %}
+{% set api = root ~ "/api/p/" ~ project.slug %}
+<main data-api="{{ api }}" data-base="{{ base }}" data-layout="{{ layout.id }}" data-revision="{{ layout.revision }}" data-page="editor"
+      data-preview-with="{{ preview_with | tojson | forceescape }}"{% if read_only %} data-read-only="true"{% endif %}>
+  {{ message_region() }}
+  {% if editor or (read_only and may_write) %}{{ confirm_dialog() }}{% endif %}
+  <a class="rc-back" href="{{ base }}/">&larr; All layouts of {{ project.name }}</a>
+  <div class="rc-header rc-header-row">
+    <div>
+      <p class="rc-eyebrow">{% if read_only %}Built-in layout{% elif is_new %}New layout{% else %}Report layout{% endif %}</p>
+      <h1>{% if is_new %}New layout{% else %}{{ layout.name }}{% endif %}</h1>
+      {% if read_only %}<p>{{ layout.description }} Built-in layouts are shared by every project and cannot be changed: duplicate this one to adapt it.</p>{% endif %}
+    </div>
+    {% if read_only %}
+    <div class="page-actions">
+      {% if may_write %}<button type="button" data-control="duplicate" data-layout="{{ layout.id }}">Duplicate</button>{% endif %}
+      <a class="btn ghost" data-control="export-structure" href="{{ api }}/builtin-layouts/{{ layout.id }}/export" download>Export</a>
+    </div>
+    {% endif %}
+  </div>
+  {% if editor %}
+  <div class="toolbar qf-section">
+    <label class="name">Name <input name="name" required maxlength="120" value="{{ layout.name }}"{% if is_new %} autofocus{% endif %}></label>
+    <label>Template <select data-control="template"><option value=""{% if not template_known %} selected{% endif %}>Platform default</option>{% for x in templates %}<option value="{{ x.id }}"{% if x.id == layout.template_id %} selected{% endif %}>{{ x.name }}</option>{% endfor %}</select></label>
+    <label class="inline"><input type="checkbox" name="show_index" data-control="show_index"{% if layout.show_index %} checked{% endif %}> Index</label>
+    <label class="inline"><input type="checkbox" name="numbering" data-control="numbering"{% if layout.numbering %} checked{% endif %}> Numbering</label>
+    <span class="state" data-state></span>
+    <span class="spacer"></span>
+    <button type="button" data-control="save">{% if is_new %}Create layout{% else %}Save{% endif %}</button>
+    {% if not is_new %}
+    <a class="btn ghost" data-control="open-generate" href="{{ base }}/layouts/{{ layout.id }}/generate">Generate report</a>
+    <button type="button" class="danger" data-control="delete-layout" data-confirm-action="Delete layout" data-confirm-text="Delete the layout {{ layout.name }} and its generated reports?">Delete</button>
+    {% endif %}
+  </div>
+  {% if not template_known and templates | length == 0 %}<p class="notice">Reports use the platform look until you make a template. <a href="{{ base }}/templates">Make a template</a> to give reports your own look.</p>{% endif %}
+  <section class="qf-section" data-palette>
+    <h2>Add a module</h2>
+    <p class="qf-help">Each module is one section of the report. Add it, then move it up and down; a Chapter groups the modules after it, and everything after the Appendix goes in the appendix.</p>
+    <div data-control="palette" class="palette">
+      {% for grp in palette %}<div class="palette-group"><h3>{{ grp.label }}</h3>
+        {% for t in grp.types %}<button type="button" data-add="{{ t.type_id }}"><strong>{{ t.title }}</strong>{% if t.description %}<span class="description">{{ t.description }}</span>{% endif %}</button>{% endfor %}
+      </div>{% endfor %}
+    </div>
+  </section>
+  {% for grp in palette %}{% for t in grp.types %}
+  <template data-block-template="{{ t.type_id }}">
+    <li data-block-type="{{ t.type_id }}" data-depth="0" data-number="" draggable="true">
+      {{ block_controls() }}
+      <strong>{{ t.title }}</strong> <span class="type">{{ t.type_id }}</span>
+      <details data-control="configure" open><summary>Options</summary>{{ render_form(t.fields) }}</details>
+      <p class="problems" data-problems></p>
+    </li>
+  </template>
+  {% endfor %}{% endfor %}
+  {% elif not read_only %}
+  <p class="meta">Revision {{ layout.revision }}. You can read this layout; editors change it.</p>
+  {% endif %}
+  <div class="columns">
+    <section class="qf-section">
+      <h2>Blocks, in order</h2>
+      <ol id="blocks">
+      {% for b in blocks %}
+        <li data-instance-id="{{ b.instance_id }}" data-block-type="{{ b.block_type }}" data-depth="{{ b.depth }}" data-number="{{ b.number }}"{% if editor %} draggable="true"{% endif %}>
+          {% if editor %}{{ block_controls() }}{% endif %}
+          {% if b.known %}<strong>{{ b.title }}</strong> <span class="type">{{ b.block_type }}</span>{% else %}<strong>Unknown type: {{ b.block_type }}</strong>{% endif %}
+          {% if b.empty_chapter %}<p class="hint" data-empty-chapter>This chapter is empty.</p>{% endif %}
+          {% if b.unwritten_hint %}<p class="hint" data-unwritten>{{ b.unwritten_hint }}</p>{% endif %}
+          {% if editor %}
+          {% if b.known %}<details data-control="configure"><summary>Options</summary>{{ render_form(b.fields, b.instance_id) }}</details>{% endif %}
+          <p class="problems" data-problems>{% for m in b.problems %}{{ m }} {% endfor %}</p>{% endif %}
+        </li>
+      {% endfor %}
+      </ol>
+      <p class="hint" data-coverage-note>Which tests and controls give evidence for each control objective is set
+        once for the project, in step 4, Collect evidence. Every report uses those links.</p>
+      {% if layout_problems %}<p class="problems" data-layout-problems>{% for p in layout_problems %}{{ p.pointer }}: {{ p.message }} {% endfor %}</p>{% endif %}
+    </section>
+    <section class="preview qf-section">
+      <h2>Preview</h2>
+      {% if systems %}
+      <form method="get" class="preview-with" data-control="preview-with">
+        <label>Preview with <select name="system_id">{% for x in systems %}<option value="{{ x.pid }}"{% if x.pid == preview_with.system_id %} selected{% endif %}>Version {{ x.number }}{% if x.release %} ({{ x.release }}){% endif %}</option>{% endfor %}</select></label>
+        <label>From <input type="date" name="period_from" value="{{ preview_with.period_from or '' }}"></label>
+        <label>To <input type="date" name="period_to" value="{{ preview_with.period_to or '' }}"></label>
+        <label class="inline"><input type="checkbox" name="other_versions"{% if preview_with.other_versions %} checked{% endif %}> Other versions' runs</label>
+        <button type="submit" class="small ghost">Show</button>
+      </form>
+      <p class="qf-help">The preview's version and period are not saved in the layout: they are chosen again when you generate a report.</p>
+      {% else %}<p class="notice">{{ no_version }}</p>{% endif %}
+      <p class="preview-label" data-preview-label>{% if is_new %}Preview of the new layout{% else %}Preview of revision {{ layout.revision }}{% endif %}</p>
+      {% if editor %}<div class="preview-controls"><button type="button" class="small ghost" data-control="refresh-preview">Refresh preview</button>
+        <label class="inline"><input type="checkbox" data-control="auto-refresh" checked> Auto-refresh</label></div>{% endif %}
+      <iframe sandbox="" title="Preview"{% if not is_new %} src="{{ preview_src }}"{% endif %}></iframe>
+    </section>
+  </div>
+  {% if not is_new and not read_only %}
+  <section class="reports qf-section" id="reports" style="margin-top: 20px">
+    <h2>Generated reports</h2>
+    <p class="statuses" data-statuses></p>
+    {% if reports %}
+    <table data-reports class="reports-table">
+      <thead><tr><th>Created</th><th>Version</th><th>Period</th><th>Other versions</th><th>Compare with</th><th>Revision</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for r in reports %}<tr>
+        <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}</td><td>{% if r.system_number %}Version {{ r.system_number }}{% endif %}</td>
+        <td>{{ r.period }}</td><td>{{ r.other }}</td><td>{{ r.compare }}</td><td>revision {{ r.layout_revision }}</td>
+        <td>{{ (r.format or "pdf") | upper }}, {{ r.status }}</td>
+        <td>{% if r.status in ("done", "partial") %}<a href="{{ api }}/reports/{{ r.id }}/download">Download</a>{% if r.sha256 %} <span class="muted">SHA-256 {{ r.sha256[:12] }}{% if r.fingerprint %}, fingerprint {{ r.fingerprint[:12] }}{% endif %}</span>{% endif %}{% endif %}</td>
+      </tr>{% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted" data-reports>No report generated yet.{% if editor %} Use Generate report.{% endif %}</p>{% endif %}
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+{% block script %}<script src="{{ root }}/static/composer.js" defer></script>{% endblock %}
