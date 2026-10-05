@@ -430,7 +430,7 @@ def test_every_compose_file_runs_postgres_15():
 
 
 def test_the_readme_says_staging_needs_fresh_volumes_too():
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "docs" / "guide.md").read_text()
     section = readme.split("### PostgreSQL 15", 1)[1].split("\n## ", 1)[0]
     assert "staging" in section and "fresh volumes" in section, section
 
@@ -467,7 +467,7 @@ def test_the_standalone_compose_ships_no_default_secret():
     assert bad == [], bad
     for v in ("DB_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "DJANGO_SECRET_KEY", "INTERNAL_API_KEY"):
         assert f"${{{v}:?" in text, v
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "docs" / "guide.md").read_text()
     assert "--env-file" in readme and "INTERNAL_API_KEY" in readme
 
 
@@ -500,7 +500,7 @@ def test_the_standalone_compose_uses_seans_settings_names_pg15_and_the_mounted_p
 def test_the_readme_says_where_tests_install_from_and_what_pg15_needs():
     """README: configurator installs from the stack's own devpi, which plugin-publisher fills;
     standalone is one database holding all projects; PG15 needs fresh volumes."""
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "docs" / "guide.md").read_text()
     assert ONLINE_HOST not in readme
     assert "the engine does not install from it" not in readme
     assert "installed into the engine from the stack's own package index" in readme
