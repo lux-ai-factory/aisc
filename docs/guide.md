@@ -97,7 +97,7 @@ platform ──> immudb (ledger), the dashboard's bridge, the engine
   `network_mode: host`, listening only on the Docker host address (`172.17.0.1:8189`).
 - **The ledger** (immudb) records from the first project: every write is witnessed by the gateway
   (who did it) and the apps that log write their events in the same transaction as the change; the
-  platform's relay moves them into the project's own immudb database. Manage > Audit > Activity log
+  platform's relay moves them into the project's own immudb database. Manage > Logs > Activity log
   shows a project's entries; owners and admins can export them and check the file offline with
   `scripts/verify-ledger-export.py`. The `ledger-pool` one-shot makes those databases ahead of time,
   at every start. Not every module logs yet: the engine's test runs (and some install paths) are not

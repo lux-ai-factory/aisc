@@ -299,3 +299,10 @@ def test_s3_3_one_test_tile_per_engine_plugin():
     the platform's per-plugin list, and from the per-package one only when an older platform sends no other."""
     body = re.search(r"function renderTiles\(\) \{(.*?)\n  \}", script_of(read(PAGE)), re.S).group(1)
     assert "var tests = (data.plugins || data.tests || []).filter(function (it) { return it.runs; });" in body
+
+
+def test_address_controls_comes_before_execute_tests():
+    """2026-10-05: the columns read Address controls, Execute tests, Visualisation, left to right."""
+    markup = markup_of(read(PAGE))
+    order = [m.group(1) for m in re.finditer(r'<div class="way-col">\s*<a\b[^>]*id="([a-z-]+)"', markup)]
+    assert order == ["address-controls", "execute-tests", "visualise"], order
