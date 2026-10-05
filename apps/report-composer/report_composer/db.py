@@ -151,7 +151,8 @@ def deleted_layouts_with_reports(conn) -> list[dict]:
     """The deleted layouts that have reports, newest deletion first, each with its reports (no bytes)."""
     return conn.execute(
         "SELECT l.id::text AS id, l.name, l.deleted_at,"
-        " json_agg(json_build_object('id', r.id, 'status', r.status, 'format', r.format, 'created_at', r.created_at)"
+        " json_agg(json_build_object('id', r.id, 'status', r.status, 'format', r.format, 'created_at', r.created_at,"
+        "                            'has_pdf', coalesce(r.format, 'pdf') = 'pdf' OR r.pdf_copy IS NOT NULL)"
         "          ORDER BY r.created_at DESC) AS reports"
         " FROM report_composer.layout l JOIN report_composer.generated_report r ON r.layout_id = l.id"
         " WHERE l.deleted_at IS NOT NULL GROUP BY l.id ORDER BY l.deleted_at DESC, l.name").fetchall()
@@ -256,18 +257,23 @@ def insert_report(conn, *, layout_id, layout_revision, system_id, snapshot, crea
 
 
 def finish_report(conn, report_id, *, status, finished_at, pdf=None, sha256=None, size_bytes=None,
-                  block_statuses=(), error_ref=None, error_code=None, fingerprint=None) -> None:
+                  block_statuses=(), error_ref=None, error_code=None, fingerprint=None, pdf_copy=None,
+                  pdf_copy_sha256=None) -> None:
+    """`pdf` holds the document in its own format; `pdf_copy` a Word report's PDF from the same generation."""
     conn.execute(
         "UPDATE report_composer.generated_report SET status = %s, pdf = %s, sha256 = %s, size_bytes = %s,"
-        " block_statuses = %s, error_ref = %s, error_code = %s, finished_at = %s, fingerprint = %s WHERE id = %s",
+        " block_statuses = %s, error_ref = %s, error_code = %s, finished_at = %s, fingerprint = %s,"
+        " pdf_copy = %s, pdf_copy_sha256 = %s WHERE id = %s",
         (status, pdf, sha256, size_bytes, Jsonb(list(block_statuses)), error_ref, error_code, finished_at,
-         fingerprint, report_id))
+         fingerprint, pdf_copy, pdf_copy_sha256, report_id))
 
 
 def list_reports(conn, layout_id) -> list[dict]:
     return conn.execute("SELECT r.id::text AS id, r.layout_revision, r.status, r.created_at, r.created_by,"
                         " r.size_bytes, r.format, r.fingerprint, r.sha256, s.number AS system_number,"
-                        " r.period_from, r.period_to, r.other_versions, c.number AS compare_number"
+                        " r.period_from, r.period_to, r.other_versions, c.number AS compare_number,"
+                        " (r.pdf IS NOT NULL AND (coalesce(r.format, 'pdf') = 'pdf' OR r.pdf_copy IS NOT NULL))"
+                        " AS has_pdf"
                         " FROM report_composer.generated_report r"
                         " LEFT JOIN project.system s ON s.pid = r.system_id"
                         " LEFT JOIN project.system c ON c.pid = r.compare_to"
@@ -288,7 +294,7 @@ def get_report(conn, report_id) -> dict | None:
         return None
     return conn.execute(
         "SELECT r.id::text AS id, r.status, r.pdf, r.snapshot, r.created_at, s.number AS system_number, r.format,"
-        " r.sha256"
+        " r.sha256, r.pdf_copy, r.pdf_copy_sha256"
         " FROM report_composer.generated_report r"
         " LEFT JOIN project.system s ON s.pid = r.system_id"
         " WHERE r.id = %s", (rid,)).fetchone()

@@ -424,31 +424,42 @@ def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_g
 
 
 def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool, record=None) -> Response:
+    """The report's document; with only_pdf its PDF: the document of a PDF report, a Word report's copy."""
     with _project_db(request, g) as conn:
         report = db.get_report(conn, report_id)
     fmt = (report or {}).get("format") or "pdf"
-    if report is None or report["pdf"] is None or (only_pdf and fmt != "pdf"):
+    if report is None or report["pdf"] is None:
         raise ApiError(404, "not_found", "No such report.")
+    body, sha256 = report["pdf"], report["sha256"]
+    if only_pdf and fmt != "pdf":
+        if report.get("pdf_copy") is None:
+            raise ApiError(404, "not_found", "This report has no PDF version.")
+        fmt, body, sha256 = "pdf", report["pdf_copy"], report["pdf_copy_sha256"]
     snap = report["snapshot"] or {}
     name = reports.document_filename(g.project["slug"], report["system_number"],
                                      (snap.get("layout") or {}).get("name", ""), report["created_at"], fmt)
     if record is not None:
         with _project_db(request, g) as conn:
-            record(conn, report)
-    return Response(bytes(report["pdf"]), media_type=reports.MEDIA_TYPES[fmt],
+            record(conn, {**report, "sha256": sha256, "served_copy": body is report.get("pdf_copy")})
+    return Response(bytes(body), media_type=reports.MEDIA_TYPES[fmt],
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+def _downloaded(conn, r):
+    details = {"document_sha256": r["sha256"]}
+    if r.get("served_copy"):
+        details["format"] = "pdf"                  # the PDF version of a Word report
+    ledger.emit(conn, "report.downloaded", item_type="report", item_id=r["id"], details=details)
 
 
 @router.get("/p/{ref}/reports/{report_id}/pdf")
 def get_pdf(request: Request, report_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    return _document(request, g, report_id, only_pdf=True, record=lambda conn, r: ledger.emit(
-        conn, "report.downloaded", item_type="report", item_id=r["id"], details={"document_sha256": r["sha256"]}))
+    return _document(request, g, report_id, only_pdf=True, record=_downloaded)
 
 
 @router.get("/p/{ref}/reports/{report_id}/download")
 def download(request: Request, report_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    return _document(request, g, report_id, only_pdf=False, record=lambda conn, r: ledger.emit(
-        conn, "report.downloaded", item_type="report", item_id=r["id"], details={"document_sha256": r["sha256"]}))
+    return _document(request, g, report_id, only_pdf=False, record=_downloaded)
 
 
 # Templates: a report's look

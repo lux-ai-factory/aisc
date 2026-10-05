@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 import secrets
 import unicodedata
@@ -31,6 +32,9 @@ CSP_META = ('<meta http-equiv="Content-Security-Policy" content="default-src \'n
             ' style-src \'unsafe-inline\'">')
 GENERATION_WINDOW_MINUTES = 15
 
+
+
+logger = logging.getLogger("report_composer.reports")
 
 def _slugify(value: str) -> str:
     ascii_ = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii").lower()
@@ -169,6 +173,17 @@ def outcome_fields(o: dict) -> dict:
                         "fingerprint": o.get("fingerprint"), "selection": o.get("selection")}}
 
 
+def _pdf_copy(renderer, snapshot) -> bytes | None:
+    """A Word report's PDF, from the same snapshot right after it: what Download PDF serves. None when the
+    renderer cannot make it; the Word report stands without it."""
+    try:
+        pdf = base64.b64decode(renderer.render({**snapshot, "mode": "pdf"})["pdf_base64"])
+    except Exception:
+        logger.warning("the PDF copy of a Word report could not be rendered", exc_info=True)
+        return None
+    return pdf if len(pdf) <= MAX_PDF_BYTES else None
+
+
 def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, record=None) -> tuple[int, dict]:
     """One generation at a time per layout; the snapshot is stored before the renderer runs. Every
     read and write is in the project's own database. `record(conn, outcome)`, the caller's ledger event,
@@ -207,10 +222,12 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
                       block_statuses=statuses)
     status = "partial" if any(s.get("status") == "error" for s in statuses) else "done"
     sha256 = hashlib.sha256(document).hexdigest()
+    pdf_copy = _pdf_copy(renderer, snapshot) if fmt != "pdf" else None
     with projects.connect(project["pid"]) as conn:
         # the bytes of either format sit in the column named pdf
         db.finish_report(conn, report_id, status=status, finished_at=clock(), pdf=document,
-                         sha256=sha256, size_bytes=len(document), block_statuses=statuses, fingerprint=fingerprint)
+                         sha256=sha256, size_bytes=len(document), block_statuses=statuses, fingerprint=fingerprint,
+                         pdf_copy=pdf_copy, pdf_copy_sha256=hashlib.sha256(pdf_copy).hexdigest() if pdf_copy else None)
         if record is not None:
             record(conn, {**outcome, "ok": True, "status": status, "sha256": sha256, "block_statuses": statuses,
                           "fingerprint": fingerprint})

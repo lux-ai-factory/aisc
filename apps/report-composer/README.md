@@ -4,7 +4,8 @@ The report composer is step 6 of AISC, the AI Assessment Sandbox Configurator (s
 2 control objectives, 3 install plugins and tools, 4 execute tests and address controls, 5 analyse
 results on the dashboard, 6 compose the report). It assembles an assessment report of one project from
 **modules** (blocks), saves their order and a template as a **layout**, previews it as HTML and
-generates the PDF or Word document. A layout holds no data: the AI card version, the period of test
+generates the PDF or Word document (a Word report also gets its PDF, rendered in the same generation, so
+every report has Download PDF). A layout holds no data: the AI card version, the period of test
 runs, whether runs of other versions are included and the version "Changes since" compares with are
 chosen when a report is generated, and recorded on it. Five built-in layouts (Summary, Management
 overview, Assessment report, EU AI Act conformity, Technical dossier) are shared by every project,
@@ -62,7 +63,7 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
 | `GET /p/{ref}/layouts/{id}/export` | viewer |
 | `GET /p/{ref}/builtin-layouts`, `GET .../{id}`, `.../{id}/preview`, `.../{id}/export` | viewer |
 | `GET, POST /p/{ref}/layouts/{id}/reports` (POST: `{system_id, period_from?, period_to?, other_versions?, compare_to?, format?}`) | viewer, editor |
-| `GET /p/{ref}/reports/{rid}/pdf`, `/download` | viewer |
+| `GET /p/{ref}/reports/{rid}/pdf` (the PDF; a Word report's copy), `/download` (the document as generated) | viewer |
 | `GET, POST /p/{ref}/templates`, `PUT, DELETE .../{tid}`, `POST .../import`, `GET .../{tid}/export`, `.../{tid}/logo` | viewer, editor |
 
 A period is two dates, both included, in UTC. `{ref}` is the project's slug or pid. Errors are

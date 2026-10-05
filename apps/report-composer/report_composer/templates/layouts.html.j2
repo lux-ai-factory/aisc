@@ -71,7 +71,7 @@
           <td>{{ l.name }}</td>
           <td class="muted">{{ l.deleted_at.strftime("%Y-%m-%d %H:%M") }}</td>
           <td class="muted">{{ r.created_at[:16] | replace("T", " ") }} ({{ r.status }}, {{ r.format }})</td>
-          <td class="actions">{% if r.status in ("done", "partial") %}<a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/download" download>Download</a>{% endif %}</td>
+          <td class="actions">{% if r.status in ("done", "partial") %}{% if r.has_pdf %}<a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/pdf" download>Download PDF</a>{% endif %}{% if (r.format or "pdf") == "docx" %} <a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/download" download>Download Word</a>{% endif %}{% endif %}</td>
         </tr>
       {% endfor %}{% endfor %}
       </tbody>

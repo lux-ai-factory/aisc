@@ -47,7 +47,8 @@ def test_the_switch_is_sent_when_ticked(client_v2, auth, fake_v2):
     lay = new_layout(client_v2, auth, name="Sw", blocks=[v2blk("cover")])
     client_v2.post(f"/p/alpha/layouts/{lay['id']}/generate", headers=auth("alice"), follow_redirects=False,
                    data={"system_id": IDS["A_V2"], "other_versions": "on", "format": "docx"})
-    assert fake_v2.snapshots[-1]["selection"]["other_versions"] is True and fake_v2.snapshots[-1]["mode"] == "docx"
+    sent = fake_v2.snapshots[-2]                     # the Word render; [-1] is its PDF copy
+    assert sent["selection"]["other_versions"] is True and sent["mode"] == "docx"
 
 
 def test_an_upside_down_period_redraws_the_form_with_the_message(client_v2, auth):

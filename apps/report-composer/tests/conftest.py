@@ -47,6 +47,7 @@ ISSUER = "http://keycloak:8080/realms/aisc"
 ORIGIN = "http://localhost"
 FIXED_NOW = datetime(2026, 9, 20, 10, 30, tzinfo=timezone.utc)
 PDF = b"%PDF-1.7\n% fake pdf from the fake renderer\n%%EOF\n"
+DOCX = b"PK\x03\x04 fake docx from the fake renderer"
 
 
 def need(module: str, name: str):
@@ -169,6 +170,7 @@ class FakeRenderer:
         self.snapshots = []
         self.choice_calls = []
         self.fail = None             # an exception instance to raise from render
+        self.fail_modes = set()      # modes ("pdf", "docx") whose render raises
         self.error_blocks = set()    # instance ids rendered as status=error
         self.pdf = PDF
 
@@ -186,6 +188,8 @@ class FakeRenderer:
         self.snapshots.append(copy.deepcopy(snapshot))
         if self.fail:
             raise self.fail
+        if snapshot["mode"] in self.fail_modes:
+            raise RuntimeError(f"fake renderer: {snapshot['mode']} fails")
         known = {t["type_id"] for t in BLOCK_TYPES}
         statuses = [{"instance_id": b["instance_id"], "block_type": b["block_type"],
                      "status": "error" if (b["instance_id"] in self.error_blocks or b["block_type"] not in known) else "ok",
@@ -196,6 +200,9 @@ class FakeRenderer:
             return {"html": html, "block_statuses": statuses}
         import hashlib
 
+        if snapshot["mode"] == "docx":
+            return {"docx_base64": base64.b64encode(DOCX).decode(), "sha256": hashlib.sha256(DOCX).hexdigest(),
+                    "block_statuses": statuses}
         return {"pdf_base64": base64.b64encode(self.pdf).decode(), "sha256": hashlib.sha256(self.pdf).hexdigest(),
                 "block_statuses": statuses}
 

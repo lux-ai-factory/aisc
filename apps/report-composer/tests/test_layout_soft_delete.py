@@ -56,7 +56,7 @@ def test_the_layouts_page_offers_their_downloads(client, auth):
     page = client.get("/p/alpha/", headers=auth("victor"))
     assert page.status_code == 200
     assert "Reports of deleted layouts" in page.text and "Page kept" in page.text
-    assert f"/api/p/alpha/reports/{report_id}/download" in page.text
+    assert f"/api/p/alpha/reports/{report_id}/pdf" in page.text and "Download PDF" in page.text
 
 
 def test_its_name_is_free_again(client, auth):

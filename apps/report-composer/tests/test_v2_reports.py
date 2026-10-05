@@ -30,7 +30,7 @@ def test_r_v8_14_docx_is_asked_of_the_renderer(client_v2, auth, fake_v2):
     lay = layout(client_v2, auth)
     r = generate(client_v2, auth, lay, format="docx")
     assert r.status_code == 201, r.text[:300]
-    assert fake_v2.snapshots[-1]["mode"] == "docx"
+    assert [x["mode"] for x in fake_v2.snapshots[-2:]] == ["docx", "pdf"]     # the Word file, then its PDF copy
 
 
 def test_r_v8_14_absent_format_is_pdf(client_v2, auth, fake_v2):
@@ -59,10 +59,14 @@ def test_r_v8_15_docx_is_stored_with_its_format_and_downloads_as_word(client_v2,
     assert 'filename="alpha-v2-quarterly-report-20260920-1030.docx"' in r.headers["content-disposition"]
 
 
-def test_r_v8_15_the_old_pdf_route_answers_404_for_a_docx(client_v2, auth):
+def test_r_v8_15_the_pdf_route_serves_a_docx_reports_pdf_copy(client_v2, auth):
+    """Until 2026-10-05 it answered 404 for a Word report; now a Word report has its PDF (test_pdf_copy.py)."""
+    from conftest import PDF
+
     lay = layout(client_v2, auth)
     rid = generate(client_v2, auth, lay, format="docx").json()["id"]
-    assert client_v2.get(f"/api/p/alpha/reports/{rid}/pdf", headers=auth("alice")).status_code == 404
+    r = client_v2.get(f"/api/p/alpha/reports/{rid}/pdf", headers=auth("alice"))
+    assert r.status_code == 200 and r.content == PDF
 
 
 def test_r_v8_15_download_serves_a_pdf_too(client_v2, auth):

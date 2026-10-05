@@ -134,7 +134,8 @@ def test_i8_4_start_migrates_the_library_and_every_project_database(iso_client, 
         db = pdb(IDS[key])
         assert _names(iso_bed, db, "SELECT string_agg(name, ',') FROM report_composer.schema_migration") \
             == ["0001_project_database.sql", "0002_layouts_without_data.sql", "0003_numbering_on.sql",
-               "0004_layout_revisions.sql", "0005_layouts_soft_deleted.sql"], key
+               "0004_layout_revisions.sql", "0005_layouts_soft_deleted.sql",
+               "0006_pdf_copy.sql"], key
         for t in MODULE_TABLES:
             assert iso_bed.scalar(db, f"SELECT to_regclass('report_composer.{t}') IS NOT NULL") == "t", (key, t)
 
@@ -268,7 +269,7 @@ def test_i8_4_a_project_made_after_start_is_migrated_on_first_open(iso_client, i
     assert r.status_code == 200 and r.json() == [], r.text[:300]
     assert iso_bed.scalar(db, "SELECT string_agg(name, ',' ORDER BY name) FROM report_composer.schema_migration") \
         == ("0001_project_database.sql,0002_layouts_without_data.sql,0003_numbering_on.sql,"
-            "0004_layout_revisions.sql,0005_layouts_soft_deleted.sql")
+            "0004_layout_revisions.sql,0005_layouts_soft_deleted.sql,0006_pdf_copy.sql")
 
 
 @pytest.mark.db
@@ -310,7 +311,8 @@ def test_i8_4_concurrent_first_opens_migrate_once(iso_client, iso_bed, auth):
     for th in threads:
         th.join(60)
     assert results == [200, 200]
-    assert iso_bed.scalar(db, "SELECT count(*) FROM report_composer.schema_migration") == "5"   # each file once
+    files = len(list((Path(__file__).resolve().parents[1] / "migrations" / "project").glob("*.sql")))
+    assert iso_bed.scalar(db, "SELECT count(*) FROM report_composer.schema_migration") == str(files)   # each file once
 
 
 @pytest.mark.db

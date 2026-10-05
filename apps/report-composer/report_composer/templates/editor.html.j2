@@ -117,7 +117,7 @@
         <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}</td><td>{% if r.system_number %}Version {{ r.system_number }}{% endif %}</td>
         <td>{{ r.period }}</td><td>{{ r.other }}</td><td>{{ r.compare }}</td><td>revision {{ r.layout_revision }}</td>
         <td>{{ (r.format or "pdf") | upper }}, {{ r.status }}</td>
-        <td>{% if r.status in ("done", "partial") %}<a href="{{ api }}/reports/{{ r.id }}/download">Download</a>{% if r.sha256 %} <span class="muted">SHA-256 {{ r.sha256[:12] }}{% if r.fingerprint %}, fingerprint {{ r.fingerprint[:12] }}{% endif %}</span>{% endif %}{% endif %}</td>
+        <td class="actions">{% if r.status in ("done", "partial") %}{% if r.has_pdf %}<a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/pdf" download>Download PDF</a>{% endif %}{% if (r.format or "pdf") == "docx" %} <a class="btn ghost small" href="{{ api }}/reports/{{ r.id }}/download" download>Download Word</a>{% endif %}{% if r.sha256 %} <span class="muted">SHA-256 {{ r.sha256[:12] }}{% if r.fingerprint %}, fingerprint {{ r.fingerprint[:12] }}{% endif %}</span>{% endif %}{% endif %}</td>
       </tr>{% endfor %}
       </tbody>
     </table>
