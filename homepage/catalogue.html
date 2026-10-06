@@ -294,6 +294,9 @@
 <script>
   var params = new URLSearchParams(location.search);
   var slug = params.get('project') || '';
+  // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
+  // one ended on '/p/', "No project with the handle .", 2026-10-06); throwing stops the rest of this script
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was changed.';
   function $(id) { return document.getElementById(id); }

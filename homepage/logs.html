@@ -148,6 +148,9 @@
 <script>
   // Thin on purpose: the platform filters, verifies and names people; this page only lays rows out.
   var slug = new URLSearchParams(window.location.search).get('project') || '';
+  // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
+  // one ended on '/p/', "No project with the handle .", 2026-10-06); throwing stops the rest of this script
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
   var base = '/api/projects/' + encodeURIComponent(slug) + '/ledger/events';
   var PAGE = 20;          // entries a page: the log is a carousel of 20, newest first
   var cursors = [];       // the cursor each page back from the newest was read with; [] on the newest

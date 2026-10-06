@@ -417,7 +417,7 @@
 
   <section class="block sandbox">
   <div class="row one">
-    <a class="card" id="sandbox-card" href="/evidence.html" data-controls="http://localhost/controls">
+    <a class="card" id="sandbox-card" data-controls="http://localhost/controls">
       <span class="svc">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3"/><path d="m9 13 2 2 4-4"/></svg>
         Sandbox
@@ -437,6 +437,12 @@
 <script src="/assets/ledger-beacon.js"></script>
 <script>
   var slug = decodeURIComponent(window.location.pathname.replace(/^\/p\//, '').replace(/\/$/, ''));
+  // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
+  // one ended on '/p/', "No project with the handle .", 2026-10-06); throwing stops the rest of this script
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  // step 4 is a page of the launcher, known from the handle alone: linked before the project loads, so a
+  // click while it loads no longer opens it without a project
+  document.getElementById('sandbox-card').href = '/evidence.html?project=' + encodeURIComponent(slug);
 
   fetch('/api/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
     .then(function (r) {
