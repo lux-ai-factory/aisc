@@ -15,7 +15,11 @@ TIMEOUT_S = 20
 
 
 class EngineUnavailable(RuntimeError):
-    """The engine did not accept the call."""
+    """The engine did not accept the call. `status` is its answer's status, None when it did not answer."""
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 def _base() -> str:
@@ -29,7 +33,7 @@ def _call(method: str, path: str, pid, token: str, body: dict | None = None) -> 
     except httpx.HTTPError as exc:
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
-        raise EngineUnavailable(f"the engine answered {r.status_code}")
+        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code)
     return r.json()
 
 
@@ -42,6 +46,14 @@ def available_plugins(pid, token: str) -> list[dict]:
 def engine_project(pid, token: str) -> str:
     """The engine's pid of this platform project."""
     return str(_call("POST", f"/api/v1/projects/for-platform/{pid}", pid, token)["pid"])
+
+
+def install_plugin(pid, token: str, package: str, version: str, slug: str) -> None:
+    """Install a test into this platform project's engine side, at this version, recording the catalogue
+    entry it came from: the engine's own POST /api/v1/plugins, which takes the admin role."""
+    engine_pid = engine_project(pid, token)
+    _call("POST", "/api/v1/plugins", pid, token, {"package_name": package, "version": version,
+                                                  "project_uuid": engine_pid, "catalogue_slug": slug})
 
 
 def components(pid, token: str, engine_pid: str | None = None) -> list[dict]:

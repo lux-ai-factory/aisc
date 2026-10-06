@@ -1421,6 +1421,39 @@ def catalogue_install_info(slug: str, entry: str, request: Request,
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+#: What an install of a test says to someone without the realm role admin, as the engine's own dialog does.
+NOT_ADMIN_TO_INSTALL = "Installing a test takes the admin role."
+
+
+@app.post("/projects/{slug}/catalogue/api/tool/{entry}/install")
+def catalogue_install_test(slug: str, entry: str, request: Request,
+                           caller: Caller = Depends(caller_dependency)) -> dict:
+    """Install the entry's test into this project without leaving the catalogue (workshop feedback
+    2026-10-06), as a control already is. The catalogue's pages are on this API's origin, so the call is
+    same-origin; the engine is called with the caller's own token, so it checks the admin role again and
+    records the install as its own."""
+    from platform_service import engine_components
+    pid = _catalogue_project(slug, caller)["pid"]
+    if not caller.has_role(ADMIN_ROLE):
+        raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
+    token = token_from_headers(request.headers) or ""
+    try:
+        info = _private_reads(pid, lambda: catalogue.install_info(pid, entry, token))
+    except catalogue.NoEntry as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    if not info["installable"]:
+        raise HTTPException(status_code=409, detail=info["reason"])
+    try:
+        engine_components.install_plugin(pid, token, info["package_name"], info["version"], entry)
+    except engine_components.EngineUnavailable as exc:
+        if exc.status == 403:
+            raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
+        if exc.status == 404:
+            raise no_project(slug)
+        raise HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
+    return {"slug": entry, "package_name": info["package_name"], "version": info["version"]}
+
+
 @app.get("/projects/{slug}/catalogue/api/tags/")
 def catalogue_tags(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
     pid = _catalogue_project(slug, caller)["pid"]

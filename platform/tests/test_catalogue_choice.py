@@ -343,3 +343,54 @@ def test_p4_2_an_admin_sets_a_local_entrys_dimensions(client, as_user, project, 
 def test_unit_readiness_of_a_tool_entry_strips_to_the_plain_shape():
     plain = cat.plain_tool(SAMPLE["tool_detailed"][0])
     assert set(plain) == set(SAMPLE["tool"][0])
+
+
+# ── a test installed from the project's catalogue, without leaving it (workshop feedback 2026-10-06) ──
+# The catalogue's pages are on the launcher's origin, as this API is: the install is a same-origin call,
+# and the platform makes it in the engine with the caller's own token, so the engine checks the admin role
+# and records the install as if they had used the engine.
+
+ENGINE_PID = "33333333-3333-3333-3333-333333333333"
+
+
+def engine_takes_installs(engine, project, status=201):
+    engine.route("POST", f"/api/v1/projects/for-platform/{project['pid']}", (200, {"pid": ENGINE_PID, "name": "evd"}))
+    engine.route("POST", "/api/v1/plugins", (status, {"detail": "refused"} if status >= 300 else {"ok": True}))
+
+
+def test_a_test_is_installed_from_the_catalogue_into_its_project(client, as_user, project, public, engine, index):
+    assert choose(client, as_user, project, "private").status_code == 200
+    engine_takes_installs(engine, project)
+    r = client.post(url(project, "/api/tool/langbite/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.1"}
+    sent = engine.requests("POST", "/api/v1/plugins")[-1]
+    assert sent["json"] == {"package_name": "aisc-plugin-langbite", "version": "0.1.1",
+                            "project_uuid": ENGINE_PID, "catalogue_slug": "langbite"}
+    assert sent["headers"]["x-aisc-project"] == project["pid"]
+    assert sent["headers"]["authorization"].startswith("Bearer ")
+
+
+def test_installing_a_test_from_the_catalogue_takes_the_admin_role(client, as_user, project, public, engine, index):
+    assert choose(client, as_user, project, "private").status_code == 200
+    engine_takes_installs(engine, project)
+    r = client.post(url(project, "/api/tool/langbite/install"), headers=as_user(BOB))
+    assert r.status_code == 403 and r.json()["detail"] == "Installing a test takes the admin role."
+    assert engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_a_test_the_index_does_not_hold_is_not_installed(client, as_user, project, public, engine, index):
+    assert choose(client, as_user, project, "private").status_code == 200
+    engine_takes_installs(engine, project)
+    r = client.post(url(project, "/api/tool/local-my-probe/install"), headers=admin(as_user))
+    assert r.status_code == 409 and "not on this stack's package index" in r.json()["detail"]
+    assert engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_the_engines_refusal_is_passed_on(client, as_user, project, public, engine, index):
+    assert choose(client, as_user, project, "private").status_code == 200
+    engine_takes_installs(engine, project, status=403)
+    r = client.post(url(project, "/api/tool/langbite/install"), headers=admin(as_user))
+    assert r.status_code == 403 and r.json()["detail"] == "Installing a test takes the admin role."
+    engine_takes_installs(engine, project, status=500)
+    assert client.post(url(project, "/api/tool/langbite/install"), headers=admin(as_user)).status_code == 502

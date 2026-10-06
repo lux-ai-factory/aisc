@@ -270,7 +270,7 @@
   }
 
   // one tile per installed checklist (2026-10-03): its latest answers as the controls app lists them, the
-  // version, the readiness score and how much is answered, and a button to them (or to the checklist, when
+  // version, its coverage (answered out of all questions) and readiness, and a button to them (or to the checklist, when
   // it was never answered). A deleted checklist, kept only for its links, has no questions and no tile.
   function renderControlTiles() {
     var box = $('control-tiles');
@@ -288,9 +288,9 @@
       var href;
       if (sub) {
         var done = it.questions ? Math.round(100 * sub.answered / it.questions) : 0;
-        main.appendChild(el('div', 'tile-runs', 'v' + sub.version + ' · ' + sub.status + ' · score ' +
-          (sub.readiness === null ? '–' : sub.readiness + '%') + ' · ' + sub.answered + '/' + it.questions +
-          ' answered (' + done + '%)'));
+        main.appendChild(el('div', 'tile-runs', 'v' + sub.version + ' · ' + sub.status + ' · coverage ' +
+          sub.answered + '/' + it.questions + ' (' + done + '%) · readiness ' +
+          (sub.readiness === null ? '–' : sub.readiness + '%')));
         var bar = el('div', 'tile-bar'), fill = el('span');
         fill.style.width = done + '%';
         bar.appendChild(fill);
