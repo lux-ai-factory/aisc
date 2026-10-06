@@ -96,13 +96,15 @@ def test_new_layout_save_then_generate(live, fake_v2):
     page.wait_for_url(lambda u: "/layouts/new" not in u and "/layouts/" in u, timeout=10000)
     page.wait_for_selector("main[data-api]")
     _shot(page, "3-saved-layout")
-    page.click('[data-control="open-generate"]')
-    page.wait_for_url("**/generate")
-    page.select_option('select[name="system_id"]', IDS["A_V2"])
-    page.fill('input[name="period_from"]', "2026-09-10")
-    _shot(page, "4-generate")
-    page.click('form[data-control="generate-report"] button[type="submit"]')
-    page.wait_for_url("**#reports", timeout=15000)
+    # Download report, next to Show in the preview's form (2026-10-06): generates and downloads, same page
+    page.select_option('form[data-control="preview-with"] select[name="system_id"]', IDS["A_V2"])
+    page.fill('form[data-control="preview-with"] input[name="period_from"]', "2026-09-10")
+    page.click('[data-control="download-report"] summary')
+    _shot(page, "4-download-menu")
+    with page.expect_download(timeout=15000) as got:
+        page.click('[data-control="download-report"] button[value="pdf"]')
+    assert got.value.suggested_filename.endswith(".pdf")
+    page.reload()
     assert page.locator("table[data-reports] tbody tr").count() == 1
     assert "Version 2" in page.locator("table[data-reports] tbody tr").inner_text()
     _shot(page, "5-generated")

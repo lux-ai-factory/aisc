@@ -35,7 +35,7 @@ def test_the_toolbar_has_name_index_and_numbering_and_no_version(client_v2, auth
     assert not tb.find("input", attrs={"name": "show_index", "type": "checkbox"}).has_attr("checked")
     assert tb.find("input", attrs={"name": "numbering", "type": "checkbox"}) is not None
     assert tb.find(attrs={"data-control": "version"}) is None and tb.find(attrs={"data-control": "toc"}) is None
-    assert tb.find("a", attrs={"data-control": "open-generate"})["href"].endswith(f"/layouts/{lay['id']}/generate")
+    assert tb.find(attrs={"data-control": "open-generate"}) is None      # Download report sits next to Show (2026-10-06)
     assert tb.find(attrs={"data-control": "delete-layout"}) is not None
 
 
@@ -67,7 +67,7 @@ def test_the_new_layout_page_is_the_editor_with_nothing_saved(client_v2, auth):
     main = doc.find("main")
     assert main["data-page"] == "editor" and not main.get("data-layout")
     assert doc.find(attrs={"data-control": "delete-layout"}) is None
-    assert doc.find(attrs={"data-control": "open-generate"}) is None
+    assert doc.find(attrs={"data-control": "download-report"}) is None   # nothing saved, nothing to download
     assert doc.find(class_="toolbar").find("input", attrs={"name": "name"}).get("value", "") == ""
 
 

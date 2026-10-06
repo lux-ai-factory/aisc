@@ -38,7 +38,7 @@ def test_r4_2_2_the_editor(client, auth):
     doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
     palette = doc.find(attrs={"data-control": "palette"})
     assert palette is not None and "free_text" in str(palette)
-    for control in ("save", "open-generate", "move-up", "move-down", "remove", "configure", "template"):
+    for control in ("save", "download-report", "move-up", "move-down", "remove", "configure", "template"):
         assert doc.find(attrs={"data-control": control}) is not None, control
     blocks = [el["data-instance-id"] for el in doc.find_all(attrs={"data-instance-id": True})]
     assert blocks == [b["instance_id"] for b in lay["blocks"]]

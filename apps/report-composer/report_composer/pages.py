@@ -179,6 +179,7 @@ def editor_page(request: Request, ref: str, layout_id: str):
                  reports=[_report_view(r) for r in report_rows], palette=palette, editor=editor, templates=templates,
                  layout_problems=by_block.get(None, []), is_new=layout_id == "new", read_only=read_only,
                  may_write=g.access.may_write, preview_with=shown, preview_src=preview_src, no_version=NO_VERSION,
+                 report_error=request.query_params.get("report_error"),
                  template_known=layout.get("template_id") in template_ids)
 
 
@@ -252,6 +253,45 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
         return _generate_page(request, g, layout, systems, status_code=status,
                               error=body["error"]["message"], form=typed)
     return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}#reports", status_code=303)
+
+
+@router.post("/p/{ref}/layouts/{layout_id}/download-report")
+async def download_report(request: Request, ref: str, layout_id: str):
+    """Download report, next to Show in the preview's form (2026-10-06): the report is generated with the
+    form's version, period and other-versions switch, stored and listed like any report, and answered as
+    the document itself, so the browser downloads it and stays on the page. A refused choice goes back to
+    the layout's page with the message."""
+    from .api import _document, _downloaded
+
+    g = guard(request, ref, "editor")                  # refuses a foreign Origin before anything is read
+    form = await request.form()
+    kept = {k: form.get(k) for k in ("system_id", "period_from", "period_to") if form.get(k)}
+    if form.get("other_versions") == "on":
+        kept["other_versions"] = "on"
+    choice = {k: kept.get(k) for k in ("system_id", "period_from", "period_to")}
+    choice["other_versions"] = "other_versions" in kept
+    fmt = form.get("format") if form.get("format") in reports.FORMATS else "pdf"
+
+    def back(message: str) -> RedirectResponse:
+        query = urlencode({**kept, "report_error": message})
+        return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}?{query}#reports",
+                                status_code=303)
+    try:
+        status, body = await run_in_threadpool(
+            reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
+            record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
+                                               **reports.outcome_fields(o)))
+    except ApiError as e:
+        problems = _problem_lines(e.details, _layout_view_for(request, g, layout_id), block_types(request))
+        return back(" ".join([e.message] + problems) if problems else e.message)
+    if status >= 400:
+        return back(body["error"]["message"])
+    return _document(request, g, body["id"], only_pdf=False, record=_downloaded)
+
+
+def _layout_view_for(request: Request, g, layout_id: str) -> dict:
+    with request.app.state.projects.connect(g.project["pid"]) as conn:
+        return _layout_or_builtin(request, conn, layout_id)
 
 
 @router.get("/p/{ref}/templates")

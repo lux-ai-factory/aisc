@@ -1,4 +1,4 @@
-"""A built-in layout generates reports exactly like the project's own (2026-10-06): Generate report on its
+"""A built-in layout generates reports exactly like the project's own (2026-10-06): Download report on its
 page, PDF or Word, its reports listed under it with Download PDF and Download Word. A report belongs to a
 layout of the project, so each built-in has one record per project, made at its first report and kept in
 step with the built-in at every report; it is not one of the project's layouts (not listed, its name stays
@@ -57,9 +57,9 @@ def test_a_viewer_cannot_generate_one(client_v2, auth):
 def test_the_built_ins_page_has_generate_and_its_reports(client_v2, auth):
     made = generate(client_v2, auth, "docx").json()
     page = client_v2.get(f"/p/alpha/layouts/{B}", headers=auth("alice")).text
-    assert f"/layouts/{B}/generate" in page and "Generate report" in page
+    assert f"/layouts/{B}/download-report" in page and "Download report" in page
     assert f'/api/p/alpha/reports/{made["id"]}/pdf"' in page and "Download PDF" in page and "Download Word" in page
-    assert "Generate report" not in client_v2.get(f"/p/alpha/layouts/{B}", headers=auth("victor")).text
+    assert "Download report" not in client_v2.get(f"/p/alpha/layouts/{B}", headers=auth("victor")).text
 
 
 def test_the_generate_form_works_for_a_built_in(client_v2, auth):

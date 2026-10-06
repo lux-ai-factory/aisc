@@ -326,3 +326,14 @@ tr.built-in td { background: var(--panel-2); }
 .field-row .field { flex: 1; }
 .formats { margin: 12px 0 0; }
 .form-error { color: var(--error); font-weight: 700; margin: 0 0 14px; }
+
+/* Download report, next to Show in the preview's form: a menu of PDF and Word */
+.download-menu { position: relative; }
+.download-menu > summary { list-style: none; cursor: pointer; }
+.download-menu > summary::-webkit-details-marker { display: none; }
+.download-choices {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 10; display: flex; flex-direction: column;
+  min-width: 140px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0, 0, 0, .12);
+}
+.download-choices button { text-align: left; border: 0; width: 100%; }
+.notice.error { background: var(--pink-soft); border-color: var(--accent); color: #66002f; }
