@@ -70,11 +70,12 @@ eval aisc_eval/celery_app.py T9: Task 9b: Méril's feat/dev-catalogue-staging (C
 eval aisc_eval/celery_tasks.py T6, T9: Task 9b: Méril's feat/dev-catalogue-staging (online install from the index, index always passed, placeholder API_KEY_OPENAI); one import that registers the run header handlers (adapt plan 2026-09-28, task 4)
 eval aisc_eval/deployment.py T6: AISC_DEPLOYMENT for the worker
 eval aisc_eval/run_context.py T6: the run a task acts for, carried in the Celery headers so Sean's task signatures stay his (adapt plan 2026-09-28, task 4)
-eval aisc_eval/service/api_client.py T6: the door's project, evaluation and run headers in configurator only, read from the run context (adapt plan 2026-09-28, task 4)
+eval aisc_eval/service/api_client.py T6, L1: the door's project, evaluation and run headers in configurator only, read from the run context (adapt plan 2026-09-28, task 4); L1: a measure's name, description, unit and error cut to the engine's 255 characters before posting, so one long text no longer fails a run (LangBiTe 2026-10-07)
 eval tests/test_deployment_mode.py T6: the worker's mode switch
 eval tests/test_run_context.py T6: the run context is set from the header and cleared after the task (adapt plan 2026-09-28, task 4)
 eval tests/test_run_context_broker.py T6: the run header travels through a broker to every task published during a run (adapt plan 2026-09-28, task 4)
 eval tests/test_run_ticket.py T6: the run ticket and project headers (configurator), from the run context
+eval tests/services/test_post_measures_fit.py L1: the 255-character cut before posting (LangBiTe 2026-10-07)
 
 # apps/webapp
 webapp .env T7: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
@@ -99,7 +100,10 @@ webapp src/main.tsx T7: DeploymentGate mounted (Ruling 30); the project-header w
 webapp src/pages/GlobalHome.tsx T7: the launcher's project in configurator
 webapp src/pages/Plugins.modes.test.tsx T8: the Plugins page by mode (configurator lists only the project's installed tests)
 webapp src/pages/Plugins.tsx T8: the catalogue is the only place tests are found in configurator; Sean's package index standalone; review pass 2026-10-06: uses pluginToggle
-webapp src/pages/PluginEvaluations.tsx R1: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer
+webapp src/pages/PluginEvaluations.tsx R1, L1: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. L1: failed runs listed with their error (LangBiTe 2026-10-07)
+webapp src/pages/evaluationOutcome.ts L1: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words (LangBiTe 2026-10-07)
+webapp src/pages/evaluationOutcome.test.ts L1: its tests
+webapp src/models/models.tsx L1: a run's plugin entry carries error_message (LangBiTe 2026-10-07)
 webapp src/pages/PluginEvaluations.noReport.test.ts R1: no source of the app links to /report any more
 webapp src/pages/PluginStartEvaluation.tsx R2: the start button and its tooltip say Launch Evaluation (Create Evaluation before), the error toasts Failed to launch evaluation; review pass 2026-10-06: selections saved per project
 webapp src/pages/PluginStartEvaluation.launch.test.ts R2: the start button says Launch Evaluation
