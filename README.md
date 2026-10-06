@@ -43,16 +43,21 @@ Background documentation (architecture, mission, user guide):
    ```
    Already cloned without them: `git submodule update --init --recursive`.
 
-2. **Make the secrets, once** (none is committed; rerun after a pull, it keeps existing values):
+2. **Start the stack** (the first start builds every image and takes several minutes):
+   ```bash
+   ./scripts/start.sh
+   ```
+   It checks Docker, Compose, the branch and the submodules first and says what to fix; makes the
+   secrets (none is committed; it keeps existing values, so run it again after a pull); builds, trying a
+   failed build twice more; starts the stack; and waits until the sign-in page answers.
+
+3. **By hand instead**, the same in two commands:
    ```bash
    ./scripts/secrets.sh
-   ```
-
-3. **Start the stack** (the first start builds every image and takes several minutes):
-   ```bash
    docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \
      -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d --build
    ```
+   `up -d` returns before the sign-in is ready: a page opened in the first 30 seconds or so shows 502.
 
 4. **Sign in** at http://localhost:8100 with a development account, `user` / `user` or
    `admin` / `admin` (localhost only), and create a project.
