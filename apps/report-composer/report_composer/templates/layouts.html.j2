@@ -35,7 +35,7 @@
           <td class="muted">Platform default</td>
           <td class="muted">built-in</td>
           <td class="muted"></td>
-          <td class="muted"></td>
+          <td class="muted">{% if l.last_report %}{{ l.last_report.created_at[:16] | replace("T", " ") }} ({{ l.last_report.status }}){% endif %}</td>
           <td class="actions">
             {% if editor %}<button type="button" class="small ghost" data-control="duplicate" data-layout="{{ l.id }}">Duplicate</button>{% endif %}
             <a class="btn ghost small" data-control="export-structure" href="{{ api }}/builtin-layouts/{{ l.id }}/export" download>Export</a>

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import builtin_layouts, db, forms, groups, layouts, ledger, preview_with, prose, reports
+from . import builtin_layouts, builtin_reports, db, forms, groups, layouts, ledger, preview_with, prose, reports
 from . import templates as looks
 from .errors import ApiError
 from .guards import guard
@@ -71,8 +71,10 @@ def layouts_page(request: Request, ref: str):
     with request.app.state.projects.connect(g.project["pid"]) as conn:
         rows = db.list_layouts(conn)
         gone = db.deleted_layouts_with_reports(conn)
+        last = db.builtin_last_reports(conn)
+    builtins = [{**b, "last_report": last.get(b["id"])} for b in builtin_layouts.all_layouts(block_types(request))]
     return _page("layouts.html.j2", request, project=g.project, layouts=rows, deleted=gone,
-                 builtins=builtin_layouts.all_layouts(block_types(request)), editor=g.access.may_write)
+                 builtins=builtins, editor=g.access.may_write)
 
 
 def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
@@ -140,7 +142,8 @@ def editor_page(request: Request, ref: str, layout_id: str):
         if layout_id == "new":
             layout, report_rows = dict(EMPTY_LAYOUT), []
         elif builtin is not None:
-            layout, report_rows = builtin, []
+            record = builtin_reports.record_of(conn, layout_id)
+            layout, report_rows = builtin, (db.list_reports(conn, record) if record else [])
         else:
             layout = layout_or_404(conn, layout_id)
             report_rows = db.list_reports(conn, layout["id"])
@@ -206,11 +209,16 @@ def _generate_page(request: Request, g, layout: dict, systems, status_code=200, 
     return page
 
 
+def _layout_or_builtin(request: Request, conn, layout_id: str) -> dict:
+    """A layout of the project, or a built-in (which generates like one: builtin_reports.py)."""
+    return builtin_layouts.get(layout_id, block_types(request)) or layout_or_404(conn, layout_id)
+
+
 @router.get("/p/{ref}/layouts/{layout_id}/generate")
 def generate_page(request: Request, ref: str, layout_id: str):
     g = guard(request, ref, "editor")
     with request.app.state.projects.connect(g.project["pid"]) as conn:
-        layout = layout_or_404(conn, layout_id)
+        layout = _layout_or_builtin(request, conn, layout_id)
         systems = db.systems(conn)
     return _generate_page(request, g, layout, systems)
 
@@ -233,14 +241,14 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
                                                **reports.outcome_fields(o)))
     except ApiError as e:
         with request.app.state.projects.connect(g.project["pid"]) as conn:
-            layout, systems = layout_or_404(conn, layout_id), db.systems(conn)
+            layout, systems = _layout_or_builtin(request, conn, layout_id), db.systems(conn)
         problems = _problem_lines(e.details, layout, block_types(request))
         return _generate_page(request, g, layout, systems, status_code=e.status,
                               error="The report was not generated:" if problems else e.message, form=typed,
                               problems=problems)
     if status >= 400:
         with request.app.state.projects.connect(g.project["pid"]) as conn:
-            layout, systems = layout_or_404(conn, layout_id), db.systems(conn)
+            layout, systems = _layout_or_builtin(request, conn, layout_id), db.systems(conn)
         return _generate_page(request, g, layout, systems, status_code=status,
                               error=body["error"]["message"], form=typed)
     return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}#reports", status_code=303)

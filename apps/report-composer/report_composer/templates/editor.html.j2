@@ -21,11 +21,12 @@
     <div>
       <p class="rc-eyebrow">{% if read_only %}Built-in layout{% elif is_new %}New layout{% else %}Report layout{% endif %}</p>
       <h1>{% if is_new %}New layout{% else %}{{ layout.name }}{% endif %}</h1>
-      {% if read_only %}<p>{{ layout.description }} Built-in layouts are shared by every project and cannot be changed: duplicate this one to adapt it.</p>{% endif %}
+      {% if read_only %}<p>{{ layout.description }} Built-in layouts are shared by every project and cannot be changed: generate a report with it as it is, or duplicate it to adapt it.</p>{% endif %}
     </div>
     {% if read_only %}
     <div class="page-actions">
-      {% if may_write %}<button type="button" data-control="duplicate" data-layout="{{ layout.id }}">Duplicate</button>{% endif %}
+      {% if may_write %}<a class="btn" data-control="open-generate" href="{{ base }}/layouts/{{ layout.id }}/generate">Generate report</a>
+      <button type="button" class="ghost" data-control="duplicate" data-layout="{{ layout.id }}">Duplicate</button>{% endif %}
       <a class="btn ghost" data-control="export-structure" href="{{ api }}/builtin-layouts/{{ layout.id }}/export" download>Export</a>
     </div>
     {% endif %}
@@ -105,7 +106,7 @@
       <iframe sandbox="" title="Preview"{% if not is_new %} src="{{ preview_src }}"{% endif %}></iframe>
     </section>
   </div>
-  {% if not is_new and not read_only %}
+  {% if not is_new %}
   <section class="reports qf-section" id="reports" style="margin-top: 20px">
     <h2>Generated reports</h2>
     <p class="statuses" data-statuses></p>

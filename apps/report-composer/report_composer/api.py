@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import builtin_layouts, db, declared_charts, evidence_links, layouts, ledger, presets, preview_with, reports
+from . import builtin_layouts, builtin_reports, db, declared_charts, evidence_links, layouts, ledger, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on
 from .guards import Guarded, project_guard, signed_in
@@ -420,6 +420,9 @@ def post_report(request: Request, layout_id: str, body: dict | None = Body(None)
 @router.get("/p/{ref}/layouts/{layout_id}/reports")
 def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
     with _project_db(request, g) as conn:
+        if builtin_layouts.get(layout_id, block_types(request)) is not None:     # a built-in's reports
+            record = builtin_reports.record_of(conn, layout_id)
+            return [reports.report_row(r) for r in db.list_reports(conn, record)] if record else []
         layout = layout_or_404(conn, layout_id)
         return [reports.report_row(r) for r in db.list_reports(conn, layout["id"])]
 

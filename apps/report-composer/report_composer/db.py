@@ -60,7 +60,8 @@ DEFAULT_SETTINGS = {"show_index": True, "numbering": True}
 
 
 def layout_names(conn) -> set[str]:
-    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.layout WHERE deleted_at IS NULL").fetchall()}
+    return {r["name"] for r in conn.execute("SELECT name FROM report_composer.layout"
+                                            " WHERE deleted_at IS NULL AND builtin_id IS NULL").fetchall()}
 
 
 def list_layouts(conn) -> list[dict]:
@@ -72,19 +73,21 @@ def list_layouts(conn) -> list[dict]:
         " LEFT JOIN LATERAL (SELECT json_build_object('id', r.id, 'created_at', r.created_at, 'status', r.status)"
         "                    AS last_report FROM report_composer.generated_report r WHERE r.layout_id = l.id"
         "                    ORDER BY r.created_at DESC LIMIT 1) lr ON true"
-        " WHERE l.deleted_at IS NULL ORDER BY l.name").fetchall()
+        " WHERE l.deleted_at IS NULL AND l.builtin_id IS NULL ORDER BY l.name").fetchall()
 
 
-def get_layout(conn, layout_id, for_update=False) -> dict | None:
+def get_layout(conn, layout_id, for_update=False, builtin_ok=False) -> dict | None:
+    """A layout of the project; with builtin_ok also a built-in's record (what its reports belong to)."""
     lid = _uuid(layout_id)
     if lid is None:
         return None
     row = conn.execute(
         "SELECT l.id::text AS id, l.name, l.description,"
         " l.template_id::text AS template_id, l.revision, l.created_at,"
-        " l.created_by, l.updated_at, l.updated_by, l.show_index, l.numbering"
+        " l.created_by, l.updated_at, l.updated_by, l.show_index, l.numbering, l.builtin_id"
         " FROM report_composer.layout l WHERE l.id = %s AND l.deleted_at IS NULL"
-        + (" FOR UPDATE" if for_update else ""), (lid,)).fetchone()
+        " AND (l.builtin_id IS NULL OR %s)"
+        + (" FOR UPDATE" if for_update else ""), (lid, builtin_ok)).fetchone()
     if row is None:
         return None
     row["blocks"] = [dict(b) for b in conn.execute(
@@ -100,24 +103,41 @@ def _insert_blocks(conn, layout_id, blocks) -> None:
                      (layout_id, b["instance_id"], i, b["block_type"], Jsonb(b.get("options") or {})))
 
 
-def insert_layout(conn, *, template_id, name, description, blocks, who, now, settings=None) -> str:
+def insert_layout(conn, *, template_id, name, description, blocks, who, now, settings=None, builtin_id=None) -> str:
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     row = conn.execute(
         "INSERT INTO report_composer.layout (template_id, name, description, created_at,"
-        " created_by, updated_at, updated_by, show_index, numbering)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
+        " created_by, updated_at, updated_by, show_index, numbering, builtin_id)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id::text AS id",
         (template_id, name, description, now, who, now, who, s["show_index"],
-         s["numbering"])).fetchone()
+         s["numbering"], builtin_id)).fetchone()
     _insert_blocks(conn, row["id"], blocks)
     keep_revision(conn, row["id"], now)
     return row["id"]
+
+
+def builtin_last_reports(conn) -> dict:
+    """{built-in id: its newest report (id, created_at, status)}, for the built-ins that have one."""
+    rows = conn.execute(
+        "SELECT DISTINCT ON (l.builtin_id) l.builtin_id, json_build_object('id', r.id, 'created_at', r.created_at,"
+        " 'status', r.status) AS last_report FROM report_composer.layout l"
+        " JOIN report_composer.generated_report r ON r.layout_id = l.id WHERE l.builtin_id IS NOT NULL"
+        " ORDER BY l.builtin_id, r.created_at DESC").fetchall()
+    return {r["builtin_id"]: r["last_report"] for r in rows}
+
+
+def builtin_record(conn, builtin_id) -> str | None:
+    """The id of the record a built-in's reports belong to in this project, or None before its first report."""
+    row = conn.execute("SELECT id::text AS id FROM report_composer.layout WHERE builtin_id = %s",
+                       (builtin_id,)).fetchone()
+    return row["id"] if row else None
 
 
 def keep_revision(conn, layout_id, now) -> None:
     """The layout's revision as saved, kept for good (layout_revision is append-only)."""
     from .ledger import layout_state
 
-    state = layout_state(get_layout(conn, layout_id))
+    state = layout_state(get_layout(conn, layout_id, builtin_ok=True))
     conn.execute("INSERT INTO report_composer.layout_revision (layout_id, revision, state, saved_at)"
                  " VALUES (%s, %s, %s, %s)", (layout_id, state["revision"], Jsonb(state), now))
 

@@ -15,7 +15,7 @@ import uuid
 from datetime import timedelta
 
 from . import anchor as ledger_anchor
-from . import db, declared_charts, evidence_links, layouts
+from . import builtin_reports, db, declared_charts, evidence_links, layouts
 from . import selection as data_selection
 from . import templates as looks
 from .errors import ApiError, fail_on
@@ -134,7 +134,7 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
     layout cannot both pass the running-report check.
     """
     clock = request.app.state.clock
-    layout = db.get_layout(conn, layout_id, for_update=True)
+    layout = db.get_layout(conn, layout_id, for_update=True, builtin_ok=True)
     if layout is None:
         raise ApiError(404, "not_found", NO_LAYOUT)
     if not layout["blocks"]:
@@ -194,9 +194,11 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
     runs in the transaction that finishes the report (outcome_fields says what it holds). The ledger
     anchor the report prints is asked for first, outside any transaction."""
     projects, renderer, clock = request.app.state.projects, request.app.state.renderer, request.app.state.clock
+    # a built-in's reports belong to its record in this project (builtin_reports.py)
+    layout_id = builtin_reports.resolve(request, project, layout_id, caller.subject, block_types(request))
     anchor = ledger_anchor.fetch(request, project)
     with projects.connect(project["pid"]) as conn:
-        found = db.get_layout(conn, layout_id)
+        found = db.get_layout(conn, layout_id, builtin_ok=True)
     declared = declared_charts.for_snapshot(request, project, (found or {}).get("blocks"))
     with projects.connect(project["pid"]) as conn:
         report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor, declared)
