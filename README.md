@@ -22,7 +22,7 @@ Background documentation (architecture, mission, user guide):
   run by a user allowed to use Docker.
 - Free ports 80, 443, 8081, 8100 and 8188, and 5432, 5672, 6379, 9000 and 3322 on `127.0.0.1`.
 
-**Tools**: `git`, `bash`, `openssl`, `python3` and `setfacl` (package `acl`), used by `scripts/secrets.sh`.
+**Tools**: `git`, `bash` (3.2 or later: macOS's will do) and `openssl`, used by `scripts/secrets.sh`.
 
 **Access**
 - Three submodules are private on GitHub: `catalogue`, `aisc-report-generator` and

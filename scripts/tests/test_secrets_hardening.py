@@ -200,7 +200,8 @@ def test_the_immudb_signing_key_is_made_private_and_kept(scratch):  # noqa: F811
         entries = dict(line.split(":", 1)[::-1] and (line.rsplit(":", 1)[0], line.rsplit(":", 1)[1])
                        for line in acl.splitlines() if line and not line.startswith("#"))
         assert entries.get("group:") == "---", "the owning group must not read the private key"
-        assert entries.get("user:3322") == "r--", "immudb (uid 3322) must read it"
+        # no grant for immudb's uid: the stack's immudb-key job hands it a copy (test_no_host_network)
+        assert "user:3322" not in entries, "no file ACL any more"
     else:
         assert _mode(key) & 0o070 == 0, "the private key must not be readable by its group"
     before = _digest(key.read_text())

@@ -38,7 +38,7 @@ def docker(*args, check=True):
 
 
 def caddyfile_for_test(text: str) -> str:
-    text = text.replace("host.docker.internal:4180", "auth:4180")
+    text = text.replace("oauth2-proxy:4180", "auth:4180")
     return "(tls-test) {\n}\n" + text
 
 

@@ -14,9 +14,6 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
       - ./homepage:/srv/homepage:ro,Z
-    # so forward_auth can reach oauth2-proxy, which runs on the host network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       # The ledger's witness: on unless LEDGER_GATEWAY=off. The secret proves to the
       # platform that a witness call comes from this gateway.
@@ -27,7 +24,7 @@ services:
       CADDY_PORT: "8005"
       HOMEPAGE_PORT: "8006"
       DASHBOARD_PORT: "8008"
-      DASHBOARD_UPSTREAM: host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
+      DASHBOARD_UPSTREAM: dashboard:${DASHBOARD_INTERNAL_PORT:-8189}
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
     networks:
       - backend
@@ -192,20 +189,26 @@ services:
   # set for domain `localhost`, and cookies ignore ports, so the same session
   # covers the platform on :80 and the launcher on :8100.
   #
-  # network_mode: host on purpose. The issuer URL it talks to must be the same
-  # string the browser is redirected to (http://localhost:8081/realms/aisc); from
-  # inside a bridge network `localhost` would be the container itself and
-  # Keycloak's issuer check would fail.
+  # On the compose network, as everything else (on the host network it was out of reach where Docker
+  # runs in a VM: Docker Desktop on macOS and Windows). Tokens say the issuer the browser knows,
+  # http://localhost:8081/realms/aisc, which from in here is not Keycloak; so there is no discovery:
+  # the browser is sent to the public address (login-url), and the code is redeemed, the keys fetched
+  # and the session ended on keycloak:8080. Keycloak's KC_HOSTNAME keeps the issuer the same either way.
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0
     container_name: oauth2-proxy
-    network_mode: host
     restart: unless-stopped
     depends_on:
       - keycloak
+    networks:
+      - backend
     command:
       - --provider=keycloak-oidc
       - --oidc-issuer-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      - --skip-oidc-discovery=true
+      - --login-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/auth
+      - --redeem-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/token
+      - --oidc-jwks-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
       - --http-address=0.0.0.0:4180
       - --reverse-proxy=true
       - --skip-provider-button=true
@@ -227,7 +230,7 @@ services:
       # Signing out ends the Keycloak session too. Without it /oauth2/sign_out only
       # drops this cookie, and the next page signs the same person straight back in
       # from Keycloak's own session. {id_token} is the session's, filled in by oauth2-proxy.
-      - --backend-logout-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/logout?id_token_hint={id_token}
+      - --backend-logout-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/logout?id_token_hint={id_token}
       - --client-id=aisc-gateway
       - --client-secret=${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
       - --cookie-secret=${GATEWAY_COOKIE_SECRET:?run scripts/secrets.sh first}
@@ -251,8 +254,9 @@ services:
     # `aisc` realm; an existing realm is left as it is.
     command: start-dev --import-realm
     volumes:
-      # Mount the exported realm into Keycloak's import dir (read-only).
-      - ./keycloak/aisc-realm.local.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      # The realm as it is in git: Keycloak fills ${GATEWAY_CLIENT_SECRET} from its environment at
+      # import, so no file holding the secret is written for it (nor needs a file ACL to be read).
+      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
       # the first-run admin user of the Keycloak admin console
@@ -263,6 +267,12 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER}                      # the Postgres superuser's credentials
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # One issuer whoever asks: tokens say the address the browser uses even when oauth2-proxy and the
+      # modules reach Keycloak inside, on keycloak:8080 (which the backchannel may still use).
+      KC_HOSTNAME: ${KEYCLOAK_URL_EXTERNAL}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # the gateway client's secret, put into the realm at import (${GATEWAY_CLIENT_SECRET} in it)
+      GATEWAY_CLIENT_SECRET: ${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
     ports:
       - "8081:8080"             # host 8081, because 8080 is often taken on the host
     depends_on:
@@ -283,17 +293,35 @@ services:
       IMMUDB_SIGNINGKEY: /keys/signing.key
     volumes:
       - immudb_data:/var/lib/immudb
-      - ./immudb-signing.key:/keys/signing.key:ro,Z
+      # the key, as immudb's own user (immudb-key below); the file itself stays private to its owner
+      - immudb_key:/keys:ro
+    depends_on:
+      immudb-key:
+        condition: service_completed_successfully
     ports:
-      # gRPC, bound to the loopback: the dashboard runs with network_mode: host
-      # (so its OIDC issuer matches the browser's) and reaches immudb here.
-      # Everything else uses the compose network.
+      # gRPC, on the loopback for tools on this machine; the stack uses the compose network
       - "127.0.0.1:3322:3322"
       # The web console is not published: it would serve the ledger to anyone who could
       # reach the port, with no gateway in front of it.
     networks:
       - backend
 
+
+  # Hands immudb its signing key: copies immudb-signing.key (private to whoever ran scripts/secrets.sh)
+  # into a volume, owned by immudb's user (3322) and readable by it alone. As root, so it can read the
+  # file whoever owns it, with no file ACL (setfacl does not exist on macOS). Runs at every start.
+  immudb-key:
+    image: postgres:15-alpine
+    container_name: immudb-key
+    user: "0"
+    volumes:
+      - ./immudb-signing.key:/src/signing.key:ro,Z
+      - immudb_key:/keys
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "cp /src/signing.key /keys/signing.key && chown 3322:3322 /keys/signing.key && chmod 400 /keys/signing.key"
+    restart: "no"
+    network_mode: none
 
   # The database inspector, for the launcher's admins (Manage > Inspect database on a project page).
   # Reached only through Caddy at :8100/inspect/pgadmin, behind the sign-in and the platform's
@@ -357,6 +385,7 @@ volumes:
   redis_data:
   catalogue_sqlite: # not mounted by any service: no catalogue runs in this stack
   devpi_data: # the stack's package index (devpi), which the engine installs plugins from
+  immudb_key:
 
 networks:
   backend:

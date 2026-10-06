@@ -24,7 +24,7 @@
   request_header -X-AISC-Original-Uri
   request_header -X-Auth-Request-*
   request_header -X-Middleware-Subrequest
-  forward_auth host.docker.internal:4180 {
+  forward_auth oauth2-proxy:4180 {
     uri /oauth2/auth
     copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Preferred-Username
     copy_headers X-Auth-Request-Access-Token
@@ -104,7 +104,7 @@
 # oauth2-proxy's own endpoints stay open on every origin, or there is no way in.
 (oauth_endpoints) {
   handle /oauth2/* {
-    reverse_proxy host.docker.internal:4180 {
+    reverse_proxy oauth2-proxy:4180 {
       # {host} drops the port, which makes oauth2-proxy build
       # redirect_uri=http://localhost/oauth2/callback for the launcher too and
       # Keycloak answer 400. {http.request.hostport} keeps it.

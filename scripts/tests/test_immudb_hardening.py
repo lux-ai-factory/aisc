@@ -21,7 +21,8 @@ def test_immudb_signs_its_states_with_the_generated_key():
     svc = _immudb()
     env = svc["environment"]
     assert env.get("IMMUDB_SIGNINGKEY") == "/keys/signing.key"
-    assert any(str(v).startswith("./immudb-signing.key:/keys/signing.key:ro") for v in svc["volumes"])
+    # the generated key, handed over by the immudb-key job into this volume (test_no_host_network)
+    assert "immudb_key:/keys:ro" in svc["volumes"]
 
 
 def test_immudb_still_takes_its_superuser_password_from_the_environment():

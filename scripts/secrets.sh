@@ -11,8 +11,8 @@
 # module trusts.
 #
 # So none of them has a default. The compose files refuse to start without
-# these, this writes them once into env.secrets, which is git-ignored, and the
-# realm import is rendered from its template with the same values.
+# these, this writes them once into env.secrets, which is git-ignored. The realm
+# import takes the one it holds from Keycloak's environment (${GATEWAY_CLIENT_SECRET}).
 #
 # PLATFORM_SECRETS_KEY is the exception to --rotate: it encrypts the LLM API keys
 # stored in every project's database, so a fresh one would make all of them
@@ -35,8 +35,6 @@ umask 077
 
 OUT=env.secrets
 COMBINED=env.runtime   # what compose is pointed at: the settings plus the secrets
-TEMPLATE=keycloak/aisc-realm.json
-RENDERED=keycloak/aisc-realm.local.json
 
 rand()      { openssl rand -hex 32; }
 # oauth2-proxy decodes this as base64url and wants exactly 32 bytes out. With
@@ -203,34 +201,9 @@ if [ "$cookie_len" != "43" ]; then
   exit 1
 fi
 
-# The realm import carries two of them. Rendered, never committed: the template
-# holds placeholders so the repo itself has no secret in it.
-# shellcheck disable=SC1090
-set -a; . "./$OUT"; set +a
-python3 - "$TEMPLATE" "$RENDERED" <<'PY'
-import os, sys
-template, rendered = sys.argv[1], sys.argv[2]
-text = open(template, encoding="utf-8").read()
-for name in ("GATEWAY_CLIENT_SECRET",):
-    value = os.environ.get(name, "")
-    if not value:
-        raise SystemExit(f"{name} is not set: run scripts/secrets.sh first")
-    text = text.replace("__%s__" % name, value)
-open(rendered, "w", encoding="utf-8").write(text)
-print(f"rendered {rendered} from {template}")
-PY
-# It holds a client secret, so it stays unreadable to others, except to Keycloak, which runs as
-# uid 1000 in its container and reads it at import (without this it fails: Permission denied).
-chmod 600 "$RENDERED"
-if command -v setfacl >/dev/null 2>&1; then
-  setfacl -m u:1000:r "$RENDERED"
-else
-  echo "setfacl is missing: let uid 1000 (Keycloak) read $RENDERED, or Keycloak will not start" >&2
-fi
-
 # immudb signs its states with this key; the platform checks them with the public
 # half. Made once and never replaced, --rotate included: a new key would make every saved state
-# unverifiable. Private to this user, readable by immudb's uid 3322 only.
+# unverifiable. Private to this user; the stack's immudb-key job hands immudb its own copy.
 SIGNING_KEY=immudb-signing.key
 SIGNING_PUB=immudb-signing.pub
 if [ ! -s "$SIGNING_KEY" ]; then
@@ -242,11 +215,6 @@ if [ ! -s "$SIGNING_KEY" ]; then
 fi
 chmod 600 "$SIGNING_KEY"
 chmod 644 "$SIGNING_PUB"
-if command -v setfacl >/dev/null 2>&1; then
-  setfacl -m u:3322:r "$SIGNING_KEY"
-else
-  echo "setfacl is missing: let uid 3322 (immudb) read $SIGNING_KEY, or immudb will not start" >&2
-fi
 
 # compose takes one --env-file, so the settings and the secrets are combined
 # into one. Also git-ignored, also regenerated from its two sources.

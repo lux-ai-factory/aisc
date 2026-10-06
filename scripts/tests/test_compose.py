@@ -250,13 +250,6 @@ def test_the_plugin_publisher_says_why_a_plugin_did_not_build():
     assert "tail" in command.split("could not build", 1)[1].split("continue", 1)[0], command
 
 
-def test_keycloak_may_read_the_realm_secrets_sh_renders():
-    """scripts/secrets.sh writes the rendered realm (client secrets) mode 600, and Keycloak runs as
-    uid 1000: without a read grant for that uid it fails with Permission denied at import."""
-    text = (ROOT / "scripts" / "secrets.sh").read_text()
-    assert re.search(r"setfacl -m u:1000:r\S* \"?\$RENDERED\"?", text), "no read grant for Keycloak's uid"
-
-
 def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
     """A ${VAR} with no default in the compose files becomes an empty string when the env file lacks
     it, which a strict parser refuses (MODEL_LISTING_SSL_VERIFY='' stops the engine's migration with
@@ -272,13 +265,14 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
 
 
 def test_the_dashboard_healthcheck_asks_where_superset_listens(compose):
-    """Superset listens only on SUPERSET_BIND_ADDRESS (the Docker host address), so the image's own
-    check on localhost always fails and a working dashboard shows as unhealthy."""
+    """Superset listens on every address of its own container on the compose network (it was on the
+    Docker host address while on the host network, see test_no_host_network), so the check asks
+    localhost on SUPERSET_PORT."""
     q, cfg = compose
     svc = cfg["services"]["dashboard"]
     test = " ".join(svc.get("healthcheck", {}).get("test") or [])
-    assert "$${SUPERSET_BIND_ADDRESS}" in test or "${SUPERSET_BIND_ADDRESS}" in test, test
-    assert "localhost" not in test, test
+    assert "localhost:$${SUPERSET_PORT}" in test or "localhost:${SUPERSET_PORT}" in test, test
+    assert svc["environment"]["SUPERSET_BIND_ADDRESS"] == "0.0.0.0"
 
 
 def test_the_eval_healthchecks_ask_the_right_node(compose):

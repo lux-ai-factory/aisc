@@ -713,21 +713,18 @@ services:
     image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: dashboard
-    # Superset listens only on SUPERSET_BIND_ADDRESS (below), so the check asks there rather
-    # than on localhost as the image's own check does.
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS \"http://$${SUPERSET_BIND_ADDRESS}:$${SUPERSET_PORT}/health\""]
+      test: ["CMD-SHELL", "curl -fsS \"http://localhost:$${SUPERSET_PORT}/health\""]
       interval: 30s
       timeout: 10s
       retries: 3
-    # network_mode: host. It reaches Postgres, Redis and immudb on their published host ports
-    # (localhost), which is also how its project connections name each project's database.
-    # It listens on SUPERSET_PORT directly (the stock entrypoint honours it).
-    network_mode: host
+    # On the compose network (the host network is out of reach where Docker runs in a VM): it reaches
+    # Postgres, Redis, immudb and the platform by service name, and so do its project connections.
+    # It listens on SUPERSET_PORT (the stock entrypoint honours it) and publishes nothing.
+    networks:
+      - backend
     # Superset logs nobody in: it sits behind the gateway like every other module. Caddy
-    # serves it on DASHBOARD_PORT after the one sign-in; the server itself listens only on the
-    # Docker host address, reachable from this machine's containers (Caddy, the platform's
-    # bridge) and not from the network.
+    # serves it on DASHBOARD_PORT after the one sign-in; the platform's bridge calls it directly.
     volumes:
       - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
       - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
@@ -735,30 +732,30 @@ services:
       - ./dashboard-gateway:/app/pythonpath_gateway:ro,Z
     environment:
       <<: *dashboard-env
-      SUPERSET_BIND_ADDRESS: ${DASHBOARD_BIND_ADDRESS:-172.17.0.1}
+      SUPERSET_BIND_ADDRESS: 0.0.0.0
       SUPERSET_PORT: ${DASHBOARD_INTERNAL_PORT:-8189}
       # the dashboard's own config, run unchanged, then who is signed in taken
       # from the gateway's verified token
       SUPERSET_CONFIG_PATH: /app/pythonpath_gateway/superset_gateway_config.py
       GATEWAY_TOKEN_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
-      GATEWAY_JWKS_URL: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/certs
-      SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/superset
-      # memberships at sign-in (SELECT core.project_member only); localhost because of the host network
-      AISC_MEMBERSHIP_DB_URI: ${AISC_MEMBERSHIP_DB_URI:-postgresql+psycopg2://dashboard_ro:${DASHBOARD_RO_PASSWORD:?run scripts/secrets.sh first}@localhost:5432/platform}
+      GATEWAY_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      SUPERSET_DB_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/superset
+      # memberships at sign-in (SELECT core.project_member only)
+      AISC_MEMBERSHIP_DB_URI: ${AISC_MEMBERSHIP_DB_URI:-postgresql+psycopg2://dashboard_ro:${DASHBOARD_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
-      REDIS_HOST: localhost
-      IMMUDB_HOST: localhost
+      REDIS_HOST: redis
+      IMMUDB_HOST: immudb
       # its own Keycloak login stays off: the gateway signs people in
       AISC_OAUTH: "0"
       # the shared secret the platform sends to /api/v1/aisc_project (the bridge)
       DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
-      # where a project's own database is, as this host-network container sees it
-      AISC_PROJECT_DB_HOSTPORT: localhost:5432
+      # where a project's own database is, for the project connections the bridge registers
+      AISC_PROJECT_DB_HOSTPORT: postgres:5432
       # the ledger: comments and reviews are queued in Superset's database with the change and
-      # posted to the platform's internal route with this token. While the platform is not
-      # reachable from the host network (DASHBOARD_PLATFORM_URL), they stay queued.
+      # posted to the platform's internal route with this token; while the platform is down they
+      # stay queued.
       LEDGER_MODE: ${LEDGER_MODE:-record}
-      PLATFORM_URL: ${DASHBOARD_PLATFORM_URL:-http://172.17.0.1:8000}
+      PLATFORM_URL: ${DASHBOARD_PLATFORM_URL:-http://platform:8000}
       PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
     depends_on:
       dashboard-migrate:
@@ -843,7 +840,7 @@ services:
       # removes that project's dashboard. The call goes straight to Superset on the
       # Docker host, not through Caddy: the bridge has its own token and no session.
       # The token is the shared secret the bridge checks; with none set, it refuses every call.
-      DASHBOARD_BRIDGE_URL: http://host.docker.internal:${DASHBOARD_INTERNAL_PORT:-8189}
+      DASHBOARD_BRIDGE_URL: http://dashboard:${DASHBOARD_INTERNAL_PORT:-8189}
       DASHBOARD_BRIDGE_TOKEN: ${DASHBOARD_BRIDGE_TOKEN:?set DASHBOARD_BRIDGE_TOKEN (scripts/secrets.sh)}
       # Per-project LLM keys (Manage, "Models and API keys"): encrypted at rest
       # with this Fernet key list (newest first), and handed to the two agents

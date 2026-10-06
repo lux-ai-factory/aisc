@@ -1039,7 +1039,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "secret": "__GATEWAY_CLIENT_SECRET__",
+      "secret": "${GATEWAY_CLIENT_SECRET}",
       "redirectUris": [
         "http://localhost/oauth2/callback",
         "http://localhost:8100/oauth2/callback",

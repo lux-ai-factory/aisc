@@ -108,8 +108,12 @@ def fixpoint(tree):
         tree = nxt
 
 
-def test_with_the_witness_unset_the_gateway_is_the_old_one_plus_the_strip_and_the_block():
-    before = fixpoint(adapt(ROOT / "scripts/tests/fixtures/ledger_gateway/Caddyfile.before-phase2"))
+def test_with_the_witness_unset_the_gateway_is_the_old_one_plus_the_strip_and_the_block(tmp_path):
+    # since 2026-10-06 the sign-in is reached by its service name on the compose network
+    # (test_no_host_network), not through the host: the one other change since phase 2
+    old = (ROOT / "scripts/tests/fixtures/ledger_gateway/Caddyfile.before-phase2").read_text()
+    (tmp_path / "Caddyfile").write_text(old.replace("host.docker.internal:4180", "oauth2-proxy:4180"))
+    before = fixpoint(adapt(tmp_path / "Caddyfile"))
     after = fixpoint(adapt(ROOT / "Caddyfile"))
     assert json.dumps(after, sort_keys=True) == json.dumps(before, sort_keys=True)
 
@@ -135,12 +139,12 @@ def _mutated(tmp_path, old, new):
     ("      not path /api/authz/projects/*\n", "      not path /api/authz/projects/* /api/authz/witness\n"),
     # the strip moved after sign-in, where it would delete oauth2-proxy's identity headers
     ("  request_header -X-Auth-Request-*\n  request_header -X-Middleware-Subrequest\n"
-     "  forward_auth host.docker.internal:4180 {",
-     "  forward_auth host.docker.internal:4180 {"),
+     "  forward_auth oauth2-proxy:4180 {",
+     "  forward_auth oauth2-proxy:4180 {"),
 ])
 def test_the_comparison_is_not_fooled_by_a_changed_strip_or_block(tmp_path, old, new):
     """Only a static 404 counts as the block, and only a strip before sign-in counts as the strip."""
-    if "forward_auth host.docker.internal:4180 {" in new and "request_header" not in new:
+    if "forward_auth oauth2-proxy:4180 {" in new and "request_header" not in new:
         text = _mutated(tmp_path, old, new).read_text()
         text = text.replace("      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n",
                             "      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n  request_header -X-Auth-Request-*\n"

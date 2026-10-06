@@ -29,6 +29,6 @@ def test_the_readme_lists_what_an_install_needs():
     """2026-10-06: every requirement to install and run the whole stack is in the README itself."""
     pre = README.read_text().split("## Prerequisites", 1)[1].split("\n## ", 1)[0]
     for needed in ("Compose 2.17", "x86_64", "RAM", "GB of disk", "private", "catalogue", "report-generator",
-                   "report-plugin-interface", "token", "bash", "openssl", "python3", "setfacl", "Internet",
+                   "report-plugin-interface", "token", "bash", "openssl", "Internet",
                    "PyPI", "npm", "GITHUB_TOKEN", "8081", "5432"):
         assert needed in pre, needed

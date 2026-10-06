@@ -29,7 +29,7 @@ STACK_SERVICES = frozenset({
     "aisc-eval-worker", "aisc-eval-worker-standalone", "aisc-webapp", "aisc-webapp-standalone",
     "backend", "caddy", "catalogue-private", "control-objectives", "control-objectives-migrate", "controls-migrate",
     "controls-pdf", "controls-web", "dashboard", "dashboard-migrate", "devpi", "devpi-standalone",
-    "eval", "immudb", "isolate", "keycloak", "ledger-pool", "make_buckets", "minio", "minio-standalone",
+    "eval", "immudb", "immudb-key", "isolate", "keycloak", "ledger-pool", "make_buckets", "minio", "minio-standalone",
     "oauth2-proxy", "pgadmin", "platform", "plugin-downloader", "plugin-publisher", "postgres",
     "postgres-setup", "postgres-standalone", "qualification-agents", "qualification-llm",
     "qualification-migrate", "qualification-ontology", "qualification-pdf", "qualification-prefill",

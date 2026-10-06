@@ -93,8 +93,10 @@ platform ──> immudb (ledger), the dashboard's bridge, the engine
   deployment allows them for every project with `CONNECTIONS_ALLOWED_HOSTS` on the `platform`
   service.
 - **The dashboard** is Superset on its own port (it needs the site root). It has no login of its
-  own: `dashboard-gateway/` turns the gateway's token into Superset's `REMOTE_USER`. It runs with
-  `network_mode: host`, listening only on the Docker host address (`172.17.0.1:8189`).
+  own: `dashboard-gateway/` turns the gateway's token into Superset's `REMOTE_USER`. It runs on the
+  compose network like everything else (no service uses the host network, so the stack also runs where
+  Docker runs in a VM, as Docker Desktop does on macOS and Windows) and publishes nothing: Caddy reaches
+  it as `dashboard:8189`.
 - **The ledger** (immudb) records from the first project: every write is witnessed by the gateway
   (who did it) and the apps that log write their events in the same transaction as the change; the
   platform's relay moves them into the project's own immudb database. Manage > Logs > Activity log
@@ -115,8 +117,10 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   after a checkout. `git submodule update --remote` moves each submodule to the tip of the branch it
   tracks instead, which is an update, not a repair.
 - **Secrets.** `./scripts/secrets.sh` writes `env.secrets` (git-ignored), combines it with
-  `env.plugin_downloader` into `env.runtime`, renders the Keycloak realm to
-  `keycloak/aisc-realm.local.json`, and makes immudb's signing key pair. Run it again after a pull: it
+  `env.plugin_downloader` into `env.runtime` and makes immudb's signing key pair. The realm is imported
+  from `keycloak/aisc-realm.json` as it is in git: Keycloak fills `${GATEWAY_CLIENT_SECRET}` from its
+  environment. The `immudb-key` job hands immudb its copy of the key, so no file ACL is needed (macOS
+  has no `setfacl`). Run it again after a pull: it
   keeps existing values and adds any new secret. `--rotate` replaces them (except the ones stored data
   depends on, see the top of the script); `--add-ledger-key` adds a version of the ledger's key.
 - **Start order.** Compose orders the start itself: `postgres-setup` runs `init/` and the one-shot
@@ -222,8 +226,7 @@ likely to change:
 
 The secrets themselves (gateway cookie and client secrets, service tokens, database role passwords,
 `PLATFORM_SECRETS_KEY` that encrypts stored LLM keys, the ledger keys) are listed with their purpose
-in `scripts/secrets.sh`. Never commit `env.secrets`, `env.runtime` or
-`keycloak/aisc-realm.local.json`.
+in `scripts/secrets.sh`. Never commit `env.secrets`, `env.runtime` or `immudb-signing.key`.
 
 ## Tests
 
