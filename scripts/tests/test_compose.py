@@ -549,3 +549,23 @@ def test_every_service_that_uses_postgres_waits_until_it_is_ready_and_set_up():
     assert users, "no service found that uses postgres"
     racing = sorted(n for n in users if not waits_for_setup(n))
     assert not racing, f"these start without waiting for postgres-setup: {racing}"
+
+
+def test_an_image_is_built_by_one_service_only():
+    """Two services that build the same image tag race when compose builds in parallel (compose v5,
+    bake): whichever finishes second fails with 'image "...:latest": already exists', at random,
+    one day control-objectives, the next the dashboard (workshop 2026-10-06). One service builds an
+    image; the others that run it (a migrate job, the bucket job) only name it, pull_policy never."""
+    import yaml
+
+    groups = [["docker-compose-infra.development.yml", "docker-compose.development.yml",
+               "docker-compose.plugin_downloader.yml"]]
+    groups += [[p.name] for p in sorted(ROOT.glob("docker-compose*.yml"))]
+    for files in groups:
+        builders = {}
+        for f in files:
+            for name, spec in (yaml.safe_load((ROOT / f).read_text()).get("services") or {}).items():
+                if spec and spec.get("build") and spec.get("image"):
+                    builders.setdefault(spec["image"], []).append(f"{f}:{name}")
+        twice = {image: who for image, who in builders.items() if len(who) > 1}
+        assert not twice, f"built by more than one service: {twice}"

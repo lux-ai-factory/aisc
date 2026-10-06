@@ -26,15 +26,17 @@ def test_m1_no_compose_file_pulls_a_minio_image():
             assert not re.match(r"^(quay\.io/|docker\.io/)?minio/", image), f"{f}: {svc} pulls {image}"
 
 
-def test_m2_minio_and_the_bucket_job_build_the_same_local_image():
+def test_m2_minio_builds_the_local_image_and_the_bucket_job_runs_it():
+    """One build: two services building one tag race (test_compose.test_an_image_is_built_by_one_service_only)."""
     for f in FILES:
         s = services(f)
-        server = s["minio"]
-        for spec in (server, s["make_buckets"]):
+        server, job = s["minio"], s["make_buckets"]
+        for spec in (server, job):
             assert spec["image"] == IMAGE and spec.get("pull_policy") == "never", f
-            build = spec["build"]
-            context = build if isinstance(build, str) else build["context"]
-            assert context.rstrip("/") == "./infra/minio", f
+        build = server["build"]
+        context = build if isinstance(build, str) else build["context"]
+        assert context.rstrip("/") == "./infra/minio", f
+        assert "build" not in job, f
 
 
 def test_m3_the_dockerfile_builds_both_binaries_from_the_pinned_source_tags():

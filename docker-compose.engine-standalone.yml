@@ -127,7 +127,7 @@ services:
   make_buckets:
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
-    build: ./infra/minio
+    # no build: the same image as its main service, built once there (parallel builds of one tag race)
     pull_policy: never
     depends_on:
       minio:

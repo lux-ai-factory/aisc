@@ -100,7 +100,7 @@ services:
   # Migrates the engine's schema in every project database engine_rw may enter,
   # then grants the readers. Exit 2 is a permanent error: no retry.
   aisc-backend-migrate:
-    build: apps/backend/
+    # no build: the same image as its main service, built once there (parallel builds of one tag race)
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: aisc-backend-migrate
@@ -433,7 +433,7 @@ services:
   # schema of each project's own database (the template makes the schema, its
   # migrations the tables); on platform it reads only who is in which project.
   control-objectives-migrate:
-    build: apps/control-objectives/
+    # no build: the same image as its main service, built once there (parallel builds of one tag race)
     image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: control-objectives-migrate
@@ -662,7 +662,7 @@ services:
   # created by init/superset-db.sql and its read-only role dashboard_ro by
   # init/platform-db.sql, on a fresh volume.
   dashboard-migrate:
-    build: apps/results-dashboard
+    # no build: the same image as its main service, built once there (parallel builds of one tag race)
     image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: dashboard-migrate
