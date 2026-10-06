@@ -99,7 +99,10 @@ def test_h3_the_key_field_is_a_write_only_password_input():
 
 
 def test_h3_the_page_never_fills_a_key_field_nor_reads_a_key_back():
-    script = script_of(read(PAGE))
+    """Never from the server. The one exception is importFile, which fills the Key field from the file the
+    person picked (2026-10-06); test_an_endpoint_file_is_imported_into_the_editor_not_saved checks that it
+    reads only that file (JSON.parse of its text) and calls nothing."""
+    script = re.sub(r"function importFile\(.*?\n  \}\n", "", script_of(read(PAGE)), flags=re.S)
     for target, value in re.findall(r"([\w.\[\]'\"]*[sS]ecret[\w.\[\]'\"]*)\.value\s*=\s*([^;\n]+)", script):
         assert value.strip() in {"''", '""'}, f"{target}.value = {value}"
     assert not re.search(r"\b[a-z]\.secret\b(?!_header)", script), "the page reads a key from a response"
@@ -266,3 +269,11 @@ def test_a_json_test_input_is_sent_as_an_object_for_a_structured_system():
 def test_a_ping_that_only_shows_the_system_is_reached_says_so():
     probe = re.search(r"function probeIt\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
     assert "d.reachable_only" in probe and "d.detail" in probe
+
+
+def test_a_key_in_the_file_goes_into_the_key_field_and_is_saved_like_a_typed_one():
+    """2026-10-06: an endpoint file may carry its key ("secret"), e.g. the workshop's MCAS files. Import puts
+    it into the Key field (still nothing is saved until Save, and Save stores it encrypted like a typed key)."""
+    body = re.search(r"function importFile\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert re.search(r"\$\('f-secret'\)\.value\s*=\s*c\.secret", body)
+    assert "key from the file" in body

@@ -518,9 +518,10 @@
     });
   }
 
-  // An endpoint file (a connection in the shape it is saved in, without its key) fills the editor; nothing
-  // is saved until Save. The target is picked by its label (target_label): a component's key differs in
-  // every project.
+  // An endpoint file (a connection in the shape it is saved in) fills the editor; nothing is saved until
+  // Save. The target is picked by its label (target_label): a component's key differs in every project.
+  // A file may carry its key ("secret", e.g. the workshop's MCAS files): it goes into the Key field and is
+  // saved like a typed key (stored encrypted, never shown again).
   function importFile(file) {
     var msg = $('import-msg');
     file.text().then(function (text) {
@@ -543,12 +544,13 @@
       $('f-headers').value = c.headers && Object.keys(c.headers).length ? jsonText(c.headers) : '';
       $('f-secret-header').value = c.secret_header || '';
       $('f-timeout').value = c.timeout_s || 60;
+      var keyed = typeof c.secret === 'string' && c.secret !== '';
+      if (keyed) $('f-secret').value = c.secret;
       var picked = c.target_label && knownTargets.filter(function (t) { return t.label === c.target_label && !t.endpoint; })[0];
       if (picked) $('f-target').value = picked.key;
       kindShown();
-      // the key is never in a file the page reads: the person types it into the Key field
       say(msg, 'Imported ' + file.name + (picked ? '' : ': pick the target it is the endpoint of') +
-               ', enter the key if the system needs one, then Save.');
+               (keyed ? ', key from the file filled in' : ', enter the key if the system needs one') + ', then Save.');
     }).catch(function () { say(msg, 'Could not read ' + file.name + '.', true); });
   }
 
