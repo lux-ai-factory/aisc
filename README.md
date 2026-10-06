@@ -14,9 +14,25 @@ Background documentation (architecture, mission, user guide):
 
 ## Prerequisites
 
-- Linux with Docker Engine and the Docker Compose v2 plugin (`docker compose`).
+**Machine**
+- Linux on x86_64 (the only platform tested; arm64 and Windows are not).
+- At least 8 GB of RAM (the running stack uses about 4 GB at rest; test plugins that run a model locally need
+  more) and 30 GB of disk (about 14 GB of images, Docker's build cache, and the data).
+- Docker Engine 23 or later with the Docker Compose plugin, Compose 2.17 or later (`docker compose version`),
+  run by a user allowed to use Docker.
 - Free ports 80, 443, 8081, 8100 and 8188, and 5432, 5672, 6379, 9000 and 3322 on `127.0.0.1`.
-- `git`, `openssl`, `python3` and `setfacl` (package `acl`).
+
+**Tools**: `git`, `bash`, `openssl`, `python3` and `setfacl` (package `acl`), used by `scripts/secrets.sh`.
+
+**Access**
+- Three submodules are private on GitHub: `catalogue`, `aisc-report-generator` and
+  `aisc-report-plugin-interface`. Cloning needs a GitHub account that can read them in lux-ai-factory and git
+  credentials for HTTPS (a personal access token, or `gh auth login`).
+- Internet access while installing: GitHub (submodules, the test plugins, MinIO's source), Docker Hub, quay.io and
+  ghcr.io (images), PyPI, npm and the Go module proxy (packages), Debian and Alpine package mirrors. While running: the hosted catalogue for public
+  projects, and the model providers a project uses.
+- Optional: a `GITHUB_TOKEN` that can read lux-ai-factory's private plugin repos, added to `env.secrets`;
+  without it those plugins are skipped. Optional model keys are in [docs/guide.md](docs/guide.md).
 
 ## Install and run
 
