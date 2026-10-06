@@ -41,9 +41,17 @@ while [ $# -gt 0 ]; do
 done
 # the step that consumes each link (qualification_fk and co_fk are broken after step 1, when the
 # project database and its tables exist)
-declare -A CONSUMER=([qualification_fk]=2 [card_component]=3 [co_fk]=3 [engine_stamp]=8 [controls_stamp]=8)
-if [ -n "$BREAK" ] && [ -z "${CONSUMER[$BREAK]:-}" ]; then
-  echo "unknown link: $BREAK (one of: ${!CONSUMER[*]})" >&2; exit 2
+consumer_step() { # link -> the step that consumes it; empty when unknown
+  case "$1" in
+    qualification_fk) echo 2 ;;
+    card_component)   echo 3 ;;
+    co_fk)            echo 3 ;;
+    engine_stamp)     echo 8 ;;
+    controls_stamp)   echo 8 ;;
+  esac
+}
+if [ -n "$BREAK" ] && [ -z "$(consumer_step "$BREAK")" ]; then
+  echo "unknown link: $BREAK (one of: qualification_fk, card_component, co_fk, engine_stamp, controls_stamp)" >&2; exit 2
 fi
 
 SCRATCH=${CHAIN_SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/pipeline-chain.XXXXXX")}
@@ -165,7 +173,7 @@ finish() { # failing-step
     if [ "$at" = 0 ]; then echo "CHAIN PASS"; exit 0; fi
     echo "CHAIN FAIL at step $at (${STEP_NAME[$at]:-setup})"; exit 1
   fi
-  local want=${CONSUMER[$BREAK]}
+  local want; want=$(consumer_step "$BREAK")
   if [ "$at" = "$want" ]; then echo "BREAK $BREAK OK: the run failed at step $at, which consumes the link"; exit 0; fi
   if [ "$at" = 0 ]; then echo "BREAK $BREAK WRONG: the run passed with the link broken"; exit 1; fi
   echo "BREAK $BREAK WRONG: the run failed at step $at (${STEP_NAME[$at]:-setup}), expected step $want"; exit 1

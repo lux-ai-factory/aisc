@@ -116,11 +116,10 @@ value_in() { awk -v n="$1" 'index($0, n "=") == 1 { print substr($0, length(n) +
 # A new value, or empty when openssl failed (set -e would otherwise stop without a word).
 fresh()    { value_of "$1" || true; }
 
-# What survives --rotate (see the top of this file), read before anything is written.
-declare -A kept=()
-if [ -f "$OUT" ]; then
-  for name in $KEPT_ON_ROTATE; do kept[$name]=$(value_in "$name" "$OUT"); done
-fi
+# What survives --rotate (see the top of this file), read lazily from $OUT instead of an
+# associative array (macOS's bash 3.2 has none). $OUT still holds the pre-rotate values
+# while the new file is built beside it, so these lookups see them.
+kept_value() { if [ -f "$OUT" ]; then value_in "$1" "$OUT"; fi; }
 
 # --add-ledger-key: the next version of the ledger's master key, appended; nothing else changes. It
 # then goes on as a plain run (values kept), so env.runtime carries the new version too.
@@ -154,8 +153,8 @@ if [ "${1:-}" = "--rotate" ] || [ ! -f "$OUT" ]; then
     echo "# Rotating these signs everyone out and needs Keycloak re-imported (make clean)."
     for entry in "${SECRETS[@]}"; do
       name=${entry%%=*}
-      if [[ "$KEPT_ON_ROTATE" == *" $name "* ]] && [ -n "${kept[$name]:-}" ]; then
-        echo "$name=${kept[$name]}"
+      if [[ "$KEPT_ON_ROTATE" == *" $name "* ]] && [ -n "$(kept_value "$name")" ]; then
+        echo "$name=$(kept_value "$name")"
       else
         echo "$name=$(fresh "${entry#*=}")"
       fi
