@@ -277,3 +277,10 @@ def test_a_key_in_the_file_goes_into_the_key_field_and_is_saved_like_a_typed_one
     body = re.search(r"function importFile\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
     assert re.search(r"\$\('f-secret'\)\.value\s*=\s*c\.secret", body)
     assert "key from the file" in body
+
+
+def test_after_a_save_or_a_delete_the_targets_are_read_again():
+    """2026-10-06: deleting both endpoints left their targets greyed out under Endpoint of until the page was
+    reloaded: a save or delete re-read the connections but not the targets, whose endpoint had changed."""
+    reload_fn = re.search(r"function reload\(\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "reloadTargets(false)" in reload_fn

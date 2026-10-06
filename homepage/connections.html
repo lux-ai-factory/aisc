@@ -314,14 +314,14 @@
         // an owner decides which internal hosts the project's connections may reach; managing the
         // connections themselves is a platform admin's
         show('targets');
-        reloadTargets(false);
         show('allowlist');
         reloadAllowlist();
         if (a.admin) {
           $('who').textContent = 'admin';
           show('settings');
-          reload();
+          reload();                                     // reads the targets too
         } else {
+          reloadTargets(false);
           $('who').textContent = 'owner';
           show('gate', 'Connections are managed by a platform admin; as an owner you decide which internal hosts they may reach.');
         }
@@ -334,6 +334,8 @@
   function base() { return '/api/projects/' + enc(slug) + '/connections'; }
 
   function reload() {
+    // a save or a delete changes which targets have an endpoint: read them again too
+    reloadTargets(false);
     return api(base())
       .then(function (res) {
         return bodyOf(res).then(function (d) {
