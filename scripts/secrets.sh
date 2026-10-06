@@ -96,6 +96,12 @@ PLATFORM_RW_PASSWORD=rand
 QUALIFICATION_RW_PASSWORD=rand
 # control_objectives_rw, the control objectives service's database role: postgres-setup applies it
 CONTROL_OBJECTIVES_RW_PASSWORD=rand
+CONTROLS_RW_PASSWORD=rand
+CATALOGUE_RW_PASSWORD=rand
+DEVPI_ROOT_PASSWORD=rand
+ENGINE_RW_PASSWORD=rand
+# keys the engine's run tickets; the backend only (the eval worker runs plugin code)
+RUN_TICKET_KEY=rand
 # dashboard_ro, the results dashboard's read role: postgres-setup applies it
 DASHBOARD_RO_PASSWORD=rand
 # the ledger witness: Caddy sends it, the platform checks it

@@ -12,7 +12,8 @@ x-backend-env: &backend-env
   S3_PASSWORD: ${S3_PASSWORD}
   DB_NAME: ${DB_NAME}
   DB_USER: ${DB_USER}
-  DB_PASSWORD: ${DB_PASSWORD}
+  # engine_rw's generated password (init/engine-role.sql)
+  DB_PASSWORD: ${ENGINE_RW_PASSWORD:?run scripts/secrets.sh first}
   DB_HOST: ${DB_HOST}
   DB_PORT: ${DB_PORT}
   DB_ENGINE: ${DB_ENGINE}
@@ -20,6 +21,9 @@ x-backend-env: &backend-env
   BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
   BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+  # keys the run tickets that bind a plugin's calls back to its own project and evaluation; never given to
+  # the eval worker, which holds DJANGO_SECRET_KEY and runs plugin code (review pass 2026-10-06)
+  RUN_TICKET_KEY: ${RUN_TICKET_KEY:?run scripts/secrets.sh first}
   ENABLE_SSL_PROXY: true
   CELERY_BROKER_URL: ${CELERY_BROKER_URL}
   REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -227,6 +231,9 @@ services:
     command: >
       sh -c "until node scripts/migrate-projects.mjs; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[controls] waiting for postgres'; sleep 2; done"
     env_file: apps/controls/env.development
+    environment:
+      # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
+      PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:
@@ -247,6 +254,8 @@ services:
     container_name: controls-web
     env_file: apps/controls/env.development
     environment:
+      # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
+      PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
       # The ledger: each change records its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}
       # the server-side audit forwarder posts here
@@ -779,7 +788,7 @@ services:
     environment:
       # the stack's devpi, the same index PACKAGE_REGISTRY_URL points the engine at
       TWINE_USERNAME: root
-      TWINE_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+      TWINE_PASSWORD: ${DEVPI_ROOT_PASSWORD:?run scripts/secrets.sh first}
       TWINE_REPOSITORY_URL: http://devpi:3141/${DEVPI_INDEX:-root/public}/
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -966,7 +975,9 @@ services:
     container_name: devpi
     environment:
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
-      DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:-}
+      # root's password, set by the image's entrypoint at start: whoever is root can publish what the
+      # engine installs
+      DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:?run scripts/secrets.sh first}
     volumes:
       - devpi_data:/data
     restart: unless-stopped

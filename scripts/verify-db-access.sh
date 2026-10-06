@@ -18,20 +18,26 @@ ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 
 # run SQL as a role in a database; prints nothing, returns non-zero when refused
-# platform_rw, qualification_rw, control_objectives_rw and dashboard_ro have generated passwords (scripts/secrets.sh, applied by
+# platform_rw, qualification_rw, control_objectives_rw, controls_rw, catalogue_rw, engine_rw and dashboard_ro have generated passwords (scripts/secrets.sh, applied by
 # postgres-setup); the other module roles still log in with their own names.
 PLATFORM_RW_PASSWORD=${PLATFORM_RW_PASSWORD:-$(awk 'index($0, "PLATFORM_RW_PASSWORD=") == 1 { print substr($0, 22); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 QUALIFICATION_RW_PASSWORD=${QUALIFICATION_RW_PASSWORD:-$(awk 'index($0, "QUALIFICATION_RW_PASSWORD=") == 1 { print substr($0, 27); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 CONTROL_OBJECTIVES_RW_PASSWORD=${CONTROL_OBJECTIVES_RW_PASSWORD:-$(awk 'index($0, "CONTROL_OBJECTIVES_RW_PASSWORD=") == 1 { print substr($0, 32); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 DASHBOARD_RO_PASSWORD=${DASHBOARD_RO_PASSWORD:-$(awk 'index($0, "DASHBOARD_RO_PASSWORD=") == 1 { print substr($0, 23); exit }' "$ROOT/env.runtime" 2>/dev/null)}
+CONTROLS_RW_PASSWORD=${CONTROLS_RW_PASSWORD:-$(awk 'index($0, "CONTROLS_RW_PASSWORD=") == 1 { print substr($0, 22); exit }' "$ROOT/env.runtime" 2>/dev/null)}
+CATALOGUE_RW_PASSWORD=${CATALOGUE_RW_PASSWORD:-$(awk 'index($0, "CATALOGUE_RW_PASSWORD=") == 1 { print substr($0, 23); exit }' "$ROOT/env.runtime" 2>/dev/null)}
+ENGINE_RW_PASSWORD=${ENGINE_RW_PASSWORD:-$(awk 'index($0, "ENGINE_RW_PASSWORD=") == 1 { print substr($0, 20); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 # pw ROLE sets PW to the role's password (never printed): platform_rw's, qualification_rw's,
-# control_objectives_rw's and dashboard_ro's are generated, every other role's is its own name in this development stack
+# control_objectives_rw's, controls_rw's, catalogue_rw's, engine_rw's and dashboard_ro's are generated, every other role's is its own name in this development stack
 pw() {
   case "$1" in
     platform_rw) PW=${PLATFORM_RW_PASSWORD:-platform_rw} ;;
     qualification_rw) PW=${QUALIFICATION_RW_PASSWORD:-qualification_rw} ;;
     control_objectives_rw) PW=${CONTROL_OBJECTIVES_RW_PASSWORD:-control_objectives_rw} ;;
     dashboard_ro) PW=${DASHBOARD_RO_PASSWORD:-dashboard_ro} ;;
+    controls_rw) PW=${CONTROLS_RW_PASSWORD:-controls_rw} ;;
+    catalogue_rw) PW=${CATALOGUE_RW_PASSWORD:-catalogue_rw} ;;
+    engine_rw) PW=${ENGINE_RW_PASSWORD:-engine_rw} ;;
     *) PW=$1 ;;
   esac
 }

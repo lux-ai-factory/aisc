@@ -295,11 +295,12 @@ def target_view(found: Choices, latest_number: int | None) -> list[dict]:
 
 
 def readiness(mean_score) -> int | None:
-    """The controls app's readiness: the mean score (1 to 5) as a percentage of 5, rounded half up as
-    JavaScript's Math.round does; None when nothing is scored (apps/controls/src/lib/scoring.ts)."""
+    """The controls app's readiness: the mean score (1 "Not started" to 5 "Fully implemented") as 0 to 100%,
+    (mean - 1) / 4, rounded half up as JavaScript's Math.round does; None when nothing is scored
+    (apps/controls/src/lib/scoring.ts)."""
     if mean_score is None:
         return None
-    return math.floor(float(mean_score) / 5 * 100 + 0.5)
+    return math.floor((float(mean_score) - 1) / 4 * 100 + 0.5)
 
 
 def _objective_order(objective_id: str) -> tuple:

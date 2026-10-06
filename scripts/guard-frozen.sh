@@ -79,8 +79,8 @@ ENGINE_REF=$(intended_base backend)   # G1, G5: Sean's origin/master of the back
 ORDERS_ENGINE_REF=e34fca3   # --orders only: the pre-isolation reference its six orders are compared with
 [ -n "$ENGINE_REF" ] || { echo "no 'base backend' line in $INTENDED" >&2; exit 2; }
 QUAL_REF=e112001            # qualification before the card-versions migration
-PI_REF=3403cd8              # plugin-interface as of 2026-10-04: every plugin declares how it gets what it assesses (@assesses_inputs, needs=), 0.2.7 published to the stack index, docs (G4's engine references: scripts/guard-frozen-intended.txt)
-PM_REF=ac8d397              # plugin-manager as of 2026-10-03: Méril's feat/dev-catalogue-staging (public index without login), local plugins listed as +local, docs
+PI_REF=1eefc15              # plugin-interface as of 2026-10-06: the 2026-10-05 review pass (outbound guard, @dataset_through_target fixes) and MetricVisualization.value_format (percent charts), both reviewed and pushed
+PM_REF=a73b443              # plugin-manager as of 2026-10-05: the review pass (SSRF fixes, answer cap) on top of Méril's feat/dev-catalogue-staging
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679
@@ -202,6 +202,8 @@ g1_allowed() { # the list, or GUARD_G1_ALLOWED's file (so a test can leave a lin
 + column aisc_backend_project.project_id | uuid
 + index aisc_backend_project.aisc_backend_project_platform_project_id_f61734b2 | CREATE INDEX aisc_backend_project_platform_project_id_f61734b2 ON engine.aisc_backend_project USING btree (project_id)
 + index aisc_backend_project.one_project_per_platform_project | CREATE UNIQUE INDEX one_project_per_platform_project ON engine.aisc_backend_project USING btree (project_id) WHERE (project_id IS NOT NULL)
+# 0022 (review 2026-10-06): one system target per system, a partial unique expression index in SQL
++ index aisc_backend_aicomponent.aisc_one_system_target_per_system | CREATE UNIQUE INDEX aisc_one_system_target_per_system ON engine.aisc_backend_aicomponent USING btree (system_id, ((json_value ->> 'value'::text))) WHERE ((json_value ->> 'value'::text) ~~ 'target:%/system'::text)
 # 0021: the database records its mode
 + table engine_deployment | mode character varying(16) NOT NULL; ALTER TABLE engine.engine_deployment OWNER TO engine_rw;
 # 0019, configurator: no login of its own, so Django's auth, session and admin tables and allauth's go
@@ -351,6 +353,7 @@ build_candidate() {
   # migrate_projects (aisc_backend/deployment.py) only migrates a database per project in
   # configurator mode: the Configurator is what this guard checks, so it says so.
   (cd "$WORK/cand/backend" && AISC_DEPLOYMENT=configurator \
+     RUN_TICKET_KEY="guard-$(openssl rand -hex 16)" AUTH_ENABLED=true \
      DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
      DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
      PYTHONPATH="$SHARED_PYTHONPATH" "$PY" manage.py migrate_projects) >>"$OUT/cand.log" 2>&1 \

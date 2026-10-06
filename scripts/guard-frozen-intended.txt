@@ -62,8 +62,8 @@ backend aisc_backend/tests/test_modes_routes.py T4: routes by mode
 backend aisc_backend/tests/test_one_system_per_project.py T5: AI system with its components, ported tests (Ruling 24)
 backend aisc_backend/tests/test_seans_files_unchanged.py T4: Sean's routers, keycloak.py and settings the configurator no longer edits equal master (adapt plan 2026-09-28, task 3)
 backend aisc_backend/tests/test_seans_table_names.py T2: Sean's table names are kept, no migration renames his tables (adapt plan 2026-09-28, task 1)
-backend config/settings.py T1, T3: reads the mode; in configurator the door middleware, project databases and no login apps (0019 dropped their tables)
-backend config/urls.py T3: admin and allauth routes standalone only; the platform project router in configurator only (adapt plan 2026-09-28, task 3); the target input router in front of /plugins, configurator only (targets plan v2, 2026-09-29, step 4)
+backend config/settings.py T1, T3, review pass 2026-10-06 (RUN_TICKET_KEY): reads the mode; in configurator the door middleware, project databases and no login apps (0019 dropped their tables)
+backend config/urls.py T3: admin and allauth routes standalone only; the platform project router in configurator only (adapt plan 2026-09-28, task 3); the target input router in front of /plugins, configurator only (targets plan v2, 2026-09-29, step 4); review 2026-10-06: the project-by-name router mounted before /projects
 
 # apps/eval
 eval aisc_eval/celery_app.py T9: Task 9b: Méril's feat/dev-catalogue-staging (Celery task limits 400/405 min for long first plugin runs)
@@ -89,7 +89,7 @@ webapp src/api/projectHeader.i7_4.test.ts T7, T8: every call names the project (
 webapp src/api/projectHeader.ts T7, T8: projectFetch and the axios interceptor: the X-AISC-Project header in configurator
 webapp src/components/LeftBar.tsx T7: Tasks link standalone only
 webapp src/components/PluginInstallDialog.modes.test.tsx T8: the install dialog in both modes
-webapp src/components/PluginInstallDialog.tsx T8: install into the project you came from (configurator), Sean's list standalone
+webapp src/components/PluginInstallDialog.tsx T8: install into the project you came from (configurator), Sean's list standalone; review pass 2026-10-06: installs into the tab's project, named; never the one last opened in another tab
 webapp src/components/TopBar.tsx T7: launcher's project in configurator, Sean's wizard standalone
 webapp src/context/AuthContext.tsx T7: the gateway's session in configurator, Sean's Keycloak login standalone
 webapp src/deployment.components.test.tsx T7: components by mode
@@ -98,11 +98,12 @@ webapp src/deployment.ts T7: APP_DEPLOYMENT read per call
 webapp src/main.tsx T7: DeploymentGate mounted (Ruling 30); the project-header wrapper installed before render in configurator
 webapp src/pages/GlobalHome.tsx T7: the launcher's project in configurator
 webapp src/pages/Plugins.modes.test.tsx T8: the Plugins page by mode (configurator lists only the project's installed tests)
-webapp src/pages/Plugins.tsx T8: the catalogue is the only place tests are found in configurator; Sean's package index standalone
+webapp src/pages/Plugins.tsx T8: the catalogue is the only place tests are found in configurator; Sean's package index standalone; review pass 2026-10-06: uses pluginToggle
 webapp src/pages/PluginEvaluations.tsx R1: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer
 webapp src/pages/PluginEvaluations.noReport.test.ts R1: no source of the app links to /report any more
-webapp src/pages/PluginStartEvaluation.tsx R2: the start button and its tooltip say Launch Evaluation (Create Evaluation before), the error toasts Failed to launch evaluation
+webapp src/pages/PluginStartEvaluation.tsx R2: the start button and its tooltip say Launch Evaluation (Create Evaluation before), the error toasts Failed to launch evaluation; review pass 2026-10-06: selections saved per project
 webapp src/pages/PluginStartEvaluation.launch.test.ts R2: the start button says Launch Evaluation
+webapp src/pages/PluginStartEvaluation.test.tsx review pass 2026-10-06: the saved selections are per project (start-eval-state:<projectUUID>), so switching projects in one tab never restores another's
 webapp src/platform/currentProject.test.ts T7, T8: the tab's platform project
 webapp src/platform/currentProject.ts T7, T8: the tab's platform project (pid only)
 webapp src/platform/gatewaySession.test.ts T7: the gateway's session
@@ -111,8 +112,17 @@ webapp src/pluginCatalogue/PluginInstallContext.tsx T8: install target by mode
 webapp src/pluginCatalogue/installUri.ts T8: catalogue slug of an install link
 webapp src/pluginCatalogue/testing.tsx T8: test helpers without a new dependency (Ruling 34)
 webapp src/seansFilesUnchanged.test.ts T7: Sean's files the configurator no longer edits equal master (adapt plan 2026-09-28, task 5); PluginEvaluations.tsx left the list (R1), PluginStartEvaluation.tsx too (R2)
+backend aisc_backend/tests/test_run_ticket_key.py review pass 2026-10-06: run tickets keyed with RUN_TICKET_KEY (the backend's alone, not the worker's DJANGO_SECRET_KEY); a concurrent first visit returns the row the other made
 backend README.md T10: docs, what the branch changes and how the engine runs inside AISC (documentation pass 2026-10-03)
+backend aisc_backend/migrations/0022_one_system_target_per_system.py review 2026-10-06: one system target per system (merges duplicates, partial unique index in SQL)
+backend aisc_backend/routers/project_by_name.py review 2026-10-06: a project by any name, '/' included (query parameter), mounted before /projects
+backend aisc_backend/tests/test_one_system_target.py review 2026-10-06: its test
+backend aisc_backend/tests/test_project_by_name.py review 2026-10-06: its test
 eval README.md T10: docs, what the branch changes and how the worker runs inside AISC (documentation pass 2026-10-03)
 webapp README.md T10: docs, what the branch changes and how the frontend runs inside AISC (documentation pass 2026-10-03)
 webapp src/pages/OpenPluginFromUrl.tsx T8: the execution page opens the test ?plugin= names (step 4's E link)
 webapp src/pages/OpenPluginFromUrl.test.tsx T8: its test
+webapp package-lock.json review pass 2026-10-06: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.8, form-data 4.0.6, react-router/-dom 7.18.4)
+webapp src/patchedDependencies.test.ts review pass 2026-10-06: each shipped dependency above its vulnerable range
+webapp src/pages/pluginToggle.ts review pass 2026-10-06: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin
+webapp src/pages/pluginToggle.test.ts review pass 2026-10-06: its test

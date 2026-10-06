@@ -745,8 +745,8 @@ def test_a_checklist_shows_its_latest_version_score_and_completion(client, as_us
     # v2 continues v1: scores 5, 4 and a written answer without a score; the fourth question is open
     _submission(dsn, pid, "s2", "ck1", 2, "Draft", [(5, "x"), (4, None), (None, "only words")], previous="s1")
     ck = {c["key"]: c for c in get(client, as_user, project).json()["controls"]}["ck1"]
-    # readiness as the controls app computes it: mean of the scores / 5, rounded half up (4.5 / 5 = 90%)
-    assert ck["submission"] == {"id": "s2", "version": 2, "status": "Draft", "readiness": 90, "answered": 3}
+    # readiness as the controls app computes it: (mean - 1) / 4, rounded half up (4.5 -> 87.5 -> 88%)
+    assert ck["submission"] == {"id": "s2", "version": 2, "status": "Draft", "readiness": 88, "answered": 3}
     assert ck["questions"] == 4
 
 
