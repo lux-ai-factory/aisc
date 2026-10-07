@@ -12,6 +12,8 @@
 #    was built.
 # 4. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's
 #    sign-in is ready, and a page opened then shows 502.
+# 5. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a
+#    warning, not a failure.
 #
 # Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
 # START_MIN_DISK_GB (20).
@@ -88,6 +90,17 @@ while :; do
     fi
     sleep "$POLL_S"
 done
+
+# 5. The local controls every project catalogue gets (local_controls/), read by the platform's own code
+
+if found=$("${COMPOSE[@]}" exec -T platform python -m platform_service.catalogue); then
+    count=$(printf '%s\n' "$found" | grep -c . || true)
+    say "$count local controls go into every project catalogue (local_controls/):"
+    printf '%s\n' "$found" | grep . | sed 's/^/  /' || true
+else
+    say "Warning: the local controls could not be read; catalogues get the public entries only."
+    say "See why with: docker compose -p aisc logs platform"
+fi
 
 say ""
 say "AISC is up: open ${URL%/} and sign in as admin / admin."

@@ -819,6 +819,8 @@ services:
       - ./platform/migrations:/app/migrations:ro,z
       # what every new project database starts with, one file per module
       - ./platform/project-template:/app/project-template:ro,z
+      # checklists every private catalogue gets next to the public ones (local_controls/README.md)
+      - ./local_controls:/app/local_controls:ro,z
     environment:
       # The ledger, on (record) unless LEDGER_MODE=off: the witness's gateway secret, immudb
       # as aisc_ledger (never the superuser), the public key of immudb's signed states, the

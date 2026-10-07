@@ -36,6 +36,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from platform_service import connection_store, projectdb
+from platform_service.local_controls import local_controls
 
 logger = logging.getLogger(__name__)
 
@@ -363,8 +364,8 @@ def _dimensions_of(tags: list[dict]) -> list[str]:
 
 
 def tool_dimensions() -> tuple[dict, dict] | None:
-    """(slug -> dimensions, package name -> dimensions) from the tools catalogue; None when it does
-    not answer or is not configured."""
+    """(slug -> dimensions, package name -> dimensions) from the tools catalogue, plus the local controls';
+    None when it does not answer or is not configured."""
     if _tools["by_slug"] and time.monotonic() - _tools["at"] < TITLES_TTL_S:
         return _tools["by_slug"], _tools["by_package"]
     base = (os.environ.get("CATALOGUE_URL") or "").rstrip("/")
@@ -383,6 +384,11 @@ def tool_dimensions() -> tuple[dict, dict] | None:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("the tools catalogue did not answer: %s", exc)
         return None
+    # local controls (local_controls/): their own dimension, unless the catalogue has the slug
+    for c in local_controls():
+        if c["slug"] not in by_slug:
+            parents = [{"slug": c.get("dimension_slug"), "section": "dimension"}]
+            by_slug[c["slug"]] = _dimensions_of(parents)
     _tools.update(at=time.monotonic(), by_slug=by_slug, by_package=by_package)
     return by_slug, by_package
 

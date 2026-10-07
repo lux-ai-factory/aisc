@@ -28,6 +28,7 @@ case "$1" in
         exit 0 ;;
       *" up "*) exit 0 ;;
       *" ps "*) echo "keycloak	exited (1)"; exit 0 ;;
+      *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
 esac
 exit 0
@@ -134,3 +135,18 @@ def test_a_checkout_that_cannot_work_is_refused_before_anything_runs(scratch, se
     assert says in r.stdout + r.stderr
     assert not (scratch / "secrets-ran").exists()
     assert not [c for c in calls(scratch) if " build" in c or " up " in c]
+
+
+def test_it_says_which_local_controls_every_catalogue_gets(scratch):
+    (scratch / "local-controls").write_text("altai-x\nfraia-y\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    asked = [c for c in calls(scratch) if " exec " in c]
+    assert len(asked) == 1 and "exec -T platform python -m platform_service.catalogue" in asked[0]
+    assert "2 local controls" in r.stdout and "altai-x" in r.stdout and "fraia-y" in r.stdout
+
+
+def test_local_controls_it_cannot_read_do_not_stop_the_start(scratch):
+    r = run(scratch)                                  # the exec fails: no local-controls file
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "local controls could not be read" in r.stdout and "http://localhost:8100" in r.stdout

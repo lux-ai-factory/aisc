@@ -1,0 +1,492 @@
+[
+  {
+    "name": "ALTAI - Diversity, Non-discrimination and Fairness",
+    "slug": "altai-diversity-non-discrimination-and-fairness",
+    "description": "Requirement 5 of the Assessment List for Trustworthy AI (ALTAI) by the EU High-Level Expert Group on AI",
+    "licensing": "Open_Source",
+    "completion_status": "full",
+    "dimension_slug": "diversity-non-discrimination-fairness",
+    "controls_subdim_slugs": [
+      "sampling-strategies",
+      "accessibility",
+      "participatory-design"
+    ],
+    "metadata": {
+      "provider": "EU High-Level Expert Group on AI",
+      "link": "https://digital-strategy.ec.europa.eu/en/library/assessment-list-trustworthy-artificial-intelligence-altai-self-assessment",
+      "project_maturity": "",
+      "control_topic": "Diversity, Non-discrimination and Fairness",
+      "target_legal_requirements": "",
+      "scientific_reference": "High-Level Expert Group on Artificial Intelligence, Assessment List for Trustworthy Artificial Intelligence (ALTAI) for self-assessment, European Commission, July 2020, Requirement #5. Questions reproduced verbatim (typography normalised). Licence: reuse under Commission Decision 2011/833/EU (source acknowledged, meaning not distorted)."
+    },
+    "questions": [
+      {
+        "order": 1,
+        "text": "Did you establish a strategy or a set of procedures to avoid creating or reinforcing unfair bias in the AI system, both regarding the use of input data as well as for the algorithm design?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 2,
+        "text": "Did you consider diversity and representativeness of end-users and/or subjects in the data?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 3,
+        "text": "Did you test for specific target groups or problematic use cases?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 4,
+        "text": "Did you research and use publicly available technical tools, that are state-of-the-art, to improve your understanding of the data, model and performance?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 5,
+        "text": "Did you assess and put in place processes to test and monitor for potential biases during the entire lifecycle of the AI system (e.g. biases due to possible limitations stemming from the composition of the used data sets (lack of diversity, non-representativeness))?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 6,
+        "text": "Where relevant, did you consider diversity and representativeness of end-users and/or subjects in the data?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 7,
+        "text": "Did you put in place educational and awareness initiatives to help AI designers and AI developers be more aware of the possible bias they can inject in designing and developing the AI system?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 8,
+        "text": "Did you ensure a mechanism that allows for the flagging of issues related to bias, discrimination or poor performance of the AI system?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 9,
+        "text": "Did you establish clear steps and ways of communicating on how and to whom such issues can be raised?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 10,
+        "text": "Did you identify the subjects that could potentially be (in)directly affected by the AI system, in addition to the (end-)users and/or subjects?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 11,
+        "text": "Is your definition of fairness commonly used and implemented in any phase of the process of setting up the AI system?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 12,
+        "text": "Did you consider other definitions of fairness before choosing this one?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 13,
+        "text": "Did you consult with the impacted communities about the correct definition of fairness, i.e. representatives of elderly persons or persons with disabilities?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 14,
+        "text": "Did you ensure a quantitative analysis or metrics to measure and test the applied definition of fairness?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 15,
+        "text": "Did you establish mechanisms to ensure fairness in your AI system?",
+        "article": null,
+        "category": "Avoidance of Unfair Bias"
+      },
+      {
+        "order": 16,
+        "text": "Did you ensure that the AI system corresponds to the variety of preferences and abilities in society?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 17,
+        "text": "Did you assess whether the AI system's user interface is usable by those with special needs or disabilities or those at risk of exclusion?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 18,
+        "text": "Did you ensure that information about, and the AI system's user interface of, the AI system is accessible and usable also to users of assistive technologies (such as screen readers)?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 19,
+        "text": "Did you involve or consult with end-users or subjects in need for assistive technology during the planning and development phase of the AI system?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 20,
+        "text": "Did you ensure that Universal Design principles are taken into account during every step of the planning and development process, if applicable?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 21,
+        "text": "Did you take the impact of the AI system on the potential end-users and/or subjects into account?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 22,
+        "text": "Did you assess whether the team involved in building the AI system engaged with the possible target end-users and/or subjects?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 23,
+        "text": "Did you assess whether there could be groups who might be disproportionately affected by the outcomes of the AI system?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 24,
+        "text": "Did you assess the risk of the possible unfairness of the system onto the end-user's or subject's communities?",
+        "article": null,
+        "category": "Accessibility and Universal Design"
+      },
+      {
+        "order": 25,
+        "text": "Did you consider a mechanism to include the participation of the widest range of possible stakeholders in the AI system's design and development?",
+        "article": null,
+        "category": "Stakeholder Participation"
+      }
+    ]
+  },
+  {
+    "name": "FRAIA - Non-discrimination and Equal Treatment",
+    "slug": "fraia-non-discrimination-and-equal-treatment",
+    "description": "Bias, discrimination and fundamental-rights questions of the Fundamental Rights and Algorithms Impact Assessment (FRAIA)",
+    "licensing": "Open_Source",
+    "completion_status": "full",
+    "dimension_slug": "diversity-non-discrimination-fairness",
+    "controls_subdim_slugs": [
+      "sampling-strategies",
+      "participatory-design"
+    ],
+    "metadata": {
+      "provider": "Netherlands Ministry of the Interior and Kingdom Relations",
+      "link": "https://www.government.nl/site/binaries/site-content/collections/documents/2021/07/31/impact-assessment-fundamental-rights-and-algorithms/fundamental-rights-and-algorithms-impact-assessment-fraia.pdf",
+      "project_maturity": "",
+      "control_topic": "Non-discrimination and Equal Treatment",
+      "target_legal_requirements": "",
+      "scientific_reference": "J. Gerards, M.T. Schäfer, I. Muis, A. Vankan (Utrecht University), Fundamental Rights and Algorithms Impact Assessment (FRAIA), Ministry of the Interior and Kingdom Relations, March 2022. Questions 1.5.1, 2A.3.1-2, 2B.3.4, 3.3.1-2, 3.5.2 and the Part 4 roadmap (4.1.1-4.7.1, to be answered for the right to equal treatment), verbatim (typography normalised). Licence: CC0 1.0 (government.nl copyright statement); the Dutch central government does not necessarily agree with the content of this checklist."
+    },
+    "questions": [
+      {
+        "order": 1,
+        "text": "Which parties and persons are involved in the development/use/maintenance of the algorithm?",
+        "article": null,
+        "category": "Part 1: Why? – 1.5 Stakeholders and responsibilities"
+      },
+      {
+        "order": 2,
+        "text": "What assumptions and biases are embedded in the data? How are their influences on the algorithm's output corrected or otherwise overcome or mitigated (see also annex 2)?",
+        "article": null,
+        "category": "Part 2A: What? (input) – 2A.3 Bias/assumptions in the data"
+      },
+      {
+        "order": 3,
+        "text": "If training data is used: is the data representative for the context in which the algorithm will be used?",
+        "article": null,
+        "category": "Part 2A: What? (input) – 2A.3 Bias/assumptions in the data"
+      },
+      {
+        "order": 4,
+        "text": "What measures can be taken to counteract the risks of reproduction or even amplification of biases (e.g. different sampling strategy, feature modification, ...)?",
+        "article": null,
+        "category": "Part 2B: What? (throughput) – 2B.3 Algorithm accuracy"
+      },
+      {
+        "order": 5,
+        "text": "What will be the effects of using the algorithm for citizens and how will the 'human measure' be considered when making decisions based on the algorithm?",
+        "article": null,
+        "category": "Part 3: How? – 3.3 Effects of the algorithm"
+      },
+      {
+        "order": 6,
+        "text": "What are the risks of stigmatisation, discrimination or otherwise harmful or adverse effects on citizens? How will these be combated or mitigated?",
+        "article": null,
+        "category": "Part 3: How? – 3.3 Effects of the algorithm"
+      },
+      {
+        "order": 7,
+        "text": "Area: where will the algorithm be used? Is it in a specific geographical area; does the algorithm concern a certain group of persons or cases?",
+        "article": null,
+        "category": "Part 3: How? – 3.5 Context"
+      },
+      {
+        "order": 8,
+        "text": "Is any fundamental right affected by the algorithm that is to be used?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.1 Fundamental right"
+      },
+      {
+        "order": 9,
+        "text": "Do specific legal provisions or standards apply to the fundamental rights infringement?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.2 Specific legislation and standards"
+      },
+      {
+        "order": 10,
+        "text": "How seriously is a fundamental right affected by the algorithm?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.3 Defining seriousness"
+      },
+      {
+        "order": 11,
+        "text": "Which objectives are pursued by using the algorithm?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.4 Objectives"
+      },
+      {
+        "order": 12,
+        "text": "Is the algorithm that is to be used a suitable means to realise the set objectives?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.5 Efficacy"
+      },
+      {
+        "order": 13,
+        "text": "Is using this specific algorithm necessary to achieve this objective, and are there no other or mitigating measures available to do so?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.6 Necessity and subsidiarity"
+      },
+      {
+        "order": 14,
+        "text": "Does the use of the algorithm result in a reasonable balance between the objectives pursued and the fundamental rights that will be infringed?",
+        "article": null,
+        "category": "Part 4: Fundamental rights – 4.7 Balancing interests/proportionality"
+      }
+    ]
+  },
+  {
+    "name": "NIST AI RMF - Fairness and Bias",
+    "slug": "nist-ai-rmf-fairness-and-bias",
+    "description": "Transparency and documentation questions of the NIST AI RMF Playbook for GOVERN 3.1, MAP 1.2, MEASURE 2.2 and MEASURE 2.11",
+    "licensing": "Open_Source",
+    "completion_status": "full",
+    "dimension_slug": "diversity-non-discrimination-fairness",
+    "controls_subdim_slugs": [
+      "sampling-strategies",
+      "participatory-design"
+    ],
+    "metadata": {
+      "provider": "NIST",
+      "link": "https://airc.nist.gov/airmf-resources/playbook/",
+      "project_maturity": "",
+      "control_topic": "Fairness and Bias",
+      "target_legal_requirements": "",
+      "scientific_reference": "NIST AI Risk Management Framework Playbook (companion to NIST AI 100-1), Transparency & Documentation items of GOVERN 3.1, MAP 1.2, MEASURE 2.2 and MEASURE 2.11, verbatim (typography normalised); questions repeated across these subcategories kept once. Licence: US Government work, not subject to copyright in the US (17 U.S.C. 105); some items adapt cited third-party sources."
+    },
+    "questions": [
+      {
+        "order": 1,
+        "text": "Are the relevant staff dealing with AI systems properly trained to interpret AI model output and decisions as well as to detect and manage bias in data?",
+        "article": null,
+        "category": "GOVERN 3.1 – Diverse team informs AI risk decisions"
+      },
+      {
+        "order": 2,
+        "text": "Entities include diverse perspectives from technical and non-technical communities throughout the AI life cycle to anticipate and mitigate unintended consequences including potential bias and discrimination.",
+        "article": null,
+        "category": "GOVERN 3.1 – Diverse team informs AI risk decisions"
+      },
+      {
+        "order": 3,
+        "text": "Stakeholder involvement: Include diverse perspectives from a community of stakeholders throughout the AI life cycle to mitigate risks.",
+        "article": null,
+        "category": "GOVERN 3.1 – Diverse team informs AI risk decisions"
+      },
+      {
+        "order": 4,
+        "text": "Strategies to incorporate diverse perspectives include establishing collaborative processes and multidisciplinary teams that involve subject matter experts in data science, software development, civil liberties, privacy and security, legal counsel, and risk management.",
+        "article": null,
+        "category": "GOVERN 3.1 – Diverse team informs AI risk decisions"
+      },
+      {
+        "order": 5,
+        "text": "To what extent are the established procedures effective in mitigating bias, inequity, and other concerns resulting from the system?",
+        "article": null,
+        "category": "GOVERN 3.1 – Diverse team informs AI risk decisions"
+      },
+      {
+        "order": 6,
+        "text": "To what extent do the teams responsible for developing and maintaining the AI system reflect diverse opinions, backgrounds, experiences, and perspectives?",
+        "article": null,
+        "category": "MAP 1.2 – Demographically diverse, interdisciplinary AI actors"
+      },
+      {
+        "order": 7,
+        "text": "Did the entity document the demographics of those involved in the design and development of the AI system to capture and communicate potential biases inherent to the development process, according to forum participants?",
+        "article": null,
+        "category": "MAP 1.2 – Demographically diverse, interdisciplinary AI actors"
+      },
+      {
+        "order": 8,
+        "text": "What specific perspectives did stakeholders share, and how were they integrated across the design, development, deployment, assessment, and monitoring of the AI system?",
+        "article": null,
+        "category": "MAP 1.2 – Demographically diverse, interdisciplinary AI actors"
+      },
+      {
+        "order": 9,
+        "text": "To what extent has the entity addressed stakeholder perspectives on the potential negative impacts of the AI system on end users and impacted populations?",
+        "article": null,
+        "category": "MAP 1.2 – Demographically diverse, interdisciplinary AI actors"
+      },
+      {
+        "order": 10,
+        "text": "What type of information is accessible on the design, operations, and limitations of the AI system to external stakeholders, including end users, consumers, regulators, and individuals impacted by use of the AI system?",
+        "article": null,
+        "category": "MAP 1.2 – Demographically diverse, interdisciplinary AI actors"
+      },
+      {
+        "order": 11,
+        "text": "Did your organization address usability problems and test whether user interfaces served their intended purposes? Consulting the community or end users at the earliest stages of development to ensure there is transparency on the technology used and how it is deployed.",
+        "article": null,
+        "category": "MAP 1.2 – Demographically diverse, interdisciplinary AI actors"
+      },
+      {
+        "order": 12,
+        "text": "Given the purpose of this AI, what is an appropriate interval for checking whether it is still accurate, unbiased, explainable, etc.? What are the checks for this model?",
+        "article": null,
+        "category": "MEASURE 2.2 – Human-subject evaluations representative of the population"
+      },
+      {
+        "order": 13,
+        "text": "How has the entity identified and mitigated potential impacts of bias in the data, including inequitable or discriminatory outcomes?",
+        "article": null,
+        "category": "MEASURE 2.2 – Human-subject evaluations representative of the population"
+      },
+      {
+        "order": 14,
+        "text": "To what extent has the entity identified and mitigated potential bias—statistical, contextual, and historical—in the data?",
+        "article": null,
+        "category": "MEASURE 2.2 – Human-subject evaluations representative of the population"
+      },
+      {
+        "order": 15,
+        "text": "If it relates to people, were they told what the dataset would be used for and did they consent? What community norms exist for data collected from human communications? If consent was obtained, how? Were the people provided with any mechanism to revoke their consent in the future or for certain uses?",
+        "article": null,
+        "category": "MEASURE 2.2 – Human-subject evaluations representative of the population"
+      },
+      {
+        "order": 16,
+        "text": "If human subjects were used in the development or testing of the AI system, what protections were put in place to promote their safety and wellbeing?",
+        "article": null,
+        "category": "MEASURE 2.2 – Human-subject evaluations representative of the population"
+      },
+      {
+        "order": 17,
+        "text": "If it relates to people, does it unfairly advantage or disadvantage a particular social group? In what ways? How was this mitigated?",
+        "article": null,
+        "category": "MEASURE 2.11 – Fairness and bias evaluated"
+      },
+      {
+        "order": 18,
+        "text": "Were adversarial machine learning approaches considered or used for measuring bias (e.g.: prompt engineering, adversarial models)",
+        "article": null,
+        "category": "MEASURE 2.11 – Fairness and bias evaluated"
+      }
+    ]
+  },
+  {
+    "name": "AI Verify - Fairness Process Checks",
+    "slug": "ai-verify-fairness-process-checks",
+    "description": "Fairness process checks 7.1.1-7.9.1 of the AI Verify testing framework",
+    "licensing": "Open_Source",
+    "completion_status": "full",
+    "dimension_slug": "diversity-non-discrimination-fairness",
+    "controls_subdim_slugs": [
+      "sampling-strategies"
+    ],
+    "metadata": {
+      "provider": "AI Verify Foundation",
+      "link": "https://github.com/aiverify-foundation/aiverify/blob/3f58c3eb6cdff0c02617b4e1910ca30dad080f12/stock-plugins/aiverify.stock.process-checklist/inputs/config_fairness.ts",
+      "project_maturity": "",
+      "control_topic": "Fairness",
+      "target_legal_requirements": "",
+      "scientific_reference": "AI Verify Foundation, AI Verify process checklist, Fairness principle (checks 7.1.1-7.9.1), aiverify-foundation/aiverify@3f58c3e, verbatim (typography normalised) (line breaks in place of <br/>). Licence: Apache License 2.0."
+    },
+    "questions": [
+      {
+        "order": 1,
+        "text": "Apply counterfactual fairness assessment",
+        "article": null,
+        "category": "Assess within-group fairness (also known as individual fairness)"
+      },
+      {
+        "order": 2,
+        "text": "Monitor the changes in fairness metric values in the lifecycle of the AI system.",
+        "article": null,
+        "category": "Put in place processes to test for potential biases during the entire lifecycle of the AI system, so that practitioners can act to mitigate biases based on feedback (e.g., biases due to possible limitations stemming from the composition of the used data sets such as a lack of diversity and non-representativeness)"
+      },
+      {
+        "order": 3,
+        "text": "Consider using Fairness Decision Tree (e.g., AI Verify, Aequitas) to select the appropriate metric(s) for your application",
+        "article": null,
+        "category": "Establish a strategy for the selection of fairness metrics that are aligned with the desired outcomes of the AI system's intended application"
+      },
+      {
+        "order": 4,
+        "text": "Identify the sensitive features and their privileged and unprivileged groups where feasible.",
+        "article": null,
+        "category": "Define sensitive features for the organisation that are consistent with the legislation and corporate values"
+      },
+      {
+        "order": 5,
+        "text": "Where feasible, consult the impacted communities on the correct definition of fairness (e.g., representatives of elderly persons or persons with disabilities), values and considerations of those impacted (e.g., individual's preference)",
+        "article": null,
+        "category": "Define sensitive features for the organisation that are consistent with the legislation and corporate values"
+      },
+      {
+        "order": 6,
+        "text": "Define this partitioning in terms of sensitive features that models should be prohibited from being trained on, but are used in the evaluation of fairness outcomes.",
+        "article": null,
+        "category": "Establish a process for identifying and selecting sub-populations between which the AI system should produce fair outcomes"
+      },
+      {
+        "order": 7,
+        "text": "Perform exploratory data analysis. For the sensitive feature, test the representation of each group in the data. Resample data or collect more data if a particular group is severely underrepresented.",
+        "article": null,
+        "category": "Establish a strategy or a set of procedures to check that the data used in the training of the AI model, is representative of the population who make up the end-users of the AI model"
+      },
+      {
+        "order": 8,
+        "text": "Monitor threshold violations of fairness metrics post-deployment and for actual harms",
+        "article": null,
+        "category": "Put in place a mechanism that allows for the flagging of issues related to bias, discrimination, or poor performance of the AI system"
+      },
+      {
+        "order": 9,
+        "text": "Monitor metrics for the latest set of data for the model currently being deployed on an ongoing basis.",
+        "article": null,
+        "category": "Put in place appropriate mechanisms to ensure fairness in your AI system"
+      },
+      {
+        "order": 10,
+        "text": "Where possible, handle imbalanced training sets with minorities. Examples:\n- Oversample minority class\n- Undersample majority class\n- Generate synthetic samples (SMOTE)",
+        "article": null,
+        "category": "Address the risk of biases due to possible limitations stemming from the composition of the used data sets (lack of diversity, non-representativeness), by applying appropriate adjustments on data samples of minorities"
+      }
+    ]
+  }
+]

@@ -563,3 +563,10 @@ def test_an_image_is_built_by_one_service_only():
                     builders.setdefault(spec["image"], []).append(f"{f}:{name}")
         twice = {image: who for image, who in builders.items() if len(who) > 1}
         assert not twice, f"built by more than one service: {twice}"
+
+
+def test_the_platform_reads_the_local_controls_read_only(compose):
+    """Every private catalogue gets the checklists in local_controls/ (local_controls/README.md)."""
+    q, cfg = compose
+    mounts = [(v.get("source", ""), v.get("target"), v.get("read_only")) for v in cfg["services"]["platform"]["volumes"]]
+    assert any(src.endswith("/local_controls") and tgt == "/app/local_controls" and ro for src, tgt, ro in mounts), mounts

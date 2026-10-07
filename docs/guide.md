@@ -39,6 +39,7 @@ Part of this repository:
 | `infra/minio/` | builds MinIO from source |
 | `apps/connectors/` | an import service for API descriptions (OpenAPI, Postman, ...); not started by any compose file |
 | `def_plugins/`, `local_plugins/` | the default plugins (downloaded at start) and your own plugin sources (`PLUGIN_PATH`) |
+| `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
 | `docs/` | design history; not needed to run anything |
 
 ## How it works
@@ -153,6 +154,14 @@ at http://localhost:8081 (realm `aisc`), the dashboard at http://localhost:8188.
 eval worker as `/app/plugins`, where they discover plugin source trees. See
 [`local_plugins/README.md`](../local_plugins/README.md) and the plugin developer guide in
 `shared/plugin-interface`.
+
+### Your own controls
+
+Checklists in `local_controls/` (one control or a list per `*.json`, in the catalogue's seed format) join
+every project catalogue: a public one reads them live, a private one copies them when the project chooses it
+and each time an admin presses Update; they
+show under Source = Local and install like any control. `scripts/start.sh` lists them at the end of a
+start. A public entry with the same slug wins. See [`local_controls/README.md`](../local_controls/README.md).
 
 ### The engine on its own
 

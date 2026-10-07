@@ -8,7 +8,10 @@ choice is final (D1).
 The copy holds the public catalogue's own JSON (its `GET /tool/?detailed=true`, `/tags/`, `/metric/`,
 `/metadata/`), so the catalogue frontend reads it unchanged (P3). Local entries are not stored: they
 are the packages the engine offers (`GET /api/v1/plugins`) whose package is in no public entry (P4),
-read on every request; only the dimensions an admin gives them are kept.
+read on every request; only the dimensions an admin gives them are kept. Local controls are stored: the
+checklists in LOCAL_CONTROLS_DIR (the repo's local_controls/, in the public catalogue's seed format) are
+written into the copy, as origin 'local', each time it is made or updated; a public entry with the same slug
+wins.
 
 A public project reads the same shapes from the public catalogue live, kept LIVE_TTL_S seconds, with
 no local entries (docs/superpowers/control-install-2026-10-04/01-plan.md D1, D5). Either way a
@@ -36,6 +39,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from platform_service import db, engine_components, evidence, projectdb
+from platform_service.local_controls import LOCAL_CONTROLS_DIR, local_controls  # noqa: F401
 
 logger = logging.getLogger(__name__)
 MODES = ("public", "private")
@@ -49,6 +53,8 @@ TOOL_KEYS = ("available_on_devpi", "completion_status", "created_at", "descripti
              "submitted_by", "version") + _DETAIL_ONLY
 #: local entries' ids, out of the public catalogue's range
 LOCAL_ID_BASE = 1_000_000
+#: local controls' ids, out of the local plugins' range
+LOCAL_CONTROL_ID_BASE = 2_000_000
 LOCAL_SOURCE = "source-local"
 
 _SCHEMA = """
@@ -173,6 +179,8 @@ def fetch_public() -> dict:
 def _store(conn, public: dict) -> dict:
     """Make the copy match `public` (D3): public entries replaced, added or removed; local ones kept;
     tags, metrics and metadata replaced. Returns the counts."""
+    # local controls first, so a public entry that took a local one's slug is inserted as public
+    conn.execute("DELETE FROM catalogue.entry WHERE origin = 'local'")
     current = {r["slug"]: r["data"] for r in conn.execute(
         "SELECT slug, data FROM catalogue.entry WHERE origin = 'public'").fetchall()}
     counts = {"added": 0, "updated": 0, "unchanged": 0, "removed": 0}
@@ -191,6 +199,12 @@ def _store(conn, public: dict) -> dict:
     for slug in set(current) - set(wanted):
         conn.execute("DELETE FROM catalogue.entry WHERE slug = %s AND origin = 'public'", (slug,))
         counts["removed"] += 1
+    # local controls: rewritten from the folder every time; a public entry with the same slug wins
+    local = [c for c in local_controls() if c["slug"] not in wanted]
+    for n, c in enumerate(local):
+        conn.execute("INSERT INTO catalogue.entry (slug, origin, data) VALUES (%s, 'local', %s)",
+                     (c["slug"], Jsonb(local_control_entry(c, public["tags"], n))))
+    counts["local_controls"] = len(local)
     for table, rows, key in (("tag", public["tags"], "slug"), ("metric", public["metric"], "id"),
                              ("metadata", public["metadata"], "id")):
         conn.execute(f"DELETE FROM catalogue.{table}")
@@ -199,6 +213,35 @@ def _store(conn, public: dict) -> dict:
     conn.execute("INSERT INTO catalogue.state (id, updated_at) VALUES (1, now())"
                  " ON CONFLICT (id) DO UPDATE SET updated_at = now()")
     return counts
+
+
+def local_control_entry(control: dict, tags: list[dict], n: int) -> dict:
+    """A local control as a detailed catalogue entry: the copy's own tags for its type, licence, dimension and
+    sub-dimensions (one the copy lacks is left out), and Local as its source."""
+    by_slug = {t["slug"]: t for t in tags}
+    wanted = ["control", "open", control.get("dimension_slug"), *(control.get("controls_subdim_slugs") or [])]
+    entry_id = LOCAL_CONTROL_ID_BASE + n
+    md = control.get("metadata") or {}
+    entry = {k: None for k in TOOL_KEYS}
+    entry.update(
+        id=entry_id, slug=control["slug"], name=control["name"], description=control.get("description"),
+        version="1.0.0", licensing=control.get("licensing") or "Open_Source", status="approved",
+        completion_status=control.get("completion_status") or "full", submitted_by="local",
+        storage_path=f"local/controls/{control['slug']}", available_on_devpi=False, metrics=[],
+        tags=[_local_tag(tags)] + [by_slug[s] for s in dict.fromkeys(wanted) if s in by_slug],
+        metadata={**md, "id": entry_id, "description": control.get("description"), "tool_1_id": entry_id},
+        questions=[{"order": q.get("order") or 0, "text": q.get("text") or "", "article": q.get("article"),
+                    "category": q.get("category")} for q in control["questions"]],
+    )
+    return entry
+
+
+def _live_local_controls(public: list[dict], tags: list[dict]) -> list[dict]:
+    """A public project's local controls: the folder's, as catalogue entries, less any slug the public
+    catalogue has (it wins, as in a private copy)."""
+    taken = {t.get("slug") for t in public}
+    return [local_control_entry(c, tags, n)
+            for n, c in enumerate(c for c in local_controls() if c["slug"] not in taken)]
 
 
 def _require_private(pid) -> None:
@@ -275,6 +318,11 @@ def _stored(pid, table: str, order: str) -> list[dict]:
         return [r["data"] for r in conn.execute(f"SELECT data FROM catalogue.{table} ORDER BY {order}").fetchall()]
 
 
+def _local_control_slugs(pid) -> set[str]:
+    with _connect(pid) as conn:
+        return {r["slug"] for r in conn.execute("SELECT slug FROM catalogue.entry WHERE origin = 'local'").fetchall()}
+
+
 def _local_tag(tags: list[dict]) -> dict:
     """"Local" in the catalogue's Source filter, in a source tag's own shape."""
     like = next((t for t in tags if t.get("section") == "source"), None) or {
@@ -309,22 +357,27 @@ def _local_dimensions(pid) -> dict[str, list[str]]:
 
 def tools(pid, token: str, detailed: bool) -> list[dict]:
     """P3.1, P3.2, P4.1: the copy's entries then the local ones, each with aisc_local and aisc_installed;
-    a public project's entries are the public catalogue's, live, with no local ones (D5)."""
+    a public project's entries are the public catalogue's, live, with no local plugins (D5) but with the
+    local controls (local_controls/)."""
     private = _chosen(pid) == "private"
     public = _read(pid, "entry", "slug", "/tool/?detailed=true")
     tags = _read(pid, "tag", "slug", "/tags/")
     packages, checklists = _installed(pid)
     held = packages_on_index()
+    local_controls_here = _local_control_slugs(pid) if private else set()
     out = []
     for t in public:
         installed = (package_of(t) in packages) or (t.get("slug") in checklists)
-        entry = {**t, "aisc_local": False, "aisc_installed": bool(installed)}
+        entry = {**t, "aisc_local": t.get("slug") in local_controls_here, "aisc_installed": bool(installed)}
         # completion_status is what colours a test's card and what Plugin available keeps: in a private
         # copy it says whether the test can be installed on this stack (blue) or not (pink).
         if held is not None and not _is_control(t):
             entry["completion_status"] = "full" if _dist(package_of(t)) in held else "stub"
         out.append(entry)
     if not private:
+        # a public project gets the local controls too, live from the folder (no copy to store them in)
+        for entry in _live_local_controls(public, tags):
+            out.append({**entry, "aisc_local": True, "aisc_installed": entry["slug"] in checklists})
         return out if detailed else [{**plain_tool(t)} for t in out]
     by_slug = {t["slug"]: t for t in tags}
     dims = _local_dimensions(pid)
@@ -512,12 +565,17 @@ def checklist_package(entry: dict) -> dict:
 
 def control_package(pid, slug: str) -> dict:
     """The checklist package of one control of the project's catalogue: built from the copy for a private
-    project, the public catalogue's own export for a public one. NoEntry when it is not a control there."""
+    project, the public catalogue's own export for a public one (a local control: built from the folder). NoEntry when it is not a control there."""
     if _chosen(pid) == "private":
         entry = next((t for t in _stored(pid, "entry", "slug") if t.get("slug") == slug), None)
         if entry is None or not is_export_control(entry):
             raise NoEntry(f"this project's catalogue has no control {slug!r}")
         return checklist_package(entry)
+    if any(c["slug"] == slug for c in local_controls()):
+        found = next((t for t in _live_local_controls(_live("/tool/?detailed=true"), _live("/tags/"))
+                      if t["slug"] == slug), None)
+        if found is not None:
+            return checklist_package(found)
     request = urllib.request.Request(f"{_public_base()}/control/{urllib.request.quote(slug, safe='')}/export")
     token = os.environ.get("CATALOGUE_TOKEN") or ""
     if token:
@@ -565,3 +623,11 @@ def set_local_dimensions(pid, package: str, dimensions: list[str]) -> list[str]:
             conn.execute("INSERT INTO catalogue.local_dimension (package_name, dimension) VALUES (%s, %s)",
                          (package, d))
     return sorted(set(dimensions), key=lambda rid: int(rid[1:]))
+
+
+if __name__ == "__main__":
+    # scripts/start.sh: the local controls every project catalogue will get, one slug a line
+    # (what cannot be read is logged to stderr)
+    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    for c in local_controls():
+        print(c["slug"])
