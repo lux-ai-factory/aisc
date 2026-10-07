@@ -46,3 +46,7 @@
 	path = shared/report-plugin-interface
 	url = https://github.com/lux-ai-factory/aisc-report-plugin-interface.git
 	branch = feat/unified-modules
+[submodule "apps/add-controls-catalogue"]
+	path = apps/add-controls-catalogue
+	url = https://github.com/lux-ai-factory/aisc-add-controls-catalogue.git
+	branch = feat/unified-modules
