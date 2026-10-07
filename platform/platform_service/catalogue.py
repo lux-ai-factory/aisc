@@ -9,8 +9,8 @@ The copy holds the public catalogue's own JSON (its `GET /tool/?detailed=true`, 
 `/metadata/`), so the catalogue frontend reads it unchanged (P3). Local entries are not stored: they
 are the packages the engine offers (`GET /api/v1/plugins`) whose package is in no public entry (P4),
 read on every request; only the dimensions an admin gives them are kept. Local controls are stored: the
-checklists in LOCAL_CONTROLS_DIR (the repo's local_controls/, in the public catalogue's seed format) are
-written into the copy, as origin 'local', each time it is made or updated; a public entry with the same slug
+checklists in LOCAL_CONTROLS_DIR (the repo's local_controls/) and ORG_CONTROLS_DIR (the organisation's, written
+by the add-controls service), in the public catalogue's seed format, are written into the copy, as origin 'local', each time it is made or updated; a public entry with the same slug
 wins.
 
 A public project reads the same shapes from the public catalogue live, kept LIVE_TTL_S seconds, with
@@ -411,7 +411,8 @@ def tool_tags(pid, tool_id: int, token: str) -> list[dict]:
 # The public catalogue answers `GET /tool/{slug}/install-info` against its own index; a private copy
 # answers it against the index the engine installs from (PACKAGE_REGISTRY_URL), so every plugin this
 # stack has is installable and none it lacks is offered. The rules are the public catalogue's
-# (apps/catalogue/backend/catalogue_bridge.py): the package from the entry, the version from the index.
+# (catalogue branch `dev`, backend/catalogue_bridge.py): the package from the entry, the version from the
+# index.
 
 #: the files an index serves for a release: an sdist or a wheel
 _ARTEFACT = r"\.(?:tar\.gz|whl|zip)"
@@ -530,7 +531,7 @@ def metadata(pid) -> list[dict]:
 
 
 # ── a control as the checklist package the controls app installs ────────────
-# The public catalogue's rules (apps/catalogue/backend/controls_export.py), over the detailed JSON a
+# The public catalogue's rules (catalogue branch `dev`, backend/controls_export.py), over the detailed JSON a
 # copy holds; tests/test_catalogue_controls.py holds them to its exports.
 
 def is_export_control(entry: dict) -> bool:

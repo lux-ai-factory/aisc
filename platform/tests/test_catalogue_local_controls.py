@@ -1,8 +1,9 @@
 """Local controls: checklists kept in the stack (LOCAL_CONTROLS_DIR, the repo's local_controls/), in the public
-catalogue's own seed format (apps/catalogue/backend/controls_seed.json), join every private copy when the
-project chooses it and on each update, and install like any other control. A public entry with the same slug
+catalogue's own seed format (catalogue branch `dev`, backend/controls_seed.json), join every private copy when
+the project chooses it and on each update, and install like any other control. A public entry with the same slug
 wins, so a control the public catalogue later publishes replaces its local copy. A public project reads the
-public catalogue live and gets them too (workshop, 2026-10-07), from the folder."""
+public catalogue live and gets them too (workshop, 2026-10-07), from the folder. The organisation's folder
+(ORG_CONTROLS_DIR) is in test_catalogue_org_controls.py."""
 from __future__ import annotations
 
 import copy

@@ -2,8 +2,8 @@
 public catalogue live (docs/superpowers/control-install-2026-10-04/01-plan.md P1).
 
 The controls app installs a checklist from the package the platform gives for the project: a private
-project's is built from its copy, by the public catalogue's own rules (apps/catalogue/backend/
-controls_export.py), and a public project's is the public catalogue's export as it is. The rules are
+project's is built from its copy, by the public catalogue's own rules (catalogue branch `dev`,
+backend/controls_export.py), and a public project's is the public catalogue's export as it is. The rules are
 held to the public catalogue's exports (tests/fixtures/control_exports_2026-10-04.json)."""
 from __future__ import annotations
 
