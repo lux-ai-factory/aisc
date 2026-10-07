@@ -105,7 +105,9 @@ def test_its_settings_come_from_env_secrets_under_the_apps_names(with_profile):
     env = with_profile["services"]["add-controls"].get("environment") or {}
     assert env.get("DJANGO_SECRET_KEY") == "s3cret"
     assert env.get("ADMIN_USERNAME") == "admin"
-    assert env.get("ADMIN_PASSWORD_HASH") == HASH, "the hash's `$` must reach the app as written"
+    # `config` prints a literal `$` escaped as `$$` (its output is a compose file again); an unquoted hash
+    # would come out with its `$...` parts expanded to nothing instead
+    assert env.get("ADMIN_PASSWORD_HASH", "").replace("$$", "$") == HASH, "the hash's `$` must reach the app"
     assert env.get("LLM_MODEL") == "mistral-large-latest"
     assert env.get("LLM_MISTRAL_KEY") == "mk"
     assert {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"} <= set(env)

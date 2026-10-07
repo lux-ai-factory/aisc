@@ -285,6 +285,14 @@
       }
       reverse_proxy schema-docs:8080
     }
+    # The add-controls service (compose profile add-controls): an admin publishes the organisation's
+    # own checklists (local_controls/README.md). Not behind the sign-in: the app has its own one admin
+    # and login. It serves under this prefix itself (APP_BASE_PATH), so the path goes through unstripped.
+    # Without the profile there is no such host and Caddy answers 502; it still starts.
+    redir /add-controls /add-controls/
+    handle /add-controls/* {
+      reverse_proxy add-controls:8000
+    }
     # protect goes INSIDE handle: at site level it would also guard /oauth2/*,
     # and /oauth2/start would redirect to itself for ever.
     handle {

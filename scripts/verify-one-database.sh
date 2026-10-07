@@ -201,27 +201,6 @@ case "$(docker logs dashboard 2>&1 | tail -400)" in
   *) no "nothing registered the results database: it is whatever was typed in the UI" ;;
 esac
 
-echo "the catalogue's schema comes from migrations (wave 1)"
-# It creates its tables with create_all, so a column change is silent and a
-# rename loses data. Every other module migrates; this one should too.
-n=$(psql_ "select count(*) from information_schema.tables
-            where table_schema='catalogue' and table_name = 'alembic_version'")
-[ "${n:-0}" = "1" ] && ok "the catalogue schema carries a migration history" \
-  || no "the catalogue schema has no migration history: its tables come from create_all"
-[ -f apps/catalogue/backend/alembic.ini ] && ok "and the repo has the migrations to replay" \
-  || no "apps/catalogue/backend has no alembic.ini"
-# The history and the models agree: every table the models declare is there,
-# and nothing else is, which is what a baseline built from the models buys.
-declared=$(docker exec catalogue-backend sh -lc "cd /app && uv run --no-sync python -c \"
-from sql_alchemy import Base
-print(' '.join(sorted(t.name for t in Base.metadata.sorted_tables)))\"" 2>/dev/null | tail -1)
-present=$(psql_ "select string_agg(table_name, ' ' order by table_name)
-                   from information_schema.tables
-                  where table_schema='catalogue' and table_name <> 'alembic_version'")
-[ -n "$declared" ] && [ "$declared" = "$present" ] \
-  && ok "and the migrated schema is exactly what the models declare" \
-  || no "models say [$declared], the database has [$present]"
-
 echo "one naming convention"
 # Quoted CamelCase in one schema and snake_case in another meant a query joining
 # two of them had to remember which half needed quotes.

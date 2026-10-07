@@ -27,6 +27,14 @@
 #   (--add-ledger-key) and restarting the platform; new digests use it, old ones still check.
 # - LEDGER_IMMUDB_PASSWORD is the platform's immudb user's (aisc_ledger); it changes only together
 #   with immudb's own copy, through scripts/ledger-pool.sh.
+#
+# The add-controls service (compose profile add-controls, local_controls/README.md) gets its Django secret
+# here. What only its admin can give is never generated: they add these lines to env.secrets by hand, and
+# this script keeps them, --rotate included (ADMIN_FILLED below):
+#   ADD_CONTROLS_ADMIN_USERNAME=<the one admin's name>
+#   ADD_CONTROLS_ADMIN_PASSWORD_HASH='<python manage.py hash_password>'   # single quotes: it holds `$`
+#   ADD_CONTROLS_LLM_MODEL=<mistral-large-latest, gpt-4o, claude-sonnet-4.5, ...>
+#   ADD_CONTROLS_LLM_MISTRAL_KEY= or ADD_CONTROLS_OPENAI_API_KEY= or ADD_CONTROLS_ANTHROPIC_API_KEY=
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Every file written here holds secrets or is made from them: private from the moment it exists,
@@ -110,10 +118,16 @@ AISC_WITNESS_GATEWAY_SECRET=rand
 PLATFORM_LEDGER_ENGINE_TOKEN=rand
 PLATFORM_LEDGER_DASHBOARD_TOKEN=rand
 PLATFORM_LEDGER_AGENTS_TOKEN=rand
+# the add-controls service's Django secret (its sessions and CSRF); the rest of its settings are ADMIN_FILLED
+ADD_CONTROLS_DJANGO_SECRET_KEY=rand
 )
 value_of() { case "$1" in cookie) cookie ;; fernet) fernet ;; ledgerkey) ledgerkey ;; immudbpw) immudbpw ;; *) rand ;; esac; }
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
 KEPT_ON_ROTATE=" PLATFORM_SECRETS_KEY LEDGER_IMMUDB_PASSWORD PLATFORM_LEDGER_KEYS "
+# What an admin writes into env.secrets by hand and nothing here makes: carried over, as written, by
+# --rotate (a plain run only appends, so it keeps them anyway).
+ADMIN_FILLED="ADD_CONTROLS_ADMIN_USERNAME ADD_CONTROLS_ADMIN_PASSWORD_HASH ADD_CONTROLS_LLM_MODEL
+ADD_CONTROLS_LLM_MISTRAL_KEY ADD_CONTROLS_OPENAI_API_KEY ADD_CONTROLS_ANTHROPIC_API_KEY"
 
 # A value of NAME in a file: empty when the line is missing or has no value.
 value_in() { awk -v n="$1" 'index($0, n "=") == 1 { print substr($0, length(n) + 2); exit }' "$2"; }
@@ -162,6 +176,9 @@ if [ "${1:-}" = "--rotate" ] || [ ! -f "$OUT" ]; then
       else
         echo "$name=$(fresh "${entry#*=}")"
       fi
+    done
+    for name in $ADMIN_FILLED; do
+      if [ -n "$(kept_value "$name")" ]; then echo "$name=$(kept_value "$name")"; fi
     done
   } > "$tmp"
   made="${#SECRETS[@]} secrets, $( [ "${1:-}" = "--rotate" ] && echo rotated || echo new )"

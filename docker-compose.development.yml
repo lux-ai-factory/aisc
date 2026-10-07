@@ -821,6 +821,9 @@ services:
       - ./platform/project-template:/app/project-template:ro,z
       # checklists every private catalogue gets next to the public ones (local_controls/README.md)
       - ./local_controls:/app/local_controls:ro,z
+      # the organisation's own checklists, published by the add-controls service (ORG_CONTROLS_DIR, read
+      # after the folder above); empty when that service's profile is off
+      - org_controls:/app/org_controls:ro
     environment:
       # The ledger, on (record) unless LEDGER_MODE=off: the witness's gateway secret, immudb
       # as aisc_ledger (never the superuser), the public key of immudb's signed states, the
@@ -961,6 +964,47 @@ services:
     image: aisc-catalogue-private:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: catalogue-private
+    restart: unless-stopped
+    networks:
+      - frontend
+
+  # The add-controls service (apps/add-controls-catalogue): one admin uploads a checklist document, reviews
+  # the questions an LLM extracts and presses Publish; the control is written as {slug}.json into the
+  # org_controls volume, which the platform reads as ORG_CONTROLS_DIR (local_controls/README.md). Only with
+  # its profile, so a stack without it is unchanged:
+  #   docker compose ... --profile add-controls up -d add-controls
+  # Caddy serves it at the launcher's /add-controls/, without the sign-in gateway: the app has its own one
+  # admin and login. Its settings come from env.secrets: scripts/secrets.sh makes the Django secret; the
+  # admin's username and password hash (`python manage.py hash_password`, written in single quotes), the
+  # LLM model and that provider's key are filled in by hand. None is required here: the app stops at start
+  # naming a missing one.
+  add-controls:
+    profiles: ["add-controls"]
+    build: apps/add-controls-catalogue
+    image: aisc-add-controls:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: add-controls
+    environment:
+      CATALOGUE_TARGET: local
+      LOCAL_CONTROLS_OUT_DIR: /out
+      APP_BASE_PATH: /add-controls
+      DJANGO_SECRET_KEY: ${ADD_CONTROLS_DJANGO_SECRET_KEY:-}
+      ADMIN_USERNAME: ${ADD_CONTROLS_ADMIN_USERNAME:-}
+      ADMIN_PASSWORD_HASH: ${ADD_CONTROLS_ADMIN_PASSWORD_HASH:-}
+      # the `llm` library's model name (mistral-large-latest, gpt-4o, claude-sonnet-4.5) and its key
+      LLM_MODEL: ${ADD_CONTROLS_LLM_MODEL:-}
+      LLM_MISTRAL_KEY: ${ADD_CONTROLS_LLM_MISTRAL_KEY:-}
+      OPENAI_API_KEY: ${ADD_CONTROLS_OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ADD_CONTROLS_ANTHROPIC_API_KEY:-}
+      # reached as the launcher, http://localhost:8100: plain HTTP here, so no Secure cookies
+      ALLOWED_HOSTS: ${ADD_CONTROLS_ALLOWED_HOSTS:-localhost}
+      CSRF_TRUSTED_ORIGINS: ${ADD_CONTROLS_CSRF_TRUSTED_ORIGINS:-http://localhost:8100}
+      INSECURE_COOKIES: ${ADD_CONTROLS_INSECURE_COOKIES:-true}
+    volumes:
+      # where Publish writes; the platform mounts the same volume read-only
+      - org_controls:/out
+      # drafts and the publish log (SQLite)
+      - add_controls_data:/data
     restart: unless-stopped
     networks:
       - frontend

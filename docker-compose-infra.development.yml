@@ -395,6 +395,10 @@ volumes:
   catalogue_sqlite: # not mounted by any service: no catalogue runs in this stack
   devpi_data: # the stack's package index (devpi), which the engine installs plugins from
   immudb_key:
+  # the organisation's checklists: the add-controls service writes them, the platform reads them
+  # (local_controls/README.md); empty unless the add-controls profile runs
+  org_controls:
+  add_controls_data: # the add-controls service's drafts and publish log
 
 networks:
   backend:
