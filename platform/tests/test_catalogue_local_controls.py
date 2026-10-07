@@ -38,6 +38,7 @@ def control(slug="local-fairness-check", **extra):
 @pytest.fixture
 def folder(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_CONTROLS_DIR", str(tmp_path))
+    monkeypatch.setenv("ORG_CONTROLS_DIR", str(tmp_path / "no-org-folder"))  # the organisation's: none here
     return tmp_path
 
 
