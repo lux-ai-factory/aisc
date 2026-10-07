@@ -48,6 +48,9 @@ EXPECTED_APP = {
 }
 #: Handles that answer without reaching anything: they must never proxy or serve files.
 REFUSING = {(1, "handle /api/v1/internal/*"), (2, "handle /api/internal/*"), (2, "handle @caddy_only")}
+#: Handles that serve without the sign-in, on purpose: the add-controls service has its own one admin and
+#: login (apps/add-controls-catalogue; test_add_controls.py).
+OPEN = {(2, "handle /add-controls/*")}
 
 
 def blocks(text: str):
@@ -128,7 +131,7 @@ def test_every_serving_handle_imports_protect_with_its_app():
             if any(re.match(r"handle(_path)?\b", h) for h, _, _ in blocks(body)):
                 continue                                          # only the innermost handles serve
             key = (site, header)
-            if key in REFUSING or header == "handle /oauth2/*":
+            if key in REFUSING or key in OPEN or header == "handle /oauth2/*":
                 continue
             if not re.search(r"^\s*(reverse_proxy|file_server)\b", body, re.M):
                 continue

@@ -1,8 +1,8 @@
 """With the ledger witness off (LEDGER_GATEWAY unset), the gateway behaves exactly as it did before the
-witness was added, apart from two intended changes: the header strip at the start of every protected
-handle, and the launcher's 404 for /api/authz/*.
+witness was added, apart from three intended changes: the header strip at the start of every protected
+handle, the launcher's 404 for /api/authz/*, and the launcher's /add-controls/ (the add-controls service).
 
-Both files are adapted by a real caddy:2.10.2 to JSON; the comparison ignores only those two changes and
+Both files are adapted by a real caddy:2.10.2 to JSON; the comparison ignores only those changes and
 the extra nesting `route` adds. The baseline is the Caddyfile before the witness
 (fixtures/ledger_gateway/Caddyfile.before-phase2): any later intended change to the gateway means
 renewing this baseline on purpose, and reviewing that change.
@@ -52,6 +52,13 @@ def _is_authz(route):
                                   for h in handlers)
 
 
+def _is_add_controls(route):
+    """The other intended change: the launcher's /add-controls/ (its redirect and its proxy to the
+    add-controls service, which has its own login; test_add_controls.py)."""
+    paths = [p for m in route.get("match") or [] for p in m.get("path") or []]
+    return paths in (["/add-controls"], ["/add-controls/*"]) and "add-controls" in json.dumps(route.get("handle"))
+
+
 def _is_sign_in(handler):
     """oauth2-proxy's forward_auth, as Caddy adapts it: a reverse_proxy to port 4180."""
     return isinstance(handler, dict) and handler.get("handler") == "reverse_proxy" and \
@@ -69,7 +76,7 @@ def normal(node):
                 following = next((h for h in rest if not (isinstance(h, dict) and _is_strip(h))), None)
                 if _is_sign_in(following):
                     continue
-            if isinstance(item, dict) and "handle" in item and _is_authz(item):
+            if isinstance(item, dict) and "handle" in item and (_is_authz(item) or _is_add_controls(item)):
                 continue
             if isinstance(item, dict) and item.get("handler") == "subroute" and \
                     all("match" not in r for r in item.get("routes") or []):
