@@ -172,7 +172,7 @@ def test_p3_2_installed_is_said_per_entry(client, as_user, project, dsn, public,
 
 
 def test_p3_3_the_projects_dimensions_as_catalogue_tags(client, as_user, project, public, engine):
-    """The project's latest card version selects O1 (R1) and O24 (R6) (test_evidence's fixture)."""
+    """The project's latest card version selects O1 (REQ1) and O24 (REQ6) (test_evidence's fixture)."""
     assert choose(client, as_user, project, "private").status_code == 200
     got = client.get(url(project, "/api/project-dimensions"), headers=as_user(VERA)).json()
     assert got == ["human-agency-oversight", "societal-environmental-wellbeing"]
@@ -331,9 +331,9 @@ def test_p4_1_a_package_not_in_the_public_catalogue_is_a_local_entry(client, as_
 def test_p4_2_an_admin_sets_a_local_entrys_dimensions(client, as_user, project, public, engine):
     assert choose(client, as_user, project, "private").status_code == 200
     put = lambda body, who: client.put(url(project, "/local/my-probe/dimensions"), json=body, headers=who)
-    assert put({"dimensions": ["R5"]}, as_user(ALICE)).status_code == 403
-    assert put({"dimensions": ["R12"]}, admin(as_user)).status_code == 422
-    assert put({"dimensions": ["R5", "R2"]}, admin(as_user)).status_code == 200
+    assert put({"dimensions": ["REQ5"]}, as_user(ALICE)).status_code == 403
+    assert put({"dimensions": ["REQ12"]}, admin(as_user)).status_code == 422
+    assert put({"dimensions": ["REQ5", "REQ2"]}, admin(as_user)).status_code == 200
     probe = next(t for t in client.get(url(project, "/api/tool/?detailed=true"), headers=as_user(VERA)).json()
                  if t["slug"] == "local-my-probe")
     assert {g["slug"] for g in probe["tags"] if g["section"] == "dimension"} == {

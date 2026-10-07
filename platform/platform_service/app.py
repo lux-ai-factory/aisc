@@ -1494,7 +1494,7 @@ def catalogue_control_export(slug: str, control: str, caller: Caller = Depends(c
 @app.put("/projects/{slug}/catalogue/local/{package}/dimensions")
 def put_local_dimensions(slug: str, package: str, body: LocalDimensionsIn,
                          caller: Caller = Depends(caller_dependency)) -> dict:
-    """P4.2: an admin gives a local entry its dimensions (R1 to R11)."""
+    """P4.2: an admin gives a local entry its dimensions (REQ1 to REQ11)."""
     found = _catalogue_project(slug, caller)
     if not caller.has_role(ADMIN_ROLE):
         raise HTTPException(status_code=403, detail="classifying a local plugin takes an admin")

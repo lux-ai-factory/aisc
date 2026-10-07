@@ -44,7 +44,7 @@ from platform_service.local_controls import LOCAL_CONTROLS_DIR, local_controls  
 logger = logging.getLogger(__name__)
 MODES = ("public", "private")
 TIMEOUT_S = 20
-#: R1..R11, as the control objectives name a dimension
+#: REQ1..REQ11, as the control objectives name a dimension
 R_IDS = tuple(rid for rid, _, _ in evidence.DIMENSIONS)
 #: the keys of a public `GET /tool/?detailed=true` entry; a plain `GET /tool/` entry lacks the last four
 _DETAIL_ONLY = ("metadata", "metrics", "questions", "tags")
@@ -77,7 +77,7 @@ CREATE TABLE catalogue.metric (id bigint PRIMARY KEY, data jsonb NOT NULL);
 CREATE TABLE catalogue.metadata (id bigint PRIMARY KEY, data jsonb NOT NULL);
 CREATE TABLE catalogue.local_dimension (
     package_name text NOT NULL,
-    dimension    text NOT NULL CHECK (dimension ~ '^R([1-9]|1[01])$'),
+    dimension    text NOT NULL CHECK (dimension ~ '^REQ([1-9]|1[01])$'),
     PRIMARY KEY (package_name, dimension)
 );
 CREATE TABLE catalogue.state (id int PRIMARY KEY CHECK (id = 1), updated_at timestamptz NOT NULL);
@@ -101,7 +101,7 @@ class NotChosen(NotPrivate):
 
 
 class InvalidDimensions(ValueError):
-    """Not R1..R11."""
+    """Not REQ1..REQ11."""
 
 
 class NoEntry(LookupError):
@@ -352,7 +352,7 @@ def _local_dimensions(pid) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for r in rows:
         found.setdefault(r["package_name"], []).append(r["dimension"])
-    return {k: sorted(v, key=lambda rid: int(rid[1:])) for k, v in found.items()}
+    return {k: sorted(v, key=lambda rid: int(rid[3:])) for k, v in found.items()}
 
 
 def tools(pid, token: str, detailed: bool) -> list[dict]:
@@ -596,7 +596,7 @@ def control_package(pid, slug: str) -> dict:
 
 def project_dimensions(pid) -> list[str]:
     """P3.3: the catalogue's dimension tag slugs of the project's selected control objectives (the latest
-    card version that has a selection), in R order."""
+    card version that has a selection), in REQ order."""
     versions = evidence.versions(pid)
     selected, own = [], {}
     for v in versions:
@@ -613,16 +613,16 @@ def project_dimensions(pid) -> list[str]:
 # ── P4 local plugins ────────────────────────────────────────────────────────
 
 def set_local_dimensions(pid, package: str, dimensions: list[str]) -> list[str]:
-    """P4.2: an admin gives a local entry its dimensions (R1..R11), replacing what it had."""
+    """P4.2: an admin gives a local entry its dimensions (REQ1..REQ11), replacing what it had."""
     if not all(d in R_IDS for d in dimensions):
-        raise InvalidDimensions("dimensions are R1 to R11")
+        raise InvalidDimensions("dimensions are REQ1 to REQ11")
     _require_private(pid)
     with _connect(pid) as conn, conn.transaction():
         conn.execute("DELETE FROM catalogue.local_dimension WHERE package_name = %s", (package,))
         for d in sorted(set(dimensions)):
             conn.execute("INSERT INTO catalogue.local_dimension (package_name, dimension) VALUES (%s, %s)",
                          (package, d))
-    return sorted(set(dimensions), key=lambda rid: int(rid[1:]))
+    return sorted(set(dimensions), key=lambda rid: int(rid[3:]))
 
 
 if __name__ == "__main__":

@@ -82,11 +82,11 @@ def catalogue(monkeypatch):
     """The control-objectives service's public catalogue, which names the objectives."""
     stub = Stub()
     stub.route("GET", "/api/control-objectives", (200, [
-        {"id": "O1", "sub_requirement_label": "Risk management system", "macro_id": "R1"},
-        {"id": "O7", "sub_requirement_label": "Security incidents", "macro_id": "R2"},
-        {"id": "O9", "sub_requirement_label": "Calibration", "macro_id": "R2"},
-        {"id": "O10", "sub_requirement_label": "Safe state", "macro_id": "R2"},
-        {"id": "O24", "sub_requirement_label": "Human oversight", "macro_id": "R6"}]))
+        {"id": "O1", "sub_requirement_label": "Risk management system", "macro_id": "REQ1"},
+        {"id": "O7", "sub_requirement_label": "Security incidents", "macro_id": "REQ2"},
+        {"id": "O9", "sub_requirement_label": "Calibration", "macro_id": "REQ2"},
+        {"id": "O10", "sub_requirement_label": "Safe state", "macro_id": "REQ2"},
+        {"id": "O24", "sub_requirement_label": "Human oversight", "macro_id": "REQ6"}]))
     monkeypatch.setenv("CONTROL_OBJECTIVES_URL", stub.base)
     evidence.forget_titles()
     yield stub
@@ -268,7 +268,7 @@ def test_a_removed_plugin_is_listed_as_removed_while_a_link_names_it(client, as_
 
 
 # ── trustworthiness dimensions (2026-10-01) ─────────────────────────────────
-# Each objective belongs to the dimension of its macro-requirement (O7 -> R2). Each test and
+# Each objective belongs to the dimension of its macro-requirement (O7 -> REQ2). Each test and
 # control takes its dimensions from its tags in the tools catalogue; a sub-dimension tag counts as
 # its parent dimension. A link may only join an objective and an item of the same dimension.
 
@@ -281,14 +281,14 @@ def subdim(slug, parent):
 
 
 TOOLS = [
-    # in R1 directly and in R6 directly
+    # in REQ1 directly and in REQ6 directly
     {"slug": "langbite", "package_name": "aisc-plugin-langbite",
      "tags": [{"slug": "test", "section": "type", "parent_dimension_slug": None},
               dim("human-agency-oversight"), dim("societal-environmental-wellbeing")]},
-    # in R6 only through a sub-dimension
+    # in REQ6 only through a sub-dimension
     {"slug": "promptfoo", "package_name": "aisc-plugin-promptfoo",
      "tags": [subdim("energy-use", "societal-environmental-wellbeing")]},
-    # the checklist's catalogue entry, in R6
+    # the checklist's catalogue entry, in REQ6
     {"slug": "gov", "package_name": None, "tags": [dim("societal-environmental-wellbeing")]},
     {"slug": "untagged", "package_name": "aisc-plugin-untagged", "tags": []},
 ]
@@ -308,7 +308,7 @@ def tools(monkeypatch):
 
 def test_the_page_lists_the_eleven_dimensions_in_order(client, as_user, project):
     body = get(client, as_user, project).json()
-    assert [d["id"] for d in body["dimensions"]] == [f"R{n}" for n in range(1, 12)]
+    assert [d["id"] for d in body["dimensions"]] == [f"REQ{n}" for n in range(1, 12)]
     assert body["dimensions"][0]["title"] == "Human Agency and Oversight"
     assert body["dimensions"][4]["title"] == "Diversity, Non-Discrimination and Fairness"
     assert body["dimensions_known"] is True
@@ -316,16 +316,16 @@ def test_the_page_lists_the_eleven_dimensions_in_order(client, as_user, project)
 
 def test_an_objective_is_in_the_dimension_of_its_requirement(client, as_user, project):
     body = get(client, as_user, project).json()
-    assert [(o["id"], o["dimension"]) for o in body["objectives"]] == [("O1", "R1"), ("O24", "R6")]
+    assert [(o["id"], o["dimension"]) for o in body["objectives"]] == [("O1", "REQ1"), ("O24", "REQ6")]
 
 
 def test_tests_and_controls_take_their_dimensions_from_the_catalogue(client, as_user, project, tools):
     body = get(client, as_user, project).json()
     # LangBiTe has no catalogue slug stored here: it is found by its package name
     assert {t["key"]: t["dimensions"] for t in body["tests"]} == {
-        "aisc-plugin-langbite": ["R1", "R6"], "aisc-plugin-promptfoo": ["R6"]}
+        "aisc-plugin-langbite": ["REQ1", "REQ6"], "aisc-plugin-promptfoo": ["REQ6"]}
     # the checklist is found by its catalogue id
-    assert {c["key"]: c["dimensions"] for c in body["controls"]} == {"ck1": ["R6"]}
+    assert {c["key"]: c["dimensions"] for c in body["controls"]} == {"ck1": ["REQ6"]}
     assert tools.requests("GET", "/tool/")[0]["path"] == "/tool/?detailed=true"
 
 
@@ -333,7 +333,7 @@ def test_a_stored_catalogue_slug_wins_over_the_package_name(client, as_user, pro
     sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET catalogue_slug = 'gov'"
                              " WHERE package_name = 'aisc-plugin-langbite'")
     body = get(client, as_user, project).json()
-    assert {t["key"]: t["dimensions"] for t in body["tests"]}["aisc-plugin-langbite"] == ["R6"]
+    assert {t["key"]: t["dimensions"] for t in body["tests"]}["aisc-plugin-langbite"] == ["REQ6"]
 
 
 def test_an_item_with_no_dimension_in_the_catalogue_has_none(client, as_user, project, dsn):
@@ -347,9 +347,9 @@ def test_an_item_with_no_dimension_in_the_catalogue_has_none(client, as_user, pr
 def test_a_link_across_dimensions_is_refused(client, as_user, project, dsn):
     sql(dsn, project["pid"], "UPDATE engine.aisc_backend_plugin SET enabled = true")
     r = put(client, as_user, project, [LB, {"objective_id": "O1", "kind": "control", "key": "ck1"}])
-    assert r.status_code == 422 and "control ck1 is not in R1 Human Agency and Oversight" in r.text, r.text
+    assert r.status_code == 422 and "control ck1 is not in REQ1 Human Agency and Oversight" in r.text, r.text
     r = put(client, as_user, project, [{"objective_id": "O1", "kind": "test", "key": "aisc-plugin-promptfoo"}])
-    assert r.status_code == 422 and "not in R1" in r.text, r.text
+    assert r.status_code == 422 and "not in REQ1" in r.text, r.text
     assert sql(dsn, project["pid"], "SELECT count(*) FROM evidence.link") == [(0,)]
 
 
@@ -372,13 +372,13 @@ def test_a_catalogue_that_is_down_leaves_the_dimensions_unknown_and_refuses_noth
 
 def test_the_dimensions_are_named_as_in_the_objectives_catalogue(client, as_user, project, catalogue):
     catalogue.route("GET", "/api/control-objectives", (200, [
-        {"id": "O1", "sub_requirement_label": "x", "macro_id": "R1", "macro_title": "Human Agency and Oversight"},
-        {"id": "O21", "sub_requirement_label": "y", "macro_id": "R5", "macro_title": "Fairness"}]))
+        {"id": "O1", "sub_requirement_label": "x", "macro_id": "REQ1", "macro_title": "Human Agency and Oversight"},
+        {"id": "O21", "sub_requirement_label": "y", "macro_id": "REQ5", "macro_title": "Fairness"}]))
     evidence.forget_titles()
     titles = {d["id"]: d["title"] for d in get(client, as_user, project).json()["dimensions"]}
-    assert titles["R5"] == "Fairness" and titles["R1"] == "Human Agency and Oversight"
+    assert titles["REQ5"] == "Fairness" and titles["REQ1"] == "Human Agency and Oversight"
     # one the catalogue does not name keeps the paper's name
-    assert titles["R11"] == "Record-keeping and Documentation Retention"
+    assert titles["REQ11"] == "Record-keeping and Documentation Retention"
 
 
 
@@ -424,11 +424,11 @@ def test_template_0017_renames_old_ids_and_takes_only_new_ones(project, dsn):
 # ── the project's own objective sets (2026-10-01) ───────────────────────────
 
 def _own_set(dsn, pid):
-    """Set BNK: version 1 names BNK1 "Old wording"; version 2 names BNK1 "Sign-off" (R1), BNK9 and BNK10 (R6)."""
+    """Set BNK: version 1 names BNK1 "Old wording"; version 2 names BNK1 "Sign-off" (REQ1), BNK9 and BNK10 (REQ6)."""
     sql(dsn, pid, "INSERT INTO control_objectives.objective_set_version VALUES ('v1', 's', 1), ('v2', 's', 2)")
     sql(dsn, pid, "INSERT INTO control_objectives.objective_set_version_item VALUES"
-                  " ('v1', 'BNK1', 'Old wording', 'R1'), ('v2', 'BNK1', 'Sign-off', 'R1'),"
-                  " ('v2', 'BNK9', 'Ninth', 'R6'), ('v2', 'BNK10', 'Tenth', 'R6')")
+                  " ('v1', 'BNK1', 'Old wording', 'REQ1'), ('v2', 'BNK1', 'Sign-off', 'REQ1'),"
+                  " ('v2', 'BNK9', 'Ninth', 'REQ6'), ('v2', 'BNK10', 'Tenth', 'REQ6')")
     sql(dsn, pid, "UPDATE control_objectives.objective_selection SET objective_ids = '{BNK10,O24,BNK1,BNK9,O1}'"
                   " WHERE project_id = 'a2'")
 
@@ -437,8 +437,8 @@ def test_the_projects_own_objectives_are_named_from_its_database(client, as_user
     _own_set(dsn, project["pid"])
     body = get(client, as_user, project).json()
     assert [(o["id"], o["title"], o["dimension"]) for o in body["objectives"]] == [
-        ("O1", "Risk management system", "R1"), ("O24", "Human oversight", "R6"),
-        ("BNK1", "Sign-off", "R1"), ("BNK9", "Ninth", "R6"), ("BNK10", "Tenth", "R6")]
+        ("O1", "Risk management system", "REQ1"), ("O24", "Human oversight", "REQ6"),
+        ("BNK1", "Sign-off", "REQ1"), ("BNK9", "Ninth", "REQ6"), ("BNK10", "Tenth", "REQ6")]
 
 
 def test_an_own_objective_takes_links_in_its_dimension_only(client, as_user, project, dsn):
@@ -446,7 +446,7 @@ def test_an_own_objective_takes_links_in_its_dimension_only(client, as_user, pro
     ok = put(client, as_user, project, [{"objective_id": "BNK9", "kind": "control", "key": "ck1"}])
     assert ok.status_code == 200, ok.text
     refused = put(client, as_user, project, [{"objective_id": "BNK1", "kind": "control", "key": "ck1"}])
-    assert refused.status_code == 422 and "not in R1" in refused.text
+    assert refused.status_code == 422 and "not in REQ1" in refused.text
 
 
 def test_template_0018_takes_any_sets_ids(project, dsn):

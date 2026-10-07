@@ -11,7 +11,7 @@ The objectives are named from the control-objectives service's public catalogue
 are listed by id alone.
 
 Dimensions (2026-10-01): each objective is in the trustworthiness dimension of its macro-requirement,
-the `macro_id` the objectives catalogue gives it (O7 is in R2); unknown when that catalogue does not
+the `macro_id` the objectives catalogue gives it (O7 is in REQ2); unknown when that catalogue does not
 answer; each test and control is in the dimensions its tags name in the tools catalogue
 (CATALOGUE_URL, the catalogue's API), a sub-dimension counting as its parent. A new link must join an
 objective and an item of the same dimension. When the catalogue does not answer, the items'
@@ -48,17 +48,17 @@ _tools: dict = {"at": 0.0, "by_slug": {}, "by_package": {}}
 
 #: The eleven macro-requirements of the control-objectives paper, each a dimension of the catalogue.
 DIMENSIONS = (
-    ("R1", "Human Agency and Oversight", "human-agency-oversight"),
-    ("R2", "Technical Robustness and Safety", "technical-robustness-safety"),
-    ("R3", "Privacy and Data Governance", "privacy-data-governance"),
-    ("R4", "Transparency", "transparency"),
-    ("R5", "Diversity, Non-Discrimination and Fairness", "diversity-non-discrimination-fairness"),
-    ("R6", "Societal and Environmental Well-being", "societal-environmental-wellbeing"),
-    ("R7", "Accountability", "accountability"),
-    ("R8", "Quality Management", "quality-management"),
-    ("R9", "Risk Management", "risk-management"),
-    ("R10", "Technical Documentation", "technical-documentation"),
-    ("R11", "Record-keeping and Documentation Retention", "record-keeping"),
+    ("REQ1", "Human Agency and Oversight", "human-agency-oversight"),
+    ("REQ2", "Technical Robustness and Safety", "technical-robustness-safety"),
+    ("REQ3", "Privacy and Data Governance", "privacy-data-governance"),
+    ("REQ4", "Transparency", "transparency"),
+    ("REQ5", "Diversity, Non-Discrimination and Fairness", "diversity-non-discrimination-fairness"),
+    ("REQ6", "Societal and Environmental Well-being", "societal-environmental-wellbeing"),
+    ("REQ7", "Accountability", "accountability"),
+    ("REQ8", "Quality Management", "quality-management"),
+    ("REQ9", "Risk Management", "risk-management"),
+    ("REQ10", "Technical Documentation", "technical-documentation"),
+    ("REQ11", "Record-keeping and Documentation Retention", "record-keeping"),
 )
 _BY_SLUG = {slug: rid for rid, _, slug in DIMENSIONS}
 _TITLE = {rid: title for rid, title, _ in DIMENSIONS}
@@ -337,12 +337,12 @@ def titles() -> dict[str, str]:
 
 
 def objective_dimensions() -> dict[str, str]:
-    """objective id -> its dimension (R1 ... R11); {} when the catalogue does not answer."""
+    """objective id -> its dimension (REQ1 ... REQ11); {} when the catalogue does not answer."""
     return _titles["dims"] if titles() else {}
 
 
 def dimension_titles() -> dict[str, str]:
-    """R-id -> the dimension's name: the objectives catalogue's, else the paper's."""
+    """REQ id -> the dimension's name: the objectives catalogue's, else the paper's."""
     titles()
     return {**_TITLE, **_titles["macros"]}
 
@@ -352,7 +352,7 @@ def forget_dimensions() -> None:
 
 
 def _dimensions_of(tags: list[dict]) -> list[str]:
-    """A tool's dimensions, a sub-dimension tag counting as its parent, in R order."""
+    """A tool's dimensions, a sub-dimension tag counting as its parent, in REQ order."""
     found = set()
     for tag in tags or []:
         if tag.get("section") == "dimension":
@@ -360,7 +360,7 @@ def _dimensions_of(tags: list[dict]) -> list[str]:
         elif tag.get("parent_dimension_slug"):
             found.add(_BY_SLUG.get(tag["parent_dimension_slug"]))
     found.discard(None)
-    return sorted(found, key=lambda rid: int(rid[1:]))
+    return sorted(found, key=lambda rid: int(rid[3:]))
 
 
 def tool_dimensions() -> tuple[dict, dict] | None:

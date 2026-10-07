@@ -158,5 +158,5 @@ def test_c2_3_live_reads_are_kept_a_short_while(client, as_user, project, online
 def test_c2_4_updating_and_local_dimensions_stay_private(client, as_user, project, online):
     assert choose(client, as_user, project, "public").status_code == 200
     assert client.post(url(project, "/update"), headers=admin(as_user)).status_code == 409
-    r = client.put(url(project, "/local/my-probe/dimensions"), json={"dimensions": ["R1"]}, headers=admin(as_user))
+    r = client.put(url(project, "/local/my-probe/dimensions"), json={"dimensions": ["REQ1"]}, headers=admin(as_user))
     assert r.status_code == 409
