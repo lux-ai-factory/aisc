@@ -1,38 +1,340 @@
-services:
+# =============================================================================
+# AISC — published-image stack (the "normal" docker-compose).
+#
+# This is the community / user entry point: it pulls pre-built images from
+# ghcr.io and starts the whole platform without cloning or building any of the
+# child repositories. All you need is this repository and a `.env` file:
+#
+#   cp env.example .env
+#   docker compose up -d
+#   open http://localhost:8080
+#
+# Contributors who want to build from source should use the development files
+# instead (docker-compose-infra.development.yml + docker-compose.development.yml);
+# see docs/DEVELOPER_GUIDE.md.
+#
+# Images are published by each child repository's CI when a tag is pushed (see
+# docs/DEVELOPER_GUIDE.md#cicd--release). Pin a specific release with
+# AISC_IMAGE_TAG in `.env` (default: latest).
+#
+# Scope: this stack runs the core platform (backend, webapp, eval). The
+# companion apps (Controls, Qualification) are not part of it yet and will be
+# added at a later date.
+# =============================================================================
 
-  aisc-backend:
-    image: ghcr.io/lux-ai-factory/aisc-backend:latest
+name: aisc
+
+services:
+  # ───────────────────────────── Reverse proxy ───────────────────────────────
+  caddy:
+    image: caddy:2.10.2
+    container_name: aisc-caddy
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    container_name: backend
+      - "443:8005"
+      - "${CADDY_HOST_PORT:-8080}:8005"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      LOG_FILE: "/data/access.log"
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-http://localhost}
+      CADDY_PORT: "8005"
+      CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT:-development}
+      CADDY_KEYCLOAK_PATH: /auth
+    networks:
+      - backend
+      - frontend
+
+  # ─────────────────────────── Object storage (S3) ───────────────────────────
+  minio:
+    image: pgsty/minio
+    container_name: aisc-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_USER}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend
+
+  make_buckets:
+    image: pgsty/minio
+    container_name: aisc-make-buckets
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${S3_USER}
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set minio http://minio:9000 ${S3_USER} ${S3_PASSWORD} &&
+      /usr/bin/mc mb --ignore-existing minio/datasets;
+      /usr/bin/mc mb --ignore-existing minio/artifacts;
+      /usr/bin/mc mb --ignore-existing minio/models &&
+      exit 0;
+      "
+    networks:
+      - backend
+
+  # ───────────────────────────── Message broker ──────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: aisc-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: aisc-redis
+    restart: unless-stopped
+    command: redis-server --protected-mode no --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+
+  # ─────────────────────────────── Database ──────────────────────────────────
+  postgres:
+    image: postgres:14-alpine
+    container_name: aisc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Keycloak's dedicated database. Only runs on a fresh volume;
+      # `docker compose down -v` recreates it.
+      - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro
+    networks:
+      - backend
+
+  # ─────────────────────── Identity & access (SSO) ───────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.3
+    container_name: aisc-keycloak
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        URL="$${API_URL_EXTERNAL:-http://localhost}"
+        mkdir -p /opt/keycloak/data/import
+        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        exec /opt/keycloak/bin/kc.sh start-dev --import-realm --proxy-headers=xforwarded
+    volumes:
+      - ./keycloak/aisc-realm.template.json:/tmp/aisc-realm.template.json:ro
+      - ./keycloak/themes:/opt/keycloak/themes:ro
+    environment:
+      API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       - postgres
+    networks:
+      - backend
 
-
-  aisc-webapp:
-    image: ghcr.io/lux-ai-factory/aisc-webapp:django-port-integrations
+  # ──────────────────────── Tamper-proof audit ledger ────────────────────────
+  immudb:
+    image: codenotary/immudb:1.11.1
+    container_name: aisc-immudb
+    environment:
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+      IMMUDB_FORCE_ADMIN_PASSWORD: "true"
+      IMMUDB_DIR: /var/lib/immudb
     volumes:
-      - aisc-webapp-node-modules:/app/node_modules
-    ports:
-      - "5173:5173"
-    container_name: webapp
+      - immudb_data:/var/lib/immudb
+    networks:
+      - backend
+
+  # ───────────────────────── Default plugin downloader ───────────────────────
+  # Temporary: clones the default evaluation plugins into a shared volume. This
+  # will be replaced by the public plugin catalogue.
+  plugin-downloader:
+    image: alpine:latest
+    container_name: aisc-plugin-downloader
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        apk --no-cache add git
+
+        cd /downloads
+
+        for repo in \
+          aisc-plugin-performance \
+          aisc-plugin-data-evaluation \
+          aisc-plugin-fairness \
+          aisc-plugin-langbite \
+          aisc-plugin-llm-eval \
+          aisc-plugin-strongreject \
+          aisc-plugin-explitest
+        do
+          if [ -d "$$repo/.git" ]; then
+            cd $$repo && git pull origin && cd /downloads
+          else
+            git clone https://github.com/lux-ai-factory/$$repo.git
+          fi
+        done
+    volumes:
+      - plugins_data:/downloads
+    networks:
+      - backend
+
+  # ─────────────────────────────── Webapp ────────────────────────────────────
+  aisc-webapp:
+    image: ghcr.io/lux-ai-factory/aisc-webapp:${AISC_IMAGE_TAG:-latest}
+    container_name: aisc-webapp
+    restart: unless-stopped
+    environment:
+      APP_API_URL: ${API_URL_EXTERNAL}
+      APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
+      APP_SHOW_CELERY_TASKS: ${SHOW_CELERY_TASKS}
+      # Injected into the built JS at container start (env.sh substitutes APP_*).
+      APP_KEYCLOAK_URL: ${KEYCLOAK_URL_EXTERNAL}
+      APP_CATALOG_URL: ${CATALOG_URL}
     depends_on:
       - aisc-backend
-    env_file:
-      - .env
+    networks:
+      - frontend
 
-
-  aisc-eval:
-    image: ghcr.io/lux-ai-factory/aisc-eval:django-port-integrations
-    ports:
-      - "8001:8001"
-    container_name: eval
+  # ──────────────────────────────── Backend ──────────────────────────────────
+  aisc-backend:
+    image: ghcr.io/lux-ai-factory/aisc-backend:${AISC_IMAGE_TAG:-latest}
+    container_name: aisc-backend
     restart: unless-stopped
+    environment:
+      S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
+      S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
+      S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
+      S3_URL: ${S3_URL}
+      S3_USER: ${S3_USER}
+      S3_PASSWORD: ${S3_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_ENGINE: ${DB_ENGINE}
+      BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
+      BACKEND_CSRF_TRUSTED_ORIGINS: ${BACKEND_CSRF_TRUSTED_ORIGINS}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      ENABLE_SSL_PROXY: "true"
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      PLUGIN_PATH: ${PLUGIN_PATH}
+      PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
+      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
+      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
+      IMMUDB_URL: immudb:3322
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      AUTH_ENABLED: ${AUTH_ENABLED}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
     depends_on:
-      - rabbitmq
-    env_file:
-      - .env
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      immudb:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      plugin-downloader:
+        condition: service_completed_successfully
+    volumes:
+      - plugins_data:/app/plugins
+    networks:
+      - backend
 
+  # ─────────────────────── Evaluation worker (+ Flower) ──────────────────────
+  aisc-eval-worker:
+    image: ghcr.io/lux-ai-factory/aisc-eval:${AISC_IMAGE_TAG:-latest}
+    platform: linux/amd64
+    container_name: aisc-eval-worker
+    restart: unless-stopped
+    environment:
+      API_URL: ${API_URL}
+      API_PREFIX: ${API_PREFIX}
+      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CORS_ORIGINS: "*"
+      PLUGIN_PATH: ${PLUGIN_PATH}
+      PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
+      PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
+      PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
+      PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+    depends_on:
+      - aisc-backend
+      - rabbitmq
+      - redis
+      - plugin-downloader
+    volumes:
+      - plugins_data:/app/plugins
+    networks:
+      - backend
+
+  aisc-eval-flower:
+    image: ghcr.io/lux-ai-factory/aisc-eval:${AISC_IMAGE_TAG:-latest}
+    platform: linux/amd64
+    container_name: aisc-eval-flower
+    restart: unless-stopped
+    environment:
+      REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CORS_ORIGINS: "*"
+      FLOWER_URL_PREFIX: flower
+      FLOWER_UNAUTHENTICATED_API: "true"
+    command:
+      - celery
+      - -A
+      - aisc_eval.celery_worker:celery_app
+      - flower
+      - --db=/data/flower.db
+      - --persistent=True
+    depends_on:
+      - aisc-eval-worker
+      - rabbitmq
+      - redis
+    volumes:
+      - flower_data:/data
+    networks:
+      - backend
 
 volumes:
-  aisc-webapp-node-modules:
+  immudb_data:
+  minio_data:
+  plugins_data:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
+  flower_data:
+
+networks:
+  backend:
+  frontend:

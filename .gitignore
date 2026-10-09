@@ -1,2 +1,11 @@
 /.idea/
 def_plugins/
+
+# Local, machine-specific configuration created from env.example (may contain secrets)
+.env
+
+# Generated Playwright e2e artifacts (the test sources in e2e/ ARE tracked)
+/e2e/node_modules/
+/e2e/.env.e2e
+/e2e/playwright-report/
+/e2e/test-results/
