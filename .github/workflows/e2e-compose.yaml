@@ -1,0 +1,85 @@
+name: E2E (published-image compose)
+
+# Runs the browser smoke test against the images the community actually pulls.
+# Fires on a release tag in this repo and on manual dispatch.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Container image tag to test (default: latest)"
+        required: false
+        default: "latest"
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  e2e:
+    name: Browser smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      E2E_PORT: "8080"
+      AISC_IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The GHCR packages may be private; authenticate so the pull always works.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm install
+
+      - name: Install Playwright browser
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke test
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Dump compose logs
+        if: always()
+        run: |
+          docker compose -p aisc-e2e -f docker-compose.yml --env-file e2e/.env.e2e logs --no-color > compose-logs.txt 2>&1 || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p aisc-e2e -f docker-compose.yml --env-file e2e/.env.e2e down -v || true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload compose logs and traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-logs
+          path: |
+            compose-logs.txt
+            e2e/test-results
+          retention-days: 30
+          if-no-files-found: ignore

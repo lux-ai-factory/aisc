@@ -1,0 +1,14 @@
+{
+  "name": "aisc-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "End-to-end browser smoke test for the published-image docker-compose stack",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
