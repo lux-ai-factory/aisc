@@ -1,7 +1,11 @@
-name: E2E (published-image compose)
+name: E2E (compose stack)
 
-# Runs the browser smoke test against the images the community actually pulls.
-# Fires on a release tag in this repo and on manual dispatch.
+# Browser end-to-end tests against the compose stack, in two flavours:
+#   * published   - the images the community pulls from GHCR
+#   * local-build - the images built from the checked-out submodules
+# The local-build flavour builds the images from the checked-out submodules and
+# exercises them the same way, so a change on the branch is validated before
+# anything is released.
 on:
   push:
     tags:
@@ -9,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Container image tag to test (default: latest)"
+        description: "Published image tag to test (default: latest)"
         required: false
         default: "latest"
         type: string
@@ -19,8 +23,8 @@ permissions:
   packages: read
 
 jobs:
-  e2e:
-    name: Browser smoke test
+  published:
+    name: Browser e2e (published images)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -51,14 +55,14 @@ jobs:
         working-directory: e2e
         run: npx playwright install --with-deps chromium
 
-      - name: Run browser smoke test
+      - name: Run browser e2e
         working-directory: e2e
         run: npx playwright test
 
       - name: Dump compose logs
         if: always()
         run: |
-          docker compose -p aisc-e2e -f docker-compose.yml --env-file e2e/.env.e2e logs --no-color > compose-logs.txt 2>&1 || true
+          docker compose -p aisc-e2e -f docker-compose.yml --env-file e2e/.env.e2e logs --no-color > compose-logs-published.txt 2>&1 || true
 
       - name: Tear down
         if: always()
@@ -68,7 +72,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-published
           path: e2e/playwright-report
           retention-days: 30
           if-no-files-found: ignore
@@ -77,9 +81,69 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: compose-logs
+          name: compose-logs-published
           path: |
-            compose-logs.txt
+            compose-logs-published.txt
+            e2e/test-results
+          retention-days: 30
+          if-no-files-found: ignore
+
+  local-build:
+    name: Browser e2e (images built from source)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      E2E_PORT: "8080"
+      E2E_BUILD: "1"
+    steps:
+      # Building the app images reads the submodules, so fetch them too.
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm install
+
+      - name: Install Playwright browser
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Build local images and run browser e2e
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Dump compose logs
+        if: always()
+        run: |
+          docker compose -p aisc-e2e -f docker-compose.yml -f docker-compose.build.yml --env-file e2e/.env.e2e logs --no-color > compose-logs-built.txt 2>&1 || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p aisc-e2e -f docker-compose.yml -f docker-compose.build.yml --env-file e2e/.env.e2e down -v || true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-built
+          path: e2e/playwright-report
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload compose logs and traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-logs-built
+          path: |
+            compose-logs-built.txt
             e2e/test-results
           retention-days: 30
           if-no-files-found: ignore

@@ -1,10 +1,10 @@
 # AI Assessment Sandbox Configurator (AISC)
 
 The **AI Assessment Sandbox Configurator** is a platform for evaluating and
-assessing risks in AI models. It lets you upload models and datasets, configure
+assessing risks in AI systems. It lets you upload models and datasets, configure
 and run evaluation plugins, and collect the results.
 
-## ­¤ōÜ Documentation
+## 📚 Documentation
 
 The official documentation lives in the [**lux-ai-factory/rfc**](https://github.com/lux-ai-factory/rfc)
 repository. It explains the **architecture** and the **mission** of the AI
@@ -22,7 +22,7 @@ See also:
 
 ---
 
-## ­¤ÜĆ Getting Started (users)
+## 🚀 Getting Started (users)
 
 Everything below runs the **core platform from published container images**.
 You do **not** need to clone the child repositories (backend, webapp, eval) or
@@ -33,16 +33,17 @@ build anything locally.
 
 ### Prerequisites
 
-- **Docker Engine 24+** (or Docker Desktop) with the **Compose v2** plugin ŌĆö
+- **Docker Engine 24+** (or Docker Desktop) with the **Compose v2** plugin
   i.e. the `docker compose` command.
 - **Git**.
 - ~5 GB of free disk space for images, containers and volumes.
 - A free host port for the platform (default **8080**).
 
+
 ### Run it
 
 ```bash
-# 1. Clone the parent repository only ŌĆö no submodules needed
+# 1. Clone the parent repository only — no submodules needed
 git clone https://github.com/lux-ai-factory/aisc.git
 cd aisc
 
@@ -55,17 +56,11 @@ docker compose up -d
 
 The **first** start downloads the images and clones the default evaluation
 plugins, so it can take a few minutes. (The bundled plugin downloader is
-temporary and will be replaced by the public plugin catalogue.) Track progress
-with:
-
-```bash
-docker compose ps          # all services should become "running"/"healthy"
-docker compose logs -f aisc-backend
-```
+temporary and will be replaced by the public plugin catalogue.) 
 
 When the stack is up, open:
 
-**­¤æē http://localhost:8080**
+**👉 http://localhost:8080**
 
 Sign in with the bundled demo Keycloak users (see `keycloak/aisc-realm.template.json`):
 
@@ -74,7 +69,7 @@ Sign in with the bundled demo Keycloak users (see `keycloak/aisc-realm.template.
 | `user` | `user` | regular user |
 | `admin` | `admin` | administrator |
 
-> ŌÜĀ’ĖÅ These credentials, and the default passwords in `env.example`, are for
+> ⚠️ These credentials, and the default passwords in `env.example`, are for
 > **local evaluation only**. Change them in `.env` before exposing the stack.
 
 ### What you get
@@ -86,16 +81,6 @@ Sign in with the bundled demo Keycloak users (see `keycloak/aisc-realm.template.
 | http://localhost:8080/api/docs | Backend API (OpenAPI) |
 | http://localhost:8080/auth | Keycloak single sign-on |
 | http://localhost:8080/flower | Celery / evaluation task monitor |
-
-### Common commands
-
-```bash
-docker compose ps                 # status of every service
-docker compose logs -f            # follow all logs
-docker compose pull && docker compose up -d   # upgrade to newer images
-docker compose down               # stop (keeps data)
-docker compose down -v            # stop and DELETE all data volumes
-```
 
 ### Configuration
 
@@ -111,48 +96,15 @@ All settings live in `.env` (created from `env.example`). The most useful ones:
 
 After editing `.env`, apply the changes with `docker compose up -d`.
 
-### Troubleshooting
 
-- **`denied` / `manifest unknown` / `unauthorized` while pulling images** ŌĆö the
-  `ghcr.io/lux-ai-factory/*` packages must be **public** for anonymous pulls.
-  If you see this, ask a maintainer to make the packages public, or authenticate:
-  ```bash
-  echo "$GITHUB_TOKEN" | docker login ghcr.io -u <your-github-user> --password-stdin
-  ```
-  (The token needs the `read:packages` scope.)
-- **Port already in use** ŌĆö set a different `CADDY_HOST_PORT` in `.env`
-  (e.g. `8081`) and run `docker compose up -d` again.
-- **Apple Silicon (arm64)** ŌĆö the evaluation image is published for `linux/amd64`
-  and runs under emulation; expect slower first startup.
-- **No evaluation plugins listed** ŌĆö wait for the one-shot `plugin-downloader`
-  service to finish (`docker compose logs plugin-downloader`) and then
-  `docker compose restart aisc-backend aisc-eval-worker`.
-- **Start completely fresh (reset databases and storage)** ŌĆö
-  `docker compose down -v && docker compose up -d`.
-- **`TLS handshake timeout` / `failed to resolve reference` / `EOF`, while pulling images** —
-  this is a *Docker-host network* problem, not a configuration one, and pulls are
-  resumable. It is common on WSL2, either because the host resolves image registries to
-  IPv6 that is unreachable, or because an MTU mismatch drops large layer downloads.
-  Try, in order:
-  ```bash
-  wsl --shutdown            # from Windows PowerShell, then start Docker again
-  docker compose pull       # retry; already-downloaded layers are cached
-  ```
-  If it persists: lower the MTU (`sudo ip link set dev eth0 mtu 1350` inside WSL — the
-  usual fix for `EOF`/resets on large layers), disable broken IPv6
-  (`sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1`), or set the MTU/proxy in Docker.
-
----
-
-## ­¤ōü Repository structure
+## 📁 Repository structure
 
 The parent repository wires together the applications and shared libraries. They
-are git submodules so contributors can develop everything side by side, but
-**users of the published images never need to clone them**.
+are git submodules.
 
 ### Applications (`apps/`)
 *   **Webapp (`apps/webapp`)**: React frontend for the platform.
-*   **Backend (`apps/backend`)**: Django API that manages datasets, models and evaluation requests.
+*   **Backend (`apps/backend`)**: Django app that manages datasets, models and evaluation requests.
 *   **Evaluation Service (`apps/eval`)**: Celery worker that executes evaluation tasks via plugins.
 *   **Controls (`apps/controls`)**: Next.js app for AI-compliance checklists. _Not part of the default stack yet._
 *   **Qualification (`apps/qualification`)**: Next.js app for EU AI Act qualification and system cards. _Not part of the default stack yet._
@@ -165,14 +117,14 @@ are git submodules so contributors can develop everything side by side, but
 
 | File | Purpose |
 | --- | --- |
-| **`docker-compose.yml`** | **Users** ŌĆö pulls published images and runs the core platform. |
-| `docker-compose-infra.development.yml` + `docker-compose.development.yml` | **Contributors** ŌĆö builds the apps from source with hot reload. |
+| **`docker-compose.yml`** | **Users** — pulls published images and runs the core platform. |
+| `docker-compose-infra.development.yml` + `docker-compose.development.yml` | **Contributors** — builds the apps from source with hot reload. |
 | `docker-compose.plugin_downloader.yml` | Optional plugin fetcher used by the development flow. |
 | `docker-compose.staging.yml`, `docker-compose-infra.staging.yml`, `docker-compose.demo.nbg.yml` | Historical staging / demo deployments. |
 
 ---
 
-## ­¤øĀ Developing
+## 🛠️ Developing
 
 Interested in changing the platform itself, or writing evaluation plugins? Start
 with the **[Developer Guide](docs/DEVELOPER_GUIDE.md)**.
@@ -200,7 +152,7 @@ are in **[docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**.
 
 ---
 
-## ŌÜĀ’ĖÅ Current limitations & roadmap
+## ⚠️ Current limitations & roadmap
 
 The platform currently assumes that both the AI system under test and the test
 data are **uploaded into the platform**:
@@ -242,4 +194,4 @@ By submitting contributions, you agree to the [Individual CLA](<AISC ICLA (Indiv
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE.md).
-┬® 2024ŌĆō2026 Universit├® du Luxembourg and Luxembourg Institute of Science and Technology.
+© 2024–2026 Université du Luxembourg and Luxembourg Institute of Science and Technology.

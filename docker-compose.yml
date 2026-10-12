@@ -28,10 +28,8 @@ services:
   # ───────────────────────────── Reverse proxy ───────────────────────────────
   caddy:
     image: caddy:2.10.2
-    container_name: aisc-caddy
     restart: unless-stopped
     ports:
-      - "443:8005"
       - "${CADDY_HOST_PORT:-8080}:8005"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -48,7 +46,6 @@ services:
   # ─────────────────────────── Object storage (S3) ───────────────────────────
   minio:
     image: pgsty/minio
-    container_name: aisc-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_USER}
@@ -65,7 +62,6 @@ services:
 
   make_buckets:
     image: pgsty/minio
-    container_name: aisc-make-buckets
     depends_on:
       minio:
         condition: service_healthy
@@ -86,7 +82,6 @@ services:
   # ───────────────────────────── Message broker ──────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: aisc-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
@@ -98,7 +93,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: aisc-redis
     restart: unless-stopped
     command: redis-server --protected-mode no --appendonly yes --appendfsync everysec
     volumes:
@@ -109,7 +103,6 @@ services:
   # ─────────────────────────────── Database ──────────────────────────────────
   postgres:
     image: postgres:14-alpine
-    container_name: aisc-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -126,7 +119,6 @@ services:
   # ─────────────────────── Identity & access (SSO) ───────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:26.6.3
-    container_name: aisc-keycloak
     entrypoint: /bin/bash
     command:
       - -c
@@ -155,7 +147,6 @@ services:
   # ──────────────────────── Tamper-proof audit ledger ────────────────────────
   immudb:
     image: codenotary/immudb:1.11.1
-    container_name: aisc-immudb
     environment:
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
       IMMUDB_FORCE_ADMIN_PASSWORD: "true"
@@ -170,7 +161,6 @@ services:
   # will be replaced by the public plugin catalogue.
   plugin-downloader:
     image: alpine:latest
-    container_name: aisc-plugin-downloader
     command:
       - /bin/sh
       - -ec
@@ -202,7 +192,6 @@ services:
   # ─────────────────────────────── Webapp ────────────────────────────────────
   aisc-webapp:
     image: ghcr.io/lux-ai-factory/aisc-webapp:${AISC_IMAGE_TAG:-latest}
-    container_name: aisc-webapp
     restart: unless-stopped
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
@@ -219,7 +208,6 @@ services:
   # ──────────────────────────────── Backend ──────────────────────────────────
   aisc-backend:
     image: ghcr.io/lux-ai-factory/aisc-backend:${AISC_IMAGE_TAG:-latest}
-    container_name: aisc-backend
     restart: unless-stopped
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
@@ -240,7 +228,7 @@ services:
       ENABLE_SSL_PROXY: "true"
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
-      PLUGIN_PATH: ${PLUGIN_PATH}
+      PLUGIN_PATH: /app/local_plugins
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
       PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
@@ -267,6 +255,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - plugins_data:/app/plugins
+      - ${PLUGIN_PATH:-local_plugins_data}:/app/local_plugins
     networks:
       - backend
 
@@ -274,7 +263,6 @@ services:
   aisc-eval-worker:
     image: ghcr.io/lux-ai-factory/aisc-eval:${AISC_IMAGE_TAG:-latest}
     platform: linux/amd64
-    container_name: aisc-eval-worker
     restart: unless-stopped
     environment:
       API_URL: ${API_URL}
@@ -282,7 +270,7 @@ services:
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
-      PLUGIN_PATH: ${PLUGIN_PATH}
+      PLUGIN_PATH: /app/local_plugins
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
       PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
@@ -296,13 +284,13 @@ services:
       - plugin-downloader
     volumes:
       - plugins_data:/app/plugins
+      - ${PLUGIN_PATH:-local_plugins_data}:/app/local_plugins
     networks:
       - backend
 
   aisc-eval-flower:
     image: ghcr.io/lux-ai-factory/aisc-eval:${AISC_IMAGE_TAG:-latest}
     platform: linux/amd64
-    container_name: aisc-eval-flower
     restart: unless-stopped
     environment:
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -328,6 +316,7 @@ services:
 
 volumes:
   immudb_data:
+  local_plugins_data:
   minio_data:
   plugins_data:
   postgres_data:

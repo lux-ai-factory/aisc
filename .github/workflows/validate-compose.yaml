@@ -22,6 +22,13 @@ jobs:
       - name: Validate published-image stack (docker-compose.yml)
         run: docker compose --env-file env.example -f docker-compose.yml config > /dev/null
 
+      # Local-build overlay used by the e2e tests and by contributors.
+      - name: Validate published-image stack with local-build overlay
+        run: >
+          docker compose --env-file env.example
+          -f docker-compose.yml
+          -f docker-compose.build.yml config > /dev/null
+
       - name: Validate development stack
         run: >
           docker compose --env-file env.development

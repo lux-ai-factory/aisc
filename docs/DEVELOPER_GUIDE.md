@@ -197,6 +197,13 @@ docker build -t aisc-eval:local    apps/eval
 docker build -t aisc-webapp:local  apps/webapp
 ```
 
+Or run the whole stack against locally built images with the overlay:
+
+```bash
+git submodule update --init --recursive
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+```
+
 > The `apps/controls` and `apps/qualification` images are not published yet and
 > are not part of the default stack. When they are added they must be built with
 > `--build-arg NEXT_BASE_PATH=/controls` (resp. `/qualification`), because they
@@ -206,21 +213,49 @@ docker build -t aisc-webapp:local  apps/webapp
 
 ## End-to-end smoke test
 
-`e2e/` contains a Playwright test that starts the **published-image** stack
-(`docker-compose.yml`), waits for the backend, Keycloak and webapp to be ready,
-then drives a real Chromium browser to confirm the webapp actually renders. It
-catches the class of regression `docker compose config` cannot see — images that
-pull fine but serve a blank page. See [`e2e/README.md`](../e2e/README.md).
+`e2e/` contains Playwright tests that start the Compose stack, wait for the
+backend, Keycloak and webapp to be ready, then drive a real Chromium browser to
+confirm the webapp actually renders. They catch the class of regression
+`docker compose config` cannot see — images that pull fine but serve a blank
+page. See [`e2e/README.md`](../e2e/README.md).
 
 ```bash
 cd e2e
 npm install
 npx playwright install chromium   # first time only
-npm test                          # starts the stack, tests, tears it down
+npm test                          # published images, tests, tears the stack down
 ```
 
-It runs in CI via `.github/workflows/e2e-compose.yaml` on every `v*.*.*` tag and
-on manual dispatch, against the published `ghcr.io/lux-ai-factory/*` images.
+By default the stack pulls the published images. To exercise your **local**
+sources instead, build the images from the submodules and run the same suite
+against them:
+
+```bash
+cd e2e
+npm run test:build                # E2E_BUILD=1, uses docker-compose.build.yml
+```
+
+To build the images, start the stack and **leave it running** so you can open the
+webapp yourself, use `E2E_KEEP=1` (browse `http://localhost:8080/`):
+
+```bash
+cd e2e
+E2E_KEEP=1 npm run test:build
+```
+
+Setup logs each readiness probe and dumps `docker compose ps` + recent logs if
+the stack never comes up, so a stalled run is diagnosable.
+
+For an interactive runner — click a test to run it, then step through and inspect
+the DOM, network and traces — use Playwright UI mode:
+
+```bash
+cd e2e
+npm run test:ui                   # or: npm run test:build:ui to build images first
+```
+
+`.github/workflows/e2e-compose.yaml` runs both flavours on every `v*.*.*` tag and
+on manual dispatch.
 
 ---
 

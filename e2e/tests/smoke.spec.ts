@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('AISC platform (published-image compose)', () => {
+test.describe('AISC platform (compose stack)', () => {
   test('webapp loads in a browser and renders its UI', async ({ page }) => {
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
@@ -23,8 +23,10 @@ test.describe('AISC platform (published-image compose)', () => {
   });
 
   test('backend API and Keycloak are reachable through the proxy', async ({ request }) => {
-    const health = await request.get('/api/health');
-    expect(health.ok(), `GET /api/health -> ${health.status()}`).toBeTruthy();
+    // The backend exposes no /api/health route; its public OpenAPI document is
+    // the cheapest endpoint that proves Django + Ninja are serving.
+    const api = await request.get('/api/openapi.json');
+    expect(api.ok(), `GET /api/openapi.json -> ${api.status()}`).toBeTruthy();
 
     const oidc = await request.get('/auth/realms/aisc/.well-known/openid-configuration');
     expect(oidc.ok(), `OIDC discovery -> ${oidc.status()}`).toBeTruthy();
