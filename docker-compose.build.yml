@@ -1,0 +1,34 @@
+# Local-build overlay for docker-compose.yml.
+#
+# The default stack pulls pre-built images from GHCR. This overlay instead
+# builds the three application images from the checked-out submodules, so a
+# change on this branch can be exercised end to end before anything is
+# released. The Keycloak realm is bind-mounted from ./keycloak, so realm
+# changes never need a rebuild.
+#
+#   git submodule update --init --recursive
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
+services:
+  aisc-webapp:
+    image: aisc-webapp:local
+    build:
+      context: ./apps/webapp
+
+  aisc-backend:
+    image: aisc-backend:local
+    build:
+      context: ./apps/backend
+
+  aisc-eval-worker:
+    image: aisc-eval:local
+    build:
+      context: ./apps/eval
+
+  # Same image as the worker. It is tagged separately because Compose builds
+  # services with a `build:` section in parallel, and BuildKit refuses to export
+  # the same tag twice ("image ... already exists"). The layers are shared, so
+  # the second build is a no-op.
+  aisc-eval-flower:
+    image: aisc-eval-flower:local
+    build:
+      context: ./apps/eval
