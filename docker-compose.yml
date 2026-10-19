@@ -192,6 +192,7 @@ services:
   # ─────────────────────────────── Webapp ────────────────────────────────────
   aisc-webapp:
     image: ghcr.io/lux-ai-factory/aisc-webapp:${AISC_IMAGE_TAG:-latest}
+    platform: linux/amd64
     restart: unless-stopped
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
@@ -208,6 +209,7 @@ services:
   # ──────────────────────────────── Backend ──────────────────────────────────
   aisc-backend:
     image: ghcr.io/lux-ai-factory/aisc-backend:${AISC_IMAGE_TAG:-latest}
+    platform: linux/amd64
     restart: unless-stopped
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}

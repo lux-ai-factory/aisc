@@ -79,8 +79,8 @@ Sign in with the bundled demo Keycloak users (see `keycloak/aisc-realm.template.
 | http://localhost:8080 | **Platform webapp** (evaluations, models, datasets) |
 | http://localhost:8080/admin | Django admin |
 | http://localhost:8080/api/docs | Backend API (OpenAPI) |
-| http://localhost:8080/auth | Keycloak single sign-on |
-| http://localhost:8080/flower | Celery / evaluation task monitor |
+| http://localhost:8080/auth/ | Keycloak single sign-on |
+| http://localhost:8080/flower/ | Celery / evaluation task monitor |
 
 ### Configuration
 
