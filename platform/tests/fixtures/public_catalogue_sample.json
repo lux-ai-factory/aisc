@@ -1,0 +1,3597 @@
+{
+ "source": "https://sandboxconfigurator.aifactory.lu/api/api, read 2026-10-03, trimmed to 4 entries",
+ "tool_detailed": [
+  {
+   "id": 3,
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "slug": "data-and-data-governance-evaluation-tool---article-10-ai-act",
+   "name": "Data and Data Governance Evaluation Tool - Article 10 AI Act",
+   "description": "Data and Data Governance checklist by EUSAiR (Article 10 AI Act)",
+   "version": "1.0.0",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "/controls/data-and-data-governance-evaluation-tool---article-10-ai-act",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": null,
+   "available_on_devpi": false,
+   "metadata": {
+    "id": 3,
+    "description": "Data and Data Governance checklist by EUSAiR (Article 10 AI Act)",
+    "provider": "EUSAiR",
+    "link": "https://eusair-project.eu/",
+    "branch": "main",
+    "scientific_reference": "",
+    "project_maturity": "Stable",
+    "target_legal_requirements": "",
+    "input_spec": null,
+    "config_params": null,
+    "additional_output_fields": null,
+    "contextual_guidance": null,
+    "visualisation": null,
+    "reporting": null,
+    "control_topic": "Data and Data Governance",
+    "source_updated_at": null,
+    "country_ids": null,
+    "regulation_ids": null,
+    "original_file": null,
+    "original_size": null,
+    "tool_1_id": 3
+   },
+   "tags": [
+    {
+     "id": 130,
+     "slug": "control",
+     "label": "Control",
+     "section": "type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 2,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 132,
+     "slug": "open",
+     "label": "Open",
+     "section": "license",
+     "color_bg": "#e8f5e9",
+     "_color_text": "#2e7d32",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 3,
+     "slug": "privacy-data-governance",
+     "label": "Privacy & Data Governance",
+     "section": "dimension",
+     "color_bg": "#e8f5e9",
+     "_color_text": "#2e7d32",
+     "sort_order": 3,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 48,
+     "slug": "purpose-limitation",
+     "label": "Purpose limitation",
+     "section": "controls_subdim",
+     "color_bg": "#fef3c7",
+     "_color_text": "#92400e",
+     "sort_order": 7,
+     "parent_dimension_slug": "privacy-data-governance"
+    },
+    {
+     "id": 52,
+     "slug": "lineage-tracking",
+     "label": "Lineage tracking",
+     "section": "controls_subdim",
+     "color_bg": "#fef3c7",
+     "_color_text": "#92400e",
+     "sort_order": 11,
+     "parent_dimension_slug": "privacy-data-governance"
+    },
+    {
+     "id": 136,
+     "slug": "source-eusair",
+     "label": "EUSAiR",
+     "section": "source",
+     "color_bg": "#FDEAD7",
+     "_color_text": "#9A5B00",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    }
+   ],
+   "metrics": [],
+   "questions": [
+    {
+     "id": 66,
+     "tool_id": 3,
+     "order": 1,
+     "text": "What is the source of the dataset? (e.g. Proprietary vs open source, primary vs secondary source)",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 67,
+     "tool_id": 3,
+     "order": 2,
+     "text": "What are the legal ramifications of the dataset source?",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 68,
+     "tool_id": 3,
+     "order": 3,
+     "text": "What is the data repository? (public repository where the dataset can be found)",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 69,
+     "tool_id": 3,
+     "order": 4,
+     "text": "Who owns the dataset?",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 70,
+     "tool_id": 3,
+     "order": 5,
+     "text": "Which institutes/organisations are the dataset owners affiliated with? If so, are there any data (sharing) agreements that are or should be consolidated?",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 71,
+     "tool_id": 3,
+     "order": 6,
+     "text": "Who has access to the data/ the datasets? (internally & externally)",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 72,
+     "tool_id": 3,
+     "order": 7,
+     "text": "Was the dataset split? If so, how?",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 73,
+     "tool_id": 3,
+     "order": 8,
+     "text": "Which dataset did you use for validation?",
+     "article": "Article 10.2.b",
+     "category": "Data Source"
+    },
+    {
+     "id": 74,
+     "tool_id": 3,
+     "order": 9,
+     "text": "What is the purpose this data will be used for (use cases)?",
+     "article": "Annex IV.1.a",
+     "category": "Purpose of Data collection"
+    },
+    {
+     "id": 75,
+     "tool_id": 3,
+     "order": 10,
+     "text": "Is the volume of data collected proportional to the scope of the intended purpose?",
+     "article": "Annex IV.1.a",
+     "category": "Purpose of Data collection"
+    },
+    {
+     "id": 76,
+     "tool_id": 3,
+     "order": 11,
+     "text": "What are suitable use cases for this dataset?",
+     "article": "Annex IV.1.a",
+     "category": "Purpose of Data collection"
+    },
+    {
+     "id": 77,
+     "tool_id": 3,
+     "order": 12,
+     "text": "What are unsuitable use-cases for this dataset?",
+     "article": "Annex IV.1.a",
+     "category": "Purpose of Data collection"
+    },
+    {
+     "id": 78,
+     "tool_id": 3,
+     "order": 13,
+     "text": "What form is this data in? (e.g. structured, unstructured, semi-structured, etc)",
+     "article": "Article 10.3 & 10.4",
+     "category": "Data Type"
+    },
+    {
+     "id": 79,
+     "tool_id": 3,
+     "order": 14,
+     "text": "What are the data types present in the dataset? (e.g. image, audio, text, video, etc.)",
+     "article": "Article 10.3 & 10.4",
+     "category": "Data Type"
+    },
+    {
+     "id": 80,
+     "tool_id": 3,
+     "order": 15,
+     "text": "Does the dataset contain any special categories of personal data under GDPR? If yes, what kind?",
+     "article": "Article 10.3 & 10.4",
+     "category": "Data Type"
+    },
+    {
+     "id": 81,
+     "tool_id": 3,
+     "order": 16,
+     "text": "Is the dataset free of errors?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 82,
+     "tool_id": 3,
+     "order": 17,
+     "text": "Who has taken responsibility to evaluate and check the dataset? What methodologies were used?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 83,
+     "tool_id": 3,
+     "order": 18,
+     "text": "Are there any inconsistencies in the dataset?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 84,
+     "tool_id": 3,
+     "order": 19,
+     "text": "Are there any duplicate entries?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 85,
+     "tool_id": 3,
+     "order": 20,
+     "text": "Are there any missing values?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 86,
+     "tool_id": 3,
+     "order": 21,
+     "text": "Are there any significant outliers or anomalies?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 87,
+     "tool_id": 3,
+     "order": 22,
+     "text": "Is there version consistency?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 88,
+     "tool_id": 3,
+     "order": 23,
+     "text": "Are the units of measurement consistent throughout the dataset?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 89,
+     "tool_id": 3,
+     "order": 24,
+     "text": "Are the data formats consistent throughout the dataset?",
+     "article": "Article 10.2.h & 10.3",
+     "category": "Free of Errors and Complete"
+    },
+    {
+     "id": 90,
+     "tool_id": 3,
+     "order": 25,
+     "text": "What demographic information and domain is the dataset aiming to represent?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 91,
+     "tool_id": 3,
+     "order": 26,
+     "text": "What is the minimum sample size to represent the population sufficiently and significantly?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 92,
+     "tool_id": 3,
+     "order": 27,
+     "text": "Is the dataset sufficiently large to capture the variability and complexity of the underlying phenomena? Is the dataset representative of the target population or domain?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 93,
+     "tool_id": 3,
+     "order": 28,
+     "text": "Are there enough samples from minority or underrepresented groups to avoid biases and ensure fairness?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 94,
+     "tool_id": 3,
+     "order": 29,
+     "text": "Does the dataset reflect temporal changes, and are those changes relevant?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 95,
+     "tool_id": 3,
+     "order": 30,
+     "text": "Is the dataset being updated to reflect evolving trends and changes?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 96,
+     "tool_id": 3,
+     "order": 31,
+     "text": "Has the dataset been checked for harmful biases?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 97,
+     "tool_id": 3,
+     "order": 32,
+     "text": "Is the dataset sufficiently representative in view of the intended purpose?",
+     "article": "Article 10.2.f, 10.3 & 10.4",
+     "category": "Sufficiently Representative"
+    },
+    {
+     "id": 98,
+     "tool_id": 3,
+     "order": 33,
+     "text": "Does the dataset cover the full scope of scenarios the AI system will encounter?",
+     "article": "Article 10.2.d",
+     "category": "Suitability"
+    },
+    {
+     "id": 99,
+     "tool_id": 3,
+     "order": 34,
+     "text": "If the dataset contained personal data, how was the data features anonymised or pseudonymised?",
+     "article": "Article 10.3 & 10.4",
+     "category": "Data Type"
+    },
+    {
+     "id": 100,
+     "tool_id": 3,
+     "order": 35,
+     "text": "How was this data collected? What collection methods were used?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 101,
+     "tool_id": 3,
+     "order": 36,
+     "text": "What were the sampling methods used?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 102,
+     "tool_id": 3,
+     "order": 37,
+     "text": "Could any of the sampling methods biased towards a particular group? If yes, is this bias necessary to fulfil the intended purpose?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 103,
+     "tool_id": 3,
+     "order": 38,
+     "text": "What are specific and appropriate measures that address the identified bias?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 104,
+     "tool_id": 3,
+     "order": 39,
+     "text": "When was this data collected?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 105,
+     "tool_id": 3,
+     "order": 40,
+     "text": "What were the general criteria for including the selected data features/data points?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 106,
+     "tool_id": 3,
+     "order": 41,
+     "text": "What data features/data points were excluded? Based on what criteria?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 107,
+     "tool_id": 3,
+     "order": 42,
+     "text": "Has the dataset been checked for the individual data features? Are those correct and complete?",
+     "article": "Article 10.2.b",
+     "category": "Data Collection"
+    },
+    {
+     "id": 108,
+     "tool_id": 3,
+     "order": 43,
+     "text": "Volume: What is the volume of the data?",
+     "article": "Article 10.2.e & 10.3",
+     "category": "Data Characteristics"
+    },
+    {
+     "id": 109,
+     "tool_id": 3,
+     "order": 44,
+     "text": "What volume of data is necessary for the development of the AI system, keeping in mind the data minimisation principle?",
+     "article": "Article 10.2.e & 10.3",
+     "category": "Data Characteristics"
+    },
+    {
+     "id": 110,
+     "tool_id": 3,
+     "order": 45,
+     "text": "Velocity: What is the speed at which the data arrives?",
+     "article": "Article 10.2.e & 10.3",
+     "category": "Data Characteristics"
+    },
+    {
+     "id": 111,
+     "tool_id": 3,
+     "order": 46,
+     "text": "Variety: How varied are the data types and sources?",
+     "article": "Article 10.2.e & 10.3",
+     "category": "Data Characteristics"
+    },
+    {
+     "id": 112,
+     "tool_id": 3,
+     "order": 47,
+     "text": "What is the data sample size?",
+     "article": "Article 10.2.e & 10.3",
+     "category": "Data Characteristics"
+    },
+    {
+     "id": 113,
+     "tool_id": 3,
+     "order": 48,
+     "text": "Were (parts of) the dataset(s) unavailable?",
+     "article": "Article 10.2.e & 10.3",
+     "category": "Data Characteristics"
+    },
+    {
+     "id": 114,
+     "tool_id": 3,
+     "order": 49,
+     "text": "What data processing techniques were used? (e.g. cleaning, normalisation, standardization)",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 115,
+     "tool_id": 3,
+     "order": 50,
+     "text": "Was data labelling used? Was the labelling manual or automatic? What are the ground truths attached to each label?",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 116,
+     "tool_id": 3,
+     "order": 51,
+     "text": "Are the data processing techniques appropriate, given the intended purposes? If no, which data processing elements are inappropriate and why?",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 117,
+     "tool_id": 3,
+     "order": 52,
+     "text": "What data processing tools were used?",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 118,
+     "tool_id": 3,
+     "order": 53,
+     "text": "Are there any inconsistencies in the data processing that might affect the completeness of the dataset?",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 119,
+     "tool_id": 3,
+     "order": 54,
+     "text": "Have any possible biases been identified at the level of data preparation processing operations that may impact the datasets?",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 120,
+     "tool_id": 3,
+     "order": 55,
+     "text": "What are specific and appropriate measures that address the identified bias?",
+     "article": "Article 10.2.c, 10.2.f & 10.2.g",
+     "category": "Data Processing"
+    },
+    {
+     "id": 121,
+     "tool_id": 3,
+     "order": 56,
+     "text": "What are the measures of central tendency? Do these measures accurately represent the dataset?",
+     "article": "Article 10.3",
+     "category": "Statistical properties"
+    },
+    {
+     "id": 122,
+     "tool_id": 3,
+     "order": 57,
+     "text": "What is the variability of the dataset around the central tendency? Are there any outliers or extreme values present?",
+     "article": "Article 10.3",
+     "category": "Statistical properties"
+    },
+    {
+     "id": 123,
+     "tool_id": 3,
+     "order": 58,
+     "text": "Are there significant differences in statistical properties within the dataset?",
+     "article": "Article 10.3",
+     "category": "Statistical properties"
+    },
+    {
+     "id": 124,
+     "tool_id": 3,
+     "order": 59,
+     "text": "What are the assumptions that are formulated with respect to the information the dataset is supposed to represent and measure? Are these assumptions appropriate, reasonable and fair in light of the AI system's intended purpose?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance and suitability"
+    },
+    {
+     "id": 125,
+     "tool_id": 3,
+     "order": 60,
+     "text": "What is the rationale behind these assumptions if you look at the people that the system is going to be used for? (ANNEX IV 2(b))",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance and suitability"
+    },
+    {
+     "id": 126,
+     "tool_id": 3,
+     "order": 61,
+     "text": "Do the relevant formulated assumptions target a specific vulnerable group? And are those formulations likely to harm that group? If so, how can the formulations be adjusted?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance and suitability"
+    },
+    {
+     "id": 127,
+     "tool_id": 3,
+     "order": 62,
+     "text": "Will the dataset provide meaningful insights or outcomes? If so, what are they?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance and suitability"
+    },
+    {
+     "id": 128,
+     "tool_id": 3,
+     "order": 63,
+     "text": "Are there any outlier cases that need to be included in the dataset?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance and suitability"
+    },
+    {
+     "id": 129,
+     "tool_id": 3,
+     "order": 64,
+     "text": "Have any possible biases that are likely to affect the health of persons been identified as a result of this examination?",
+     "article": "Article 10.2.f & 10.3",
+     "category": "Data Fairness"
+    },
+    {
+     "id": 130,
+     "tool_id": 3,
+     "order": 65,
+     "text": "Have any possible biases that are likely to affect the safety of persons been identified as a result of this examination?",
+     "article": "Article 10.2.f & 10.3",
+     "category": "Data Fairness"
+    },
+    {
+     "id": 131,
+     "tool_id": 3,
+     "order": 66,
+     "text": "What is the scale of the data feature?",
+     "article": "Article 10.2.f, 10.2.h & 10.3",
+     "category": "Scale"
+    },
+    {
+     "id": 132,
+     "tool_id": 3,
+     "order": 67,
+     "text": "Can the scale introduce errors/bias/unfairness/unsafety into the system? If so, how?",
+     "article": "Article 10.2.f, 10.2.h & 10.3",
+     "category": "Scale"
+    },
+    {
+     "id": 133,
+     "tool_id": 3,
+     "order": 68,
+     "text": "What is the volume of the data feature?",
+     "article": "Article 10.2.f, 10.2.h & 10.3",
+     "category": "Volume"
+    },
+    {
+     "id": 134,
+     "tool_id": 3,
+     "order": 69,
+     "text": "Can the volume introduce errors/bias/unfairness/unsafety into the system? If so, how?",
+     "article": "Article 10.2.f, 10.2.h & 10.3",
+     "category": "Volume"
+    },
+    {
+     "id": 135,
+     "tool_id": 3,
+     "order": 70,
+     "text": "What is the distribution of the data feature? Is the distribution representative in view of the intended purpose?",
+     "article": "Article 10.2.f & 10.3",
+     "category": "Distribution"
+    },
+    {
+     "id": 136,
+     "tool_id": 3,
+     "order": 71,
+     "text": "Is the information provided by the data feature necessary and proportionate for the intended purpose?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance"
+    },
+    {
+     "id": 137,
+     "tool_id": 3,
+     "order": 72,
+     "text": "What is the information in the data feature supposed to measure and represent?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance"
+    },
+    {
+     "id": 138,
+     "tool_id": 3,
+     "order": 73,
+     "text": "What are the assumptions that are formulated with respect to the information the data feature is supposed to represent and measure?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance"
+    },
+    {
+     "id": 139,
+     "tool_id": 3,
+     "order": 74,
+     "text": "Where do these assumptions come from? Are there any historical, social, or cultural biases that underpin these assumptions?",
+     "article": "Article 10.2.d and 10.3",
+     "category": "Relevance"
+    },
+    {
+     "id": 140,
+     "tool_id": 3,
+     "order": 75,
+     "text": "Are there any missing elements re. the data feature?",
+     "article": "Article 10.2.f, 10.2.h & 10.3",
+     "category": "Free of errors"
+    },
+    {
+     "id": 141,
+     "tool_id": 3,
+     "order": 76,
+     "text": "Does the data feature, considering its scale, provide a complete view/ representation of the group(s) it aims to represent?",
+     "article": "Article 10.2.b, 10.2.h & 10.3",
+     "category": "Complete"
+    },
+    {
+     "id": 142,
+     "tool_id": 3,
+     "order": 77,
+     "text": "Does the data feature, considering its volume provide a complete view/representation of the group(s) it aims to represent?",
+     "article": "Article 10.2.b, 10.2.h & 10.3",
+     "category": "Complete"
+    },
+    {
+     "id": 143,
+     "tool_id": 3,
+     "order": 78,
+     "text": "Is the feature a characteristic that is relevant for the geographical setting of the system",
+     "article": "Article 10.2.b, 10.2.h & 10.3",
+     "category": "Complete"
+    },
+    {
+     "id": 144,
+     "tool_id": 3,
+     "order": 79,
+     "text": "In light of the system's intended purpose, are there geographical elements that should be taken into account re. the data feature?",
+     "article": "Article 10.4",
+     "category": "Geographical elements"
+    },
+    {
+     "id": 145,
+     "tool_id": 3,
+     "order": 80,
+     "text": "In light of the system's intended purpose, are there contextual elements that should be taken into account re. the data feature?",
+     "article": "Article 10.4",
+     "category": "Contextual elements"
+    },
+    {
+     "id": 146,
+     "tool_id": 3,
+     "order": 81,
+     "text": "In light of the system's intended purpose, are there behavioral elements that should be taken into account re. the data feature?",
+     "article": "Article 10.4",
+     "category": "Behavioural elements"
+    },
+    {
+     "id": 147,
+     "tool_id": 3,
+     "order": 82,
+     "text": "In light of the system's intended purpose, are there functional elements that should be taken into account re. the data feature?",
+     "article": "Article 10.4",
+     "category": "Functional elements"
+    },
+    {
+     "id": 148,
+     "tool_id": 3,
+     "order": 83,
+     "text": "Are there any interactions with other features that could collectively introduce or amplify any biases or unfair outcomes that may not be apparent when considering a data feature in isolation?",
+     "article": "Article 10.2.f & 10.3",
+     "category": "Data Feature Interaction"
+    },
+    {
+     "id": 149,
+     "tool_id": 3,
+     "order": 84,
+     "text": "Within the context of the data point, is the information provided by the data feature necessary and proportionate for the intended purposes? Could interactions with other features negate this?",
+     "article": "Article 10.2.f & 10.3",
+     "category": "Data Feature Interaction"
+    },
+    {
+     "id": 150,
+     "tool_id": 3,
+     "order": 85,
+     "text": "Can the combination of multiple sensitive data features increase the discrimination potential?",
+     "article": "Article 10.2.f & 10.3",
+     "category": "Data Feature Interaction"
+    },
+    {
+     "id": 151,
+     "tool_id": 3,
+     "order": 86,
+     "text": "Is the data variable/feature considered personal data under the GDPR?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 152,
+     "tool_id": 3,
+     "order": 87,
+     "text": "Is the data variable/feature considered a special category of personal data under the GDPR?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 153,
+     "tool_id": 3,
+     "order": 88,
+     "text": "Is the processing of the special category personal data variable/feature strictly necessary for bias detection / correction? Could other data (including synthetic / anonymised) fulfil it?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 154,
+     "tool_id": 3,
+     "order": 89,
+     "text": "Do the processing activity records adequately document and reflect the reasons for processing this data feature, including why the alternatives are insufficient?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 155,
+     "tool_id": 3,
+     "order": 90,
+     "text": "Are there technical limitations on reuse, and privacy‑preserving measures (pseudonymisation etc.) in place? For example, has personal data been non-reversibly anonymized?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 156,
+     "tool_id": 3,
+     "order": 91,
+     "text": "Are access controls, documentation of access, and confidentiality obligations in place for this special category personal data feature?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 157,
+     "tool_id": 3,
+     "order": 92,
+     "text": "Is there a deletion or retention plan for this special category personal data feature, to ensure it is removed once bias has been corrected or the retention period has expired?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 158,
+     "tool_id": 3,
+     "order": 93,
+     "text": "Are there safeguards to ensure the data will not be transmitted or otherwise accessed by unauthorised parties?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 159,
+     "tool_id": 3,
+     "order": 94,
+     "text": "Is the data variable/feature prohibited ground for discrimination (Art. 21 European Charter of Fundamental Rights)?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 160,
+     "tool_id": 3,
+     "order": 95,
+     "text": "Could the data variable/feature infringe upon other equality, non-discrimination, fair treatment rights?",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    },
+    {
+     "id": 161,
+     "tool_id": 3,
+     "order": 96,
+     "text": "Could the data variable/feature be a proxy for a prohibited ground of discrimination, or lead to infringement of other equality, non-discrimination, and fair treatment rights? (Art. 21 European Charter of Fundamental Rights)",
+     "article": "Article 10.5",
+     "category": "Type of data feature"
+    }
+   ]
+  },
+  {
+   "id": 26,
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "slug": "eu-ai-act-compliance-matrix-role-by-article",
+   "name": "EU AI Act Compliance Matrix (role-by-article)",
+   "description": "EU AI Act Role-by-Article Obligations",
+   "version": "1.0.0",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "/controls/eu-ai-act-compliance-matrix-role-by-article",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": null,
+   "available_on_devpi": false,
+   "metadata": {
+    "id": 26,
+    "description": "EU AI Act Role-by-Article Obligations",
+    "provider": "EU AI Compass",
+    "link": "https://euaicompass.com/downloads/eu-ai-act-compliance-matrix-provider-deployer-importer-distributor.xlsx",
+    "branch": "main",
+    "scientific_reference": "",
+    "project_maturity": "Stable",
+    "target_legal_requirements": "",
+    "input_spec": null,
+    "config_params": null,
+    "additional_output_fields": null,
+    "contextual_guidance": null,
+    "visualisation": null,
+    "reporting": null,
+    "control_topic": "EU AI Act Role-by-Article Obligations",
+    "source_updated_at": null,
+    "country_ids": null,
+    "regulation_ids": null,
+    "original_file": null,
+    "original_size": null,
+    "tool_1_id": 26
+   },
+   "tags": [
+    {
+     "id": 130,
+     "slug": "control",
+     "label": "Control",
+     "section": "type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 2,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 132,
+     "slug": "open",
+     "label": "Open",
+     "section": "license",
+     "color_bg": "#e8f5e9",
+     "_color_text": "#2e7d32",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 7,
+     "slug": "accountability",
+     "label": "Accountability",
+     "section": "dimension",
+     "color_bg": "#fff8e1",
+     "_color_text": "#f57f17",
+     "sort_order": 7,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 143,
+     "slug": "source-eu-ai-compass",
+     "label": "EU AI Compass",
+     "section": "source",
+     "color_bg": "#FDEAD7",
+     "_color_text": "#9A5B00",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    }
+   ],
+   "metrics": [],
+   "questions": [
+    {
+     "id": 1308,
+     "tool_id": 26,
+     "order": 1,
+     "text": "Does the organization have an AI literacy plan and role-based training records for staff or other persons dealing with AI systems on behalf of provider or deployer?",
+     "article": "Article 4",
+     "category": null
+    },
+    {
+     "id": 1309,
+     "tool_id": 26,
+     "order": 2,
+     "text": "Has the organization conducted a use-case screening and escalation decision to ensure the AI system does not fall into a prohibited practice category?",
+     "article": "Article 5",
+     "category": null
+    },
+    {
+     "id": 1310,
+     "tool_id": 26,
+     "order": 3,
+     "text": "Has the organization prepared a classification memo and Annex III mapping to confirm whether the AI system meets high-risk classification criteria?",
+     "article": "Article 6 + Annex III",
+     "category": null
+    },
+    {
+     "id": 1311,
+     "tool_id": 26,
+     "order": 4,
+     "text": "Does the provider of the high-risk AI system have a risk management system in place and documented?",
+     "article": "Article 9",
+     "category": null
+    },
+    {
+     "id": 1312,
+     "tool_id": 26,
+     "order": 5,
+     "text": "Does the organization have data governance evidence and data quality checks for training, validation, testing, or deployer-controlled input data?",
+     "article": "Article 10",
+     "category": null
+    },
+    {
+     "id": 1313,
+     "tool_id": 26,
+     "order": 6,
+     "text": "Does the provider of the high-risk AI system maintain a technical documentation pack?",
+     "article": "Article 11",
+     "category": null
+    },
+    {
+     "id": 1314,
+     "tool_id": 26,
+     "order": 7,
+     "text": "Does the organization have log design and retention evidence for high-risk AI systems requiring automatic logging?",
+     "article": "Article 12",
+     "category": null
+    },
+    {
+     "id": 1315,
+     "tool_id": 26,
+     "order": 8,
+     "text": "Does the provider of the high-risk AI system provide instructions for use, limitations, and risk notes, and does the deployer retain and operationalize these instructions?",
+     "article": "Article 13",
+     "category": null
+    },
+    {
+     "id": 1316,
+     "tool_id": 26,
+     "order": 9,
+     "text": "Does the organization have an oversight procedure, training, and override path for high-risk AI systems requiring human oversight?",
+     "article": "Article 14",
+     "category": null
+    },
+    {
+     "id": 1317,
+     "tool_id": 26,
+     "order": 10,
+     "text": "Does the organization have testing evidence, security reviews, and performance thresholds for high-risk AI system accuracy, robustness, and cybersecurity?",
+     "article": "Article 15",
+     "category": null
+    },
+    {
+     "id": 1318,
+     "tool_id": 26,
+     "order": 11,
+     "text": "Does the provider have a provider obligation checklist for placing a high-risk AI system on the market or putting it into service?",
+     "article": "Article 16",
+     "category": null
+    },
+    {
+     "id": 1319,
+     "tool_id": 26,
+     "order": 12,
+     "text": "Does the importer have an importer due diligence file for placing an AI system from a third country on the EU market?",
+     "article": "Article 23",
+     "category": null
+    },
+    {
+     "id": 1320,
+     "tool_id": 26,
+     "order": 13,
+     "text": "Does the distributor have a distributor due diligence file for making an AI system available in the EU market?",
+     "article": "Article 24",
+     "category": null
+    },
+    {
+     "id": 1321,
+     "tool_id": 26,
+     "order": 14,
+     "text": "Does the deployer have a deployer checklist, SOPs, logs, and monitoring records for the deployment/use of high-risk AI systems?",
+     "article": "Article 26",
+     "category": null
+    },
+    {
+     "id": 1322,
+     "tool_id": 26,
+     "order": 15,
+     "text": "Has the deployer completed a Fundamental Rights Impact Assessment (FRIA) worksheet and obtained approval for specified deployers/use cases before high-risk deployment?",
+     "article": "Article 27",
+     "category": null
+    },
+    {
+     "id": 1323,
+     "tool_id": 26,
+     "order": 16,
+     "text": "Does the organization have registration evidence or a database record for high-risk systems requiring database registration?",
+     "article": "Article 49",
+     "category": null
+    },
+    {
+     "id": 1324,
+     "tool_id": 26,
+     "order": 17,
+     "text": "Does the organization provide transparency notices, UI evidence, or content labels for AI interactions, emotion recognition, biometric categorization, synthetic content, or deepfake contexts?",
+     "article": "Article 50",
+     "category": null
+    },
+    {
+     "id": 1325,
+     "tool_id": 26,
+     "order": 18,
+     "text": "Does the provider of the high-risk AI system have a post-market monitoring plan and feedback records, and have deployers defined a vendor reporting route?",
+     "article": "Article 72",
+     "category": null
+    },
+    {
+     "id": 1326,
+     "tool_id": 26,
+     "order": 19,
+     "text": "Does the organization have an incident record, escalation log, and provider notification process for serious incidents involving high-risk AI systems?",
+     "article": "Article 73",
+     "category": null
+    }
+   ]
+  },
+  {
+   "id": 51,
+   "reviewed_at": "2026-09-25T17:17:50.532Z",
+   "created_at": "2026-09-25T17:17:50.532Z",
+   "slug": "langbite",
+   "name": "LangBiTe",
+   "description": "LangBiTe is an open-source bias testing framework for large language models. Given a user-defined ethical requirements model specifying ethical concerns (e.g. sexism, racism, ageism) and sensitive communities (e.g. gender groups, ethnic groups, age groups), LangBiTe automatically selects prompt templates from a curated library, generates test case variants for each community, executes them against one or more LLMs, evaluates the responses using test oracles, and produces evaluation reports with end-to-end traceability between ethical requirements and assessment results. The framework includes prompt template libraries with 300+ templates in English, Spanish, and Catalan covering sexism/misogyny, racism, xenophobia, ageism, political bias, LGTBIQ+phobia, and religious discrimination.",
+   "version": "0.1.1",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "devpi/aisc-plugin-langbite/0.1.1",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": "aisc-plugin-langbite",
+   "available_on_devpi": true,
+   "metadata": {
+    "id": 51,
+    "description": "LangBiTe is an open-source bias testing framework for large language models. Given a user-defined ethical requirements model specifying ethical concerns (e.g. sexism, racism, ageism) and sensitive communities (e.g. gender groups, ethnic groups, age groups), LangBiTe automatically selects prompt templates from a curated library, generates test case variants for each community, executes them against one or more LLMs, evaluates the responses using test oracles, and produces evaluation reports with end-to-end traceability between ethical requirements and assessment results. The framework includes prompt template libraries with 300+ templates in English, Spanish, and Catalan covering sexism/misogyny, racism, xenophobia, ageism, political bias, LGTBIQ+phobia, and religious discrimination.",
+    "provider": "SOM Research Lab, Universitat Oberta de Catalunya (UOC)",
+    "link": "https://github.com/SOM-Research/LangBiTe",
+    "branch": "main",
+    "scientific_reference": "Morales, S., Clarisó, R., & Cabot, J. (2024). A DSL for testing LLMs for fairness and bias. ACM/IEEE MODELS '24. https://doi.org/10.1145/3640310.3674093",
+    "project_maturity": "Actively maintained research framework; primary publication at ACM/IEEE MODELS 2024",
+    "target_legal_requirements": "EU AI Act – Article 10 (Data and data governance, non-discrimination)",
+    "input_spec": "Inputs are an ethical requirements model and a test scenario definition, provided as a JSON object or JSON file.\nsampleTypes: ethical requirements model, test scenario definition\nformats: JSON object, JSON file",
+    "config_params": "- ethical_concerns (List of objects): Ethical concerns to evaluate and their associated sensitive communities.\n- llms (List of objects): Target LLMs to evaluate. Supported providers: OpenAI, HuggingFace, Replicate.\n- num_templates (Integer, >= 1): Number of prompt templates to retrieve per ethical concern.\n- temperature (Float, 0.0–2.0): Temperature parameter for LLM inference.\n- max_tokens (Integer, >= 1): Maximum number of tokens for LLM response generation.\n- num_retries (Integer, >= 1): Number of times each prompt is executed against the LLM.\n- language (String, en, es, ca): Language of the prompt template library.\n- useLLMEval (Boolean, true / false): Whether to use a second LLM as judge to re-evaluate failed test cases.\n- eval_llm (Object): The second LLM used for LLM-as-a-judge re-evaluation.\n- prompt_library (String): Custom prompt template library CSV path. If omitted, built-in library is used.",
+    "additional_output_fields": "ethical_concern, community, prompt_template, instantiated_prompt, llm_response, provider, model, oracle_type, oracle_expected, oracle_result, llm_eval_result",
+    "contextual_guidance": "A global pass rate above 75% indicates acceptable performance; below 25% indicates severe and widespread bias.",
+    "visualisation": "Pass rate bar chart per ethical concern per LLM; Community divergence heatmap; LLM comparison radar chart",
+    "reporting": "Report should highlight global pass rate per LLM and per ethical concern, communities most frequently subjected to differential treatment, and proportion of oracle failures per bias category.",
+    "control_topic": null,
+    "source_updated_at": null,
+    "country_ids": null,
+    "regulation_ids": null,
+    "original_file": null,
+    "original_size": null,
+    "tool_1_id": 51
+   },
+   "tags": [
+    {
+     "id": 4,
+     "slug": "diversity-non-discrimination-fairness",
+     "label": "Diversity, non-discrimination & Fairness",
+     "section": "dimension",
+     "color_bg": "#fce4ec",
+     "_color_text": "#c62828",
+     "sort_order": 4,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 1,
+     "slug": "technical-robustness-safety",
+     "label": "Technical Robustness & Safety",
+     "section": "dimension",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 1,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 96,
+     "slug": "digital-economy",
+     "label": "Digital Economy",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 4,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 98,
+     "slug": "education",
+     "label": "Education",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 6,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 109,
+     "slug": "public-sector",
+     "label": "Public sector",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 17,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 110,
+     "slug": "science-&-technology",
+     "label": "Science & technology",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 18,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 111,
+     "slug": "social-&-welfare-issues",
+     "label": "Social & welfare issues",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 19,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 117,
+     "slug": "natural-language-processing",
+     "label": "Natural Language Processing",
+     "section": "ai_type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 3,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 121,
+     "slug": "predictive-and-analytical-ai",
+     "label": "Predictive & Analytical AI",
+     "section": "ai_type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 7,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 134,
+     "slug": "mit",
+     "label": "MIT",
+     "section": "license",
+     "color_bg": "#e8f5e9",
+     "_color_text": "#2e7d32",
+     "sort_order": 2,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 132,
+     "slug": "open",
+     "label": "Open",
+     "section": "license",
+     "color_bg": "#e8f5e9",
+     "_color_text": "#2e7d32",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 128,
+     "slug": "test",
+     "label": "Test",
+     "section": "type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    }
+   ],
+   "metrics": [
+    {
+     "id": 11,
+     "name": "pass",
+     "data_type": "boolean",
+     "range_str": "True / False",
+     "unit": "Pass/Fail",
+     "represents": "Whether the LLM response passed the oracle evaluation.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 51,
+     "dimensions": []
+    },
+    {
+     "id": 12,
+     "name": "pass_rate",
+     "data_type": "float",
+     "range_str": "0.0–1.0",
+     "unit": "Percentage",
+     "represents": "Proportion of test cases that passed, aggregated per ethical concern, LLM, or globally.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 51,
+     "dimensions": []
+    },
+    {
+     "id": 13,
+     "name": "pass_rate_per_concern",
+     "data_type": "",
+     "range_str": "",
+     "unit": "—",
+     "represents": "",
+     "is_derived": true,
+     "formula": null,
+     "tool_id": 51,
+     "dimensions": []
+    },
+    {
+     "id": 14,
+     "name": "pass_rate_per_llm",
+     "data_type": "",
+     "range_str": "",
+     "unit": "—",
+     "represents": "",
+     "is_derived": true,
+     "formula": null,
+     "tool_id": 51,
+     "dimensions": []
+    },
+    {
+     "id": 15,
+     "name": "pass_rate_per_community",
+     "data_type": "",
+     "range_str": "",
+     "unit": "—",
+     "represents": "",
+     "is_derived": true,
+     "formula": null,
+     "tool_id": 51,
+     "dimensions": []
+    },
+    {
+     "id": 16,
+     "name": "pass_rate_global",
+     "data_type": "",
+     "range_str": "",
+     "unit": "—",
+     "represents": "",
+     "is_derived": true,
+     "formula": null,
+     "tool_id": 51,
+     "dimensions": []
+    }
+   ],
+   "questions": []
+  },
+  {
+   "id": 60,
+   "reviewed_at": "2026-09-25T17:17:50.532Z",
+   "created_at": "2026-09-25T17:17:50.532Z",
+   "slug": "snt-data-drift",
+   "name": "Data Drift module",
+   "description": "A tool for testing distribution drift between datasets, using PSI, KS test, Wasserstein distance, Chi-squared test, and Jensen-Shannon divergence.",
+   "version": "0.3.1",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "devpi/data-monitor/0.3.1",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": "data-monitor",
+   "available_on_devpi": false,
+   "metadata": {
+    "id": 60,
+    "description": "A tool for testing distribution drift between datasets, using PSI, KS test, Wasserstein distance, Chi-squared test, and Jensen-Shannon divergence.",
+    "provider": "SnT (University of Luxembourg)",
+    "link": "https://github.com/lux-ai-factory/aisc-plugin-data-evaluation",
+    "branch": "main",
+    "scientific_reference": "",
+    "project_maturity": "Actively maintained",
+    "target_legal_requirements": null,
+    "input_spec": "Two datasets: a reference dataset (baseline, e.g. training data) and an evaluated dataset (e.g. testing data). A human-validation time feature is required in both datasets to simulate drift over time.\nformats: dataset",
+    "config_params": "- dataset (Dataset object): Selected from uploaded datasets; used to infer the list of features and avoid manual configuration.\n- window_size (str): Window size used for the sliding-window split (timedelta in days).\n- frequency (str): Frequency used for the sliding-window split (timedelta in days).\n- target_feature (str): The name of the target feature, selected from the dataset features.\n- date_feature (str): The name of the date feature indicating the time of human decision, selected from the dataset features.\n- features (List of feature objects): Each feature object is composed of name (str), min (float), max (float) and feature type (enum).",
+    "additional_output_fields": null,
+    "contextual_guidance": null,
+    "visualisation": "Bar chart for metrics",
+    "reporting": null,
+    "control_topic": null,
+    "source_updated_at": null,
+    "country_ids": null,
+    "regulation_ids": null,
+    "original_file": null,
+    "original_size": null,
+    "tool_1_id": 60
+   },
+   "tags": [
+    {
+     "id": 1,
+     "slug": "technical-robustness-safety",
+     "label": "Technical Robustness & Safety",
+     "section": "dimension",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 1,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 96,
+     "slug": "digital-economy",
+     "label": "Digital Economy",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 4,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 104,
+     "slug": "industry-&-entrepreneurship",
+     "label": "Industry & entrepreneurship",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 12,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 110,
+     "slug": "science-&-technology",
+     "label": "Science & technology",
+     "section": "sector",
+     "color_bg": "#f1f3f5",
+     "_color_text": "#495057",
+     "sort_order": 18,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 121,
+     "slug": "predictive-and-analytical-ai",
+     "label": "Predictive & Analytical AI",
+     "section": "ai_type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 7,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 123,
+     "slug": "tabular-and-structured-data",
+     "label": "Tabular & Structured Data",
+     "section": "ai_type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 9,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 132,
+     "slug": "open",
+     "label": "Open",
+     "section": "license",
+     "color_bg": "#e8f5e9",
+     "_color_text": "#2e7d32",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    },
+    {
+     "id": 128,
+     "slug": "test",
+     "label": "Test",
+     "section": "type",
+     "color_bg": "#e7f0ff",
+     "_color_text": "#3b5bdb",
+     "sort_order": 0,
+     "parent_dimension_slug": null
+    }
+   ],
+   "metrics": [
+    {
+     "id": 57,
+     "name": "avg_data_drift",
+     "data_type": "float",
+     "range_str": "0–inf",
+     "unit": "Number",
+     "represents": "Derived: average drift score across features.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 58,
+     "name": "number_of_drifted_features",
+     "data_type": "int",
+     "range_str": "0–inf",
+     "unit": "Number",
+     "represents": "Derived: count of features exceeding the drift threshold.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 59,
+     "name": "wasserstein_distance",
+     "data_type": "float",
+     "range_str": "0–inf",
+     "unit": "—",
+     "represents": "Earth Mover's Distance between distributions.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 60,
+     "name": "psi",
+     "data_type": "float",
+     "range_str": "0–inf",
+     "unit": "—",
+     "represents": "Population Stability Index.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 61,
+     "name": "ks_statistic",
+     "data_type": "float",
+     "range_str": "0–1",
+     "unit": "—",
+     "represents": "Kolmogorov-Smirnov test statistic.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 62,
+     "name": "ks_pvalue",
+     "data_type": "float",
+     "range_str": "0–1",
+     "unit": "—",
+     "represents": "P-value for the KS test.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 63,
+     "name": "jensenshannon_distance",
+     "data_type": "float",
+     "range_str": "0–inf",
+     "unit": "—",
+     "represents": "Jensen-Shannon divergence for categorical features.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 64,
+     "name": "chi2_statistic",
+     "data_type": "float",
+     "range_str": "0–inf",
+     "unit": "—",
+     "represents": "Chi-squared test statistic.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 65,
+     "name": "drift_detected",
+     "data_type": "bool",
+     "range_str": "True/False",
+     "unit": "Boolean",
+     "represents": "Boolean flag indicating if drift exceeds the threshold.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    },
+    {
+     "id": 66,
+     "name": "ratio_features_with_drift",
+     "data_type": "float",
+     "range_str": "0.0–1.0",
+     "unit": "Ratio",
+     "represents": "Derived: proportion of features that have drifted.",
+     "is_derived": false,
+     "formula": null,
+     "tool_id": 60,
+     "dimensions": []
+    }
+   ],
+   "questions": []
+  }
+ ],
+ "tool": [
+  {
+   "id": 3,
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "slug": "data-and-data-governance-evaluation-tool---article-10-ai-act",
+   "name": "Data and Data Governance Evaluation Tool - Article 10 AI Act",
+   "description": "Data and Data Governance checklist by EUSAiR (Article 10 AI Act)",
+   "version": "1.0.0",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "/controls/data-and-data-governance-evaluation-tool---article-10-ai-act",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": null,
+   "available_on_devpi": false
+  },
+  {
+   "id": 26,
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "slug": "eu-ai-act-compliance-matrix-role-by-article",
+   "name": "EU AI Act Compliance Matrix (role-by-article)",
+   "description": "EU AI Act Role-by-Article Obligations",
+   "version": "1.0.0",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "/controls/eu-ai-act-compliance-matrix-role-by-article",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": null,
+   "available_on_devpi": false
+  },
+  {
+   "id": 51,
+   "reviewed_at": "2026-09-25T17:17:50.532Z",
+   "created_at": "2026-09-25T17:17:50.532Z",
+   "slug": "langbite",
+   "name": "LangBiTe",
+   "description": "LangBiTe is an open-source bias testing framework for large language models. Given a user-defined ethical requirements model specifying ethical concerns (e.g. sexism, racism, ageism) and sensitive communities (e.g. gender groups, ethnic groups, age groups), LangBiTe automatically selects prompt templates from a curated library, generates test case variants for each community, executes them against one or more LLMs, evaluates the responses using test oracles, and produces evaluation reports with end-to-end traceability between ethical requirements and assessment results. The framework includes prompt template libraries with 300+ templates in English, Spanish, and Catalan covering sexism/misogyny, racism, xenophobia, ageism, political bias, LGTBIQ+phobia, and religious discrimination.",
+   "version": "0.1.1",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "devpi/aisc-plugin-langbite/0.1.1",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": "aisc-plugin-langbite",
+   "available_on_devpi": true
+  },
+  {
+   "id": 60,
+   "reviewed_at": "2026-09-25T17:17:50.532Z",
+   "created_at": "2026-09-25T17:17:50.532Z",
+   "slug": "snt-data-drift",
+   "name": "Data Drift module",
+   "description": "A tool for testing distribution drift between datasets, using PSI, KS test, Wasserstein distance, Chi-squared test, and Jensen-Shannon divergence.",
+   "version": "0.3.1",
+   "licensing": "Open_Source",
+   "status": "approved",
+   "submitted_by": "admin",
+   "storage_path": "devpi/data-monitor/0.3.1",
+   "reviewed_by": "admin",
+   "completion_status": "full",
+   "package_name": "data-monitor",
+   "available_on_devpi": false
+  }
+ ],
+ "tags": [
+  {
+   "id": 1,
+   "slug": "technical-robustness-safety",
+   "label": "Technical Robustness & Safety",
+   "section": "dimension",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 1,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 2,
+   "slug": "human-agency-oversight",
+   "label": "Human Agency & Oversight",
+   "section": "dimension",
+   "color_bg": "#fff3e0",
+   "_color_text": "#e65100",
+   "sort_order": 2,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 3,
+   "slug": "privacy-data-governance",
+   "label": "Privacy & Data Governance",
+   "section": "dimension",
+   "color_bg": "#e8f5e9",
+   "_color_text": "#2e7d32",
+   "sort_order": 3,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 4,
+   "slug": "diversity-non-discrimination-fairness",
+   "label": "Diversity, non-discrimination & Fairness",
+   "section": "dimension",
+   "color_bg": "#fce4ec",
+   "_color_text": "#c62828",
+   "sort_order": 4,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 5,
+   "slug": "transparency",
+   "label": "Transparency",
+   "section": "dimension",
+   "color_bg": "#e0f7fa",
+   "_color_text": "#00695c",
+   "sort_order": 5,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 6,
+   "slug": "societal-environmental-wellbeing",
+   "label": "Societal & environmental well-being",
+   "section": "dimension",
+   "color_bg": "#f3e5f5",
+   "_color_text": "#6a1b9a",
+   "sort_order": 6,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 7,
+   "slug": "accountability",
+   "label": "Accountability",
+   "section": "dimension",
+   "color_bg": "#fff8e1",
+   "_color_text": "#f57f17",
+   "sort_order": 7,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 8,
+   "slug": "quality-management",
+   "label": "Quality Management",
+   "section": "dimension",
+   "color_bg": "#e8eaf6",
+   "_color_text": "#283593",
+   "sort_order": 8,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 9,
+   "slug": "risk-management",
+   "label": "Risk Management",
+   "section": "dimension",
+   "color_bg": "#efebe9",
+   "_color_text": "#4e342e",
+   "sort_order": 9,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 10,
+   "slug": "technical-documentation",
+   "label": "Technical documentation",
+   "section": "dimension",
+   "color_bg": "#eceff1",
+   "_color_text": "#37474f",
+   "sort_order": 10,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 11,
+   "slug": "record-keeping",
+   "label": "Record-keeping",
+   "section": "dimension",
+   "color_bg": "#fafafa",
+   "_color_text": "#424242",
+   "sort_order": 11,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 12,
+   "slug": "override-opt-out-mechanism-testing",
+   "label": "Override & opt-out mechanism testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 0,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 13,
+   "slug": "audit-trail-logging-completeness",
+   "label": "Audit trail & logging completeness",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 1,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 14,
+   "slug": "stress-testing",
+   "label": "Stress testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 2,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 15,
+   "slug": "adversarial-input-testing",
+   "label": "Adversarial input testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 3,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 16,
+   "slug": "out-of-distribution-testing",
+   "label": "Out-of-distribution testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 4,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 17,
+   "slug": "drift-detection",
+   "label": "Drift detection",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 5,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 18,
+   "slug": "chaos-engineering",
+   "label": "Chaos engineering",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 6,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 19,
+   "slug": "model-calibration",
+   "label": "Model calibration",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 7,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 20,
+   "slug": "prompt-injection",
+   "label": "Prompt Injection",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 8,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 21,
+   "slug": "insecure-output-handling",
+   "label": "Insecure Output Handling",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 9,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 22,
+   "slug": "training-data-poisoning",
+   "label": "Training Data Poisoning",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 10,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 23,
+   "slug": "denial-of-service",
+   "label": "Denial of Service",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 11,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 24,
+   "slug": "sensitive-information-disclosure",
+   "label": "Sensitive Information Disclosure",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 12,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 25,
+   "slug": "insecure-plugin-design",
+   "label": "Insecure Plugin Design",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 13,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 26,
+   "slug": "excessive-agency",
+   "label": "Excessive Agency",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 14,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 27,
+   "slug": "overreliance",
+   "label": "Overreliance",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 15,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 28,
+   "slug": "model-theft",
+   "label": "Model Theft",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 16,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 29,
+   "slug": "encryption-testing",
+   "label": "Encryption testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 17,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 30,
+   "slug": "pii-detection-testing",
+   "label": "PII detection testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 18,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 31,
+   "slug": "data-anonymisation-re-identification-risk",
+   "label": "Data anonymisation / re-identification risk",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 19,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 32,
+   "slug": "data-retention-policy-violation-detection",
+   "label": "Data retention policy violation detection",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 20,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 33,
+   "slug": "access-control-testing",
+   "label": "Access control testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 21,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 34,
+   "slug": "local-interpretability",
+   "label": "Local interpretability",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 22,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 35,
+   "slug": "global-interpretability",
+   "label": "Global interpretability",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 23,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 36,
+   "slug": "explanation-consistency-testing",
+   "label": "Explanation consistency testing",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 24,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 37,
+   "slug": "bias-detection-on-data",
+   "label": "Bias detection on data",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 25,
+   "parent_dimension_slug": "diversity-non-discrimination-fairness"
+  },
+  {
+   "id": 38,
+   "slug": "bias-detection-on-system",
+   "label": "Bias detection on system",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 26,
+   "parent_dimension_slug": "diversity-non-discrimination-fairness"
+  },
+  {
+   "id": 39,
+   "slug": "energy-consumption-tracking",
+   "label": "Energy consumption tracking",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 27,
+   "parent_dimension_slug": "societal-environmental-wellbeing"
+  },
+  {
+   "id": 40,
+   "slug": "hardware-utilisation-profiling",
+   "label": "Hardware utilisation profiling",
+   "section": "testing_subdim",
+   "color_bg": "#eef2ff",
+   "_color_text": "#3730a3",
+   "sort_order": 28,
+   "parent_dimension_slug": "societal-environmental-wellbeing"
+  },
+  {
+   "id": 41,
+   "slug": "supervisory-control",
+   "label": "Supervisory control",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 0,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 42,
+   "slug": "strategic-governance",
+   "label": "Strategic governance",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 1,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 43,
+   "slug": "informed-consent",
+   "label": "Informed consent",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 2,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 44,
+   "slug": "user-preferences",
+   "label": "User preferences",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 3,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 45,
+   "slug": "audit-trails",
+   "label": "Audit trails",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 4,
+   "parent_dimension_slug": "human-agency-oversight"
+  },
+  {
+   "id": 46,
+   "slug": "fail-over-1-etat-des-lieux",
+   "label": "Fail-over 1-etat-des-lieux",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 5,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 47,
+   "slug": "human-fallback",
+   "label": "Human fallback",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 6,
+   "parent_dimension_slug": "technical-robustness-safety"
+  },
+  {
+   "id": 48,
+   "slug": "purpose-limitation",
+   "label": "Purpose limitation",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 7,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 49,
+   "slug": "scope-restriction",
+   "label": "Scope restriction",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 8,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 50,
+   "slug": "pseudonymisation",
+   "label": "Pseudonymisation",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 9,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 51,
+   "slug": "role-based-access-control",
+   "label": "Role-based access control",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 10,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 52,
+   "slug": "lineage-tracking",
+   "label": "Lineage tracking",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 11,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 53,
+   "slug": "metadata-versioning",
+   "label": "Metadata versioning",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 12,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 54,
+   "slug": "consent-tracking",
+   "label": "Consent tracking",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 13,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 55,
+   "slug": "granular-revocation",
+   "label": "Granular revocation",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 14,
+   "parent_dimension_slug": "privacy-data-governance"
+  },
+  {
+   "id": 56,
+   "slug": "model-cards",
+   "label": "Model cards",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 15,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 57,
+   "slug": "datasheets",
+   "label": "Datasheets",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 16,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 58,
+   "slug": "ai-identity-notices",
+   "label": "AI identity notices",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 17,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 59,
+   "slug": "disclaimers",
+   "label": "Disclaimers",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 18,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 60,
+   "slug": "risk-communication",
+   "label": "Risk communication",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 19,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 61,
+   "slug": "understandable-language",
+   "label": "Understandable language",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 20,
+   "parent_dimension_slug": "transparency"
+  },
+  {
+   "id": 62,
+   "slug": "sampling-strategies",
+   "label": "Sampling strategies",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 21,
+   "parent_dimension_slug": "diversity-non-discrimination-fairness"
+  },
+  {
+   "id": 63,
+   "slug": "accessibility",
+   "label": "Accessibility",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 22,
+   "parent_dimension_slug": "diversity-non-discrimination-fairness"
+  },
+  {
+   "id": 64,
+   "slug": "participatory-design",
+   "label": "Participatory design",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 23,
+   "parent_dimension_slug": "diversity-non-discrimination-fairness"
+  },
+  {
+   "id": 65,
+   "slug": "rights-based-system",
+   "label": "Rights-based system",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 24,
+   "parent_dimension_slug": "societal-environmental-wellbeing"
+  },
+  {
+   "id": 66,
+   "slug": "independent-ethics-committee",
+   "label": "Independent ethics committee",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 25,
+   "parent_dimension_slug": "societal-environmental-wellbeing"
+  },
+  {
+   "id": 67,
+   "slug": "rasci-charts",
+   "label": "RASCI charts",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 26,
+   "parent_dimension_slug": "accountability"
+  },
+  {
+   "id": 68,
+   "slug": "logging",
+   "label": "Logging",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 27,
+   "parent_dimension_slug": "accountability"
+  },
+  {
+   "id": 69,
+   "slug": "external-reporting-interfaces",
+   "label": "External reporting interfaces",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 28,
+   "parent_dimension_slug": "accountability"
+  },
+  {
+   "id": 70,
+   "slug": "redress-systems",
+   "label": "Redress systems",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 29,
+   "parent_dimension_slug": "accountability"
+  },
+  {
+   "id": 71,
+   "slug": "version-controlled-records",
+   "label": "Version-controlled records",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 30,
+   "parent_dimension_slug": "accountability"
+  },
+  {
+   "id": 72,
+   "slug": "quality-policy-declaration",
+   "label": "Quality Policy Declaration",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 31,
+   "parent_dimension_slug": "quality-management"
+  },
+  {
+   "id": 73,
+   "slug": "control-of-documented-information",
+   "label": "Control of documented information",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 32,
+   "parent_dimension_slug": "quality-management"
+  },
+  {
+   "id": 74,
+   "slug": "internal-auditing",
+   "label": "Internal Auditing",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 33,
+   "parent_dimension_slug": "quality-management"
+  },
+  {
+   "id": 75,
+   "slug": "continuous-improvement",
+   "label": "Continuous Improvement",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 34,
+   "parent_dimension_slug": "quality-management"
+  },
+  {
+   "id": 76,
+   "slug": "description-of-ai-system",
+   "label": "Description of AI system",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 35,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 77,
+   "slug": "structured-risk-identification",
+   "label": "Structured risk identification",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 36,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 78,
+   "slug": "core-classification-step",
+   "label": "Core classification step",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 37,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 79,
+   "slug": "finalise-classification-decision",
+   "label": "Finalise classification decision",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 38,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 80,
+   "slug": "outline-potential-risk-areas",
+   "label": "Outline potential risk areas",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 39,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 81,
+   "slug": "establishing-pmm-plan",
+   "label": "Establishing PMM plan",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 40,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 82,
+   "slug": "perform-capa",
+   "label": "Perform CAPA",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 41,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 83,
+   "slug": "compliant-incident-reporting",
+   "label": "Compliant incident reporting",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 42,
+   "parent_dimension_slug": "risk-management"
+  },
+  {
+   "id": 84,
+   "slug": "system-overview-and-intended-purpose",
+   "label": "System overview and intended purpose",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 43,
+   "parent_dimension_slug": "technical-documentation"
+  },
+  {
+   "id": 85,
+   "slug": "architecture-and-design-specifications",
+   "label": "Architecture and design specifications",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 44,
+   "parent_dimension_slug": "technical-documentation"
+  },
+  {
+   "id": 86,
+   "slug": "dataset-provenance",
+   "label": "Dataset provenance",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 45,
+   "parent_dimension_slug": "technical-documentation"
+  },
+  {
+   "id": 87,
+   "slug": "structured-compliance-mapping",
+   "label": "Structured compliance mapping",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 46,
+   "parent_dimension_slug": "technical-documentation"
+  },
+  {
+   "id": 88,
+   "slug": "operational-logging-system",
+   "label": "Operational logging system",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 47,
+   "parent_dimension_slug": "record-keeping"
+  },
+  {
+   "id": 89,
+   "slug": "version-control",
+   "label": "Version control",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 48,
+   "parent_dimension_slug": "record-keeping"
+  },
+  {
+   "id": 90,
+   "slug": "full-lineage",
+   "label": "Full lineage",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 49,
+   "parent_dimension_slug": "record-keeping"
+  },
+  {
+   "id": 91,
+   "slug": "retention-deletion-policies",
+   "label": "Retention/deletion policies",
+   "section": "controls_subdim",
+   "color_bg": "#fef3c7",
+   "_color_text": "#92400e",
+   "sort_order": 50,
+   "parent_dimension_slug": "record-keeping"
+  },
+  {
+   "id": 92,
+   "slug": "agriculture",
+   "label": "Agriculture",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 93,
+   "slug": "competition",
+   "label": "Competition",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 1,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 94,
+   "slug": "corporate-governance",
+   "label": "Corporate governance",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 2,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 95,
+   "slug": "defence",
+   "label": "Defence",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 3,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 96,
+   "slug": "digital-economy",
+   "label": "Digital Economy",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 4,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 97,
+   "slug": "economy",
+   "label": "Economy",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 5,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 98,
+   "slug": "education",
+   "label": "Education",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 6,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 99,
+   "slug": "employment-&-labour",
+   "label": "Employment & labour",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 7,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 100,
+   "slug": "environment",
+   "label": "Environment",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 8,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 101,
+   "slug": "finance-and-insurance",
+   "label": "Finance and insurance",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 9,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 102,
+   "slug": "health",
+   "label": "Health",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 10,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 103,
+   "slug": "inclusive-development",
+   "label": "Inclusive development",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 11,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 104,
+   "slug": "industry-&-entrepreneurship",
+   "label": "Industry & entrepreneurship",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 12,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 105,
+   "slug": "innovation",
+   "label": "Innovation",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 13,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 106,
+   "slug": "investment",
+   "label": "Investment",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 14,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 107,
+   "slug": "other",
+   "label": "Other",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 15,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 108,
+   "slug": "public-governance",
+   "label": "Public governance",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 16,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 109,
+   "slug": "public-sector",
+   "label": "Public sector",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 17,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 110,
+   "slug": "science-&-technology",
+   "label": "Science & technology",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 18,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 111,
+   "slug": "social-&-welfare-issues",
+   "label": "Social & welfare issues",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 19,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 112,
+   "slug": "tax-transport",
+   "label": "Tax Transport",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 20,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 113,
+   "slug": "trade",
+   "label": "Trade",
+   "section": "sector",
+   "color_bg": "#f1f3f5",
+   "_color_text": "#495057",
+   "sort_order": 21,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 114,
+   "slug": "multimodal",
+   "label": "Multimodal",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 115,
+   "slug": "computer-vision",
+   "label": "Computer Vision",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 1,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 116,
+   "slug": "audio",
+   "label": "Audio",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 2,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 117,
+   "slug": "natural-language-processing",
+   "label": "Natural Language Processing",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 3,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 118,
+   "slug": "knowledge-and-retrieval",
+   "label": "Knowledge & Retrieval",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 4,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 119,
+   "slug": "decision-and-optimization",
+   "label": "Decision & Optimization",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 5,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 120,
+   "slug": "recommendation-and-personalization",
+   "label": "Recommendation & Personalization",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 6,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 121,
+   "slug": "predictive-and-analytical-ai",
+   "label": "Predictive & Analytical AI",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 7,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 122,
+   "slug": "anomaly-detection",
+   "label": "Anomaly Detection",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 8,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 123,
+   "slug": "tabular-and-structured-data",
+   "label": "Tabular & Structured Data",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 9,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 124,
+   "slug": "reinforcement-learning-and-control",
+   "label": "Reinforcement Learning & Control",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 10,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 125,
+   "slug": "agents-and-agentic-systems",
+   "label": "Agents & Agentic Systems",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 11,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 126,
+   "slug": "ai-safety-and-governance",
+   "label": "AI Safety & Governance",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 12,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 127,
+   "slug": "other---emerging",
+   "label": "Other / Emerging",
+   "section": "ai_type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 13,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 128,
+   "slug": "test",
+   "label": "Test",
+   "section": "type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 129,
+   "slug": "benchmark",
+   "label": "Benchmark",
+   "section": "type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 1,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 130,
+   "slug": "control",
+   "label": "Control",
+   "section": "type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 2,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 131,
+   "slug": "framework",
+   "label": "Framework",
+   "section": "type",
+   "color_bg": "#e7f0ff",
+   "_color_text": "#3b5bdb",
+   "sort_order": 3,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 132,
+   "slug": "open",
+   "label": "Open",
+   "section": "license",
+   "color_bg": "#e8f5e9",
+   "_color_text": "#2e7d32",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 133,
+   "slug": "closed",
+   "label": "Closed",
+   "section": "license",
+   "color_bg": "#fce4ec",
+   "_color_text": "#c62828",
+   "sort_order": 1,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 134,
+   "slug": "mit",
+   "label": "MIT",
+   "section": "license",
+   "color_bg": "#e8f5e9",
+   "_color_text": "#2e7d32",
+   "sort_order": 2,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 135,
+   "slug": "source-aesia",
+   "label": "AESIA",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 136,
+   "slug": "source-eusair",
+   "label": "EUSAiR",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 137,
+   "slug": "source-ico",
+   "label": "ICO",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 138,
+   "slug": "source-edpb",
+   "label": "EDPB",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 139,
+   "slug": "source-swzaken",
+   "label": "swzaken",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 140,
+   "slug": "source-cnil",
+   "label": "CNIL",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 141,
+   "slug": "source-dpc",
+   "label": "DPC",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 142,
+   "slug": "source-isaca",
+   "label": "ISACA",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 143,
+   "slug": "source-eu-ai-compass",
+   "label": "EU AI Compass",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 144,
+   "slug": "source-microsoft",
+   "label": "Microsoft",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 145,
+   "slug": "source-dora-grc",
+   "label": "DORA GRC",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 146,
+   "slug": "source-esas-eba",
+   "label": "ESAs / EBA",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 147,
+   "slug": "source-binaryverseai",
+   "label": "BinaryVerseAI",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 148,
+   "slug": "source-hse",
+   "label": "HSE",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 149,
+   "slug": "source-compass-assurance-services",
+   "label": "Compass Assurance Services",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 150,
+   "slug": "source-enisa",
+   "label": "ENISA",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 151,
+   "slug": "source-high-table",
+   "label": "High Table",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 152,
+   "slug": "source-nist",
+   "label": "NIST",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 153,
+   "slug": "source-occ",
+   "label": "OCC",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 154,
+   "slug": "source-tisa",
+   "label": "TISA",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 155,
+   "slug": "source-hhs-onc",
+   "label": "HHS / ONC",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  },
+  {
+   "id": 156,
+   "slug": "source-institute-of-risk-management",
+   "label": "Institute of Risk Management",
+   "section": "source",
+   "color_bg": "#FDEAD7",
+   "_color_text": "#9A5B00",
+   "sort_order": 0,
+   "parent_dimension_slug": null
+  }
+ ],
+ "metric": [
+  {
+   "id": 11,
+   "name": "pass",
+   "data_type": "boolean",
+   "range_str": "True / False",
+   "unit": "Pass/Fail",
+   "represents": "Whether the LLM response passed the oracle evaluation.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 51,
+   "dimensions": [],
+   "tool": {
+    "id": 51,
+    "slug": "langbite",
+    "name": "LangBiTe"
+   }
+  },
+  {
+   "id": 12,
+   "name": "pass_rate",
+   "data_type": "float",
+   "range_str": "0.0–1.0",
+   "unit": "Percentage",
+   "represents": "Proportion of test cases that passed, aggregated per ethical concern, LLM, or globally.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 51,
+   "dimensions": [],
+   "tool": {
+    "id": 51,
+    "slug": "langbite",
+    "name": "LangBiTe"
+   }
+  },
+  {
+   "id": 13,
+   "name": "pass_rate_per_concern",
+   "data_type": "",
+   "range_str": "",
+   "unit": "—",
+   "represents": "",
+   "is_derived": true,
+   "formula": null,
+   "tool_id": 51,
+   "dimensions": [],
+   "tool": {
+    "id": 51,
+    "slug": "langbite",
+    "name": "LangBiTe"
+   }
+  },
+  {
+   "id": 14,
+   "name": "pass_rate_per_llm",
+   "data_type": "",
+   "range_str": "",
+   "unit": "—",
+   "represents": "",
+   "is_derived": true,
+   "formula": null,
+   "tool_id": 51,
+   "dimensions": [],
+   "tool": {
+    "id": 51,
+    "slug": "langbite",
+    "name": "LangBiTe"
+   }
+  },
+  {
+   "id": 15,
+   "name": "pass_rate_per_community",
+   "data_type": "",
+   "range_str": "",
+   "unit": "—",
+   "represents": "",
+   "is_derived": true,
+   "formula": null,
+   "tool_id": 51,
+   "dimensions": [],
+   "tool": {
+    "id": 51,
+    "slug": "langbite",
+    "name": "LangBiTe"
+   }
+  },
+  {
+   "id": 16,
+   "name": "pass_rate_global",
+   "data_type": "",
+   "range_str": "",
+   "unit": "—",
+   "represents": "",
+   "is_derived": true,
+   "formula": null,
+   "tool_id": 51,
+   "dimensions": [],
+   "tool": {
+    "id": 51,
+    "slug": "langbite",
+    "name": "LangBiTe"
+   }
+  },
+  {
+   "id": 57,
+   "name": "avg_data_drift",
+   "data_type": "float",
+   "range_str": "0–inf",
+   "unit": "Number",
+   "represents": "Derived: average drift score across features.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 58,
+   "name": "number_of_drifted_features",
+   "data_type": "int",
+   "range_str": "0–inf",
+   "unit": "Number",
+   "represents": "Derived: count of features exceeding the drift threshold.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 59,
+   "name": "wasserstein_distance",
+   "data_type": "float",
+   "range_str": "0–inf",
+   "unit": "—",
+   "represents": "Earth Mover's Distance between distributions.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 60,
+   "name": "psi",
+   "data_type": "float",
+   "range_str": "0–inf",
+   "unit": "—",
+   "represents": "Population Stability Index.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 61,
+   "name": "ks_statistic",
+   "data_type": "float",
+   "range_str": "0–1",
+   "unit": "—",
+   "represents": "Kolmogorov-Smirnov test statistic.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 62,
+   "name": "ks_pvalue",
+   "data_type": "float",
+   "range_str": "0–1",
+   "unit": "—",
+   "represents": "P-value for the KS test.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 63,
+   "name": "jensenshannon_distance",
+   "data_type": "float",
+   "range_str": "0–inf",
+   "unit": "—",
+   "represents": "Jensen-Shannon divergence for categorical features.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 64,
+   "name": "chi2_statistic",
+   "data_type": "float",
+   "range_str": "0–inf",
+   "unit": "—",
+   "represents": "Chi-squared test statistic.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 65,
+   "name": "drift_detected",
+   "data_type": "bool",
+   "range_str": "True/False",
+   "unit": "Boolean",
+   "represents": "Boolean flag indicating if drift exceeds the threshold.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  },
+  {
+   "id": 66,
+   "name": "ratio_features_with_drift",
+   "data_type": "float",
+   "range_str": "0.0–1.0",
+   "unit": "Ratio",
+   "represents": "Derived: proportion of features that have drifted.",
+   "is_derived": false,
+   "formula": null,
+   "tool_id": 60,
+   "dimensions": [],
+   "tool": {
+    "id": 60,
+    "slug": "snt-data-drift",
+    "name": "Data Drift module"
+   }
+  }
+ ],
+ "metadata": [
+  {
+   "id": 3,
+   "description": "Data and Data Governance checklist by EUSAiR (Article 10 AI Act)",
+   "provider": "EUSAiR",
+   "link": "https://eusair-project.eu/",
+   "branch": "main",
+   "scientific_reference": "",
+   "project_maturity": "Stable",
+   "target_legal_requirements": "",
+   "input_spec": null,
+   "config_params": null,
+   "additional_output_fields": null,
+   "contextual_guidance": null,
+   "visualisation": null,
+   "reporting": null,
+   "control_topic": "Data and Data Governance",
+   "source_updated_at": null,
+   "country_ids": null,
+   "regulation_ids": null,
+   "original_file": null,
+   "original_size": null,
+   "tool_1_id": 3
+  },
+  {
+   "id": 26,
+   "description": "EU AI Act Role-by-Article Obligations",
+   "provider": "EU AI Compass",
+   "link": "https://euaicompass.com/downloads/eu-ai-act-compliance-matrix-provider-deployer-importer-distributor.xlsx",
+   "branch": "main",
+   "scientific_reference": "",
+   "project_maturity": "Stable",
+   "target_legal_requirements": "",
+   "input_spec": null,
+   "config_params": null,
+   "additional_output_fields": null,
+   "contextual_guidance": null,
+   "visualisation": null,
+   "reporting": null,
+   "control_topic": "EU AI Act Role-by-Article Obligations",
+   "source_updated_at": null,
+   "country_ids": null,
+   "regulation_ids": null,
+   "original_file": null,
+   "original_size": null,
+   "tool_1_id": 26
+  },
+  {
+   "id": 51,
+   "description": "LangBiTe is an open-source bias testing framework for large language models. Given a user-defined ethical requirements model specifying ethical concerns (e.g. sexism, racism, ageism) and sensitive communities (e.g. gender groups, ethnic groups, age groups), LangBiTe automatically selects prompt templates from a curated library, generates test case variants for each community, executes them against one or more LLMs, evaluates the responses using test oracles, and produces evaluation reports with end-to-end traceability between ethical requirements and assessment results. The framework includes prompt template libraries with 300+ templates in English, Spanish, and Catalan covering sexism/misogyny, racism, xenophobia, ageism, political bias, LGTBIQ+phobia, and religious discrimination.",
+   "provider": "SOM Research Lab, Universitat Oberta de Catalunya (UOC)",
+   "link": "https://github.com/SOM-Research/LangBiTe",
+   "branch": "main",
+   "scientific_reference": "Morales, S., Clarisó, R., & Cabot, J. (2024). A DSL for testing LLMs for fairness and bias. ACM/IEEE MODELS '24. https://doi.org/10.1145/3640310.3674093",
+   "project_maturity": "Actively maintained research framework; primary publication at ACM/IEEE MODELS 2024",
+   "target_legal_requirements": "EU AI Act – Article 10 (Data and data governance, non-discrimination)",
+   "input_spec": "Inputs are an ethical requirements model and a test scenario definition, provided as a JSON object or JSON file.\nsampleTypes: ethical requirements model, test scenario definition\nformats: JSON object, JSON file",
+   "config_params": "- ethical_concerns (List of objects): Ethical concerns to evaluate and their associated sensitive communities.\n- llms (List of objects): Target LLMs to evaluate. Supported providers: OpenAI, HuggingFace, Replicate.\n- num_templates (Integer, >= 1): Number of prompt templates to retrieve per ethical concern.\n- temperature (Float, 0.0–2.0): Temperature parameter for LLM inference.\n- max_tokens (Integer, >= 1): Maximum number of tokens for LLM response generation.\n- num_retries (Integer, >= 1): Number of times each prompt is executed against the LLM.\n- language (String, en, es, ca): Language of the prompt template library.\n- useLLMEval (Boolean, true / false): Whether to use a second LLM as judge to re-evaluate failed test cases.\n- eval_llm (Object): The second LLM used for LLM-as-a-judge re-evaluation.\n- prompt_library (String): Custom prompt template library CSV path. If omitted, built-in library is used.",
+   "additional_output_fields": "ethical_concern, community, prompt_template, instantiated_prompt, llm_response, provider, model, oracle_type, oracle_expected, oracle_result, llm_eval_result",
+   "contextual_guidance": "A global pass rate above 75% indicates acceptable performance; below 25% indicates severe and widespread bias.",
+   "visualisation": "Pass rate bar chart per ethical concern per LLM; Community divergence heatmap; LLM comparison radar chart",
+   "reporting": "Report should highlight global pass rate per LLM and per ethical concern, communities most frequently subjected to differential treatment, and proportion of oracle failures per bias category.",
+   "control_topic": null,
+   "source_updated_at": null,
+   "country_ids": null,
+   "regulation_ids": null,
+   "original_file": null,
+   "original_size": null,
+   "tool_1_id": 51
+  },
+  {
+   "id": 60,
+   "description": "A tool for testing distribution drift between datasets, using PSI, KS test, Wasserstein distance, Chi-squared test, and Jensen-Shannon divergence.",
+   "provider": "SnT (University of Luxembourg)",
+   "link": "https://github.com/lux-ai-factory/aisc-plugin-data-evaluation",
+   "branch": "main",
+   "scientific_reference": "",
+   "project_maturity": "Actively maintained",
+   "target_legal_requirements": null,
+   "input_spec": "Two datasets: a reference dataset (baseline, e.g. training data) and an evaluated dataset (e.g. testing data). A human-validation time feature is required in both datasets to simulate drift over time.\nformats: dataset",
+   "config_params": "- dataset (Dataset object): Selected from uploaded datasets; used to infer the list of features and avoid manual configuration.\n- window_size (str): Window size used for the sliding-window split (timedelta in days).\n- frequency (str): Frequency used for the sliding-window split (timedelta in days).\n- target_feature (str): The name of the target feature, selected from the dataset features.\n- date_feature (str): The name of the date feature indicating the time of human decision, selected from the dataset features.\n- features (List of feature objects): Each feature object is composed of name (str), min (float), max (float) and feature type (enum).",
+   "additional_output_fields": null,
+   "contextual_guidance": null,
+   "visualisation": "Bar chart for metrics",
+   "reporting": null,
+   "control_topic": null,
+   "source_updated_at": null,
+   "country_ids": null,
+   "regulation_ids": null,
+   "original_file": null,
+   "original_size": null,
+   "tool_1_id": 60
+  }
+ ]
+}

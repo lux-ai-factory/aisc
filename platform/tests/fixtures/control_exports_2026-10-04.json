@@ -1,0 +1,980 @@
+{
+ "entries": [
+  {
+   "available_on_devpi": false,
+   "completion_status": "full",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "description": "Incidents Management checklist by AESIA",
+   "id": 8,
+   "licensing": "Open_Source",
+   "metadata": {
+    "additional_output_fields": null,
+    "branch": "main",
+    "config_params": null,
+    "contextual_guidance": null,
+    "control_topic": "Incidents Management",
+    "country_ids": null,
+    "description": "Incidents Management checklist by AESIA",
+    "id": 8,
+    "input_spec": null,
+    "link": "https://aesia.digital.gob.es/en/guides",
+    "original_file": null,
+    "original_size": null,
+    "project_maturity": "Stable",
+    "provider": "AESIA",
+    "regulation_ids": null,
+    "reporting": null,
+    "scientific_reference": "",
+    "source_updated_at": null,
+    "target_legal_requirements": "",
+    "tool_1_id": 8,
+    "visualisation": null
+   },
+   "metrics": [],
+   "name": "Incidents Management_Checklist",
+   "package_name": null,
+   "questions": [
+    {
+     "article": "Article 73",
+     "category": "Knowledge of AI system categorization (MG01)",
+     "id": 369,
+     "order": 1,
+     "text": "Does the system have documentation that explains in detail its category according to those defined in the AI Act?",
+     "tool_id": 8
+    },
+    {
+     "article": "Article 73",
+     "category": "Knowledge of fundamental rights (MG02)",
+     "id": 370,
+     "order": 2,
+     "text": "Do the management systems (quality, risk or human supervision) of the smart system have training procedures to ensure that those responsible for the system are aware of the EU's fundamental rights?",
+     "tool_id": 8
+    },
+    {
+     "article": "Article 73",
+     "category": "Frame the notification of major incidents in management systems (MG03)",
+     "id": 371,
+     "order": 3,
+     "text": "Do the management systems (quality, risk and/or human supervision) of the intelligent system have procedures that allow the notification of serious incidents to be managed?",
+     "tool_id": 8
+    },
+    {
+     "article": "Article 73",
+     "category": "Contact the Market Surveillance Authority (MG04)",
+     "id": 372,
+     "order": 4,
+     "text": "Does the information associated with the system include contact information for your corresponding MSA?",
+     "tool_id": 8
+    },
+    {
+     "article": "Article 73",
+     "category": "Contact the provider (MG05)",
+     "id": 373,
+     "order": 5,
+     "text": "Has the Provider provided the Deployer with a contact channel to report major incidents in this case?",
+     "tool_id": 8
+    }
+   ],
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "reviewed_by": "admin",
+   "slug": "incidents-management-checklist",
+   "status": "approved",
+   "storage_path": "/controls/incidents-management-checklist",
+   "submitted_by": "admin",
+   "tags": [
+    {
+     "_color_text": "#3b5bdb",
+     "color_bg": "#e7f0ff",
+     "id": 130,
+     "label": "Control",
+     "parent_dimension_slug": null,
+     "section": "type",
+     "slug": "control",
+     "sort_order": 2
+    },
+    {
+     "_color_text": "#2e7d32",
+     "color_bg": "#e8f5e9",
+     "id": 132,
+     "label": "Open",
+     "parent_dimension_slug": null,
+     "section": "license",
+     "slug": "open",
+     "sort_order": 0
+    },
+    {
+     "_color_text": "#4e342e",
+     "color_bg": "#efebe9",
+     "id": 9,
+     "label": "Risk Management",
+     "parent_dimension_slug": null,
+     "section": "dimension",
+     "slug": "risk-management",
+     "sort_order": 9
+    },
+    {
+     "_color_text": "#92400e",
+     "color_bg": "#fef3c7",
+     "id": 83,
+     "label": "Compliant incident reporting",
+     "parent_dimension_slug": "risk-management",
+     "section": "controls_subdim",
+     "slug": "compliant-incident-reporting",
+     "sort_order": 42
+    },
+    {
+     "_color_text": "#9A5B00",
+     "color_bg": "#FDEAD7",
+     "id": 135,
+     "label": "AESIA",
+     "parent_dimension_slug": null,
+     "section": "source",
+     "slug": "source-aesia",
+     "sort_order": 0
+    }
+   ],
+   "version": "1.0.0"
+  },
+  {
+   "available_on_devpi": false,
+   "completion_status": "full",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "description": "Fundamental Rights Impact Assessment",
+   "id": 31,
+   "licensing": "Open_Source",
+   "metadata": {
+    "additional_output_fields": null,
+    "branch": "main",
+    "config_params": null,
+    "contextual_guidance": null,
+    "control_topic": "Fundamental Rights Impact Assessment",
+    "country_ids": null,
+    "description": "Fundamental Rights Impact Assessment",
+    "id": 31,
+    "input_spec": null,
+    "link": "https://raw.githubusercontent.com/BinaryVerseAI/eu-ai-act-compliance-templates/main/fria-template.md",
+    "original_file": null,
+    "original_size": null,
+    "project_maturity": "Stable",
+    "provider": "BinaryVerseAI",
+    "regulation_ids": null,
+    "reporting": null,
+    "scientific_reference": "",
+    "source_updated_at": null,
+    "target_legal_requirements": "",
+    "tool_1_id": 31,
+    "visualisation": null
+   },
+   "metrics": [],
+   "name": "EU AI Act FRIA Template (BinaryVerseAI)",
+   "package_name": null,
+   "questions": [
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1644,
+     "order": 1,
+     "text": "Rights potentially affected (with evidence):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1645,
+     "order": 2,
+     "text": "Individuals impacted (incl. vulnerable groups):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1646,
+     "order": 3,
+     "text": "Legal bases & applicable Union/national laws:",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1647,
+     "order": 4,
+     "text": "Data protection interplay (DPIA links; lawful bases):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1648,
+     "order": 5,
+     "text": "Risk sources (model, data, deployment, human factors):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1649,
+     "order": 6,
+     "text": "Mitigations (technical, organisational, human oversight):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1650,
+     "order": 7,
+     "text": "Residual risks & proportionality/necessity assessment:",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1651,
+     "order": 8,
+     "text": "Stakeholder consultation (if applicable):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1652,
+     "order": 9,
+     "text": "Monitoring plan (metrics, triggers, audit cadence):",
+     "tool_id": 31
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "id": 1653,
+     "order": 10,
+     "text": "Sign-off (legal, DPO, accountability owner; date):",
+     "tool_id": 31
+    }
+   ],
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "reviewed_by": "admin",
+   "slug": "eu-ai-act-fria-template-binaryverseai",
+   "status": "approved",
+   "storage_path": "/controls/eu-ai-act-fria-template-binaryverseai",
+   "submitted_by": "admin",
+   "tags": [
+    {
+     "_color_text": "#3b5bdb",
+     "color_bg": "#e7f0ff",
+     "id": 130,
+     "label": "Control",
+     "parent_dimension_slug": null,
+     "section": "type",
+     "slug": "control",
+     "sort_order": 2
+    },
+    {
+     "_color_text": "#2e7d32",
+     "color_bg": "#e8f5e9",
+     "id": 132,
+     "label": "Open",
+     "parent_dimension_slug": null,
+     "section": "license",
+     "slug": "open",
+     "sort_order": 0
+    },
+    {
+     "_color_text": "#f57f17",
+     "color_bg": "#fff8e1",
+     "id": 7,
+     "label": "Accountability",
+     "parent_dimension_slug": null,
+     "section": "dimension",
+     "slug": "accountability",
+     "sort_order": 7
+    },
+    {
+     "_color_text": "#9A5B00",
+     "color_bg": "#FDEAD7",
+     "id": 147,
+     "label": "BinaryVerseAI",
+     "parent_dimension_slug": null,
+     "section": "source",
+     "slug": "source-binaryverseai",
+     "sort_order": 0
+    }
+   ],
+   "version": "1.0.0"
+  },
+  {
+   "available_on_devpi": false,
+   "completion_status": "full",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "description": "GDPR Audit",
+   "id": 25,
+   "licensing": "Open_Source",
+   "metadata": {
+    "additional_output_fields": null,
+    "branch": "main",
+    "config_params": null,
+    "contextual_guidance": null,
+    "control_topic": "GDPR Audit",
+    "country_ids": null,
+    "description": "GDPR Audit",
+    "id": 25,
+    "input_spec": null,
+    "link": "https://www.isaca.org/bookstore/bookstore-wht_papers-digital/-/media/7df7ae09bc744fbcb9c3b3c8bc83c104.ashx",
+    "original_file": null,
+    "original_size": null,
+    "project_maturity": "Stable",
+    "provider": "ISACA",
+    "regulation_ids": null,
+    "reporting": null,
+    "scientific_reference": "",
+    "source_updated_at": null,
+    "target_legal_requirements": "",
+    "tool_1_id": 25,
+    "visualisation": null
+   },
+   "metrics": [],
+   "name": "ISACA - Tips for Auditing GDPR",
+   "package_name": null,
+   "questions": [
+    {
+     "article": null,
+     "category": null,
+     "id": 1293,
+     "order": 1,
+     "text": "Review the process undertaken by the business to locate and cleanse the data.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1294,
+     "order": 2,
+     "text": "Validate storage processes and their consistent application.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1295,
+     "order": 3,
+     "text": "Assess the processes and associated rules that have been established to validate the data collected.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1296,
+     "order": 4,
+     "text": "Review the rules that are put in place to minimize the instance of shadow IT systems and manage unstructured data.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1297,
+     "order": 5,
+     "text": "Assess data quality annually (at a minimum).",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1298,
+     "order": 6,
+     "text": "Validate that the systems created to ensure that personal data that have been put out of reach as a result of a subject access request (SAR) keep those data out of reach in the event of a full restore from backup.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1299,
+     "order": 7,
+     "text": "Consider whether the information provided is concise, complete, accurate and easily understandable. If this is not the case, then the organization should look at the reasons why and amend accordingly.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1300,
+     "order": 8,
+     "text": "To validate the “purpose” requirement of GDPR, create a schedule of uses of personal data and link this schedule to the personal data stored. Auditors should expect that records are flagged with a reference to a defined purpose that will in turn define the basis. Auditors should also expect to see evidence of validation and a link to a records retention and deletion policy.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1301,
+     "order": 9,
+     "text": "Where electronic data recording systems are used and offer facilities allowing retention periods to be set, confirm that the facilities are being used and the configured retention dates conform to the policy’s data review requirements.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1302,
+     "order": 10,
+     "text": "Assess whether the procedures are followed and are effective.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1303,
+     "order": 11,
+     "text": "Is the actual destruction of personal data properly carried out in accordance with the enterprise’s policy?",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1304,
+     "order": 12,
+     "text": "Does the enterprise dispose of IT software and hardware in a manner that fully conforms to the enterprise’s policy?",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1305,
+     "order": 13,
+     "text": "Provide assurance whether the contracts register is maintained, complete and up to date and contains a robust approach to additions and deletions.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1306,
+     "order": 14,
+     "text": "Determine whether a supplier risk assessment has been completed that serves to rank each supplier in terms of data risk.",
+     "tool_id": 25
+    },
+    {
+     "article": null,
+     "category": null,
+     "id": 1307,
+     "order": 15,
+     "text": "If there is any doubt, select a sample and ask the vendor to complete a GDPR compliance and data security questionnaire.",
+     "tool_id": 25
+    }
+   ],
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "reviewed_by": "admin",
+   "slug": "isaca-tips-for-auditing-gdpr",
+   "status": "approved",
+   "storage_path": "/controls/isaca-tips-for-auditing-gdpr",
+   "submitted_by": "admin",
+   "tags": [
+    {
+     "_color_text": "#3b5bdb",
+     "color_bg": "#e7f0ff",
+     "id": 130,
+     "label": "Control",
+     "parent_dimension_slug": null,
+     "section": "type",
+     "slug": "control",
+     "sort_order": 2
+    },
+    {
+     "_color_text": "#2e7d32",
+     "color_bg": "#e8f5e9",
+     "id": 132,
+     "label": "Open",
+     "parent_dimension_slug": null,
+     "section": "license",
+     "slug": "open",
+     "sort_order": 0
+    },
+    {
+     "_color_text": "#2e7d32",
+     "color_bg": "#e8f5e9",
+     "id": 3,
+     "label": "Privacy & Data Governance",
+     "parent_dimension_slug": null,
+     "section": "dimension",
+     "slug": "privacy-data-governance",
+     "sort_order": 3
+    },
+    {
+     "_color_text": "#9A5B00",
+     "color_bg": "#FDEAD7",
+     "id": 142,
+     "label": "ISACA",
+     "parent_dimension_slug": null,
+     "section": "source",
+     "slug": "source-isaca",
+     "sort_order": 0
+    }
+   ],
+   "version": "1.0.0"
+  },
+  {
+   "available_on_devpi": false,
+   "completion_status": "full",
+   "created_at": "2026-09-25T17:17:50.114Z",
+   "description": "Records of Processing Activities",
+   "id": 32,
+   "licensing": "Open_Source",
+   "metadata": {
+    "additional_output_fields": null,
+    "branch": "main",
+    "config_params": null,
+    "contextual_guidance": null,
+    "control_topic": "Records of Processing Activities",
+    "country_ids": null,
+    "description": "Records of Processing Activities",
+    "id": 32,
+    "input_spec": null,
+    "link": "https://healthservice.hse.ie/documents/1092/gdpr-records-of-processing-activities-template.xlsm",
+    "original_file": null,
+    "original_size": null,
+    "project_maturity": "Stable",
+    "provider": "HSE",
+    "regulation_ids": null,
+    "reporting": null,
+    "scientific_reference": "",
+    "source_updated_at": null,
+    "target_legal_requirements": "",
+    "tool_1_id": 32,
+    "visualisation": null
+   },
+   "metrics": [],
+   "name": "HSE GDPR Records of Processing Activities",
+   "package_name": null,
+   "questions": [
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1654,
+     "order": 1,
+     "text": "Enter a reference number for each entry. The first records will have Ref No. 1.",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1655,
+     "order": 2,
+     "text": "Why is data being processed? See example listings tab for more information, include all that apply.",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1656,
+     "order": 3,
+     "text": "If 'other (please specify)' is selected in the previous drop down for the purpose of processing for example, then please state the other purpose of processing.",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1657,
+     "order": 4,
+     "text": "Which categories of data subjects does the data relate to? E.g. Patients, service users, staff (past, present, future) etc. include all that apply.",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1658,
+     "order": 5,
+     "text": "Which categories of personal data are being processed? See example listings tab for more details and select all that apply.",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1659,
+     "order": 6,
+     "text": "Which categories of recipients are being processed? See example listings tab for more details and select all that apply.",
+     "tool_id": 32
+    },
+    {
+     "article": "Article 6",
+     "category": "Records of Processing Activities",
+     "id": 1660,
+     "order": 7,
+     "text": "What is the legal basis for processing the data (GDPR Article 6)",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1661,
+     "order": 8,
+     "text": "What is the retention period of the data? For more information see the HSE records retention policy available here: Record Retention Policy",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1662,
+     "order": 9,
+     "text": "Where is the personal data stored and from where can it be accessed?",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1663,
+     "order": 10,
+     "text": "What countries or international organisation is the data being transferred to? Countries inside the EEA do not need specific safeguards for transfer.",
+     "tool_id": 32
+    },
+    {
+     "article": "Article 45 | Article 46 | Article 47 | Article 49(1) | Article 49(2)",
+     "category": "Records of Processing Activities",
+     "id": 1664,
+     "order": 11,
+     "text": "What legal safeguards are in place for transfers outside of the EEA? See example listings tab for more details. If further guidance is needed regarding safeguards for transfers you can contact your Deputy Data Protection Officer (DDPO).",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1665,
+     "order": 12,
+     "text": "Give a general description of the technical and organisational security measures that are in place. This information can be found on the Privacy Impact Assessment Form for the processing activity. For further details contact IT support and your DDPO.",
+     "tool_id": 32
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "id": 1666,
+     "order": 13,
+     "text": "If the processing operation has more than one controller, the joint controllers' details need to be entered. Central procurement can be contacted for details on contracts.",
+     "tool_id": 32
+    }
+   ],
+   "reviewed_at": "2026-09-25T17:17:50.114Z",
+   "reviewed_by": "admin",
+   "slug": "hse-gdpr-records-of-processing-activities",
+   "status": "approved",
+   "storage_path": "/controls/hse-gdpr-records-of-processing-activities",
+   "submitted_by": "admin",
+   "tags": [
+    {
+     "_color_text": "#3b5bdb",
+     "color_bg": "#e7f0ff",
+     "id": 130,
+     "label": "Control",
+     "parent_dimension_slug": null,
+     "section": "type",
+     "slug": "control",
+     "sort_order": 2
+    },
+    {
+     "_color_text": "#2e7d32",
+     "color_bg": "#e8f5e9",
+     "id": 132,
+     "label": "Open",
+     "parent_dimension_slug": null,
+     "section": "license",
+     "slug": "open",
+     "sort_order": 0
+    },
+    {
+     "_color_text": "#2e7d32",
+     "color_bg": "#e8f5e9",
+     "id": 3,
+     "label": "Privacy & Data Governance",
+     "parent_dimension_slug": null,
+     "section": "dimension",
+     "slug": "privacy-data-governance",
+     "sort_order": 3
+    },
+    {
+     "_color_text": "#9A5B00",
+     "color_bg": "#FDEAD7",
+     "id": 148,
+     "label": "HSE",
+     "parent_dimension_slug": null,
+     "section": "source",
+     "slug": "source-hse",
+     "sort_order": 0
+    }
+   ],
+   "version": "1.0.0"
+  }
+ ],
+ "exports": {
+  "eu-ai-act-fria-template-binaryverseai": {
+   "meta": {
+    "catalogueId": "eu-ai-act-fria-template-binaryverseai",
+    "controlTopic": "Fundamental Rights Impact Assessment",
+    "countryIds": [],
+    "description": "Fundamental Rights Impact Assessment",
+    "regulationIds": [],
+    "sourceName": "BinaryVerseAI",
+    "sourceUpdatedAt": null,
+    "sourceUrl": "https://raw.githubusercontent.com/BinaryVerseAI/eu-ai-act-compliance-templates/main/fria-template.md",
+    "title": "EU AI Act FRIA Template (BinaryVerseAI)"
+   },
+   "questions": [
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Rights potentially affected (with evidence):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Individuals impacted (incl. vulnerable groups):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Legal bases & applicable Union/national laws:"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Data protection interplay (DPIA links; lawful bases):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Risk sources (model, data, deployment, human factors):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Mitigations (technical, organisational, human oversight):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Residual risks & proportionality/necessity assessment:"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Stakeholder consultation (if applicable):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Monitoring plan (metrics, triggers, audit cadence):"
+    },
+    {
+     "article": null,
+     "category": "Fundamental Rights Impact Assessment",
+     "text": "Sign-off (legal, DPO, accountability owner; date):"
+    }
+   ]
+  },
+  "hse-gdpr-records-of-processing-activities": {
+   "meta": {
+    "catalogueId": "hse-gdpr-records-of-processing-activities",
+    "controlTopic": "Records of Processing Activities",
+    "countryIds": [],
+    "description": "Records of Processing Activities",
+    "regulationIds": [
+     "ai-act"
+    ],
+    "sourceName": "HSE",
+    "sourceUpdatedAt": null,
+    "sourceUrl": "https://healthservice.hse.ie/documents/1092/gdpr-records-of-processing-activities-template.xlsm",
+    "title": "HSE GDPR Records of Processing Activities"
+   },
+   "questions": [
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Enter a reference number for each entry. The first records will have Ref No. 1."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Why is data being processed? See example listings tab for more information, include all that apply."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "If 'other (please specify)' is selected in the previous drop down for the purpose of processing for example, then please state the other purpose of processing."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Which categories of data subjects does the data relate to? E.g. Patients, service users, staff (past, present, future) etc. include all that apply."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Which categories of personal data are being processed? See example listings tab for more details and select all that apply."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Which categories of recipients are being processed? See example listings tab for more details and select all that apply."
+    },
+    {
+     "article": "Article 6",
+     "category": "Records of Processing Activities",
+     "text": "What is the legal basis for processing the data (GDPR Article 6)"
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "What is the retention period of the data? For more information see the HSE records retention policy available here: Record Retention Policy"
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Where is the personal data stored and from where can it be accessed?"
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "What countries or international organisation is the data being transferred to? Countries inside the EEA do not need specific safeguards for transfer."
+    },
+    {
+     "article": "Article 45 | Article 46 | Article 47 | Article 49(1) | Article 49(2)",
+     "category": "Records of Processing Activities",
+     "text": "What legal safeguards are in place for transfers outside of the EEA? See example listings tab for more details. If further guidance is needed regarding safeguards for transfers you can contact your Deputy Data Protection Officer (DDPO)."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "Give a general description of the technical and organisational security measures that are in place. This information can be found on the Privacy Impact Assessment Form for the processing activity. For further details contact IT support and your DDPO."
+    },
+    {
+     "article": null,
+     "category": "Records of Processing Activities",
+     "text": "If the processing operation has more than one controller, the joint controllers' details need to be entered. Central procurement can be contacted for details on contracts."
+    }
+   ]
+  },
+  "incidents-management-checklist": {
+   "meta": {
+    "catalogueId": "incidents-management-checklist",
+    "controlTopic": "Incidents Management",
+    "countryIds": [],
+    "description": "Incidents Management checklist by AESIA",
+    "regulationIds": [
+     "ai-act"
+    ],
+    "sourceName": "AESIA",
+    "sourceUpdatedAt": null,
+    "sourceUrl": "https://aesia.digital.gob.es/en/guides",
+    "title": "Incidents Management_Checklist"
+   },
+   "questions": [
+    {
+     "article": "Article 73",
+     "category": "Knowledge of AI system categorization (MG01)",
+     "text": "Does the system have documentation that explains in detail its category according to those defined in the AI Act?"
+    },
+    {
+     "article": "Article 73",
+     "category": "Knowledge of fundamental rights (MG02)",
+     "text": "Do the management systems (quality, risk or human supervision) of the smart system have training procedures to ensure that those responsible for the system are aware of the EU's fundamental rights?"
+    },
+    {
+     "article": "Article 73",
+     "category": "Frame the notification of major incidents in management systems (MG03)",
+     "text": "Do the management systems (quality, risk and/or human supervision) of the intelligent system have procedures that allow the notification of serious incidents to be managed?"
+    },
+    {
+     "article": "Article 73",
+     "category": "Contact the Market Surveillance Authority (MG04)",
+     "text": "Does the information associated with the system include contact information for your corresponding MSA?"
+    },
+    {
+     "article": "Article 73",
+     "category": "Contact the provider (MG05)",
+     "text": "Has the Provider provided the Deployer with a contact channel to report major incidents in this case?"
+    }
+   ]
+  },
+  "isaca-tips-for-auditing-gdpr": {
+   "meta": {
+    "catalogueId": "isaca-tips-for-auditing-gdpr",
+    "controlTopic": "GDPR Audit",
+    "countryIds": [],
+    "description": "GDPR Audit",
+    "regulationIds": [],
+    "sourceName": "ISACA",
+    "sourceUpdatedAt": null,
+    "sourceUrl": "https://www.isaca.org/bookstore/bookstore-wht_papers-digital/-/media/7df7ae09bc744fbcb9c3b3c8bc83c104.ashx",
+    "title": "ISACA - Tips for Auditing GDPR"
+   },
+   "questions": [
+    {
+     "article": null,
+     "category": null,
+     "text": "Review the process undertaken by the business to locate and cleanse the data."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Validate storage processes and their consistent application."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Assess the processes and associated rules that have been established to validate the data collected."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Review the rules that are put in place to minimize the instance of shadow IT systems and manage unstructured data."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Assess data quality annually (at a minimum)."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Validate that the systems created to ensure that personal data that have been put out of reach as a result of a subject access request (SAR) keep those data out of reach in the event of a full restore from backup."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Consider whether the information provided is concise, complete, accurate and easily understandable. If this is not the case, then the organization should look at the reasons why and amend accordingly."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "To validate the “purpose” requirement of GDPR, create a schedule of uses of personal data and link this schedule to the personal data stored. Auditors should expect that records are flagged with a reference to a defined purpose that will in turn define the basis. Auditors should also expect to see evidence of validation and a link to a records retention and deletion policy."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Where electronic data recording systems are used and offer facilities allowing retention periods to be set, confirm that the facilities are being used and the configured retention dates conform to the policy’s data review requirements."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Assess whether the procedures are followed and are effective."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Is the actual destruction of personal data properly carried out in accordance with the enterprise’s policy?"
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Does the enterprise dispose of IT software and hardware in a manner that fully conforms to the enterprise’s policy?"
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Provide assurance whether the contracts register is maintained, complete and up to date and contains a robust approach to additions and deletions."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "Determine whether a supplier risk assessment has been completed that serves to rank each supplier in terms of data risk."
+    },
+    {
+     "article": null,
+     "category": null,
+     "text": "If there is any doubt, select a sample and ask the vendor to complete a GDPR compliance and data security questionnaire."
+    }
+   ]
+  }
+ },
+ "source": "https://sandboxconfigurator.aifactory.lu/api/api, read 2026-10-04: /tool/?detailed=true and /control/{slug}/export for controls covering what changes a package (articles or none, questions without article or category); taken from all 44"
+}
