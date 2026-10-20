@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "AISC Postgres (read-only)",
+      "Group": "AISC",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "platform",
+      "Username": "inspector_ro",
+      "PassFile": "/var/lib/pgadmin/.pgpass",
+      "SSLMode": "prefer",
+      "Comment": "Every project database is project_<pid without hyphens>. The role reads everything and writes nothing; Keycloak's and Superset's databases are closed to it."
+    }
+  }
+}

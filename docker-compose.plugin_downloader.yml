@@ -9,21 +9,78 @@ services:
         apk --no-cache add git
 
         cd /downloads
+        export GIT_TERMINAL_PROMPT=0
 
+        # The token reaches git through a credential helper that reads it from the environment, so it
+        # is never in a URL, in git's arguments or in .git/config.
+        auth='!f() { echo username=x-access-token; echo "password=$${GITHUB_TOKEN}"; }; f'
+
+        # HTTP/1.1: over HTTP/2, git 2.49 and later get a 401 from GitHub even on a public repo.
+        # One repo that fails does not stop the others: the publisher publishes what is there.
+        # Every AISC change is made on feat/unified-modules: a repo that has that branch is built from
+        # it, one that doesn't (yet) from its default branch.
+        fetch() {
+          url="https://github.com/lux-ai-factory/$$1.git"
+          git="git -c http.version=HTTP/1.1"
+          if $$git -c credential.helper="$$auth" ls-remote --exit-code --heads "$$url" feat/unified-modules \
+              > /dev/null 2>&1; then
+            branch=feat/unified-modules
+          else
+            branch=
+          fi
+          if [ -d "$$1/.git" ] && [ -n "$$branch" ]; then
+            (cd "$$1" && $$git -c credential.helper="$$auth" fetch origin "$$branch" \
+              && git checkout -q -B "$$branch" FETCH_HEAD) || echo "could not update $$1"
+          elif [ -d "$$1/.git" ]; then
+            (cd "$$1" && $$git -c credential.helper="$$auth" pull origin) || echo "could not update $$1"
+          elif [ -n "$$branch" ]; then
+            $$git -c credential.helper="$$auth" clone --branch "$$branch" "$$url" || echo "could not clone $$1"
+          else
+            $$git -c credential.helper="$$auth" clone "$$url" || echo "could not clone $$1"
+          fi
+        }
+
+        # Every plugin of github.com/lux-ai-factory (aisc-plugin-builder, -integrator, -interface and
+        # -manager are the plugin tooling, not plugins). The public ones:
         for repo in \
-          aisc-plugin-performance \
+          aisc-plugin-agentdojo \
           aisc-plugin-data-evaluation \
+          aisc-plugin-explitest \
           aisc-plugin-fairness \
           aisc-plugin-langbite \
           aisc-plugin-llm-eval \
-          aisc-plugin-strongreject \
-          aisc-plugin-explitest
+          aisc-plugin-performance \
+          aisc-plugin-promptfoo \
+          aisc-plugin-ragas \
+          aisc-plugin-strongreject
         do
-          if [ -d "$$repo/.git" ]; then
-            cd $$repo && git pull origin && cd /downloads
+          fetch "$$repo"
+        done
+
+        # The private ones, only with a GitHub token that can read them (GITHUB_TOKEN in env.secrets).
+        for repo in \
+          aisc-plugin-agentseal \
+          aisc-plugin-counterfactual \
+          aisc-plugin-evasion \
+          aisc-plugin-example \
+          aisc-plugin-luxeval \
+          aisc-plugin-uncertainty
+        do
+          if [ -n "$${GITHUB_TOKEN:-}" ]; then
+            fetch "$$repo"
           else
-            git clone https://github.com/lux-ai-factory/$$repo.git
+            echo "skipped $$repo: a private repo, set GITHUB_TOKEN in env.secrets to download it"
           fi
         done
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    # Into def_plugins, the folder plugin-publisher builds and uploads to the index the engine
+    # installs from.
     volumes:
-      - ${PLUGIN_PATH:?PLUGIN_PATH is required}:/downloads
+      - ./def_plugins:/downloads
+
+  # Publish only once the plugins are there.
+  plugin-publisher:
+    depends_on:
+      plugin-downloader:
+        condition: service_completed_successfully
