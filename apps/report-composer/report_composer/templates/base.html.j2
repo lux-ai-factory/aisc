@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Report composer{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=MuseoModerno:wght@500;600;700&family=Raleway:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ root }}/static/composer.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    {# Like the other modules: the mark goes back to the launcher, to this project's page when there is one. #}
+    <a class="brand" href="{% if project %}{{ launcher }}p/{{ project.pid }}{% else %}{{ launcher }}{% endif %}">
+      <img src="{{ root }}/static/laif-logo.svg" alt="Luxembourg AI Factory">
+      <span class="divider"></span>
+      <span>Report composer</span>
+    </a>
+    <nav class="site-nav">
+      {% if project %}
+      {# Opened from the project's step 4, Collect evidence, so the back link goes one level up, there. #}
+      <a href="{{ launcher }}evidence.html?project={{ project.pid }}" aria-label="Back to Collect evidence">&larr; Collect evidence</a>
+      <a href="{{ root }}/p/{{ project.slug }}/"{% if here == "layouts" %} class="nav-here"{% endif %}>Report layouts</a>
+      <a href="{{ root }}/p/{{ project.slug }}/templates"{% if here == "templates" %} class="nav-here"{% endif %}>Report looks</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+<div class="rc-page">
+{% block main %}{% endblock %}
+</div>
+{% block script %}{% endblock %}
+</body>
+</html>
