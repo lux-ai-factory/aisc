@@ -1,0 +1,88 @@
+"""A plugin run's pass to the internal connection routes.
+
+The worker holds PLATFORM_CONNECTIONS_TOKEN, which opens every project's connections. A plugin is
+catalogue code, so it never gets that token: before it starts, the worker asks for a pass naming the
+run's own references (``target:<pid>/<key>``, ``connection:<pid>/<name>``), and the plugin presents the
+pass instead. A pass opens the routes of exactly those references, until it expires or the worker revokes
+it when the run ends. Only its hash is kept.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import secrets
+import uuid
+from datetime import datetime
+
+from platform_service import db
+
+PREFIX = "aisc-rp-"
+HEADER = "X-AISC-Run-Pass"
+
+
+class Refused(Exception):
+    def __init__(self, status: int, detail: str):
+        super().__init__(detail)
+        self.status, self.detail = status, detail
+
+
+def _hash(run_pass: str) -> str:
+    return hashlib.sha256(run_pass.encode()).hexdigest()
+
+
+def _grant(ref) -> tuple[str, str, str]:
+    """("target" or "connection", project pid, key or name) of a reference; Refused(422) otherwise."""
+    # where the routes import the plugin interface too: only a call that reads a reference needs it
+    from aisc_plugin_interface.connections import BadReference, parse_reference
+    from aisc_plugin_interface.targets import parse_target
+
+    try:
+        if isinstance(ref, str) and ref.startswith("target:"):
+            pid, key = parse_target(ref)
+            kind = "target"
+        else:
+            pid, key = parse_reference(ref)
+            kind = "connection"
+        return kind, str(uuid.UUID(pid)), key
+    except (BadReference, ValueError, TypeError):
+        raise Refused(422, f"not a target or connection reference: {ref!r}") from None
+
+
+def mint(refs, ttl_s: int | None = None) -> tuple[str, datetime]:
+    """A new pass for these references, and when it expires."""
+    if not isinstance(refs, list) or not refs:
+        raise Refused(422, "refs: name the run's target or connection references")
+    grants = sorted({_grant(ref) for ref in refs})
+    for pid in {pid for _, pid, _ in grants}:
+        if db.get_project(pid) is None:
+            raise Refused(404, f"no project {pid!r}")
+    ttl = ttl_s if ttl_s is not None else int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
+    run_pass = PREFIX + secrets.token_hex(32)
+    with db.pool().connection() as conn:
+        conn.execute("DELETE FROM core.run_pass WHERE expires_at < clock_timestamp()")
+        expires = conn.execute(
+            "INSERT INTO core.run_pass (pass_hash, refs, expires_at)"
+            " VALUES (%s, %s::jsonb, clock_timestamp() + make_interval(secs => %s)) RETURNING expires_at",
+            (_hash(run_pass), json.dumps([list(g) for g in grants]), ttl)).fetchone()["expires_at"]
+    return run_pass, expires
+
+
+def check(run_pass: str, pid: str, kind: str, name: str) -> None:
+    """Refused(401) for an unknown or expired pass, Refused(403) when it does not name this reference."""
+    with db.pool().connection() as conn:
+        row = conn.execute("SELECT refs FROM core.run_pass WHERE pass_hash = %s AND expires_at > clock_timestamp()",
+                           (_hash(run_pass or ""),)).fetchone()
+    if row is None:
+        raise Refused(401, "unknown or expired run pass")
+    try:
+        project = str(uuid.UUID(pid))
+    except ValueError:
+        raise Refused(403, "this run pass does not open that") from None
+    if [kind, project, name] not in row["refs"]:
+        raise Refused(403, "this run pass does not open that")
+
+
+def revoke(run_pass: str) -> None:
+    with db.pool().connection() as conn:
+        conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s", (_hash(run_pass or ""),))

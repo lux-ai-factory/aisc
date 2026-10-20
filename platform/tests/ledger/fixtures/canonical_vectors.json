@@ -1,0 +1,70 @@
+{
+ "about": "RFC 8785 vectors shared by the Python ledger and its TypeScript twin (spec 6.1). input_json is parsed by each language's own JSON parser.",
+ "vectors": [
+  {
+   "name": "rfc8785 example",
+   "input_json": "{\"numbers\":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001],\"string\":\"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",\"literals\":[null,true,false]}",
+   "canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+  },
+  {
+   "name": "utf16 key order",
+   "input_json": "{\"\\ufb33\":3,\"\\ud83d\\ude00\":2,\"\\u20ac\":1,\"a\":1}",
+   "canonical": "{\"a\":1,\"€\":1,\"😀\":2,\"דּ\":3}"
+  },
+  {
+   "name": "nested and whitespace",
+   "input_json": "{ \"b\" : 2 , \"a\" : 1 , \"c\" : [ 3 , { \"z\" : 0 , \"y\" : 1 } ] }",
+   "canonical": "{\"a\":1,\"b\":2,\"c\":[3,{\"y\":1,\"z\":0}]}"
+  },
+  {
+   "name": "short escapes",
+   "input_json": "\"\\b\\f\\n\\r\\t\"",
+   "canonical": "\"\\b\\f\\n\\r\\t\""
+  },
+  {
+   "name": "del stays",
+   "input_json": "\"\\u007f\"",
+   "canonical": "\"\""
+  },
+  {
+   "name": "control as u00xx",
+   "input_json": "\"\\u001f\"",
+   "canonical": "\"\\u001f\""
+  },
+  {
+   "name": "minus zero",
+   "input_json": "-0.0",
+   "canonical": "0"
+  },
+  {
+   "name": "1e-6 boundary",
+   "input_json": "0.000001",
+   "canonical": "0.000001"
+  },
+  {
+   "name": "1e-7",
+   "input_json": "1e-7",
+   "canonical": "1e-7"
+  },
+  {
+   "name": "1e20 boundary",
+   "input_json": "1e20",
+   "canonical": "100000000000000000000"
+  },
+  {
+   "name": "1e21",
+   "input_json": "1e21",
+   "canonical": "1e+21"
+  },
+  {
+   "name": "2^53",
+   "input_json": "9007199254740992",
+   "canonical": "9007199254740992"
+  },
+  {
+   "name": "true is not 1",
+   "input_json": "[true,1]",
+   "canonical": "[true,1]"
+  }
+ ]
+}
