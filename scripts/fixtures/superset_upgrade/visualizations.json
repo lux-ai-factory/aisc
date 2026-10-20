@@ -1,0 +1,102 @@
+{
+ "source": "get_metric_visualizations of aisc-plugin-data-evaluation 0.4.1 and aisc-plugin-langbite 0.2.6, 2026-10-05 (no time windows)",
+ "plugins": [
+  {
+   "plugin": "data-monitor::DataDriftPlugin",
+   "label": "Data Drift",
+   "version": "0.4.1",
+   "visualizations": [
+    {
+     "chart_type": "bars",
+     "metrics": [
+      "Drift Score"
+     ],
+     "title": "Drift Score",
+     "description": null,
+     "filter_dimensions": null,
+     "metric_label_dimension": null,
+     "group_by_dimensions": null
+    },
+    {
+     "chart_type": "bars",
+     "metrics": [
+      "Number of Drifted Features"
+     ],
+     "title": "Number of Drifted Features",
+     "description": null,
+     "filter_dimensions": null,
+     "metric_label_dimension": null,
+     "group_by_dimensions": null
+    },
+    {
+     "chart_type": "bars",
+     "metrics": [
+      "psi"
+     ],
+     "title": "PSI per feature",
+     "description": "Population stability index of each numeric feature (score: PSI / 0.25, capped at 1).",
+     "filter_dimensions": null,
+     "metric_label_dimension": null,
+     "group_by_dimensions": [
+      "feature"
+     ]
+    },
+    {
+     "chart_type": "table",
+     "metrics": [
+      "psi",
+      "smd",
+      "ks",
+      "wasserstein",
+      "levene",
+      "chi2",
+      "psi_cat"
+     ],
+     "title": "Drift tests per feature",
+     "description": "Each test's score per feature; the raw statistic, p-value and flag are in the measures' dimensions.",
+     "filter_dimensions": null,
+     "metric_label_dimension": null,
+     "group_by_dimensions": [
+      "feature"
+     ]
+    }
+   ]
+  },
+  {
+   "plugin": "aisc-plugin-langbite::LangBiteEvaluationPlugin",
+   "label": "LangBiTe",
+   "version": "0.2.6",
+   "visualizations": [
+    {
+     "chart_type": "bars",
+     "metrics": [
+      "Bias Evaluation Results"
+     ],
+     "title": "Pass rate per concern",
+     "description": "Share of judged answers that passed, per concern (refusals not judged).",
+     "filter_dimensions": null,
+     "metric_label_dimension": null,
+     "group_by_dimensions": [
+      "concern"
+     ]
+    },
+    {
+     "chart_type": "table",
+     "metrics": [
+      "Failed cases"
+     ],
+     "title": "Failed cases",
+     "description": "Every answer of every failed case: the prompt as sent, the target's answer, and what the test expected.",
+     "filter_dimensions": null,
+     "metric_label_dimension": null,
+     "group_by_dimensions": [
+      "concern",
+      "prompt",
+      "response",
+      "expected"
+     ]
+    }
+   ]
+  }
+ ]
+}
