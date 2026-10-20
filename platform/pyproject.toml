@@ -1,0 +1,32 @@
+[project]
+name = "aisc-platform"
+version = "0.1.0"
+description = "The platform's projects: defined once, referenced by every module."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    # aisc_identity verifies Keycloak tokens; the package itself is mounted
+    # from shared/, its one dependency is installed here.
+    "pyjwt[crypto]>=2.8",
+    "uvicorn[standard]>=0.30",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    # the live model listing calls the providers; keys are Fernet-encrypted at rest
+    "httpx>=0.27",
+    # the private catalogue's install-info compares the versions the package index serves
+    "packaging>=24",
+    "cryptography>=43",
+    # the ledger's store; the same pin as the engine
+    "immudb-py==1.5.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# the service is a package in this directory, not an installed distribution
+pythonpath = [".", "../shared/identity", "../shared/plugin-interface/src"]
+markers = [
+    "chain: a step of scripts/test-pipeline-chain.sh, skipped without CHAIN_JSON",
+]
