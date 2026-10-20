@@ -1,0 +1,44 @@
+{
+  "_about": "The AISC brand theme (Luxembourg AI Factory): the values every app's :root carries, and the fonts. Layouts are each app's own; only these change. scripts/tests/test_brand_theme.py holds every app to them.",
+  "variables": {
+    "--bg": "#f2f3fd",
+    "--panel": "#ffffff",
+    "--panel-2": "#f2f3fd",
+    "--text": "#0b0b2e",
+    "--muted": "#4a4f6a",
+    "--faint": "#6b7090",
+    "--primary": "#000fdf",
+    "--primary-hover": "#000079",
+    "--accent": "#ff007e",
+    "--accent-hover": "#cc0066",
+    "--info": "#0099ff",
+    "--info-soft": "#ccebff",
+    "--pink-soft": "#ffcce5",
+    "--border": "#cccff9",
+    "--border-strong": "#999ff2",
+    "--error": "#e30613",
+    "--heading": "#000079"
+  },
+  "fonts": {
+    "heading": "MuseoModerno",
+    "body": "Raleway",
+    "mono": "IBM Plex Mono"
+  },
+  "rules": [
+    "body text in Raleway; h1-h4 in MuseoModerno, color var(--heading); ids, labels and code in IBM Plex Mono",
+    "no blueprint grid behind the launcher pages",
+    "an app sets only the variables it uses, each to the value above",
+    "every app's top header: 89px tall (20px padding top and bottom, 40px left and right, 1px bottom border), the logo 48px tall, the product title 19px MuseoModerno 700 in sentence case"
+  ],
+  "header": {
+    "height_px": 89,
+    "padding_block_px": 20,
+    "padding_inline_px": 40,
+    "border_bottom": "1px solid var(--border)",
+    "logo_height_px": 48,
+    "title_font": "MuseoModerno",
+    "title_size_px": 19,
+    "title_weight": 700,
+    "title_transform": "none"
+  }
+}

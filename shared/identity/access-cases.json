@@ -1,0 +1,36 @@
+{
+  "projects": [
+    {"pid": "11111111-1111-4111-8111-111111111111", "slug": "alpha"},
+    {"pid": "22222222-2222-4222-8222-222222222222", "slug": "33333333-3333-4333-8333-333333333333"},
+    {"pid": "44444444-4444-4444-8444-444444444444", "slug": "11111111111141118111111111111111"}
+  ],
+  "members": [
+    {"project": "11111111-1111-4111-8111-111111111111", "subject": "viewer-1", "role": "viewer"},
+    {"project": "11111111-1111-4111-8111-111111111111", "subject": "editor-1", "role": "editor"},
+    {"project": "11111111-1111-4111-8111-111111111111", "subject": "owner-1", "role": "owner"},
+    {"project": "22222222-2222-4222-8222-222222222222", "subject": "owner-2", "role": "owner"},
+    {"project": "44444444-4444-4444-8444-444444444444", "subject": "owner-4", "role": "owner"}
+  ],
+  "cases": [
+    {"name": "stranger reads", "ref": "alpha", "subject": "nobody", "admin": false, "want": "GET", "status": 404},
+    {"name": "stranger writes", "ref": "alpha", "subject": "nobody", "admin": false, "want": "POST", "status": 404},
+    {"name": "viewer reads", "ref": "alpha", "subject": "viewer-1", "admin": false, "want": "GET", "status": 200, "role": "viewer", "may_write": false},
+    {"name": "viewer heads", "ref": "alpha", "subject": "viewer-1", "admin": false, "want": "HEAD", "status": 200, "role": "viewer", "may_write": false},
+    {"name": "viewer asks options", "ref": "alpha", "subject": "viewer-1", "admin": false, "want": "options", "status": 200, "role": "viewer", "may_write": false},
+    {"name": "viewer writes", "ref": "alpha", "subject": "viewer-1", "admin": false, "want": "POST", "status": 403},
+    {"name": "viewer deletes", "ref": "alpha", "subject": "viewer-1", "admin": false, "want": "DELETE", "status": 403},
+    {"name": "editor writes", "ref": "alpha", "subject": "editor-1", "admin": false, "want": "PUT", "status": 200, "role": "editor", "may_write": true},
+    {"name": "editor manages members", "ref": "alpha", "subject": "editor-1", "admin": false, "want": "manage", "status": 403},
+    {"name": "owner manages members", "ref": "alpha", "subject": "owner-1", "admin": false, "want": "manage", "status": 200, "role": "owner", "may_write": true},
+    {"name": "admin outside the project writes", "ref": "alpha", "subject": "nobody", "admin": true, "want": "POST", "status": 200, "role": "owner", "may_write": true},
+    {"name": "admin outside the project manages", "ref": "alpha", "subject": "nobody", "admin": true, "want": "manage", "status": 200, "role": "owner", "may_write": true},
+    {"name": "admin on a project that does not exist", "ref": "99999999-9999-4999-8999-999999999999", "subject": "nobody", "admin": true, "want": "GET", "status": 404},
+    {"name": "slug that does not exist", "ref": "beta", "subject": "owner-1", "admin": false, "want": "GET", "status": 404},
+    {"name": "pid reaches the same project as its slug", "ref": "11111111-1111-4111-8111-111111111111", "subject": "editor-1", "admin": false, "want": "POST", "status": 200, "role": "editor", "may_write": true, "pid": "11111111-1111-4111-8111-111111111111"},
+    {"name": "pid-shaped ref is never read as a slug", "ref": "33333333-3333-4333-8333-333333333333", "subject": "owner-2", "admin": false, "want": "GET", "status": 404},
+    {"name": "uppercase pid is the same pid", "ref": "11111111-1111-4111-8111-111111111111", "subject": "viewer-1", "admin": false, "want": "GET", "status": 200, "role": "viewer", "may_write": false, "pid": "11111111-1111-4111-8111-111111111111", "upper": true},
+    {"name": "undashed hex is a slug, not the pid it spells", "ref": "11111111111141118111111111111111", "subject": "owner-4", "admin": false, "want": "GET", "status": 200, "role": "owner", "may_write": true, "pid": "44444444-4444-4444-8444-444444444444"},
+    {"name": "braced uuid is not a pid", "ref": "{11111111-1111-4111-8111-111111111111}", "subject": "owner-1", "admin": false, "want": "GET", "status": 404},
+    {"name": "urn uuid is not a pid", "ref": "urn:uuid:11111111-1111-4111-8111-111111111111", "subject": "owner-1", "admin": false, "want": "GET", "status": 404}
+  ]
+}

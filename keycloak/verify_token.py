@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Keycloak token verification — proof that the `aisc` realm issues valid, role-bearing tokens
+Keycloak token verification: proof that the `aisc` realm issues valid, role-bearing tokens
 and that they can be cryptographically verified against Keycloak's public keys (JWKS).
 
 This is the standalone proof of the auth mechanism the backend will use in code:
@@ -17,9 +17,12 @@ Reach Keycloak via the KC_REALM env var:
 
 Usage:
   KC_REALM=http://localhost:8081/realms/aisc python keycloak/verify_token.py
-  KC_REALM=... KC_USERNAME=user KC_PASSWORD=user python keycloak/verify_token.py
+  KC_REALM=... KC_USERNAME=user KC_PASSWORD=<its password> python keycloak/verify_token.py
 
-Note: the credential env vars are KC_-prefixed on purpose — a plain USERNAME would collide
+Without KC_PASSWORD, the password of the realm's development account is read from env.secrets
+(AISC_ADMIN_PASSWORD for admin, AISC_USER_PASSWORD for user; scripts/secrets.sh makes them).
+
+Note: the credential env vars are KC_-prefixed on purpose: a plain USERNAME would collide
 with the shell's own USERNAME variable and log in as the wrong user.
 """
 import os
@@ -37,7 +40,21 @@ except ImportError:
 KC_REALM = os.environ.get("KC_REALM", "http://localhost:8081/realms/aisc")
 CLIENT_ID = os.environ.get("KC_CLIENT_ID", "aisc-webapp")
 USERNAME = os.environ.get("KC_USERNAME", "admin")
-PASSWORD = os.environ.get("KC_PASSWORD", "admin")
+
+
+def _account_password(username: str) -> str:
+    """The development account's password, from env.secrets at the repository's root."""
+    name = {"admin": "AISC_ADMIN_PASSWORD", "user": "AISC_USER_PASSWORD"}.get(username)
+    secrets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "env.secrets")
+    if name and os.path.exists(secrets):
+        with open(secrets) as f:
+            for line in f:
+                if line.startswith(name + "="):
+                    return line.rstrip("\n").split("=", 1)[1]
+    sys.exit(f"Set KC_PASSWORD: no password for {username!r} in env.secrets (scripts/secrets.sh makes it).")
+
+
+PASSWORD = os.environ.get("KC_PASSWORD") or _account_password(USERNAME)
 
 TOKEN_URL = f"{KC_REALM}/protocol/openid-connect/token"
 JWKS_URL = f"{KC_REALM}/protocol/openid-connect/certs"
