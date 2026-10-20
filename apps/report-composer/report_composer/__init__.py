@@ -1,0 +1,1 @@
+"""The report composer."""
