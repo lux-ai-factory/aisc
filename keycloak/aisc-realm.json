@@ -490,12 +490,9 @@
       "totp": false,
       "credentials": [
         {
-          "id": "9dd4586c-ae01-416e-8044-5c6067c006f2",
           "type": "password",
-          "userLabel": "My password",
-          "createdDate": 1782393636253,
-          "secretData": "{\"value\":\"/qlNpc5MLeTGJRJ3wTFRDSsepbhOGcwecgvKjJI2HBk=\",\"salt\":\"nftnWpd0fmyXGgN+3BhZMg==\",\"additionalParameters\":{}}",
-          "credentialData": "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+          "value": "${AISC_ADMIN_PASSWORD}",
+          "temporary": false
         }
       ],
       "disableableCredentialTypes": [],
@@ -519,12 +516,9 @@
       "totp": false,
       "credentials": [
         {
-          "id": "3119970e-0a85-4565-b101-b4ebaab0d158",
           "type": "password",
-          "userLabel": "My password",
-          "createdDate": 1782393716862,
-          "secretData": "{\"value\":\"zfr1HLVmHrzLZ9UIjq8tM3uV7QUXTNsxd4piwoIhT/8=\",\"salt\":\"5g92mDkDyhzLzhJ3DqPhHQ==\",\"additionalParameters\":{}}",
-          "credentialData": "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
+          "value": "${AISC_USER_PASSWORD}",
+          "temporary": false
         }
       ],
       "disableableCredentialTypes": [],
@@ -922,37 +916,31 @@
       ]
     },
     {
-      "id": "8011ef38-59b3-4594-9318-d3141b79cbc5",
-      "clientId": "controls",
-      "surrogateAuthRequired": false,
+      "clientId": "aisc-gateway",
+      "name": "AISC gateway (oauth2-proxy)",
+      "description": "Confidential client for the reverse-proxy gateway: it holds the session that covers every module, so one sign-in is enough. Its secret is GATEWAY_CLIENT_SECRET from env.secrets (scripts/secrets.sh).",
       "enabled": true,
-      "alwaysDisplayInConsole": false,
-      "clientAuthenticatorType": "client-secret",
-      "redirectUris": [
-        "http://localhost:3100/*",
-        "http://localhost:3000/*",
-        "http://localhost/controls/*"
-      ],
-      "webOrigins": [
-        "+"
-      ],
-      "notBefore": 0,
+      "protocol": "openid-connect",
+      "publicClient": false,
       "bearerOnly": false,
-      "consentRequired": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "publicClient": true,
-      "frontchannelLogout": false,
-      "protocol": "openid-connect",
+      "secret": "${GATEWAY_CLIENT_SECRET}",
+      "redirectUris": [
+        "http://localhost/oauth2/callback",
+        "http://localhost:8100/oauth2/callback",
+        "http://localhost:8188/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost",
+        "http://localhost:8100",
+        "http://localhost:8188"
+      ],
       "attributes": {
-        "realm_client": "false",
-        "post.logout.redirect.uris": "+"
+        "post.logout.redirect.uris": "http://localhost:8100/*##http://localhost/*"
       },
-      "authenticationFlowBindingOverrides": {},
-      "fullScopeAllowed": true,
-      "nodeReRegistrationTimeout": -1,
       "defaultClientScopes": [
         "web-origins",
         "acr",
@@ -967,65 +955,7 @@
         "offline_access",
         "organization",
         "microprofile-jwt"
-      ],
-      "access": {
-        "view": true,
-        "configure": true,
-        "manage": true
-      }
-    },
-    {
-      "id": "5c090635-1d4f-4fa3-a63b-666fec55e8e4",
-      "clientId": "qualification",
-      "surrogateAuthRequired": false,
-      "enabled": true,
-      "alwaysDisplayInConsole": false,
-      "clientAuthenticatorType": "client-secret",
-      "redirectUris": [
-        "http://localhost:3200/*",
-        "http://localhost:3000/*",
-        "http://localhost/qualification/*"
-      ],
-      "webOrigins": [
-        "+"
-      ],
-      "notBefore": 0,
-      "bearerOnly": false,
-      "consentRequired": false,
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": false,
-      "publicClient": true,
-      "frontchannelLogout": false,
-      "protocol": "openid-connect",
-      "attributes": {
-        "realm_client": "false",
-        "post.logout.redirect.uris": "+"
-      },
-      "authenticationFlowBindingOverrides": {},
-      "fullScopeAllowed": true,
-      "nodeReRegistrationTimeout": -1,
-      "defaultClientScopes": [
-        "web-origins",
-        "acr",
-        "profile",
-        "roles",
-        "basic",
-        "email"
-      ],
-      "optionalClientScopes": [
-        "address",
-        "phone",
-        "offline_access",
-        "organization",
-        "microprofile-jwt"
-      ],
-      "access": {
-        "view": true,
-        "configure": true,
-        "manage": true
-      }
+      ]
     }
   ],
   "clientScopes": [

@@ -1,5 +1,5 @@
 """
-Phase 5 — REAL Selenium proof of cross-app SSO (Single Sign-On).
+A real Selenium proof of cross-app single sign-on.
 
 All three frontends use the SAME Keycloak realm (`aisc`) with their own clients, so one login
 creates a realm session that the others reuse silently. This test proves it:
