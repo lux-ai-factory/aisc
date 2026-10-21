@@ -140,6 +140,10 @@ def served_over_https() -> bool:
     return domain.strip('"').startswith("https://")
 
 
+#: True once start has handed the stack to compose `up`; a refusal after that point cannot say "nothing was started".
+STACK_BEING_STARTED = False
+
+
 class Refused(Exception):
     """Stops a command with a message on stderr and an exit code; nothing half-written is left."""
 
@@ -920,6 +924,7 @@ def start(_args: list[str]) -> None:
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
     launcher's address in env.runtime), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
     sign-in the addresses, START_MIN_DISK_GB (20)."""
+    global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
     url = os.environ.get("START_URL") or effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/"
@@ -984,7 +989,7 @@ def start(_args: list[str]) -> None:
             break
     else:
         raise Refused("the build failed three times. The first error above says why: often the network (pip, uv or "
-                      "npm timed out) or the disk. Fix it and run this again; what was built is kept.")
+                      "npm timed out) or the disk; what was built is kept.")
 
     # 5. Start, and wait for the sign-in page
     # A failed attempt, finished by hand with `docker compose up`, leaves containers in state "created";
@@ -995,6 +1000,7 @@ def start(_args: list[str]) -> None:
     if left_over:
         say(f"Removing what an earlier attempt left unstarted: {' '.join(left_over)}")
         subprocess.run([*COMPOSE, "rm", "-f", *left_over], capture_output=True)
+    STACK_BEING_STARTED = True
     say("Starting the stack ...")
     if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
         raise Refused("the stack did not start: see the error above.")
@@ -1063,12 +1069,13 @@ def main(argv: list[str]) -> int:
     try:
         COMMANDS[argv[0]](argv[1:])
     except Refused as refused:
-        if argv[0] == "start":
-            # A refusal that is followed by a hand-run compose up leaves half-made containers behind.
+        if argv[0] == "start" and not STACK_BEING_STARTED:
+            # A refusal that is followed by a hand-run compose up leaves half-made containers behind. After `up`
+            # the refusals give their own advice, and "nothing was started" would no longer be true.
             warn(f"aisc.py start: {str(refused).rstrip('.')}. Nothing was started. Fix this and run start again, not docker "
                  "compose directly.")
         else:
-            warn(str(refused))
+            warn(f"aisc.py {argv[0]}: {refused}" if argv[0] == "start" else str(refused))
         return refused.code
     except OSError as failed:
         warn(f"aisc.py {argv[0]}: {failed.strerror or failed} ({failed.filename or 'a file here'}); the files "

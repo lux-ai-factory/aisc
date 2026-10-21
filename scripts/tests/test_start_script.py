@@ -36,7 +36,7 @@ case "$1" in
         exit 0 ;;
       *" ps -a --status created"*) [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
       *" rm "*) exit 0 ;;
-      *" up "*) exit 0 ;;
+      *" up "*) [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
         exit 0 ;;
       *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
@@ -430,3 +430,32 @@ def test_a_refused_start_says_not_to_run_compose_directly(scratch):
     r = run(scratch)
     assert r.returncode != 0
     assert "Nothing was started. Fix this and run start again, not docker compose directly." in r.stdout + r.stderr
+
+
+HINT = "Nothing was started. Fix this and run start again, not docker compose directly."
+
+
+def test_a_refusal_before_the_stack_starts_ends_with_the_hint_once(scratch):
+    (scratch / "branch").write_text("master\n")
+    r = run(scratch)
+    assert (r.stdout + r.stderr).count(HINT) == 1
+
+
+def test_the_build_refusal_tells_to_run_again_once(scratch):
+    (scratch / "build-failures").write_text("3")
+    r = run(scratch)
+    said = r.stderr.lower()
+    assert "build failed" in said and said.count("run ") == 1 and said.count("again") == 1, said
+
+
+def test_the_sign_in_refusal_does_not_claim_nothing_was_started(scratch):
+    (scratch / "exec-fails").write_text("")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert "could not be told" in r.stderr and "Nothing was started" not in r.stderr
+
+
+def test_a_refusal_after_up_does_not_claim_nothing_was_started(scratch):
+    (scratch / "up-fails").write_text("")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "did not start" in r.stderr and "Nothing was started" not in r.stderr
