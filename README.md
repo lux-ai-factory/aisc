@@ -37,8 +37,8 @@ cd aisc
 uv run scripts/aisc.py start
 ```
 
-Then open <http://localhost:8100> and sign in with the account the last message of `start` names (`admin` /
-`admin` on a new install).
+Then open the address the last message of `start` gives (<http://localhost:8100> unless it moved) and sign in
+with the account that message names (`admin` / `admin` on a new install).
 
 The first start builds every image (27 of them) on your computer, so it takes a while. Later starts are quick.
 New to these tools? Follow the three steps below.
@@ -139,7 +139,8 @@ your passwords.
 
 ## 3. Open AISC
 
-1. Open <http://localhost:8100> in your browser.
+1. Open the address the last message of `start` gives in your browser. It is <http://localhost:8100> unless that
+   port was taken and `start` moved it.
 2. Sign in with the account named in the last message of `start`. On a new install that is `admin` / `admin`
    (a second account, `user` / `user`, has ordinary rights). These simple passwords are safe here because the
    sign-in only works from your own computer. An install served to others over https gets generated
@@ -165,6 +166,9 @@ All commands run in the `aisc` folder.
 | Update to the latest version | `git pull`, then `git submodule update --init --recursive`, then `uv run scripts/aisc.py start` |
 | Check that everything works | `./scripts/verify.sh --stack` (macOS and Linux; it needs Python 3 and takes a while) |
 | Remove AISC and all its data | `docker compose -p aisc down -v`, then delete the `aisc` folder |
+
+After the computer restarts, AISC comes back by itself once Docker is running. If Docker Desktop does not start when
+you sign in, start it. If a page still does not answer, run `uv run scripts/aisc.py start`.
 
 `down -v` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
 Desktop's **Images** page, or with `docker image prune -a` if you use Docker for nothing else.

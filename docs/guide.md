@@ -128,12 +128,13 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   password (`IMMUDB_ADMIN_PASSWORD`); `scripts/verify-immudb.sh` checks this on the running stack.
   The engine logs in to immudb again whenever immudb has ended its login. immudb ends a login
   token after `IMMUDB_TOKEN_EXPIRY_TIME` minutes, set to a year (`525600`) instead of immudb's day to keep
-  that rare, and at every immudb restart, so compose restarts `aisc-backend` whenever it restarts `immudb`. The
+  that rare, and at every immudb restart, so compose restarts `aisc-backend` whenever it restarts `immudb`.
+  The engine's audit clerk also logs in again by itself when a call fails because the login ended
+  (`apps/backend/aisc_backend/audit/clerk.py`), so an immudb restarted outside compose
+  (`docker restart immudb`, or Docker itself restarting) needs no restart of `aisc-backend`. The
   trade-off: a token, held only in the memory of the services that logged in, stays valid for a year
-  unless immudb restarts. Not covered: immudb restarted outside compose (`docker restart immudb`, or
-  Docker itself after its daemon restarts) leaves the engine's audit writes failing until
-  `docker compose -p aisc restart aisc-backend`; `scripts/verify-rbac.sh`'s audit check then FAILs and
-  says so.
+  unless immudb restarts. If `scripts/verify-rbac.sh`'s audit check FAILs, the cause is immudb itself
+  (down, or refusing the engine's account); `scripts/verify-immudb.sh` shows which.
 - **Ports.** Only 80, 8100 and 8188 are published to the network (443 too on an install served over
   https), and each answers an anonymous request with a redirect to Keycloak. Keycloak (8081) is bound to
   `127.0.0.1`. PostgreSQL, Redis, RabbitMQ, MinIO and immudb publish nothing by default: the services reach
@@ -292,8 +293,8 @@ likely to change:
 |---|---|---|---|
 | `CADDY_DOMAIN` | `env.plugin_downloader` | the gateway's origin | `http://localhost` |
 | `API_URL_EXTERNAL` | `env.plugin_downloader` | the engine as the browser reaches it (webapp, launcher links) | `http://localhost` |
-| `KEYCLOAK_URL_EXTERNAL` | `env.plugin_downloader` | Keycloak as the browser reaches it (webapp, launcher links) | `http://localhost:8081` |
-| `DASHBOARD_EXTERNAL_URL` | `caddy`, `report-renderer`, `platform` (set it in `env.plugin_downloader`) | the dashboard as the browser reaches it (launcher links, report links, plugin tile links) | `http://localhost:8188` |
+| `KEYCLOAK_URL_EXTERNAL` | `env.local` (see the address row below) | Keycloak as the browser reaches it (webapp, launcher links) | `http://localhost:8081` |
+| `DASHBOARD_EXTERNAL_URL` | `caddy`, `report-renderer`, `platform` (`env.local`, see the address row below) | the dashboard as the browser reaches it (launcher links, report links, plugin tile links) | `http://localhost:8188` |
 | `KEYCLOAK_ADMIN` | `env.plugin_downloader` | Keycloak's bootstrap admin | `admin` |
 | `GATEWAY_COOKIE_SECURE` | `env.plugin_downloader` | the gateway's session cookie is Secure: `true` when `CADDY_DOMAIN` is `https://` | `false` |
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
@@ -314,7 +315,7 @@ likely to change:
 | `ENGINE_IMMUDB_PASSWORD` | `env.secrets` (aisc-backend as `IMMUDB_PASSWORD`, `ledger-pool`) | the engine's own immudb user, aisc_engine; kept by `--rotate`, changed by `--rotate-one` | generated |
 | `AISC_IMAGE_TAG` | all built images | the tag of locally built images | `latest` |
 | `ENGINE_PORT`, `HOMEPAGE_PORT_EXTERNAL`, `DASHBOARD_PORT_EXTERNAL`, `KEYCLOAK_PORT_EXTERNAL` | `env.local` (written by `aisc.py start`, git-ignored) | the four browser ports: steps 1 and 2, the launcher, the dashboard and the sign-in. `start` checks them before building. When one is taken, an install not served over https moves to a free one and keeps it; an https install stops instead. Edit `env.local` to choose a port yourself | `80`, `8100`, `8188`, `8081` |
-| `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`, `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL` | `env.local` | the address of each browser port, as the browser reaches it. `start` writes the address next to a port it moved; an https install sets its own public names | `http://localhost`, `http://localhost:8100/`, `http://localhost:8188`, `http://localhost:8081` |
+| `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`, `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL` | `env.local` | the address of each browser port, as the browser reaches it. `start` writes the address next to a port it moved, on plain http only. `env.local` comes last in `env.runtime`, so it wins over `env.plugin_downloader`. For an install served from another host, set these four in `env.plugin_downloader` (an https install does so; `start` writes no address for it) | `http://localhost`, `http://localhost:8100/`, `http://localhost:8188`, `http://localhost:8081` |
 | `AISC_ADMIN_PORTS` | the environment or `env.local` | `on` adds `docker-compose.admin-ports.yml`, which publishes PostgreSQL (5432), Redis (6379), RabbitMQ (5672), MinIO (9000) and immudb (3322) on `127.0.0.1`, for tools on the host such as pgAdmin or psql. Nothing else needs them | unset: not published |
 | `ENGINE_HTTPS_PORT` | `env.local` | port 443's setting, in `docker-compose.https.yml`. `start` adds that file only when `CADDY_DOMAIN` is an https address, so a taken 443 never stops an install on plain http | `443` |
 | `AISC_PROJECT` | `aisc.py start` | the Compose project name, for a second copy beside an install's data | `aisc` |

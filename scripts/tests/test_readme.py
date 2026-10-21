@@ -147,3 +147,10 @@ def test_no_document_gives_a_compose_command_that_drops_the_https_file():
                     and "docker-compose.https.yml" not in command):
                 offending.append(name)
     assert offending == []
+
+
+def test_the_readme_gives_the_launcher_address_as_a_default_that_may_have_moved():
+    """The launcher port may move, so no instruction to open it stands without the message of `start`."""
+    for line in README.read_text().splitlines():
+        if "localhost:8100" in line and "Open" in line or "open <http://localhost:8100>" in line:
+            assert "last message of `start`" in line or "moved" in line, line

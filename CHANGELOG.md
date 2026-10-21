@@ -19,7 +19,9 @@
 - `start` names the sign-in that works on the install, and waits for the realm page to answer before it says
   "AISC is up". On Windows it finds Docker on the PATH. It reads `env.local` as a person may edit it (quoted
   values, notes and settings of their own are kept). It removes the containers a failed attempt half-made.
-  Every long-running service has a restart policy, so AISC comes back after Docker or the computer restarts.
+  Every long-running service has a restart policy, so AISC comes back by itself once the Docker daemon runs
+  again (Docker Desktop must itself start at sign-in; if it does not, start it). The engine's audit clerk logs
+  in to immudb again by itself when its login ended, so no manual restart of `aisc-backend` is needed.
 - The checks (`verify-*.sh`) reach the install's real addresses, whichever port moved.
 - Lint cleanup, with no change in behaviour.
 
