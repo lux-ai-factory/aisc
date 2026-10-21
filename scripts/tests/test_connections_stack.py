@@ -35,7 +35,7 @@ def scratch(tmp_path):
 
 
 def secrets_of(d):
-    return dict(l.split("=", 1) for l in (d / "env.secrets").read_text().splitlines() if l and not l.startswith("#"))
+    return dict(line.split("=", 1) for line in (d / "env.secrets").read_text().splitlines() if line and not line.startswith("#"))
 
 
 def run(d):
@@ -58,7 +58,7 @@ def test_secrets_sh_writes_the_connections_token_once_and_keeps_it(scratch):
 @pytest.mark.parametrize("name", ["env.plugin_downloader", "env.staging"])
 def test_env_files_say_where_the_connections_token_comes_from(name):
     text = (ROOT / name).read_text()
-    assert any("PLATFORM_CONNECTIONS_TOKEN" in l and "env.secrets" in l for l in text.splitlines() if l.startswith("#"))
+    assert any("PLATFORM_CONNECTIONS_TOKEN" in line and "env.secrets" in line for line in text.splitlines() if line.startswith("#"))
     assert not re.search(r"^PLATFORM_CONNECTIONS_TOKEN=", text, re.M)
 
 

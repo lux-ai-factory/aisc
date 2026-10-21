@@ -112,4 +112,4 @@ def guard_orders(tmp_path_factory):
 
 
 def verdict(output: str, check: str) -> list[str]:
-    return [l for l in output.splitlines() if l.startswith(check + " ")]
+    return [line for line in output.splitlines() if line.startswith(check + " ")]

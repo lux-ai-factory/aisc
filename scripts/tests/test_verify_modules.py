@@ -9,7 +9,7 @@ WRAPPER = ROOT / "scripts/lib/co-tests.sh"
 
 
 def test_control_objectives_is_run_with_a_throwaway_database():
-    line = next(l for l in (ROOT / "scripts/verify.sh").read_text().splitlines() if l.startswith("control objectives|"))
+    line = next(line for line in (ROOT / "scripts/verify.sh").read_text().splitlines() if line.startswith("control objectives|"))
     assert "co-tests.sh" in line
 
 
@@ -24,7 +24,7 @@ def test_the_engine_suite_runs_on_the_host_never_in_the_running_container():
     """Its tests find the repository from the backend's place in the checkout (apps/backend), and a test
     run has no business inside the live stack's container: the suite runs from the backend's own
     environment (uv sync), on SQLite, with the shared plugin libraries on the path."""
-    line = next(l for l in (ROOT / "scripts/verify.sh").read_text().splitlines() if l.startswith("engine backend|"))
+    line = next(line for line in (ROOT / "scripts/verify.sh").read_text().splitlines() if line.startswith("engine backend|"))
     name, directory, marker, command = line.split("|", 3)
     assert (directory, marker) == ("apps/backend", ".venv")
     assert "docker exec" not in command and "sqlite3" in command and "plugin-interface" in command
@@ -35,7 +35,7 @@ def test_the_engine_suite_runs_on_the_host_never_in_the_running_container():
 
 def test_the_platform_suite_runs_with_a_throwaway_database():
     """Without PLATFORM_TEST_DATABASE_URL the platform's database tests skip, and a skip is not a pass."""
-    line = next(l for l in (ROOT / "scripts/verify.sh").read_text().splitlines() if l.startswith("platform|"))
+    line = next(line for line in (ROOT / "scripts/verify.sh").read_text().splitlines() if line.startswith("platform|"))
     assert "test-platform.sh" in line
 
 

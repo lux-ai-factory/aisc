@@ -87,7 +87,7 @@ def test_keycloak_is_given_the_accounts_passwords_and_refuses_to_start_without_t
 def test_the_tracked_env_file_holds_no_infrastructure_password():
     lines = (ROOT / "env.plugin_downloader").read_text().splitlines()
     for name in ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD"):
-        [line] = [l for l in lines if l.startswith(name + "=")]
+        [line] = [line for line in lines if line.startswith(name + "=")]
         assert line == name + "=", name
 
 
@@ -135,7 +135,7 @@ def install(tmp_path):
 
 
 def values(path):
-    return dict(l.split("=", 1) for l in path.read_text().splitlines() if "=" in l and not l.startswith("#"))
+    return dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line and not line.startswith("#"))
 
 
 @pytest.mark.parametrize("name", ROTATABLE)
@@ -151,8 +151,8 @@ def test_rotating_one_password_changes_it_in_the_service_then_in_both_env_files_
     assert values(root / "env.runtime")[name] == after[name]
     log = (root / "docker.log").read_text() if (root / "docker.log").exists() else ""
     # the new value reaches the service by name, never in an argument
-    assert after[name] not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
-    assert before[name] not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
+    assert after[name] not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
+    assert before[name] not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
     assert after[name] not in r.stdout + r.stderr
     if name != "S3_PASSWORD":  # MinIO takes its root password from its environment when it is recreated
         assert f"ENV NEW_VALUE={after[name]}" in log
@@ -203,7 +203,7 @@ def test_a_chosen_password_is_set_in_the_service_and_both_env_files(install):
     assert values(root / "env.runtime")["AISC_ADMIN_PASSWORD"] == chosen
     log = (root / "docker.log").read_text()
     assert f"ENV NEW_VALUE={chosen}" in log
-    assert chosen not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
+    assert chosen not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
     assert chosen not in r.stdout + r.stderr
 
 

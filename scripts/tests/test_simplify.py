@@ -93,13 +93,13 @@ def test_test_only_packages_stay_out_of_the_sidecar_images():
     """Pytest and httpx are for the tests, so requirements-dev.txt, never the image's requirements.txt."""
     for svc in ("prefill", "ontology", "system_card_renderer"):
         d = ROOT / "apps/qualification/services" / svc
-        names = lambda f: {re.split(r"[<>=!~\[ ;]", l.strip(), maxsplit=1)[0].lower()  # noqa: E731
-                           for l in (d / f).read_text().splitlines() if l.strip() and not l.startswith(("#", "-"))}
+        names = lambda f: {re.split(r"[<>=!~\[ ;]", line.strip(), maxsplit=1)[0].lower()  # noqa: E731
+                           for line in (d / f).read_text().splitlines() if line.strip() and not line.startswith(("#", "-"))}
         assert not names("requirements.txt") & {"pytest", "httpx"}, svc
         assert {"pytest", "httpx"} <= names("requirements-dev.txt"), svc
     verify = (ROOT / "scripts/verify.sh").read_text()
     for module in ("qualification prefill|", "qualification ontology|", "qualification pdf|"):
-        line = next(l for l in verify.splitlines() if l.startswith(module))
+        line = next(line for line in verify.splitlines() if line.startswith(module))
         assert "-r requirements-dev.txt" in line, module
 
 

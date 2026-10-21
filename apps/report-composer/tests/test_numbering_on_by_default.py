@@ -29,7 +29,7 @@ def test_the_new_layout_editor_starts_with_numbering_on():
 
 def test_every_built_in_layout_numbers():
     from report_composer import builtin_layouts
-    assert {l["id"]: l["numbering"] for l in builtin_layouts.all_layouts(BLOCK_TYPES)} == \
+    assert {line["id"]: line["numbering"] for line in builtin_layouts.all_layouts(BLOCK_TYPES)} == \
         {builtin_layouts.PREFIX + s: True for s in builtin_layouts.ORDER}
 
 

@@ -78,9 +78,9 @@ def _code_lines(path):
     text = path.read_text()
     if path.suffix == ".py":
         text = re.sub(r'"""(?:.|\n)*?"""', lambda m: "\n" * m.group(0).count("\n"), text)
-        return [(n, l.split("#", 1)[0]) for n, l in enumerate(text.splitlines(), 1)]
-    return [(n, "" if l.lstrip().startswith("#") else re.sub(r"\s#\s.*$", "", l))
-            for n, l in enumerate(text.splitlines(), 1)]
+        return [(n, line.split("#", 1)[0]) for n, line in enumerate(text.splitlines(), 1)]
+    return [(n, "" if line.lstrip().startswith("#") else re.sub(r"\s#\s.*$", "", line))
+            for n, line in enumerate(text.splitlines(), 1)]
 
 
 def test_scripts_never_target_the_hosts_5432():
@@ -197,8 +197,8 @@ def test_the_upstream_check_g4_lists_every_change_of_feat_deployment_modes_with_
 def test_the_upstream_check_g4_fails_on_a_change_its_list_does_not_name(tmp_path):
     """G4 bites: with a webapp file left out of the list, G4 fails naming it."""
     left_out = {"webapp": "src/pages/Plugins.tsx"}
-    lines = [l for l in INTENDED.read_text().splitlines()
-             if not any(l.startswith(f"{r} {f} ") for r, f in left_out.items())]
+    lines = [line for line in INTENDED.read_text().splitlines()
+             if not any(line.startswith(f"{r} {f} ") for r, f in left_out.items())]
     short = tmp_path / "intended.txt"
     short.write_text("\n".join(lines) + "\n")
     r = run([str(GUARD), "--only", "G4"], env={**os.environ, "GUARD_OUT": str(tmp_path / "out"),
@@ -207,7 +207,7 @@ def test_the_upstream_check_g4_fails_on_a_change_its_list_does_not_name(tmp_path
     assert r.returncode == 1, r.stdout
     assert len(g4) == 1, "\n".join(g4)
     for repo, f in left_out.items():
-        hit = [l for l in g4 if f" {repo}: " in l]
+        hit = [line for line in g4 if f" {repo}: " in line]
         assert len(hit) == 1 and hit[0].split(":")[-1].split() == [f], (repo, f, g4)
 
 
@@ -220,20 +220,20 @@ def test_the_upstream_check_g4_passes_on_the_engine_repos_as_listed(tmp_path):
 def test_the_upstream_check_g4_leaves_the_backend_and_eval_alone(tmp_path):
     """The engine's backend and worker are ours to change: a change in them is not G4's business."""
     r = run([str(GUARD), "--only", "G4"], env={**os.environ, "GUARD_OUT": str(tmp_path)}, timeout=300)
-    assert not [l for l in verdict(r.stdout, "G4") if re.search(r"\b(backend|eval):", l)], r.stdout
+    assert not [line for line in verdict(r.stdout, "G4") if re.search(r"\b(backend|eval):", line)], r.stdout
 
 
 def test_the_upstream_check_g4_finds_the_webapp_upstream_files_identical_to_origin_master(guard_all):
     """G4 (webapp): every webapp file not on the list equals origin/master."""
     r, out = guard_all
-    web = [l for l in verdict(r.stdout, "G4") if "webapp" in l]
+    web = [line for line in verdict(r.stdout, "G4") if "webapp" in line]
     assert web == [], "\n".join(web)
 
 
 def test_the_upstream_check_g4_finds_plugin_interface_and_plugin_manager_untouched(guard_all):
     """G4: shared/plugin-interface has no new commits; plugin-manager is clean."""
     r, out = guard_all
-    other = [l for l in verdict(r.stdout, "G4") if re.search(r"plugin-interface|plugin-manager", l)]
+    other = [line for line in verdict(r.stdout, "G4") if re.search(r"plugin-interface|plugin-manager", line)]
     assert other == [], "\n".join(other)
 
 

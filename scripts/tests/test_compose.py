@@ -170,8 +170,8 @@ def test_the_runtime_env_points_at_the_hosted_catalogue():
     """scripts/secrets.sh builds env.runtime, what the stack runs on, from env.plugin_downloader:
     that file must name the hosted catalogue too, and no local catalogue port."""
     base = aisc_py().TRACKED
-    env = dict(l.split("=", 1) for l in (ROOT / base).read_text().splitlines()
-               if "=" in l and not l.lstrip().startswith("#"))
+    env = dict(line.split("=", 1) for line in (ROOT / base).read_text().splitlines()
+               if "=" in line and not line.lstrip().startswith("#"))
     env = {k.strip(): v.strip() for k, v in env.items()}
     assert env.get("CATALOGUE_EXTERNAL_URL") == HOSTED_CATALOGUE, base
     assert env.get("CATALOGUE_API_URL") == HOSTED_CATALOGUE_API, base
@@ -225,8 +225,8 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
     for f in FILES + ["docker-compose.plugin_downloader.yml"]:
         # $${VAR} is escaped: the container's shell expands it, not compose
         bare |= set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)\}", (ROOT / f).read_text()))
-    env = {l.split("=", 1)[0].strip() for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
-           if "=" in l and not l.lstrip().startswith("#")}
+    env = {line.split("=", 1)[0].strip() for line in (ROOT / "env.plugin_downloader").read_text().splitlines()
+           if "=" in line and not line.lstrip().startswith("#")}
     secrets = {name for name, _ in aisc_py().SECRETS}
     assert sorted(bare - env - secrets) == []
 
@@ -337,8 +337,8 @@ ONLINE_HOST = "10.50.3.47"
 
 def _runtime_env():
     base = aisc_py().TRACKED
-    env = dict(l.split("=", 1) for l in (ROOT / base).read_text().splitlines()
-               if "=" in l and not l.lstrip().startswith("#"))
+    env = dict(line.split("=", 1) for line in (ROOT / base).read_text().splitlines()
+               if "=" in line and not line.lstrip().startswith("#"))
     return base, {k.strip(): v.strip() for k, v in env.items()}
 
 
@@ -439,8 +439,8 @@ def test_the_standalone_registry_user_is_empty_by_default():
     DevpiClient refuse to start the backend. The user is empty unless given."""
     text, _ = _standalone()
     assert "${PACKAGE_REGISTRY_USER:-root}" not in text
-    line = [l for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
-            if l.replace(" ", "").startswith("PACKAGE_REGISTRY_USER=")]
+    line = [line for line in (ROOT / "env.plugin_downloader").read_text().splitlines()
+            if line.replace(" ", "").startswith("PACKAGE_REGISTRY_USER=")]
     assert line and line[0].split("=", 1)[1].strip() == ""
 
 

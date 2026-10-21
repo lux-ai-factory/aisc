@@ -23,7 +23,7 @@ def _with_report(client, auth, name="Doomed"):
 def test_a_deleted_layout_leaves_every_layout_route(client, auth):
     lay, _ = _with_report(client, auth)
     assert client.delete(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).status_code == 204
-    assert lay["id"] not in [l["id"] for l in client.get("/api/p/alpha/layouts", headers=auth("alice")).json()]
+    assert lay["id"] not in [layout["id"] for layout in client.get("/api/p/alpha/layouts", headers=auth("alice")).json()]
     base = f"/api/p/alpha/layouts/{lay['id']}"
     assert client.get(base, headers=auth("alice")).status_code == 404
     assert put_layout(client, auth, lay).status_code == 404

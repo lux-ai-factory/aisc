@@ -260,7 +260,7 @@ def test_start_keeps_an_https_install_s_own_engine_address(scratch):
     (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
-    engine = [l for l in (scratch / "env.runtime").read_text().splitlines() if l.startswith("API_URL_EXTERNAL=")]
+    engine = [line for line in (scratch / "env.runtime").read_text().splitlines() if line.startswith("API_URL_EXTERNAL=")]
     assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
 
 

@@ -410,8 +410,8 @@ def write_runtime() -> None:
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
     local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
-    combined = ([l for l in secret_lines if infra(l)] + [l for l in tracked if not infra(l)]
-                + [l for l in secret_lines if not infra(l)] + local)
+    combined = ([line for line in secret_lines if infra(line)] + [line for line in tracked if not infra(line)]
+                + [line for line in secret_lines if not infra(line)] + local)
     write_beside(COMBINED, text_of(combined))
     say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
 
@@ -732,7 +732,7 @@ def keycloak_realm_url() -> str:
 
 
 def not_running(lines: str) -> list[str]:
-    return [l for l in lines.splitlines() if l and not re.search(r"\t(Up|running|Exited \(0\))", l)]
+    return [line for line in lines.splitlines() if line and not re.search(r"\t(Up|running|Exited \(0\))", line)]
 
 
 def start(_args: list[str]) -> None:
@@ -777,7 +777,7 @@ def start(_args: list[str]) -> None:
         raise Refused(f"this checkout is on '{branch or 'no branch'}', not {BRANCH}. Run: git checkout {BRANCH} && "
                       "git submodule update --init --recursive (or clone again: git -c core.autocrlf=false clone "
                       f"--recursive --branch {BRANCH} https://github.com/lux-ai-factory/aisc.git)")
-    missing = sum(1 for l in captured(["git", "submodule", "status"]).stdout.splitlines() if l.startswith("-"))
+    missing = sum(1 for line in captured(["git", "submodule", "status"]).stdout.splitlines() if line.startswith("-"))
     if missing:
         raise Refused(f"{missing} submodule(s) are not checked out. Run: git submodule update --init --recursive")
     free_gb = shutil.disk_usage(".").free // 2**30
@@ -855,7 +855,7 @@ def start(_args: list[str]) -> None:
     # 6. The local controls every project catalogue gets (local_controls/), read by the platform's own code
     found = captured([*COMPOSE, "exec", "-T", "platform", "python", "-m", "platform_service.catalogue"])
     if found.returncode == 0:
-        controls = [l for l in found.stdout.splitlines() if l.strip()]
+        controls = [line for line in found.stdout.splitlines() if line.strip()]
         say(f"{len(controls)} local controls go into every project catalogue (local_controls/):",
             *("  " + c for c in controls))
     else:

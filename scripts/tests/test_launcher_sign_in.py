@@ -19,5 +19,5 @@ def test_a_projects_page_signs_in_before_it_is_rewritten():
     body = _handle("handle /p/*")
     route = re.search(r"route \{\n(.*?)\n      \}", body, re.S)
     assert route, "no route: Caddy would rewrite before sign-in"
-    steps = [l.strip() for l in route.group(1).splitlines() if l.strip() and not l.strip().startswith("#")]
+    steps = [line.strip() for line in route.group(1).splitlines() if line.strip() and not line.strip().startswith("#")]
     assert steps.index("import protect launcher") < steps.index("rewrite * /project.html"), steps

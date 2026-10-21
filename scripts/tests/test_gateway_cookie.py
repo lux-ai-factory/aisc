@@ -15,7 +15,7 @@ def test_the_gateway_takes_cookie_secure_from_the_setting():
 
 
 def test_the_tracked_settings_make_the_cookie_secure_exactly_when_caddy_serves_https():
-    lines = dict(l.split("=", 1) for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
-                 if "=" in l and not l.startswith("#"))
+    lines = dict(line.split("=", 1) for line in (ROOT / "env.plugin_downloader").read_text().splitlines()
+                 if "=" in line and not line.startswith("#"))
     https = lines["CADDY_DOMAIN"].strip('"').startswith("https://")
     assert lines["GATEWAY_COOKIE_SECURE"] == ("true" if https else "false")

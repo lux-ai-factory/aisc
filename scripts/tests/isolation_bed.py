@@ -161,7 +161,7 @@ def _run(bed: IsoBed, key: str, cmd: list[str], cwd: Path, env: dict[str, str], 
     out = _redact(bed, (r.stdout + r.stderr)[-1500:])
     bed.logs[key] = out
     if r.returncode != 0:
-        last = [l for l in out.strip().splitlines() if l.strip()][-1:] or ["?"]
+        last = [line for line in out.strip().splitlines() if line.strip()][-1:] or ["?"]
         bed.problems[key] = f"{why} (exit {r.returncode}): {last[0][:300]}"
 
 

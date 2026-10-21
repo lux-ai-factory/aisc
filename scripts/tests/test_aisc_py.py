@@ -35,7 +35,7 @@ def run(d, *args, path=None):
 
 
 def values(path):
-    return dict(l.split("=", 1) for l in path.read_text().splitlines() if "=" in l and not l.startswith("#"))
+    return dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line and not line.startswith("#"))
 
 
 def test_secrets_makes_every_secret_the_runtime_env_and_the_signing_key(tmp_path):
