@@ -328,12 +328,16 @@ signed_in_checks() { # engine port
 }
 
 counted_checks() { # engine port: the signed-in checks, counted here
-  local out
-  out=$(signed_in_checks "$1")
+  local out code
+  out=$(signed_in_checks "$1"); code=$?
   printf '%s\n' "$out"
   pass=$((pass + $(printf '%s\n' "$out" | grep -c '^  PASS')))
   fail=$((fail + $(printf '%s\n' "$out" | grep -c '^  FAIL')))
   printf '%s\n' "$out" | grep -q '^  PASS' || fail=$((fail+1))
+  # the checks stop at the first step the rest depend on (signing in): the passes before it are not the result
+  if [ "$code" != 0 ] && ! printf '%s\n' "$out" | grep -q '^  FAIL'; then
+    no "the signed-in checks stopped early (exit $code)"
+  fi
 }
 
 finish() {

@@ -263,3 +263,21 @@ def test_keep_says_the_copy_is_kept_as_the_last_scenario_left_it():
     for setting in ("API_URL_EXTERNAL", "LAUNCHER_EXTERNAL_URL", "DASHBOARD_EXTERNAL_URL", "KEYCLOAK_URL_EXTERNAL"):
         assert setting in body, setting
     assert "verify-port-fallback.sh --clean-up $WORK" in body
+
+
+@pytest.mark.parametrize("checks, failed", [
+    ("printf '  PASS one\\n  PASS two\\n'", 0),
+    ("printf '  PASS one\\n'; exit 1", 1),            # stopped early, after a pass: a failure all the same
+    ("printf '  PASS one\\n  FAIL two\\n'", 1),
+    ("exit 0", 1),                                      # no check ran at all
+])
+def test_signed_in_checks_that_stop_early_count_as_a_failure(checks, failed):
+    """The signed-in checks run in a subshell that exits as soon as signing in fails; the passes before that
+    must not make the whole count a pass."""
+    text = SCRIPT.read_text()
+    counted = _function(text, "counted_checks")
+    no = re.search(r"^no\(\) \{.*\}$", text, re.M).group(0)
+    script = (f"{no}\nsigned_in_checks() {{ ( {checks} ) }}\ncounted_checks() {{\n{counted}}}\n"
+              "pass=0; fail=0; counted_checks 8080 >/dev/null; echo \"$fail\"")
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30)
+    assert r.stdout.strip() == str(failed), r.stdout + r.stderr
