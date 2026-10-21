@@ -538,18 +538,36 @@ def port_is_free(port: int, host: str) -> bool:
     return True
 
 
+def local_setting(line: str) -> tuple[str, str] | None:
+    """One line of env.local as (NAME, value), one pair of quotes around the value taken off: a person editing the
+    file may quote it, as in the other env files. None for a comment or a line without a name."""
+    name, found, value = line.partition("=")
+    if not found or name.lstrip().startswith("#"):
+        return None
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    return name.strip(), value
+
+
 def read_local() -> dict[str, str]:
-    """The settings in env.local as NAME=value lines, one pair of quotes around a value taken off: a person
-    editing the file may quote it, as in the other env files. Comments and lines without a name are not settings."""
-    kept = {}
-    for line in lines_of(LOCAL) if Path(LOCAL).is_file() else []:
-        name, found, value = line.partition("=")
-        if found and not name.lstrip().startswith("#"):
-            value = value.strip()
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-                value = value[1:-1]
-            kept[name.strip()] = value
-    return kept
+    """The settings in env.local, NAME to value (local_setting); the last line for a name wins, as in compose."""
+    lines = lines_of(LOCAL) if Path(LOCAL).is_file() else []
+    return dict(setting for setting in map(local_setting, lines) if setting)
+
+
+def kept_ports_not_ports() -> list[str]:
+    """One problem per browser port in env.local whose value is not a port. The guide tells people to edit the
+    file, and compose would take a comment after the value as part of it."""
+    variables = {port.variable for port in BROWSER_PORTS}
+    problems = []
+    for number, line in enumerate(lines_of(LOCAL) if Path(LOCAL).is_file() else [], 1):
+        setting = local_setting(line)
+        is_port = setting and re.fullmatch(r"[0-9]{1,5}", setting[1]) and 1 <= int(setting[1]) <= 65535
+        if setting and setting[0] in variables and not is_port:
+            problems.append(f"{LOCAL} line {number} ({line}) is not a port: {setting[0]} takes a whole number from "
+                            "1 to 65535, with nothing after it on the line.")
+    return problems
 
 
 def local_lines(existing: list[str], settings: dict[str, str]) -> list[str]:
@@ -1023,6 +1041,9 @@ def start(_args: list[str]) -> None:
     config = captured([*COMPOSE, "config", "--format", "json"])
     if config.returncode != 0:
         raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
+    not_ports = kept_ports_not_ports()
+    if not_ports:
+        raise Refused("AISC cannot start: " + " ".join(not_ports))
     kept = read_local()
     settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
                                              not served_over_https(), port_is_free)

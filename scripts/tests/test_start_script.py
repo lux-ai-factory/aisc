@@ -565,3 +565,16 @@ def test_a_refused_start_does_not_advise_running_compose(scratch):
     r = run(scratch)
     assert r.returncode != 0
     assert "run the stack with" not in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("line", ["ENGINE_PORT=8090 # mine", "HOMEPAGE_PORT_EXTERNAL=70000",
+                                  "KEYCLOAK_PORT_EXTERNAL=", "DASHBOARD_PORT_EXTERNAL=0", 'ENGINE_PORT="eighty"'])
+def test_a_kept_port_that_is_not_a_port_is_refused_naming_its_line(scratch, line):
+    """env.local is the file a person edits to choose a port; a value that is not one ends start with a message
+    naming the line, not a traceback, and before anything is built."""
+    (scratch / "env.local").write_text(f"# my ports\n{line}\n")
+    r = run(scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    assert f"env.local line 2 ({line})" in r.stderr and "a whole number from 1 to 65535" in r.stderr
+    assert not [c for c in calls(scratch) if " build" in c]
