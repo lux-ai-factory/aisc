@@ -117,9 +117,20 @@ def optional_compose_files() -> list[str]:
     """443 only for an install served over https, so a taken 443 never stops one on plain http; the
     infrastructure's ports on the loopback only when asked (AISC_ADMIN_PORTS=on), for tools on the host."""
     files = ["docker-compose.https.yml"] if served_over_https() else []
-    if os.environ.get("AISC_ADMIN_PORTS") == "on":
+    if admin_ports_asked():
         files.append("docker-compose.admin-ports.yml")
     return files
+
+
+def admin_ports_asked() -> bool:
+    """AISC_ADMIN_PORTS=on in the shell, or else in env.local (its last line for it, as compose reads it). The
+    checkout's own env.local, not the current folder's: COMPOSE asks this on import, before main moves there."""
+    asked = os.environ.get("AISC_ADMIN_PORTS")
+    local = ROOT / LOCAL
+    if asked is None and local.is_file():
+        lines = [line for line in lines_of(str(local)) if line.startswith("AISC_ADMIN_PORTS=")]
+        asked = lines[-1].split("=", 1)[1].strip().strip('"\'') if lines else None
+    return asked == "on"
 
 
 def served_over_https() -> bool:

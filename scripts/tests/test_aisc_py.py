@@ -415,6 +415,26 @@ def test_compose_adds_the_admin_ports_file_only_when_asked(monkeypatch):
     assert "-f docker-compose.admin-ports.yml" in module.UP_HINT
 
 
+def test_the_admin_ports_may_be_asked_for_in_env_local(tmp_path, monkeypatch):
+    """env.local holds this install's own settings, so asking for the infrastructure's ports there counts too."""
+    monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
+    monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
+    copy_install_scripts(tmp_path)
+    assert "docker-compose.admin-ports.yml" not in aisc_py(tmp_path).COMPOSE
+    (tmp_path / "env.local").write_text('AISC_ADMIN_PORTS=off\nAISC_ADMIN_PORTS="on"\n')
+    assert "docker-compose.admin-ports.yml" in aisc_py(tmp_path).COMPOSE
+    (tmp_path / "env.local").write_text("AISC_ADMIN_PORTS=on\nAISC_ADMIN_PORTS=off\n")
+    assert "docker-compose.admin-ports.yml" not in aisc_py(tmp_path).COMPOSE
+
+
+def test_the_shell_setting_of_the_admin_ports_wins_over_env_local(tmp_path, monkeypatch):
+    monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
+    copy_install_scripts(tmp_path)
+    (tmp_path / "env.local").write_text("AISC_ADMIN_PORTS=on\n")
+    monkeypatch.setenv("AISC_ADMIN_PORTS", "off")
+    assert "docker-compose.admin-ports.yml" not in aisc_py(tmp_path).COMPOSE
+
+
 def test_a_port_whose_closed_connections_are_still_waiting_is_free():
     """Linux keeps a closed connection in TIME_WAIT for a minute; Docker binds over it, so the check must too.
     The server here sets SO_REUSEADDR, as Caddy and Docker's port proxy do (every Go listener does): only then
