@@ -16,7 +16,7 @@ SCRIPT = ROOT / "scripts/verify-port-fallback.sh"
 #: names in `names` until a stack was taken down; `inspect` answers the compose labels of an install in
 #: `install/`; `image ls` answers by reference only when asked for one (`-q` gets an id shared with :latest).
 DOCKER = r"""#!/bin/sh
-d=$(dirname "$0")/..
+d=$(cd "$(dirname "$0")/.." && pwd)
 printf '%s | cwd=%s\n' "$*" "$PWD" >> "$d/docker.log"
 case "$1" in
   info) exit 0 ;;
@@ -129,7 +129,7 @@ def test_the_check_always_cleans_up():
     assert re.search(r"aisc-ports.*down -v|copy_compose down -v", body), "the copy is not taken down with its volumes"
     assert ":ports" in body and "rmi" in body, "the copy's images are not removed"
     assert "rm -rf" in body, "the clone is not removed"
-    assert "aisc.py start" in body, "a stack taken down is not brought back"
+    assert "up -d --no-build" in body, "a stack taken down is not brought back"
 
 
 def test_the_check_never_touches_another_install_s_data():
@@ -167,3 +167,24 @@ def test_the_copy_s_images_are_removed_by_their_ports_tag_only(fake_docker):
     assert "-f" not in names and "--force" not in names
     assert sorted(names) == ["aisc-backend:ports", "aisc-ports-schema-docs:latest", "aisc-webapp:ports"]
     assert not work.exists()
+
+
+def test_a_stack_taken_down_comes_back_exactly_as_it_ran(fake_docker):
+    """Taken down and brought back from its own folder with its own compose files and env file, as its containers'
+    labels say: no rebuild from the folder's current files, no port moved, no branch check (aisc.py start would
+    do all three), and its volumes kept."""
+    (fake_docker / "names").write_text("caddy\n")
+    r = run(fake_docker, "--take-down-running", failing=("git", "uv"))
+    assert r.returncode == 1, r.stdout + r.stderr          # the copy cannot be cloned here: the check fails
+    install = fake_docker / "install"
+    stack = (f"compose -p aisc --env-file {install}/env.runtime -f {install}/docker-compose.one.yml "
+             f"-f {install}/docker-compose.two.yml")
+    log = calls(fake_docker)
+    down = [c for c in log if c.startswith(stack + " down")]
+    up = [c for c in log if c.startswith(stack + " up")]
+    assert down == [f"{stack} down | cwd={install}"], log
+    assert up == [f"{stack} up -d --no-build | cwd={install}"], log
+    assert log.index(down[0]) < log.index(up[0])
+    assert not [c for c in log if c.startswith("compose -p aisc ") and c not in down + up], log
+    assert not (fake_docker / "uv.log").exists(), "aisc.py was run"
+    assert "aisc.py" not in r.stdout + r.stderr

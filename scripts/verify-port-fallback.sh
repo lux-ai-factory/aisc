@@ -57,6 +57,19 @@ copy_compose() { # clone folder, compose arguments...
   (cd "$clone" && docker compose -p aisc-ports --env-file env.runtime $(printf -- '-f %s ' $COMPOSE_FILES) "$@")
 }
 
+# An install's own compose command, as its containers' labels recorded it: its folder, its env file, its compose
+# files. Taking it down and bringing it back this way leaves it exactly as it ran: nothing rebuilt from the
+# folder's current files, no port moved, no branch checked (aisc.py start would do all three).
+stack_compose() { # project, folder, env file, compose files (comma-separated), compose arguments...
+  local project=$1 folder=$2 env_file=$3 files=$4 file
+  shift 4
+  local args=()
+  local IFS=,
+  for file in $files; do args+=(-f "$file"); done
+  unset IFS
+  (cd "$folder" && docker compose -p "$project" --env-file "$env_file" "${args[@]}" "$@")
+}
+
 # Everything the check made, and the stack it took down back up. Also run by --clean-up on a kept copy.
 clean_up() { # work folder
   local work=$1 project folder
@@ -79,12 +92,13 @@ clean_up() { # work folder
     docker rmi "$image" >/dev/null 2>&1 || echo "The image $image was not removed (in use?); remove it with: docker rmi $image"
   done
   if [ -f "$work/taken-down" ]; then
-    # AISC_IMAGE_TAG and AISC_PROJECT of this check must not reach the install being brought back
-    while IFS='|' read -r project folder; do
+    local env_file files
+    while IFS='|' read -r project folder env_file files; do
       [ -n "$project" ] || continue
-      echo "Bringing back the stack $project in $folder ..."
-      if ! (cd "$folder" && env -u AISC_IMAGE_TAG AISC_PROJECT="$project" uv run scripts/aisc.py start) </dev/null; then
-        echo "The stack $project did not come back. Start it with: cd $folder && uv run scripts/aisc.py start" >&2
+      echo "Bringing back the stack $project in $folder, as it ran ..."
+      if ! stack_compose "$project" "$folder" "$env_file" "$files" up -d --no-build </dev/null; then
+        echo "The stack $project did not come back. Start it with: cd $folder && docker compose -p $project" \
+             "--env-file $env_file -f ${files//,/ -f } up -d --no-build" >&2
       fi
     done < "$work/taken-down"
   fi
@@ -112,29 +126,32 @@ aisc_names() {
   (cd "$ROOT" && sed -n 's/^[[:space:]]*container_name:[[:space:]]*//p' $COMPOSE_FILES | tr -d "\"' " | sort -u)
 }
 held=$(docker ps -a --format '{{.Names}}' | grep -Fx -f <(aisc_names))
-TAKE_DOWN_LIST=""   # project|folder, one per line
+TAKE_DOWN_LIST=""   # project|folder|env file|compose files, one per line: how to bring it back as it ran
 LEFTOVER=0          # containers of an earlier check's copy, removed before this one starts
-UNLABELLED=""
+UNLABELLED=""       # containers no compose project made, or made without the labels to bring them back
+others=""
 for name in $held; do
-  labels=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}	{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$name" 2>/dev/null)
+  labels=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}	{{index .Config.Labels "com.docker.compose.project.working_dir"}}	{{index .Config.Labels "com.docker.compose.project.environment_file"}}	{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$name" 2>/dev/null)
   project=$(printf '%s' "$labels" | cut -f1)
   folder=$(printf '%s' "$labels" | cut -f2)
+  env_file=$(printf '%s' "$labels" | cut -f3)
+  files=$(printf '%s' "$labels" | cut -f4)
   if [ "$project" = "aisc-ports" ]; then
     LEFTOVER=1
-  elif [ -z "$project" ]; then
+    continue
+  fi
+  others="$others$name "
+  if [ -z "$project" ] || [ -z "$folder" ] || [ -z "$files" ]; then
     UNLABELLED="$UNLABELLED $name"
   elif ! printf '%s\n' "$TAKE_DOWN_LIST" | grep -q "^$project|"; then
-    TAKE_DOWN_LIST="$TAKE_DOWN_LIST$project|$folder
+    # an older compose did not record the env file: the one aisc.py start makes
+    TAKE_DOWN_LIST="$TAKE_DOWN_LIST$project|$folder|${env_file:-env.runtime}|$files
 "
   fi
 done
-others=$(for name in $held; do
-  p=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$name" 2>/dev/null)
-  [ "$p" = "aisc-ports" ] || printf '%s ' "$name"
-done)
 if [ -n "$UNLABELLED" ]; then
-  echo "Containers with AISC's names that no Compose project made:$UNLABELLED. Remove them first (docker rm -f);" \
-       "the copy uses the same names." >&2
+  echo "Containers with AISC's names that the check cannot bring back as they ran (no compose project, folder or" \
+       "files on them):$UNLABELLED. Remove them first (docker rm -f); the copy uses the same names." >&2
   exit 2
 fi
 if [ -n "$others" ] && [ "$TAKE_DOWN" = 0 ]; then
@@ -146,8 +163,9 @@ fi
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "What the check would do (nothing is done in a dry run):"
-  printf '%s' "$TAKE_DOWN_LIST" | while IFS='|' read -r project folder; do
-    [ -n "$project" ] && echo "  take down the stack $project in $folder (containers: ${others% }), its data kept"
+  printf '%s' "$TAKE_DOWN_LIST" | while IFS='|' read -r project folder env_file files; do
+    [ -n "$project" ] && echo "  take down the stack $project in $folder (containers: ${others% }), its data kept;" \
+                              "bring it back at the end with its own files, up -d --no-build"
   done
   [ "$LEFTOVER" = 1 ] && echo "  remove the containers an earlier check left (project aisc-ports)"
   cat <<EOF
@@ -191,11 +209,16 @@ if [ "$LEFTOVER" = 1 ]; then
 fi
 # recorded before the take-down, so a take-down that fails half-way is still brought back
 printf '%s' "$TAKE_DOWN_LIST" > "$WORK/taken-down"
-while IFS='|' read -r project folder; do
+while IFS='|' read -r project folder env_file files; do
   [ -n "$project" ] || continue
   echo "Taking down the stack $project (its data is kept; it comes back at the end) ..."
-  docker compose -p "$project" down </dev/null >/dev/null 2>&1 || { no "take down the stack $project"; exit 1; }
+  stack_compose "$project" "$folder" "$env_file" "$files" down </dev/null >/dev/null 2>&1 \
+    || { no "take down the stack $project"; exit 1; }
 done < "$WORK/taken-down"
+if [ -s "$WORK/taken-down" ]; then
+  still=$(docker ps -a --format '{{.Names}}' | grep -Fx -f <(aisc_names) | tr '\n' ' ')
+  [ -z "$still" ] || { no "containers with AISC's names are still here after the take-down: $still"; exit 1; }
+fi
 
 stand_in() { # [address:]port -> a web server holding it
   local name
