@@ -556,3 +556,12 @@ def test_an_https_install_is_announced_at_its_public_address_and_waited_on_here(
     assert f"Waiting for the sign-in page at http://localhost:{port}/" in r.stdout
     up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
     assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
+
+
+def test_a_refused_start_does_not_advise_running_compose(scratch):
+    """start makes the secrets on its way; the secrets command's own advice (run the stack with docker
+    compose ... up -d) is the very thing a refused start must not lead to."""
+    (scratch / "build-failures").write_text("3")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "run the stack with" not in r.stdout + r.stderr

@@ -668,7 +668,9 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
     return settings, problems, moved
 
 
-def make_secrets(args: list[str]) -> None:
+def make_secrets(args: list[str], up_hint: bool = True) -> None:
+    """The secrets command. up_hint: end with how to run the stack by hand; start, which runs it itself, does
+    not want a refusal of its own to be followed by that."""
     # Every file written here holds secrets or is made from them: private from the moment it exists.
     os.umask(0o077)
     existed = Path(OUT).is_file()
@@ -700,7 +702,8 @@ def make_secrets(args: list[str]) -> None:
         raise Refused(f"GATEWAY_COOKIE_SECRET is {length} characters; oauth2-proxy needs 32 bytes base64url (43)")
     make_signing_key()
     write_runtime()
-    say("", "run the stack with:", UP_HINT)
+    if up_hint:
+        say("", "run the stack with:", UP_HINT)
 
 
 def show_passwords(_args: list[str]) -> None:
@@ -1014,7 +1017,7 @@ def start(_args: list[str]) -> None:
             "'no space left on device'.")
 
     # 2. The secrets
-    make_secrets([])
+    make_secrets([], up_hint=False)
 
     # 3. The ports, before anything is built: a taken one would otherwise surface only after the whole build
     config = captured([*COMPOSE, "config", "--format", "json"])
