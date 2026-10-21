@@ -12,16 +12,35 @@ from conftest import ROOT
 
 SCRIPT = ROOT / "scripts/verify-port-fallback.sh"
 
-#: a docker that answers `ps` with the names in `names` and records every call in `docker.log`
+#: a docker that records every call in `docker.log` (its arguments, then the folder it ran in). `ps` answers the
+#: names in `names` until a stack was taken down; `inspect` answers the compose labels of an install in
+#: `install/`; `image ls` answers by reference only when asked for one (`-q` gets an id shared with :latest).
 DOCKER = r"""#!/bin/sh
 d=$(dirname "$0")/..
-printf '%s\n' "$*" >> "$d/docker.log"
+printf '%s | cwd=%s\n' "$*" "$PWD" >> "$d/docker.log"
 case "$1" in
   info) exit 0 ;;
-  ps) [ -f "$d/names" ] && cat "$d/names"; exit 0 ;;
-  inspect) printf 'aisc\t%s\n' "$d/elsewhere"; exit 0 ;;
+  ps) [ -f "$d/names" ] && [ ! -f "$d/taken-down" ] && cat "$d/names"; exit 0 ;;
+  inspect) printf 'aisc\t%s\t%s\t%s\n' "$d/install" "$d/install/env.runtime" \
+             "$d/install/docker-compose.one.yml,$d/install/docker-compose.two.yml"; exit 0 ;;
+  image)
+    case "$*" in
+      *" -q"*) echo 3f2a1b0c9d8e ;;
+      *"reference=aisc-ports-"*) echo "aisc-ports-schema-docs:latest" ;;
+      *"reference=aisc-*:ports"*) printf 'aisc-backend:ports\naisc-webapp:ports\n' ;;
+    esac
+    exit 0 ;;
+  compose)
+    case "$*" in *"-p aisc "*" down"*) touch "$d/taken-down" ;; esac
+    exit 0 ;;
 esac
 exit 0
+"""
+
+#: git and uv that fail and record that they were called: the copy is never cloned or started here
+FAILING = r"""#!/bin/sh
+printf '%s\n' "$*" >> "$(dirname "$0")/../$(basename "$0").log"
+exit 1
 """
 
 
@@ -31,11 +50,15 @@ def fake_docker(tmp_path):
     shims.mkdir()
     (shims / "docker").write_text(DOCKER)
     (shims / "docker").chmod(0o755)
+    (tmp_path / "install").mkdir()
     return tmp_path
 
 
-def run(d, *args):
-    env = {**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}"}
+def run(d, *args, failing=()):
+    for name in failing:
+        (d / "shims" / name).write_text(FAILING)
+        (d / "shims" / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}", "TMPDIR": str(d)}
     return subprocess.run(["bash", str(SCRIPT), *args], cwd=d, env=env, capture_output=True, text=True, timeout=60)
 
 
@@ -129,3 +152,18 @@ def test_verify_sh_runs_the_check_with_its_options():
                        text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     assert "--take-down-running" in r.stdout
+
+
+def test_the_copy_s_images_are_removed_by_their_ports_tag_only(fake_docker):
+    """An image id can be shared with the install's :latest (same commit, warm cache): removing by id, or with -f,
+    would take the install's images too. Only the copy's own references go, and an image in use stays."""
+    work = fake_docker / "aisc-ports.kept"
+    work.mkdir()
+    r = run(fake_docker, "--clean-up", str(work))
+    assert r.returncode == 0, r.stdout + r.stderr
+    removed = [c.split(" | ")[0].split()[1:] for c in calls(fake_docker) if c.startswith("rmi ")]
+    assert removed, calls(fake_docker)
+    names = [a for args in removed for a in args]
+    assert "-f" not in names and "--force" not in names
+    assert sorted(names) == ["aisc-backend:ports", "aisc-ports-schema-docs:latest", "aisc-webapp:ports"]
+    assert not work.exists()

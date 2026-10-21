@@ -70,8 +70,14 @@ clean_up() { # work folder
   local standins images
   standins=$(docker ps -aq --filter name=aisc-ports-standin-)
   [ -z "$standins" ] || docker rm -f $standins >/dev/null
-  images=$( (docker image ls -q --filter 'reference=aisc-*:ports'; docker image ls -q --filter 'reference=aisc-ports-*') | sort -u)
-  [ -z "$images" ] || docker rmi -f $images >/dev/null 2>&1
+  # By reference, never by id and never forced: the copy's aisc-backend:ports can share its id with the
+  # install's aisc-backend:latest (same commit, warm cache), and removing the reference only drops that tag.
+  # An image still in use is left, and said so.
+  local image
+  for image in $( (docker image ls --format '{{.Repository}}:{{.Tag}}' --filter 'reference=aisc-*:ports'
+                   docker image ls --format '{{.Repository}}:{{.Tag}}' --filter 'reference=aisc-ports-*') | sort -u); do
+    docker rmi "$image" >/dev/null 2>&1 || echo "The image $image was not removed (in use?); remove it with: docker rmi $image"
+  done
   if [ -f "$work/taken-down" ]; then
     # AISC_IMAGE_TAG and AISC_PROJECT of this check must not reach the install being brought back
     while IFS='|' read -r project folder; do
