@@ -523,3 +523,12 @@ def test_kcadm_is_given_no_secret_on_its_command_line():
     m = aisc_py()
     assert "--password" not in m.KCADM_RUN and "--new-password" not in m.KCADM_RUN
     assert "VALUE" not in m.KCADM_RUN and "KC_CLI_PASSWORD" not in m.KCADM_RUN
+
+
+def test_a_launcher_address_without_its_slash_gets_one():
+    """Without it the sign-out rule https://app.example.com* also matches https://app.example.com.attacker.net/
+    (an open redirect), and the callback becomes ...comoauth2/callback."""
+    gateway = aisc_py().sign_in_clients("https://app.example.com:8443", "https://app.example.com",
+                                        "https://app.example.com:8188")["aisc-gateway"]
+    assert "https://app.example.com/oauth2/callback" in gateway["redirectUris"]
+    assert gateway["attributes"]["post.logout.redirect.uris"].split("##")[0] == "https://app.example.com/*"

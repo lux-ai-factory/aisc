@@ -461,3 +461,27 @@ def test_a_refusal_after_up_does_not_claim_nothing_was_started(scratch):
     r = run(scratch)
     assert r.returncode != 0
     assert "did not start" in r.stderr and "Nothing was started" not in r.stderr
+
+
+def https_install(d, launcher='https://aisc.example.org:8100/'):
+    """The scratch copy served over https at aisc.example.org, its launcher at the address given."""
+    settings = (d / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    settings = settings.replace("LAUNCHER_EXTERNAL_URL=http://localhost:8100/", f"LAUNCHER_EXTERNAL_URL={launcher}")
+    (d / "env.plugin_downloader").write_text(settings)
+    (d / "held-ports").write_text(OWN_BROWSER_PORTS)
+
+
+def test_a_launcher_address_without_its_slash_is_used_with_one(scratch):
+    """The realm import makes its sign-out rule and callback from LAUNCHER_EXTERNAL_URL as it is: compose must
+    be given it with its slash, and so must the sign-in start tells."""
+    https_install(scratch, launcher="https://aisc.example.org")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    launcher = [line for line in (scratch / "env.runtime").read_text().splitlines()
+                if line.startswith("LAUNCHER_EXTERNAL_URL=")]
+    assert launcher[-1] == "LAUNCHER_EXTERNAL_URL=https://aisc.example.org/"
+    sent = (scratch / "exec-input").read_text()
+    assert "https://aisc.example.org/oauth2/callback" in sent and "https://aisc.example.org/*##" in sent
+    assert "aisc.example.orgoauth2" not in sent and "aisc.example.org*" not in sent

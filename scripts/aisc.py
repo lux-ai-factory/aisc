@@ -835,12 +835,12 @@ def keycloak_realm_url() -> str:
     return f"http://localhost:{effective('KEYCLOAK_PORT_EXTERNAL') or '8081'}/realms/aisc"
 
 
-def effective(name: str) -> str:
+def effective(name: str, path: str = COMBINED) -> str:
     """The value compose uses for a setting: its last line in env.runtime (env.local comes last there), one pair
-    of quotes taken off; empty when env.runtime has none."""
+    of quotes taken off; empty when env.runtime has none. path: another env file to read it from instead."""
     value = ""
-    if Path(COMBINED).is_file():
-        for line in lines_of(COMBINED):
+    if Path(path).is_file():
+        for line in lines_of(path):
             if line.startswith(name + "="):
                 value = line.split("=", 1)[1].strip()
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
@@ -848,11 +848,18 @@ def effective(name: str) -> str:
     return value
 
 
+def with_slash(address: str) -> str:
+    return address if address.endswith("/") else address + "/"
+
+
 def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dict]:
     """What the realm's two clients must hold for this install's addresses: the gateway's callbacks on the
     engine, the launcher and the dashboard, and where it may send a person after signing out; the webapp's own
     address, beside the frontend's development server. The gateway's web origins are "+", Keycloak's shorthand
-    for the origins of its redirect URIs, as the realm file has it. The launcher's address ends with a slash."""
+    for the origins of its redirect URIs, as the realm file has it. The launcher's address is given one ending
+    with a slash when it has none: the sign-out rule is that address followed by *, and without the slash
+    https://app.example.com* would also let the sign-out send a person on to https://app.example.com.evil.net/."""
+    launcher = with_slash(launcher)
     return {
         "aisc-gateway": {
             "redirectUris": [f"{engine}/oauth2/callback", f"{launcher}oauth2/callback", f"{dashboard}/oauth2/callback"],
@@ -980,6 +987,11 @@ def start(_args: list[str]) -> None:
                                              not served_over_https(), port_is_free)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
+    # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose
+    # gives it (see sign_in_clients): one set without its slash is given with one.
+    tracked_launcher = effective("LAUNCHER_EXTERNAL_URL", TRACKED)
+    if "LAUNCHER_EXTERNAL_URL" not in settings and tracked_launcher and not tracked_launcher.endswith("/"):
+        settings["LAUNCHER_EXTERNAL_URL"] = with_slash(tracked_launcher)
     existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     if local_lines(existing, settings) != existing:
         write_beside(LOCAL, text_of(local_lines(existing, settings)))
