@@ -7,8 +7,10 @@ two retries (fewer builds at once on a retry), starts the stack and waits until 
 answers, so "compose went through" no longer ends on a 502.
 """
 import http.server
+import json
 import os
 import shutil
+import socket
 import subprocess
 import threading
 
@@ -24,6 +26,8 @@ case "$1" in
   compose)
     case "$*" in
       *"version --short"*) cat "$d/compose-version"; exit 0 ;;
+      *" config --format json"*) if [ -f "$d/config-answer" ]; then cat "$d/config-answer"; else echo '{"services": {}}'; fi
+        exit 0 ;;
       *" build"*)
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
@@ -32,6 +36,7 @@ case "$1" in
       *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
+  volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
 esac
 exit 0
 """
@@ -185,3 +190,26 @@ def test_no_failed_one_shot_no_warning(scratch):
     (scratch / "ps-answer").write_text("report-grants\tExited (0) 9 seconds ago\nplatform\tUp 2 minutes\n")
     r = run(scratch)
     assert r.returncode == 0 and "did not finish" not in r.stdout
+
+
+def test_a_taken_port_stops_start_before_anything_is_built(scratch):
+    """A person learns of a taken port in seconds, not after the whole build."""
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        (scratch / "config-answer").write_text(json.dumps({"services": {"postgres": {"ports": [
+            {"host_ip": "127.0.0.1", "published": str(port), "target": 5432}]}}}))
+        r = run(scratch)
+    assert r.returncode == 1
+    assert f"Port {port} is taken" in r.stderr
+    assert not [c for c in calls(scratch) if " build" in c]
+
+
+def test_start_keeps_the_engine_settings_it_chose(scratch):
+    """env.local holds the engine's port and address, and compose reads them through env.runtime."""
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    local = (scratch / "env.local").read_text().splitlines()
+    assert [l.split("=", 1)[0] for l in local] == ["ENGINE_PORT", "ENGINE_HTTPS_PORT", "API_URL_EXTERNAL"]
+    assert (scratch / "env.runtime").read_text().splitlines()[-3:] == local
