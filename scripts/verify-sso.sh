@@ -292,10 +292,13 @@ for e in "control objectives|control-objectives|8090" "immudb console|immudb|808
 done
 # The compose project is the one the running postgres belongs to: `aisc`, or whatever -p named it.
 STACK=$(docker inspect postgres --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
+# The infrastructure is published only with docker-compose.admin-ports.yml, and then on the loopback: either
+# way no other machine reaches it.
 for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672" "keycloak|8081"; do
   n=${e%%|*}; port=${e#*|}
-  docker ps --filter "label=com.docker.compose.project=${STACK:-aisc}" --format '{{.Ports}}' | grep -q "127.0.0.1:$port" \
-    && ok "$n is bound to the loopback only" || no "$n is not loopback-bound on :$port"
+  docker ps --filter "label=com.docker.compose.project=${STACK:-aisc}" --format '{{.Ports}}' \
+      | grep -qE "(0\.0\.0\.0|\[::\]|:::):$port->" \
+    && no "$n is published on every address on :$port" || ok "$n is on the loopback only, or not published"
 done
 
 echo "6. the platform's projects"

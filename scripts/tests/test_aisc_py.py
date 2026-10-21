@@ -394,6 +394,27 @@ def test_the_project_name_can_be_set(monkeypatch):
     assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc-proof"]
 
 
+def test_compose_adds_the_https_file_only_for_https(monkeypatch):
+    """443 is published only by an install served over https: elsewhere a taken 443 must not stop a start."""
+    monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
+    assert "docker-compose.https.yml" not in aisc_py().COMPOSE
+    assert "docker-compose.https.yml" not in aisc_py().UP_HINT
+    monkeypatch.setenv("CADDY_DOMAIN", "https://x")
+    module = aisc_py()
+    assert module.COMPOSE[-2:] == ["-f", "docker-compose.https.yml"]
+    assert "-f docker-compose.https.yml" in module.UP_HINT
+
+
+def test_compose_adds_the_admin_ports_file_only_when_asked(monkeypatch):
+    monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
+    monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
+    assert "docker-compose.admin-ports.yml" not in aisc_py().COMPOSE
+    monkeypatch.setenv("AISC_ADMIN_PORTS", "on")
+    module = aisc_py()
+    assert module.COMPOSE[-2:] == ["-f", "docker-compose.admin-ports.yml"]
+    assert "-f docker-compose.admin-ports.yml" in module.UP_HINT
+
+
 def test_a_port_whose_closed_connections_are_still_waiting_is_free():
     """Linux keeps a closed connection in TIME_WAIT for a minute; Docker binds over it, so the check must too.
     The server here sets SO_REUSEADDR, as Caddy and Docker's port proxy do (every Go listener does): only then

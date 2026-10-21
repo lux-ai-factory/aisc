@@ -573,12 +573,89 @@ def _published(service):
     return {(int(p["published"]), int(p["target"])) for p in service.get("ports") or []}
 
 
+#: the stack as an install served over https starts it, and with the infrastructure published for the host's tools
+WITH_HTTPS = [*FILES, "docker-compose.https.yml"]
+WITH_ADMIN_PORTS = [*FILES, "docker-compose.admin-ports.yml"]
+#: the launcher, the dashboard and the sign-in moved off their usual ports, as aisc.py start moves them
+BROWSER_MOVED = {"HOMEPAGE_PORT_EXTERNAL": "8110", "DASHBOARD_PORT_EXTERNAL": "8198", "KEYCLOAK_PORT_EXTERNAL": "8091",
+                 "LAUNCHER_EXTERNAL_URL": "http://localhost:8110/", "DASHBOARD_EXTERNAL_URL": "http://localhost:8198",
+                 "KEYCLOAK_URL_EXTERNAL": "http://localhost:8091"}
+
+
+def _host_ports(services):
+    """(service, host address, host port) of every published port."""
+    return {(name, p.get("host_ip") or "0.0.0.0", int(p["published"]))
+            for name, service in services.items() for p in service.get("ports") or []}
+
+
+def test_only_the_browser_ports_are_published_by_default(tmp_path):
+    """A port nobody's browser needs is one more a new install can find taken."""
+    services = compose_cfg.config(tmp_path)["services"]
+    assert {port for _, _, port in _host_ports(services)} == {80, 8100, 8188, 8081}
+
+
+def test_the_admin_ports_file_publishes_the_infrastructure_on_loopback(tmp_path):
+    services = compose_cfg.config(tmp_path, files=WITH_ADMIN_PORTS)["services"]
+    published = _host_ports(services)
+    for port in (5432, 6379, 5672, 9000, 3322):
+        hosts = {host for _, host, p in published if p == port}
+        assert hosts == {"127.0.0.1"}, port
+
+
+def test_443_only_with_the_https_file(tmp_path):
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "https").mkdir()
+    plain = compose_cfg.config(tmp_path / "plain")["services"]["caddy"]
+    assert 443 not in {published for published, _ in _published(plain)}
+    https = compose_cfg.config(tmp_path / "https", files=WITH_HTTPS)["services"]["caddy"]
+    assert (443, 8005) in _published(https)
+
+
+def test_every_browser_port_follows_its_variable(tmp_path):
+    services = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]
+    assert {(8110, 8006), (8198, 8008)} <= _published(services["caddy"])
+    keycloak = [(p.get("host_ip"), int(p["published"]), int(p["target"])) for p in services["keycloak"]["ports"]]
+    assert keycloak == [("127.0.0.1", 8091, 8080)]
+
+
+def test_every_issuer_follows_the_sign_in_address(tmp_path):
+    services = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]
+    issuers = {name: (s.get("environment") or {})["KEYCLOAK_ISSUER"] for name, s in services.items()
+               if "KEYCLOAK_ISSUER" in (s.get("environment") or {})}
+    assert issuers
+    assert {name: i for name, i in issuers.items() if not i.startswith("http://localhost:8091")} == {}
+    assert services["keycloak"]["environment"]["KC_HOSTNAME"] == "http://localhost:8091"
+    command = services["oauth2-proxy"]["command"]
+    for flag in ("--oidc-issuer-url=", "--login-url="):
+        value = next(c for c in command if c.startswith(flag))
+        assert value.startswith(flag + "http://localhost:8091"), value
+
+
+def test_every_link_back_to_the_launcher_follows_its_address(tmp_path):
+    services = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]
+    links = {(name, key): (s.get("environment") or {})[key] for name, s in services.items()
+             for key in ("LAUNCHER_URL", "APP_LAUNCHER_URL") if key in (s.get("environment") or {})}
+    assert {"dashboard", "aisc-webapp", "controls-web"} <= {name for name, _ in links}
+    assert {k: v for k, v in links.items() if v != "http://localhost:8110/"} == {}
+
+
+def test_the_gateway_whitelists_every_browser_port(tmp_path):
+    command = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]["oauth2-proxy"]["command"]
+    assert {"--whitelist-domain=localhost:8110", "--whitelist-domain=localhost:8198"} <= set(command)
+
+
+def test_keycloak_gets_every_address_its_realm_names(tmp_path):
+    environment = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]["keycloak"]["environment"]
+    assert environment["LAUNCHER_EXTERNAL_URL"] == "http://localhost:8110/"
+    assert environment["DASHBOARD_EXTERNAL_URL"] == "http://localhost:8198"
+
+
 def test_the_engine_ports_follow_the_install_settings(tmp_path):
     (tmp_path / "moved").mkdir()
     (tmp_path / "default").mkdir()
-    moved = compose_cfg.config(tmp_path / "moved", env=MOVED)["services"]["caddy"]
+    moved = compose_cfg.config(tmp_path / "moved", env=MOVED, files=WITH_HTTPS)["services"]["caddy"]
     assert {(8080, 8005), (8443, 8005)} <= _published(moved)
-    default = compose_cfg.config(tmp_path / "default")["services"]["caddy"]
+    default = compose_cfg.config(tmp_path / "default", files=WITH_HTTPS)["services"]["caddy"]
     assert {(80, 8005), (443, 8005)} <= _published(default)
 
 

@@ -1,0 +1,6 @@
+# Added by aisc.py start for an install served over https (CADDY_DOMAIN starts with https://): Caddy's
+# https port. Not in the main files, so an install on plain http never needs 443 free.
+services:
+  caddy:
+    ports:
+      - "${ENGINE_HTTPS_PORT:-443}:8005"

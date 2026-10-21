@@ -289,6 +289,8 @@ services:
     environment:
       # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
       PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
+      # the env file's launcher address is the usual port's; this one follows the install's, as controls-web's
+      LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:

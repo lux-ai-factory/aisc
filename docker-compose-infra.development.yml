@@ -5,8 +5,9 @@ services:
     container_name: caddy
     restart: always
     ports:
-      # the engine: 80 and 443 unless aisc.py start moved a new install off a taken one (env.local)
-      - "${ENGINE_HTTPS_PORT:-443}:8005"
+      # Only the ports a browser reaches, each at the port aisc.py start chose (env.local). 443 is published
+      # by docker-compose.https.yml, for an install served over https only.
+      # the engine: 80 unless start moved the install off a taken one
       - "${ENGINE_PORT:-80}:8005"
       # the launcher (see the second site block in the Caddyfile)
       - "${HOMEPAGE_PORT_EXTERNAL:-8100}:8006"
@@ -50,8 +51,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${S3_USER}
       MINIO_ROOT_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
-    ports:
-      - "127.0.0.1:9000:9000"   # loopback only; nothing in a browser talks to MinIO
+    # not published: nothing in a browser talks to MinIO (docker-compose.admin-ports.yml publishes it for the
+    # host's tools)
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -87,8 +88,6 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    ports:
-      - "127.0.0.1:5672:5672"   # loopback only
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -102,8 +101,6 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"   # loopback only
     volumes:
       - redis_data:/data
     networks:
@@ -118,8 +115,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "127.0.0.1:5432:5432"   # loopback only, for the host's tools; the services use postgres:5432
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
@@ -261,8 +256,8 @@ services:
       - --cookie-samesite=lax
       - --whitelist-domain=localhost
       - --whitelist-domain=localhost:${ENGINE_PORT:-80}
-      - --whitelist-domain=localhost:8100
-      - --whitelist-domain=localhost:8188
+      - --whitelist-domain=localhost:${HOMEPAGE_PORT_EXTERNAL:-8100}
+      - --whitelist-domain=localhost:${DASHBOARD_PORT_EXTERNAL:-8188}
       # it proxies nothing itself; Caddy does the proxying
       - --upstream=static://202
 
@@ -284,8 +279,11 @@ services:
     environment:
       # the first-run admin user of the Keycloak admin console
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
-      # the engine's address, which the realm's sign-in addresses are made from at import
+      # the addresses the browser reaches the engine, the launcher and the dashboard on, which the realm's
+      # sign-in addresses are made from at import
       API_URL_EXTERNAL: ${API_URL_EXTERNAL:-http://localhost}
+      LAUNCHER_EXTERNAL_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
+      DASHBOARD_EXTERNAL_URL: ${DASHBOARD_EXTERNAL_URL:-http://localhost:8188}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?run scripts/secrets.sh first}
       # Keycloak's own `keycloak` database on the shared Postgres server
       KC_DB: postgres
@@ -302,9 +300,9 @@ services:
       AISC_ADMIN_PASSWORD: ${AISC_ADMIN_PASSWORD:?run scripts/secrets.sh first}
       AISC_USER_PASSWORD: ${AISC_USER_PASSWORD:?run scripts/secrets.sh first}
     ports:
-      # host 8081, because 8080 is often taken on the host; loopback only: the master realm's admin
-      # console answers here, and the browser that signs in is on this machine
-      - "127.0.0.1:8081:8080"
+      # host 8081 unless aisc.py start moved it (8080 is often taken on the host); loopback only: the master
+      # realm's admin console answers here, and the browser that signs in is on this machine
+      - "127.0.0.1:${KEYCLOAK_PORT_EXTERNAL:-8081}:8080"
     depends_on:
       postgres:
         condition: service_started
@@ -337,11 +335,9 @@ services:
     depends_on:
       immudb-key:
         condition: service_completed_successfully
-    ports:
-      # gRPC, on the loopback for tools on this machine; the stack uses the compose network
-      - "127.0.0.1:3322:3322"
-      # The web console is not published: it would serve the ledger to anyone who could
-      # reach the port, with no gateway in front of it.
+    # gRPC is not published: the stack uses the compose network (docker-compose.admin-ports.yml publishes it
+    # for the host's tools). The web console is never published: it would serve the ledger to anyone who
+    # could reach the port, with no gateway in front of it.
     networks:
       - backend
 

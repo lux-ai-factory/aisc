@@ -107,14 +107,26 @@ BROWSER_PORTS: tuple[BrowserPort, ...] = (
 
 #: the Compose project: aisc, unless AISC_PROJECT names another (a second copy beside an install's data)
 PROJECT = os.environ.get("AISC_PROJECT", "aisc")
-COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
-           "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
 NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
              "service, then run this again.")
 #: the docker command start found on PATH (see find_docker); every docker call runs this one
 DOCKER = "docker"
-UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
-           "    -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d")
+
+
+def optional_compose_files() -> list[str]:
+    """443 only for an install served over https, so a taken 443 never stops one on plain http; the
+    infrastructure's ports on the loopback only when asked (AISC_ADMIN_PORTS=on), for tools on the host."""
+    files = ["docker-compose.https.yml"] if served_over_https() else []
+    if os.environ.get("AISC_ADMIN_PORTS") == "on":
+        files.append("docker-compose.admin-ports.yml")
+    return files
+
+
+def served_over_https() -> bool:
+    # the checkout's own file, not the current folder's: COMPOSE asks this on import, before main moves there
+    tracked = ROOT / TRACKED
+    domain = os.environ.get("CADDY_DOMAIN") or (value_in("CADDY_DOMAIN", str(tracked)) if tracked.is_file() else "")
+    return domain.strip('"').startswith("https://")
 
 
 class Refused(Exception):
@@ -249,11 +261,6 @@ def immudbpw() -> str:
     return "Az9-" + random_source.token_hex(12)
 
 
-def served_over_https() -> bool:
-    domain = os.environ.get("CADDY_DOMAIN") or (value_in("CADDY_DOMAIN", TRACKED) if Path(TRACKED).is_file() else "")
-    return domain.strip('"').startswith("https://")
-
-
 def account(name: str) -> str:
     if served_over_https():
         return rand()
@@ -276,6 +283,15 @@ def value_in(name: str, path: str) -> str:
         if line.startswith(name + "="):
             return line[len(name) + 1:]
     return ""
+
+
+#: the stack's compose command; start puts the docker it found first
+COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
+           "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml",
+           *[arg for name in optional_compose_files() for arg in ("-f", name)]]
+UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
+           "    -f docker-compose-infra.development.yml -f docker-compose.development.yml"
+           + "".join(f" -f {name}" for name in optional_compose_files()) + " up -d")
 
 
 def kept_value(name: str) -> str:
