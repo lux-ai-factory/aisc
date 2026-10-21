@@ -28,11 +28,21 @@ def test_installing_needs_no_private_submodule():
     assert "add-controls" not in (ROOT / ".gitmodules").read_text()
 
 
-def test_every_system_installs_with_the_same_start_command():
-    install = section("Install")
+def test_each_system_installs_its_tools_and_then_everyone_runs_the_same_commands():
+    """What differs per system (Docker and uv) is written per system; the download and start once, for all."""
+    tools = section("1. Install Docker and uv")
     for system in ("### Windows", "### macOS", "### Linux"):
-        assert system in install, system
-    assert install.count("uv run scripts/aisc.py start") >= 3
+        assert system in tools, system
+    assert "aisc.py start" not in tools and "clone" not in tools
+    assert "uv run scripts/aisc.py start" in section("2. Download and start AISC")
+    # the quick start and the step everyone follows: nowhere else
+    assert README.read_text().count("git -c core.autocrlf=false clone") == 2
+
+
+def test_the_readme_does_not_teach_installing_git():
+    text = README.read_text()
+    for teaching in ("Git.Git", "apt install git", "xcode-select", "Docker, Git", "Git and uv"):
+        assert teaching not in text, teaching
 
 
 def test_every_clone_command_keeps_linux_line_endings():
@@ -45,7 +55,7 @@ def test_every_clone_command_keeps_linux_line_endings():
 
 
 def test_installing_needs_no_unix_tool_on_windows():
-    windows = section("Install").split("### Windows", 1)[1].split("\n### ", 1)[0]
+    windows = section("1. Install Docker and uv").split("### Windows", 1)[1].split("\n### ", 1)[0]
     for unix_only in ("curl", "openssl", "sudo", "bash"):
         assert unix_only not in windows, unix_only
 
@@ -89,7 +99,7 @@ def test_every_anchor_inside_the_readme_has_its_heading():
 
 
 def test_the_readme_says_start_moves_a_new_install_off_a_taken_port_80():
-    start = section("Install").split("### What `start` does", 1)[1]
+    start = section("2. Download and start AISC").split("### What `start` does", 1)[1]
     assert "port 80" in start and "8080" in start
     assert "port 80" in section("Before you install") and "8080" in section("Before you install")
 
@@ -101,6 +111,6 @@ def test_the_guide_names_the_engine_port_settings():
 
 
 def test_the_readme_says_admin_admin_holds_only_until_the_passwords_change():
-    sign_in = section("Open AISC")
+    sign_in = section("3. Open AISC")
     assert "admin" in sign_in and "uv run scripts/aisc.py password" in sign_in
     assert "rotate-infra-password" in sign_in and "last message" in sign_in

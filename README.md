@@ -29,7 +29,7 @@ AISC is built for regulatory sandboxes, supervisory authorities and the AI provi
 
 ## Quick start
 
-If you already have Docker, Git and uv:
+If you already have Docker and uv:
 
 ```
 git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
@@ -37,10 +37,11 @@ cd aisc
 uv run scripts/aisc.py start
 ```
 
-Then open <http://localhost:8100> and sign in as `admin` / `admin`.
+Then open <http://localhost:8100> and sign in with the account the last message of `start` names (`admin` /
+`admin` on a new install).
 
 The first start builds every image (27 of them) on your computer, so it takes a while. Later starts are quick.
-New to these tools? Follow [Install](#install) below, step by step.
+New to these tools? Follow the three steps below.
 
 ## Before you install
 
@@ -59,20 +60,20 @@ these, please [tell us how it went](https://github.com/lux-ai-factory/aisc/issue
 
 Port 5432 is also PostgreSQL's usual port. If PostgreSQL is already installed on your computer, stop it first.
 
-## Install
+## 1. Install Docker and uv
 
-Pick your system. Each section ends with AISC running.
+AISC runs in Docker. [uv](https://docs.astral.sh/uv/) runs its install script and fetches the Python that
+script needs. This is the only step that differs per system.
 
 ### Windows
 
 1. **Check that you can install programs.** You need administrator rights on the computer. On a work laptop,
    ask your IT team first.
 
-2. **Install Docker Desktop, Git and uv.** Open PowerShell and run:
+2. **Install Docker Desktop and uv.** Open PowerShell and run:
 
    ```powershell
    winget install --id Docker.DockerDesktop -e
-   winget install --id Git.Git -e
    winget install --id astral-sh.uv -e
    ```
 
@@ -83,51 +84,16 @@ Pick your system. Each section ends with AISC running.
      settings. How depends on the computer's brand; search for "enable virtualization" with your model.
    - Wait until Docker Desktop shows **Engine running**.
 
-4. **Download AISC.** Open a new PowerShell window and run:
-
-   ```powershell
-   cd $HOME
-   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
-   cd aisc
-   ```
-
-   > **Copy the command exactly.** The `-c core.autocrlf=false` part keeps the files in the form the Linux
-   > containers expect. If you cloned without it, delete the `aisc` folder and clone again.
-   >
-   > Keep the folder out of OneDrive: `cd $HOME` puts it in `C:\Users\<you>\aisc`, which is fine.
-
-5. **Start AISC:**
-
-   ```powershell
-   uv run scripts/aisc.py start
-   ```
-
-   Go on with [Open AISC](#open-aisc).
-
 ### macOS
 
 1. **Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)**, start it and wait until it
    shows **Engine running**.
 
-2. **Install Git and uv.** Open Terminal and run:
+2. **Install uv.** Open Terminal, run the line below, then close and reopen Terminal:
 
    ```bash
-   xcode-select --install
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-
-   The first command installs Git (skip it if `git --version` already works). Close and reopen Terminal after
-   the second.
-
-3. **Download and start AISC:**
-
-   ```bash
-   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
-   cd aisc
-   uv run scripts/aisc.py start
-   ```
-
-   Go on with [Open AISC](#open-aisc).
 
 ### Linux
 
@@ -136,20 +102,27 @@ Pick your system. Each section ends with AISC running.
    Docker without `sudo` ([how](https://docs.docker.com/engine/install/linux-postinstall/)), then log out and in
    again. Check with `docker compose version`.
 
-2. **Install Git and uv:**
+2. **Install uv:**
 
    ```bash
-   sudo apt install git        # or your distribution's package manager
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-3. **Download and start AISC:**
+## 2. Download and start AISC
 
-   ```bash
-   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
-   cd aisc
-   uv run scripts/aisc.py start
-   ```
+The same on every system. Open a terminal (PowerShell on Windows) and run:
+
+```
+cd ~
+git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+cd aisc
+uv run scripts/aisc.py start
+```
+
+> **Copy the clone command exactly.** The `-c core.autocrlf=false` part keeps the files in the form the Linux
+> containers expect. If you cloned without it, delete the `aisc` folder and clone again.
+>
+> On Windows, keep the folder out of OneDrive: `cd ~` puts it in `C:\Users\<you>\aisc`, which is fine.
 
 ### What `start` does
 
@@ -165,7 +138,7 @@ Pick your system. Each section ends with AISC running.
 When it ends with **AISC is up**, AISC is ready. You can run `start` again at any time: it keeps your data and
 your passwords.
 
-## Open AISC
+## 3. Open AISC
 
 1. Open <http://localhost:8100> in your browser.
 2. Sign in with the account named in the last message of `start`. On a new install that is `admin` / `admin`
@@ -229,7 +202,7 @@ flowchart LR
     P --> I[(immudb<br/>tamper-evident log)]
 ```
 
-Each step is its own application, most of them in a Git submodule of this repository. This repository ties them
+Each step is its own application, most of them in a submodule of this repository. This repository ties them
 together and runs them with Docker Compose behind one sign-in. [docs/guide.md](docs/guide.md) describes every
 component.
 
