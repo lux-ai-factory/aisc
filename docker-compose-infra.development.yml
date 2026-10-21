@@ -3,7 +3,7 @@ services:
   caddy:
     image: caddy:2.10.2
     container_name: caddy
-    restart: always
+    restart: unless-stopped
     ports:
       # Only the ports a browser reaches, each at the port aisc.py start chose (env.local). 443 is published
       # by docker-compose.https.yml, for an install served over https only.

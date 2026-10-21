@@ -9,6 +9,7 @@ answers, so "compose went through" no longer ends on a 502.
 import http.server
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -16,13 +17,15 @@ import threading
 
 import pytest
 
-from conftest import ROOT, copy_install_scripts
+from conftest import RUN_KCADM_IN_EXEC, ROOT, add_fake_kcadm, copy_install_scripts
 
 DOCKER = r"""#!/bin/sh
 d=$(dirname "$0")/..
 # one line per call, whatever the arguments hold (a script passed to bash -c has newlines)
 printf '%s' "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" | tr '\n' ' ' >> "$d/docker.log"
 echo >> "$d/docker.log"
+[ "$1" = exec ] && [ -f "$d/exec-fails" ] && { echo "Error response from daemon" >&2; exit 1; }
+""" + RUN_KCADM_IN_EXEC + r"""
 case "$1" in
   info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
   compose)
@@ -34,7 +37,8 @@ case "$1" in
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
-      *" ps -a --status created"*) [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
+      *" ps -a --status created"*) [ -f "$d/created-fails" ] && exit 1
+        [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
       *" rm "*) exit 0 ;;
       *" up "*) [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
@@ -44,12 +48,6 @@ case "$1" in
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
   ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
-  exec)
-    # kcadm in the keycloak container: what it was given on stdin is kept, a call per line
-    { cat; echo; } >> "$d/exec-input"
-    [ -f "$d/exec-fails" ] && exit 1
-    case "$*" in *"get clients"*) echo '[{"id": "c1"}]' ;; esac
-    exit 0 ;;
 esac
 exit 0
 """
@@ -62,7 +60,7 @@ case "$*" in
 esac
 """
 
-def sign_in_page(d):
+def sign_in_page(d, port=0):
     """The gateway as the start sees it: 502 while `not-ready` counts down (or for ever: `never`), then the
     sign-in's redirect. The realm's own page (/realms/...) answers 503 while `realm-not-ready` counts down (or
     for ever: `never`), then 200; every request's path is appended to `requests`, in the order it came."""
@@ -89,7 +87,7 @@ def sign_in_page(d):
         def log_message(self, *_args):
             pass
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Page)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Page)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -103,6 +101,7 @@ def scratch(tmp_path):
     for name, body in (("docker", DOCKER), ("git", GIT)):
         (shims / name).write_text(body)
         (shims / name).chmod(0o755)
+    add_fake_kcadm(shims)
     (tmp_path / "branch").write_text("feat/unified-modules\n")
     (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/feat/unified-modules)\n")
     (tmp_path / "compose-version").write_text("5.5.1\n")
@@ -126,6 +125,7 @@ def calls(d):
 
 def test_a_good_checkout_is_built_started_and_waited_for(scratch):
     (scratch / "not-ready").write_text("2")          # the gateway answers 502 twice, then the sign-in
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)   # whatever holds them on the test machine
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert (scratch / "env.secrets").exists() and (scratch / "env.runtime").exists()
@@ -137,7 +137,7 @@ def test_a_good_checkout_is_built_started_and_waited_for(scratch):
         assert "-p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml" in c
         assert "-f docker-compose-infra.development.yml -f docker-compose.development.yml" in c
     assert "up -d" in ups[0]
-    assert (scratch / "url").read_text().rstrip("/") in r.stdout and "private window" in r.stdout
+    assert "AISC is up: open http://localhost:8100 " in r.stdout and "private window" in r.stdout
 
 
 def test_a_failed_build_is_tried_twice_more_with_fewer_builds_at_once(scratch):
@@ -369,7 +369,7 @@ def test_start_tells_the_sign_in_its_addresses_after_the_stack_is_up(scratch):
     assert told and min(told) > up
     sent = (scratch / "exec-input").read_text()
     assert "http://localhost:8090/oauth2/callback" in sent and "http://localhost:8090/*" in sent
-    assert "update clients/c1" in "\n".join(log)
+    assert "update clients/id-of-aisc-gateway" in "\n".join(log)
     admin = [line for line in (scratch / "env.secrets").read_text().splitlines()
              if line.startswith("KEYCLOAK_ADMIN_PASSWORD=")][0].split("=", 1)[1]
     assert admin not in (scratch / "docker.log").read_text()
@@ -404,12 +404,17 @@ def test_start_stops_when_this_project_runs_no_keycloak(scratch):
 
 
 def test_no_secret_reaches_a_command_line_when_start_tells_the_sign_in(scratch):
+    """Neither docker's command line on the host nor kcadm's inside the container (which the host's `ps`
+    shows too): Keycloak's admin password reaches kcadm through KC_CLI_PASSWORD."""
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
-    log = (scratch / "docker.log").read_text()
     secrets = [line.split("=", 1)[1] for line in (scratch / "env.secrets").read_text().splitlines()
                if "=" in line and not line.startswith("#")]
-    assert not [v for v in secrets if len(v) >= 8 and v in log]
+    for log in ("docker.log", "kcadm.log"):
+        text = (scratch / log).read_text()
+        assert not [v for v in secrets if len(v) >= 8 and v in text], log
+    admin = [v for v in (scratch / "env.secrets").read_text().splitlines() if v.startswith("KEYCLOAK_ADMIN_PASSWORD=")]
+    assert set((scratch / "kcadm-login").read_text().splitlines()) == {admin[0].split("=", 1)[1]}
 
 
 def test_start_clears_containers_a_failed_attempt_left_created(scratch):
@@ -423,6 +428,28 @@ def test_start_clears_containers_a_failed_attempt_left_created(scratch):
     ups = [c for c in log if " up " in c]
     assert len(removal) == 1 and " rm -f aisc-webapp" in removal[0], log
     assert log.index(removal[0]) < log.index(ups[0])
+
+
+COMPOSE_OF_THE_STACK = ("compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml "
+                        "-f docker-compose-infra.development.yml -f docker-compose.development.yml")
+
+
+def test_start_asks_compose_for_this_project_s_created_containers_only(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    asked = [c for c in calls(scratch) if "--status created" in c]
+    assert asked == [COMPOSE_OF_THE_STACK + " ps -a --status created --format {{.Service}} | BAKE= LIMIT="]
+    assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
+    assert "Removing what an earlier attempt left" not in r.stdout
+
+
+def test_start_goes_on_when_compose_cannot_list_the_created_containers(scratch):
+    (scratch / "created-fails").write_text("")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
+    assert [c for c in calls(scratch) if " up -d" in c] and "AISC is up" in r.stdout
 
 
 def test_a_refused_start_says_not_to_run_compose_directly(scratch):
@@ -459,3 +486,171 @@ def test_a_refusal_after_up_does_not_claim_nothing_was_started(scratch):
     r = run(scratch)
     assert r.returncode != 0
     assert "did not start" in r.stderr and "Nothing was started" not in r.stderr
+
+
+def https_install(d, launcher='https://aisc.example.org:8100/'):
+    """The scratch copy served over https at aisc.example.org, its launcher at the address given."""
+    settings = (d / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    settings = settings.replace("LAUNCHER_EXTERNAL_URL=http://localhost:8100/", f"LAUNCHER_EXTERNAL_URL={launcher}")
+    (d / "env.plugin_downloader").write_text(settings)
+    (d / "held-ports").write_text(OWN_BROWSER_PORTS)
+
+
+def test_a_launcher_address_without_its_slash_is_used_with_one(scratch):
+    """The realm import makes its sign-out rule and callback from LAUNCHER_EXTERNAL_URL as it is: compose must
+    be given it with its slash, and so must the sign-in start tells."""
+    https_install(scratch, launcher="https://aisc.example.org")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    launcher = [line for line in (scratch / "env.runtime").read_text().splitlines()
+                if line.startswith("LAUNCHER_EXTERNAL_URL=")]
+    assert launcher[-1] == "LAUNCHER_EXTERNAL_URL=https://aisc.example.org/"
+    sent = (scratch / "exec-input").read_text()
+    assert "https://aisc.example.org/oauth2/callback" in sent and "https://aisc.example.org/*##" in sent
+    assert "aisc.example.orgoauth2" not in sent and "aisc.example.org*" not in sent
+
+
+def test_an_https_install_s_sign_in_gets_no_development_server(scratch):
+    https_install(scratch)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "5173" not in (scratch / "exec-input").read_text()
+
+
+def test_a_plain_http_install_s_sign_in_keeps_the_development_server(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = (scratch / "exec-input").read_text()
+    assert "http://localhost:5173/*" in sent and '"http://localhost:5173"' in sent
+
+
+def page_on(d, port):
+    """The stand-in sign-in page on 127.0.0.1:port, or a skip when this machine holds that port."""
+    try:
+        return sign_in_page(d, port)
+    except OSError:
+        pytest.skip(f"port {port} is held on this machine")
+
+
+def test_a_moved_launcher_is_waited_on_and_announced_at_its_new_address(scratch):
+    """8100 is held by another program, so the launcher moves to 8110: start waits on 8110, on this machine,
+    and names it at the end, not the address the other program holds."""
+    blocker = socket.socket()
+    try:
+        blocker.bind(("0.0.0.0", 8100))
+        blocker.listen()
+    except OSError:
+        pass                                    # something on this machine holds it already: taken either way
+    page = page_on(scratch, 8110)
+    try:
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", ":8110->"))
+        r = run(scratch, START_URL="", START_SIGN_IN_URL="http://127.0.0.1:8110/realms/aisc")
+    finally:
+        page.shutdown()
+        page.server_close()
+        blocker.close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "HOMEPAGE_PORT_EXTERNAL=8110" in (scratch / "env.local").read_text().splitlines()
+    assert [p for p in (scratch / "requests").read_text().splitlines() if not p.startswith("/realms/")] == ["/"]
+    assert "Waiting for the sign-in page at http://localhost:8110/" in r.stdout
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open http://localhost:8110 " in up[-1], r.stdout
+
+
+def test_an_https_install_is_announced_at_its_public_address_and_waited_on_here(scratch):
+    """Its public name may not resolve from this machine (hairpin NAT, a self-signed certificate): start waits
+    on the launcher's published port here, and names the public address."""
+    https_install(scratch)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    page = page_on(scratch, port)
+    try:
+        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n")
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", f":{port}->"))
+        r = run(scratch, START_URL="", START_SIGN_IN_URL=f"http://127.0.0.1:{port}/realms/aisc")
+    finally:
+        page.shutdown()
+        page.server_close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "/" in (scratch / "requests").read_text().splitlines()
+    assert f"Waiting for the sign-in page at http://localhost:{port}/" in r.stdout
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
+
+
+def test_a_refused_start_does_not_advise_running_compose(scratch):
+    """start makes the secrets on its way; the secrets command's own advice (run the stack with docker
+    compose ... up -d) is the very thing a refused start must not lead to."""
+    (scratch / "build-failures").write_text("3")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "run the stack with" not in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("line", ["ENGINE_PORT=8090 # mine", "HOMEPAGE_PORT_EXTERNAL=70000",
+                                  "KEYCLOAK_PORT_EXTERNAL=", "DASHBOARD_PORT_EXTERNAL=0", 'ENGINE_PORT="eighty"'])
+def test_a_kept_port_that_is_not_a_port_is_refused_naming_its_line(scratch, line):
+    """env.local is the file a person edits to choose a port; a value that is not one ends start with a message
+    naming the line, not a traceback, and before anything is built."""
+    (scratch / "env.local").write_text(f"# my ports\n{line}\n")
+    r = run(scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    assert f"env.local line 2 ({line})" in r.stderr and "a whole number from 1 to 65535" in r.stderr
+    assert not [c for c in calls(scratch) if " build" in c]
+
+
+def moved_install(d):
+    """An install with data whose launcher and dashboard moved earlier (env.local keeps them), held by its own
+    containers."""
+    (d / "env.local").write_text("HOMEPAGE_PORT_EXTERNAL=8110\nLAUNCHER_EXTERNAL_URL=http://localhost:8110/\n"
+                                 "DASHBOARD_PORT_EXTERNAL=8198\nDASHBOARD_EXTERNAL_URL=http://localhost:8198\n")
+    (d / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", ":8110->").replace(":8188->", ":8198->"))
+
+
+def updates(d):
+    """What each client update sent, by the client id it named, in the order kcadm was asked."""
+    named = re.findall(r"^KCADM update clients/(\S+) ", (d / "kcadm.log").read_text(), re.M)
+    sent = [json.loads(line) for line in (d / "exec-input").read_text().splitlines() if line.strip()]
+    return list(zip(named, sent))
+
+
+def test_each_client_is_sent_its_own_moved_addresses(scratch):
+    moved_install(scratch)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    assert set(sent) == {"id-of-aisc-gateway", "id-of-aisc-webapp"}
+    gateway, webapp = sent["id-of-aisc-gateway"], sent["id-of-aisc-webapp"]
+    assert gateway["redirectUris"] == ["http://localhost/oauth2/callback", "http://localhost:8110/oauth2/callback",
+                                       "http://localhost:8198/oauth2/callback"]
+    assert gateway["attributes"]["post.logout.redirect.uris"] == "http://localhost:8110/*##http://localhost/*"
+    assert webapp["baseUrl"] == "http://localhost" and "8110" not in json.dumps(webapp)
+
+
+def test_a_second_client_that_cannot_be_updated_stops_start(scratch):
+    moved_install(scratch)
+    (scratch / "update-fails").write_text("clients/id-of-aisc-webapp")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "could not be told" in r.stderr and "update refused" in r.stderr
+    assert "AISC is up" not in r.stdout
+    assert [client for client, _ in updates(scratch)] == ["id-of-aisc-gateway", "id-of-aisc-webapp"] * 2
+
+
+def test_an_https_install_tells_the_sign_in_its_https_addresses_only(scratch):
+    https_install(scratch)
+    with open(scratch / "env.plugin_downloader", "a") as settings:
+        settings.write("DASHBOARD_EXTERNAL_URL=https://aisc.example.org:8188\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    assert sent["id-of-aisc-gateway"]["redirectUris"] == [
+        "https://aisc.example.org/oauth2/callback", "https://aisc.example.org:8100/oauth2/callback",
+        "https://aisc.example.org:8188/oauth2/callback"]
+    assert sent["id-of-aisc-webapp"]["baseUrl"] == "https://aisc.example.org"
+    assert "localhost" not in (scratch / "exec-input").read_text()

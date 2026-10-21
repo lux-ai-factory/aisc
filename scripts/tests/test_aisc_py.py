@@ -5,6 +5,7 @@ both. uv brings the script's own Python and library, whatever the tests run on.
     uv run --no-project --with pytest python -m pytest -q scripts/tests/test_aisc_py.py
 """
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -394,23 +395,27 @@ def test_the_project_name_can_be_set(monkeypatch):
     assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc-proof"]
 
 
-def test_compose_adds_the_https_file_only_for_https(monkeypatch):
-    """443 is published only by an install served over https: elsewhere a taken 443 must not stop a start."""
+def test_compose_adds_the_https_file_only_for_https(tmp_path, monkeypatch):
+    """443 is published only by an install served over https: elsewhere a taken 443 must not stop a start.
+    On a scratch copy: the checkout's own env.local may ask for the admin ports."""
+    copy_install_scripts(tmp_path)
+    monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
     monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
-    assert "docker-compose.https.yml" not in aisc_py().COMPOSE
-    assert "docker-compose.https.yml" not in aisc_py().UP_HINT
+    assert "docker-compose.https.yml" not in aisc_py(tmp_path).COMPOSE
+    assert "docker-compose.https.yml" not in aisc_py(tmp_path).UP_HINT
     monkeypatch.setenv("CADDY_DOMAIN", "https://x")
-    module = aisc_py()
+    module = aisc_py(tmp_path)
     assert module.COMPOSE[-2:] == ["-f", "docker-compose.https.yml"]
     assert "-f docker-compose.https.yml" in module.UP_HINT
 
 
-def test_compose_adds_the_admin_ports_file_only_when_asked(monkeypatch):
+def test_compose_adds_the_admin_ports_file_only_when_asked(tmp_path, monkeypatch):
+    copy_install_scripts(tmp_path)
     monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
     monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
-    assert "docker-compose.admin-ports.yml" not in aisc_py().COMPOSE
+    assert "docker-compose.admin-ports.yml" not in aisc_py(tmp_path).COMPOSE
     monkeypatch.setenv("AISC_ADMIN_PORTS", "on")
-    module = aisc_py()
+    module = aisc_py(tmp_path)
     assert module.COMPOSE[-2:] == ["-f", "docker-compose.admin-ports.yml"]
     assert "-f docker-compose.admin-ports.yml" in module.UP_HINT
 
@@ -505,7 +510,7 @@ def test_the_sign_in_clients_list_exactly_the_install_s_addresses():
 
 def test_an_https_install_s_sign_in_uses_its_own_addresses():
     clients = aisc_py().sign_in_clients("https://aisc.example.org", "https://aisc.example.org:8100/",
-                                        "https://aisc.example.org:8188")
+                                        "https://aisc.example.org:8188", over_https=True)
     gateway, webapp = clients["aisc-gateway"], clients["aisc-webapp"]
     assert gateway["redirectUris"] == ["https://aisc.example.org/oauth2/callback",
                                        "https://aisc.example.org:8100/oauth2/callback",
@@ -513,13 +518,32 @@ def test_an_https_install_s_sign_in_uses_its_own_addresses():
     assert gateway["attributes"]["post.logout.redirect.uris"] == \
         "https://aisc.example.org:8100/*##https://aisc.example.org/*"
     assert webapp["baseUrl"] == "https://aisc.example.org"
-    assert webapp["redirectUris"] == ["https://aisc.example.org/*", "http://localhost:5173/*"]
-    assert webapp["webOrigins"] == ["https://aisc.example.org", "http://localhost:5173"]
+    # the frontend's development server is a developer's own machine: a public install's sign-in has no part
+    # of it (aisc-webapp is a public client)
+    assert webapp["redirectUris"] == ["https://aisc.example.org/*"]
+    assert webapp["webOrigins"] == ["https://aisc.example.org"]
 
 
-def test_start_and_rotate_infra_password_sign_kcadm_in_the_same_way():
-    """One login for every kcadm call: Keycloak's admin from its environment, a session file removed after."""
+def test_kcadm_is_given_no_secret_on_its_command_line():
+    """kcadm starts Java with its arguments, which the host's `ps` shows: the admin's password comes from
+    KC_CLI_PASSWORD (kcadm reads it itself) and no password is an argument."""
     m = aisc_py()
-    login = m.KCADM_RUN.split("&&")[0]
-    assert "$ADMIN_VALUE" in login and m.KCADM.split("&&")[0] == login
-    assert m.KCADM_RUN.split("&&")[1].split(";")[1:] == m.KCADM.split("&&")[1].split(";")[1:]
+    assert "--password" not in m.KCADM_RUN and "--new-password" not in m.KCADM_RUN
+    assert "VALUE" not in m.KCADM_RUN and "KC_CLI_PASSWORD" not in m.KCADM_RUN
+
+
+def test_a_launcher_address_without_its_slash_gets_one():
+    """Without it the sign-out rule https://app.example.com* also matches https://app.example.com.attacker.net/
+    (an open redirect), and the callback becomes ...comoauth2/callback."""
+    gateway = aisc_py().sign_in_clients("https://app.example.com:8443", "https://app.example.com",
+                                        "https://app.example.com:8188")["aisc-gateway"]
+    assert "https://app.example.com/oauth2/callback" in gateway["redirectUris"]
+    assert gateway["attributes"]["post.logout.redirect.uris"].split("##")[0] == "https://app.example.com/*"
+
+
+def test_every_kcadm_run_has_a_session_file_of_its_own():
+    """A shared session file would let a rotate running beside a start remove the other's session: each run
+    makes its own (mktemp) and removes it on exit. The script runs in Keycloak's container."""
+    script = aisc_py().KCADM_RUN
+    assert "mktemp" in script and "trap " in script
+    assert not re.search(r"/tmp/[\w.-]", script)

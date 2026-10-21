@@ -108,11 +108,21 @@ clean_up() { # work folder
 }
 
 if [ -n "$CLEAN_UP" ]; then
-  case "$CLEAN_UP" in
-    */aisc-ports.*) ;;
-    *) echo "$CLEAN_UP is not a folder this check made (aisc-ports.<random>)" >&2; exit 2 ;;
+  # The folder is removed whole, so a name that only looks right is not enough (aisc-ports.1/../.. matches
+  # */aisc-ports.* too): the real path must be directly in the temporary folder the check makes its copies in,
+  # and hold the state file it writes there.
+  temp=$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)
+  work=$(cd "$CLEAN_UP" 2>/dev/null && pwd -P) || work=""
+  made=0
+  case "$work" in
+    "$temp"/aisc-ports.*) case "${work#"$temp"/}" in */*) ;; *) [ -f "$work/taken-down" ] && made=1 ;; esac ;;
   esac
-  clean_up "$CLEAN_UP"
+  if [ "$made" = 0 ]; then
+    echo "$CLEAN_UP is not a folder this check made (aisc-ports.<random> directly in ${TMPDIR:-/tmp}, holding" \
+         "its file taken-down); nothing was removed" >&2
+    exit 2
+  fi
+  clean_up "$work"
   exit 0
 fi
 
@@ -318,12 +328,16 @@ signed_in_checks() { # engine port
 }
 
 counted_checks() { # engine port: the signed-in checks, counted here
-  local out
-  out=$(signed_in_checks "$1")
+  local out code
+  out=$(signed_in_checks "$1"); code=$?
   printf '%s\n' "$out"
   pass=$((pass + $(printf '%s\n' "$out" | grep -c '^  PASS')))
   fail=$((fail + $(printf '%s\n' "$out" | grep -c '^  FAIL')))
   printf '%s\n' "$out" | grep -q '^  PASS' || fail=$((fail+1))
+  # the checks stop at the first step the rest depend on (signing in): the passes before it are not the result
+  if [ "$code" != 0 ] && ! printf '%s\n' "$out" | grep -q '^  FAIL'; then
+    no "the signed-in checks stopped early (exit $code)"
+  fi
 }
 
 finish() {

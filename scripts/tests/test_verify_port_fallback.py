@@ -14,7 +14,8 @@ SCRIPT = ROOT / "scripts/verify-port-fallback.sh"
 
 #: a docker that records every call in `docker.log` (its arguments, then the folder it ran in). `ps` answers the
 #: names in `names` until a stack was taken down; `inspect` answers the compose labels of an install in
-#: `install/`; `image ls` answers by reference only when asked for one (`-q` gets an id shared with :latest).
+#: `install/`; `image ls` answers by reference only when asked for one (`-q` gets an id shared with :latest);
+#: bringing the install back up fails while `up-fails` exists.
 DOCKER = r"""#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 printf '%s | cwd=%s\n' "$*" "$PWD" >> "$d/docker.log"
@@ -31,7 +32,10 @@ case "$1" in
     esac
     exit 0 ;;
   compose)
-    case "$*" in *"-p aisc "*" down"*) touch "$d/taken-down" ;; esac
+    case "$*" in
+      *"-p aisc "*" down"*) touch "$d/taken-down" ;;
+      *"-p aisc "*" up "*) [ -f "$d/up-fails" ] && exit 1 ;;
+    esac
     exit 0 ;;
 esac
 exit 0
@@ -154,11 +158,40 @@ def test_verify_sh_runs_the_check_with_its_options():
     assert "--take-down-running" in r.stdout
 
 
+def kept_copy(d, name="aisc-ports.kept"):
+    """A folder as the check leaves it with --keep: in its temporary folder, with the state file it writes."""
+    work = d / name
+    work.mkdir()
+    (work / "taken-down").write_text("")
+    return work
+
+
+@pytest.mark.parametrize("given", [
+    lambda d: d / "aisc-ports.kept" / ".." / "..",          # matches */aisc-ports.* and is the folder above
+    lambda d: d / "elsewhere" / "aisc-ports.kept",           # not in the check's temporary folder
+    lambda d: d / "aisc-ports.kept" / "aisc-ports.inner",   # not directly in it
+    lambda d: d / "aisc-ports.unmarked",                      # never written by the check
+])
+def test_clean_up_refuses_a_folder_the_check_did_not_make(fake_docker, given):
+    """--clean-up removes the folder given: only one the check made, directly in its temporary folder and
+    holding its state file, whatever the path looks like."""
+    kept = kept_copy(fake_docker)
+    (fake_docker / "elsewhere").mkdir()
+    kept_copy(fake_docker / "elsewhere")
+    kept_copy(kept, "aisc-ports.inner")
+    (fake_docker / "aisc-ports.unmarked").mkdir()
+    r = run(fake_docker, "--clean-up", str(given(fake_docker)))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "not a folder this check made" in r.stderr
+    assert kept.is_dir() and (fake_docker / "elsewhere/aisc-ports.kept").is_dir()
+    assert (kept / "aisc-ports.inner").is_dir() and (fake_docker / "aisc-ports.unmarked").is_dir()
+    assert not calls(fake_docker), calls(fake_docker)
+
+
 def test_the_copy_s_images_are_removed_by_their_ports_tag_only(fake_docker):
     """An image id can be shared with the install's :latest (same commit, warm cache): removing by id, or with -f,
     would take the install's images too. Only the copy's own references go, and an image in use stays."""
-    work = fake_docker / "aisc-ports.kept"
-    work.mkdir()
+    work = kept_copy(fake_docker)
     r = run(fake_docker, "--clean-up", str(work))
     assert r.returncode == 0, r.stdout + r.stderr
     removed = [c.split(" | ")[0].split()[1:] for c in calls(fake_docker) if c.startswith("rmi ")]
@@ -234,3 +267,58 @@ def test_keep_says_the_copy_is_kept_as_the_last_scenario_left_it():
     for setting in ("API_URL_EXTERNAL", "LAUNCHER_EXTERNAL_URL", "DASHBOARD_EXTERNAL_URL", "KEYCLOAK_URL_EXTERNAL"):
         assert setting in body, setting
     assert "verify-port-fallback.sh --clean-up $WORK" in body
+
+
+@pytest.mark.parametrize("checks, failed", [
+    ("printf '  PASS one\\n  PASS two\\n'", 0),
+    ("printf '  PASS one\\n'; exit 1", 1),            # stopped early, after a pass: a failure all the same
+    ("printf '  PASS one\\n  FAIL two\\n'", 1),
+    ("exit 0", 1),                                      # no check ran at all
+])
+def test_signed_in_checks_that_stop_early_count_as_a_failure(checks, failed):
+    """The signed-in checks run in a subshell that exits as soon as signing in fails; the passes before that
+    must not make the whole count a pass."""
+    text = SCRIPT.read_text()
+    counted = _function(text, "counted_checks")
+    no = re.search(r"^no\(\) \{.*\}$", text, re.M).group(0)
+    script = (f"{no}\nsigned_in_checks() {{ ( {checks} ) }}\ncounted_checks() {{\n{counted}}}\n"
+              "pass=0; fail=0; counted_checks 8080 >/dev/null; echo \"$fail\"")
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30)
+    assert r.stdout.strip() == str(failed), r.stdout + r.stderr
+
+
+def kept_copy_of_a_taken_down_install(d):
+    """A copy kept with --keep, with its own env.runtime, after the check took the install in `install/` down."""
+    work = kept_copy(d)
+    (work / "aisc").mkdir()
+    (work / "aisc/env.runtime").write_text("")
+    install = d / "install"
+    (work / "taken-down").write_text(f"aisc|{install}|{install}/env.runtime|{install}/one.yml,{install}/two.yml\n")
+    return work
+
+
+def test_clean_up_takes_down_the_copy_only_with_its_volumes(fake_docker):
+    work = kept_copy_of_a_taken_down_install(fake_docker)
+    r = run(fake_docker, "--clean-up", str(work))
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = [c.split(" | ")[0] for c in calls(fake_docker)]
+    with_volumes = [c for c in log if re.search(r"\bdown\b.*\s-v\b", c)]
+    assert any(c.startswith("compose -p aisc-ports --env-file env.runtime") for c in with_volumes), log
+    assert all(c.startswith("compose -p aisc-ports ") for c in with_volumes), with_volumes
+    removed = [c.split()[1:] for c in log if c.startswith("rmi ")]
+    assert removed and all(len(a) == 1 and (a[0].endswith(":ports") or a[0].startswith("aisc-ports-"))
+                           for a in removed), removed
+    brought_back = [c for c in log if c.startswith("compose -p aisc ")]
+    assert brought_back and all(c.endswith(" up -d --no-build") for c in brought_back), brought_back
+    assert not work.exists()
+
+
+def test_a_stack_that_does_not_come_back_is_named_with_the_command_and_the_copy_still_goes(fake_docker):
+    work = kept_copy_of_a_taken_down_install(fake_docker)
+    (fake_docker / "up-fails").write_text("")
+    r = run(fake_docker, "--clean-up", str(work))
+    install = fake_docker / "install"
+    assert "The stack aisc did not come back" in r.stderr
+    assert (f"cd {install} && docker compose -p aisc --env-file {install}/env.runtime -f {install}/one.yml "
+            f"-f {install}/two.yml up -d --no-build") in r.stderr
+    assert not work.exists()

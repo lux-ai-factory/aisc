@@ -55,6 +55,7 @@ environment or env.plugin_downloader) gets generated passwords for them.
 from __future__ import annotations
 
 import base64
+import errno
 import getpass
 import json
 import os
@@ -471,52 +472,102 @@ def write_runtime() -> None:
     say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
 
 
-def port_is_free(port: int, host: str) -> bool:
-    """Whether Docker could publish this port on this address. Binding it is the real test; Windows refuses
-    one in its reserved ranges with an access error, which means taken. Where Linux refuses the bind outright
-    (a port below 1024 without root), whether something answers on it decides, on loopback and on each address
-    of the machine."""
-    with socket.socket() as s:
+#: the IPv6 address bound beside each IPv4 one: Docker publishes an all-interfaces port on [::] too, and a
+#: browser on this machine asks localhost, ::1 first, so a program there holds the port as well
+IPV6_BESIDE = {"0.0.0.0": "::", "127.0.0.1": "::1"}
+
+
+def can_bind(family: socket.AddressFamily, host: str, port: int) -> bool | None:
+    """Whether this port can be bound on this address: True, False when something holds it, None when binding
+    cannot tell (Linux refuses a port below 1024 without root). An address family this machine lacks (no IPv6)
+    holds nothing: True."""
+    try:
+        s = socket.socket(family)
+    except OSError:
+        return True
+    with s:
         # As Docker binds on Linux: past connections still closing (TIME_WAIT) do not hold the port. Only there:
         # on Windows this option would let the test bind over a program that is listening, and on macOS (BSD
         # sockets) a bind on 0.0.0.0 would succeed beside a program listening on 127.0.0.1 only.
         if sys.platform.startswith("linux"):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if family == socket.AF_INET6:
+            # IPv6 only, so a program on the IPv4 side is not counted twice (and macOS binds [::] dual-stack)
+            s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         try:
             s.bind((host, port))
             return True
         except PermissionError:
-            if os.name == "nt":
-                return False   # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
-        except OSError:
-            return False
+            # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
+            return False if os.name == "nt" else None
+        except OSError as failed:
+            # an IPv6 address this machine does not have (IPv6 switched off) holds nothing
+            return family == socket.AF_INET6 and failed.errno in (errno.EADDRNOTAVAIL,
+                                                                   getattr(errno, "WSAEADDRNOTAVAIL", None))
+
+
+def port_is_free(port: int, host: str) -> bool:
+    """Whether Docker could publish this port on this address. Binding it is the real test, on IPv4 and on the
+    IPv6 address beside it (IPV6_BESIDE); Windows refuses one in its reserved ranges with an access error,
+    which means taken. Where Linux refuses the bind outright (a port below 1024 without root), whether
+    something answers decides, on loopback (both families) and on each address of the machine."""
+    bound = [can_bind(socket.AF_INET, host, port)]
+    if host in IPV6_BESIDE:
+        bound.append(can_bind(socket.AF_INET6, IPV6_BESIDE[host], port))
+    if False in bound:
+        return False
+    if None not in bound:
+        return True
     # A program listening on the machine's network address only is not on 127.0.0.1, so each of its IPv4
     # addresses is tried too.
-    addresses = ["127.0.0.1"]
+    addresses = [(socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")]
     try:
-        addresses += [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
+        addresses += [(socket.AF_INET, info[4][0])
+                      for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
     except OSError:
         pass
-    for address in dict.fromkeys(addresses):
-        with socket.socket() as s:
+    for family, address in dict.fromkeys(addresses):
+        try:
+            s = socket.socket(family)
+        except OSError:
+            continue
+        with s:
             s.settimeout(1)
             if s.connect_ex((address, port)) == 0:
                 return False
     return True
 
 
+def local_setting(line: str) -> tuple[str, str] | None:
+    """One line of env.local as (NAME, value), one pair of quotes around the value taken off: a person editing the
+    file may quote it, as in the other env files. None for a comment or a line without a name."""
+    name, found, value = line.partition("=")
+    if not found or name.lstrip().startswith("#"):
+        return None
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    return name.strip(), value
+
+
 def read_local() -> dict[str, str]:
-    """The settings in env.local as NAME=value lines, one pair of quotes around a value taken off: a person
-    editing the file may quote it, as in the other env files. Comments and lines without a name are not settings."""
-    kept = {}
-    for line in lines_of(LOCAL) if Path(LOCAL).is_file() else []:
-        name, found, value = line.partition("=")
-        if found and not name.lstrip().startswith("#"):
-            value = value.strip()
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-                value = value[1:-1]
-            kept[name.strip()] = value
-    return kept
+    """The settings in env.local, NAME to value (local_setting); the last line for a name wins, as in compose."""
+    lines = lines_of(LOCAL) if Path(LOCAL).is_file() else []
+    return dict(setting for setting in map(local_setting, lines) if setting)
+
+
+def kept_ports_not_ports() -> list[str]:
+    """One problem per browser port in env.local whose value is not a port. The guide tells people to edit the
+    file, and compose would take a comment after the value as part of it."""
+    variables = {port.variable for port in BROWSER_PORTS}
+    problems = []
+    for number, line in enumerate(lines_of(LOCAL) if Path(LOCAL).is_file() else [], 1):
+        setting = local_setting(line)
+        is_port = setting and re.fullmatch(r"[0-9]{1,5}", setting[1]) and 1 <= int(setting[1]) <= 65535
+        if setting and setting[0] in variables and not is_port:
+            problems.append(f"{LOCAL} line {number} ({line}) is not a port: {setting[0]} takes a whole number from "
+                            "1 to 65535, with nothing after it on the line.")
+    return problems
 
 
 def local_lines(existing: list[str], settings: dict[str, str]) -> list[str]:
@@ -635,7 +686,9 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
     return settings, problems, moved
 
 
-def make_secrets(args: list[str]) -> None:
+def make_secrets(args: list[str], up_hint: bool = True) -> None:
+    """The secrets command. up_hint: end with how to run the stack by hand; start, which runs it itself, does
+    not want a refusal of its own to be followed by that."""
     # Every file written here holds secrets or is made from them: private from the moment it exists.
     os.umask(0o077)
     existed = Path(OUT).is_file()
@@ -667,7 +720,8 @@ def make_secrets(args: list[str]) -> None:
         raise Refused(f"GATEWAY_COOKIE_SECRET is {length} characters; oauth2-proxy needs 32 bytes base64url (43)")
     make_signing_key()
     write_runtime()
-    say("", "run the stack with:", UP_HINT)
+    if up_hint:
+        say("", "run the stack with:", UP_HINT)
 
 
 def show_passwords(_args: list[str]) -> None:
@@ -684,19 +738,32 @@ ROTATABLE = ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD", "KEYCLOAK_
 
 def kcadm_script(command: str) -> str:
     """A bash script for Keycloak's container: kcadm signs in to the master realm as Keycloak's admin, then runs
-    one command (kcadm's arguments, in bash; "$cfg" is the session). The admin's password comes from the
-    environment (ADMIN_VALUE), never a command line, and the session file is removed again."""
+    one command (kcadm's arguments, in bash; "$cfg" is the session). kcadm starts Java with its arguments, and the
+    host's `ps` shows a container's processes to every local user, so no secret is one of them: kcadm reads the
+    admin's password from KC_CLI_PASSWORD itself, and a value to set comes on stdin. Each run keeps its session in
+    a folder of its own, removed on exit: with one shared file, a rotate run beside a start would remove the
+    other's session."""
     return f"""
-    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-aisc.json
+    kc=/opt/keycloak/bin/kcadm.sh
+    session=$(mktemp -d) || exit 1
+    trap 'rm -rf "$session"' EXIT
+    cfg=$session/kcadm.json
     "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
-      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$ADMIN_VALUE" >/dev/null \\
-      && "$kc" {command}
-    s=$?; rm -f "$cfg"; exit $s"""
+      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" >/dev/null \\
+      && "$kc" {command}"""
 
 
-# sets one account's password: the realm, the account and the new value come from the environment too
-KCADM = kcadm_script('set-password --config "$cfg" -r "$REALM" --username "${ACCOUNT:-$KC_BOOTSTRAP_ADMIN_USERNAME}" '
-                     '--new-password "$NEW_VALUE"')
+# runs the kcadm command given as bash -c's arguments, which hold no secret
+KCADM_RUN = kcadm_script('"$@" --config "$cfg"')
+
+
+def kcadm(docker_command: str, container: str, admin_password: str, *argv: str,
+          stdin: str = "") -> subprocess.CompletedProcess:
+    """One kcadm command in Keycloak's container, signed in as its admin. The password goes by name (docker exec
+    -e KC_CLI_PASSWORD, its value in this process's environment only); what kcadm reads on stdin, stdin."""
+    return subprocess.run([docker_command, "exec", "-i", "-e", "KC_CLI_PASSWORD", container, "bash", "-c", KCADM_RUN,
+                           "kcadm", *argv], env={**os.environ, "KC_CLI_PASSWORD": admin_password}, input=stdin,
+                          capture_output=True, text=True)
 # psql reads the value from its environment (\\getenv): it is on no command line, not even the container's
 PSQL = "\\getenv pw NEW_VALUE\n\\getenv role POSTGRES_USER\nALTER ROLE :\"role\" PASSWORD :'pw';\n"
 UNSAFE = re.compile(r"""[\s'"$#\\]""")
@@ -719,8 +786,9 @@ def rotate_infra_password(args: list[str]) -> None:
     """A new value for a password the infrastructure keeps in its own volume. These are applied by their service
     only when its volume is first made, so a new value is set in the service itself first, on the running stack,
     and written to env.secrets and env.runtime only once the service took it: a refusal leaves both files as they
-    were. The value goes to the container by name (docker exec -e NAME), never on a command line, and is never
-    printed. A chosen password has at least 12 characters and none of: space, quotes, $, # or backslash, which the
+    were. The value goes to the container by name (docker exec -e NAME) or on stdin, never on the host's command
+    line, and is never printed; Keycloak's kcadm gets it on stdin, so it is on no command line in its container
+    either. A chosen password has at least 12 characters and none of: space, quotes, $, # or backslash, which the
     env file compose reads would take apart. MinIO takes its new root password when it is recreated."""
     name = args[0] if args else ""
     mode = args[1] if len(args) > 1 else ""
@@ -738,20 +806,30 @@ def rotate_infra_password(args: list[str]) -> None:
     new = chosen_value(name) if mode == "--ask" else rand()
     env = {**os.environ, "OLD_VALUE": old, "NEW_VALUE": new}
 
-    def docker(*argv: str, admin: str | None = None, realm: str = "", account: str = "", stdin: str | None = None):
-        run_env = env if admin is None else {**env, "ADMIN_VALUE": admin, "REALM": realm, "ACCOUNT": account}
-        r = subprocess.run([docker_command, *argv], env=run_env, input=stdin if stdin is not None else "",
+    def docker(*argv: str, stdin: str | None = None):
+        r = subprocess.run([docker_command, *argv], env=env, input=stdin if stdin is not None else "",
                            text=True, stdout=subprocess.DEVNULL)
         if r.returncode != 0:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
 
-    def keycloak_set(admin: str, realm: str, account: str = "") -> None:
+    def keycloak_set(admin: str, realm: str, account: str) -> None:
+        """The account's id first, then its new password through reset-password, as JSON on kcadm's stdin."""
         container = keycloak_container(docker_command)
         if not container:
             raise Refused(f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak); "
                           "nothing changed")
-        docker("exec", "-e", "ADMIN_VALUE", "-e", "NEW_VALUE", "-e", "REALM", "-e", "ACCOUNT", container,
-               "bash", "-c", KCADM, admin=admin, realm=realm, account=account)
+        found = kcadm(docker_command, container, admin, "get", "users", "-r", realm, "-q", f"username={account}")
+        try:
+            # the lookup matches names that contain the one asked for: only the account itself counts
+            ids = [u["id"] for u in json.loads(found.stdout) if u.get("username") == account]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            ids = []
+        if found.returncode != 0 or len(ids) != 1:
+            raise Refused(f"the service did not take the new {name}; nothing changed", found.returncode or 1)
+        done = kcadm(docker_command, container, admin, "update", f"users/{ids[0]}/reset-password", "-r", realm,
+                     "-f", "-", stdin=json.dumps({"type": "password", "value": new, "temporary": False}))
+        if done.returncode != 0:
+            raise Refused(f"the service did not take the new {name}; nothing changed", done.returncode)
 
     if name == "POSTGRES_PASSWORD":
         docker("exec", "-i", "-e", "NEW_VALUE", "postgres", "sh", "-c",
@@ -760,7 +838,8 @@ def rotate_infra_password(args: list[str]) -> None:
         docker("exec", "-e", "NEW_VALUE", "rabbitmq", "sh", "-c",
                'rabbitmqctl --quiet change_password "$RABBITMQ_DEFAULT_USER" "$NEW_VALUE"')
     elif name == "KEYCLOAK_ADMIN_PASSWORD":
-        keycloak_set(old, "master")
+        # the console admin's name, as compose gives it to Keycloak (KC_BOOTSTRAP_ADMIN_USERNAME)
+        keycloak_set(old, "master", effective("KEYCLOAK_ADMIN") or "admin")
     elif name in ("AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD"):
         keycloak_set(value_in("KEYCLOAK_ADMIN_PASSWORD", OUT), "aisc", "admin" if name == "AISC_ADMIN_PASSWORD" else "user")
 
@@ -813,12 +892,12 @@ def keycloak_realm_url() -> str:
     return f"http://localhost:{effective('KEYCLOAK_PORT_EXTERNAL') or '8081'}/realms/aisc"
 
 
-def effective(name: str) -> str:
+def effective(name: str, path: str = COMBINED) -> str:
     """The value compose uses for a setting: its last line in env.runtime (env.local comes last there), one pair
-    of quotes taken off; empty when env.runtime has none."""
+    of quotes taken off; empty when env.runtime has none. path: another env file to read it from instead."""
     value = ""
-    if Path(COMBINED).is_file():
-        for line in lines_of(COMBINED):
+    if Path(path).is_file():
+        for line in lines_of(path):
             if line.startswith(name + "="):
                 value = line.split("=", 1)[1].strip()
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
@@ -826,11 +905,21 @@ def effective(name: str) -> str:
     return value
 
 
-def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dict]:
+def with_slash(address: str) -> str:
+    return address if address.endswith("/") else address + "/"
+
+
+def sign_in_clients(engine: str, launcher: str, dashboard: str, over_https: bool = False) -> dict[str, dict]:
     """What the realm's two clients must hold for this install's addresses: the gateway's callbacks on the
     engine, the launcher and the dashboard, and where it may send a person after signing out; the webapp's own
-    address, beside the frontend's development server. The gateway's web origins are "+", Keycloak's shorthand
-    for the origins of its redirect URIs, as the realm file has it. The launcher's address ends with a slash."""
+    address, beside the frontend's development server (http://localhost:5173) on an install not served over
+    https. One served over https is public, and the webapp is a public client: an address on whatever machine
+    signs in is no place to send its sign-in. The gateway's web origins are "+", Keycloak's shorthand
+    for the origins of its redirect URIs, as the realm file has it. The launcher's address is given one ending
+    with a slash when it has none: the sign-out rule is that address followed by *, and without the slash
+    https://app.example.com* would also let the sign-out send a person on to https://app.example.com.evil.net/."""
+    launcher = with_slash(launcher)
+    development = [] if over_https else ["http://localhost:5173"]
     return {
         "aisc-gateway": {
             "redirectUris": [f"{engine}/oauth2/callback", f"{launcher}oauth2/callback", f"{dashboard}/oauth2/callback"],
@@ -839,14 +928,10 @@ def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dic
         },
         "aisc-webapp": {
             "baseUrl": engine,
-            "redirectUris": [f"{engine}/*", "http://localhost:5173/*"],
-            "webOrigins": [engine, "http://localhost:5173"],
+            "redirectUris": [f"{engine}/*", *(f"{d}/*" for d in development)],
+            "webOrigins": [engine, *development],
         },
     }
-
-
-# runs the kcadm command given as bash -c's arguments, which hold no secret
-KCADM_RUN = kcadm_script('"$@" --config "$cfg"')
 
 
 def sync_sign_in() -> None:
@@ -858,12 +943,8 @@ def sync_sign_in() -> None:
     wait_s = float(os.environ.get("START_SYNC_WAIT_S", "5"))
     clients = sign_in_clients(effective("API_URL_EXTERNAL") or "http://localhost",
                               effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/",
-                              effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188")
-    env = {**os.environ, "ADMIN_VALUE": value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")}
-
-    def kcadm(container: str, *argv: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return subprocess.run([DOCKER, "exec", "-i", "-e", "ADMIN_VALUE", container, "bash", "-c", KCADM_RUN,
-                               "kcadm", *argv], env=env, input=stdin, capture_output=True, text=True)
+                              effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188", served_over_https())
+    admin = value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")
 
     def why_not_told() -> str:
         """Empty once both clients hold the addresses; else what kcadm said."""
@@ -871,7 +952,7 @@ def sync_sign_in() -> None:
         if not container:
             return f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak)"
         for client_id, settings in clients.items():
-            found = kcadm(container, "get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
+            found = kcadm(DOCKER, container, admin, "get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
             if found.returncode != 0:
                 return found.stderr.strip() or f"kcadm could not read the client {client_id}"
             try:
@@ -880,7 +961,7 @@ def sync_sign_in() -> None:
                 ids = []
             if len(ids) != 1:
                 return f"the realm aisc has no single client {client_id}"
-            updated = kcadm(container, "update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-",
+            updated = kcadm(DOCKER, container, admin, "update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-",
                             stdin=json.dumps(settings))
             if updated.returncode != 0:
                 return updated.stderr.strip() or f"kcadm could not update the client {client_id}"
@@ -922,12 +1003,11 @@ def start(_args: list[str]) -> None:
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
-    launcher's address in env.runtime), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
+    launcher on its published port on this machine), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
     sign-in the addresses, START_MIN_DISK_GB (20)."""
     global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
-    url = os.environ.get("START_URL") or effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/"
     min_disk_gb = int(os.environ.get("START_MIN_DISK_GB", "20"))
 
     # 1. The checkout and the machine
@@ -955,17 +1035,25 @@ def start(_args: list[str]) -> None:
             "'no space left on device'.")
 
     # 2. The secrets
-    make_secrets([])
+    make_secrets([], up_hint=False)
 
     # 3. The ports, before anything is built: a taken one would otherwise surface only after the whole build
     config = captured([*COMPOSE, "config", "--format", "json"])
     if config.returncode != 0:
         raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
+    not_ports = kept_ports_not_ports()
+    if not_ports:
+        raise Refused("AISC cannot start: " + " ".join(not_ports))
     kept = read_local()
     settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
                                              not served_over_https(), port_is_free)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
+    # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose
+    # gives it (see sign_in_clients): one set without its slash is given with one.
+    tracked_launcher = effective("LAUNCHER_EXTERNAL_URL", TRACKED)
+    if "LAUNCHER_EXTERNAL_URL" not in settings and tracked_launcher and not tracked_launcher.endswith("/"):
+        settings["LAUNCHER_EXTERNAL_URL"] = with_slash(tracked_launcher)
     existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     if local_lines(existing, settings) != existing:
         write_beside(LOCAL, text_of(local_lines(existing, settings)))
@@ -976,6 +1064,12 @@ def start(_args: list[str]) -> None:
         say("If a port is held by something left from an earlier AISC run, restarting Docker frees it.")
     elif "API_URL_EXTERNAL" in settings:
         say(f"On this install, steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
+
+    # Where to wait, read now that the ports are settled: an address read before step 3 may be the one another
+    # program holds. The launcher's published port on this machine, as for Keycloak's realm (keycloak_realm_url):
+    # an https install's public name may not resolve from here, nor its certificate be trusted.
+    url = os.environ.get("START_URL") or f"http://localhost:{effective('HOMEPAGE_PORT_EXTERNAL') or '8100'}/"
+    launcher = with_slash(effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/")
 
     # 4. The images
     for attempt in (1, 2, 3):
@@ -1053,7 +1147,7 @@ def start(_args: list[str]) -> None:
         sign_in = ["sign in as admin with this install's own password. Show it, and the ordinary account user's, with:",
                    "  uv run scripts/aisc.py password   (AISC_ADMIN_PASSWORD and AISC_USER_PASSWORD in env.secrets)"]
     say("",
-        f"AISC is up: open {url.rstrip('/')} and {sign_in[0]}", *sign_in[1:],
+        f"AISC is up: open {launcher.rstrip('/')} and {sign_in[0]}", *sign_in[1:],
         "If you installed AISC before on this machine, use a private window (an old session cookie is refused).")
 
 
