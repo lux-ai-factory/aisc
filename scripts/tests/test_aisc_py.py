@@ -9,6 +9,8 @@ import shutil
 import socket
 import subprocess
 
+import pytest
+
 from conftest import ROOT, aisc_py, copy_install_scripts
 
 
@@ -163,6 +165,28 @@ def test_a_port_below_1024_without_root_is_judged_by_connecting(monkeypatch):
         monkeypatch.undo()
     monkeypatch.setattr(socket.socket, "bind", refused)
     assert m.port_is_free(port, "0.0.0.0")
+
+
+def test_a_listener_on_the_machines_other_address_is_taken_below_1024(monkeypatch):
+    """Without root Linux refuses the bind; a program listening on the machine's network address only (not on
+    127.0.0.1) must still count, or Docker fails to publish the port."""
+    m = aisc_py()
+
+    def refused(self, address):
+        raise PermissionError(13, "Permission denied")
+
+    other = "127.0.0.2"   # stands for the machine's network address: a loopback address of its own
+    with socket.socket() as s:
+        try:
+            s.bind((other, 0))
+        except OSError:
+            pytest.skip("this system cannot bind 127.0.0.2")
+        s.listen()
+        port = s.getsockname()[1]
+        monkeypatch.setattr(socket.socket, "bind", refused)
+        monkeypatch.setattr(socket, "getaddrinfo",
+                            lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (other, 0))])
+        assert not m.port_is_free(port, "0.0.0.0")
 
 
 def test_the_runtime_env_takes_the_install_settings_last(tmp_path):

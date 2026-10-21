@@ -417,7 +417,8 @@ def write_runtime() -> None:
 def port_is_free(port: int, host: str) -> bool:
     """Whether Docker could publish this port on this address. Binding it is the real test; Windows refuses
     one in its reserved ranges with an access error, which means taken. Where Linux refuses the bind outright
-    (a port below 1024 without root), whether something answers on it decides."""
+    (a port below 1024 without root), whether something answers on it decides, on loopback and on each address
+    of the machine."""
     with socket.socket() as s:
         # As Docker binds: past connections still closing (TIME_WAIT) do not hold the port. Not on Windows,
         # where this option would let the test bind over a program that is listening.
@@ -431,9 +432,19 @@ def port_is_free(port: int, host: str) -> bool:
                 return False   # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
         except OSError:
             return False
-    with socket.socket() as s:
-        s.settimeout(1)
-        return s.connect_ex(("127.0.0.1", port)) != 0
+    # A program listening on the machine's network address only is not on 127.0.0.1, so each of its IPv4
+    # addresses is tried too.
+    addresses = ["127.0.0.1"]
+    try:
+        addresses += [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
+    except OSError:
+        pass
+    for address in dict.fromkeys(addresses):
+        with socket.socket() as s:
+            s.settimeout(1)
+            if s.connect_ex((address, port)) == 0:
+                return False
+    return True
 
 
 def read_local() -> dict[str, str]:
