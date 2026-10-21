@@ -930,16 +930,15 @@
       "secret": "${GATEWAY_CLIENT_SECRET}",
       "redirectUris": [
         "${API_URL_EXTERNAL}/oauth2/callback",
-        "http://localhost:8100/oauth2/callback",
-        "http://localhost:8188/oauth2/callback"
+        "${LAUNCHER_EXTERNAL_URL}oauth2/callback",
+        "${DASHBOARD_EXTERNAL_URL}/oauth2/callback"
       ],
       "webOrigins": [
         "${API_URL_EXTERNAL}",
-        "http://localhost:8100",
-        "http://localhost:8188"
+        "+"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8100/*##${API_URL_EXTERNAL}/*"
+        "post.logout.redirect.uris": "${LAUNCHER_EXTERNAL_URL}*##${API_URL_EXTERNAL}/*"
       },
       "defaultClientScopes": [
         "web-origins",

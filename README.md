@@ -37,8 +37,8 @@ cd aisc
 uv run scripts/aisc.py start
 ```
 
-Then open <http://localhost:8100> and sign in with the account the last message of `start` names (`admin` /
-`admin` on a new install).
+Then open the address the last message of `start` gives (<http://localhost:8100> unless it moved) and sign in
+with the account that message names (`admin` / `admin` on a new install).
 
 The first start builds every image (27 of them) on your computer, so it takes a while. Later starts are quick.
 New to these tools? Follow the three steps below.
@@ -50,15 +50,13 @@ New to these tools? Follow the three steps below.
 | **Computer** | Windows 10 or 11, macOS or Linux, on a 64-bit Intel or AMD processor (x86_64) |
 | **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
 | **Disk** | 30 GB free |
-| **Free ports** | 8100 and 8188, and on `127.0.0.1`: 8081, 5432, 5672, 6379, 9000 and 3322. Also port 80 and 443: if they are taken on a new install, AISC uses 8080 and 8443 instead |
+| **Free ports** | 80, 8100, 8188, and 8081 on `127.0.0.1`. If one is taken, `start` moves AISC to a free one and tells you (not on an install served over https, which also needs 443) |
 | **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors) |
 | **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private and are skipped) |
 
 **Tested so far:** Linux. The install works the same way on Windows and macOS, but nobody has run it there end
 to end yet. Computers with Apple Silicon (M1 to M4) and other ARM processors are not tested. If you try one of
 these, please [tell us how it went](https://github.com/lux-ai-factory/aisc/issues).
-
-Port 5432 is also PostgreSQL's usual port. If PostgreSQL is already installed on your computer, stop it first.
 
 ## 1. Install Docker and uv
 
@@ -130,8 +128,9 @@ uv run scripts/aisc.py start
 
 1. checks Docker, the download and the free disk space, and tells you what to fix if something is missing;
 2. creates the passwords and keys for your install (they stay on your computer and are never uploaded);
-3. checks the ports AISC needs, before building anything. If port 80 is taken on a new install, steps 1 and 2
-   open on port 8080 instead (or the next free one), and `start` tells you. Your install keeps that port;
+3. checks the ports AISC needs, before building anything. If port 80, 8100, 8188 or 8081 is taken, AISC uses
+   a free one instead (port 80 becomes 8080, for example), and `start` tells you. Your install keeps that port;
+   an install served over https does not move, and stops instead;
 4. builds the images and starts AISC;
 5. waits until the sign-in page answers, then prints where to go.
 
@@ -140,7 +139,8 @@ your passwords.
 
 ## 3. Open AISC
 
-1. Open <http://localhost:8100> in your browser.
+1. Open the address the last message of `start` gives in your browser. It is <http://localhost:8100> unless that
+   port was taken and `start` moved it.
 2. Sign in with the account named in the last message of `start`. On a new install that is `admin` / `admin`
    (a second account, `user` / `user`, has ordinary rights). These simple passwords are safe here because the
    sign-in only works from your own computer. An install served to others over https gets generated
@@ -162,12 +162,13 @@ All commands run in the `aisc` folder.
 | To | Run |
 |---|---|
 | Stop AISC | `docker compose -p aisc stop` |
-| Start it again (also after restarting the computer or Docker) | `uv run scripts/aisc.py start` |
+| Start it again after stopping it | `uv run scripts/aisc.py start` |
 | Update to the latest version | `git pull`, then `git submodule update --init --recursive`, then `uv run scripts/aisc.py start` |
 | Check that everything works | `./scripts/verify.sh --stack` (macOS and Linux; it needs Python 3 and takes a while) |
 | Remove AISC and all its data | `docker compose -p aisc down -v`, then delete the `aisc` folder |
 
-After a computer or Docker restart, some parts of AISC do not start by themselves. Run `start` again.
+After the computer restarts, AISC comes back by itself once Docker is running. If Docker Desktop does not start when
+you sign in, start it. If a page still does not answer, run `uv run scripts/aisc.py start`.
 
 `down -v` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
 Desktop's **Images** page, or with `docker image prune -a` if you use Docker for nothing else.
@@ -177,12 +178,12 @@ Desktop's **Images** page, or with `docker image prune -a` if you use Docker for
 | What you see | What to do |
 |---|---|
 | "Docker is not running" | Start Docker Desktop (on Linux, the Docker service) and wait until it is running. Then run `start` again. |
-| "Port ... is taken" | `start` names the port and the command that shows which program holds it (`netstat -ano \| findstr :8100` in PowerShell, `sudo lsof -i :8100` on macOS and Linux). Stop that program and run `start` again. |
-| Port 80 is held by process 4 ("System") on Windows, on an install that already ran on port 80 | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
+| "Port ... is taken" | On a plain http install, nothing to do: `start` moved AISC to a free port and printed the new address. Open that address. On an https install, `start` names the port and the command that shows which program holds it (`netstat -ano \| findstr :443` in PowerShell, `sudo lsof -i :443` on macOS and Linux). Stop that program and run `start` again. |
+| Port 80 or 443 is held by process 4 ("System") on Windows, on an install served over https | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
 | The page shows **502** | AISC is still starting. Wait 30 seconds and reload. |
 | The sign-in refuses you after a reinstall | Your browser kept a session from the old install. Use a private window. |
-| A page or step does not open after a restart | Run `uv run scripts/aisc.py start` again. |
 | On Windows, a container stops with `/bin/sh^M`, `bad interpreter` or `no such file` | The clone was made without `-c core.autocrlf=false`. Delete the `aisc` folder and clone again with the exact command. |
+| `start` stopped halfway | Run it again. It removes what the failed attempt left half-made and goes on. |
 | The build fails on the network or with "no space left on device" | Free disk space if needed, then run `start` again. What was already built is kept. |
 
 Still stuck? [Open an issue](https://github.com/lux-ai-factory/aisc/issues) with the last lines `start` printed.

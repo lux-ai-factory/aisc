@@ -71,8 +71,8 @@ def test_rbac_checks_the_admins_audit_log_is_verified():
     worked as that user), not merely "not 401/403". Only text exists here: the check is read, as the
     other lines of this file are."""
     lines = rbac_text().splitlines()
-    start = next(i for i, l in enumerate(lines) if "and an admin may read it" in l)
-    window = "\n".join(l for l in lines[start:start + 24] if not l.lstrip().startswith("#"))
+    start = next(i for i, line in enumerate(lines) if "and an admin may read it" in line)
+    window = "\n".join(line for line in lines[start:start + 24] if not line.lstrip().startswith("#"))
     assert re.search(r"/audit", window) and re.search(r"\$ADMIN|ADMIN", window)
     assert re.search(r"verified[\"']?\s*[:=]+\s*(true|True)|[\"']verified[\"']\]\s*is\s*True", window), \
         "verify-rbac.sh does not check the admin's audit log answer for \"verified\": true"
@@ -317,8 +317,8 @@ def test_the_engine_checks_go_through_the_gateway_on_a_session():
     assert "call aisc-backend" not in rbac, "verify-rbac.sh calls the engine directly, with a token the engine refuses"
     assert "docker exec" not in rbac.split("echo \"3. the platform", 1)[0].split("2. the engine", 1)[1], \
         "verify-rbac.sh's engine section still calls the engine from inside its container"
-    engine_calls = [l for l in sso.splitlines() if "$VERIFY_APPS_URL/api/v1" in l]
-    assert engine_calls and not [l for l in engine_calls if "Authorization: Bearer" in l], \
+    engine_calls = [line for line in sso.splitlines() if "$VERIFY_APPS_URL/api/v1" in line]
+    assert engine_calls and not [line for line in engine_calls if "Authorization: Bearer" in line], \
         "verify-sso.sh sends a token of its own to the engine"
 
 
@@ -326,10 +326,48 @@ def test_sso_a_reference_to_another_variable_is_not_a_written_secret(tmp_path):
     """MQ_PASSWORD=$RABBITMQ_PASSWORD names a secret, it doesn't hold one. The pattern must reach grep as
     written: in double quotes the shell turns its `$#` into the argument count."""
     text = (ROOT / "scripts/verify-sso.sh").read_text()
-    line = next(l for l in text.splitlines() if "GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET" in l and "grep" in l)
+    line = next(line for line in text.splitlines() if "GATEWAY_COOKIE_SECRET|GATEWAY_CLIENT_SECRET" in line and "grep" in line)
     pattern_arg = re.search(r"grep -rqE (\S+) \\$", line).group(1)
     (tmp_path / "env.a").write_text("MQ_PASSWORD=$RABBITMQ_PASSWORD\nRABBITMQ_PASSWORD=\n")
     (tmp_path / "env.b").write_text("POSTGRES_PASSWORD=hunter2\n")
-    run = lambda f: subprocess.run(["bash", "-c", f"grep -qE {pattern_arg} {f}"], cwd=tmp_path).returncode
+    def run(f):
+        return subprocess.run(["bash", "-c", f"grep -qE {pattern_arg} {f}"], cwd=tmp_path).returncode
+
     assert run("env.a") == 1, "a reference is flagged as a secret"
     assert run("env.b") == 0, "a written password is not flagged"
+
+
+# 3. verify-sso.sh section 2b: a module reached without a project redirects to the launcher, wherever it is
+
+
+def redirect_case() -> str:
+    """The `case "$loc" in ... esac` block of section 2b, extracted by anchor."""
+    text = sso_text()
+    start = text.index('case "$loc" in', text.index("2b. and a module reached without a project"))
+    end = text.index("esac", start) + len("esac")
+    return text[start:end]
+
+
+def run_redirect_case(launcher: str, loc: str) -> str:
+    harness = f'''#!/usr/bin/env bash
+set -uo pipefail
+ok(){{ printf 'OK\\n'; }}
+no(){{ printf 'NO\\n'; }}
+n=qualification
+VERIFY_BASE_URL={launcher!r}
+loc={loc!r}
+{redirect_case()}
+'''
+    return subprocess.run(["bash", "-c", harness], capture_output=True, text=True, timeout=30).stdout.strip()
+
+
+def test_redirect_to_the_launcher_is_recognised_in_the_whole_header_line():
+    assert run_redirect_case("http://localhost:8100", "location: http://localhost:8100/p/x") == "OK"
+
+
+def test_redirect_to_the_engine_is_refused():
+    assert run_redirect_case("http://localhost:8100", "location: http://localhost/qualification/p/abc") == "NO"
+
+
+def test_redirect_to_a_moved_launcher_is_recognised():
+    assert run_redirect_case("http://localhost:8110", "location: http://localhost:8110/") == "OK"

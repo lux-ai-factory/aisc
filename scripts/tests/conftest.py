@@ -13,6 +13,7 @@ scripts/guard-frozen.sh, scripts/test-pipeline-chain.sh and scripts/lib/; others
 import importlib.util
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -34,10 +35,13 @@ def copy_install_scripts(dest: Path) -> None:
         shutil.copy2(ROOT / path, dest / path)
 
 
-def aisc_py():
-    """scripts/aisc.py as a module: its list of secrets, the kind of value each takes, what --rotate keeps."""
-    spec = importlib.util.spec_from_file_location("aisc_install", ROOT / "scripts/aisc.py")
+def aisc_py(root: Path = ROOT):
+    """scripts/aisc.py as a module: its list of secrets, the kind of value each takes, what --rotate keeps.
+    root: a scratch copy of the checkout (copy_install_scripts) to load it from, so it reads that copy's files."""
+    spec = importlib.util.spec_from_file_location("aisc_install", root / "scripts/aisc.py")
     module = importlib.util.module_from_spec(spec)
+    # registered before it runs, as an import would: a dataclass looks its own module up while it is made
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -112,4 +116,4 @@ def guard_orders(tmp_path_factory):
 
 
 def verdict(output: str, check: str) -> list[str]:
-    return [l for l in output.splitlines() if l.startswith(check + " ")]
+    return [line for line in output.splitlines() if line.startswith(check + " ")]

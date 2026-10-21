@@ -204,7 +204,7 @@ def test_an_editor_links_tests_and_controls_to_objectives(client, as_user, evide
     both = {"objective_id": "O24", "kind": "test", "key": "aisc-plugin-langbite"}
     r = put(client, as_user, evidence_project, [LB, GOV, both], BOB)
     assert r.status_code == 200, r.text
-    assert sorted((l["objective_id"], l["kind"], l["key"]) for l in r.json()["links"]) == [
+    assert sorted((link["objective_id"], link["kind"], link["key"]) for link in r.json()["links"]) == [
         ("O1", "test", "aisc-plugin-langbite"), ("O24", "control", "ck1"), ("O24", "test", "aisc-plugin-langbite")]
     assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link") == [(3,)]
     assert sql(dsn, evidence_project["pid"], "SELECT DISTINCT created_by FROM evidence.link") == [(BOB,)]
@@ -213,7 +213,7 @@ def test_an_editor_links_tests_and_controls_to_objectives(client, as_user, evide
 def test_saving_replaces_the_links_and_keeps_who_made_the_old_ones(client, as_user, evidence_project, dsn):
     put(client, as_user, evidence_project, [LB, GOV], BOB)
     r = put(client, as_user, evidence_project, [LB], ALICE)
-    assert [(l["objective_id"], l["key"]) for l in r.json()["links"]] == [("O1", "aisc-plugin-langbite")]
+    assert [(link["objective_id"], link["key"]) for link in r.json()["links"]] == [("O1", "aisc-plugin-langbite")]
     assert sql(dsn, evidence_project["pid"], "SELECT created_by FROM evidence.link") == [(BOB,)]
 
 
@@ -245,12 +245,12 @@ def test_links_that_went_stale_are_kept_and_shown_with_their_reason(client, as_u
     body = get(client, as_user, evidence_project).json()
     assert [(o["id"], o["stale"]) for o in body["objectives"]] == [("O1", None), ("O24", "not selected")]
     assert [(c["key"], c["label"], c["stale"]) for c in body["controls"]] == [("ck1", "ck1", "deleted")]
-    stale = {(l["objective_id"], l["key"]): l["stale"] for l in body["links"]}
+    stale = {(link["objective_id"], link["key"]): link["stale"] for link in body["links"]}
     assert stale == {("O1", "aisc-plugin-langbite"): None, ("O24", "ck1"): "not selected",
                      ("O24", "aisc-plugin-promptfoo"): "not selected"}
     # saving the page as it is keeps the stale links
-    r = put(client, as_user, evidence_project, [{k: l[k] for k in ("objective_id", "kind",
-                                                                   "key")} for l in body["links"]])
+    r = put(client, as_user, evidence_project, [{k: link[k] for k in ("objective_id", "kind",
+                                                                   "key")} for link in body["links"]])
     assert r.status_code == 200, r.text
     assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link") == [(3,)]
 
@@ -511,12 +511,12 @@ def test_a_new_version_is_offered_the_previous_links_still_in_its_matrix(client,
     v3 = _v3(dsn, evidence_project["pid"], "{O1}")
     body = get(client, as_user, evidence_project).json()
     assert body["version"]["number"] == 3 and body["carried_from"] == 2
-    assert [(l["objective_id"], l["key"], l["carried"]) for l in body["links"]] == [
+    assert [(link["objective_id"], link["key"], link["carried"]) for link in body["links"]] == [
         ("O1", "aisc-plugin-langbite", True)]                  # O24 is not in v3's matrix
     # nothing is written until the assessor saves
     assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s", (v3,)) == [(0,)]
     saved = put(client, as_user, evidence_project, [LB]).json()
-    assert saved["carried_from"] is None and [l["carried"] for l in saved["links"]] == [False]
+    assert saved["carried_from"] is None and [link["carried"] for link in saved["links"]] == [False]
     assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s", (v3,)) == [(1,)]
     # version 2 keeps its own
     assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s", (V2,)) == [(2,)]

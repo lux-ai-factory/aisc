@@ -170,8 +170,8 @@ def test_the_runtime_env_points_at_the_hosted_catalogue():
     """scripts/secrets.sh builds env.runtime, what the stack runs on, from env.plugin_downloader:
     that file must name the hosted catalogue too, and no local catalogue port."""
     base = aisc_py().TRACKED
-    env = dict(l.split("=", 1) for l in (ROOT / base).read_text().splitlines()
-               if "=" in l and not l.lstrip().startswith("#"))
+    env = dict(line.split("=", 1) for line in (ROOT / base).read_text().splitlines()
+               if "=" in line and not line.lstrip().startswith("#"))
     env = {k.strip(): v.strip() for k, v in env.items()}
     assert env.get("CATALOGUE_EXTERNAL_URL") == HOSTED_CATALOGUE, base
     assert env.get("CATALOGUE_API_URL") == HOSTED_CATALOGUE_API, base
@@ -225,8 +225,8 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
     for f in FILES + ["docker-compose.plugin_downloader.yml"]:
         # $${VAR} is escaped: the container's shell expands it, not compose
         bare |= set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)\}", (ROOT / f).read_text()))
-    env = {l.split("=", 1)[0].strip() for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
-           if "=" in l and not l.lstrip().startswith("#")}
+    env = {line.split("=", 1)[0].strip() for line in (ROOT / "env.plugin_downloader").read_text().splitlines()
+           if "=" in line and not line.lstrip().startswith("#")}
     secrets = {name for name, _ in aisc_py().SECRETS}
     assert sorted(bare - env - secrets) == []
 
@@ -337,8 +337,8 @@ ONLINE_HOST = "10.50.3.47"
 
 def _runtime_env():
     base = aisc_py().TRACKED
-    env = dict(l.split("=", 1) for l in (ROOT / base).read_text().splitlines()
-               if "=" in l and not l.lstrip().startswith("#"))
+    env = dict(line.split("=", 1) for line in (ROOT / base).read_text().splitlines()
+               if "=" in line and not line.lstrip().startswith("#"))
     return base, {k.strip(): v.strip() for k, v in env.items()}
 
 
@@ -439,8 +439,8 @@ def test_the_standalone_registry_user_is_empty_by_default():
     DevpiClient refuse to start the backend. The user is empty unless given."""
     text, _ = _standalone()
     assert "${PACKAGE_REGISTRY_USER:-root}" not in text
-    line = [l for l in (ROOT / "env.plugin_downloader").read_text().splitlines()
-            if l.replace(" ", "").startswith("PACKAGE_REGISTRY_USER=")]
+    line = [line for line in (ROOT / "env.plugin_downloader").read_text().splitlines()
+            if line.replace(" ", "").startswith("PACKAGE_REGISTRY_USER=")]
     assert line and line[0].split("=", 1)[1].strip() == ""
 
 
@@ -573,12 +573,89 @@ def _published(service):
     return {(int(p["published"]), int(p["target"])) for p in service.get("ports") or []}
 
 
+#: the stack as an install served over https starts it, and with the infrastructure published for the host's tools
+WITH_HTTPS = [*FILES, "docker-compose.https.yml"]
+WITH_ADMIN_PORTS = [*FILES, "docker-compose.admin-ports.yml"]
+#: the launcher, the dashboard and the sign-in moved off their usual ports, as aisc.py start moves them
+BROWSER_MOVED = {"HOMEPAGE_PORT_EXTERNAL": "8110", "DASHBOARD_PORT_EXTERNAL": "8198", "KEYCLOAK_PORT_EXTERNAL": "8091",
+                 "LAUNCHER_EXTERNAL_URL": "http://localhost:8110/", "DASHBOARD_EXTERNAL_URL": "http://localhost:8198",
+                 "KEYCLOAK_URL_EXTERNAL": "http://localhost:8091"}
+
+
+def _host_ports(services):
+    """(service, host address, host port) of every published port."""
+    return {(name, p.get("host_ip") or "0.0.0.0", int(p["published"]))
+            for name, service in services.items() for p in service.get("ports") or []}
+
+
+def test_only_the_browser_ports_are_published_by_default(tmp_path):
+    """A port nobody's browser needs is one more a new install can find taken."""
+    services = compose_cfg.config(tmp_path)["services"]
+    assert {port for _, _, port in _host_ports(services)} == {80, 8100, 8188, 8081}
+
+
+def test_the_admin_ports_file_publishes_the_infrastructure_on_loopback(tmp_path):
+    services = compose_cfg.config(tmp_path, files=WITH_ADMIN_PORTS)["services"]
+    published = _host_ports(services)
+    for port in (5432, 6379, 5672, 9000, 3322):
+        hosts = {host for _, host, p in published if p == port}
+        assert hosts == {"127.0.0.1"}, port
+
+
+def test_443_only_with_the_https_file(tmp_path):
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "https").mkdir()
+    plain = compose_cfg.config(tmp_path / "plain")["services"]["caddy"]
+    assert 443 not in {published for published, _ in _published(plain)}
+    https = compose_cfg.config(tmp_path / "https", files=WITH_HTTPS)["services"]["caddy"]
+    assert (443, 8005) in _published(https)
+
+
+def test_every_browser_port_follows_its_variable(tmp_path):
+    services = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]
+    assert {(8110, 8006), (8198, 8008)} <= _published(services["caddy"])
+    keycloak = [(p.get("host_ip"), int(p["published"]), int(p["target"])) for p in services["keycloak"]["ports"]]
+    assert keycloak == [("127.0.0.1", 8091, 8080)]
+
+
+def test_every_issuer_follows_the_sign_in_address(tmp_path):
+    services = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]
+    issuers = {name: (s.get("environment") or {})["KEYCLOAK_ISSUER"] for name, s in services.items()
+               if "KEYCLOAK_ISSUER" in (s.get("environment") or {})}
+    assert issuers
+    assert {name: i for name, i in issuers.items() if not i.startswith("http://localhost:8091")} == {}
+    assert services["keycloak"]["environment"]["KC_HOSTNAME"] == "http://localhost:8091"
+    command = services["oauth2-proxy"]["command"]
+    for flag in ("--oidc-issuer-url=", "--login-url="):
+        value = next(c for c in command if c.startswith(flag))
+        assert value.startswith(flag + "http://localhost:8091"), value
+
+
+def test_every_link_back_to_the_launcher_follows_its_address(tmp_path):
+    services = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]
+    links = {(name, key): (s.get("environment") or {})[key] for name, s in services.items()
+             for key in ("LAUNCHER_URL", "APP_LAUNCHER_URL") if key in (s.get("environment") or {})}
+    assert {"dashboard", "aisc-webapp", "controls-web"} <= {name for name, _ in links}
+    assert {k: v for k, v in links.items() if v != "http://localhost:8110/"} == {}
+
+
+def test_the_gateway_whitelists_every_browser_port(tmp_path):
+    command = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]["oauth2-proxy"]["command"]
+    assert {"--whitelist-domain=localhost:8110", "--whitelist-domain=localhost:8198"} <= set(command)
+
+
+def test_keycloak_gets_every_address_its_realm_names(tmp_path):
+    environment = compose_cfg.config(tmp_path, env=BROWSER_MOVED)["services"]["keycloak"]["environment"]
+    assert environment["LAUNCHER_EXTERNAL_URL"] == "http://localhost:8110/"
+    assert environment["DASHBOARD_EXTERNAL_URL"] == "http://localhost:8198"
+
+
 def test_the_engine_ports_follow_the_install_settings(tmp_path):
     (tmp_path / "moved").mkdir()
     (tmp_path / "default").mkdir()
-    moved = compose_cfg.config(tmp_path / "moved", env=MOVED)["services"]["caddy"]
+    moved = compose_cfg.config(tmp_path / "moved", env=MOVED, files=WITH_HTTPS)["services"]["caddy"]
     assert {(8080, 8005), (8443, 8005)} <= _published(moved)
-    default = compose_cfg.config(tmp_path / "default")["services"]["caddy"]
+    default = compose_cfg.config(tmp_path / "default", files=WITH_HTTPS)["services"]["caddy"]
     assert {(80, 8005), (443, 8005)} <= _published(default)
 
 
@@ -595,3 +672,18 @@ def test_the_gateway_lets_sign_in_return_to_the_engine_port(tmp_path):
 def test_keycloak_gets_the_engine_address_for_its_realm(tmp_path):
     keycloak = compose_cfg.config(tmp_path, env=MOVED)["services"]["keycloak"]
     assert keycloak["environment"]["API_URL_EXTERNAL"] == "http://localhost:8080"
+
+
+# What runs once and exits: these must not come back after a restart.
+ONE_SHOT = ("aisc-backend-migrate", "control-objectives-migrate", "controls-migrate", "dashboard-migrate",
+            "immudb-key", "ledger-pool", "make_buckets", "plugin-downloader", "plugin-publisher", "postgres-setup",
+            "qualification-migrate", "report-composer-migrate", "report-grants")
+
+
+def test_every_long_running_service_comes_back_after_a_restart(tmp_path):
+    """After a Docker or computer restart a service with no restart policy stays down (keycloak, immudb,
+    rabbitmq, minio, the backend, the eval worker and the webapp did), and the install looks broken."""
+    services = compose_cfg.config(tmp_path, files=FILES + ["docker-compose.plugin_downloader.yml"])["services"]
+    stays_down = sorted(n for n, s in services.items()
+                        if n not in ONE_SHOT and s.get("restart") not in ("always", "unless-stopped"))
+    assert not stays_down, f"these do not come back after a restart: {stays_down}"

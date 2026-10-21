@@ -87,7 +87,7 @@ def test_keycloak_is_given_the_accounts_passwords_and_refuses_to_start_without_t
 def test_the_tracked_env_file_holds_no_infrastructure_password():
     lines = (ROOT / "env.plugin_downloader").read_text().splitlines()
     for name in ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD"):
-        [line] = [l for l in lines if l.startswith(name + "=")]
+        [line] = [line for line in lines if line.startswith(name + "=")]
         assert line == name + "=", name
 
 
@@ -115,6 +115,9 @@ def test_the_checks_read_the_accounts_passwords_from_env_secrets():
 FAKE_DOCKER = """#!/usr/bin/env bash
 { printf 'ARGV'; printf ' %q' "$@"; printf '\\n'; env | sed -n 's/^\\(NEW_VALUE\\|OLD_VALUE\\|ADMIN_VALUE\\)=/ENV \\1=/p'; } >> "$DOCKER_LOG"
 cat > /dev/null
+# this project's Keycloak container, as compose ps -q names it (FAKE_KEYCLOAK_ID="": none running)
+[[ "$*" == *" ps -q keycloak"* ]] && printf '%s\n' "${FAKE_KEYCLOAK_ID-kc-of-this-project}"
+exit 0
 """
 
 
@@ -135,7 +138,7 @@ def install(tmp_path):
 
 
 def values(path):
-    return dict(l.split("=", 1) for l in path.read_text().splitlines() if "=" in l and not l.startswith("#"))
+    return dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line and not line.startswith("#"))
 
 
 @pytest.mark.parametrize("name", ROTATABLE)
@@ -151,8 +154,8 @@ def test_rotating_one_password_changes_it_in_the_service_then_in_both_env_files_
     assert values(root / "env.runtime")[name] == after[name]
     log = (root / "docker.log").read_text() if (root / "docker.log").exists() else ""
     # the new value reaches the service by name, never in an argument
-    assert after[name] not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
-    assert before[name] not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
+    assert after[name] not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
+    assert before[name] not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
     assert after[name] not in r.stdout + r.stderr
     if name != "S3_PASSWORD":  # MinIO takes its root password from its environment when it is recreated
         assert f"ENV NEW_VALUE={after[name]}" in log
@@ -203,7 +206,7 @@ def test_a_chosen_password_is_set_in_the_service_and_both_env_files(install):
     assert values(root / "env.runtime")["AISC_ADMIN_PASSWORD"] == chosen
     log = (root / "docker.log").read_text()
     assert f"ENV NEW_VALUE={chosen}" in log
-    assert chosen not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
+    assert chosen not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
     assert chosen not in r.stdout + r.stderr
 
 
@@ -216,3 +219,36 @@ def test_a_chosen_password_the_env_file_could_not_hold_is_refused(install, typed
     assert r.returncode == 2, r.stderr
     assert (root / "env.secrets").read_text() == before
     assert not (root / "docker.log").exists()
+
+
+def test_a_keycloak_password_is_set_in_this_project_s_keycloak_and_no_other(install):
+    """A second copy beside an install renames its containers: the bare name keycloak is the other install's."""
+    root, env = install
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", "AISC_USER_PASSWORD"], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    execs = [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+    assert len(execs) == 1 and " kc-of-this-project bash " in execs[0] and " keycloak bash " not in execs[0]
+
+
+def test_a_keycloak_password_is_not_changed_when_this_project_runs_no_keycloak(install):
+    root, env = install
+    before = (root / "env.secrets").read_text()
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", "AISC_USER_PASSWORD"], cwd=root,
+                       env={**env, "FAKE_KEYCLOAK_ID": ""}, capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "Keycloak" in r.stderr
+    assert (root / "env.secrets").read_text() == before
+    assert not [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+
+
+@pytest.mark.parametrize("name", ["KEYCLOAK_ADMIN_PASSWORD", "AISC_ADMIN_PASSWORD"])
+def test_no_secret_reaches_a_command_line_when_kcadm_sets_a_password(install, name):
+    root, env = install
+    before = values(root / "env.secrets")
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", name], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    argv = "".join(line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV"))
+    secrets = {v for v in (*before.values(), *values(root / "env.secrets").values()) if len(v) >= 8}
+    assert not [v for v in secrets if v in argv]

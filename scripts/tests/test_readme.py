@@ -1,5 +1,6 @@
 """The README takes a newcomer from nothing to a running AISC, on Windows, macOS or Linux."""
 import re
+import subprocess
 
 from conftest import ROOT
 
@@ -15,7 +16,7 @@ def test_the_readme_lists_what_an_install_needs():
     """Every requirement to install and run the whole stack is in the README itself."""
     text = README.read_text()
     needs = section("Before you install")
-    for needed in ("x86_64", "RAM", "30 GB", "8100 and 8188", "port 80 and 443", "8081", "5432", "Internet", "PyPI",
+    for needed in ("x86_64", "RAM", "30 GB", "8100", "8188", "8081", "Internet", "PyPI",
                    "npm"):
         assert needed in needs, needed
     for needed in ("Compose plugin 2.17", "Docker Desktop", "uv", "WSL 2", "virtualisation", "administrator rights"):
@@ -98,19 +99,58 @@ def test_every_anchor_inside_the_readme_has_its_heading():
         assert anchor in headings, anchor
 
 
-def test_the_readme_says_start_moves_a_new_install_off_a_taken_port_80():
+def test_the_readme_says_start_moves_any_browser_port_that_is_taken():
     start = section("2. Download and start AISC").split("### What `start` does", 1)[1]
-    assert "port 80" in start and "8080" in start
-    assert "port 80" in section("Before you install") and "8080" in section("Before you install")
+    for port in ("port 80", "8100", "8188", "8081", "8080", "https"):
+        assert port in start, port
+    assert "moves" in section("Before you install")
 
 
-def test_the_guide_names_the_engine_port_settings():
+def test_the_readme_lists_only_the_browser_ports():
+    row = next(line for line in section("Before you install").splitlines() if "Free ports" in line)
+    for port in ("80", "8100", "8188", "8081"):
+        assert re.search(rf"\b{port}\b", row), port
+    for port in ("5432", "6379", "5672", "9000", "3322"):
+        assert port not in row, port
+    assert "5432" not in README.read_text()
+
+
+def test_the_guide_names_the_port_settings():
     guide = (ROOT / "docs/guide.md").read_text()
-    for name in ("ENGINE_PORT", "ENGINE_HTTPS_PORT", "env.local"):
+    for name in ("ENGINE_PORT", "HOMEPAGE_PORT_EXTERNAL", "DASHBOARD_PORT_EXTERNAL", "KEYCLOAK_PORT_EXTERNAL",
+                 "env.local", "docker-compose.https.yml"):
         assert name in guide, name
+
+
+def test_the_guide_says_how_to_reach_the_database_from_the_host():
+    guide = (ROOT / "docs/guide.md").read_text()
+    assert "AISC_ADMIN_PORTS" in guide and "admin-ports" in guide
 
 
 def test_the_readme_says_admin_admin_holds_only_until_the_passwords_change():
     sign_in = section("3. Open AISC")
     assert "admin" in sign_in and "uv run scripts/aisc.py password" in sign_in
     assert "rotate-infra-password" in sign_in and "last message" in sign_in
+
+
+def test_no_document_gives_a_compose_command_that_drops_the_https_file():
+    """A hand-written `docker compose ... -f docker-compose-infra.development.yml ...` names the three base files
+    only. On an install served over https, following it recreates Caddy without docker-compose.https.yml, and 443
+    stops answering. The documents send the reader to `uv run scripts/aisc.py start` instead, which adds the file
+    when the install needs it. Only this repository's own Markdown: a submodule's documents are its own."""
+    tracked = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True)
+    offending = []
+    for name in tracked.stdout.split():
+        # a command continued over several lines with a trailing backslash is read as one line
+        for command in (ROOT / name).read_text().replace("\\\n", " ").splitlines():
+            if ("docker compose" in command and "-f docker-compose-infra.development.yml" in command
+                    and "docker-compose.https.yml" not in command):
+                offending.append(name)
+    assert offending == []
+
+
+def test_the_readme_gives_the_launcher_address_as_a_default_that_may_have_moved():
+    """The launcher port may move, so no instruction to open it stands without the message of `start`."""
+    for line in README.read_text().splitlines():
+        if "localhost:8100" in line and "Open" in line or "open <http://localhost:8100>" in line:
+            assert "last message of `start`" in line or "moved" in line, line

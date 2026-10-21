@@ -68,6 +68,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -77,20 +78,70 @@ OUT = "env.secrets"
 COMBINED = "env.runtime"   # what compose is pointed at: the settings plus the secrets
 TRACKED = "env.plugin_downloader"
 LOCAL = "env.local"         # this install's own settings, chosen by start (git-ignored)
-#: the engine's ports: the one it prefers, then the ones a new install moves to when that one is taken
-ENGINE_PORTS: dict[str, tuple[int, tuple[int, ...]]] = {"ENGINE_PORT": (80, (8080, 8090, 8000, 8880, 8888)),
-                                                       "ENGINE_HTTPS_PORT": (443, (8443, 8453, 9443))}
 SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
+
+
+@dataclass(frozen=True)
+class BrowserPort:
+    """A port the browser reaches the install on: the setting compose publishes it through, the service and
+    container port behind it, the host port it prefers, the ones it moves to when that one is taken, the
+    setting that holds its address, and the host address Docker publishes it on."""
+    variable: str
+    service: str
+    target: int
+    preferred: int
+    fallbacks: tuple[int, ...]
+    address: str | None
+    host: str
+
+
+#: every port the browser reaches; no fallback is listed twice or is another one's preferred port
+BROWSER_PORTS: tuple[BrowserPort, ...] = (
+    BrowserPort("ENGINE_PORT", "caddy", 8005, 80, (8080, 8090, 8000, 8880, 8888), "API_URL_EXTERNAL", "0.0.0.0"),
+    BrowserPort("HOMEPAGE_PORT_EXTERNAL", "caddy", 8006, 8100, (8110, 8120, 8130), "LAUNCHER_EXTERNAL_URL", "0.0.0.0"),
+    BrowserPort("DASHBOARD_PORT_EXTERNAL", "caddy", 8008, 8188, (8198, 8288, 8388), "DASHBOARD_EXTERNAL_URL",
+                "0.0.0.0"),
+    BrowserPort("KEYCLOAK_PORT_EXTERNAL", "keycloak", 8080, 8081, (8091, 8181, 8281), "KEYCLOAK_URL_EXTERNAL",
+                "127.0.0.1"),
+)
+
 #: the Compose project: aisc, unless AISC_PROJECT names another (a second copy beside an install's data)
 PROJECT = os.environ.get("AISC_PROJECT", "aisc")
-COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
-           "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
 NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
              "service, then run this again.")
 #: the docker command start found on PATH (see find_docker); every docker call runs this one
 DOCKER = "docker"
-UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
-           "    -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d")
+
+
+def optional_compose_files() -> list[str]:
+    """443 only for an install served over https, so a taken 443 never stops one on plain http; the
+    infrastructure's ports on the loopback only when asked (AISC_ADMIN_PORTS=on), for tools on the host."""
+    files = ["docker-compose.https.yml"] if served_over_https() else []
+    if admin_ports_asked():
+        files.append("docker-compose.admin-ports.yml")
+    return files
+
+
+def admin_ports_asked() -> bool:
+    """AISC_ADMIN_PORTS=on in the shell, or else in env.local (its last line for it, as compose reads it). The
+    checkout's own env.local, not the current folder's: COMPOSE asks this on import, before main moves there."""
+    asked = os.environ.get("AISC_ADMIN_PORTS")
+    local = ROOT / LOCAL
+    if asked is None and local.is_file():
+        lines = [line for line in lines_of(str(local)) if line.startswith("AISC_ADMIN_PORTS=")]
+        asked = lines[-1].split("=", 1)[1].strip().strip('"\'') if lines else None
+    return asked == "on"
+
+
+def served_over_https() -> bool:
+    # the checkout's own file, not the current folder's: COMPOSE asks this on import, before main moves there
+    tracked = ROOT / TRACKED
+    domain = os.environ.get("CADDY_DOMAIN") or (value_in("CADDY_DOMAIN", str(tracked)) if tracked.is_file() else "")
+    return domain.strip('"').startswith("https://")
+
+
+#: True once start has handed the stack to compose `up`; a refusal after that point cannot say "nothing was started".
+STACK_BEING_STARTED = False
 
 
 class Refused(Exception):
@@ -225,11 +276,6 @@ def immudbpw() -> str:
     return "Az9-" + random_source.token_hex(12)
 
 
-def served_over_https() -> bool:
-    domain = os.environ.get("CADDY_DOMAIN") or (value_in("CADDY_DOMAIN", TRACKED) if Path(TRACKED).is_file() else "")
-    return domain.strip('"').startswith("https://")
-
-
 def account(name: str) -> str:
     if served_over_https():
         return rand()
@@ -252,6 +298,15 @@ def value_in(name: str, path: str) -> str:
         if line.startswith(name + "="):
             return line[len(name) + 1:]
     return ""
+
+
+#: the stack's compose command; start puts the docker it found first
+COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
+           "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml",
+           *[arg for name in optional_compose_files() for arg in ("-f", name)]]
+UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
+           "    -f docker-compose-infra.development.yml -f docker-compose.development.yml"
+           + "".join(f" -f {name}" for name in optional_compose_files()) + " up -d")
 
 
 def kept_value(name: str) -> str:
@@ -410,8 +465,8 @@ def write_runtime() -> None:
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
     local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
-    combined = ([l for l in secret_lines if infra(l)] + [l for l in tracked if not infra(l)]
-                + [l for l in secret_lines if not infra(l)] + local)
+    combined = ([line for line in secret_lines if infra(line)] + [line for line in tracked if not infra(line)]
+                + [line for line in secret_lines if not infra(line)] + local)
     write_beside(COMBINED, text_of(combined))
     say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
 
@@ -467,7 +522,7 @@ def read_local() -> dict[str, str]:
 def local_lines(existing: list[str], settings: dict[str, str]) -> list[str]:
     """env.local's lines with the settings start manages set: each in the place it already has, the new ones
     after the rest. Every other line (a note, a setting a person added) stays as it is, and in its place."""
-    managed = {*ENGINE_PORTS, "API_URL_EXTERNAL"}
+    managed = {name for port in BROWSER_PORTS for name in (port.variable, port.address) if name}
     out, done = [], set()
     for line in existing:
         name = line.partition("=")[0].strip()
@@ -484,19 +539,19 @@ def choose_port(preferred: int, fallbacks: tuple[int, ...], is_free: Callable[[i
     return next((p for p in (preferred, *fallbacks) if is_free(p)), None)
 
 
-def engine_settings(port: int, https_port: int) -> dict[str, str]:
-    """What the engine's ports change: compose publishes them. Only a moved engine gets an address here: on
-    port 80 the install's own API_URL_EXTERNAL stands (an https or other-host install sets it itself)."""
-    settings = {"ENGINE_PORT": str(port), "ENGINE_HTTPS_PORT": str(https_port)}
-    if port != 80:
-        settings["API_URL_EXTERNAL"] = f"http://localhost:{port}"
-    return settings
+def address_of(port: BrowserPort, number: int) -> str:
+    """The address a browser on this machine reaches a port on. Browsers send the Origin of
+    http://localhost:80 as http://localhost, so 80 is left out; the launcher's ends with a slash, as
+    LAUNCHER_EXTERNAL_URL always has."""
+    address = "http://localhost" + ("" if number == 80 else f":{number}")
+    return address + "/" if port.address == "LAUNCHER_EXTERNAL_URL" else address
 
 
-def published_ports(config: dict) -> list[tuple[str, int, int]]:
-    """(address, published port, container port) of every port a `docker compose config --format json` publishes."""
-    return [(p.get("host_ip") or "0.0.0.0", int(p["published"]), int(p["target"]))
-            for service in config.get("services", {}).values() for p in service.get("ports") or []
+def published_ports(config: dict) -> list[tuple[str, str, int, int]]:
+    """(service, address, published port, container port) of every port a `docker compose config --format json`
+    publishes."""
+    return [(name, p.get("host_ip") or "0.0.0.0", int(p["published"]), int(p["target"]))
+            for name, service in config.get("services", {}).items() for p in service.get("ports") or []
             if p.get("published")]
 
 
@@ -507,6 +562,12 @@ def find_docker() -> str | None:
     return shutil.which("docker", path=os.environ.get("PATH"))
 
 
+def keycloak_container(docker_command: str) -> str:
+    """The id of this project's running Keycloak container, empty when it runs none. Not the name keycloak: a
+    second copy beside an install renames its containers, and that name is then the other install's."""
+    return captured([docker_command, *COMPOSE[1:], "ps", "-q", "keycloak"]).stdout.strip()
+
+
 def held_by_aisc() -> set[int]:
     """The host ports this install's own running containers publish: theirs, so not taken."""
     ports = captured([DOCKER, "ps", "--filter", f"label=com.docker.compose.project={PROJECT}",
@@ -514,51 +575,64 @@ def held_by_aisc() -> set[int]:
     return {int(p) for p in re.findall(r":(\d+)->", ports)}
 
 
-def has_data() -> bool:
-    """Whether this install has run before: its database volume exists, and with it a sign-in set up for the
-    engine's address."""
-    return captured([DOCKER, "volume", "inspect", f"{PROJECT}_postgres_data"]).returncode == 0
-
-
 def who_holds(port: int) -> str:
     """The command that shows which program holds a port, on this system."""
     return f"netstat -ano | findstr :{port}" if os.name == "nt" else f"sudo lsof -i :{port}"
 
 
-def settle_ports(published: list[tuple[str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
-                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str]]:
-    """The engine's settings for env.local, and one problem per port that stops the start.
+def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
+                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str], list[str]]:
+    """The browser ports' settings for env.local, one problem per port that stops the start, and one line per
+    port that moved this start.
 
-    The engine's ports are Caddy's (container port 8005): the ones this install kept, else 80 and 443. When one
-    is taken, an install with no data yet (may_move) moves to the first free fallback, also off a port it kept
-    from a start that never got as far as the sign-in; one that has run before must not, since its sign-in
-    knows only its address. Every other published port is checked
-    as it is. A port this install's own containers hold is not taken."""
+    Each browser port is tried on the port this install kept, else its preferred one. When that is taken, an
+    install not served over https (may_move) moves to the first free one of its preferred port and fallbacks:
+    start tells the sign-in the install's addresses, so data is no reason to stay. One served over https must
+    not, since its public names lead to the ports it has. A port picked for one role is never offered to the
+    next. On plain http a port that is not at its preferred one gets its address written too; at its preferred
+    one, or on an install served over https, the install's own address stands (it sets it itself). Every other
+    published port is checked as it is. A port this install's own containers hold is not taken."""
+    picked: set[int] = set()
+
     def free(port: int, host: str = "0.0.0.0") -> bool:
-        return port in held or is_free(port, host)
+        return port not in picked and (port in held or is_free(port, host))
 
-    problems, chosen = [], {}
-    for name, (preferred, fallbacks) in ENGINE_PORTS.items():
-        port = int(kept[name]) if name in kept else preferred
-        if free(port):
-            chosen[name] = port
+    settings: dict[str, str] = {}
+    problems, moved = [], []
+    for role in BROWSER_PORTS:
+        first = int(kept[role.variable]) if role.variable in kept else role.preferred
+        if free(first, role.host):
+            chosen = first
         elif not may_move:
-            problems.append(f"Port {port} is taken, and this install's sign-in is set up for it. Stop the program "
-                            f"that holds it (see which with: {who_holds(port)}).")
+            chosen = None
+            problems.append(f"Port {first} is taken, and an install served over https does not move to another "
+                            f"port. Stop the program that holds it (see which with: {who_holds(first)}).")
         else:
-            moved = choose_port(preferred, fallbacks, free)
-            if moved is None:
-                tried = ", ".join(str(p) for p in (preferred, *fallbacks))
+            chosen = choose_port(role.preferred, role.fallbacks, lambda p, host=role.host: free(p, host))
+            if chosen is None:
+                tried = ", ".join(str(p) for p in (role.preferred, *role.fallbacks))
                 problems.append(f"Ports {tried} are all taken. Free one of them (see which program holds one "
-                                f"with: {who_holds(preferred)}).")
+                                f"with: {who_holds(role.preferred)}).")
             else:
-                chosen[name] = moved
-    for host, port, target in published:
-        if target != 8005 and not free(port, host):
+                moved.append(f"Port {first} is taken on this computer, so AISC uses {address_of(role, chosen)} "
+                             f"instead ({role.variable}={chosen}, kept in {LOCAL}).")
+        if chosen is not None:
+            picked.add(chosen)
+            settings[role.variable] = str(chosen)
+            # an https install names itself, and env.local comes last in env.runtime: a localhost address
+            # written there would override its public names, so a port it kept stays published but unnamed
+            if chosen != role.preferred and role.address and may_move:
+                settings[role.address] = address_of(role, chosen)
+    for service, host, port, target in published:
+        # a browser port is published through its variable, on one of its own candidates; the engine's
+        # https port (443) is Caddy's 8005 too, but no browser port moves there, so it is checked as it is
+        role = next((r for r in BROWSER_PORTS if (r.service, r.target) == (service, target)), None)
+        if role and port in {role.preferred, *role.fallbacks, int(kept.get(role.variable, role.preferred))}:
+            continue
+        if not free(port, host):
             problems.append(f"Port {port} is taken. Stop the program that holds it (see which with: "
                             f"{who_holds(port)}).")
-    settings = engine_settings(chosen["ENGINE_PORT"], chosen["ENGINE_HTTPS_PORT"]) if len(chosen) == 2 else {}
-    return settings, problems
+    return settings, problems, moved
 
 
 def make_secrets(args: list[str]) -> None:
@@ -606,14 +680,23 @@ def show_passwords(_args: list[str]) -> None:
 
 ROTATABLE = ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
              "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
-# kcadm signs in to the master realm as Keycloak's admin, then sets one account's password. Its arguments stay
-# inside the container; its session file is removed again.
-KCADM = """
-    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-rotate.json
+
+
+def kcadm_script(command: str) -> str:
+    """A bash script for Keycloak's container: kcadm signs in to the master realm as Keycloak's admin, then runs
+    one command (kcadm's arguments, in bash; "$cfg" is the session). The admin's password comes from the
+    environment (ADMIN_VALUE), never a command line, and the session file is removed again."""
+    return f"""
+    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-aisc.json
     "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
       --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$ADMIN_VALUE" >/dev/null \\
-      && "$kc" set-password --config "$cfg" -r "$REALM" --username "${ACCOUNT:-$KC_BOOTSTRAP_ADMIN_USERNAME}" --new-password "$NEW_VALUE"
+      && "$kc" {command}
     s=$?; rm -f "$cfg"; exit $s"""
+
+
+# sets one account's password: the realm, the account and the new value come from the environment too
+KCADM = kcadm_script('set-password --config "$cfg" -r "$REALM" --username "${ACCOUNT:-$KC_BOOTSTRAP_ADMIN_USERNAME}" '
+                     '--new-password "$NEW_VALUE"')
 # psql reads the value from its environment (\\getenv): it is on no command line, not even the container's
 PSQL = "\\getenv pw NEW_VALUE\n\\getenv role POSTGRES_USER\nALTER ROLE :\"role\" PASSWORD :'pw';\n"
 UNSAFE = re.compile(r"""[\s'"$#\\]""")
@@ -663,7 +746,11 @@ def rotate_infra_password(args: list[str]) -> None:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
 
     def keycloak_set(admin: str, realm: str, account: str = "") -> None:
-        docker("exec", "-e", "ADMIN_VALUE", "-e", "NEW_VALUE", "-e", "REALM", "-e", "ACCOUNT", "keycloak",
+        container = keycloak_container(docker_command)
+        if not container:
+            raise Refused(f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak); "
+                          "nothing changed")
+        docker("exec", "-e", "ADMIN_VALUE", "-e", "NEW_VALUE", "-e", "REALM", "-e", "ACCOUNT", container,
                "bash", "-c", KCADM, admin=admin, realm=realm, account=account)
 
     if name == "POSTGRES_PASSWORD":
@@ -723,16 +810,94 @@ def keycloak_realm_url() -> str:
     given = os.environ.get("START_SIGN_IN_URL")
     if given:
         return given
-    port = "8081"
+    return f"http://localhost:{effective('KEYCLOAK_PORT_EXTERNAL') or '8081'}/realms/aisc"
+
+
+def effective(name: str) -> str:
+    """The value compose uses for a setting: its last line in env.runtime (env.local comes last there), one pair
+    of quotes taken off; empty when env.runtime has none."""
+    value = ""
     if Path(COMBINED).is_file():
         for line in lines_of(COMBINED):
-            if line.startswith("KEYCLOAK_PORT_EXTERNAL="):
-                port = line.split("=", 1)[1].strip().strip("'\"") or port
-    return f"http://localhost:{port}/realms/aisc"
+            if line.startswith(name + "="):
+                value = line.split("=", 1)[1].strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+    return value
+
+
+def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dict]:
+    """What the realm's two clients must hold for this install's addresses: the gateway's callbacks on the
+    engine, the launcher and the dashboard, and where it may send a person after signing out; the webapp's own
+    address, beside the frontend's development server. The gateway's web origins are "+", Keycloak's shorthand
+    for the origins of its redirect URIs, as the realm file has it. The launcher's address ends with a slash."""
+    return {
+        "aisc-gateway": {
+            "redirectUris": [f"{engine}/oauth2/callback", f"{launcher}oauth2/callback", f"{dashboard}/oauth2/callback"],
+            "webOrigins": ["+"],
+            "attributes": {"post.logout.redirect.uris": f"{launcher}*##{engine}/*"},
+        },
+        "aisc-webapp": {
+            "baseUrl": engine,
+            "redirectUris": [f"{engine}/*", "http://localhost:5173/*"],
+            "webOrigins": [engine, "http://localhost:5173"],
+        },
+    }
+
+
+# runs the kcadm command given as bash -c's arguments, which hold no secret
+KCADM_RUN = kcadm_script('"$@" --config "$cfg"')
+
+
+def sync_sign_in() -> None:
+    """Tells Keycloak the addresses this install has now. The realm import put the addresses of its first start
+    into the realm's database and is never run again, so a port that moved since would leave the sign-in sending
+    people to an address nothing answers on. Run on every start once the realm answers; Keycloak may still refuse
+    its admin for a moment then, so it is tried again (START_SYNC_TRIES times, START_SYNC_WAIT_S apart)."""
+    tries = int(os.environ.get("START_SYNC_TRIES", "6"))
+    wait_s = float(os.environ.get("START_SYNC_WAIT_S", "5"))
+    clients = sign_in_clients(effective("API_URL_EXTERNAL") or "http://localhost",
+                              effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/",
+                              effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188")
+    env = {**os.environ, "ADMIN_VALUE": value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")}
+
+    def kcadm(container: str, *argv: str, stdin: str = "") -> subprocess.CompletedProcess:
+        return subprocess.run([DOCKER, "exec", "-i", "-e", "ADMIN_VALUE", container, "bash", "-c", KCADM_RUN,
+                               "kcadm", *argv], env=env, input=stdin, capture_output=True, text=True)
+
+    def why_not_told() -> str:
+        """Empty once both clients hold the addresses; else what kcadm said."""
+        container = keycloak_container(DOCKER)
+        if not container:
+            return f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak)"
+        for client_id, settings in clients.items():
+            found = kcadm(container, "get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
+            if found.returncode != 0:
+                return found.stderr.strip() or f"kcadm could not read the client {client_id}"
+            try:
+                ids = [c["id"] for c in json.loads(found.stdout)]
+            except (ValueError, TypeError, KeyError):
+                ids = []
+            if len(ids) != 1:
+                return f"the realm aisc has no single client {client_id}"
+            updated = kcadm(container, "update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-",
+                            stdin=json.dumps(settings))
+            if updated.returncode != 0:
+                return updated.stderr.strip() or f"kcadm could not update the client {client_id}"
+        return ""
+
+    for attempt in range(tries):
+        why = why_not_told()
+        if not why:
+            return
+        if attempt + 1 < tries:
+            time.sleep(wait_s)
+    raise Refused(f"AISC is running, but its sign-in could not be told the install's addresses: {why[-400:]}. "
+                  f"See why with: docker compose -p {PROJECT} logs keycloak. Run start again.")
 
 
 def not_running(lines: str) -> list[str]:
-    return [l for l in lines.splitlines() if l and not re.search(r"\t(Up|running|Exited \(0\))", l)]
+    return [line for line in lines.splitlines() if line and not re.search(r"\t(Up|running|Exited \(0\))", line)]
 
 
 def start(_args: list[str]) -> None:
@@ -742,23 +907,27 @@ def start(_args: list[str]) -> None:
        branch other than feat/unified-modules (master's files are older), submodules not checked out. Warns when
        the disk is nearly full.
     2. Makes the secrets (once, then it keeps them; run again after a pull).
-    3. Checks every port the stack publishes. On a new install served over plain http, a taken 80 or 443 moves
-       the engine to a free fallback (8080 ..., 8443 ...); the choice is kept in env.local and never changes on
-       its own. Any other taken port, or a taken one on an install that has run before, stops here, with the
-       command that shows which program holds it.
+    3. Checks every port the stack publishes. On an install not served over https, a taken browser port (the
+       engine's 80, the launcher's 8100, the dashboard's 8188, the sign-in's 8081) moves to a free fallback,
+       and its address with it; the choice is kept in env.local and tried first next time. Any other taken
+       port, or a taken browser port on an install served over https, stops here, with the command that shows
+       which program holds it.
     4. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
        network or a laptop short of memory usually passes the second time, and the cache keeps what was built.
     5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
-       ready, and a page opened then shows 502. Then names, as a warning, every one-shot service that exited
-       non-zero (plugin-publisher when a plugin did not build).
+       ready, and a page opened then shows 502. Then tells the sign-in (Keycloak) the install's addresses, which
+       its realm otherwise keeps from the first start. Then names, as a warning, every one-shot service that
+       exited non-zero (plugin-publisher when a plugin did not build).
     6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
-    Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
-    START_SIGN_IN_URL (Keycloak's realm page), START_MIN_DISK_GB (20)."""
+    Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
+    launcher's address in env.runtime), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
+    sign-in the addresses, START_MIN_DISK_GB (20)."""
+    global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
-    url = os.environ.get("START_URL", "http://localhost:8100/")
+    url = os.environ.get("START_URL") or effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/"
     min_disk_gb = int(os.environ.get("START_MIN_DISK_GB", "20"))
 
     # 1. The checkout and the machine
@@ -777,7 +946,7 @@ def start(_args: list[str]) -> None:
         raise Refused(f"this checkout is on '{branch or 'no branch'}', not {BRANCH}. Run: git checkout {BRANCH} && "
                       "git submodule update --init --recursive (or clone again: git -c core.autocrlf=false clone "
                       f"--recursive --branch {BRANCH} https://github.com/lux-ai-factory/aisc.git)")
-    missing = sum(1 for l in captured(["git", "submodule", "status"]).stdout.splitlines() if l.startswith("-"))
+    missing = sum(1 for line in captured(["git", "submodule", "status"]).stdout.splitlines() if line.startswith("-"))
     if missing:
         raise Refused(f"{missing} submodule(s) are not checked out. Run: git submodule update --init --recursive")
     free_gb = shutil.disk_usage(".").free // 2**30
@@ -793,17 +962,20 @@ def start(_args: list[str]) -> None:
     if config.returncode != 0:
         raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
     kept = read_local()
-    settings, problems = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
-                                      not served_over_https() and not has_data(), port_is_free)
+    settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
+                                             not served_over_https(), port_is_free)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
     existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     if local_lines(existing, settings) != existing:
         write_beside(LOCAL, text_of(local_lines(existing, settings)))
         write_runtime()
-    if settings["ENGINE_PORT"] != "80":
-        why = "Port 80 is taken on this computer, so" if "ENGINE_PORT" not in kept else "On this install,"
-        say(f"{why} steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
+    for line in moved:
+        say(line)
+    if moved:
+        say("If a port is held by something left from an earlier AISC run, restarting Docker frees it.")
+    elif "API_URL_EXTERNAL" in settings:
+        say(f"On this install, steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
 
     # 4. The images
     for attempt in (1, 2, 3):
@@ -817,9 +989,18 @@ def start(_args: list[str]) -> None:
             break
     else:
         raise Refused("the build failed three times. The first error above says why: often the network (pip, uv or "
-                      "npm timed out) or the disk. Fix it and run this again; what was built is kept.")
+                      "npm timed out) or the disk; what was built is kept.")
 
     # 5. Start, and wait for the sign-in page
+    # A failed attempt, finished by hand with `docker compose up`, leaves containers in state "created";
+    # they hold names and ports the next up needs, so they go first.
+    left = subprocess.run([*COMPOSE, "ps", "-a", "--status", "created", "--format", "{{.Service}}"],
+                          capture_output=True, text=True)
+    left_over = left.stdout.split() if left.returncode == 0 else []
+    if left_over:
+        say(f"Removing what an earlier attempt left unstarted: {' '.join(left_over)}")
+        subprocess.run([*COMPOSE, "rm", "-f", *left_over], capture_output=True)
+    STACK_BEING_STARTED = True
     say("Starting the stack ...")
     if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
         raise Refused("the stack did not start: see the error above.")
@@ -844,6 +1025,8 @@ def start(_args: list[str]) -> None:
                  f"{code or 'none'}), so the sign-in cannot be shown yet.")
             raise Refused(f"see why with: docker compose -p {PROJECT} logs keycloak")
         time.sleep(poll_s)
+    # The realm answers: now it can be told this install's addresses, which may have moved since it was imported
+    sync_sign_in()
 
     # A one-shot service (plugin-publisher, report-grants, the migrations) that exited non-zero: nothing waits on
     # some of them, so `up -d` went through and the sign-in answers without them.
@@ -855,7 +1038,7 @@ def start(_args: list[str]) -> None:
     # 6. The local controls every project catalogue gets (local_controls/), read by the platform's own code
     found = captured([*COMPOSE, "exec", "-T", "platform", "python", "-m", "platform_service.catalogue"])
     if found.returncode == 0:
-        controls = [l for l in found.stdout.splitlines() if l.strip()]
+        controls = [line for line in found.stdout.splitlines() if line.strip()]
         say(f"{len(controls)} local controls go into every project catalogue (local_controls/):",
             *("  " + c for c in controls))
     else:
@@ -886,7 +1069,13 @@ def main(argv: list[str]) -> int:
     try:
         COMMANDS[argv[0]](argv[1:])
     except Refused as refused:
-        warn(f"aisc.py {argv[0]}: {refused}" if argv[0] == "start" else str(refused))
+        if argv[0] == "start" and not STACK_BEING_STARTED:
+            # A refusal that is followed by a hand-run compose up leaves half-made containers behind. After `up`
+            # the refusals give their own advice, and "nothing was started" would no longer be true.
+            warn(f"aisc.py start: {str(refused).rstrip('.')}. Nothing was started. Fix this and run start again, not docker "
+                 "compose directly.")
+        else:
+            warn(f"aisc.py {argv[0]}: {refused}" if argv[0] == "start" else str(refused))
         return refused.code
     except OSError as failed:
         warn(f"aisc.py {argv[0]}: {failed.strerror or failed} ({failed.filename or 'a file here'}); the files "

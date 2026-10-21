@@ -6,12 +6,13 @@
 #   ./scripts/verify-llm-keys.sh [project-slug]
 #
 # Env:
-#   LAUNCHER_URL   default http://localhost:8100
+#   LAUNCHER_URL   default the install's launcher (env.runtime)
 #   AISC_COOKIE    optional: the Cookie header of a NON-admin session; never printed.
 #                  With it, the second check runs (a non-admin gets 403).
 set -euo pipefail
 
-LAUNCHER_URL=${LAUNCHER_URL:-http://localhost:8100}
+. "$(dirname "$0")/lib/install-addresses.sh"
+LAUNCHER_URL=${LAUNCHER_URL:-$VERIFY_BASE_URL}
 SLUG=${1:-}
 failed=0
 

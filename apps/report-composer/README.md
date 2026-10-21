@@ -117,18 +117,14 @@ library is still migrated, but no code reads or writes its table.
 
 The composer is three compose services of `docker-compose.development.yml`: `report-composer` (the
 app), `report-composer-migrate` (a one-shot that migrates the library and every project database
-before the app starts) and `report-renderer`. From the aisc repository root, once:
+before the app starts) and `report-renderer`. From the aisc repository root, bring up the whole stack:
 
 ```bash
-./scripts/secrets.sh
+uv run scripts/aisc.py start
 ```
 
-then bring up the whole stack:
-
-```bash
-docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \
-  -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d --build
-```
+To run Compose by hand instead, `uv run scripts/aisc.py secrets` prints the exact command for this install
+(an install served over https needs one more compose file than the others).
 
 Open a project on http://localhost:8100 and its "Compose the report" card, or
 http://localhost/report-composer/.

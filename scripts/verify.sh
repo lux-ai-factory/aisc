@@ -6,6 +6,9 @@
 #   ./scripts/verify.sh --modules    # only the module test suites
 #   ./scripts/verify.sh --superset-upgrade [image]  # only: do the plugin tiles still work on that Superset
 #                                    # (scripts/check-superset-upgrade.sh; starts throwaway containers)
+#   ./scripts/verify.sh --port-fallback [--take-down-running] [--keep]  # only: does a whole copy of AISC start
+#                                    # and sign in with its default ports taken (scripts/verify-port-fallback.sh;
+#                                    # builds and starts that copy, so it is not part of --stack)
 #
 # The checks against the running stack and the test runner of every module each
 # have their own invocation and their own idea of how to say "fine". This runs
@@ -21,6 +24,10 @@ pass=0; fail=0; skip=0
 if [ "$ONLY" = "--superset-upgrade" ]; then
   # no image: the check takes the stack's own (the FROM line of apps/results-dashboard/Dockerfile)
   exec scripts/check-superset-upgrade.sh ${2:+"$2"}
+fi
+if [ "$ONLY" = "--port-fallback" ]; then
+  shift
+  exec scripts/verify-port-fallback.sh "$@"
 fi
 line(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
 ok(){   printf '  \033[32m  ok\033[0m %s\n' "$1"; pass=$((pass+1)); }

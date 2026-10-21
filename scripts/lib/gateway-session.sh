@@ -10,12 +10,12 @@
 # for a given account signs in as that account and goes through the gateway, as the browser does; a token
 # of its own would be refused before the check is made.
 
-# the engine's address (VERIFY_APPS_URL): http://localhost, or the port this install moved to
-. "$(dirname "${BASH_SOURCE[0]}")/engine-address.sh"
+# the install's addresses (VERIFY_APPS_URL, VERIFY_BASE_URL, ...): the default ports, or where this install moved to
+. "$(dirname "${BASH_SOURCE[0]}")/install-addresses.sh"
 
 gateway_session() { # user password jar
   # A refused password shows Keycloak's form again, with 200 too: signed in means back on the launcher.
-  local launcher=${GATEWAY_LAUNCHER_URL:-http://localhost:8100/} page form landed
+  local launcher=${GATEWAY_LAUNCHER_URL:-$VERIFY_BASE_URL/} page form landed
   page=$(curl -s -c "$3" -b "$3" -L --max-time 25 "$launcher")
   form=$(printf '%s' "$page" | grep -oE 'action="[^"]+"' | head -1 | sed 's/action="//;s/"$//' | sed 's/&amp;/\&/g')
   [ -n "$form" ] || return 1

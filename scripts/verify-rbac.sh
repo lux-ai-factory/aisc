@@ -11,7 +11,8 @@
 # `admin` holds the realm's admin role; `user` holds primary-user and is an
 # ordinary account.
 set -uo pipefail
-KC=${KEYCLOAK_URL:-http://localhost:8081}
+. "$(dirname "$0")/lib/install-addresses.sh"
+KC=$KEYCLOAK_URL
 REALM=$KC/realms/aisc
 pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }

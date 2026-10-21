@@ -144,7 +144,9 @@ def test_update_with_the_public_catalogue_down_changes_nothing(client, as_user, 
 
 def test_the_reads_have_the_public_shapes(client, as_user, evidence_project, public, engine):
     assert choose(client, as_user, evidence_project, "private").status_code == 200
-    get = lambda tail: client.get(url(evidence_project, "/api/" + tail), headers=as_user(VERA)).json()
+    def get(tail):
+        return client.get(url(evidence_project, "/api/" + tail), headers=as_user(VERA)).json()
+
     detailed, plain = get("tool/?detailed=true"), get("tool/")
     public_detailed = set(SAMPLE["tool_detailed"][0])
     public_plain = set(SAMPLE["tool"][0])
@@ -218,7 +220,9 @@ def test_install_info_is_answered_from_the_stacks_own_index(client, as_user, evi
     """The public catalogue's install-info shape, but what decides is this stack's index: the newest
     release it serves, the pre-release only when nothing else is there."""
     assert choose(client, as_user, evidence_project, "private").status_code == 200
-    info = lambda slug: client.get(url(evidence_project, f"/api/tool/{slug}/install-info"), headers=as_user(VERA))
+    def info(slug):
+        return client.get(url(evidence_project, f"/api/tool/{slug}/install-info"), headers=as_user(VERA))
+
     r = info("langbite")
     assert r.status_code == 200, r.text
     assert r.json() == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.1",
@@ -342,7 +346,9 @@ def test_a_package_not_in_the_public_catalogue_is_a_local_entry(client, as_user,
 
 def test_an_admin_sets_a_local_entrys_dimensions(client, as_user, evidence_project, public, engine):
     assert choose(client, as_user, evidence_project, "private").status_code == 200
-    put = lambda body, who: client.put(url(evidence_project, "/local/my-probe/dimensions"), json=body, headers=who)
+    def put(body, who):
+        return client.put(url(evidence_project, "/local/my-probe/dimensions"), json=body, headers=who)
+
     assert put({"dimensions": ["REQ5"]}, as_user(ALICE)).status_code == 403
     assert put({"dimensions": ["REQ12"]}, admin(as_user)).status_code == 422
     assert put({"dimensions": ["REQ5", "REQ2"]}, admin(as_user)).status_code == 200

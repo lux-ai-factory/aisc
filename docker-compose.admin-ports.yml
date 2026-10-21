@@ -1,0 +1,20 @@
+# Added by aisc.py start when AISC_ADMIN_PORTS=on: the infrastructure published on this machine's loopback,
+# for tools on the host (psql, redis-cli, an S3 client, immuclient). The stack itself reaches them on the
+# compose network and no browser needs them, so by default they are not published and cannot be found taken.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  rabbitmq:
+    ports:
+      - "127.0.0.1:5672:5672"
+  minio:
+    ports:
+      - "127.0.0.1:9000:9000"
+  immudb:
+    ports:
+      # gRPC; the web console stays unpublished
+      - "127.0.0.1:3322:3322"

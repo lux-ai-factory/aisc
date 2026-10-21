@@ -39,4 +39,4 @@ def test_a_submodules_container_scripts_are_checked_out_with_lf(repo):
     assert files, f"{repo} has no scripts or Dockerfiles any more: take it off the list"
     out = subprocess.run(["git", "-C", str(ROOT / repo), "check-attr", "eol", "--", *files],
                          capture_output=True, text=True, check=True).stdout
-    assert [l for l in out.splitlines() if not l.endswith("eol: lf")] == []
+    assert [line for line in out.splitlines() if not line.endswith("eol: lf")] == []
