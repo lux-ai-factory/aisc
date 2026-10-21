@@ -85,6 +85,8 @@ SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
 PROJECT = os.environ.get("AISC_PROJECT", "aisc")
 COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
+NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
+             "service, then run this again.")
 #: the docker command start found on PATH (see find_docker); every docker call runs this one
 DOCKER = "docker"
 UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
@@ -646,13 +648,17 @@ def rotate_infra_password(args: list[str]) -> None:
     old = value_in(name, OUT)
     if not old:
         raise Refused(f"{name} is missing from {OUT}: run scripts/aisc.py secrets (scripts/secrets.sh) first")
+    # found once, on this process's PATH, before anything is asked or changed
+    docker_command = find_docker()
+    if docker_command is None:
+        raise Refused(NO_DOCKER)
     new = chosen_value(name) if mode == "--ask" else rand()
     env = {**os.environ, "OLD_VALUE": old, "NEW_VALUE": new}
 
     def docker(*argv: str, admin: str | None = None, realm: str = "", account: str = "", stdin: str | None = None):
         run_env = env if admin is None else {**env, "ADMIN_VALUE": admin, "REALM": realm, "ACCOUNT": account}
-        r = subprocess.run([find_docker() or DOCKER, *argv], env=run_env, input=stdin if stdin is not None else "", text=True,
-                           stdout=subprocess.DEVNULL)
+        r = subprocess.run([docker_command, *argv], env=run_env, input=stdin if stdin is not None else "",
+                           text=True, stdout=subprocess.DEVNULL)
         if r.returncode != 0:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
 
@@ -759,8 +765,7 @@ def start(_args: list[str]) -> None:
     global DOCKER
     found = find_docker()
     if found is None or captured([found, "info"]).returncode != 0:
-        raise Refused("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
-                      "service, then run this again.")
+        raise Refused(NO_DOCKER)
     DOCKER = COMPOSE[0] = found
     version = captured([DOCKER, "compose", "version", "--short"]).stdout.strip().lstrip("v")
     parts = re.match(r"(\d+)\.(\d+)", version)

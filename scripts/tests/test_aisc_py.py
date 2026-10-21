@@ -125,6 +125,18 @@ def test_the_realm_is_polled_on_keycloaks_local_port_whatever_its_public_address
     assert m.keycloak_realm_url() == "http://elsewhere/realms/aisc"
 
 
+def test_rotating_without_docker_on_the_path_is_refused_and_changes_nothing(tmp_path):
+    d = install(tmp_path)
+    assert run(d, "secrets").returncode == 0
+    before = (d / "env.secrets").read_text()
+    empty = tmp_path / "no-tools"
+    empty.mkdir()
+    r = run(d, "rotate-infra-password", "POSTGRES_PASSWORD", path=str(empty))
+    assert r.returncode != 0
+    assert "Docker is not running" in r.stderr
+    assert (d / "env.secrets").read_text() == before
+
+
 def test_an_unknown_command_shows_the_usage(tmp_path):
     r = run(install(tmp_path), "install")
     assert r.returncode == 2 and "start|secrets|password|rotate-infra-password" in r.stderr
