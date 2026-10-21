@@ -6,6 +6,10 @@ on:
   push:
     branches: [feat/unified-modules, main, master]
   pull_request:
+  # the port fallback check builds and starts a whole copy of AISC: too long for every push
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
 
 permissions:
   contents: read
@@ -123,3 +127,21 @@ jobs:
           [ -f requirements-dev.txt ] && dev="--with-requirements requirements-dev.txt"
           uv run --no-project --python 3.12 --with-requirements requirements.txt $dev \
             --with pytest --with httpx python -m pytest -q -p no:cacheprovider -p no:warnings
+
+  # A whole copy of AISC started with its default browser ports taken, then signed into on the ports it moved to
+  # (scripts/verify-port-fallback.sh). It builds every image, so it runs by hand and once a week, not on a push.
+  port-fallback:
+    name: port fallback
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      # the check clones this checkout and its submodules locally: full history, no shallow clones to copy
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git submodule update --init $PUBLIC_SUBMODULES
+      # every image of the stack is built: the runner's preinstalled toolchains make room for them
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+      - uses: astral-sh/setup-uv@v5
+      - run: scripts/verify-port-fallback.sh
