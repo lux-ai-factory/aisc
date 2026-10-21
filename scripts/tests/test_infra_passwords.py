@@ -115,6 +115,9 @@ def test_the_checks_read_the_accounts_passwords_from_env_secrets():
 FAKE_DOCKER = """#!/usr/bin/env bash
 { printf 'ARGV'; printf ' %q' "$@"; printf '\\n'; env | sed -n 's/^\\(NEW_VALUE\\|OLD_VALUE\\|ADMIN_VALUE\\)=/ENV \\1=/p'; } >> "$DOCKER_LOG"
 cat > /dev/null
+# this project's Keycloak container, as compose ps -q names it (FAKE_KEYCLOAK_ID="": none running)
+[[ "$*" == *" ps -q keycloak"* ]] && printf '%s\n' "${FAKE_KEYCLOAK_ID-kc-of-this-project}"
+exit 0
 """
 
 
@@ -216,3 +219,24 @@ def test_a_chosen_password_the_env_file_could_not_hold_is_refused(install, typed
     assert r.returncode == 2, r.stderr
     assert (root / "env.secrets").read_text() == before
     assert not (root / "docker.log").exists()
+
+
+def test_a_keycloak_password_is_set_in_this_project_s_keycloak_and_no_other(install):
+    """A second copy beside an install renames its containers: the bare name keycloak is the other install's."""
+    root, env = install
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", "AISC_USER_PASSWORD"], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    execs = [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+    assert len(execs) == 1 and " kc-of-this-project bash " in execs[0] and " keycloak bash " not in execs[0]
+
+
+def test_a_keycloak_password_is_not_changed_when_this_project_runs_no_keycloak(install):
+    root, env = install
+    before = (root / "env.secrets").read_text()
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", "AISC_USER_PASSWORD"], cwd=root,
+                       env={**env, "FAKE_KEYCLOAK_ID": ""}, capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "Keycloak" in r.stderr
+    assert (root / "env.secrets").read_text() == before
+    assert not [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]

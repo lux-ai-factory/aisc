@@ -558,6 +558,12 @@ def find_docker() -> str | None:
     return shutil.which("docker", path=os.environ.get("PATH"))
 
 
+def keycloak_container(docker_command: str) -> str:
+    """The id of this project's running Keycloak container, empty when it runs none. Not the name keycloak: a
+    second copy beside an install renames its containers, and that name is then the other install's."""
+    return captured([docker_command, *COMPOSE[1:], "ps", "-q", "keycloak"]).stdout.strip()
+
+
 def held_by_aisc() -> set[int]:
     """The host ports this install's own running containers publish: theirs, so not taken."""
     ports = captured([DOCKER, "ps", "--filter", f"label=com.docker.compose.project={PROJECT}",
@@ -727,7 +733,11 @@ def rotate_infra_password(args: list[str]) -> None:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
 
     def keycloak_set(admin: str, realm: str, account: str = "") -> None:
-        docker("exec", "-e", "ADMIN_VALUE", "-e", "NEW_VALUE", "-e", "REALM", "-e", "ACCOUNT", "keycloak",
+        container = keycloak_container(docker_command)
+        if not container:
+            raise Refused(f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak); "
+                          "nothing changed")
+        docker("exec", "-e", "ADMIN_VALUE", "-e", "NEW_VALUE", "-e", "REALM", "-e", "ACCOUNT", container,
                "bash", "-c", KCADM, admin=admin, realm=realm, account=account)
 
     if name == "POSTGRES_PASSWORD":
@@ -845,14 +855,17 @@ def sync_sign_in() -> None:
                               effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188")
     env = {**os.environ, "ADMIN_VALUE": value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")}
 
-    def kcadm(*argv: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return subprocess.run([DOCKER, "exec", "-i", "-e", "ADMIN_VALUE", "keycloak", "bash", "-c", KCADM_RUN,
+    def kcadm(container: str, *argv: str, stdin: str = "") -> subprocess.CompletedProcess:
+        return subprocess.run([DOCKER, "exec", "-i", "-e", "ADMIN_VALUE", container, "bash", "-c", KCADM_RUN,
                                "kcadm", *argv], env=env, input=stdin, capture_output=True, text=True)
 
     def why_not_told() -> str:
         """Empty once both clients hold the addresses; else what kcadm said."""
+        container = keycloak_container(DOCKER)
+        if not container:
+            return f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak)"
         for client_id, settings in clients.items():
-            found = kcadm("get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
+            found = kcadm(container, "get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
             if found.returncode != 0:
                 return found.stderr.strip() or f"kcadm could not read the client {client_id}"
             try:
@@ -861,7 +874,8 @@ def sync_sign_in() -> None:
                 ids = []
             if len(ids) != 1:
                 return f"the realm aisc has no single client {client_id}"
-            updated = kcadm("update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-", stdin=json.dumps(settings))
+            updated = kcadm(container, "update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-",
+                            stdin=json.dumps(settings))
             if updated.returncode != 0:
                 return updated.stderr.strip() or f"kcadm could not update the client {client_id}"
         return ""

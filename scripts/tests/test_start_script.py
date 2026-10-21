@@ -35,6 +35,8 @@ case "$1" in
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
       *" up "*) exit 0 ;;
+      *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
+        exit 0 ;;
       *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
@@ -361,7 +363,7 @@ def test_start_tells_the_sign_in_its_addresses_after_the_stack_is_up(scratch):
     assert r.returncode == 0, r.stdout + r.stderr
     log = calls(scratch)
     up = next(i for i, c in enumerate(log) if " up " in c)
-    told = [i for i, c in enumerate(log) if c.startswith("exec ") and " keycloak " in c]
+    told = [i for i, c in enumerate(log) if c.startswith("exec ") and " kc-of-this-project " in c]
     assert told and min(told) > up
     sent = (scratch / "exec-input").read_text()
     assert "http://localhost:8090/oauth2/callback" in sent and "http://localhost:8090/*" in sent
@@ -378,4 +380,22 @@ def test_start_stops_when_the_sign_in_cannot_be_told(scratch):
     assert r.returncode == 1
     assert "could not be told" in r.stderr
     assert "AISC is up" not in r.stdout
-    assert len([c for c in calls(scratch) if c.startswith("exec ") and " keycloak " in c]) == 2
+    assert len([c for c in calls(scratch) if c.startswith("exec ") and " kc-of-this-project " in c]) == 2
+
+
+def test_start_tells_this_project_s_keycloak_and_no_other(scratch):
+    """A second copy beside an install (AISC_PROJECT and an override that renames its containers) must never
+    tell the first one's Keycloak its addresses: the container is the one compose runs for this project."""
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    execs = [c for c in calls(scratch) if c.startswith("exec ")]
+    assert execs and all(" kc-of-this-project bash " in c for c in execs)
+    assert not [c for c in execs if " keycloak bash " in c]
+
+
+def test_start_stops_when_this_project_runs_no_keycloak(scratch):
+    (scratch / "keycloak-id").write_text("")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1
+    assert "could not be told" in r.stderr and "AISC is up" not in r.stdout
+    assert not [c for c in calls(scratch) if c.startswith("exec ")]
