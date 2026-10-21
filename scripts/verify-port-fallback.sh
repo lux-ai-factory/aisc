@@ -3,7 +3,7 @@
 #
 #   ./scripts/verify-port-fallback.sh                       # refuses while an AISC stack is on this machine
 #   ./scripts/verify-port-fallback.sh --take-down-running   # takes that stack down (data kept), back at the end
-#   ./scripts/verify-port-fallback.sh --keep                # leaves the copy up to walk through its pages
+#   ./scripts/verify-port-fallback.sh --keep                # leaves the copy up as the last scenario left it, every port moved
 #   ./scripts/verify-port-fallback.sh --dry-run             # prints what it would do, changes nothing
 #   ./scripts/verify-port-fallback.sh --clean-up <folder>   # removes a copy kept with --keep
 #
@@ -179,7 +179,7 @@ if [ "$DRY_RUN" = 1 ]; then
     moves to 8090 and the signed-in checks pass again
   leftover of a failed attempt: the copy down, one service only created, start; it is cleared and AISC is up
   clean up: the copy down -v (project aisc-ports), the stand-ins, the :ports images, the temporary folder$( \
-    [ -n "$TAKE_DOWN_LIST" ] && printf ', then the stack taken down started again')
+    [ -n "$TAKE_DOWN_LIST" ] && printf ', then the stack taken down brought back as it ran (up -d --no-build)')
 EOF
   exit 0
 fi
@@ -189,11 +189,16 @@ CLONE=$WORK/aisc
 on_exit() {
   local code=$?
   if [ "$KEEP" = 1 ] && [ -f "$CLONE/env.local" ]; then
-    local launcher
-    launcher=$(sed -n 's/^LAUNCHER_EXTERNAL_URL=//p' "$CLONE/env.runtime" 2>/dev/null | tail -1)
+    local setting what
     echo
-    echo "The copy is still up: open ${launcher:-its launcher} and sign in as admin (the password is"
-    echo "AISC_ADMIN_PASSWORD in $CLONE/env.secrets). Remove it, and bring back a stack this check took down, with:"
+    echo "The copy is still up, as the last scenario left it: every browser port moved (the engine twice)."
+    for setting in "LAUNCHER_EXTERNAL_URL|the launcher" "API_URL_EXTERNAL|steps 1, 2 and 4" \
+                   "DASHBOARD_EXTERNAL_URL|the dashboard" "KEYCLOAK_URL_EXTERNAL|the sign-in"; do
+      what=${setting#*|}; setting=${setting%%|*}
+      echo "  $what: $(sed -n "s/^$setting=//p" "$CLONE/env.runtime" 2>/dev/null | tail -1)"
+    done
+    echo "Sign in as admin (the password is AISC_ADMIN_PASSWORD in $CLONE/env.secrets)."
+    echo "Remove it, and bring back a stack this check took down, with:"
     echo "  bash $ROOT/scripts/verify-port-fallback.sh --clean-up $WORK"
   else
     clean_up "$WORK"

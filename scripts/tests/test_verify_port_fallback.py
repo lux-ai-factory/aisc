@@ -221,3 +221,16 @@ def test_the_check_runs_in_its_own_workflow_by_hand_and_weekly():
     assert set(triggers) == {"schedule", "workflow_dispatch"}
     runs = [step.get("run", "") for job in jobs.values() for step in job["steps"]]
     assert any("scripts/verify-port-fallback.sh" in run for run in runs)
+
+
+def test_keep_says_the_copy_is_kept_as_the_last_scenario_left_it():
+    """The copy kept is the one the last scenario left, on moved ports (the engine moved twice): the help and the
+    message at the end say so, give every address, and the exact command that removes it."""
+    r = subprocess.run(["bash", str(SCRIPT), "--help"], capture_output=True, text=True, timeout=30)
+    keep = next(line for line in r.stdout.splitlines() if "--keep" in line)
+    assert "last scenario" in keep and "moved" in keep, keep
+    body = _function(SCRIPT.read_text(), "on_exit")
+    assert "last scenario" in body
+    for setting in ("API_URL_EXTERNAL", "LAUNCHER_EXTERNAL_URL", "DASHBOARD_EXTERNAL_URL", "KEYCLOAK_URL_EXTERNAL"):
+        assert setting in body, setting
+    assert "verify-port-fallback.sh --clean-up $WORK" in body
