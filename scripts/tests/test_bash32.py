@@ -113,7 +113,8 @@ def test_start_sh_runs_under_bash_3_2(tmp_path, tools_image):
     (tmp_path / "build-failures").write_text("1")
     r = bash32(tmp_path, "scripts/start.sh", tools_image,
                env={"PATH": "/w/shims:/usr/local/bin:/usr/bin:/bin", "START_WAIT_S": "6", "START_POLL_S": "0",
-                    "START_MIN_DISK_GB": "0", "START_URL": f"http://127.0.0.1:{page.server_address[1]}/"})
+                    "START_MIN_DISK_GB": "0", "START_URL": f"http://127.0.0.1:{page.server_address[1]}/",
+                    "START_SIGN_IN_URL": f"http://127.0.0.1:{page.server_address[1]}/realms/aisc"})
     page.shutdown()
     assert "version 3.2" in r.stdout, r.stdout + r.stderr
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]

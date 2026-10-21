@@ -72,7 +72,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: >-
           uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider
-          scripts/tests/test_aisc_py.py scripts/tests/test_windows_names.py scripts/tests/test_line_endings.py
+          scripts/tests/test_aisc_py.py scripts/tests/test_busy_ports.py scripts/tests/test_windows_names.py
+          scripts/tests/test_line_endings.py
 
   node:
     name: ${{ matrix.app }}

@@ -13,6 +13,7 @@ scripts/guard-frozen.sh, scripts/test-pipeline-chain.sh and scripts/lib/; others
 import importlib.util
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,8 @@ def aisc_py():
     """scripts/aisc.py as a module: its list of secrets, the kind of value each takes, what --rotate keeps."""
     spec = importlib.util.spec_from_file_location("aisc_install", ROOT / "scripts/aisc.py")
     module = importlib.util.module_from_spec(spec)
+    # registered before it runs, as an import would: a dataclass looks its own module up while it is made
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

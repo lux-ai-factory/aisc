@@ -237,17 +237,19 @@ def test_a_taken_port_stops_start_before_anything_is_built(scratch):
     assert not [c for c in calls(scratch) if " build" in c]
 
 
-#: what `docker ps` shows when this install's own Caddy holds the engine's ports
-OWN_ENGINE_PORTS = "0.0.0.0:80->8005/tcp, 0.0.0.0:443->8005/tcp\n"
+#: what `docker ps` shows when this install's own Caddy and Keycloak hold the four browser ports
+OWN_BROWSER_PORTS = ("0.0.0.0:80->8005/tcp, 0.0.0.0:8100->8006/tcp, 0.0.0.0:8188->8008/tcp\n"
+                     "127.0.0.1:8081->8080/tcp\n")
 
 
-def test_start_keeps_the_engine_settings_it_chose(scratch):
-    """env.local holds the engine's ports, and compose reads them through env.runtime."""
-    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)   # whatever holds 80 and 443 on the test machine
+def test_start_keeps_the_browser_ports_it_chose(scratch):
+    """env.local holds the four browser ports, and compose reads them through env.runtime."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)   # whatever holds them on the test machine
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     local = (scratch / "env.local").read_text().splitlines()
-    assert local == ["ENGINE_PORT=80", "ENGINE_HTTPS_PORT=443"]
+    assert local == ["ENGINE_PORT=80", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
+                     "KEYCLOAK_PORT_EXTERNAL=8081"]
     assert (scratch / "env.runtime").read_text().splitlines()[-len(local):] == local
 
 
@@ -257,7 +259,7 @@ def test_start_keeps_an_https_install_s_own_engine_address(scratch):
     settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
     settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
     (scratch / "env.plugin_downloader").write_text(settings)
-    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     engine = [line for line in (scratch / "env.runtime").read_text().splitlines() if line.startswith("API_URL_EXTERNAL=")]
@@ -265,7 +267,7 @@ def test_start_keeps_an_https_install_s_own_engine_address(scratch):
 
 
 def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
-    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "sign in as admin / admin" in r.stdout
@@ -273,7 +275,7 @@ def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
 
 def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
     """Passwords generated (https) or changed (rotate-infra-password): admin / admin would be refused."""
-    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     assert run(scratch).returncode == 0
     secrets = (scratch / "env.secrets").read_text()
     secrets = secrets.replace("AISC_ADMIN_PASSWORD=admin\n", "AISC_ADMIN_PASSWORD=Zq8-changed-by-its-admin\n")
@@ -286,18 +288,39 @@ def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
 
 def test_a_quoted_port_kept_in_env_local_is_honoured(scratch):
     """A person editing env.local may quote a value, as the other env files do."""
-    (scratch / "env.local").write_text('ENGINE_PORT="8090"\nENGINE_HTTPS_PORT="8453"\n')
+    (scratch / "env.local").write_text('ENGINE_PORT="8090"\nHOMEPAGE_PORT_EXTERNAL="8100"\n')
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "Traceback" not in r.stderr
     local = (scratch / "env.local").read_text().splitlines()
-    assert "ENGINE_PORT=8090" in local and "ENGINE_HTTPS_PORT=8453" in local
+    assert "ENGINE_PORT=8090" in local and "HOMEPAGE_PORT_EXTERNAL=8100" in local
 
 
 def test_what_a_person_added_to_env_local_survives_a_start(scratch):
     (scratch / "env.local").write_text("# my note\nENGINE_PORT=8090\nMY_SETTING=x\nENGINE_HTTPS_PORT=8453\n")
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert (scratch / "env.local").read_text().splitlines() == [
         "# my note", "ENGINE_PORT=8090", "MY_SETTING=x", "ENGINE_HTTPS_PORT=8453",
-        "API_URL_EXTERNAL=http://localhost:8090"]
+        "API_URL_EXTERNAL=http://localhost:8090", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
+        "KEYCLOAK_PORT_EXTERNAL=8081"]
+
+
+def test_a_moved_port_is_announced_with_what_frees_a_leftover(scratch):
+    """The launcher's kept port is now held by another program: it moves (here back to 8100, which this
+    install's own stand-in holds), and start says so once, with what frees a port an earlier run left held."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    with socket.socket() as held:
+        held.bind(("0.0.0.0", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n"
+                                           f"LAUNCHER_EXTERNAL_URL=http://localhost:{port}/\n")
+        r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"Port {port} is taken" in r.stdout and "http://localhost:8100/" in r.stdout
+    assert r.stdout.count("restarting Docker frees it") == 1
+    local = (scratch / "env.local").read_text().splitlines()
+    assert "HOMEPAGE_PORT_EXTERNAL=8100" in local and not [line for line in local if "LAUNCHER" in line]

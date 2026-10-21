@@ -68,6 +68,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -77,10 +78,33 @@ OUT = "env.secrets"
 COMBINED = "env.runtime"   # what compose is pointed at: the settings plus the secrets
 TRACKED = "env.plugin_downloader"
 LOCAL = "env.local"         # this install's own settings, chosen by start (git-ignored)
-#: the engine's ports: the one it prefers, then the ones a new install moves to when that one is taken
-ENGINE_PORTS: dict[str, tuple[int, tuple[int, ...]]] = {"ENGINE_PORT": (80, (8080, 8090, 8000, 8880, 8888)),
-                                                       "ENGINE_HTTPS_PORT": (443, (8443, 8453, 9443))}
 SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
+
+
+@dataclass(frozen=True)
+class BrowserPort:
+    """A port the browser reaches the install on: the setting compose publishes it through, the service and
+    container port behind it, the host port it prefers, the ones it moves to when that one is taken, the
+    setting that holds its address, and the host address Docker publishes it on."""
+    variable: str
+    service: str
+    target: int
+    preferred: int
+    fallbacks: tuple[int, ...]
+    address: str | None
+    host: str
+
+
+#: every port the browser reaches; no fallback is listed twice or is another one's preferred port
+BROWSER_PORTS: tuple[BrowserPort, ...] = (
+    BrowserPort("ENGINE_PORT", "caddy", 8005, 80, (8080, 8090, 8000, 8880, 8888), "API_URL_EXTERNAL", "0.0.0.0"),
+    BrowserPort("HOMEPAGE_PORT_EXTERNAL", "caddy", 8006, 8100, (8110, 8120, 8130), "LAUNCHER_EXTERNAL_URL", "0.0.0.0"),
+    BrowserPort("DASHBOARD_PORT_EXTERNAL", "caddy", 8008, 8188, (8198, 8288, 8388), "DASHBOARD_EXTERNAL_URL",
+                "0.0.0.0"),
+    BrowserPort("KEYCLOAK_PORT_EXTERNAL", "keycloak", 8080, 8081, (8091, 8181, 8281), "KEYCLOAK_URL_EXTERNAL",
+                "127.0.0.1"),
+)
+
 #: the Compose project: aisc, unless AISC_PROJECT names another (a second copy beside an install's data)
 PROJECT = os.environ.get("AISC_PROJECT", "aisc")
 COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
@@ -467,7 +491,7 @@ def read_local() -> dict[str, str]:
 def local_lines(existing: list[str], settings: dict[str, str]) -> list[str]:
     """env.local's lines with the settings start manages set: each in the place it already has, the new ones
     after the rest. Every other line (a note, a setting a person added) stays as it is, and in its place."""
-    managed = {*ENGINE_PORTS, "API_URL_EXTERNAL"}
+    managed = {name for port in BROWSER_PORTS for name in (port.variable, port.address) if name}
     out, done = [], set()
     for line in existing:
         name = line.partition("=")[0].strip()
@@ -484,19 +508,19 @@ def choose_port(preferred: int, fallbacks: tuple[int, ...], is_free: Callable[[i
     return next((p for p in (preferred, *fallbacks) if is_free(p)), None)
 
 
-def engine_settings(port: int, https_port: int) -> dict[str, str]:
-    """What the engine's ports change: compose publishes them. Only a moved engine gets an address here: on
-    port 80 the install's own API_URL_EXTERNAL stands (an https or other-host install sets it itself)."""
-    settings = {"ENGINE_PORT": str(port), "ENGINE_HTTPS_PORT": str(https_port)}
-    if port != 80:
-        settings["API_URL_EXTERNAL"] = f"http://localhost:{port}"
-    return settings
+def address_of(port: BrowserPort, number: int) -> str:
+    """The address a browser on this machine reaches a port on. Browsers send the Origin of
+    http://localhost:80 as http://localhost, so 80 is left out; the launcher's ends with a slash, as
+    LAUNCHER_EXTERNAL_URL always has."""
+    address = "http://localhost" + ("" if number == 80 else f":{number}")
+    return address + "/" if port.address == "LAUNCHER_EXTERNAL_URL" else address
 
 
-def published_ports(config: dict) -> list[tuple[str, int, int]]:
-    """(address, published port, container port) of every port a `docker compose config --format json` publishes."""
-    return [(p.get("host_ip") or "0.0.0.0", int(p["published"]), int(p["target"]))
-            for service in config.get("services", {}).values() for p in service.get("ports") or []
+def published_ports(config: dict) -> list[tuple[str, str, int, int]]:
+    """(service, address, published port, container port) of every port a `docker compose config --format json`
+    publishes."""
+    return [(name, p.get("host_ip") or "0.0.0.0", int(p["published"]), int(p["target"]))
+            for name, service in config.get("services", {}).items() for p in service.get("ports") or []
             if p.get("published")]
 
 
@@ -514,51 +538,62 @@ def held_by_aisc() -> set[int]:
     return {int(p) for p in re.findall(r":(\d+)->", ports)}
 
 
-def has_data() -> bool:
-    """Whether this install has run before: its database volume exists, and with it a sign-in set up for the
-    engine's address."""
-    return captured([DOCKER, "volume", "inspect", f"{PROJECT}_postgres_data"]).returncode == 0
-
-
 def who_holds(port: int) -> str:
     """The command that shows which program holds a port, on this system."""
     return f"netstat -ano | findstr :{port}" if os.name == "nt" else f"sudo lsof -i :{port}"
 
 
-def settle_ports(published: list[tuple[str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
-                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str]]:
-    """The engine's settings for env.local, and one problem per port that stops the start.
+def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
+                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str], list[str]]:
+    """The browser ports' settings for env.local, one problem per port that stops the start, and one line per
+    port that moved this start.
 
-    The engine's ports are Caddy's (container port 8005): the ones this install kept, else 80 and 443. When one
-    is taken, an install with no data yet (may_move) moves to the first free fallback, also off a port it kept
-    from a start that never got as far as the sign-in; one that has run before must not, since its sign-in
-    knows only its address. Every other published port is checked
-    as it is. A port this install's own containers hold is not taken."""
+    Each browser port is tried on the port this install kept, else its preferred one. When that is taken, an
+    install not served over https (may_move) moves to the first free one of its preferred port and fallbacks:
+    start tells the sign-in the install's addresses, so data is no reason to stay. One served over https must
+    not, since its public names lead to the ports it has. A port picked for one role is never offered to the
+    next. A port that is not at its preferred one gets its address written too; at its preferred one the
+    install's own address stands (an https or other-host install sets it itself). Every other published port is
+    checked as it is. A port this install's own containers hold is not taken."""
+    picked: set[int] = set()
+
     def free(port: int, host: str = "0.0.0.0") -> bool:
-        return port in held or is_free(port, host)
+        return port not in picked and (port in held or is_free(port, host))
 
-    problems, chosen = [], {}
-    for name, (preferred, fallbacks) in ENGINE_PORTS.items():
-        port = int(kept[name]) if name in kept else preferred
-        if free(port):
-            chosen[name] = port
+    settings: dict[str, str] = {}
+    problems, moved = [], []
+    for role in BROWSER_PORTS:
+        first = int(kept[role.variable]) if role.variable in kept else role.preferred
+        if free(first, role.host):
+            chosen = first
         elif not may_move:
-            problems.append(f"Port {port} is taken, and this install's sign-in is set up for it. Stop the program "
-                            f"that holds it (see which with: {who_holds(port)}).")
+            chosen = None
+            problems.append(f"Port {first} is taken, and an install served over https does not move to another "
+                            f"port. Stop the program that holds it (see which with: {who_holds(first)}).")
         else:
-            moved = choose_port(preferred, fallbacks, free)
-            if moved is None:
-                tried = ", ".join(str(p) for p in (preferred, *fallbacks))
+            chosen = choose_port(role.preferred, role.fallbacks, lambda p, host=role.host: free(p, host))
+            if chosen is None:
+                tried = ", ".join(str(p) for p in (role.preferred, *role.fallbacks))
                 problems.append(f"Ports {tried} are all taken. Free one of them (see which program holds one "
-                                f"with: {who_holds(preferred)}).")
+                                f"with: {who_holds(role.preferred)}).")
             else:
-                chosen[name] = moved
-    for host, port, target in published:
-        if target != 8005 and not free(port, host):
+                moved.append(f"Port {first} is taken on this computer, so AISC uses {address_of(role, chosen)} "
+                             f"instead ({role.variable}={chosen}, kept in {LOCAL}).")
+        if chosen is not None:
+            picked.add(chosen)
+            settings[role.variable] = str(chosen)
+            if chosen != role.preferred and role.address:
+                settings[role.address] = address_of(role, chosen)
+    for service, host, port, target in published:
+        # a browser port is published through its variable, on one of its own candidates; the engine's
+        # https port (443) is Caddy's 8005 too, but no browser port moves there, so it is checked as it is
+        role = next((r for r in BROWSER_PORTS if (r.service, r.target) == (service, target)), None)
+        if role and port in {role.preferred, *role.fallbacks, int(kept.get(role.variable, role.preferred))}:
+            continue
+        if not free(port, host):
             problems.append(f"Port {port} is taken. Stop the program that holds it (see which with: "
                             f"{who_holds(port)}).")
-    settings = engine_settings(chosen["ENGINE_PORT"], chosen["ENGINE_HTTPS_PORT"]) if len(chosen) == 2 else {}
-    return settings, problems
+    return settings, problems, moved
 
 
 def make_secrets(args: list[str]) -> None:
@@ -742,10 +777,11 @@ def start(_args: list[str]) -> None:
        branch other than feat/unified-modules (master's files are older), submodules not checked out. Warns when
        the disk is nearly full.
     2. Makes the secrets (once, then it keeps them; run again after a pull).
-    3. Checks every port the stack publishes. On a new install served over plain http, a taken 80 or 443 moves
-       the engine to a free fallback (8080 ..., 8443 ...); the choice is kept in env.local and never changes on
-       its own. Any other taken port, or a taken one on an install that has run before, stops here, with the
-       command that shows which program holds it.
+    3. Checks every port the stack publishes. On an install not served over https, a taken browser port (the
+       engine's 80, the launcher's 8100, the dashboard's 8188, the sign-in's 8081) moves to a free fallback,
+       and its address with it; the choice is kept in env.local and tried first next time. Any other taken
+       port, or a taken browser port on an install served over https, stops here, with the command that shows
+       which program holds it.
     4. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
        network or a laptop short of memory usually passes the second time, and the cache keeps what was built.
     5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
@@ -793,17 +829,20 @@ def start(_args: list[str]) -> None:
     if config.returncode != 0:
         raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
     kept = read_local()
-    settings, problems = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
-                                      not served_over_https() and not has_data(), port_is_free)
+    settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
+                                             not served_over_https(), port_is_free)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
     existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     if local_lines(existing, settings) != existing:
         write_beside(LOCAL, text_of(local_lines(existing, settings)))
         write_runtime()
-    if settings["ENGINE_PORT"] != "80":
-        why = "Port 80 is taken on this computer, so" if "ENGINE_PORT" not in kept else "On this install,"
-        say(f"{why} steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
+    for line in moved:
+        say(line)
+    if moved:
+        say("If a port is held by something left from an earlier AISC run, restarting Docker frees it.")
+    elif settings["ENGINE_PORT"] != "80":
+        say(f"On this install, steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
 
     # 4. The images
     for attempt in (1, 2, 3):
