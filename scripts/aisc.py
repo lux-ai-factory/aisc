@@ -711,17 +711,18 @@ def answer_of(url: str) -> int | None:
 
 
 def keycloak_realm_url() -> str:
-    """The realm's own page, at the address compose gives Keycloak (the last KEYCLOAK_URL_EXTERNAL line of
-    env.runtime, as compose takes it), or START_SIGN_IN_URL."""
+    """The realm's own page on Keycloak's published port on this machine (the last KEYCLOAK_PORT_EXTERNAL line
+    of env.runtime, else 8081), or START_SIGN_IN_URL. Not its public address: an https or other-host install's
+    name may not resolve from here (hairpin NAT, a self-signed certificate) though the install is healthy."""
     given = os.environ.get("START_SIGN_IN_URL")
     if given:
         return given
-    address = "http://localhost:8081"
+    port = "8081"
     if Path(COMBINED).is_file():
         for line in lines_of(COMBINED):
-            if line.startswith("KEYCLOAK_URL_EXTERNAL="):
-                address = line.split("=", 1)[1].strip().strip("'\"") or address
-    return address.rstrip("/") + "/realms/aisc"
+            if line.startswith("KEYCLOAK_PORT_EXTERNAL="):
+                port = line.split("=", 1)[1].strip().strip("'\"") or port
+    return f"http://localhost:{port}/realms/aisc"
 
 
 def not_running(lines: str) -> list[str]:

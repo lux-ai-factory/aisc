@@ -173,19 +173,6 @@ def test_a_realm_that_never_answers_gives_a_warning_naming_keycloak_and_no_aisc_
     assert "Keycloak" in r.stderr and "AISC is up" not in r.stdout
 
 
-def test_the_realm_page_is_found_through_the_address_compose_gives_keycloak(scratch):
-    """Without START_SIGN_IN_URL: the last KEYCLOAK_URL_EXTERNAL of env.runtime, quotes stripped."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    settings = (scratch / "env.plugin_downloader").read_text()
-    (scratch / "env.plugin_downloader").write_text(
-        settings.replace('KEYCLOAK_URL_EXTERNAL="http://localhost:8081"',
-                         f'KEYCLOAK_URL_EXTERNAL="http://127.0.0.1:{port}"'))
-    r = run(scratch, START_SIGN_IN_URL="", START_WAIT_S="1")
-    assert f"http://127.0.0.1:{port}/realms/aisc" in r.stderr + r.stdout
-
-
 @pytest.mark.parametrize("setup, says", [
     (lambda d: (d / "branch").write_text("master\n"), "feat/unified-modules"),
     (lambda d: (d / "submodules").write_text("-1a2b3c apps/backend\n"), "git submodule update --init --recursive"),

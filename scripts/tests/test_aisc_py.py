@@ -110,6 +110,21 @@ def test_docker_is_looked_for_on_the_path_this_process_has(tmp_path, monkeypatch
     assert os.path.samefile(aisc_py().find_docker(), fake / name)
 
 
+def test_the_realm_is_polled_on_keycloaks_local_port_whatever_its_public_address(tmp_path, monkeypatch):
+    """An https or other-host install's public name may not resolve from the machine running start (hairpin
+    NAT, a self-signed certificate), so the wait uses Keycloak's own published port on this machine."""
+    m = aisc_py()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("START_SIGN_IN_URL", raising=False)
+    (tmp_path / "env.runtime").write_text('KEYCLOAK_URL_EXTERNAL="https://aisc.example.org"\n')
+    assert m.keycloak_realm_url() == "http://localhost:8081/realms/aisc"
+    (tmp_path / "env.runtime").write_text('KEYCLOAK_PORT_EXTERNAL=8090\nKEYCLOAK_URL_EXTERNAL="https://x.org"\n'
+                                          'KEYCLOAK_PORT_EXTERNAL="8091"\n')
+    assert m.keycloak_realm_url() == "http://localhost:8091/realms/aisc"
+    monkeypatch.setenv("START_SIGN_IN_URL", "http://elsewhere/realms/aisc")
+    assert m.keycloak_realm_url() == "http://elsewhere/realms/aisc"
+
+
 def test_an_unknown_command_shows_the_usage(tmp_path):
     r = run(install(tmp_path), "install")
     assert r.returncode == 2 and "start|secrets|password|rotate-infra-password" in r.stderr
