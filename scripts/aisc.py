@@ -917,12 +917,12 @@ def start(_args: list[str]) -> None:
     6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
-    Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
-    START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
+    Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
+    launcher's address in env.runtime), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
     sign-in the addresses, START_MIN_DISK_GB (20)."""
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
-    url = os.environ.get("START_URL", "http://localhost:8100/")
+    url = os.environ.get("START_URL") or effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/"
     min_disk_gb = int(os.environ.get("START_MIN_DISK_GB", "20"))
 
     # 1. The checkout and the machine
