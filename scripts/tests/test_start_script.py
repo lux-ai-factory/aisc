@@ -232,3 +232,23 @@ def test_start_keeps_an_https_install_s_own_engine_address(scratch):
     assert r.returncode == 0, r.stdout + r.stderr
     engine = [l for l in (scratch / "env.runtime").read_text().splitlines() if l.startswith("API_URL_EXTERNAL=")]
     assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
+
+
+def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "sign in as admin / admin" in r.stdout
+
+
+def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
+    """Passwords generated (https) or changed (rotate-infra-password): admin / admin would be refused."""
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    assert run(scratch).returncode == 0
+    secrets = (scratch / "env.secrets").read_text()
+    secrets = secrets.replace("AISC_ADMIN_PASSWORD=admin\n", "AISC_ADMIN_PASSWORD=Zq8-changed-by-its-admin\n")
+    (scratch / "env.secrets").write_text(secrets)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "admin / admin" not in r.stdout
+    assert "uv run scripts/aisc.py password" in r.stdout

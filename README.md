@@ -168,10 +168,11 @@ your passwords.
 ## Open AISC
 
 1. Open <http://localhost:8100> in your browser.
-2. Sign in as `admin` / `admin`. A second account, `user` / `user`, has ordinary rights.
-   These simple passwords are safe here because the sign-in only works from your own computer. An install
-   served to others over https gets generated passwords instead, kept as `AISC_ADMIN_PASSWORD` and
-   `AISC_USER_PASSWORD` in `env.secrets`; show them with `uv run scripts/aisc.py password`.
+2. Sign in with the account named in the last message of `start`. On a new install that is `admin` / `admin`
+   (a second account, `user` / `user`, has ordinary rights). These simple passwords are safe here because the
+   sign-in only works from your own computer. An install served to others over https gets generated
+   passwords instead, and `rotate-infra-password` changes them; both are kept as `AISC_ADMIN_PASSWORD` and
+   `AISC_USER_PASSWORD` in `env.secrets`. Show them with `uv run scripts/aisc.py password`.
 3. Click **Create project** and give the project a name.
 4. Work through the four steps on the project page. Each card has an **Open** link.
 

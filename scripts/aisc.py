@@ -779,10 +779,15 @@ def start(_args: list[str]) -> None:
         say("Warning: the local controls could not be read; catalogues get the public entries only.",
             f"See why with: docker compose -p {PROJECT} logs platform")
 
+    # the sign-in that works on this install: admin / admin only while the password still is admin (a new local
+    # install); generated (https) or changed (rotate-infra-password) ones are this install's own
+    if value_in("AISC_ADMIN_PASSWORD", OUT).strip("'\"") == "admin":
+        sign_in = ["sign in as admin / admin (user / user is an ordinary account)."]
+    else:
+        sign_in = ["sign in as admin with this install's own password. Show it, and the ordinary account user's, with:",
+                   "  uv run scripts/aisc.py password   (AISC_ADMIN_PASSWORD and AISC_USER_PASSWORD in env.secrets)"]
     say("",
-        f"AISC is up: open {url.rstrip('/')} and sign in as admin / admin (user / user is an ordinary account).",
-        "Served over https, the passwords were generated for this install instead; read them with:",
-        "  uv run scripts/aisc.py password   (they are AISC_ADMIN_PASSWORD and AISC_USER_PASSWORD in env.secrets)",
+        f"AISC is up: open {url.rstrip('/')} and {sign_in[0]}", *sign_in[1:],
         "If you installed AISC before on this machine, use a private window (an old session cookie is refused).")
 
 

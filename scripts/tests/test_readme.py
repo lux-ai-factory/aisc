@@ -98,3 +98,9 @@ def test_the_guide_names_the_engine_port_settings():
     guide = (ROOT / "docs/guide.md").read_text()
     for name in ("ENGINE_PORT", "ENGINE_HTTPS_PORT", "env.local"):
         assert name in guide, name
+
+
+def test_the_readme_says_admin_admin_holds_only_until_the_passwords_change():
+    sign_in = section("Open AISC")
+    assert "admin" in sign_in and "uv run scripts/aisc.py password" in sign_in
+    assert "rotate-infra-password" in sign_in and "last message" in sign_in
