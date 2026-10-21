@@ -706,18 +706,18 @@
       "description": "the client for the django powered backend supported frontend aisc",
       "rootUrl": "",
       "adminUrl": "",
-      "baseUrl": "http://localhost",
+      "baseUrl": "${API_URL_EXTERNAL}",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
         "http://localhost:5173/*",
-        "http://localhost/*"
+        "${API_URL_EXTERNAL}/*"
       ],
       "webOrigins": [
         "http://localhost:5173",
-        "http://localhost"
+        "${API_URL_EXTERNAL}"
       ],
       "notBefore": 0,
       "bearerOnly": false,
@@ -929,17 +929,17 @@
       "serviceAccountsEnabled": false,
       "secret": "${GATEWAY_CLIENT_SECRET}",
       "redirectUris": [
-        "http://localhost/oauth2/callback",
+        "${API_URL_EXTERNAL}/oauth2/callback",
         "http://localhost:8100/oauth2/callback",
         "http://localhost:8188/oauth2/callback"
       ],
       "webOrigins": [
-        "http://localhost",
+        "${API_URL_EXTERNAL}",
         "http://localhost:8100",
         "http://localhost:8188"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8100/*##http://localhost/*"
+        "post.logout.redirect.uris": "http://localhost:8100/*##${API_URL_EXTERNAL}/*"
       },
       "defaultClientScopes": [
         "web-origins",

@@ -562,3 +562,36 @@ def test_no_file_passes_the_engine_a_csrf_origin_list_it_does_not_read():
     files = ["docker-compose.development.yml", "docker-compose.staging.yml", "docker-compose.engine-standalone.yml",
              "env.plugin_downloader", "env.staging", "apps/backend/env.development"]
     assert [f for f in files if re.search(r"BACKEND_C[RS]{2}F_TRUSTED_ORIGINS", (ROOT / f).read_text())] == []
+
+
+# The engine's port and address follow the install's settings (env.local, written by aisc.py start)
+
+MOVED = {"ENGINE_PORT": "8080", "ENGINE_HTTPS_PORT": "8443", "API_URL_EXTERNAL": "http://localhost:8080"}
+
+
+def _published(service):
+    return {(int(p["published"]), int(p["target"])) for p in service.get("ports") or []}
+
+
+def test_the_engine_ports_follow_the_install_settings(tmp_path):
+    (tmp_path / "moved").mkdir()
+    (tmp_path / "default").mkdir()
+    moved = compose_cfg.config(tmp_path / "moved", env=MOVED)["services"]["caddy"]
+    assert {(8080, 8005), (8443, 8005)} <= _published(moved)
+    default = compose_cfg.config(tmp_path / "default")["services"]["caddy"]
+    assert {(80, 8005), (443, 8005)} <= _published(default)
+
+
+def test_the_report_composer_accepts_requests_from_the_engine_address(tmp_path):
+    services = compose_cfg.config(tmp_path, env=MOVED)["services"]
+    assert services["report-composer"]["environment"]["PLATFORM_ORIGIN"] == "http://localhost:8080"
+
+
+def test_the_gateway_lets_sign_in_return_to_the_engine_port(tmp_path):
+    command = compose_cfg.config(tmp_path, env=MOVED)["services"]["oauth2-proxy"]["command"]
+    assert "--whitelist-domain=localhost:8080" in command
+
+
+def test_keycloak_gets_the_engine_address_for_its_realm(tmp_path):
+    keycloak = compose_cfg.config(tmp_path, env=MOVED)["services"]["keycloak"]
+    assert keycloak["environment"]["API_URL_EXTERNAL"] == "http://localhost:8080"
