@@ -617,3 +617,17 @@ def test_a_second_client_that_cannot_be_updated_stops_start(scratch):
     assert "could not be told" in r.stderr and "update refused" in r.stderr
     assert "AISC is up" not in r.stdout
     assert [client for client, _ in updates(scratch)] == ["id-of-aisc-gateway", "id-of-aisc-webapp"] * 2
+
+
+def test_an_https_install_tells_the_sign_in_its_https_addresses_only(scratch):
+    https_install(scratch)
+    with open(scratch / "env.plugin_downloader", "a") as settings:
+        settings.write("DASHBOARD_EXTERNAL_URL=https://aisc.example.org:8188\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    assert sent["id-of-aisc-gateway"]["redirectUris"] == [
+        "https://aisc.example.org/oauth2/callback", "https://aisc.example.org:8100/oauth2/callback",
+        "https://aisc.example.org:8188/oauth2/callback"]
+    assert sent["id-of-aisc-webapp"]["baseUrl"] == "https://aisc.example.org"
+    assert "localhost" not in (scratch / "exec-input").read_text()
