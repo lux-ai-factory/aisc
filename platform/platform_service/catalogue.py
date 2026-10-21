@@ -9,8 +9,7 @@ The copy holds the public catalogue's own JSON (its `GET /tool/?detailed=true`, 
 `/metadata/`), so the catalogue frontend reads it unchanged. Local entries are not stored: they
 are the packages the engine offers (`GET /api/v1/plugins`) whose package is in no public entry,
 read on every request; only the dimensions an admin gives them are kept. Local controls are stored: the
-checklists in LOCAL_CONTROLS_DIR (the repo's local_controls/) and ORG_CONTROLS_DIR (the organisation's, written
-by the add-controls service), in the public catalogue's seed format, are written into the copy, as origin 'local', each time it is made or updated; a public entry with the same slug
+checklists in LOCAL_CONTROLS_DIR (the repo's local_controls/), in the public catalogue's seed format, are written into the copy, as origin 'local', each time it is made or updated; a public entry with the same slug
 wins.
 
 A public project reads the same shapes from the public catalogue live, kept LIVE_TTL_S seconds, with

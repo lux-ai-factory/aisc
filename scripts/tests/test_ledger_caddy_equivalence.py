@@ -1,6 +1,6 @@
 """With the ledger witness off (LEDGER_GATEWAY unset), the gateway behaves exactly as it did before the
 witness was added, apart from its intended changes: the header strip at the start of every protected
-handle, the launcher's 404 for /api/authz/*, and the launcher's /add-controls/ (the add-controls service) and its /origins.json.
+handle, the launcher's 404 for /api/authz/*, and the launcher's /origins.json.
 
 Both files are adapted by a real caddy:2.10.2 to JSON; the comparison ignores only those changes and
 the extra nesting `route` adds. The baseline is the Caddyfile before the witness
@@ -52,15 +52,8 @@ def _is_authz(route):
                                   for h in handlers)
 
 
-def _is_add_controls(route):
-    """The other intended change: the launcher's /add-controls/ (its redirect and its proxy to the
-    add-controls service, which has its own login; test_add_controls.py)."""
-    paths = [p for m in route.get("match") or [] for p in m.get("path") or []]
-    return paths in (["/add-controls"], ["/add-controls/*"]) and "add-controls" in json.dumps(route.get("handle"))
-
-
 def _is_origins(route):
-    """A fourth intended change: the launcher's /origins.json, a static answer with the
+    """A third intended change: the launcher's /origins.json, a static answer with the
     install's public addresses for the pages' links (test_launcher_origins.py)."""
     paths = [p for m in route.get("match") or [] for p in m.get("path") or []]
     return paths == ["/origins.json"] and "static_response" in json.dumps(route.get("handle")) and \
@@ -68,7 +61,7 @@ def _is_origins(route):
 
 
 def _is_inspect_errors(key, value):
-    """A third intended change, after this test was written: the launcher site's error routes, which say
+    """Another intended change, after this test was written: the launcher site's error routes, which say
     in a sentence that pgAdmin or the diagrams are off (compose profile `inspect`, 2026-10 simplification).
     They answer only a failed /inspect/ request, so they change no route the gateway compares."""
     return key == "errors" and "--profile inspect" in json.dumps(value)
@@ -91,7 +84,7 @@ def normal(node):
                 following = next((h for h in rest if not (isinstance(h, dict) and _is_strip(h))), None)
                 if _is_sign_in(following):
                     continue
-            if isinstance(item, dict) and "handle" in item and (_is_authz(item) or _is_add_controls(item) or _is_origins(item)):
+            if isinstance(item, dict) and "handle" in item and (_is_authz(item) or _is_origins(item)):
                 continue
             if isinstance(item, dict) and item.get("handler") == "subroute" and \
                     all("match" not in r for r in item.get("routes") or []):

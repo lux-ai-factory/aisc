@@ -51,14 +51,6 @@ made, so:
 The realm's two accounts are admin / admin and user / user on a local install: its sign-in is reached from this
 machine only (Keycloak is published on 127.0.0.1). An install served to others (CADDY_DOMAIN https://, from the
 environment or env.plugin_downloader) gets generated passwords for them.
-
-The add-controls service (compose profile add-controls, local_controls/README.md) gets its Django secret here.
-What only its admin can give is never generated: they add these lines to env.secrets by hand, and they are kept,
---rotate included (ADMIN_FILLED below):
-  ADD_CONTROLS_ADMIN_USERNAME=<the one admin's name>
-  ADD_CONTROLS_ADMIN_PASSWORD_HASH='<python manage.py hash_password>'   # single quotes: it holds `$`
-  ADD_CONTROLS_LLM_MODEL=<mistral-large-latest, gpt-4o, claude-sonnet-4.5, ...>
-  ADD_CONTROLS_LLM_MISTRAL_KEY= or ADD_CONTROLS_OPENAI_API_KEY= or ADD_CONTROLS_ANTHROPIC_API_KEY=
 """
 from __future__ import annotations
 
@@ -184,8 +176,6 @@ SECRETS = [
     ("PLATFORM_LEDGER_ENGINE_TOKEN", "rand"),
     ("PLATFORM_LEDGER_DASHBOARD_TOKEN", "rand"),
     ("PLATFORM_LEDGER_AGENTS_TOKEN", "rand"),
-    # the add-controls service's Django secret (its sessions and CSRF); the rest of its settings are ADMIN_FILLED
-    ("ADD_CONTROLS_DJANGO_SECRET_KEY", "rand"),
 ]
 # The infrastructure passwords: their volumes hold them (see the top of this file).
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
@@ -196,10 +186,6 @@ VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLO
 # PREVIOUS_SECRET_KEY to the old one and run `superset re-encrypt-secrets` in the dashboard container.
 KEPT_ON_ROTATE = ("PLATFORM_SECRETS_KEY", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD", "PLATFORM_LEDGER_KEYS",
                   "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", *VOLUME_BOUND)
-# What an admin writes into env.secrets by hand and nothing here makes: carried over, as written, by --rotate (a
-# plain run only appends, so it keeps them anyway).
-ADMIN_FILLED = ("ADD_CONTROLS_ADMIN_USERNAME", "ADD_CONTROLS_ADMIN_PASSWORD_HASH", "ADD_CONTROLS_LLM_MODEL",
-                "ADD_CONTROLS_LLM_MISTRAL_KEY", "ADD_CONTROLS_OPENAI_API_KEY", "ADD_CONTROLS_ANTHROPIC_API_KEY")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
 ROTATE_ONE = ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD")
 LEDGER_KEYS = re.compile(r"v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*")
@@ -360,7 +346,6 @@ def new_file(rotate: bool, existed: bool) -> list[str]:
             lines.append(f"{name}={kept_value(name)}")
         else:
             lines.append(f"{name}={missing_value(name, kind, existed)}")
-    lines += [f"{name}={kept_value(name)}" for name in ADMIN_FILLED if kept_value(name)]
     return lines
 
 

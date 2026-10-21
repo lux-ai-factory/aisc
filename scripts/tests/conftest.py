@@ -67,10 +67,6 @@ def guard_all(tmp_path_factory):
     return r, out
 
 
-#: The submodules that are private repositories. A checkout without access to them (the CI's) leaves their
-#: folders empty; the tests that read one skip there, and run on a workstation with the full checkout.
-PRIVATE_SUBMODULES = ("apps/add-controls-catalogue",)
-
 
 def submodule_missing(path: str) -> bool:
     folder = ROOT / path

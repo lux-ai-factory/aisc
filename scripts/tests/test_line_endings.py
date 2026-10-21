@@ -21,7 +21,7 @@ def test_the_file_is_checked_out_with_lf_on_every_system(path):
 
 # The submodules whose scripts and Dockerfiles end up in Linux containers. The three in shared/ have none.
 # The webapp is held to its upstream: the README's clone command (git -c core.autocrlf=false) covers it.
-SUBMODULES = ["apps/add-controls-catalogue", "apps/backend", "apps/catalogue", "apps/control-objectives",
+SUBMODULES = ["apps/backend", "apps/catalogue", "apps/control-objectives",
               "apps/controls", "apps/eval", "apps/qualification", "apps/report-generator", "apps/results-dashboard"]
 
 

@@ -25,7 +25,7 @@ DASHBOARD_SIDE = {"dashboard", "dashboard-migrate", "dashboard-redis"}
 @pytest.fixture(scope="module")
 def cfg(tmp_path_factory):
     # every profile, so a service that only a profile starts is checked too
-    return compose_cfg.config(tmp_path_factory.mktemp("dashboard-redis"), "inspect", "add-controls",
+    return compose_cfg.config(tmp_path_factory.mktemp("dashboard-redis"), "inspect",
                               env={"DASHBOARD_REDIS_PASSWORD": "the-dashboard-redis-password"})
 
 

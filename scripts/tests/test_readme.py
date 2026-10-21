@@ -12,9 +12,11 @@ def test_the_readme_lists_what_an_install_needs():
         assert needed in pre, needed
 
 
-def test_the_readme_names_the_one_private_submodule_and_that_the_install_does_not_need_it():
+def test_installing_needs_no_private_submodule():
+    """Every submodule is public, so the README's clone command works without a GitHub account."""
     pre = README.read_text().split("## Prerequisites", 1)[1].split("\n## ", 1)[0]
-    assert "aisc-add-controls-catalogue" in pre and "Four submodules are private" not in pre
+    assert "submodule is private" not in pre and "submodules are private" not in pre
+    assert "add-controls" not in (ROOT / ".gitmodules").read_text()
 
 
 def test_installing_needs_no_unix_tool_and_is_the_same_command_everywhere():

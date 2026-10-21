@@ -190,9 +190,8 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   certificate files the Caddyfile names). Set `GATEWAY_COOKIE_SECURE=true` with it, so the gateway's
   session cookie is never sent over plain HTTP, and `API_URL_EXTERNAL` to the same `https://` address.
   This stack is still wired to `localhost` in places a hosted install has to change too: the gateway's
-  `--cookie-domain` and `--whitelist-domain`, `KEYCLOAK_URL_EXTERNAL` (Keycloak is published on
-  `127.0.0.1:8081`, without TLS) and the add-controls service's `ADD_CONTROLS_*` origins and
-  `ADD_CONTROLS_INSECURE_COOKIES`.
+  `--cookie-domain` and `--whitelist-domain`, and `KEYCLOAK_URL_EXTERNAL` (Keycloak is published on
+  `127.0.0.1:8081`, without TLS).
 - **Accounts.** The realm has two development accounts, `admin` (realm role `admin`) and `user`, with the
   passwords `AISC_ADMIN_PASSWORD` and `AISC_USER_PASSWORD` from `env.secrets`; the checks sign in with
   them too (`scripts/lib/dev-accounts.sh`). The Keycloak console's account is `admin` with
@@ -236,12 +235,6 @@ every project catalogue: a public one reads them live, a private one copies them
 and each time an admin presses Update; they
 show under Source = Local and install like any control. `scripts/start.sh` lists them at the end of a
 start. A public entry with the same slug wins. See [`local_controls/README.md`](../local_controls/README.md).
-
-The organisation's own checklists can also be published from a page instead of a file: the **add-controls**
-service (`apps/add-controls-catalogue`, compose profile `add-controls`, at `http://localhost:8100/add-controls/`)
-lets one admin upload a checklist document, review the questions an LLM extracts and publish them into a volume
-the platform reads after `local_controls/` (`ORG_CONTROLS_DIR`). It has its own login, not the stack's sign-in.
-Its settings are in the table below; how to start it is in `local_controls/README.md`.
 
 ### The engine on its own
 
@@ -320,9 +313,6 @@ likely to change:
 | `LEDGER_POOL` | `ledger-pool` | how many free ledger databases (one per new project) are kept ready, refilled at each start | `50` |
 | `ENGINE_IMMUDB_PASSWORD` | `env.secrets` (aisc-backend as `IMMUDB_PASSWORD`, `ledger-pool`) | the engine's own immudb user, aisc_engine; kept by `--rotate`, changed by `--rotate-one` | generated |
 | `AISC_IMAGE_TAG` | all built images | the tag of locally built images | `latest` |
-| `ADD_CONTROLS_ADMIN_USERNAME`, `ADD_CONTROLS_ADMIN_PASSWORD_HASH` | `add-controls` (you add them to `env.secrets`; the hash from `python manage.py hash_password`, in single quotes) | the add-controls service's one admin | none: the service does not start |
-| `ADD_CONTROLS_LLM_MODEL` and `ADD_CONTROLS_LLM_MISTRAL_KEY` / `ADD_CONTROLS_OPENAI_API_KEY` / `ADD_CONTROLS_ANTHROPIC_API_KEY` | `add-controls` (you add them to `env.secrets`) | the model that extracts a document's questions, and its provider's key | none: the service does not start |
-| `ADD_CONTROLS_INSECURE_COOKIES` | `add-controls` | `false` when the stack is served over HTTPS | `true` (the local stack is plain HTTP) |
 
 The secrets themselves (gateway cookie and client secrets, service tokens, database role passwords,
 `PLATFORM_SECRETS_KEY` that encrypts stored LLM keys, the ledger keys, `DASHBOARD_REDIS_PASSWORD`) are listed with their purpose

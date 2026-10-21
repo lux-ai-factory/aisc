@@ -42,9 +42,6 @@ winget install --id astral-sh.uv -e
 then sign out and in again, and start Docker Desktop once.
 
 **Access**
-- One submodule is private on GitHub: `aisc-add-controls-catalogue`, for the optional add-controls service.
-  Cloning it needs a GitHub account that can read it in lux-ai-factory and git credentials for HTTPS (a personal
-  access token, or `gh auth login`; on Windows, Git asks in a browser window).
 - Internet access while installing: GitHub (submodules, the test plugins, MinIO's source), Docker Hub, quay.io and
   ghcr.io (images), PyPI, npm and the Go module proxy (packages), Debian and Alpine package mirrors. While running: the hosted catalogue for public
   projects, and the model providers a project uses.

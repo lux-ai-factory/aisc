@@ -19,8 +19,7 @@ from conftest import ROOT
 #: the submodules held to the same rule
 SUBMODULES = ("apps/qualification", "apps/controls", "apps/control-objectives", "apps/backend", "apps/eval",
               "apps/report-generator", "shared/report-plugin-interface", "apps/results-dashboard",
-              "apps/catalogue", "apps/webapp", "shared/plugin-interface", "shared/plugin-manager",
-              "apps/add-controls-catalogue")
+              "apps/catalogue", "apps/webapp", "shared/plugin-interface", "shared/plugin-manager")
 
 DATE = r"\b20\d{2}-\d{2}-\d{2}\b"
 #: what reads as history: a dated explanation or a reference to an internal plan, ruling, task or meeting

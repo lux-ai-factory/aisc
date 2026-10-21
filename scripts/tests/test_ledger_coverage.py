@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-from conftest import PRIVATE_SUBMODULES, ROOT, submodule_missing
+from conftest import ROOT
 from ledger_routes import SCOPED_OUT, WRITES, discovered
 
 sys.path.insert(0, str(ROOT / "platform"))
@@ -93,8 +93,6 @@ def test_every_exception_has_a_reason_and_still_exists():
     keys = {key(r) for r in found()}
     for route, reason in exceptions().items():
         assert reason, f"{route}: an exception needs its reason"
-        if any(route[1].startswith(p + "/") and submodule_missing(p) for p in PRIVATE_SUBMODULES):
-            continue   # its code is in a private repository this checkout does not have
         assert route in keys, f"{route}: the exception names a route that no longer exists"
 
 

@@ -2,8 +2,7 @@
 catalogue's own seed format (catalogue branch `dev`, backend/controls_seed.json), join every private copy when
 the project chooses it and on each update, and install like any other control. A public entry with the same slug
 wins, so a control the public catalogue later publishes replaces its local copy. A public project reads the
-public catalogue live and gets them too, from the folder. The organisation's folder
-(ORG_CONTROLS_DIR) is in test_catalogue_org_controls.py."""
+public catalogue live and gets them too, from the folder."""
 from __future__ import annotations
 
 import copy
@@ -39,7 +38,6 @@ def control(slug="local-fairness-check", **extra):
 @pytest.fixture
 def folder(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_CONTROLS_DIR", str(tmp_path))
-    monkeypatch.setenv("ORG_CONTROLS_DIR", str(tmp_path / "no-org-folder"))  # the organisation's: none here
     return tmp_path
 
 
