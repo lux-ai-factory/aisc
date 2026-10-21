@@ -420,9 +420,10 @@ def port_is_free(port: int, host: str) -> bool:
     (a port below 1024 without root), whether something answers on it decides, on loopback and on each address
     of the machine."""
     with socket.socket() as s:
-        # As Docker binds: past connections still closing (TIME_WAIT) do not hold the port. Not on Windows,
-        # where this option would let the test bind over a program that is listening.
-        if os.name != "nt":
+        # As Docker binds on Linux: past connections still closing (TIME_WAIT) do not hold the port. Only there:
+        # on Windows this option would let the test bind over a program that is listening, and on macOS (BSD
+        # sockets) a bind on 0.0.0.0 would succeed beside a program listening on 127.0.0.1 only.
+        if sys.platform.startswith("linux"):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))

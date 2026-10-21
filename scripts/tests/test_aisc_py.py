@@ -8,6 +8,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 
 import pytest
 
@@ -289,6 +290,25 @@ def test_a_port_whose_closed_connections_are_still_waiting_is_free():
         accepted.close()                     # the server side closes first: its end waits in TIME_WAIT
         client.close()
     assert m.port_is_free(port, "127.0.0.1")
+
+
+def test_address_reuse_is_set_on_linux_only(monkeypatch):
+    """On macOS (BSD sockets) SO_REUSEADDR lets a bind on 0.0.0.0 succeed beside a program listening on
+    127.0.0.1 only, so such a port would read as free."""
+    m = aisc_py()
+    options = []
+    plain = socket.socket.setsockopt
+
+    def record(self, level, option, *value):
+        options.append(option)
+        return plain(self, level, option, *value)
+
+    monkeypatch.setattr(socket.socket, "setsockopt", record)
+    for platform, expected in (("darwin", False), ("linux", True)):
+        options.clear()
+        monkeypatch.setattr(sys, "platform", platform)
+        m.port_is_free(0, "127.0.0.1")
+        assert (socket.SO_REUSEADDR in options) is expected, platform
 
 
 def test_an_engine_on_port_80_leaves_the_install_its_own_address():
