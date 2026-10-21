@@ -687,3 +687,17 @@ def test_every_long_running_service_comes_back_after_a_restart(tmp_path):
     stays_down = sorted(n for n, s in services.items()
                         if n not in ONE_SHOT and s.get("restart") not in ("always", "unless-stopped"))
     assert not stays_down, f"these do not come back after a restart: {stays_down}"
+
+
+#: the file sets an install runs with: the default ones, and with the https and admin-ports files added
+RUN_FILES = [FILES + ["docker-compose.plugin_downloader.yml"],
+             FILES + ["docker-compose.plugin_downloader.yml", "docker-compose.https.yml",
+                      "docker-compose.admin-ports.yml"]]
+
+
+@pytest.mark.parametrize("files", RUN_FILES, ids=["default", "https-and-admin-ports"])
+def test_a_service_stopped_on_purpose_stays_stopped(tmp_path, files):
+    """`restart: always` brings a service back by itself when Docker restarts, even one a person stopped on
+    purpose (caddy came back alone after `docker compose stop`); unless-stopped does not."""
+    services = compose_cfg.config(tmp_path, files=files)["services"]
+    assert not sorted(n for n, s in services.items() if s.get("restart") == "always")
