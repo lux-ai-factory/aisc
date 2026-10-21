@@ -395,23 +395,27 @@ def test_the_project_name_can_be_set(monkeypatch):
     assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc-proof"]
 
 
-def test_compose_adds_the_https_file_only_for_https(monkeypatch):
-    """443 is published only by an install served over https: elsewhere a taken 443 must not stop a start."""
+def test_compose_adds_the_https_file_only_for_https(tmp_path, monkeypatch):
+    """443 is published only by an install served over https: elsewhere a taken 443 must not stop a start.
+    On a scratch copy: the checkout's own env.local may ask for the admin ports."""
+    copy_install_scripts(tmp_path)
+    monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
     monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
-    assert "docker-compose.https.yml" not in aisc_py().COMPOSE
-    assert "docker-compose.https.yml" not in aisc_py().UP_HINT
+    assert "docker-compose.https.yml" not in aisc_py(tmp_path).COMPOSE
+    assert "docker-compose.https.yml" not in aisc_py(tmp_path).UP_HINT
     monkeypatch.setenv("CADDY_DOMAIN", "https://x")
-    module = aisc_py()
+    module = aisc_py(tmp_path)
     assert module.COMPOSE[-2:] == ["-f", "docker-compose.https.yml"]
     assert "-f docker-compose.https.yml" in module.UP_HINT
 
 
-def test_compose_adds_the_admin_ports_file_only_when_asked(monkeypatch):
+def test_compose_adds_the_admin_ports_file_only_when_asked(tmp_path, monkeypatch):
+    copy_install_scripts(tmp_path)
     monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
     monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
-    assert "docker-compose.admin-ports.yml" not in aisc_py().COMPOSE
+    assert "docker-compose.admin-ports.yml" not in aisc_py(tmp_path).COMPOSE
     monkeypatch.setenv("AISC_ADMIN_PORTS", "on")
-    module = aisc_py()
+    module = aisc_py(tmp_path)
     assert module.COMPOSE[-2:] == ["-f", "docker-compose.admin-ports.yml"]
     assert "-f docker-compose.admin-ports.yml" in module.UP_HINT
 
