@@ -154,11 +154,40 @@ def test_verify_sh_runs_the_check_with_its_options():
     assert "--take-down-running" in r.stdout
 
 
+def kept_copy(d, name="aisc-ports.kept"):
+    """A folder as the check leaves it with --keep: in its temporary folder, with the state file it writes."""
+    work = d / name
+    work.mkdir()
+    (work / "taken-down").write_text("")
+    return work
+
+
+@pytest.mark.parametrize("given", [
+    lambda d: d / "aisc-ports.kept" / ".." / "..",          # matches */aisc-ports.* and is the folder above
+    lambda d: d / "elsewhere" / "aisc-ports.kept",           # not in the check's temporary folder
+    lambda d: d / "aisc-ports.kept" / "aisc-ports.inner",   # not directly in it
+    lambda d: d / "aisc-ports.unmarked",                      # never written by the check
+])
+def test_clean_up_refuses_a_folder_the_check_did_not_make(fake_docker, given):
+    """--clean-up removes the folder given: only one the check made, directly in its temporary folder and
+    holding its state file, whatever the path looks like."""
+    kept = kept_copy(fake_docker)
+    (fake_docker / "elsewhere").mkdir()
+    kept_copy(fake_docker / "elsewhere")
+    kept_copy(kept, "aisc-ports.inner")
+    (fake_docker / "aisc-ports.unmarked").mkdir()
+    r = run(fake_docker, "--clean-up", str(given(fake_docker)))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "not a folder this check made" in r.stderr
+    assert kept.is_dir() and (fake_docker / "elsewhere/aisc-ports.kept").is_dir()
+    assert (kept / "aisc-ports.inner").is_dir() and (fake_docker / "aisc-ports.unmarked").is_dir()
+    assert not calls(fake_docker), calls(fake_docker)
+
+
 def test_the_copy_s_images_are_removed_by_their_ports_tag_only(fake_docker):
     """An image id can be shared with the install's :latest (same commit, warm cache): removing by id, or with -f,
     would take the install's images too. Only the copy's own references go, and an image in use stays."""
-    work = fake_docker / "aisc-ports.kept"
-    work.mkdir()
+    work = kept_copy(fake_docker)
     r = run(fake_docker, "--clean-up", str(work))
     assert r.returncode == 0, r.stdout + r.stderr
     removed = [c.split(" | ")[0].split()[1:] for c in calls(fake_docker) if c.startswith("rmi ")]
