@@ -85,6 +85,8 @@ SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
 PROJECT = os.environ.get("AISC_PROJECT", "aisc")
 COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
+#: the docker command start found on PATH (see find_docker); every docker call runs this one
+DOCKER = "docker"
 UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
            "    -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d")
 
@@ -455,9 +457,16 @@ def published_ports(config: dict) -> list[tuple[str, int, int]]:
             if p.get("published")]
 
 
+def find_docker() -> str | None:
+    """The docker command on this process's own PATH, or None. Windows looks a program up through the parent
+    process's search path, not the PATH given to a child, so running `docker` and seeing it work proves nothing
+    about this PATH."""
+    return shutil.which("docker", path=os.environ.get("PATH"))
+
+
 def held_by_aisc() -> set[int]:
     """The host ports this install's own running containers publish: theirs, so not taken."""
-    ports = captured(["docker", "ps", "--filter", f"label=com.docker.compose.project={PROJECT}",
+    ports = captured([DOCKER, "ps", "--filter", f"label=com.docker.compose.project={PROJECT}",
                       "--format", "{{.Ports}}"]).stdout
     return {int(p) for p in re.findall(r":(\d+)->", ports)}
 
@@ -465,7 +474,7 @@ def held_by_aisc() -> set[int]:
 def has_data() -> bool:
     """Whether this install has run before: its database volume exists, and with it a sign-in set up for the
     engine's address."""
-    return captured(["docker", "volume", "inspect", f"{PROJECT}_postgres_data"]).returncode == 0
+    return captured([DOCKER, "volume", "inspect", f"{PROJECT}_postgres_data"]).returncode == 0
 
 
 def who_holds(port: int) -> str:
@@ -601,7 +610,7 @@ def rotate_infra_password(args: list[str]) -> None:
 
     def docker(*argv: str, admin: str | None = None, realm: str = "", account: str = "", stdin: str | None = None):
         run_env = env if admin is None else {**env, "ADMIN_VALUE": admin, "REALM": realm, "ACCOUNT": account}
-        r = subprocess.run(["docker", *argv], env=run_env, input=stdin if stdin is not None else "", text=True,
+        r = subprocess.run([find_docker() or DOCKER, *argv], env=run_env, input=stdin if stdin is not None else "", text=True,
                            stdout=subprocess.DEVNULL)
         if r.returncode != 0:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
@@ -705,10 +714,13 @@ def start(_args: list[str]) -> None:
     min_disk_gb = int(os.environ.get("START_MIN_DISK_GB", "20"))
 
     # 1. The checkout and the machine
-    if captured(["docker", "info"]).returncode != 0:
+    global DOCKER
+    found = find_docker()
+    if found is None or captured([found, "info"]).returncode != 0:
         raise Refused("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
                       "service, then run this again.")
-    version = captured(["docker", "compose", "version", "--short"]).stdout.strip().lstrip("v")
+    DOCKER = COMPOSE[0] = found
+    version = captured([DOCKER, "compose", "version", "--short"]).stdout.strip().lstrip("v")
     parts = re.match(r"(\d+)\.(\d+)", version)
     if not parts or (int(parts[1]), int(parts[2])) < (2, 17):
         raise Refused(f"Docker Compose {version or 'is missing'}: AISC needs the Compose plugin 2.17 or later "

@@ -90,6 +90,23 @@ def test_start_without_docker_says_so_and_writes_nothing(tmp_path):
     assert not (d / "env.secrets").exists()
 
 
+def test_docker_is_looked_for_on_the_path_this_process_has(tmp_path, monkeypatch):
+    """Windows finds a program through the parent process's search path, not the PATH given to a child, so
+    `docker info` can succeed for a person with no Docker on their PATH. The command is looked up on PATH
+    itself, once, and the path found is what every call uses."""
+    empty = tmp_path / "no-tools"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    assert aisc_py().find_docker() is None
+    fake = tmp_path / "tools"
+    fake.mkdir()
+    name = "docker.exe" if os.name == "nt" else "docker"
+    (fake / name).write_text("#!/bin/sh\n")
+    (fake / name).chmod(0o755)
+    monkeypatch.setenv("PATH", str(fake))
+    assert os.path.samefile(aisc_py().find_docker(), fake / name)
+
+
 def test_an_unknown_command_shows_the_usage(tmp_path):
     r = run(install(tmp_path), "install")
     assert r.returncode == 2 and "start|secrets|password|rotate-infra-password" in r.stderr
