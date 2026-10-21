@@ -684,19 +684,29 @@ ROTATABLE = ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD", "KEYCLOAK_
 
 def kcadm_script(command: str) -> str:
     """A bash script for Keycloak's container: kcadm signs in to the master realm as Keycloak's admin, then runs
-    one command (kcadm's arguments, in bash; "$cfg" is the session). The admin's password comes from the
-    environment (ADMIN_VALUE), never a command line, and the session file is removed again."""
+    one command (kcadm's arguments, in bash; "$cfg" is the session). kcadm starts Java with its arguments, and the
+    host's `ps` shows a container's processes to every local user, so no secret is one of them: kcadm reads the
+    admin's password from KC_CLI_PASSWORD itself, and a value to set comes on stdin. The session file is removed
+    again."""
     return f"""
     kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-aisc.json
     "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
-      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$ADMIN_VALUE" >/dev/null \\
+      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" >/dev/null \\
       && "$kc" {command}
     s=$?; rm -f "$cfg"; exit $s"""
 
 
-# sets one account's password: the realm, the account and the new value come from the environment too
-KCADM = kcadm_script('set-password --config "$cfg" -r "$REALM" --username "${ACCOUNT:-$KC_BOOTSTRAP_ADMIN_USERNAME}" '
-                     '--new-password "$NEW_VALUE"')
+# runs the kcadm command given as bash -c's arguments, which hold no secret
+KCADM_RUN = kcadm_script('"$@" --config "$cfg"')
+
+
+def kcadm(docker_command: str, container: str, admin_password: str, *argv: str,
+          stdin: str = "") -> subprocess.CompletedProcess:
+    """One kcadm command in Keycloak's container, signed in as its admin. The password goes by name (docker exec
+    -e KC_CLI_PASSWORD, its value in this process's environment only); what kcadm reads on stdin, stdin."""
+    return subprocess.run([docker_command, "exec", "-i", "-e", "KC_CLI_PASSWORD", container, "bash", "-c", KCADM_RUN,
+                           "kcadm", *argv], env={**os.environ, "KC_CLI_PASSWORD": admin_password}, input=stdin,
+                          capture_output=True, text=True)
 # psql reads the value from its environment (\\getenv): it is on no command line, not even the container's
 PSQL = "\\getenv pw NEW_VALUE\n\\getenv role POSTGRES_USER\nALTER ROLE :\"role\" PASSWORD :'pw';\n"
 UNSAFE = re.compile(r"""[\s'"$#\\]""")
@@ -719,8 +729,9 @@ def rotate_infra_password(args: list[str]) -> None:
     """A new value for a password the infrastructure keeps in its own volume. These are applied by their service
     only when its volume is first made, so a new value is set in the service itself first, on the running stack,
     and written to env.secrets and env.runtime only once the service took it: a refusal leaves both files as they
-    were. The value goes to the container by name (docker exec -e NAME), never on a command line, and is never
-    printed. A chosen password has at least 12 characters and none of: space, quotes, $, # or backslash, which the
+    were. The value goes to the container by name (docker exec -e NAME) or on stdin, never on the host's command
+    line, and is never printed; Keycloak's kcadm gets it on stdin, so it is on no command line in its container
+    either. A chosen password has at least 12 characters and none of: space, quotes, $, # or backslash, which the
     env file compose reads would take apart. MinIO takes its new root password when it is recreated."""
     name = args[0] if args else ""
     mode = args[1] if len(args) > 1 else ""
@@ -738,20 +749,30 @@ def rotate_infra_password(args: list[str]) -> None:
     new = chosen_value(name) if mode == "--ask" else rand()
     env = {**os.environ, "OLD_VALUE": old, "NEW_VALUE": new}
 
-    def docker(*argv: str, admin: str | None = None, realm: str = "", account: str = "", stdin: str | None = None):
-        run_env = env if admin is None else {**env, "ADMIN_VALUE": admin, "REALM": realm, "ACCOUNT": account}
-        r = subprocess.run([docker_command, *argv], env=run_env, input=stdin if stdin is not None else "",
+    def docker(*argv: str, stdin: str | None = None):
+        r = subprocess.run([docker_command, *argv], env=env, input=stdin if stdin is not None else "",
                            text=True, stdout=subprocess.DEVNULL)
         if r.returncode != 0:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
 
-    def keycloak_set(admin: str, realm: str, account: str = "") -> None:
+    def keycloak_set(admin: str, realm: str, account: str) -> None:
+        """The account's id first, then its new password through reset-password, as JSON on kcadm's stdin."""
         container = keycloak_container(docker_command)
         if not container:
             raise Refused(f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak); "
                           "nothing changed")
-        docker("exec", "-e", "ADMIN_VALUE", "-e", "NEW_VALUE", "-e", "REALM", "-e", "ACCOUNT", container,
-               "bash", "-c", KCADM, admin=admin, realm=realm, account=account)
+        found = kcadm(docker_command, container, admin, "get", "users", "-r", realm, "-q", f"username={account}")
+        try:
+            # the lookup matches names that contain the one asked for: only the account itself counts
+            ids = [u["id"] for u in json.loads(found.stdout) if u.get("username") == account]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            ids = []
+        if found.returncode != 0 or len(ids) != 1:
+            raise Refused(f"the service did not take the new {name}; nothing changed", found.returncode or 1)
+        done = kcadm(docker_command, container, admin, "update", f"users/{ids[0]}/reset-password", "-r", realm,
+                     "-f", "-", stdin=json.dumps({"type": "password", "value": new, "temporary": False}))
+        if done.returncode != 0:
+            raise Refused(f"the service did not take the new {name}; nothing changed", done.returncode)
 
     if name == "POSTGRES_PASSWORD":
         docker("exec", "-i", "-e", "NEW_VALUE", "postgres", "sh", "-c",
@@ -760,7 +781,8 @@ def rotate_infra_password(args: list[str]) -> None:
         docker("exec", "-e", "NEW_VALUE", "rabbitmq", "sh", "-c",
                'rabbitmqctl --quiet change_password "$RABBITMQ_DEFAULT_USER" "$NEW_VALUE"')
     elif name == "KEYCLOAK_ADMIN_PASSWORD":
-        keycloak_set(old, "master")
+        # the console admin's name, as compose gives it to Keycloak (KC_BOOTSTRAP_ADMIN_USERNAME)
+        keycloak_set(old, "master", effective("KEYCLOAK_ADMIN") or "admin")
     elif name in ("AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD"):
         keycloak_set(value_in("KEYCLOAK_ADMIN_PASSWORD", OUT), "aisc", "admin" if name == "AISC_ADMIN_PASSWORD" else "user")
 
@@ -845,10 +867,6 @@ def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dic
     }
 
 
-# runs the kcadm command given as bash -c's arguments, which hold no secret
-KCADM_RUN = kcadm_script('"$@" --config "$cfg"')
-
-
 def sync_sign_in() -> None:
     """Tells Keycloak the addresses this install has now. The realm import put the addresses of its first start
     into the realm's database and is never run again, so a port that moved since would leave the sign-in sending
@@ -859,11 +877,7 @@ def sync_sign_in() -> None:
     clients = sign_in_clients(effective("API_URL_EXTERNAL") or "http://localhost",
                               effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/",
                               effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188")
-    env = {**os.environ, "ADMIN_VALUE": value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")}
-
-    def kcadm(container: str, *argv: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return subprocess.run([DOCKER, "exec", "-i", "-e", "ADMIN_VALUE", container, "bash", "-c", KCADM_RUN,
-                               "kcadm", *argv], env=env, input=stdin, capture_output=True, text=True)
+    admin = value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")
 
     def why_not_told() -> str:
         """Empty once both clients hold the addresses; else what kcadm said."""
@@ -871,7 +885,7 @@ def sync_sign_in() -> None:
         if not container:
             return f"Keycloak is not running in this install (docker compose -p {PROJECT} ps keycloak)"
         for client_id, settings in clients.items():
-            found = kcadm(container, "get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
+            found = kcadm(DOCKER, container, admin, "get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
             if found.returncode != 0:
                 return found.stderr.strip() or f"kcadm could not read the client {client_id}"
             try:
@@ -880,7 +894,7 @@ def sync_sign_in() -> None:
                 ids = []
             if len(ids) != 1:
                 return f"the realm aisc has no single client {client_id}"
-            updated = kcadm(container, "update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-",
+            updated = kcadm(DOCKER, container, admin, "update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-",
                             stdin=json.dumps(settings))
             if updated.returncode != 0:
                 return updated.stderr.strip() or f"kcadm could not update the client {client_id}"

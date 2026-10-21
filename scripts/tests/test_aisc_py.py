@@ -517,9 +517,9 @@ def test_an_https_install_s_sign_in_uses_its_own_addresses():
     assert webapp["webOrigins"] == ["https://aisc.example.org", "http://localhost:5173"]
 
 
-def test_start_and_rotate_infra_password_sign_kcadm_in_the_same_way():
-    """One login for every kcadm call: Keycloak's admin from its environment, a session file removed after."""
+def test_kcadm_is_given_no_secret_on_its_command_line():
+    """kcadm starts Java with its arguments, which the host's `ps` shows: the admin's password comes from
+    KC_CLI_PASSWORD (kcadm reads it itself) and no password is an argument."""
     m = aisc_py()
-    login = m.KCADM_RUN.split("&&")[0]
-    assert "$ADMIN_VALUE" in login and m.KCADM.split("&&")[0] == login
-    assert m.KCADM_RUN.split("&&")[1].split(";")[1:] == m.KCADM.split("&&")[1].split(";")[1:]
+    assert "--password" not in m.KCADM_RUN and "--new-password" not in m.KCADM_RUN
+    assert "VALUE" not in m.KCADM_RUN and "KC_CLI_PASSWORD" not in m.KCADM_RUN

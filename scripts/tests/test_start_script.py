@@ -16,13 +16,15 @@ import threading
 
 import pytest
 
-from conftest import ROOT, copy_install_scripts
+from conftest import RUN_KCADM_IN_EXEC, ROOT, add_fake_kcadm, copy_install_scripts
 
 DOCKER = r"""#!/bin/sh
 d=$(dirname "$0")/..
 # one line per call, whatever the arguments hold (a script passed to bash -c has newlines)
 printf '%s' "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" | tr '\n' ' ' >> "$d/docker.log"
 echo >> "$d/docker.log"
+[ "$1" = exec ] && [ -f "$d/exec-fails" ] && { echo "Error response from daemon" >&2; exit 1; }
+""" + RUN_KCADM_IN_EXEC + r"""
 case "$1" in
   info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
   compose)
@@ -44,12 +46,6 @@ case "$1" in
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
   ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
-  exec)
-    # kcadm in the keycloak container: what it was given on stdin is kept, a call per line
-    { cat; echo; } >> "$d/exec-input"
-    [ -f "$d/exec-fails" ] && exit 1
-    case "$*" in *"get clients"*) echo '[{"id": "c1"}]' ;; esac
-    exit 0 ;;
 esac
 exit 0
 """
@@ -103,6 +99,7 @@ def scratch(tmp_path):
     for name, body in (("docker", DOCKER), ("git", GIT)):
         (shims / name).write_text(body)
         (shims / name).chmod(0o755)
+    add_fake_kcadm(shims)
     (tmp_path / "branch").write_text("feat/unified-modules\n")
     (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/feat/unified-modules)\n")
     (tmp_path / "compose-version").write_text("5.5.1\n")
@@ -369,7 +366,7 @@ def test_start_tells_the_sign_in_its_addresses_after_the_stack_is_up(scratch):
     assert told and min(told) > up
     sent = (scratch / "exec-input").read_text()
     assert "http://localhost:8090/oauth2/callback" in sent and "http://localhost:8090/*" in sent
-    assert "update clients/c1" in "\n".join(log)
+    assert "update clients/id-of-aisc-gateway" in "\n".join(log)
     admin = [line for line in (scratch / "env.secrets").read_text().splitlines()
              if line.startswith("KEYCLOAK_ADMIN_PASSWORD=")][0].split("=", 1)[1]
     assert admin not in (scratch / "docker.log").read_text()
@@ -404,12 +401,17 @@ def test_start_stops_when_this_project_runs_no_keycloak(scratch):
 
 
 def test_no_secret_reaches_a_command_line_when_start_tells_the_sign_in(scratch):
+    """Neither docker's command line on the host nor kcadm's inside the container (which the host's `ps`
+    shows too): Keycloak's admin password reaches kcadm through KC_CLI_PASSWORD."""
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
-    log = (scratch / "docker.log").read_text()
     secrets = [line.split("=", 1)[1] for line in (scratch / "env.secrets").read_text().splitlines()
                if "=" in line and not line.startswith("#")]
-    assert not [v for v in secrets if len(v) >= 8 and v in log]
+    for log in ("docker.log", "kcadm.log"):
+        text = (scratch / log).read_text()
+        assert not [v for v in secrets if len(v) >= 8 and v in text], log
+    admin = [v for v in (scratch / "env.secrets").read_text().splitlines() if v.startswith("KEYCLOAK_ADMIN_PASSWORD=")]
+    assert set((scratch / "kcadm-login").read_text().splitlines()) == {admin[0].split("=", 1)[1]}
 
 
 def test_start_clears_containers_a_failed_attempt_left_created(scratch):
