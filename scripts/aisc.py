@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import base64
 import getpass
+import json
 import os
 import re
 import secrets as random_source
@@ -80,9 +81,11 @@ LOCAL = "env.local"         # this install's own settings, chosen by start (git-
 ENGINE_PORTS: dict[str, tuple[int, tuple[int, ...]]] = {"ENGINE_PORT": (80, (8080, 8090, 8000, 8880, 8888)),
                                                        "ENGINE_HTTPS_PORT": (443, (8443, 8453, 9443))}
 SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
-COMPOSE = ["docker", "compose", "-p", "aisc", "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
+#: the Compose project: aisc, unless AISC_PROJECT names another (a second copy beside an install's data)
+PROJECT = os.environ.get("AISC_PROJECT", "aisc")
+COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
-UP_HINT = ("  docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
+UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
            "    -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d")
 
 
@@ -438,6 +441,69 @@ def engine_settings(port: int, https_port: int) -> dict[str, str]:
             "API_URL_EXTERNAL": "http://localhost" + ("" if port == 80 else f":{port}")}
 
 
+def published_ports(config: dict) -> list[tuple[str, int, int]]:
+    """(address, published port, container port) of every port a `docker compose config --format json` publishes."""
+    return [(p.get("host_ip") or "0.0.0.0", int(p["published"]), int(p["target"]))
+            for service in config.get("services", {}).values() for p in service.get("ports") or []
+            if p.get("published")]
+
+
+def held_by_aisc() -> set[int]:
+    """The host ports this install's own running containers publish: theirs, so not taken."""
+    ports = captured(["docker", "ps", "--filter", f"label=com.docker.compose.project={PROJECT}",
+                      "--format", "{{.Ports}}"]).stdout
+    return {int(p) for p in re.findall(r":(\d+)->", ports)}
+
+
+def has_data() -> bool:
+    """Whether this install has run before: its database volume exists, and with it a sign-in set up for the
+    engine's address."""
+    return captured(["docker", "volume", "inspect", f"{PROJECT}_postgres_data"]).returncode == 0
+
+
+def who_holds(port: int) -> str:
+    """The command that shows which program holds a port, on this system."""
+    return f"netstat -ano | findstr :{port}" if os.name == "nt" else f"sudo lsof -i :{port}"
+
+
+def settle_ports(published: list[tuple[str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
+                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str]]:
+    """The engine's settings for env.local, and one problem per port that stops the start.
+
+    The engine's ports are Caddy's (container port 8005): the ones this install kept, else 80 and 443. When one
+    is taken, a new install (may_move) moves to the first free fallback; one that has run before, or chose its
+    ports already, must not, since its sign-in knows only its address. Every other published port is checked
+    as it is. A port this install's own containers hold is not taken."""
+    def free(port: int, host: str = "0.0.0.0") -> bool:
+        return port in held or is_free(port, host)
+
+    problems, chosen = [], {}
+    for name, (preferred, fallbacks) in ENGINE_PORTS.items():
+        port = int(kept[name]) if name in kept else preferred
+        if free(port):
+            chosen[name] = port
+        elif name in kept:
+            problems.append(f"Port {port} is taken. This install uses it since it was chosen on its first start; "
+                            f"stop the program that holds it (see which with: {who_holds(port)}).")
+        elif not may_move:
+            problems.append(f"Port {port} is taken, and this install's sign-in is set up for it. Stop the program "
+                            f"that holds it (see which with: {who_holds(port)}).")
+        else:
+            moved = choose_port(preferred, fallbacks, free)
+            if moved is None:
+                tried = ", ".join(str(p) for p in (preferred, *fallbacks))
+                problems.append(f"Ports {tried} are all taken. Free one of them (see which program holds one "
+                                f"with: {who_holds(preferred)}).")
+            else:
+                chosen[name] = moved
+    for host, port, target in published:
+        if target != 8005 and not free(port, host):
+            problems.append(f"Port {port} is taken. Stop the program that holds it (see which with: "
+                            f"{who_holds(port)}).")
+    settings = engine_settings(chosen["ENGINE_PORT"], chosen["ENGINE_HTTPS_PORT"]) if len(chosen) == 2 else {}
+    return settings, problems
+
+
 def make_secrets(args: list[str]) -> None:
     # Every file written here holds secrets or is made from them: private from the moment it exists.
     os.umask(0o077)
@@ -600,12 +666,16 @@ def start(_args: list[str]) -> None:
        branch other than feat/unified-modules (master's files are older), submodules not checked out. Warns when
        the disk is nearly full.
     2. Makes the secrets (once, then it keeps them; run again after a pull).
-    3. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
+    3. Checks every port the stack publishes. On a new install served over plain http, a taken 80 or 443 moves
+       the engine to a free fallback (8080 ..., 8443 ...); the choice is kept in env.local and never changes on
+       its own. Any other taken port, or a taken one on an install that has run before, stops here, with the
+       command that shows which program holds it.
+    4. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
        network or a laptop short of memory usually passes the second time, and the cache keeps what was built.
-    4. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
+    5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
        ready, and a page opened then shows 502. Then names, as a warning, every one-shot service that exited
        non-zero (plugin-publisher when a plugin did not build).
-    5. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
+    6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
@@ -640,7 +710,23 @@ def start(_args: list[str]) -> None:
     # 2. The secrets
     make_secrets([])
 
-    # 3. The images
+    # 3. The ports, before anything is built: a taken one would otherwise surface only after the whole build
+    config = captured([*COMPOSE, "config", "--format", "json"])
+    if config.returncode != 0:
+        raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
+    kept = dict(l.split("=", 1) for l in lines_of(LOCAL) if "=" in l) if Path(LOCAL).is_file() else {}
+    settings, problems = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
+                                      not served_over_https() and not has_data(), port_is_free)
+    if problems:
+        raise Refused("AISC cannot start: " + " ".join(problems))
+    if settings != kept:
+        write_beside(LOCAL, text_of([f"{name}={value}" for name, value in settings.items()]))
+        write_runtime()
+    if settings["ENGINE_PORT"] != "80":
+        why = "Port 80 is taken on this computer, so" if "ENGINE_PORT" not in kept else "On this install,"
+        say(f"{why} steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
+
+    # 4. The images
     for attempt in (1, 2, 3):
         if attempt == 1:
             say("Building the images (the first time takes several minutes) ...")
@@ -654,7 +740,7 @@ def start(_args: list[str]) -> None:
         raise Refused("the build failed three times. The first error above says why: often the network (pip, uv or "
                       "npm timed out) or the disk. Fix it and run this again; what was built is kept.")
 
-    # 4. Start, and wait for the sign-in page
+    # 5. Start, and wait for the sign-in page
     say("Starting the stack ...")
     if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
         raise Refused("the stack did not start: see the error above.")
@@ -668,7 +754,7 @@ def start(_args: list[str]) -> None:
             warn(f"The sign-in page did not answer within {wait_s:g}s (last answer: {code or 'none'}). "
                  "Services not running:")
             warn(*not_running(captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout))
-            raise Refused("see why with: docker compose -p aisc logs <service>  (for example keycloak or oauth2-proxy)")
+            raise Refused(f"see why with: docker compose -p {PROJECT} logs <service>  (for example keycloak or oauth2-proxy)")
         time.sleep(poll_s)
 
     # A one-shot service (plugin-publisher, report-grants, the migrations) that exited non-zero: nothing waits on
@@ -676,9 +762,9 @@ def start(_args: list[str]) -> None:
     for line in captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout.splitlines():
         service, _, status = line.partition("\t")
         if re.match(r"Exited \([1-9]", status):
-            say(f"Warning: {service} did not finish ({status}). See why with: docker compose -p aisc logs {service}")
+            say(f"Warning: {service} did not finish ({status}). See why with: docker compose -p {PROJECT} logs {service}")
 
-    # 5. The local controls every project catalogue gets (local_controls/), read by the platform's own code
+    # 6. The local controls every project catalogue gets (local_controls/), read by the platform's own code
     found = captured([*COMPOSE, "exec", "-T", "platform", "python", "-m", "platform_service.catalogue"])
     if found.returncode == 0:
         controls = [l for l in found.stdout.splitlines() if l.strip()]
@@ -686,7 +772,7 @@ def start(_args: list[str]) -> None:
             *("  " + c for c in controls))
     else:
         say("Warning: the local controls could not be read; catalogues get the public entries only.",
-            "See why with: docker compose -p aisc logs platform")
+            f"See why with: docker compose -p {PROJECT} logs platform")
 
     say("",
         f"AISC is up: open {url.rstrip('/')} and sign in as admin / admin (user / user is an ordinary account).",

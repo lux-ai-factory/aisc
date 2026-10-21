@@ -158,3 +158,77 @@ def test_the_runtime_env_takes_the_install_settings_last(tmp_path):
     assert r.returncode == 0, r.stderr
     lines = (d / "env.runtime").read_text().splitlines()
     assert lines[-2:] == ["API_URL_EXTERNAL=http://localhost:8080", "ENGINE_PORT=8080"]
+
+
+#: what docker compose config publishes, in settle_ports' terms: (address, published port, container port)
+PUBLISHED = [("0.0.0.0", 80, 8005), ("0.0.0.0", 443, 8005), ("0.0.0.0", 8100, 8006), ("127.0.0.1", 5432, 5432)]
+FALLBACKS_OF_80 = (8080, 8090, 8000, 8880, 8888)
+
+
+def taken(*ports):
+    return lambda port, host: port not in ports
+
+
+def test_a_new_install_moves_off_a_taken_port_80():
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), {}, True, taken(80))
+    assert problems == []
+    assert settings == {"ENGINE_PORT": "8080", "ENGINE_HTTPS_PORT": "443", "API_URL_EXTERNAL": "http://localhost:8080"}
+
+
+def test_with_every_port_free_nothing_changes():
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), {}, True, taken())
+    assert problems == []
+    assert settings == {"ENGINE_PORT": "80", "ENGINE_HTTPS_PORT": "443", "API_URL_EXTERNAL": "http://localhost"}
+
+
+def test_ports_held_by_aisc_itself_are_not_taken():
+    """A second start finds its own stack on its ports: that is not a reason to move."""
+    settings, problems = aisc_py().settle_ports(PUBLISHED, {80, 443, 8100, 5432}, {}, False, taken(80, 443, 8100, 5432))
+    assert problems == []
+    assert settings["ENGINE_PORT"] == "80"
+
+
+def test_an_install_with_data_never_moves():
+    """Its sign-in was set up for the address it has; moving would lock its users out."""
+    m = aisc_py()
+    settings, problems = m.settle_ports(PUBLISHED, set(), {}, False, taken(80))
+    assert len(problems) == 1 and "80" in problems[0] and m.who_holds(80) in problems[0]
+
+
+def test_kept_ports_are_reused():
+    kept = {"ENGINE_PORT": "8090", "ENGINE_HTTPS_PORT": "443", "API_URL_EXTERNAL": "http://localhost:8090"}
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), kept, False, taken())
+    assert problems == [] and settings["ENGINE_PORT"] == "8090"
+    assert settings["API_URL_EXTERNAL"] == "http://localhost:8090"
+
+
+def test_a_kept_port_taken_later_stops_start():
+    kept = {"ENGINE_PORT": "8090", "ENGINE_HTTPS_PORT": "443", "API_URL_EXTERNAL": "http://localhost:8090"}
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), kept, True, taken(8090))
+    assert len(problems) == 1 and "8090" in problems[0]
+
+
+def test_every_fallback_taken_stops_start():
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), {}, True, taken(80, *FALLBACKS_OF_80))
+    assert len(problems) == 1
+    assert all(str(p) in problems[0] for p in (80, *FALLBACKS_OF_80))
+
+
+def test_other_taken_ports_are_named_with_their_holder_command():
+    m = aisc_py()
+    settings, problems = m.settle_ports(PUBLISHED, set(), {}, True, taken(5432))
+    assert len(problems) == 1 and "5432" in problems[0] and m.who_holds(5432) in problems[0]
+
+
+def test_published_ports_reads_compose_config():
+    config = {"services": {"caddy": {"ports": [{"published": "80", "target": 8005}]},
+                           "postgres": {"ports": [{"host_ip": "127.0.0.1", "published": "5432", "target": 5432}]},
+                           "platform": {}}}
+    assert aisc_py().published_ports(config) == [("0.0.0.0", 80, 8005), ("127.0.0.1", 5432, 5432)]
+
+
+def test_the_project_name_can_be_set(monkeypatch):
+    """A second copy beside an existing install's data runs under its own name."""
+    assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc"]
+    monkeypatch.setenv("AISC_PROJECT", "aisc-proof")
+    assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc-proof"]
