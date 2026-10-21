@@ -10,6 +10,9 @@
 # for a given account signs in as that account and goes through the gateway, as the browser does; a token
 # of its own would be refused before the check is made.
 
+# the engine's address (VERIFY_APPS_URL): http://localhost, or the port this install moved to
+. "$(dirname "${BASH_SOURCE[0]}")/engine-address.sh"
+
 gateway_session() { # user password jar
   # A refused password shows Keycloak's form again, with 200 too: signed in means back on the launcher.
   local launcher=${GATEWAY_LAUNCHER_URL:-http://localhost:8100/} page form landed
@@ -38,5 +41,5 @@ _gateway_curl() { # jar method path project body [more curl arguments...]; proje
   set -- -s -b "$jar" -X "$method" --max-time 30 -H 'Content-Type: application/json' "$@"
   [ -n "$project" ] && set -- "$@" -H "X-AISC-Project: $project"
   [ -n "$body" ] && set -- "$@" -d "$body"
-  curl "$@" "http://localhost$path"
+  curl "$@" "$VERIFY_APPS_URL$path"
 }

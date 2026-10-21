@@ -609,7 +609,8 @@ services:
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
       REPORT_COMPOSER_ROOT_PATH: /report-composer
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
-      PLATFORM_ORIGIN: ${PLATFORM_ORIGIN:-http://localhost}
+      # the engine's address: the composer's pages are served there, so their writes come from it
+      PLATFORM_ORIGIN: ${API_URL_EXTERNAL:-http://localhost}
       # membership (core.project, core.project_member) and the preset library
       REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # a template: {database} becomes project_<pid without hyphens>

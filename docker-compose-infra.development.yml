@@ -5,8 +5,9 @@ services:
     container_name: caddy
     restart: always
     ports:
-      - "443:8005"
-      - "80:8005"
+      # the engine: 80 and 443 unless aisc.py start moved a new install off a taken one (env.local)
+      - "${ENGINE_HTTPS_PORT:-443}:8005"
+      - "${ENGINE_PORT:-80}:8005"
       # the launcher (see the second site block in the Caddyfile)
       - "${HOMEPAGE_PORT_EXTERNAL:-8100}:8006"
       # the dashboard (Superset), behind the gateway like the rest
@@ -259,6 +260,7 @@ services:
       - --cookie-secure=${GATEWAY_COOKIE_SECURE:?set GATEWAY_COOKIE_SECURE (true over HTTPS) in env.plugin_downloader}
       - --cookie-samesite=lax
       - --whitelist-domain=localhost
+      - --whitelist-domain=localhost:${ENGINE_PORT:-80}
       - --whitelist-domain=localhost:8100
       - --whitelist-domain=localhost:8188
       # it proxies nothing itself; Caddy does the proxying
@@ -282,6 +284,8 @@ services:
     environment:
       # the first-run admin user of the Keycloak admin console
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      # the engine's address, which the realm's sign-in addresses are made from at import
+      API_URL_EXTERNAL: ${API_URL_EXTERNAL:-http://localhost}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?run scripts/secrets.sh first}
       # Keycloak's own `keycloak` database on the shared Postgres server
       KC_DB: postgres

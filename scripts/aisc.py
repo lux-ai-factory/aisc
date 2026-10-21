@@ -56,10 +56,12 @@ from __future__ import annotations
 
 import base64
 import getpass
+import json
 import os
 import re
 import secrets as random_source
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -68,15 +70,26 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = "env.secrets"
 COMBINED = "env.runtime"   # what compose is pointed at: the settings plus the secrets
 TRACKED = "env.plugin_downloader"
+LOCAL = "env.local"         # this install's own settings, chosen by start (git-ignored)
+#: the engine's ports: the one it prefers, then the ones a new install moves to when that one is taken
+ENGINE_PORTS: dict[str, tuple[int, tuple[int, ...]]] = {"ENGINE_PORT": (80, (8080, 8090, 8000, 8880, 8888)),
+                                                       "ENGINE_HTTPS_PORT": (443, (8443, 8453, 9443))}
 SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
-COMPOSE = ["docker", "compose", "-p", "aisc", "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
+#: the Compose project: aisc, unless AISC_PROJECT names another (a second copy beside an install's data)
+PROJECT = os.environ.get("AISC_PROJECT", "aisc")
+COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
-UP_HINT = ("  docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
+NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
+             "service, then run this again.")
+#: the docker command start found on PATH (see find_docker); every docker call runs this one
+DOCKER = "docker"
+UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
            "    -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d")
 
 
@@ -395,10 +408,157 @@ def write_runtime() -> None:
         return " " not in name and name in VOLUME_BOUND
 
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
+    # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
+    local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     combined = ([l for l in secret_lines if infra(l)] + [l for l in tracked if not infra(l)]
-                + [l for l in secret_lines if not infra(l)])
+                + [l for l in secret_lines if not infra(l)] + local)
     write_beside(COMBINED, text_of(combined))
-    say(f"wrote {COMBINED} ({TRACKED} + {OUT})")
+    say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
+
+
+def port_is_free(port: int, host: str) -> bool:
+    """Whether Docker could publish this port on this address. Binding it is the real test; Windows refuses
+    one in its reserved ranges with an access error, which means taken. Where Linux refuses the bind outright
+    (a port below 1024 without root), whether something answers on it decides, on loopback and on each address
+    of the machine."""
+    with socket.socket() as s:
+        # As Docker binds on Linux: past connections still closing (TIME_WAIT) do not hold the port. Only there:
+        # on Windows this option would let the test bind over a program that is listening, and on macOS (BSD
+        # sockets) a bind on 0.0.0.0 would succeed beside a program listening on 127.0.0.1 only.
+        if sys.platform.startswith("linux"):
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+            return True
+        except PermissionError:
+            if os.name == "nt":
+                return False   # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
+        except OSError:
+            return False
+    # A program listening on the machine's network address only is not on 127.0.0.1, so each of its IPv4
+    # addresses is tried too.
+    addresses = ["127.0.0.1"]
+    try:
+        addresses += [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
+    except OSError:
+        pass
+    for address in dict.fromkeys(addresses):
+        with socket.socket() as s:
+            s.settimeout(1)
+            if s.connect_ex((address, port)) == 0:
+                return False
+    return True
+
+
+def read_local() -> dict[str, str]:
+    """The settings in env.local as NAME=value lines, one pair of quotes around a value taken off: a person
+    editing the file may quote it, as in the other env files. Comments and lines without a name are not settings."""
+    kept = {}
+    for line in lines_of(LOCAL) if Path(LOCAL).is_file() else []:
+        name, found, value = line.partition("=")
+        if found and not name.lstrip().startswith("#"):
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            kept[name.strip()] = value
+    return kept
+
+
+def local_lines(existing: list[str], settings: dict[str, str]) -> list[str]:
+    """env.local's lines with the settings start manages set: each in the place it already has, the new ones
+    after the rest. Every other line (a note, a setting a person added) stays as it is, and in its place."""
+    managed = {*ENGINE_PORTS, "API_URL_EXTERNAL"}
+    out, done = [], set()
+    for line in existing:
+        name = line.partition("=")[0].strip()
+        if "=" not in line or name not in managed:
+            out.append(line)
+        elif name in settings and name not in done:
+            out.append(f"{name}={settings[name]}")
+            done.add(name)
+    return out + [f"{name}={value}" for name, value in settings.items() if name not in done]
+
+
+def choose_port(preferred: int, fallbacks: tuple[int, ...], is_free: Callable[[int], bool]) -> int | None:
+    """The preferred port if it is free, else the first free fallback; None when every one is taken."""
+    return next((p for p in (preferred, *fallbacks) if is_free(p)), None)
+
+
+def engine_settings(port: int, https_port: int) -> dict[str, str]:
+    """What the engine's ports change: compose publishes them. Only a moved engine gets an address here: on
+    port 80 the install's own API_URL_EXTERNAL stands (an https or other-host install sets it itself)."""
+    settings = {"ENGINE_PORT": str(port), "ENGINE_HTTPS_PORT": str(https_port)}
+    if port != 80:
+        settings["API_URL_EXTERNAL"] = f"http://localhost:{port}"
+    return settings
+
+
+def published_ports(config: dict) -> list[tuple[str, int, int]]:
+    """(address, published port, container port) of every port a `docker compose config --format json` publishes."""
+    return [(p.get("host_ip") or "0.0.0.0", int(p["published"]), int(p["target"]))
+            for service in config.get("services", {}).values() for p in service.get("ports") or []
+            if p.get("published")]
+
+
+def find_docker() -> str | None:
+    """The docker command on this process's own PATH, or None. Windows looks a program up through the parent
+    process's search path, not the PATH given to a child, so running `docker` and seeing it work proves nothing
+    about this PATH."""
+    return shutil.which("docker", path=os.environ.get("PATH"))
+
+
+def held_by_aisc() -> set[int]:
+    """The host ports this install's own running containers publish: theirs, so not taken."""
+    ports = captured([DOCKER, "ps", "--filter", f"label=com.docker.compose.project={PROJECT}",
+                      "--format", "{{.Ports}}"]).stdout
+    return {int(p) for p in re.findall(r":(\d+)->", ports)}
+
+
+def has_data() -> bool:
+    """Whether this install has run before: its database volume exists, and with it a sign-in set up for the
+    engine's address."""
+    return captured([DOCKER, "volume", "inspect", f"{PROJECT}_postgres_data"]).returncode == 0
+
+
+def who_holds(port: int) -> str:
+    """The command that shows which program holds a port, on this system."""
+    return f"netstat -ano | findstr :{port}" if os.name == "nt" else f"sudo lsof -i :{port}"
+
+
+def settle_ports(published: list[tuple[str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
+                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str]]:
+    """The engine's settings for env.local, and one problem per port that stops the start.
+
+    The engine's ports are Caddy's (container port 8005): the ones this install kept, else 80 and 443. When one
+    is taken, an install with no data yet (may_move) moves to the first free fallback, also off a port it kept
+    from a start that never got as far as the sign-in; one that has run before must not, since its sign-in
+    knows only its address. Every other published port is checked
+    as it is. A port this install's own containers hold is not taken."""
+    def free(port: int, host: str = "0.0.0.0") -> bool:
+        return port in held or is_free(port, host)
+
+    problems, chosen = [], {}
+    for name, (preferred, fallbacks) in ENGINE_PORTS.items():
+        port = int(kept[name]) if name in kept else preferred
+        if free(port):
+            chosen[name] = port
+        elif not may_move:
+            problems.append(f"Port {port} is taken, and this install's sign-in is set up for it. Stop the program "
+                            f"that holds it (see which with: {who_holds(port)}).")
+        else:
+            moved = choose_port(preferred, fallbacks, free)
+            if moved is None:
+                tried = ", ".join(str(p) for p in (preferred, *fallbacks))
+                problems.append(f"Ports {tried} are all taken. Free one of them (see which program holds one "
+                                f"with: {who_holds(preferred)}).")
+            else:
+                chosen[name] = moved
+    for host, port, target in published:
+        if target != 8005 and not free(port, host):
+            problems.append(f"Port {port} is taken. Stop the program that holds it (see which with: "
+                            f"{who_holds(port)}).")
+    settings = engine_settings(chosen["ENGINE_PORT"], chosen["ENGINE_HTTPS_PORT"]) if len(chosen) == 2 else {}
+    return settings, problems
 
 
 def make_secrets(args: list[str]) -> None:
@@ -488,13 +648,17 @@ def rotate_infra_password(args: list[str]) -> None:
     old = value_in(name, OUT)
     if not old:
         raise Refused(f"{name} is missing from {OUT}: run scripts/aisc.py secrets (scripts/secrets.sh) first")
+    # found once, on this process's PATH, before anything is asked or changed
+    docker_command = find_docker()
+    if docker_command is None:
+        raise Refused(NO_DOCKER)
     new = chosen_value(name) if mode == "--ask" else rand()
     env = {**os.environ, "OLD_VALUE": old, "NEW_VALUE": new}
 
     def docker(*argv: str, admin: str | None = None, realm: str = "", account: str = "", stdin: str | None = None):
         run_env = env if admin is None else {**env, "ADMIN_VALUE": admin, "REALM": realm, "ACCOUNT": account}
-        r = subprocess.run(["docker", *argv], env=run_env, input=stdin if stdin is not None else "", text=True,
-                           stdout=subprocess.DEVNULL)
+        r = subprocess.run([docker_command, *argv], env=run_env, input=stdin if stdin is not None else "",
+                           text=True, stdout=subprocess.DEVNULL)
         if r.returncode != 0:
             raise Refused(f"the service did not take the new {name}; nothing changed", r.returncode)
 
@@ -552,6 +716,21 @@ def answer_of(url: str) -> int | None:
         return None
 
 
+def keycloak_realm_url() -> str:
+    """The realm's own page on Keycloak's published port on this machine (the last KEYCLOAK_PORT_EXTERNAL line
+    of env.runtime, else 8081), or START_SIGN_IN_URL. Not its public address: an https or other-host install's
+    name may not resolve from here (hairpin NAT, a self-signed certificate) though the install is healthy."""
+    given = os.environ.get("START_SIGN_IN_URL")
+    if given:
+        return given
+    port = "8081"
+    if Path(COMBINED).is_file():
+        for line in lines_of(COMBINED):
+            if line.startswith("KEYCLOAK_PORT_EXTERNAL="):
+                port = line.split("=", 1)[1].strip().strip("'\"") or port
+    return f"http://localhost:{port}/realms/aisc"
+
+
 def not_running(lines: str) -> list[str]:
     return [l for l in lines.splitlines() if l and not re.search(r"\t(Up|running|Exited \(0\))", l)]
 
@@ -563,26 +742,32 @@ def start(_args: list[str]) -> None:
        branch other than feat/unified-modules (master's files are older), submodules not checked out. Warns when
        the disk is nearly full.
     2. Makes the secrets (once, then it keeps them; run again after a pull).
-    3. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
+    3. Checks every port the stack publishes. On a new install served over plain http, a taken 80 or 443 moves
+       the engine to a free fallback (8080 ..., 8443 ...); the choice is kept in env.local and never changes on
+       its own. Any other taken port, or a taken one on an install that has run before, stops here, with the
+       command that shows which program holds it.
+    4. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
        network or a laptop short of memory usually passes the second time, and the cache keeps what was built.
-    4. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
+    5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
        ready, and a page opened then shows 502. Then names, as a warning, every one-shot service that exited
        non-zero (plugin-publisher when a plugin did not build).
-    5. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
+    6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
-    START_MIN_DISK_GB (20)."""
+    START_SIGN_IN_URL (Keycloak's realm page), START_MIN_DISK_GB (20)."""
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
     url = os.environ.get("START_URL", "http://localhost:8100/")
     min_disk_gb = int(os.environ.get("START_MIN_DISK_GB", "20"))
 
     # 1. The checkout and the machine
-    if captured(["docker", "info"]).returncode != 0:
-        raise Refused("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
-                      "service, then run this again.")
-    version = captured(["docker", "compose", "version", "--short"]).stdout.strip().lstrip("v")
+    global DOCKER
+    found = find_docker()
+    if found is None or captured([found, "info"]).returncode != 0:
+        raise Refused(NO_DOCKER)
+    DOCKER = COMPOSE[0] = found
+    version = captured([DOCKER, "compose", "version", "--short"]).stdout.strip().lstrip("v")
     parts = re.match(r"(\d+)\.(\d+)", version)
     if not parts or (int(parts[1]), int(parts[2])) < (2, 17):
         raise Refused(f"Docker Compose {version or 'is missing'}: AISC needs the Compose plugin 2.17 or later "
@@ -603,7 +788,24 @@ def start(_args: list[str]) -> None:
     # 2. The secrets
     make_secrets([])
 
-    # 3. The images
+    # 3. The ports, before anything is built: a taken one would otherwise surface only after the whole build
+    config = captured([*COMPOSE, "config", "--format", "json"])
+    if config.returncode != 0:
+        raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
+    kept = read_local()
+    settings, problems = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
+                                      not served_over_https() and not has_data(), port_is_free)
+    if problems:
+        raise Refused("AISC cannot start: " + " ".join(problems))
+    existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
+    if local_lines(existing, settings) != existing:
+        write_beside(LOCAL, text_of(local_lines(existing, settings)))
+        write_runtime()
+    if settings["ENGINE_PORT"] != "80":
+        why = "Port 80 is taken on this computer, so" if "ENGINE_PORT" not in kept else "On this install,"
+        say(f"{why} steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
+
+    # 4. The images
     for attempt in (1, 2, 3):
         if attempt == 1:
             say("Building the images (the first time takes several minutes) ...")
@@ -617,7 +819,7 @@ def start(_args: list[str]) -> None:
         raise Refused("the build failed three times. The first error above says why: often the network (pip, uv or "
                       "npm timed out) or the disk. Fix it and run this again; what was built is kept.")
 
-    # 4. Start, and wait for the sign-in page
+    # 5. Start, and wait for the sign-in page
     say("Starting the stack ...")
     if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
         raise Refused("the stack did not start: see the error above.")
@@ -631,7 +833,16 @@ def start(_args: list[str]) -> None:
             warn(f"The sign-in page did not answer within {wait_s:g}s (last answer: {code or 'none'}). "
                  "Services not running:")
             warn(*not_running(captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout))
-            raise Refused("see why with: docker compose -p aisc logs <service>  (for example keycloak or oauth2-proxy)")
+            raise Refused(f"see why with: docker compose -p {PROJECT} logs <service>  (for example keycloak or oauth2-proxy)")
+        time.sleep(poll_s)
+    # The launcher redirects to the sign-in before Keycloak has imported its realm: a person who follows at once
+    # gets no form. The realm's own page answers 200 only once it is there.
+    realm = keycloak_realm_url()
+    while (code := answer_of(realm)) != 200:
+        if time.monotonic() >= deadline:
+            warn(f"Keycloak's realm page {realm} did not answer 200 within {wait_s:g}s (last answer: "
+                 f"{code or 'none'}), so the sign-in cannot be shown yet.")
+            raise Refused(f"see why with: docker compose -p {PROJECT} logs keycloak")
         time.sleep(poll_s)
 
     # A one-shot service (plugin-publisher, report-grants, the migrations) that exited non-zero: nothing waits on
@@ -639,9 +850,9 @@ def start(_args: list[str]) -> None:
     for line in captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout.splitlines():
         service, _, status = line.partition("\t")
         if re.match(r"Exited \([1-9]", status):
-            say(f"Warning: {service} did not finish ({status}). See why with: docker compose -p aisc logs {service}")
+            say(f"Warning: {service} did not finish ({status}). See why with: docker compose -p {PROJECT} logs {service}")
 
-    # 5. The local controls every project catalogue gets (local_controls/), read by the platform's own code
+    # 6. The local controls every project catalogue gets (local_controls/), read by the platform's own code
     found = captured([*COMPOSE, "exec", "-T", "platform", "python", "-m", "platform_service.catalogue"])
     if found.returncode == 0:
         controls = [l for l in found.stdout.splitlines() if l.strip()]
@@ -649,12 +860,17 @@ def start(_args: list[str]) -> None:
             *("  " + c for c in controls))
     else:
         say("Warning: the local controls could not be read; catalogues get the public entries only.",
-            "See why with: docker compose -p aisc logs platform")
+            f"See why with: docker compose -p {PROJECT} logs platform")
 
+    # the sign-in that works on this install: admin / admin only while the password still is admin (a new local
+    # install); generated (https) or changed (rotate-infra-password) ones are this install's own
+    if value_in("AISC_ADMIN_PASSWORD", OUT).strip("'\"") == "admin":
+        sign_in = ["sign in as admin / admin (user / user is an ordinary account)."]
+    else:
+        sign_in = ["sign in as admin with this install's own password. Show it, and the ordinary account user's, with:",
+                   "  uv run scripts/aisc.py password   (AISC_ADMIN_PASSWORD and AISC_USER_PASSWORD in env.secrets)"]
     say("",
-        f"AISC is up: open {url.rstrip('/')} and sign in as admin / admin (user / user is an ordinary account).",
-        "Served over https, the passwords were generated for this install instead; read them with:",
-        "  uv run scripts/aisc.py password   (they are AISC_ADMIN_PASSWORD and AISC_USER_PASSWORD in env.secrets)",
+        f"AISC is up: open {url.rstrip('/')} and {sign_in[0]}", *sign_in[1:],
         "If you installed AISC before on this machine, use a private window (an old session cookie is refused).")
 
 

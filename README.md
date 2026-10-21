@@ -29,7 +29,7 @@ AISC is built for regulatory sandboxes, supervisory authorities and the AI provi
 
 ## Quick start
 
-If you already have Docker, Git and uv:
+If you already have Docker and uv:
 
 ```
 git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
@@ -37,10 +37,11 @@ cd aisc
 uv run scripts/aisc.py start
 ```
 
-Then open <http://localhost:8100> and sign in as `admin` / `admin`.
+Then open <http://localhost:8100> and sign in with the account the last message of `start` names (`admin` /
+`admin` on a new install).
 
 The first start builds every image (27 of them) on your computer, so it takes a while. Later starts are quick.
-New to these tools? Follow [Install](#install) below, step by step.
+New to these tools? Follow the three steps below.
 
 ## Before you install
 
@@ -49,7 +50,7 @@ New to these tools? Follow [Install](#install) below, step by step.
 | **Computer** | Windows 10 or 11, macOS or Linux, on a 64-bit Intel or AMD processor (x86_64) |
 | **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
 | **Disk** | 30 GB free |
-| **Free ports** | 80, 443, 8100 and 8188, and on `127.0.0.1`: 8081, 5432, 5672, 6379, 9000 and 3322 |
+| **Free ports** | 8100 and 8188, and on `127.0.0.1`: 8081, 5432, 5672, 6379, 9000 and 3322. Also port 80 and 443: if they are taken on a new install, AISC uses 8080 and 8443 instead |
 | **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors) |
 | **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private and are skipped) |
 
@@ -59,20 +60,20 @@ these, please [tell us how it went](https://github.com/lux-ai-factory/aisc/issue
 
 Port 5432 is also PostgreSQL's usual port. If PostgreSQL is already installed on your computer, stop it first.
 
-## Install
+## 1. Install Docker and uv
 
-Pick your system. Each section ends with AISC running.
+AISC runs in Docker. [uv](https://docs.astral.sh/uv/) runs its install script and fetches the Python that
+script needs. This is the only step that differs per system.
 
 ### Windows
 
 1. **Check that you can install programs.** You need administrator rights on the computer. On a work laptop,
    ask your IT team first.
 
-2. **Install Docker Desktop, Git and uv.** Open PowerShell and run:
+2. **Install Docker Desktop and uv.** Open PowerShell and run:
 
    ```powershell
    winget install --id Docker.DockerDesktop -e
-   winget install --id Git.Git -e
    winget install --id astral-sh.uv -e
    ```
 
@@ -83,51 +84,16 @@ Pick your system. Each section ends with AISC running.
      settings. How depends on the computer's brand; search for "enable virtualization" with your model.
    - Wait until Docker Desktop shows **Engine running**.
 
-4. **Download AISC.** Open a new PowerShell window and run:
-
-   ```powershell
-   cd $HOME
-   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
-   cd aisc
-   ```
-
-   > **Copy the command exactly.** The `-c core.autocrlf=false` part keeps the files in the form the Linux
-   > containers expect. If you cloned without it, delete the `aisc` folder and clone again.
-   >
-   > Keep the folder out of OneDrive: `cd $HOME` puts it in `C:\Users\<you>\aisc`, which is fine.
-
-5. **Start AISC:**
-
-   ```powershell
-   uv run scripts/aisc.py start
-   ```
-
-   Go on with [Open AISC](#open-aisc).
-
 ### macOS
 
 1. **Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)**, start it and wait until it
    shows **Engine running**.
 
-2. **Install Git and uv.** Open Terminal and run:
+2. **Install uv.** Open Terminal, run the line below, then close and reopen Terminal:
 
    ```bash
-   xcode-select --install
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-
-   The first command installs Git (skip it if `git --version` already works). Close and reopen Terminal after
-   the second.
-
-3. **Download and start AISC:**
-
-   ```bash
-   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
-   cd aisc
-   uv run scripts/aisc.py start
-   ```
-
-   Go on with [Open AISC](#open-aisc).
 
 ### Linux
 
@@ -136,20 +102,27 @@ Pick your system. Each section ends with AISC running.
    Docker without `sudo` ([how](https://docs.docker.com/engine/install/linux-postinstall/)), then log out and in
    again. Check with `docker compose version`.
 
-2. **Install Git and uv:**
+2. **Install uv:**
 
    ```bash
-   sudo apt install git        # or your distribution's package manager
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-3. **Download and start AISC:**
+## 2. Download and start AISC
 
-   ```bash
-   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
-   cd aisc
-   uv run scripts/aisc.py start
-   ```
+The same on every system. Open a terminal (PowerShell on Windows) and run:
+
+```
+cd ~
+git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+cd aisc
+uv run scripts/aisc.py start
+```
+
+> **Copy the clone command exactly.** The `-c core.autocrlf=false` part keeps the files in the form the Linux
+> containers expect. If you cloned without it, delete the `aisc` folder and clone again.
+>
+> On Windows, keep the folder out of OneDrive: `cd ~` puts it in `C:\Users\<you>\aisc`, which is fine.
 
 ### What `start` does
 
@@ -157,19 +130,22 @@ Pick your system. Each section ends with AISC running.
 
 1. checks Docker, the download and the free disk space, and tells you what to fix if something is missing;
 2. creates the passwords and keys for your install (they stay on your computer and are never uploaded);
-3. builds the images and starts AISC;
-4. waits until the sign-in page answers, then prints where to go.
+3. checks the ports AISC needs, before building anything. If port 80 is taken on a new install, steps 1 and 2
+   open on port 8080 instead (or the next free one), and `start` tells you. Your install keeps that port;
+4. builds the images and starts AISC;
+5. waits until the sign-in page answers, then prints where to go.
 
 When it ends with **AISC is up**, AISC is ready. You can run `start` again at any time: it keeps your data and
 your passwords.
 
-## Open AISC
+## 3. Open AISC
 
 1. Open <http://localhost:8100> in your browser.
-2. Sign in as `admin` / `admin`. A second account, `user` / `user`, has ordinary rights.
-   These simple passwords are safe here because the sign-in only works from your own computer. An install
-   served to others over https gets generated passwords instead, kept as `AISC_ADMIN_PASSWORD` and
-   `AISC_USER_PASSWORD` in `env.secrets`; show them with `uv run scripts/aisc.py password`.
+2. Sign in with the account named in the last message of `start`. On a new install that is `admin` / `admin`
+   (a second account, `user` / `user`, has ordinary rights). These simple passwords are safe here because the
+   sign-in only works from your own computer. An install served to others over https gets generated
+   passwords instead, and `rotate-infra-password` changes them; both are kept as `AISC_ADMIN_PASSWORD` and
+   `AISC_USER_PASSWORD` in `env.secrets`. Show them with `uv run scripts/aisc.py password`.
 3. Click **Create project** and give the project a name.
 4. Work through the four steps on the project page. Each card has an **Open** link.
 
@@ -201,8 +177,8 @@ Desktop's **Images** page, or with `docker image prune -a` if you use Docker for
 | What you see | What to do |
 |---|---|
 | "Docker is not running" | Start Docker Desktop (on Linux, the Docker service) and wait until it is running. Then run `start` again. |
-| A port is already in use | See which program holds it: `netstat -ano \| findstr :80` in PowerShell, `sudo lsof -i :80` on macOS and Linux. Stop that program and run `start` again. |
-| Port 80 is held by process 4 ("System") on Windows | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
+| "Port ... is taken" | `start` names the port and the command that shows which program holds it (`netstat -ano \| findstr :8100` in PowerShell, `sudo lsof -i :8100` on macOS and Linux). Stop that program and run `start` again. |
+| Port 80 is held by process 4 ("System") on Windows, on an install that already ran on port 80 | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
 | The page shows **502** | AISC is still starting. Wait 30 seconds and reload. |
 | The sign-in refuses you after a reinstall | Your browser kept a session from the old install. Use a private window. |
 | A page or step does not open after a restart | Run `uv run scripts/aisc.py start` again. |
@@ -226,7 +202,7 @@ flowchart LR
     P --> I[(immudb<br/>tamper-evident log)]
 ```
 
-Each step is its own application, most of them in a Git submodule of this repository. This repository ties them
+Each step is its own application, most of them in a submodule of this repository. This repository ties them
 together and runs them with Docker Compose behind one sign-in. [docs/guide.md](docs/guide.md) describes every
 component.
 

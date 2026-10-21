@@ -86,7 +86,7 @@ def section3_logic() -> str:
     """The decision logic between `bundle=$(curl ...)` and the /admin/ loop. Extracted by anchor, not
     by line number, so it survives edits either side."""
     text = sso_text()
-    start_marker = 'bundle=$(curl -s -b "$J" --max-time 20 "http://localhost$js")'
+    start_marker = 'bundle=$(curl -s -b "$J" --max-time 20 "$VERIFY_APPS_URL$js")'
     end_marker = 'for path in /admin/ /_allauth/browser/v1/config; do'
     assert start_marker in text, "verify-sso.sh section 3: bundle= line not found (script restructured?)"
     assert end_marker in text, "verify-sso.sh section 3: the /admin/ loop not found (script restructured?)"
@@ -317,7 +317,7 @@ def test_the_engine_checks_go_through_the_gateway_on_a_session():
     assert "call aisc-backend" not in rbac, "verify-rbac.sh calls the engine directly, with a token the engine refuses"
     assert "docker exec" not in rbac.split("echo \"3. the platform", 1)[0].split("2. the engine", 1)[1], \
         "verify-rbac.sh's engine section still calls the engine from inside its container"
-    engine_calls = [l for l in sso.splitlines() if "localhost/api/v1" in l]
+    engine_calls = [l for l in sso.splitlines() if "$VERIFY_APPS_URL/api/v1" in l]
     assert engine_calls and not [l for l in engine_calls if "Authorization: Bearer" in l], \
         "verify-sso.sh sends a token of its own to the engine"
 

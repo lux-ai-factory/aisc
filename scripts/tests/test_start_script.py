@@ -7,8 +7,10 @@ two retries (fewer builds at once on a retry), starts the stack and waits until 
 answers, so "compose went through" no longer ends on a 502.
 """
 import http.server
+import json
 import os
 import shutil
+import socket
 import subprocess
 import threading
 
@@ -24,6 +26,8 @@ case "$1" in
   compose)
     case "$*" in
       *"version --short"*) cat "$d/compose-version"; exit 0 ;;
+      *" config --format json"*) if [ -f "$d/config-answer" ]; then cat "$d/config-answer"; else echo '{"services": {}}'; fi
+        exit 0 ;;
       *" build"*)
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
@@ -32,6 +36,8 @@ case "$1" in
       *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
+  volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
+  ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
 esac
 exit 0
 """
@@ -46,9 +52,20 @@ esac
 
 def sign_in_page(d):
     """The gateway as the start sees it: 502 while `not-ready` counts down (or for ever: `never`), then the
-    sign-in's redirect."""
+    sign-in's redirect. The realm's own page (/realms/...) answers 503 while `realm-not-ready` counts down (or
+    for ever: `never`), then 200; every request's path is appended to `requests`, in the order it came."""
     class Page(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            with open(d / "requests", "a") as seen:
+                seen.write(self.path + "\n")
+            if self.path.startswith("/realms/"):
+                realm = d / "realm-not-ready"
+                left = realm.read_text().strip() if realm.exists() else "0"
+                if left != "never" and int(left) > 0:
+                    realm.write_text(str(int(left) - 1))
+                self.send_response(503 if left == "never" or int(left) > 0 else 200)
+                self.end_headers()
+                return
             ready = d / "not-ready"
             n = ready.read_text().strip() if ready.exists() else "0"
             if n != "never" and int(n) > 0:
@@ -85,7 +102,8 @@ def scratch(tmp_path):
 
 def run(d, **env_over):
     env = {**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}", "START_WAIT_S": "6", "START_POLL_S": "0",
-           "START_MIN_DISK_GB": "0", "START_URL": (d / "url").read_text(), **env_over}
+           "START_MIN_DISK_GB": "0", "START_URL": (d / "url").read_text(),
+           "START_SIGN_IN_URL": (d / "url").read_text() + "realms/aisc", **env_over}
     return subprocess.run(["bash", str(d / "scripts/start.sh")], cwd=d, env=env, capture_output=True, text=True,
                           timeout=60)
 
@@ -137,6 +155,24 @@ def test_a_stack_that_never_answers_says_what_is_not_running(scratch):
     assert "keycloak" in out and "logs" in out
 
 
+def test_aisc_is_not_up_until_the_realm_has_been_imported(scratch):
+    """The launcher redirects to the sign-in before Keycloak has imported its realm; a person who follows at
+    once gets no form. So the realm's own page must answer 200 first."""
+    (scratch / "realm-not-ready").write_text("2")     # the realm answers 503 twice, then 200
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    realm = [p for p in (scratch / "requests").read_text().splitlines() if p.startswith("/realms/")]
+    assert realm == ["/realms/aisc"] * 3
+    assert "AISC is up" in r.stdout
+
+
+def test_a_realm_that_never_answers_gives_a_warning_naming_keycloak_and_no_aisc_is_up(scratch):
+    (scratch / "realm-not-ready").write_text("never")
+    r = run(scratch, START_WAIT_S="1")
+    assert r.returncode != 0
+    assert "Keycloak" in r.stderr and "AISC is up" not in r.stdout
+
+
 @pytest.mark.parametrize("setup, says", [
     (lambda d: (d / "branch").write_text("master\n"), "feat/unified-modules"),
     (lambda d: (d / "submodules").write_text("-1a2b3c apps/backend\n"), "git submodule update --init --recursive"),
@@ -185,3 +221,83 @@ def test_no_failed_one_shot_no_warning(scratch):
     (scratch / "ps-answer").write_text("report-grants\tExited (0) 9 seconds ago\nplatform\tUp 2 minutes\n")
     r = run(scratch)
     assert r.returncode == 0 and "did not finish" not in r.stdout
+
+
+def test_a_taken_port_stops_start_before_anything_is_built(scratch):
+    """A person learns of a taken port in seconds, not after the whole build."""
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        (scratch / "config-answer").write_text(json.dumps({"services": {"postgres": {"ports": [
+            {"host_ip": "127.0.0.1", "published": str(port), "target": 5432}]}}}))
+        r = run(scratch)
+    assert r.returncode == 1
+    assert f"Port {port} is taken" in r.stderr
+    assert not [c for c in calls(scratch) if " build" in c]
+
+
+#: what `docker ps` shows when this install's own Caddy holds the engine's ports
+OWN_ENGINE_PORTS = "0.0.0.0:80->8005/tcp, 0.0.0.0:443->8005/tcp\n"
+
+
+def test_start_keeps_the_engine_settings_it_chose(scratch):
+    """env.local holds the engine's ports, and compose reads them through env.runtime."""
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)   # whatever holds 80 and 443 on the test machine
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    local = (scratch / "env.local").read_text().splitlines()
+    assert local == ["ENGINE_PORT=80", "ENGINE_HTTPS_PORT=443"]
+    assert (scratch / "env.runtime").read_text().splitlines()[-len(local):] == local
+
+
+def test_start_keeps_an_https_install_s_own_engine_address(scratch):
+    """An install served over https names its engine itself; start must not replace it with localhost."""
+    settings = (scratch / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    (scratch / "env.plugin_downloader").write_text(settings)
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    engine = [l for l in (scratch / "env.runtime").read_text().splitlines() if l.startswith("API_URL_EXTERNAL=")]
+    assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
+
+
+def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "sign in as admin / admin" in r.stdout
+
+
+def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
+    """Passwords generated (https) or changed (rotate-infra-password): admin / admin would be refused."""
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    assert run(scratch).returncode == 0
+    secrets = (scratch / "env.secrets").read_text()
+    secrets = secrets.replace("AISC_ADMIN_PASSWORD=admin\n", "AISC_ADMIN_PASSWORD=Zq8-changed-by-its-admin\n")
+    (scratch / "env.secrets").write_text(secrets)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "admin / admin" not in r.stdout
+    assert "uv run scripts/aisc.py password" in r.stdout
+
+
+def test_a_quoted_port_kept_in_env_local_is_honoured(scratch):
+    """A person editing env.local may quote a value, as the other env files do."""
+    (scratch / "env.local").write_text('ENGINE_PORT="8090"\nENGINE_HTTPS_PORT="8453"\n')
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    local = (scratch / "env.local").read_text().splitlines()
+    assert "ENGINE_PORT=8090" in local and "ENGINE_HTTPS_PORT=8453" in local
+
+
+def test_what_a_person_added_to_env_local_survives_a_start(scratch):
+    (scratch / "env.local").write_text("# my note\nENGINE_PORT=8090\nMY_SETTING=x\nENGINE_HTTPS_PORT=8453\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (scratch / "env.local").read_text().splitlines() == [
+        "# my note", "ENGINE_PORT=8090", "MY_SETTING=x", "ENGINE_HTTPS_PORT=8453",
+        "API_URL_EXTERNAL=http://localhost:8090"]
