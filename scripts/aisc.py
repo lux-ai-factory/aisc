@@ -417,6 +417,10 @@ def port_is_free(port: int, host: str) -> bool:
     Windows' reserved ports); where binding is refused outright (a port below 1024 on Linux without root),
     whether something answers on it decides."""
     with socket.socket() as s:
+        # As Docker binds: past connections still closing (TIME_WAIT) do not hold the port. Not on Windows,
+        # where this option would let the test bind over a program that is listening.
+        if os.name != "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
             return True

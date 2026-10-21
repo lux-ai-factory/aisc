@@ -232,3 +232,20 @@ def test_the_project_name_can_be_set(monkeypatch):
     assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc"]
     monkeypatch.setenv("AISC_PROJECT", "aisc-proof")
     assert aisc_py().COMPOSE[:4] == ["docker", "compose", "-p", "aisc-proof"]
+
+
+def test_a_port_whose_closed_connections_are_still_waiting_is_free():
+    """Linux keeps a closed connection in TIME_WAIT for a minute; Docker binds over it, so the check must too.
+    The server here sets SO_REUSEADDR, as Caddy and Docker's port proxy do (every Go listener does): only then
+    may a new bind pass its waiting connections."""
+    m = aisc_py()
+    with socket.socket() as listening:
+        listening.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listening.bind(("127.0.0.1", 0))
+        listening.listen()
+        port = listening.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        accepted, _ = listening.accept()
+        accepted.close()                     # the server side closes first: its end waits in TIME_WAIT
+        client.close()
+    assert m.port_is_free(port, "127.0.0.1")
