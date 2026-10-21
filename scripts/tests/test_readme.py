@@ -1,5 +1,6 @@
 """The README takes a newcomer from nothing to a running AISC, on Windows, macOS or Linux."""
 import re
+import subprocess
 
 from conftest import ROOT
 
@@ -114,3 +115,19 @@ def test_the_readme_says_admin_admin_holds_only_until_the_passwords_change():
     sign_in = section("3. Open AISC")
     assert "admin" in sign_in and "uv run scripts/aisc.py password" in sign_in
     assert "rotate-infra-password" in sign_in and "last message" in sign_in
+
+
+def test_no_document_gives_a_compose_command_that_drops_the_https_file():
+    """A hand-written `docker compose ... -f docker-compose-infra.development.yml ...` names the three base files
+    only. On an install served over https, following it recreates Caddy without docker-compose.https.yml, and 443
+    stops answering. The documents send the reader to `uv run scripts/aisc.py start` instead, which adds the file
+    when the install needs it. Only this repository's own Markdown: a submodule's documents are its own."""
+    tracked = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True)
+    offending = []
+    for name in tracked.stdout.split():
+        # a command continued over several lines with a trailing backslash is read as one line
+        for command in (ROOT / name).read_text().replace("\\\n", " ").splitlines():
+            if ("docker compose" in command and "-f docker-compose-infra.development.yml" in command
+                    and "docker-compose.https.yml" not in command):
+                offending.append(name)
+    assert offending == []
