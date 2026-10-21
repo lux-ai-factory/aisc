@@ -55,6 +55,7 @@ environment or env.plugin_downloader) gets generated passwords for them.
 from __future__ import annotations
 
 import base64
+import errno
 import getpass
 import json
 import os
@@ -471,34 +472,66 @@ def write_runtime() -> None:
     say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
 
 
-def port_is_free(port: int, host: str) -> bool:
-    """Whether Docker could publish this port on this address. Binding it is the real test; Windows refuses
-    one in its reserved ranges with an access error, which means taken. Where Linux refuses the bind outright
-    (a port below 1024 without root), whether something answers on it decides, on loopback and on each address
-    of the machine."""
-    with socket.socket() as s:
+#: the IPv6 address bound beside each IPv4 one: Docker publishes an all-interfaces port on [::] too, and a
+#: browser on this machine asks localhost, ::1 first, so a program there holds the port as well
+IPV6_BESIDE = {"0.0.0.0": "::", "127.0.0.1": "::1"}
+
+
+def can_bind(family: socket.AddressFamily, host: str, port: int) -> bool | None:
+    """Whether this port can be bound on this address: True, False when something holds it, None when binding
+    cannot tell (Linux refuses a port below 1024 without root). An address family this machine lacks (no IPv6)
+    holds nothing: True."""
+    try:
+        s = socket.socket(family)
+    except OSError:
+        return True
+    with s:
         # As Docker binds on Linux: past connections still closing (TIME_WAIT) do not hold the port. Only there:
         # on Windows this option would let the test bind over a program that is listening, and on macOS (BSD
         # sockets) a bind on 0.0.0.0 would succeed beside a program listening on 127.0.0.1 only.
         if sys.platform.startswith("linux"):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if family == socket.AF_INET6:
+            # IPv6 only, so a program on the IPv4 side is not counted twice (and macOS binds [::] dual-stack)
+            s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         try:
             s.bind((host, port))
             return True
         except PermissionError:
-            if os.name == "nt":
-                return False   # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
-        except OSError:
-            return False
+            # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
+            return False if os.name == "nt" else None
+        except OSError as failed:
+            # an IPv6 address this machine does not have (IPv6 switched off) holds nothing
+            return family == socket.AF_INET6 and failed.errno in (errno.EADDRNOTAVAIL,
+                                                                   getattr(errno, "WSAEADDRNOTAVAIL", None))
+
+
+def port_is_free(port: int, host: str) -> bool:
+    """Whether Docker could publish this port on this address. Binding it is the real test, on IPv4 and on the
+    IPv6 address beside it (IPV6_BESIDE); Windows refuses one in its reserved ranges with an access error,
+    which means taken. Where Linux refuses the bind outright (a port below 1024 without root), whether
+    something answers decides, on loopback (both families) and on each address of the machine."""
+    bound = [can_bind(socket.AF_INET, host, port)]
+    if host in IPV6_BESIDE:
+        bound.append(can_bind(socket.AF_INET6, IPV6_BESIDE[host], port))
+    if False in bound:
+        return False
+    if None not in bound:
+        return True
     # A program listening on the machine's network address only is not on 127.0.0.1, so each of its IPv4
     # addresses is tried too.
-    addresses = ["127.0.0.1"]
+    addresses = [(socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")]
     try:
-        addresses += [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
+        addresses += [(socket.AF_INET, info[4][0])
+                      for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
     except OSError:
         pass
-    for address in dict.fromkeys(addresses):
-        with socket.socket() as s:
+    for family, address in dict.fromkeys(addresses):
+        try:
+            s = socket.socket(family)
+        except OSError:
+            continue
+        with s:
             s.settimeout(1)
             if s.connect_ex((address, port)) == 0:
                 return False

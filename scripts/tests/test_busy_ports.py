@@ -122,3 +122,50 @@ def test_a_busy_engine_port_is_moved(published):
     assert settings["ENGINE_PORT"] == "8080"
     assert settings["API_URL_EXTERNAL"] == "http://localhost:8080"
     assert no_problem_names(problems, 80)
+
+
+@contextlib.contextmanager
+def listening_v6(address, v6only=True):
+    """A real IPv6 listener on a port the system picks; skipped where this machine has no IPv6."""
+    try:
+        listener = socket.socket(socket.AF_INET6)
+    except OSError:
+        pytest.skip("no IPv6 on this machine")
+    with listener:
+        if v6only:
+            listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        try:
+            listener.bind((address, 0))
+        except OSError:
+            pytest.skip(f"cannot listen on [{address}] here")
+        listener.listen()
+        yield listener.getsockname()[1]
+
+
+@pytest.mark.parametrize("address", ["::1", "::"])
+def test_a_program_on_ipv6_only_holds_an_all_interfaces_port(address):
+    """Docker publishes [::] too and fails after the whole build; or a browser's localhost (::1 first) reaches
+    the other program."""
+    with listening_v6(address) as port:
+        assert not aisc_py().port_is_free(port, "0.0.0.0")
+
+
+def test_a_program_on_ipv6_loopback_holds_a_loopback_port():
+    """The sign-in is published on 127.0.0.1, but a browser on this machine asks localhost, ::1 first."""
+    with listening_v6("::1") as port:
+        assert not aisc_py().port_is_free(port, "127.0.0.1")
+
+
+def test_a_program_on_ipv6_loopback_is_found_where_binding_cannot_tell(monkeypatch):
+    """A port below 1024 cannot be bound without root on Linux: whether something answers decides, ::1 too."""
+    m = aisc_py()
+    plain_bind = socket.socket.bind
+    with listening_v6("::1") as port:
+        def refused(self, address):
+            if address[1] == port:
+                raise PermissionError(13, "permission denied")
+            return plain_bind(self, address)
+
+        monkeypatch.setattr(socket.socket, "bind", refused)
+        monkeypatch.setattr(m.os, "name", "posix")
+        assert not m.port_is_free(port, "0.0.0.0")
