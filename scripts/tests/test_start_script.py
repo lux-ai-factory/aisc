@@ -9,6 +9,7 @@ answers, so "compose went through" no longer ends on a 502.
 import http.server
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -578,3 +579,41 @@ def test_a_kept_port_that_is_not_a_port_is_refused_naming_its_line(scratch, line
     assert "Traceback" not in r.stderr
     assert f"env.local line 2 ({line})" in r.stderr and "a whole number from 1 to 65535" in r.stderr
     assert not [c for c in calls(scratch) if " build" in c]
+
+
+def moved_install(d):
+    """An install with data whose launcher and dashboard moved earlier (env.local keeps them), held by its own
+    containers."""
+    (d / "env.local").write_text("HOMEPAGE_PORT_EXTERNAL=8110\nLAUNCHER_EXTERNAL_URL=http://localhost:8110/\n"
+                                 "DASHBOARD_PORT_EXTERNAL=8198\nDASHBOARD_EXTERNAL_URL=http://localhost:8198\n")
+    (d / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", ":8110->").replace(":8188->", ":8198->"))
+
+
+def updates(d):
+    """What each client update sent, by the client id it named, in the order kcadm was asked."""
+    named = re.findall(r"^KCADM update clients/(\S+) ", (d / "kcadm.log").read_text(), re.M)
+    sent = [json.loads(line) for line in (d / "exec-input").read_text().splitlines() if line.strip()]
+    return list(zip(named, sent))
+
+
+def test_each_client_is_sent_its_own_moved_addresses(scratch):
+    moved_install(scratch)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    assert set(sent) == {"id-of-aisc-gateway", "id-of-aisc-webapp"}
+    gateway, webapp = sent["id-of-aisc-gateway"], sent["id-of-aisc-webapp"]
+    assert gateway["redirectUris"] == ["http://localhost/oauth2/callback", "http://localhost:8110/oauth2/callback",
+                                       "http://localhost:8198/oauth2/callback"]
+    assert gateway["attributes"]["post.logout.redirect.uris"] == "http://localhost:8110/*##http://localhost/*"
+    assert webapp["baseUrl"] == "http://localhost" and "8110" not in json.dumps(webapp)
+
+
+def test_a_second_client_that_cannot_be_updated_stops_start(scratch):
+    moved_install(scratch)
+    (scratch / "update-fails").write_text("clients/id-of-aisc-webapp")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "could not be told" in r.stderr and "update refused" in r.stderr
+    assert "AISC is up" not in r.stdout
+    assert [client for client, _ in updates(scratch)] == ["id-of-aisc-gateway", "id-of-aisc-webapp"] * 2
