@@ -552,9 +552,9 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
     install not served over https (may_move) moves to the first free one of its preferred port and fallbacks:
     start tells the sign-in the install's addresses, so data is no reason to stay. One served over https must
     not, since its public names lead to the ports it has. A port picked for one role is never offered to the
-    next. A port that is not at its preferred one gets its address written too; at its preferred one the
-    install's own address stands (an https or other-host install sets it itself). Every other published port is
-    checked as it is. A port this install's own containers hold is not taken."""
+    next. On plain http a port that is not at its preferred one gets its address written too; at its preferred
+    one, or on an install served over https, the install's own address stands (it sets it itself). Every other
+    published port is checked as it is. A port this install's own containers hold is not taken."""
     picked: set[int] = set()
 
     def free(port: int, host: str = "0.0.0.0") -> bool:
@@ -582,7 +582,9 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
         if chosen is not None:
             picked.add(chosen)
             settings[role.variable] = str(chosen)
-            if chosen != role.preferred and role.address:
+            # an https install names itself, and env.local comes last in env.runtime: a localhost address
+            # written there would override its public names, so a port it kept stays published but unnamed
+            if chosen != role.preferred and role.address and may_move:
                 settings[role.address] = address_of(role, chosen)
     for service, host, port, target in published:
         # a browser port is published through its variable, on one of its own candidates; the engine's
@@ -841,7 +843,7 @@ def start(_args: list[str]) -> None:
         say(line)
     if moved:
         say("If a port is held by something left from an earlier AISC run, restarting Docker frees it.")
-    elif settings["ENGINE_PORT"] != "80":
+    elif "API_URL_EXTERNAL" in settings:
         say(f"On this install, steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
 
     # 4. The images

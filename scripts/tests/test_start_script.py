@@ -266,6 +266,24 @@ def test_start_keeps_an_https_install_s_own_engine_address(scratch):
     assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
 
 
+def test_an_https_install_with_a_port_kept_from_plain_http_keeps_its_own_address(scratch):
+    """Its engine stays on the port it kept, but its public https address is the one compose uses, and start
+    sends nobody to localhost."""
+    settings = (scratch / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    (scratch / "env.plugin_downloader").write_text(settings)
+    (scratch / "env.local").write_text("ENGINE_PORT=8090\n")
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->", "0.0.0.0:8090->"))
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    runtime = (scratch / "env.runtime").read_text().splitlines()
+    engine = [line for line in runtime if line.startswith("API_URL_EXTERNAL=")]
+    assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
+    assert "ENGINE_PORT=8090" in (scratch / "env.local").read_text().splitlines()
+    assert "open on http://localhost" not in r.stdout
+
+
 def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
     (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)

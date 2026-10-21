@@ -296,6 +296,18 @@ def test_an_https_install_never_moves():
     assert "LAUNCHER_EXTERNAL_URL" not in settings and moved == []
 
 
+def test_an_https_install_keeps_its_ports_but_never_gets_a_local_address():
+    """A port kept from a start on plain http stays published, but env.local comes last in env.runtime: a
+    localhost address written there would override the install's public https names and break its sign-in."""
+    m = aisc_py()
+    settings, problems, _moved = m.settle_ports(PUBLISHED, set(), {"HOMEPAGE_PORT_EXTERNAL": "8110"}, False, taken())
+    assert problems == [] and settings["HOMEPAGE_PORT_EXTERNAL"] == "8110"
+    assert "LAUNCHER_EXTERNAL_URL" not in settings
+    settings, problems, _moved = m.settle_ports(PUBLISHED, set(), {"ENGINE_PORT": "8090"}, False, taken())
+    assert problems == [] and settings["ENGINE_PORT"] == "8090"
+    assert "API_URL_EXTERNAL" not in settings
+
+
 def test_with_every_port_free_nothing_changes():
     settings, problems, moved = aisc_py().settle_ports(PUBLISHED, set(), {}, True, taken())
     assert problems == [] and moved == []
