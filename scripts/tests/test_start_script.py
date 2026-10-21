@@ -34,6 +34,8 @@ case "$1" in
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
+      *" ps -a --status created"*) [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
+      *" rm "*) exit 0 ;;
       *" up "*) exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
         exit 0 ;;
@@ -408,3 +410,23 @@ def test_no_secret_reaches_a_command_line_when_start_tells_the_sign_in(scratch):
     secrets = [line.split("=", 1)[1] for line in (scratch / "env.secrets").read_text().splitlines()
                if "=" in line and not line.startswith("#")]
     assert not [v for v in secrets if len(v) >= 8 and v in log]
+
+
+def test_start_clears_containers_a_failed_attempt_left_created(scratch):
+    """A refused start followed by a hand-run `docker compose up` leaves containers in state created, which
+    then block the next start; start removes them before it brings the stack up."""
+    (scratch / "created-answer").write_text("aisc-webapp\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    removal = [c for c in log if c.startswith("compose ") and " rm -f " in c and "kcadm" not in c]
+    ups = [c for c in log if " up " in c]
+    assert len(removal) == 1 and " rm -f aisc-webapp" in removal[0], log
+    assert log.index(removal[0]) < log.index(ups[0])
+
+
+def test_a_refused_start_says_not_to_run_compose_directly(scratch):
+    (scratch / "branch").write_text("master\n")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "Nothing was started. Fix this and run start again, not docker compose directly." in r.stdout + r.stderr

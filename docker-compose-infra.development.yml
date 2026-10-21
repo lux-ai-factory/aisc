@@ -40,6 +40,7 @@ services:
 
   # MinIO, the S3-compatible object storage for models, datasets and artifacts
   minio:
+    restart: unless-stopped
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     build: ./infra/minio
@@ -86,6 +87,7 @@ services:
 
   # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
+    restart: unless-stopped
     image: rabbitmq:3-management
     container_name: rabbitmq
     environment:
@@ -263,6 +265,7 @@ services:
 
   # Keycloak: the identity provider behind the one sign-in of every module.
   keycloak:
+    restart: unless-stopped
     # A pinned version.
     image: quay.io/keycloak/keycloak:26.6.3
     container_name: keycloak
@@ -315,6 +318,7 @@ services:
   # immudb, the tamper-evident ledger of who did what. It keeps its own embedded storage.
   # gRPC on 3322; its web console (8080) is not published.
   immudb:
+    restart: unless-stopped
     image: codenotary/immudb:1.11.1
     container_name: immudb
     environment:

@@ -987,6 +987,14 @@ def start(_args: list[str]) -> None:
                       "npm timed out) or the disk. Fix it and run this again; what was built is kept.")
 
     # 5. Start, and wait for the sign-in page
+    # A failed attempt, finished by hand with `docker compose up`, leaves containers in state "created";
+    # they hold names and ports the next up needs, so they go first.
+    left = subprocess.run([*COMPOSE, "ps", "-a", "--status", "created", "--format", "{{.Service}}"],
+                          capture_output=True, text=True)
+    left_over = left.stdout.split() if left.returncode == 0 else []
+    if left_over:
+        say(f"Removing what an earlier attempt left unstarted: {' '.join(left_over)}")
+        subprocess.run([*COMPOSE, "rm", "-f", *left_over], capture_output=True)
     say("Starting the stack ...")
     if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
         raise Refused("the stack did not start: see the error above.")
@@ -1055,7 +1063,12 @@ def main(argv: list[str]) -> int:
     try:
         COMMANDS[argv[0]](argv[1:])
     except Refused as refused:
-        warn(f"aisc.py {argv[0]}: {refused}" if argv[0] == "start" else str(refused))
+        if argv[0] == "start":
+            # A refusal that is followed by a hand-run compose up leaves half-made containers behind.
+            warn(f"aisc.py start: {str(refused).rstrip('.')}. Nothing was started. Fix this and run start again, not docker "
+                 "compose directly.")
+        else:
+            warn(str(refused))
         return refused.code
     except OSError as failed:
         warn(f"aisc.py {argv[0]}: {failed.strerror or failed} ({failed.filename or 'a file here'}); the files "

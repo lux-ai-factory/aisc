@@ -672,3 +672,18 @@ def test_the_gateway_lets_sign_in_return_to_the_engine_port(tmp_path):
 def test_keycloak_gets_the_engine_address_for_its_realm(tmp_path):
     keycloak = compose_cfg.config(tmp_path, env=MOVED)["services"]["keycloak"]
     assert keycloak["environment"]["API_URL_EXTERNAL"] == "http://localhost:8080"
+
+
+# What runs once and exits: these must not come back after a restart.
+ONE_SHOT = ("aisc-backend-migrate", "control-objectives-migrate", "controls-migrate", "dashboard-migrate",
+            "immudb-key", "ledger-pool", "make_buckets", "plugin-downloader", "plugin-publisher", "postgres-setup",
+            "qualification-migrate", "report-composer-migrate", "report-grants")
+
+
+def test_every_long_running_service_comes_back_after_a_restart(tmp_path):
+    """After a Docker or computer restart a service with no restart policy stays down (keycloak, immudb,
+    rabbitmq, minio, the backend, the eval worker and the webapp did), and the install looks broken."""
+    services = compose_cfg.config(tmp_path, files=FILES + ["docker-compose.plugin_downloader.yml"])["services"]
+    stays_down = sorted(n for n, s in services.items()
+                        if n not in ONE_SHOT and s.get("restart") not in ("always", "unless-stopped"))
+    assert not stays_down, f"these do not come back after a restart: {stays_down}"

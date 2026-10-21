@@ -43,6 +43,7 @@ x-backend-env: &backend-env
 services:
   # The engine's web frontend (apps/webapp)
   aisc-webapp:
+    restart: unless-stopped
     build: apps/webapp/
     image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -65,6 +66,7 @@ services:
       - frontend
 
   aisc-backend:
+    restart: unless-stopped
     build: apps/backend/
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -178,6 +180,7 @@ services:
 
   # The evaluation worker (apps/eval): a Celery worker that runs the plugins
   aisc-eval-worker:
+    restart: unless-stopped
     platform: linux/amd64
     build:
       context: apps/eval/
