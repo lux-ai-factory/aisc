@@ -88,7 +88,7 @@ for e in "qualification|$VERIFY_APPS_URL/qualification" \
   n=${e%%|*}; u=${e#*|}
   loc=$(curl -s -b "$J" --max-time 20 -o /dev/null -D - "$u" | grep -i '^location:' | head -1 | tr -d '\r')
   case "$loc" in
-    "$VERIFY_BASE_URL"*) ok "$n -> the launcher, not a second project list" ;;
+    *"$VERIFY_BASE_URL"*) ok "$n -> the launcher, not a second project list" ;;
     *) no "$n -> ${loc:-no redirect}: it is deciding the project itself" ;;
   esac
 done

@@ -335,3 +335,39 @@ def test_sso_a_reference_to_another_variable_is_not_a_written_secret(tmp_path):
 
     assert run("env.a") == 1, "a reference is flagged as a secret"
     assert run("env.b") == 0, "a written password is not flagged"
+
+
+# 3. verify-sso.sh section 2b: a module reached without a project redirects to the launcher, wherever it is
+
+
+def redirect_case() -> str:
+    """The `case "$loc" in ... esac` block of section 2b, extracted by anchor."""
+    text = sso_text()
+    start = text.index('case "$loc" in', text.index("2b. and a module reached without a project"))
+    end = text.index("esac", start) + len("esac")
+    return text[start:end]
+
+
+def run_redirect_case(launcher: str, loc: str) -> str:
+    harness = f'''#!/usr/bin/env bash
+set -uo pipefail
+ok(){{ printf 'OK\\n'; }}
+no(){{ printf 'NO\\n'; }}
+n=qualification
+VERIFY_BASE_URL={launcher!r}
+loc={loc!r}
+{redirect_case()}
+'''
+    return subprocess.run(["bash", "-c", harness], capture_output=True, text=True, timeout=30).stdout.strip()
+
+
+def test_redirect_to_the_launcher_is_recognised_in_the_whole_header_line():
+    assert run_redirect_case("http://localhost:8100", "location: http://localhost:8100/p/x") == "OK"
+
+
+def test_redirect_to_the_engine_is_refused():
+    assert run_redirect_case("http://localhost:8100", "location: http://localhost/qualification/p/abc") == "NO"
+
+
+def test_redirect_to_a_moved_launcher_is_recognised():
+    assert run_redirect_case("http://localhost:8110", "location: http://localhost:8110/") == "OK"
