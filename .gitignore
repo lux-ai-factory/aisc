@@ -3,6 +3,7 @@ def_plugins/
 env.secrets
 keycloak/aisc-realm.local.json
 env.runtime
+env.local
 env.engine-standalone
 
 # Python bytecode

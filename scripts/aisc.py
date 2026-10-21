@@ -60,6 +60,7 @@ import os
 import re
 import secrets as random_source
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -68,11 +69,16 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = "env.secrets"
 COMBINED = "env.runtime"   # what compose is pointed at: the settings plus the secrets
 TRACKED = "env.plugin_downloader"
+LOCAL = "env.local"         # this install's own settings, chosen by start (git-ignored)
+#: the engine's ports: the one it prefers, then the ones a new install moves to when that one is taken
+ENGINE_PORTS: dict[str, tuple[int, tuple[int, ...]]] = {"ENGINE_PORT": (80, (8080, 8090, 8000, 8880, 8888)),
+                                                       "ENGINE_HTTPS_PORT": (443, (8443, 8453, 9443))}
 SIGNING_KEY, SIGNING_PUB = "immudb-signing.key", "immudb-signing.pub"
 COMPOSE = ["docker", "compose", "-p", "aisc", "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml"]
@@ -395,10 +401,41 @@ def write_runtime() -> None:
         return " " not in name and name in VOLUME_BOUND
 
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
+    # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
+    local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     combined = ([l for l in secret_lines if infra(l)] + [l for l in tracked if not infra(l)]
-                + [l for l in secret_lines if not infra(l)])
+                + [l for l in secret_lines if not infra(l)] + local)
     write_beside(COMBINED, text_of(combined))
-    say(f"wrote {COMBINED} ({TRACKED} + {OUT})")
+    say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
+
+
+def port_is_free(port: int, host: str) -> bool:
+    """Whether Docker could publish this port on this address. Binding it is the real test (it also sees
+    Windows' reserved ports); where binding is refused outright (a port below 1024 on Linux without root),
+    whether something answers on it decides."""
+    with socket.socket() as s:
+        try:
+            s.bind((host, port))
+            return True
+        except PermissionError:
+            pass
+        except OSError:
+            return False
+    with socket.socket() as s:
+        s.settimeout(1)
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def choose_port(preferred: int, fallbacks: tuple[int, ...], is_free: Callable[[int], bool]) -> int | None:
+    """The preferred port if it is free, else the first free fallback; None when every one is taken."""
+    return next((p for p in (preferred, *fallbacks) if is_free(p)), None)
+
+
+def engine_settings(port: int, https_port: int) -> dict[str, str]:
+    """What the engine's ports change: compose publishes them, and the engine's address is what browsers send
+    as their Origin (without :80, which they never write)."""
+    return {"ENGINE_PORT": str(port), "ENGINE_HTTPS_PORT": str(https_port),
+            "API_URL_EXTERNAL": "http://localhost" + ("" if port == 80 else f":{port}")}
 
 
 def make_secrets(args: list[str]) -> None:
