@@ -1,5 +1,31 @@
 # Changelog of the aisc root repository (newest first).
 
+## 2026-10-21: AISC starts whatever ports are taken
+
+### Changes
+- The README takes a first-time installer from nothing to a running AISC: Docker and uv are installed per
+  system (Windows, macOS, Linux), then everyone downloads and starts AISC with the same commands. Check:
+  `scripts/tests/test_readme.py`.
+- The add-controls service and its private submodule are removed, so every submodule is public and the clone
+  needs no GitHub account. To bring it back: `git revert b3b069e`.
+- `uv run scripts/aisc.py start` checks every port before it builds anything. When a browser port (80, 8100,
+  8188 or 8081) is taken, an install not served over https moves to a free one, says so, and keeps the choice
+  in `env.local`; an https install stops and names the port. Check: run `start` with one of them held.
+- Only the browser ports are published by default. PostgreSQL, Redis, RabbitMQ, MinIO and immudb are published
+  on `127.0.0.1` only with `AISC_ADMIN_PORTS=on` (in the environment or `env.local`), and 443 only on an
+  install served over https. Check: `docker compose -p aisc ps` shows no 5432 without the setting.
+- `start` tells the sign-in the install's addresses on every start, so a port that moved is the address people
+  return to after signing in.
+- `start` names the sign-in that works on the install, and waits for the realm page to answer before it says
+  "AISC is up". On Windows it finds Docker on the PATH. It reads `env.local` as a person may edit it (quoted
+  values, notes and settings of their own are kept). It removes the containers a failed attempt half-made.
+  Every long-running service has a restart policy, so AISC comes back after Docker or the computer restarts.
+- The checks (`verify-*.sh`) reach the install's real addresses, whichever port moved.
+- Lint cleanup, with no change in behaviour.
+
+How to check: `uv run scripts/aisc.py start`; the tests named in each commit (`git log --oneline c504aac..HEAD`);
+and the full check `scripts/verify.sh --port-fallback`, which lands in the next commit.
+
 ## 2026-10-18: the engine is ours to change
 
 ### Changes
