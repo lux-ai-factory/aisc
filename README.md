@@ -1,119 +1,269 @@
 # AI Assessment Sandbox Configurator (AISC)
 
-AISC is a platform for assessing an AI system against the EU AI Act and similar requirements. A
-project walks through four steps: **1** Qualify the AI system (describe the system and its components
-in its AI card, and find its AI Act risk class), **2** Set control objectives (rate the system's risks
-and link them to the control objectives it must meet), **3** Choose tests and checklists (install the
-ones the assessment needs), **4** Collect evidence (answer the checklists, run the tests, look at the
-results and compose the report). The steps are built from modules, most of them in a git submodule of
-their own; this repository ties them together and runs the whole stack
-with Docker Compose, behind one sign-in.
+[![CI](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml/badge.svg?branch=feat/unified-modules)](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.md)
+[![arXiv](https://img.shields.io/badge/arXiv-2509.25256-b31b1b.svg)](https://arxiv.org/abs/2509.25256)
 
-**Details** (components, how it works, configuration, tests): [docs/guide.md](docs/guide.md).
-Background documentation (architecture, mission, user guide):
-[lux-ai-factory/rfc](https://github.com/lux-ai-factory/rfc).
+AISC helps a team plan and carry out the technical assessment of an AI system against the EU AI Act. It runs on
+your own computer or server, and keeps every project, answer, test result and report in one place.
 
-## Prerequisites
+![A project in AISC: the four steps of an assessment](docs/images/project-page.png)
 
-**Machine**
-- Linux, Windows 10 or 11, or macOS, on x86_64. Linux is tested; Windows and macOS should work the same way
-  but have not been tried yet, and arm64 has not been tested.
-- At least 8 GB of RAM for the stack (it uses about 4 GB at rest; test plugins that run a model locally need
-  more) and 30 GB of disk (about 14 GB of images, Docker's build cache, and the data). On Windows and macOS,
-  Docker Desktop gives its Linux machine part of the computer's memory: a computer with 16 GB is comfortable.
-- Free ports 80, 443, 8100 and 8188, and 8081, 5432, 5672, 6379, 9000 and 3322 on `127.0.0.1`.
+## What it does
 
-**Software**
-- Docker with the Compose plugin, Compose 2.17 or later (`docker compose version`):
-  - Linux: Docker Engine 23 or later, used by a user allowed to use Docker.
-  - Windows and macOS: [Docker Desktop](https://www.docker.com/products/docker-desktop/), started. On Windows it
-    sets up what it needs to run Linux containers on its first start; nothing else is needed there.
-- [Git](https://git-scm.com/downloads). Git LFS is not needed: only the test data of `apps/eval` is kept in it,
-  and the install does not use it.
-- [uv](https://docs.astral.sh/uv/getting-started/installation/), which runs the install script and fetches the
-  Python it needs.
+Each project assesses one AI system, in four steps:
 
-On Windows, all three install from PowerShell:
-```powershell
-winget install --id Docker.DockerDesktop -e
-winget install --id Git.Git -e
-winget install --id astral-sh.uv -e
+1. **Qualify the AI system.** Describe the system and its components in an AI card, and find its AI Act risk class.
+2. **Set control objectives.** Rate the system's risks and link them to the control objectives it must meet.
+3. **Choose tests and checklists.** Pick them from the catalogue and install them in one click.
+4. **Collect evidence.** Answer the checklists, run the tests, look at the results and compose the report.
+
+Along the way, AISC:
+
+- runs technical tests on the system (for example fairness, robustness, performance and jailbreak tests) through plugins;
+- shows the results in a dashboard and produces the report as PDF or Word;
+- gives each project its own members and roles, and its own database;
+- records who changed what in a tamper-evident log.
+
+AISC is built for regulatory sandboxes, supervisory authorities and the AI providers who work with them.
+
+## Quick start
+
+If you already have Docker, Git and uv:
+
 ```
-then sign out and in again, and start Docker Desktop once.
+git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+cd aisc
+uv run scripts/aisc.py start
+```
 
-**Access**
-- Internet access while installing: GitHub (submodules, the test plugins, MinIO's source), Docker Hub, quay.io and
-  ghcr.io (images), PyPI, npm and the Go module proxy (packages), Debian and Alpine package mirrors. While running: the hosted catalogue for public
-  projects, and the model providers a project uses.
-- Optional: a `GITHUB_TOKEN` that can read lux-ai-factory's private plugin repos, added to `env.secrets`;
-  without it those plugins are skipped. Optional model keys are in [docs/guide.md](docs/guide.md).
+Then open <http://localhost:8100> and sign in as `admin` / `admin`.
 
-## Install and run
+The first start builds every image (27 of them) on your computer, so it takes a while. Later starts are quick.
+New to these tools? Follow [Install](#install) below, step by step.
 
-The same commands on every system: in a terminal on Linux or macOS, in PowerShell or Windows Terminal on
-Windows.
+## Before you install
 
-1. **Clone with the submodules**, keeping Linux line endings (the containers run the scripts in it):
+| You need | |
+|---|---|
+| **Computer** | Windows 10 or 11, macOS or Linux, on a 64-bit Intel or AMD processor (x86_64) |
+| **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
+| **Disk** | 30 GB free |
+| **Free ports** | 80, 443, 8100 and 8188, and on `127.0.0.1`: 8081, 5432, 5672, 6379, 9000 and 3322 |
+| **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors) |
+| **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private and are skipped) |
+
+**Tested so far:** Linux. The install works the same way on Windows and macOS, but nobody has run it there end
+to end yet. Computers with Apple Silicon (M1 to M4) and other ARM processors are not tested. If you try one of
+these, please [tell us how it went](https://github.com/lux-ai-factory/aisc/issues).
+
+Port 5432 is also PostgreSQL's usual port. If PostgreSQL is already installed on your computer, stop it first.
+
+## Install
+
+Pick your system. Each section ends with AISC running.
+
+### Windows
+
+1. **Check that you can install programs.** You need administrator rights on the computer. On a work laptop,
+   ask your IT team first.
+
+2. **Install Docker Desktop, Git and uv.** Open PowerShell and run:
+
+   ```powershell
+   winget install --id Docker.DockerDesktop -e
+   winget install --id Git.Git -e
+   winget install --id astral-sh.uv -e
    ```
+
+3. **Restart the computer**, then start **Docker Desktop** from the Start menu.
+   - On its first start, Docker Desktop sets up WSL 2, the part of Windows that runs Linux programs. It may ask
+     you to install an update or to restart again. Accept, and start Docker Desktop again afterwards.
+   - If it says that virtualisation is turned off, it has to be turned on in the computer's BIOS or UEFI
+     settings. How depends on the computer's brand; search for "enable virtualization" with your model.
+   - Wait until Docker Desktop shows **Engine running**.
+
+4. **Download AISC.** Open a new PowerShell window and run:
+
+   ```powershell
+   cd $HOME
    git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
    cd aisc
    ```
-   On Windows, clone inside your own user folder (for example `C:\Users\<you>\aisc`), not in a folder
-   OneDrive synchronises. Already cloned without the submodules: `git submodule update --init --recursive`.
 
-2. **Start the stack** (the first start builds every image and takes several minutes; on Windows and macOS
-   the first start is slower than on Linux, as the containers read the clone through Docker Desktop):
-   ```
+   > **Copy the command exactly.** The `-c core.autocrlf=false` part keeps the files in the form the Linux
+   > containers expect. If you cloned without it, delete the `aisc` folder and clone again.
+   >
+   > Keep the folder out of OneDrive: `cd $HOME` puts it in `C:\Users\<you>\aisc`, which is fine.
+
+5. **Start AISC:**
+
+   ```powershell
    uv run scripts/aisc.py start
    ```
-   It checks Docker, Compose, the branch and the submodules first and says what to fix; makes the
-   secrets (none is committed; it keeps existing values, so run it again after a pull); builds, trying a
-   failed build twice more; starts the stack; and waits until the sign-in page answers. On Linux and macOS,
-   `./scripts/start.sh` does the same.
 
-3. **By hand instead**, the same in two commands:
+   Go on with [Open AISC](#open-aisc).
+
+### macOS
+
+1. **Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)**, start it and wait until it
+   shows **Engine running**.
+
+2. **Install Git and uv.** Open Terminal and run:
+
+   ```bash
+   xcode-select --install
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-   uv run scripts/aisc.py secrets
-   docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml -f docker-compose-infra.development.yml -f docker-compose.development.yml up -d --build
+
+   The first command installs Git (skip it if `git --version` already works). Close and reopen Terminal after
+   the second.
+
+3. **Download and start AISC:**
+
+   ```bash
+   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+   cd aisc
+   uv run scripts/aisc.py start
    ```
-   `up -d` returns before the sign-in is ready: a page opened in the first 30 seconds or so shows 502.
 
-4. **Sign in** at http://localhost:8100 as `admin` / `admin` (or `user` / `user`, an ordinary account) and
-   create a project. Only this machine reaches the sign-in, so the names are the passwords. An install
-   served to others (`CADDY_DOMAIN` set to an `https://` address) gets generated passwords instead, kept as
-   `AISC_ADMIN_PASSWORD` and `AISC_USER_PASSWORD` in `env.secrets`, which git ignores: show them with
+   Go on with [Open AISC](#open-aisc).
+
+### Linux
+
+1. **Install Docker Engine 23 or later with the Compose plugin 2.17 or later**, following
+   [Docker's instructions for your distribution](https://docs.docker.com/engine/install/). Let your user run
+   Docker without `sudo` ([how](https://docs.docker.com/engine/install/linux-postinstall/)), then log out and in
+   again. Check with `docker compose version`.
+
+2. **Install Git and uv:**
+
+   ```bash
+   sudo apt install git        # or your distribution's package manager
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-   uv run scripts/aisc.py password
+
+3. **Download and start AISC:**
+
+   ```bash
+   git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+   cd aisc
+   uv run scripts/aisc.py start
    ```
-   To choose your own: `uv run scripts/aisc.py rotate-infra-password AISC_ADMIN_PASSWORD --ask` (it sets it
-   in Keycloak and in `env.secrets` together, so the checks keep signing in).
 
-5. **Check it:** `./scripts/verify.sh --stack` (needs `python3` and `uv`; the plugin check installs every plugin
-   and takes a while). The checks are bash scripts: on Windows, run `bash scripts/verify.sh --stack` from Git
-   Bash, which Git for Windows installs; they have not been tried there yet.
+### What `start` does
 
-**If something stops**
-- "Docker is not running": start Docker Desktop (or the docker service on Linux) and wait until it says it
-  is running.
-- Port 80 or 443 is taken (common on Windows, by IIS or another web server): see what holds it with
-  `netstat -ano | findstr :80` in PowerShell (`sudo lsof -i :80` on Linux and macOS), and stop that program.
-- A build fails on the network or the disk: run the same command again; what was built is kept.
+`uv run scripts/aisc.py start` is the only command you need. It:
 
-Running the engine on its own, your own plugins, the settings and the tests are in
-[docs/guide.md](docs/guide.md).
+1. checks Docker, the download and the free disk space, and tells you what to fix if something is missing;
+2. creates the passwords and keys for your install (they stay on your computer and are never uploaded);
+3. builds the images and starts AISC;
+4. waits until the sign-in page answers, then prints where to go.
+
+When it ends with **AISC is up**, AISC is ready. You can run `start` again at any time: it keeps your data and
+your passwords.
+
+## Open AISC
+
+1. Open <http://localhost:8100> in your browser.
+2. Sign in as `admin` / `admin`. A second account, `user` / `user`, has ordinary rights.
+   These simple passwords are safe here because the sign-in only works from your own computer. An install
+   served to others over https gets generated passwords instead, kept as `AISC_ADMIN_PASSWORD` and
+   `AISC_USER_PASSWORD` in `env.secrets`; show them with `uv run scripts/aisc.py password`.
+3. Click **Create project** and give the project a name.
+4. Work through the four steps on the project page. Each card has an **Open** link.
+
+The **Manage** menu, top right, holds the settings: components and connections to the systems you test, the
+models and keys used by the AI assistant, the activity log and background tasks.
+
+Some helpers, such as the assistant that fills in the AI card, use a language model. They need a model and an
+API key, which an administrator adds under **Manage > AI assistant models and keys**.
+
+## Everyday use
+
+All commands run in the `aisc` folder.
+
+| To | Run |
+|---|---|
+| Stop AISC | `docker compose -p aisc stop` |
+| Start it again (also after restarting the computer or Docker) | `uv run scripts/aisc.py start` |
+| Update to the latest version | `git pull`, then `git submodule update --init --recursive`, then `uv run scripts/aisc.py start` |
+| Check that everything works | `./scripts/verify.sh --stack` (macOS and Linux; it needs Python 3 and takes a while) |
+| Remove AISC and all its data | `docker compose -p aisc down -v`, then delete the `aisc` folder |
+
+After a computer or Docker restart, some parts of AISC do not start by themselves. Run `start` again.
+
+`down -v` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
+Desktop's **Images** page, or with `docker image prune -a` if you use Docker for nothing else.
+
+## If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| "Docker is not running" | Start Docker Desktop (on Linux, the Docker service) and wait until it is running. Then run `start` again. |
+| A port is already in use | See which program holds it: `netstat -ano \| findstr :80` in PowerShell, `sudo lsof -i :80` on macOS and Linux. Stop that program and run `start` again. |
+| Port 80 is held by process 4 ("System") on Windows | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
+| The page shows **502** | AISC is still starting. Wait 30 seconds and reload. |
+| The sign-in refuses you after a reinstall | Your browser kept a session from the old install. Use a private window. |
+| A page or step does not open after a restart | Run `uv run scripts/aisc.py start` again. |
+| On Windows, a container stops with `/bin/sh^M`, `bad interpreter` or `no such file` | The clone was made without `-c core.autocrlf=false`. Delete the `aisc` folder and clone again with the exact command. |
+| The build fails on the network or with "no space left on device" | Free disk space if needed, then run `start` again. What was already built is kept. |
+
+Still stuck? [Open an issue](https://github.com/lux-ai-factory/aisc/issues) with the last lines `start` printed.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    B[Browser] --> G[Gateway and sign-in<br/>Caddy, Keycloak]
+    G --> L[Projects and Manage]
+    G --> Q[1 Qualification]
+    G --> CO[2 Control objectives]
+    G --> C[3 Catalogue]
+    G --> E[4 Evidence:<br/>checklists, test engine,<br/>dashboard, reports]
+    L & Q & CO & C & E --> P[Platform:<br/>projects, roles, ledger]
+    P --> D[(PostgreSQL<br/>one database per project)]
+    P --> I[(immudb<br/>tamper-evident log)]
+```
+
+Each step is its own application, most of them in a Git submodule of this repository. This repository ties them
+together and runs them with Docker Compose behind one sign-in. [docs/guide.md](docs/guide.md) describes every
+component.
+
+## Documentation
+
+- [docs/guide.md](docs/guide.md): components, how it works, configuration, passwords and keys, tests.
+- [Your own plugins](docs/guide.md#your-own-plugins) and [your own checklists](docs/guide.md#your-own-controls).
+- [lux-ai-factory/rfc](https://github.com/lux-ai-factory/rfc): architecture, mission and user guide.
 
 ## Contributing
 
-- A change to a submodule is committed in the submodule first, then the new pin is committed here.
-- Database changes are migration files: `platform/migrations/` for the `platform` database,
-  `platform/project-template/` for what every new project database starts with, and each module's
-  own migrations for its tables. Applied migrations never run again, so a change goes in a new file.
-- Tests never use the running stack's database; see [Tests](docs/guide.md#tests).
-- Read [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are made under the contributor license
-  agreements in this repository (`AISC ICLA (Individuals).txt`, `AISC CCLA (Entities).txt`) and
-  licensed under [Apache 2.0](LICENSE.md).
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Contributions are made under the
+contributor license agreements in this repository ([individuals](<AISC ICLA (Individuals).txt>),
+[entities](<AISC CCLA (Entities).txt>)).
+
+## Citing AISC
+
+If you use AISC in research, please cite:
+
+```bibtex
+@misc{buscemi2025sandboxconfigurator,
+  title         = {The Sandbox Configurator: A Framework to Support Technical Assessment in AI Regulatory Sandboxes},
+  author        = {Buscemi, Alessio and Simonetto, Thibault and Pagani, Daniele and Castignani, German and Cordy, Maxime and Cabot, Jordi},
+  year          = {2025},
+  eprint        = {2509.25256},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2509.25256}
+}
+```
+
+## Acknowledgements
+
+AISC is co-developed and co-maintained by the Interdisciplinary Centre for Security, Reliability and Trust (SnT)
+of the University of Luxembourg and the Luxembourg Institute of Science and Technology (LIST). It is funded under
+the Luxembourg AI Factory, Horizon Europe grant agreement No. 101234366.
 
 ## License
 
-Apache License 2.0, see [LICENSE.md](LICENSE.md).
-© 2024–2026 Université du Luxembourg and Luxembourg Institute of Science and Technology.
+[Apache License 2.0](LICENSE.md). © 2024–2026 University of Luxembourg and Luxembourg Institute of Science and
+Technology.
