@@ -200,7 +200,10 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   them too (`scripts/lib/dev-accounts.sh`). The Keycloak console's account is `admin` with
   `KEYCLOAK_ADMIN_PASSWORD` from `env.secrets`. The console is on `127.0.0.1:8081` only.
 - **Checks.** `./scripts/verify.sh --stack` runs `verify-db-access.sh`, `verify-project-databases.sh`,
-  `verify-sso.sh`, `verify-rbac.sh` and `verify-plugins.sh` against the running stack. The checks that
+  `verify-sso.sh`, `verify-rbac.sh` and `verify-plugins.sh` against the running stack.
+  `verify-project-databases.sh` (and `verify-db-consistency.sh`) read Postgres from this machine, on
+  `127.0.0.1:5432`, which is published only with `AISC_ADMIN_PORTS=on` (in the environment or `env.local`,
+  then `start`); without it they say so and fail. The checks that
   need platform projects make them once (`verify probe`, `verify rbac scratch`, `verify isolation A` and
   `B`, `verify plugins`) and reuse them: a project keeps its ledger database for good, deleted or not, so
   one made per run would use up the ledger pool.
