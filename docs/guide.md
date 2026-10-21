@@ -313,6 +313,8 @@ likely to change:
 | `LEDGER_POOL` | `ledger-pool` | how many free ledger databases (one per new project) are kept ready, refilled at each start | `50` |
 | `ENGINE_IMMUDB_PASSWORD` | `env.secrets` (aisc-backend as `IMMUDB_PASSWORD`, `ledger-pool`) | the engine's own immudb user, aisc_engine; kept by `--rotate`, changed by `--rotate-one` | generated |
 | `AISC_IMAGE_TAG` | all built images | the tag of locally built images | `latest` |
+| `ENGINE_PORT`, `ENGINE_HTTPS_PORT`, `API_URL_EXTERNAL` | `env.local` (written by `aisc.py start`, git-ignored) | the engine's ports and its address (steps 1 and 2, the sign-in's return address, the report composer's origin check). A new install moves off a taken 80 or 443 to 8080 ... / 8443 ...; after that the choice is kept | `80`, `443`, `http://localhost` |
+| `AISC_PROJECT` | `aisc.py start` | the Compose project name, for a second copy beside an install's data | `aisc` |
 
 The secrets themselves (gateway cookie and client secrets, service tokens, database role passwords,
 `PLATFORM_SECRETS_KEY` that encrypts stored LLM keys, the ledger keys, `DASHBOARD_REDIS_PASSWORD`) are listed with their purpose

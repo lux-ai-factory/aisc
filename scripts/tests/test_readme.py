@@ -15,7 +15,8 @@ def test_the_readme_lists_what_an_install_needs():
     """Every requirement to install and run the whole stack is in the README itself."""
     text = README.read_text()
     needs = section("Before you install")
-    for needed in ("x86_64", "RAM", "30 GB", "80, 443, 8100 and 8188", "8081", "5432", "Internet", "PyPI", "npm"):
+    for needed in ("x86_64", "RAM", "30 GB", "8100 and 8188", "port 80 and 443", "8081", "5432", "Internet", "PyPI",
+                   "npm"):
         assert needed in needs, needed
     for needed in ("Compose plugin 2.17", "Docker Desktop", "uv", "WSL 2", "virtualisation", "administrator rights"):
         assert needed in text, needed
@@ -85,3 +86,15 @@ def test_every_anchor_inside_the_readme_has_its_heading():
                 for h in re.findall(r"^#+ (.+)$", text, re.M)}
     for anchor in re.findall(r"\]\(#([^)]+)\)", text):
         assert anchor in headings, anchor
+
+
+def test_the_readme_says_start_moves_a_new_install_off_a_taken_port_80():
+    start = section("Install").split("### What `start` does", 1)[1]
+    assert "port 80" in start and "8080" in start
+    assert "port 80" in section("Before you install") and "8080" in section("Before you install")
+
+
+def test_the_guide_names_the_engine_port_settings():
+    guide = (ROOT / "docs/guide.md").read_text()
+    for name in ("ENGINE_PORT", "ENGINE_HTTPS_PORT", "env.local"):
+        assert name in guide, name

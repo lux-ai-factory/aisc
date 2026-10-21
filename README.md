@@ -49,7 +49,7 @@ New to these tools? Follow [Install](#install) below, step by step.
 | **Computer** | Windows 10 or 11, macOS or Linux, on a 64-bit Intel or AMD processor (x86_64) |
 | **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
 | **Disk** | 30 GB free |
-| **Free ports** | 80, 443, 8100 and 8188, and on `127.0.0.1`: 8081, 5432, 5672, 6379, 9000 and 3322 |
+| **Free ports** | 8100 and 8188, and on `127.0.0.1`: 8081, 5432, 5672, 6379, 9000 and 3322. Also port 80 and 443: if they are taken on a new install, AISC uses 8080 and 8443 instead |
 | **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors) |
 | **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private and are skipped) |
 
@@ -157,8 +157,10 @@ Pick your system. Each section ends with AISC running.
 
 1. checks Docker, the download and the free disk space, and tells you what to fix if something is missing;
 2. creates the passwords and keys for your install (they stay on your computer and are never uploaded);
-3. builds the images and starts AISC;
-4. waits until the sign-in page answers, then prints where to go.
+3. checks the ports AISC needs, before building anything. If port 80 is taken on a new install, steps 1 and 2
+   open on port 8080 instead (or the next free one), and `start` tells you. Your install keeps that port;
+4. builds the images and starts AISC;
+5. waits until the sign-in page answers, then prints where to go.
 
 When it ends with **AISC is up**, AISC is ready. You can run `start` again at any time: it keeps your data and
 your passwords.
@@ -201,8 +203,8 @@ Desktop's **Images** page, or with `docker image prune -a` if you use Docker for
 | What you see | What to do |
 |---|---|
 | "Docker is not running" | Start Docker Desktop (on Linux, the Docker service) and wait until it is running. Then run `start` again. |
-| A port is already in use | See which program holds it: `netstat -ano \| findstr :80` in PowerShell, `sudo lsof -i :80` on macOS and Linux. Stop that program and run `start` again. |
-| Port 80 is held by process 4 ("System") on Windows | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
+| "Port ... is taken" | `start` names the port and the command that shows which program holds it (`netstat -ano \| findstr :8100` in PowerShell, `sudo lsof -i :8100` on macOS and Linux). Stop that program and run `start` again. |
+| Port 80 is held by process 4 ("System") on Windows, on an install that already ran on port 80 | A Windows web service holds it, usually IIS. In **Services**, stop **World Wide Web Publishing Service** and set it to Manual. |
 | The page shows **502** | AISC is still starting. Wait 30 seconds and reload. |
 | The sign-in refuses you after a reinstall | Your browser kept a session from the old install. Use a private window. |
 | A page or step does not open after a restart | Run `uv run scripts/aisc.py start` again. |
