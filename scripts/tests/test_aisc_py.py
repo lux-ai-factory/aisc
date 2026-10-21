@@ -116,7 +116,6 @@ def test_a_taken_port_falls_back_to_the_first_free_one():
 def test_the_engine_address_drops_the_default_port():
     """Browsers send the Origin of http://localhost:80 as http://localhost: the address must match it."""
     m = aisc_py()
-    assert m.engine_settings(80, 443)["API_URL_EXTERNAL"] == "http://localhost"
     assert m.engine_settings(8080, 8443) == {"ENGINE_PORT": "8080", "ENGINE_HTTPS_PORT": "8443",
                                              "API_URL_EXTERNAL": "http://localhost:8080"}
 
@@ -178,7 +177,7 @@ def test_a_new_install_moves_off_a_taken_port_80():
 def test_with_every_port_free_nothing_changes():
     settings, problems = aisc_py().settle_ports(PUBLISHED, set(), {}, True, taken())
     assert problems == []
-    assert settings == {"ENGINE_PORT": "80", "ENGINE_HTTPS_PORT": "443", "API_URL_EXTERNAL": "http://localhost"}
+    assert settings == {"ENGINE_PORT": "80", "ENGINE_HTTPS_PORT": "443"}
 
 
 def test_ports_held_by_aisc_itself_are_not_taken():
@@ -204,7 +203,7 @@ def test_kept_ports_are_reused():
 
 def test_a_kept_port_taken_later_stops_start():
     kept = {"ENGINE_PORT": "8090", "ENGINE_HTTPS_PORT": "443", "API_URL_EXTERNAL": "http://localhost:8090"}
-    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), kept, True, taken(8090))
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), kept, False, taken(8090))
     assert len(problems) == 1 and "8090" in problems[0]
 
 
@@ -249,3 +248,28 @@ def test_a_port_whose_closed_connections_are_still_waiting_is_free():
         accepted.close()                     # the server side closes first: its end waits in TIME_WAIT
         client.close()
     assert m.port_is_free(port, "127.0.0.1")
+
+
+def test_an_engine_on_port_80_leaves_the_install_its_own_address():
+    """https and custom-host installs set API_URL_EXTERNAL themselves; only a moved engine overrides it."""
+    assert aisc_py().engine_settings(80, 443) == {"ENGINE_PORT": "80", "ENGINE_HTTPS_PORT": "443"}
+
+
+def test_a_reserved_port_on_windows_is_taken(monkeypatch):
+    """Windows refuses a bind on its reserved ranges (Hyper-V, WSL) with an access error: Docker cannot use
+    the port either, whatever answers a connect."""
+    m = aisc_py()
+
+    def refused(self, address):
+        raise PermissionError(10013, "access forbidden")
+
+    monkeypatch.setattr(socket.socket, "bind", refused)
+    monkeypatch.setattr(m.os, "name", "nt")
+    assert not m.port_is_free(51234, "0.0.0.0")
+
+
+def test_a_kept_port_on_an_install_without_data_may_still_move():
+    """No sign-in was set up yet (the first start stopped before up), so moving is safe."""
+    kept = {"ENGINE_PORT": "80", "ENGINE_HTTPS_PORT": "443"}
+    settings, problems = aisc_py().settle_ports(PUBLISHED, set(), kept, True, taken(80))
+    assert problems == [] and settings["ENGINE_PORT"] == "8080"

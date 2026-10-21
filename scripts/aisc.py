@@ -413,9 +413,9 @@ def write_runtime() -> None:
 
 
 def port_is_free(port: int, host: str) -> bool:
-    """Whether Docker could publish this port on this address. Binding it is the real test (it also sees
-    Windows' reserved ports); where binding is refused outright (a port below 1024 on Linux without root),
-    whether something answers on it decides."""
+    """Whether Docker could publish this port on this address. Binding it is the real test; Windows refuses
+    one in its reserved ranges with an access error, which means taken. Where Linux refuses the bind outright
+    (a port below 1024 without root), whether something answers on it decides."""
     with socket.socket() as s:
         # As Docker binds: past connections still closing (TIME_WAIT) do not hold the port. Not on Windows,
         # where this option would let the test bind over a program that is listening.
@@ -425,7 +425,8 @@ def port_is_free(port: int, host: str) -> bool:
             s.bind((host, port))
             return True
         except PermissionError:
-            pass
+            if os.name == "nt":
+                return False   # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
         except OSError:
             return False
     with socket.socket() as s:
@@ -439,10 +440,12 @@ def choose_port(preferred: int, fallbacks: tuple[int, ...], is_free: Callable[[i
 
 
 def engine_settings(port: int, https_port: int) -> dict[str, str]:
-    """What the engine's ports change: compose publishes them, and the engine's address is what browsers send
-    as their Origin (without :80, which they never write)."""
-    return {"ENGINE_PORT": str(port), "ENGINE_HTTPS_PORT": str(https_port),
-            "API_URL_EXTERNAL": "http://localhost" + ("" if port == 80 else f":{port}")}
+    """What the engine's ports change: compose publishes them. Only a moved engine gets an address here: on
+    port 80 the install's own API_URL_EXTERNAL stands (an https or other-host install sets it itself)."""
+    settings = {"ENGINE_PORT": str(port), "ENGINE_HTTPS_PORT": str(https_port)}
+    if port != 80:
+        settings["API_URL_EXTERNAL"] = f"http://localhost:{port}"
+    return settings
 
 
 def published_ports(config: dict) -> list[tuple[str, int, int]]:
@@ -475,8 +478,9 @@ def settle_ports(published: list[tuple[str, int, int]], held: set[int], kept: di
     """The engine's settings for env.local, and one problem per port that stops the start.
 
     The engine's ports are Caddy's (container port 8005): the ones this install kept, else 80 and 443. When one
-    is taken, a new install (may_move) moves to the first free fallback; one that has run before, or chose its
-    ports already, must not, since its sign-in knows only its address. Every other published port is checked
+    is taken, an install with no data yet (may_move) moves to the first free fallback, also off a port it kept
+    from a start that never got as far as the sign-in; one that has run before must not, since its sign-in
+    knows only its address. Every other published port is checked
     as it is. A port this install's own containers hold is not taken."""
     def free(port: int, host: str = "0.0.0.0") -> bool:
         return port in held or is_free(port, host)
@@ -486,9 +490,6 @@ def settle_ports(published: list[tuple[str, int, int]], held: set[int], kept: di
         port = int(kept[name]) if name in kept else preferred
         if free(port):
             chosen[name] = port
-        elif name in kept:
-            problems.append(f"Port {port} is taken. This install uses it since it was chosen on its first start; "
-                            f"stop the program that holds it (see which with: {who_holds(port)}).")
         elif not may_move:
             problems.append(f"Port {port} is taken, and this install's sign-in is set up for it. Stop the program "
                             f"that holds it (see which with: {who_holds(port)}).")

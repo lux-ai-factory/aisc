@@ -37,6 +37,7 @@ case "$1" in
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
+  ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
 esac
 exit 0
 """
@@ -206,10 +207,28 @@ def test_a_taken_port_stops_start_before_anything_is_built(scratch):
     assert not [c for c in calls(scratch) if " build" in c]
 
 
+#: what `docker ps` shows when this install's own Caddy holds the engine's ports
+OWN_ENGINE_PORTS = "0.0.0.0:80->8005/tcp, 0.0.0.0:443->8005/tcp\n"
+
+
 def test_start_keeps_the_engine_settings_it_chose(scratch):
-    """env.local holds the engine's port and address, and compose reads them through env.runtime."""
+    """env.local holds the engine's ports, and compose reads them through env.runtime."""
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)   # whatever holds 80 and 443 on the test machine
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     local = (scratch / "env.local").read_text().splitlines()
-    assert [l.split("=", 1)[0] for l in local] == ["ENGINE_PORT", "ENGINE_HTTPS_PORT", "API_URL_EXTERNAL"]
-    assert (scratch / "env.runtime").read_text().splitlines()[-3:] == local
+    assert local == ["ENGINE_PORT=80", "ENGINE_HTTPS_PORT=443"]
+    assert (scratch / "env.runtime").read_text().splitlines()[-len(local):] == local
+
+
+def test_start_keeps_an_https_install_s_own_engine_address(scratch):
+    """An install served over https names its engine itself; start must not replace it with localhost."""
+    settings = (scratch / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    (scratch / "env.plugin_downloader").write_text(settings)
+    (scratch / "held-ports").write_text(OWN_ENGINE_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    engine = [l for l in (scratch / "env.runtime").read_text().splitlines() if l.startswith("API_URL_EXTERNAL=")]
+    assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
