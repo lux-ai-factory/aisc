@@ -16,6 +16,7 @@
 set -uo pipefail
 J=$(mktemp); trap 'rm -f "$J"' EXIT
 . "$(dirname "$0")/lib/dev-accounts.sh"
+. "$(dirname "$0")/lib/engine-address.sh"
 U=${KC_USER:-$USER_NAME}; P=${KC_PASS:-$USER_PASSWORD}
 KC=${KEYCLOAK_URL:-http://localhost:8081}
 pass=0; fail=0
@@ -51,10 +52,10 @@ PROJECT=$(curl -s -b "$J" --max-time 15 http://localhost:8100/api/projects \
 
 echo "2. every module on that same session, with no further login"
 for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
-         "execution engine|http://localhost/?project=$PROJECT|AI Assessment Sandbox" \
-         "qualification|http://localhost/qualification/p/$PROJECT|qualification" \
-         "controls|http://localhost/controls/p/$PROJECT/checklists|checklist" \
-         "control objectives|http://localhost/control-objectives/p/$PROJECT/projects|objectives" \
+         "execution engine|$VERIFY_APPS_URL/?project=$PROJECT|AI Assessment Sandbox" \
+         "qualification|$VERIFY_APPS_URL/qualification/p/$PROJECT|qualification" \
+         "controls|$VERIFY_APPS_URL/controls/p/$PROJECT/checklists|checklist" \
+         "control objectives|$VERIFY_APPS_URL/control-objectives/p/$PROJECT/projects|objectives" \
          "catalogue (hosted)|${CATALOGUE_EXTERNAL_URL:-https://sandboxconfigurator.aifactory.lu/catalogue}|AI Factory Sandbox"; do
   n=$(echo "$e" | cut -d'|' -f1); u=$(echo "$e" | cut -d'|' -f2); m=$(echo "$e" | cut -d'|' -f3)
   body=$(curl -s -b "$J" -c "$J" -L --max-time 30 "$u")
@@ -81,9 +82,9 @@ for e in "launcher|http://localhost:8100/|AI Assessment Sandbox Configurator" \
 done
 
 echo "2b. and a module reached without a project sends you where one is chosen"
-for e in "qualification|http://localhost/qualification" \
-         "controls|http://localhost/controls" \
-         "control objectives|http://localhost/control-objectives/"; do
+for e in "qualification|$VERIFY_APPS_URL/qualification" \
+         "controls|$VERIFY_APPS_URL/controls" \
+         "control objectives|$VERIFY_APPS_URL/control-objectives/"; do
   n=${e%%|*}; u=${e#*|}
   loc=$(curl -s -b "$J" --max-time 20 -o /dev/null -D - "$u" | grep -i '^location:' | head -1 | tr -d '\r')
   case "$loc" in
@@ -98,9 +99,9 @@ echo "2c. and every tool has a Back to the page it was entered from"
 # to it (controls says "Collect evidence"; the engine, held to its upstream, still says "AI Assessment Sandbox"). Matched on what it points at and on its label,
 # not on wording alone. The engine is a single-page app whose page is an empty div until React runs,
 # so it is checked in its bundle below rather than in its HTML.
-for e in "qualification|http://localhost/qualification/p/$PROJECT|Back to the project|/p/$PROJECT" \
-         "controls|http://localhost/controls/p/$PROJECT/checklists|Collect evidence|evidence.html?project=$PROJECT" \
-         "control objectives|http://localhost/control-objectives/p/$PROJECT/projects|Back to the project|/p/$PROJECT"; do
+for e in "qualification|$VERIFY_APPS_URL/qualification/p/$PROJECT|Back to the project|/p/$PROJECT" \
+         "controls|$VERIFY_APPS_URL/controls/p/$PROJECT/checklists|Collect evidence|evidence.html?project=$PROJECT" \
+         "control objectives|$VERIFY_APPS_URL/control-objectives/p/$PROJECT/projects|Back to the project|/p/$PROJECT"; do
   IFS='|' read -r n u label target <<<"$e"
   body=$(curl -s -b "$J" -L --max-time 30 "$u")
   case "$body" in
@@ -150,7 +151,7 @@ case "$cmd" in
   *) no "the gateway never refreshes its session, so the realm drops it mid-work" ;;
 esac
 # The engine verifies what it is handed rather than taking the gateway's word.
-who=$(curl -s -b "$J" --max-time 20 http://localhost/api/v1/me)
+who=$(curl -s -b "$J" --max-time 20 $VERIFY_APPS_URL/api/v1/me)
 case "$who" in
   *'"auth_disabled": true'*) no "the engine is not verifying tokens at all (auth disabled)" ;;
   *'"username": "'*) ok "the engine verifies the token and knows who it is (${who:0:40}...)" ;;
@@ -163,11 +164,11 @@ esac
 # The observable end of it: a signed-in browser, holding only the gateway's
 # cookie and no token of its own, can use the engine's API.
 # Every engine route that belongs to a project names it in X-AISC-Project.
-c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 $VERIFY_APPS_URL/api/v1/projects)
 [ "$c" = "200" ] && ok "a session with no token of its own can read the engine's API ($c)" \
   || no "the engine's API refuses a gateway session that holds no token ($c)"
 # And nothing may reach it without going through the gateway at all.
-c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 $VERIFY_APPS_URL/api/v1/projects)
 case "$c" in
   200) no "the engine's API answered an anonymous request ($c)" ;;
   *) ok "while an anonymous request is still refused ($c)" ;;
@@ -225,7 +226,7 @@ echo "3. the engine has no login of its own"
 # substituted to "configurator" by env.sh, and the Keycloak client's own url: is still
 # the unsubstituted placeholder APP_KEYCLOAK_URL, so AuthContext's configurator branch
 # (which asks the gateway and returns before keycloak.init) is the one that runs.
-js=$(curl -s -b "$J" --max-time 20 http://localhost/ | grep -oE '/assets/[^"]+\.js' | head -1)
+js=$(curl -s -b "$J" --max-time 20 $VERIFY_APPS_URL/ | grep -oE '/assets/[^"]+\.js' | head -1)
 bundle=$(curl -s -b "$J" --max-time 20 "http://localhost$js")
 case "$bundle" in
   *APP_DEPLOYMENT*) no "the engine's bundle still carries the unsubstituted mode placeholder (APP_DEPLOYMENT)" ;;
@@ -339,7 +340,7 @@ AJ=$(mktemp)
 trap 'rm -f "$J" "$AJ"' EXIT
 gateway_session "$ADMIN_NAME" "$ADMIN_PASSWORD" "$AJ" && ok "admin signs in through the gateway too" || no "admin could not sign in through the gateway"
 
-c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 $VERIFY_APPS_URL/api/v1/projects)
 [ "$c" = "200" ] && ok "the engine lists projects for the dialog's dropdown (200)" || no "GET /api/v1/projects -> $c"
 
 # Installing puts code on the server, so it takes the admin role. The dialog is
@@ -349,7 +350,7 @@ c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}'
 # install into it. Package "x" does not exist, so an admin gets past the guard and no further:
 # nothing is installed.
 ENGINE_PROJECT=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" --max-time 30 \
-    -X POST -H 'Content-Type: application/json' -d '{}' "http://localhost/api/v1/projects/for-platform/$PROJECT" \
+    -X POST -H 'Content-Type: application/json' -d '{}' "$VERIFY_APPS_URL/api/v1/projects/for-platform/$PROJECT" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin).get("pid",""))' 2>/dev/null)
 [ -n "$ENGINE_PROJECT" ] && ok "the engine has its own project for this one ($ENGINE_PROJECT)" \
   || no "the engine made no project for $PROJECT"
@@ -374,7 +375,7 @@ fi
 # A session that carries no token of its own is still a signed-in user: the
 # gateway holds the session and passes the token, so the call is served. What
 # must be refused is a call carrying neither, which is asserted in section 2d.
-c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 http://localhost/api/v1/projects)
+c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}' --max-time 20 $VERIFY_APPS_URL/api/v1/projects)
 [ "$c" = "200" ] && ok "and serves the same call on the gateway's session alone (200)" \
   || no "a signed-in session was refused: /api/v1/projects -> $c"
 # The engine's "Public Catalogue" button reads a placeholder that env.sh

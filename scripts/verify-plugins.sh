@@ -21,6 +21,7 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/lib/dev-accounts.sh"
+. "$HERE/lib/engine-address.sh"
 cd "$HERE/.." && exec uv run --no-project --quiet --with packaging python - "$@" <<'PY'
 import json
 import os
@@ -141,7 +142,7 @@ class Session:
         import http.cookiejar
 
         self.launcher = os.environ.get("VERIFY_BASE_URL", "http://localhost:8100").rstrip("/")
-        self.apps = os.environ.get("VERIFY_APPS_URL", "http://localhost").rstrip("/")
+        self.apps = os.environ["VERIFY_APPS_URL"].rstrip("/")
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(
             http.cookiejar.CookieJar(policy=_browser_like_cookies())))
 
