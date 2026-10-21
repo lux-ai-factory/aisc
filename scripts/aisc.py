@@ -676,14 +676,23 @@ def show_passwords(_args: list[str]) -> None:
 
 ROTATABLE = ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
              "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
-# kcadm signs in to the master realm as Keycloak's admin, then sets one account's password. Its arguments stay
-# inside the container; its session file is removed again.
-KCADM = """
-    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-rotate.json
+
+
+def kcadm_script(command: str) -> str:
+    """A bash script for Keycloak's container: kcadm signs in to the master realm as Keycloak's admin, then runs
+    one command (kcadm's arguments, in bash; "$cfg" is the session). The admin's password comes from the
+    environment (ADMIN_VALUE), never a command line, and the session file is removed again."""
+    return f"""
+    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-aisc.json
     "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
       --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$ADMIN_VALUE" >/dev/null \\
-      && "$kc" set-password --config "$cfg" -r "$REALM" --username "${ACCOUNT:-$KC_BOOTSTRAP_ADMIN_USERNAME}" --new-password "$NEW_VALUE"
+      && "$kc" {command}
     s=$?; rm -f "$cfg"; exit $s"""
+
+
+# sets one account's password: the realm, the account and the new value come from the environment too
+KCADM = kcadm_script('set-password --config "$cfg" -r "$REALM" --username "${ACCOUNT:-$KC_BOOTSTRAP_ADMIN_USERNAME}" '
+                     '--new-password "$NEW_VALUE"')
 # psql reads the value from its environment (\\getenv): it is on no command line, not even the container's
 PSQL = "\\getenv pw NEW_VALUE\n\\getenv role POSTGRES_USER\nALTER ROLE :\"role\" PASSWORD :'pw';\n"
 UNSAFE = re.compile(r"""[\s'"$#\\]""")
@@ -832,15 +841,8 @@ def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dic
     }
 
 
-# kcadm signs in to the master realm as Keycloak's admin, then runs the command it is given (bash -c's
-# arguments). The admin's password reaches the container in its environment, not on a command line; the session
-# file is removed again.
-KCADM_RUN = """
-    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-sync.json
-    "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
-      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$ADMIN_VALUE" >/dev/null \\
-      && "$kc" "$@" --config "$cfg"
-    s=$?; rm -f "$cfg"; exit $s"""
+# runs the kcadm command given as bash -c's arguments, which hold no secret
+KCADM_RUN = kcadm_script('"$@" --config "$cfg"')
 
 
 def sync_sign_in() -> None:

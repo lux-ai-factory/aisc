@@ -515,3 +515,11 @@ def test_an_https_install_s_sign_in_uses_its_own_addresses():
     assert webapp["baseUrl"] == "https://aisc.example.org"
     assert webapp["redirectUris"] == ["https://aisc.example.org/*", "http://localhost:5173/*"]
     assert webapp["webOrigins"] == ["https://aisc.example.org", "http://localhost:5173"]
+
+
+def test_start_and_rotate_infra_password_sign_kcadm_in_the_same_way():
+    """One login for every kcadm call: Keycloak's admin from its environment, a session file removed after."""
+    m = aisc_py()
+    login = m.KCADM_RUN.split("&&")[0]
+    assert "$ADMIN_VALUE" in login and m.KCADM.split("&&")[0] == login
+    assert m.KCADM_RUN.split("&&")[1].split(";")[1:] == m.KCADM.split("&&")[1].split(";")[1:]

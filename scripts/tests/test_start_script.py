@@ -399,3 +399,12 @@ def test_start_stops_when_this_project_runs_no_keycloak(scratch):
     assert r.returncode == 1
     assert "could not be told" in r.stderr and "AISC is up" not in r.stdout
     assert not [c for c in calls(scratch) if c.startswith("exec ")]
+
+
+def test_no_secret_reaches_a_command_line_when_start_tells_the_sign_in(scratch):
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (scratch / "docker.log").read_text()
+    secrets = [line.split("=", 1)[1] for line in (scratch / "env.secrets").read_text().splitlines()
+               if "=" in line and not line.startswith("#")]
+    assert not [v for v in secrets if len(v) >= 8 and v in log]

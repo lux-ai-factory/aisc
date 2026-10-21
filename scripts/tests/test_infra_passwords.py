@@ -240,3 +240,15 @@ def test_a_keycloak_password_is_not_changed_when_this_project_runs_no_keycloak(i
     assert "Keycloak" in r.stderr
     assert (root / "env.secrets").read_text() == before
     assert not [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+
+
+@pytest.mark.parametrize("name", ["KEYCLOAK_ADMIN_PASSWORD", "AISC_ADMIN_PASSWORD"])
+def test_no_secret_reaches_a_command_line_when_kcadm_sets_a_password(install, name):
+    root, env = install
+    before = values(root / "env.secrets")
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", name], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    argv = "".join(line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV"))
+    secrets = {v for v in (*before.values(), *values(root / "env.secrets").values()) if len(v) >= 8}
+    assert not [v for v in secrets if v in argv]
