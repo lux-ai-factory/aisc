@@ -852,14 +852,17 @@ def with_slash(address: str) -> str:
     return address if address.endswith("/") else address + "/"
 
 
-def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dict]:
+def sign_in_clients(engine: str, launcher: str, dashboard: str, over_https: bool = False) -> dict[str, dict]:
     """What the realm's two clients must hold for this install's addresses: the gateway's callbacks on the
     engine, the launcher and the dashboard, and where it may send a person after signing out; the webapp's own
-    address, beside the frontend's development server. The gateway's web origins are "+", Keycloak's shorthand
+    address, beside the frontend's development server (http://localhost:5173) on an install not served over
+    https. One served over https is public, and the webapp is a public client: an address on whatever machine
+    signs in is no place to send its sign-in. The gateway's web origins are "+", Keycloak's shorthand
     for the origins of its redirect URIs, as the realm file has it. The launcher's address is given one ending
     with a slash when it has none: the sign-out rule is that address followed by *, and without the slash
     https://app.example.com* would also let the sign-out send a person on to https://app.example.com.evil.net/."""
     launcher = with_slash(launcher)
+    development = [] if over_https else ["http://localhost:5173"]
     return {
         "aisc-gateway": {
             "redirectUris": [f"{engine}/oauth2/callback", f"{launcher}oauth2/callback", f"{dashboard}/oauth2/callback"],
@@ -868,8 +871,8 @@ def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dic
         },
         "aisc-webapp": {
             "baseUrl": engine,
-            "redirectUris": [f"{engine}/*", "http://localhost:5173/*"],
-            "webOrigins": [engine, "http://localhost:5173"],
+            "redirectUris": [f"{engine}/*", *(f"{d}/*" for d in development)],
+            "webOrigins": [engine, *development],
         },
     }
 
@@ -883,7 +886,7 @@ def sync_sign_in() -> None:
     wait_s = float(os.environ.get("START_SYNC_WAIT_S", "5"))
     clients = sign_in_clients(effective("API_URL_EXTERNAL") or "http://localhost",
                               effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/",
-                              effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188")
+                              effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188", served_over_https())
     admin = value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")
 
     def why_not_told() -> str:

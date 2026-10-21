@@ -505,7 +505,7 @@ def test_the_sign_in_clients_list_exactly_the_install_s_addresses():
 
 def test_an_https_install_s_sign_in_uses_its_own_addresses():
     clients = aisc_py().sign_in_clients("https://aisc.example.org", "https://aisc.example.org:8100/",
-                                        "https://aisc.example.org:8188")
+                                        "https://aisc.example.org:8188", over_https=True)
     gateway, webapp = clients["aisc-gateway"], clients["aisc-webapp"]
     assert gateway["redirectUris"] == ["https://aisc.example.org/oauth2/callback",
                                        "https://aisc.example.org:8100/oauth2/callback",
@@ -513,8 +513,10 @@ def test_an_https_install_s_sign_in_uses_its_own_addresses():
     assert gateway["attributes"]["post.logout.redirect.uris"] == \
         "https://aisc.example.org:8100/*##https://aisc.example.org/*"
     assert webapp["baseUrl"] == "https://aisc.example.org"
-    assert webapp["redirectUris"] == ["https://aisc.example.org/*", "http://localhost:5173/*"]
-    assert webapp["webOrigins"] == ["https://aisc.example.org", "http://localhost:5173"]
+    # the frontend's development server is a developer's own machine: a public install's sign-in has no part
+    # of it (aisc-webapp is a public client)
+    assert webapp["redirectUris"] == ["https://aisc.example.org/*"]
+    assert webapp["webOrigins"] == ["https://aisc.example.org"]
 
 
 def test_kcadm_is_given_no_secret_on_its_command_line():

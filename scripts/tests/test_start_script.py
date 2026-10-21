@@ -485,3 +485,18 @@ def test_a_launcher_address_without_its_slash_is_used_with_one(scratch):
     sent = (scratch / "exec-input").read_text()
     assert "https://aisc.example.org/oauth2/callback" in sent and "https://aisc.example.org/*##" in sent
     assert "aisc.example.orgoauth2" not in sent and "aisc.example.org*" not in sent
+
+
+def test_an_https_install_s_sign_in_gets_no_development_server(scratch):
+    https_install(scratch)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "5173" not in (scratch / "exec-input").read_text()
+
+
+def test_a_plain_http_install_s_sign_in_keeps_the_development_server(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = (scratch / "exec-input").read_text()
+    assert "http://localhost:5173/*" in sent and '"http://localhost:5173"' in sent
