@@ -227,7 +227,7 @@ echo "3. the engine has no login of its own"
 # the unsubstituted placeholder APP_KEYCLOAK_URL, so AuthContext's configurator branch
 # (which asks the gateway and returns before keycloak.init) is the one that runs.
 js=$(curl -s -b "$J" --max-time 20 $VERIFY_APPS_URL/ | grep -oE '/assets/[^"]+\.js' | head -1)
-bundle=$(curl -s -b "$J" --max-time 20 "http://localhost$js")
+bundle=$(curl -s -b "$J" --max-time 20 "$VERIFY_APPS_URL$js")
 case "$bundle" in
   *APP_DEPLOYMENT*) no "the engine's bundle still carries the unsubstituted mode placeholder (APP_DEPLOYMENT)" ;;
   *'"configurator"'*) ok "the engine's bundle was substituted for configurator mode" ;;

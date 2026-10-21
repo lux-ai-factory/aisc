@@ -5,8 +5,9 @@ import subprocess
 
 from conftest import ROOT
 
-#: the engine on port 80, written out: http://localhost followed by a path, a quote or the end of the line
-ENGINE_ON_80 = re.compile(r"""http://localhost(?=[/"'\s]|$)""")
+#: the engine on port 80, written out: http://localhost followed by a path, a quote, a shell variable ($path)
+#: or the end of the line
+ENGINE_ON_80 = re.compile(r"""http://localhost(?=[/"'\s$]|$)""")
 #: the two places that know the engine's default address: where start sets it, and where the checks read it
 DEFINE_IT = {"scripts/aisc.py", "scripts/lib/engine-address.sh"}
 
