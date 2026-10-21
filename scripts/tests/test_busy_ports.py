@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -22,6 +23,14 @@ from conftest import aisc_py
 LOOPBACK_ONLY = {8081}
 
 
+def cannot_run(reason):
+    """A skip on a developer's machine. CI sets AISC_PORT_TESTS_MUST_RUN=1: its machines hold none of these ports,
+    so there a test that cannot run fails, rather than pass the run with the moves untested."""
+    if os.environ.get("AISC_PORT_TESTS_MUST_RUN") == "1":
+        pytest.fail(f"{reason}; AISC_PORT_TESTS_MUST_RUN=1 says this test must run here")
+    pytest.skip(reason)
+
+
 def host_of(port):
     return "127.0.0.1" if port in LOOPBACK_ONLY else "0.0.0.0"
 
@@ -30,7 +39,7 @@ def skip_unless_free(m, *ports):
     """The ports a test occupies or expects a role to land on must be free before it starts."""
     busy = [port for port in ports if not m.port_is_free(port, host_of(port))]
     if busy:
-        pytest.skip(f"already taken on this machine: {', '.join(map(str, busy))}")
+        cannot_run(f"already taken on this machine: {', '.join(map(str, busy))}")
 
 
 @contextlib.contextmanager
@@ -42,7 +51,7 @@ def occupied(*ports, host=None):
             try:
                 listener.bind((host or host_of(port), port))
             except OSError:
-                pytest.skip(f"port {port} cannot be occupied on this machine")
+                cannot_run(f"port {port} cannot be occupied on this machine")
             listener.listen()
         yield
 
@@ -51,11 +60,11 @@ def occupied(*ports, host=None):
 def published(tmp_path):
     """What the real compose files publish, read with `docker compose config` (nothing is started)."""
     if shutil.which("docker") is None:
-        pytest.skip("docker is not installed")
+        cannot_run("docker is not installed")
     variables = tuple(port.variable for port in aisc_py().BROWSER_PORTS)
     r = compose_cfg.run(tmp_path, drop=variables)
     if r.returncode != 0:
-        pytest.skip(f"docker compose cannot read the files here: {r.stderr.strip()[-300:]}")
+        cannot_run(f"docker compose cannot read the files here: {r.stderr.strip()[-300:]}")
     return aisc_py().published_ports(json.loads(r.stdout))
 
 
@@ -115,7 +124,7 @@ def test_a_busy_engine_port_is_moved(published):
         run = subprocess.run(["docker", "run", "-d", "--name", name, "-p", "80:80", "nginx:1.27-alpine"],
                              capture_output=True, text=True, timeout=300)
         if run.returncode != 0:
-            pytest.skip(f"a stand-in container cannot hold port 80 here: {run.stderr.strip()[-300:]}")
+            cannot_run(f"a stand-in container cannot hold port 80 here: {run.stderr.strip()[-300:]}")
         settings, problems, _moved = settle(m, published)
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=60)
@@ -130,14 +139,14 @@ def listening_v6(address, v6only=True):
     try:
         listener = socket.socket(socket.AF_INET6)
     except OSError:
-        pytest.skip("no IPv6 on this machine")
+        cannot_run("no IPv6 on this machine")
     with listener:
         if v6only:
             listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
         try:
             listener.bind((address, 0))
         except OSError:
-            pytest.skip(f"cannot listen on [{address}] here")
+            cannot_run(f"cannot listen on [{address}] here")
         listener.listen()
         yield listener.getsockname()[1]
 
@@ -169,3 +178,36 @@ def test_a_program_on_ipv6_loopback_is_found_where_binding_cannot_tell(monkeypat
         monkeypatch.setattr(socket.socket, "bind", refused)
         monkeypatch.setattr(m.os, "name", "posix")
         assert not m.port_is_free(port, "0.0.0.0")
+
+
+class EveryPortTaken:
+    @staticmethod
+    def port_is_free(_port, _host):
+        return False
+
+
+def test_a_test_that_cannot_run_is_skipped_on_a_developer_s_machine(monkeypatch):
+    monkeypatch.delenv("AISC_PORT_TESTS_MUST_RUN", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        skip_unless_free(EveryPortTaken, 8100)
+
+
+def test_a_test_that_cannot_run_fails_where_the_ports_tests_must_run(monkeypatch):
+    """CI sets AISC_PORT_TESTS_MUST_RUN=1: its machines hold none of these ports, so a skip there would hide that
+    the moves went untested."""
+    monkeypatch.setenv("AISC_PORT_TESTS_MUST_RUN", "1")
+    try:
+        skip_unless_free(EveryPortTaken, 8100)
+    except BaseException as stopped:   # a skip is no failure: caught here, so it cannot skip this test too
+        outcome = stopped
+    else:
+        outcome = None
+    assert isinstance(outcome, pytest.fail.Exception), repr(outcome)
+
+
+def test_ci_runs_the_port_tests_where_they_must_not_skip():
+    yaml = pytest.importorskip("yaml")
+    jobs = yaml.safe_load((compose_cfg.ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    for job in ("repository-checks", "windows"):
+        steps = [s for s in jobs[job]["steps"] if "pytest" in s.get("run", "")]
+        assert steps and all((s.get("env") or {}).get("AISC_PORT_TESTS_MUST_RUN") == "1" for s in steps), job

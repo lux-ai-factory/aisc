@@ -55,7 +55,10 @@ jobs:
       - run: |
           for app in apps/backend apps/control-objectives apps/report-composer; do (cd "$app" && uv sync --all-extras); done
           for app in apps/qualification apps/controls; do (cd "$app" && npm ci); done
-      - run: >-
+      # the port tests occupy ports this machine leaves free: one that cannot run here fails instead of skipping
+      - env:
+          AISC_PORT_TESTS_MUST_RUN: "1"
+        run: >-
           cd scripts/tests && uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]'
           python -m pytest -q -p no:cacheprovider -p no:warnings
 
@@ -70,10 +73,14 @@ jobs:
       - shell: bash
         run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
-      - run: >-
+      # as on Linux, a port test that cannot run fails; but the one that holds port 80 with a Linux container
+      - env:
+          AISC_PORT_TESTS_MUST_RUN: "1"
+        run: >-
           uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider
           scripts/tests/test_aisc_py.py scripts/tests/test_busy_ports.py scripts/tests/test_windows_names.py
           scripts/tests/test_line_endings.py
+          --deselect scripts/tests/test_busy_ports.py::test_a_busy_engine_port_is_moved
 
   node:
     name: ${{ matrix.app }}
