@@ -5,6 +5,7 @@ both. uv brings the script's own Python and library, whatever the tests run on.
     uv run --no-project --with pytest python -m pytest -q scripts/tests/test_aisc_py.py
 """
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -534,3 +535,11 @@ def test_a_launcher_address_without_its_slash_gets_one():
                                         "https://app.example.com:8188")["aisc-gateway"]
     assert "https://app.example.com/oauth2/callback" in gateway["redirectUris"]
     assert gateway["attributes"]["post.logout.redirect.uris"].split("##")[0] == "https://app.example.com/*"
+
+
+def test_every_kcadm_run_has_a_session_file_of_its_own():
+    """A shared session file would let a rotate running beside a start remove the other's session: each run
+    makes its own (mktemp) and removes it on exit. The script runs in Keycloak's container."""
+    script = aisc_py().KCADM_RUN
+    assert "mktemp" in script and "trap " in script
+    assert not re.search(r"/tmp/[\w.-]", script)

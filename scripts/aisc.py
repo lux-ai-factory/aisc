@@ -686,14 +686,17 @@ def kcadm_script(command: str) -> str:
     """A bash script for Keycloak's container: kcadm signs in to the master realm as Keycloak's admin, then runs
     one command (kcadm's arguments, in bash; "$cfg" is the session). kcadm starts Java with its arguments, and the
     host's `ps` shows a container's processes to every local user, so no secret is one of them: kcadm reads the
-    admin's password from KC_CLI_PASSWORD itself, and a value to set comes on stdin. The session file is removed
-    again."""
+    admin's password from KC_CLI_PASSWORD itself, and a value to set comes on stdin. Each run keeps its session in
+    a folder of its own, removed on exit: with one shared file, a rotate run beside a start would remove the
+    other's session."""
     return f"""
-    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-aisc.json
+    kc=/opt/keycloak/bin/kcadm.sh
+    session=$(mktemp -d) || exit 1
+    trap 'rm -rf "$session"' EXIT
+    cfg=$session/kcadm.json
     "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
       --user "$KC_BOOTSTRAP_ADMIN_USERNAME" >/dev/null \\
-      && "$kc" {command}
-    s=$?; rm -f "$cfg"; exit $s"""
+      && "$kc" {command}"""
 
 
 # runs the kcadm command given as bash -c's arguments, which hold no secret
