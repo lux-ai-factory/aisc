@@ -204,3 +204,20 @@ def test_only_start_s_own_port_messages_count_as_speaking_of_a_port(tmp_path, lo
     r = subprocess.run(["bash", "-c", f"start_spoke_of_port() {{\n{body}}}\nstart_spoke_of_port 5432 \"$1\"", "_",
                         str(tmp_path / "start.log")], capture_output=True, text=True, timeout=30)
     assert (r.returncode == 0) == spoke, r.stdout + r.stderr
+
+
+def _workflow(name):
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
+    return data.get("on", data.get(True)), data["jobs"]
+
+
+def test_the_check_runs_in_its_own_workflow_by_hand_and_weekly():
+    """A full build is too long for every push; and a workflow-wide schedule in ci.yml would run every module's
+    jobs weekly as well."""
+    triggers, _ = _workflow("ci.yml")
+    assert "schedule" not in triggers and "workflow_dispatch" not in triggers
+    triggers, jobs = _workflow("port-fallback.yml")
+    assert set(triggers) == {"schedule", "workflow_dispatch"}
+    runs = [step.get("run", "") for job in jobs.values() for step in job["steps"]]
+    assert any("scripts/verify-port-fallback.sh" in run for run in runs)
