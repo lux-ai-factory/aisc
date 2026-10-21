@@ -482,3 +482,36 @@ def test_a_reserved_port_on_windows_is_taken(monkeypatch):
     monkeypatch.setattr(socket.socket, "bind", refused)
     monkeypatch.setattr(m.os, "name", "nt")
     assert not m.port_is_free(51234, "0.0.0.0")
+
+
+def test_the_sign_in_clients_list_exactly_the_install_s_addresses():
+    """What start sends Keycloak on every start: the gateway's callbacks on the three addresses it serves, and
+    the webapp's own, with the frontend's development server (5173) kept."""
+    clients = aisc_py().sign_in_clients("http://localhost:8080", "http://localhost:8110/", "http://localhost:8198")
+    assert clients == {
+        "aisc-gateway": {
+            "redirectUris": ["http://localhost:8080/oauth2/callback", "http://localhost:8110/oauth2/callback",
+                             "http://localhost:8198/oauth2/callback"],
+            "webOrigins": ["+"],
+            "attributes": {"post.logout.redirect.uris": "http://localhost:8110/*##http://localhost:8080/*"},
+        },
+        "aisc-webapp": {
+            "baseUrl": "http://localhost:8080",
+            "redirectUris": ["http://localhost:8080/*", "http://localhost:5173/*"],
+            "webOrigins": ["http://localhost:8080", "http://localhost:5173"],
+        },
+    }
+
+
+def test_an_https_install_s_sign_in_uses_its_own_addresses():
+    clients = aisc_py().sign_in_clients("https://aisc.example.org", "https://aisc.example.org:8100/",
+                                        "https://aisc.example.org:8188")
+    gateway, webapp = clients["aisc-gateway"], clients["aisc-webapp"]
+    assert gateway["redirectUris"] == ["https://aisc.example.org/oauth2/callback",
+                                       "https://aisc.example.org:8100/oauth2/callback",
+                                       "https://aisc.example.org:8188/oauth2/callback"]
+    assert gateway["attributes"]["post.logout.redirect.uris"] == \
+        "https://aisc.example.org:8100/*##https://aisc.example.org/*"
+    assert webapp["baseUrl"] == "https://aisc.example.org"
+    assert webapp["redirectUris"] == ["https://aisc.example.org/*", "http://localhost:5173/*"]
+    assert webapp["webOrigins"] == ["https://aisc.example.org", "http://localhost:5173"]

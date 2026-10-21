@@ -787,12 +787,93 @@ def keycloak_realm_url() -> str:
     given = os.environ.get("START_SIGN_IN_URL")
     if given:
         return given
-    port = "8081"
+    return f"http://localhost:{effective('KEYCLOAK_PORT_EXTERNAL') or '8081'}/realms/aisc"
+
+
+def effective(name: str) -> str:
+    """The value compose uses for a setting: its last line in env.runtime (env.local comes last there), one pair
+    of quotes taken off; empty when env.runtime has none."""
+    value = ""
     if Path(COMBINED).is_file():
         for line in lines_of(COMBINED):
-            if line.startswith("KEYCLOAK_PORT_EXTERNAL="):
-                port = line.split("=", 1)[1].strip().strip("'\"") or port
-    return f"http://localhost:{port}/realms/aisc"
+            if line.startswith(name + "="):
+                value = line.split("=", 1)[1].strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+    return value
+
+
+def sign_in_clients(engine: str, launcher: str, dashboard: str) -> dict[str, dict]:
+    """What the realm's two clients must hold for this install's addresses: the gateway's callbacks on the
+    engine, the launcher and the dashboard, and where it may send a person after signing out; the webapp's own
+    address, beside the frontend's development server. The gateway's web origins are "+", Keycloak's shorthand
+    for the origins of its redirect URIs, as the realm file has it. The launcher's address ends with a slash."""
+    return {
+        "aisc-gateway": {
+            "redirectUris": [f"{engine}/oauth2/callback", f"{launcher}oauth2/callback", f"{dashboard}/oauth2/callback"],
+            "webOrigins": ["+"],
+            "attributes": {"post.logout.redirect.uris": f"{launcher}*##{engine}/*"},
+        },
+        "aisc-webapp": {
+            "baseUrl": engine,
+            "redirectUris": [f"{engine}/*", "http://localhost:5173/*"],
+            "webOrigins": [engine, "http://localhost:5173"],
+        },
+    }
+
+
+# kcadm signs in to the master realm as Keycloak's admin, then runs the command it is given (bash -c's
+# arguments). The admin's password reaches the container in its environment, not on a command line; the session
+# file is removed again.
+KCADM_RUN = """
+    kc=/opt/keycloak/bin/kcadm.sh; cfg=/tmp/kcadm-sync.json
+    "$kc" config credentials --config "$cfg" --server http://localhost:8080 --realm master \\
+      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$ADMIN_VALUE" >/dev/null \\
+      && "$kc" "$@" --config "$cfg"
+    s=$?; rm -f "$cfg"; exit $s"""
+
+
+def sync_sign_in() -> None:
+    """Tells Keycloak the addresses this install has now. The realm import put the addresses of its first start
+    into the realm's database and is never run again, so a port that moved since would leave the sign-in sending
+    people to an address nothing answers on. Run on every start once the realm answers; Keycloak may still refuse
+    its admin for a moment then, so it is tried again (START_SYNC_TRIES times, START_SYNC_WAIT_S apart)."""
+    tries = int(os.environ.get("START_SYNC_TRIES", "6"))
+    wait_s = float(os.environ.get("START_SYNC_WAIT_S", "5"))
+    clients = sign_in_clients(effective("API_URL_EXTERNAL") or "http://localhost",
+                              effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/",
+                              effective("DASHBOARD_EXTERNAL_URL") or "http://localhost:8188")
+    env = {**os.environ, "ADMIN_VALUE": value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")}
+
+    def kcadm(*argv: str, stdin: str = "") -> subprocess.CompletedProcess:
+        return subprocess.run([DOCKER, "exec", "-i", "-e", "ADMIN_VALUE", "keycloak", "bash", "-c", KCADM_RUN,
+                               "kcadm", *argv], env=env, input=stdin, capture_output=True, text=True)
+
+    def why_not_told() -> str:
+        """Empty once both clients hold the addresses; else what kcadm said."""
+        for client_id, settings in clients.items():
+            found = kcadm("get", "clients", "-r", "aisc", "-q", f"clientId={client_id}")
+            if found.returncode != 0:
+                return found.stderr.strip() or f"kcadm could not read the client {client_id}"
+            try:
+                ids = [c["id"] for c in json.loads(found.stdout)]
+            except (ValueError, TypeError, KeyError):
+                ids = []
+            if len(ids) != 1:
+                return f"the realm aisc has no single client {client_id}"
+            updated = kcadm("update", f"clients/{ids[0]}", "-r", "aisc", "-f", "-", stdin=json.dumps(settings))
+            if updated.returncode != 0:
+                return updated.stderr.strip() or f"kcadm could not update the client {client_id}"
+        return ""
+
+    for attempt in range(tries):
+        why = why_not_told()
+        if not why:
+            return
+        if attempt + 1 < tries:
+            time.sleep(wait_s)
+    raise Refused(f"AISC is running, but its sign-in could not be told the install's addresses: {why[-400:]}. "
+                  f"See why with: docker compose -p {PROJECT} logs keycloak. Run start again.")
 
 
 def not_running(lines: str) -> list[str]:
@@ -814,13 +895,15 @@ def start(_args: list[str]) -> None:
     4. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
        network or a laptop short of memory usually passes the second time, and the cache keeps what was built.
     5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
-       ready, and a page opened then shows 502. Then names, as a warning, every one-shot service that exited
-       non-zero (plugin-publisher when a plugin did not build).
+       ready, and a page opened then shows 502. Then tells the sign-in (Keycloak) the install's addresses, which
+       its realm otherwise keeps from the first start. Then names, as a warning, every one-shot service that
+       exited non-zero (plugin-publisher when a plugin did not build).
     6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
-    START_SIGN_IN_URL (Keycloak's realm page), START_MIN_DISK_GB (20)."""
+    START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
+    sign-in the addresses, START_MIN_DISK_GB (20)."""
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
     url = os.environ.get("START_URL", "http://localhost:8100/")
@@ -912,6 +995,8 @@ def start(_args: list[str]) -> None:
                  f"{code or 'none'}), so the sign-in cannot be shown yet.")
             raise Refused(f"see why with: docker compose -p {PROJECT} logs keycloak")
         time.sleep(poll_s)
+    # The realm answers: now it can be told this install's addresses, which may have moved since it was imported
+    sync_sign_in()
 
     # A one-shot service (plugin-publisher, report-grants, the migrations) that exited non-zero: nothing waits on
     # some of them, so `up -d` went through and the sign-in answers without them.

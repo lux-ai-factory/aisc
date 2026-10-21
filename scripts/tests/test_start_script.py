@@ -20,7 +20,9 @@ from conftest import ROOT, copy_install_scripts
 
 DOCKER = r"""#!/bin/sh
 d=$(dirname "$0")/..
-echo "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" >> "$d/docker.log"
+# one line per call, whatever the arguments hold (a script passed to bash -c has newlines)
+printf '%s' "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" | tr '\n' ' ' >> "$d/docker.log"
+echo >> "$d/docker.log"
 case "$1" in
   info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
   compose)
@@ -38,6 +40,12 @@ case "$1" in
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
   ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
+  exec)
+    # kcadm in the keycloak container: what it was given on stdin is kept, a call per line
+    { cat; echo; } >> "$d/exec-input"
+    [ -f "$d/exec-fails" ] && exit 1
+    case "$*" in *"get clients"*) echo '[{"id": "c1"}]' ;; esac
+    exit 0 ;;
 esac
 exit 0
 """
@@ -342,3 +350,32 @@ def test_a_moved_port_is_announced_with_what_frees_a_leftover(scratch):
     assert r.stdout.count("restarting Docker frees it") == 1
     local = (scratch / "env.local").read_text().splitlines()
     assert "HOMEPAGE_PORT_EXTERNAL=8100" in local and not [line for line in local if "LAUNCHER" in line]
+
+
+def test_start_tells_the_sign_in_its_addresses_after_the_stack_is_up(scratch):
+    """A port that moved after the realm was first imported would otherwise sign nobody in: Keycloak keeps the
+    addresses it imported. So every start sends it the ones compose uses now (env.runtime, last line wins)."""
+    (scratch / "env.local").write_text("ENGINE_PORT=8090\nAPI_URL_EXTERNAL=http://localhost:8090\n")
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->", "0.0.0.0:8090->"))
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    up = next(i for i, c in enumerate(log) if " up " in c)
+    told = [i for i, c in enumerate(log) if c.startswith("exec ") and " keycloak " in c]
+    assert told and min(told) > up
+    sent = (scratch / "exec-input").read_text()
+    assert "http://localhost:8090/oauth2/callback" in sent and "http://localhost:8090/*" in sent
+    assert "update clients/c1" in "\n".join(log)
+    admin = [line for line in (scratch / "env.secrets").read_text().splitlines()
+             if line.startswith("KEYCLOAK_ADMIN_PASSWORD=")][0].split("=", 1)[1]
+    assert admin not in (scratch / "docker.log").read_text()
+    assert "AISC is up" in r.stdout
+
+
+def test_start_stops_when_the_sign_in_cannot_be_told(scratch):
+    (scratch / "exec-fails").write_text("")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1
+    assert "could not be told" in r.stderr
+    assert "AISC is up" not in r.stdout
+    assert len([c for c in calls(scratch) if c.startswith("exec ") and " keycloak " in c]) == 2
