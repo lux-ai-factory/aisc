@@ -295,3 +295,22 @@ def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
     assert r.returncode == 0, r.stdout + r.stderr
     assert "admin / admin" not in r.stdout
     assert "uv run scripts/aisc.py password" in r.stdout
+
+
+def test_a_quoted_port_kept_in_env_local_is_honoured(scratch):
+    """A person editing env.local may quote a value, as the other env files do."""
+    (scratch / "env.local").write_text('ENGINE_PORT="8090"\nENGINE_HTTPS_PORT="8453"\n')
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    local = (scratch / "env.local").read_text().splitlines()
+    assert "ENGINE_PORT=8090" in local and "ENGINE_HTTPS_PORT=8453" in local
+
+
+def test_what_a_person_added_to_env_local_survives_a_start(scratch):
+    (scratch / "env.local").write_text("# my note\nENGINE_PORT=8090\nMY_SETTING=x\nENGINE_HTTPS_PORT=8453\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (scratch / "env.local").read_text().splitlines() == [
+        "# my note", "ENGINE_PORT=8090", "MY_SETTING=x", "ENGINE_HTTPS_PORT=8453",
+        "API_URL_EXTERNAL=http://localhost:8090"]

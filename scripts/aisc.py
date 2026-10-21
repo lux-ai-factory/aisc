@@ -436,6 +436,35 @@ def port_is_free(port: int, host: str) -> bool:
         return s.connect_ex(("127.0.0.1", port)) != 0
 
 
+def read_local() -> dict[str, str]:
+    """The settings in env.local as NAME=value lines, one pair of quotes around a value taken off: a person
+    editing the file may quote it, as in the other env files. Comments and lines without a name are not settings."""
+    kept = {}
+    for line in lines_of(LOCAL) if Path(LOCAL).is_file() else []:
+        name, found, value = line.partition("=")
+        if found and not name.lstrip().startswith("#"):
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            kept[name.strip()] = value
+    return kept
+
+
+def local_lines(existing: list[str], settings: dict[str, str]) -> list[str]:
+    """env.local's lines with the settings start manages set: each in the place it already has, the new ones
+    after the rest. Every other line (a note, a setting a person added) stays as it is, and in its place."""
+    managed = {*ENGINE_PORTS, "API_URL_EXTERNAL"}
+    out, done = [], set()
+    for line in existing:
+        name = line.partition("=")[0].strip()
+        if "=" not in line or name not in managed:
+            out.append(line)
+        elif name in settings and name not in done:
+            out.append(f"{name}={settings[name]}")
+            done.add(name)
+    return out + [f"{name}={value}" for name, value in settings.items() if name not in done]
+
+
 def choose_port(preferred: int, fallbacks: tuple[int, ...], is_free: Callable[[int], bool]) -> int | None:
     """The preferred port if it is free, else the first free fallback; None when every one is taken."""
     return next((p for p in (preferred, *fallbacks) if is_free(p)), None)
@@ -745,13 +774,14 @@ def start(_args: list[str]) -> None:
     config = captured([*COMPOSE, "config", "--format", "json"])
     if config.returncode != 0:
         raise Refused(f"compose cannot read its files: {config.stderr.strip()[-600:]}")
-    kept = dict(l.split("=", 1) for l in lines_of(LOCAL) if "=" in l) if Path(LOCAL).is_file() else {}
+    kept = read_local()
     settings, problems = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
                                       not served_over_https() and not has_data(), port_is_free)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
-    if settings != kept:
-        write_beside(LOCAL, text_of([f"{name}={value}" for name, value in settings.items()]))
+    existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
+    if local_lines(existing, settings) != existing:
+        write_beside(LOCAL, text_of(local_lines(existing, settings)))
         write_runtime()
     if settings["ENGINE_PORT"] != "80":
         why = "Port 80 is taken on this computer, so" if "ENGINE_PORT" not in kept else "On this install,"
