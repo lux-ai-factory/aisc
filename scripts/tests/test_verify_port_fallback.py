@@ -188,3 +188,19 @@ def test_a_stack_taken_down_comes_back_exactly_as_it_ran(fake_docker):
     assert not [c for c in log if c.startswith("compose -p aisc ") and c not in down + up], log
     assert not (fake_docker / "uv.log").exists(), "aisc.py was run"
     assert "aisc.py" not in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("log, spoke", [
+    ("#12 writing image sha256:9c05432ab1e5432f0 done\n#14 0.5432s\nAISC is up: open http://localhost:8110\n", False),
+    ("Port 80 is taken on this computer, so AISC uses http://localhost:8080 instead\nAISC is up\n", False),
+    ("Port 5432 is taken. Stop the program that holds it (see which with: ss -ltnp 'sport = :5432').\n", True),
+    ("Port 5432 is taken on this computer, so AISC uses http://localhost:5433 instead\n", True),
+    ("Ports 80, 5432 are all taken. Free one of them\n", True),
+])
+def test_only_start_s_own_port_messages_count_as_speaking_of_a_port(tmp_path, log, spoke):
+    """A build log is full of digests and timings; 5432 inside one says nothing about the port."""
+    (tmp_path / "start.log").write_text(log)
+    body = _function(SCRIPT.read_text(), "start_spoke_of_port")
+    r = subprocess.run(["bash", "-c", f"start_spoke_of_port() {{\n{body}}}\nstart_spoke_of_port 5432 \"$1\"", "_",
+                        str(tmp_path / "start.log")], capture_output=True, text=True, timeout=30)
+    assert (r.returncode == 0) == spoke, r.stdout + r.stderr

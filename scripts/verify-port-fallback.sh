@@ -240,6 +240,13 @@ local_setting() { # NAME -> its value in the copy's env.local
   sed -n "s/^$1=//p" "$CLONE/env.local" 2>/dev/null | tail -1
 }
 
+# Whether start's own messages name a port: a move ("Port 80 is taken on this computer, so AISC uses ...") or a
+# refusal ("Port 5432 is taken.", "Ports 80, 8080 are all taken."). Not any 5432 in the log: a build prints
+# digests and timings that hold the same digits.
+start_spoke_of_port() { # port, log file
+  grep -Eq "(^|[^0-9A-Za-z])Ports? ([0-9]+, )*$1([^0-9]|\$)" "$2"
+}
+
 started() { # exit code, log file, what: start went through and said so
   if [ "$1" = 0 ] && grep -q "AISC is up" "$2"; then ok "$3: start ended with AISC is up"; return 0; fi
   no "$3: start ended with code $1 and without AISC is up (log: $2)"
@@ -354,8 +361,8 @@ for setting in ENGINE_PORT=8080 HOMEPAGE_PORT_EXTERNAL=8110 DASHBOARD_PORT_EXTER
   name=${setting%%=*}; want=${setting#*=}; got=$(local_setting "$name")
   [ "$got" = "$want" ] && ok "env.local holds $setting" || no "env.local holds $name=${got:-nothing}, not $want"
 done
-if grep -q 5432 "$WORK/start-new.log"; then
-  no "start spoke of 5432, a port AISC does not publish: $(grep 5432 "$WORK/start-new.log" | head -1)"
+if start_spoke_of_port 5432 "$WORK/start-new.log"; then
+  no "start spoke of 5432, a port AISC does not publish: $(grep -E 'Ports? [0-9, ]*5432' "$WORK/start-new.log" | head -1)"
 else
   ok "start neither stopped nor moved for 127.0.0.1:5432, which AISC does not publish"
 fi
