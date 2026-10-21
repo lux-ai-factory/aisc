@@ -134,10 +134,12 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   Docker itself after its daemon restarts) leaves the engine's audit writes failing until
   `docker compose -p aisc restart aisc-backend`; `scripts/verify-rbac.sh`'s audit check then FAILs and
   says so.
-- **Ports.** Only 80 (and 443, the same listener), 8100 and 8188 are published to
-  the network, and each answers an anonymous request with a redirect to Keycloak. Keycloak (8081), PostgreSQL (5432), Redis,
-  RabbitMQ, MinIO and immudb are bound to `127.0.0.1`; `dashboard-redis` publishes nothing.
-  `scripts/verify-sso.sh` checks this.
+- **Ports.** Only 80, 8100 and 8188 are published to the network (443 too on an install served over
+  https), and each answers an anonymous request with a redirect to Keycloak. Keycloak (8081) is bound to
+  `127.0.0.1`. PostgreSQL, Redis, RabbitMQ, MinIO and immudb publish nothing by default: the services reach
+  them on the compose network. To reach them from the host (pgAdmin, psql, redis-cli), set
+  `AISC_ADMIN_PORTS=on` first (see the table below); they then answer on `127.0.0.1`, ports 5432, 6379,
+  5672, 9000 and 3322. `dashboard-redis` publishes nothing. `scripts/verify-sso.sh` checks this.
 
 ## Install and run, in detail
 
@@ -296,8 +298,6 @@ likely to change:
 | `GATEWAY_COOKIE_SECURE` | `env.plugin_downloader` | the gateway's session cookie is Secure: `true` when `CADDY_DOMAIN` is `https://` | `false` |
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
 | `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | generated |
-| `HOMEPAGE_PORT_EXTERNAL` | `caddy` | the launcher's published port | `8100` |
-| `DASHBOARD_PORT_EXTERNAL` | `caddy` | the dashboard's published port | `8188` |
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
 | `GITHUB_TOKEN` | `plugin-downloader` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: private plugins skipped |
 | `PLUGIN_PATH` | `env.plugin_downloader` | your plugin sources, mounted into the engine | `./local_plugins/` |
@@ -313,8 +313,14 @@ likely to change:
 | `LEDGER_POOL` | `ledger-pool` | how many free ledger databases (one per new project) are kept ready, refilled at each start | `50` |
 | `ENGINE_IMMUDB_PASSWORD` | `env.secrets` (aisc-backend as `IMMUDB_PASSWORD`, `ledger-pool`) | the engine's own immudb user, aisc_engine; kept by `--rotate`, changed by `--rotate-one` | generated |
 | `AISC_IMAGE_TAG` | all built images | the tag of locally built images | `latest` |
-| `ENGINE_PORT`, `ENGINE_HTTPS_PORT`, `API_URL_EXTERNAL` | `env.local` (written by `aisc.py start`, git-ignored) | the engine's ports and its address (steps 1 and 2, the sign-in's return address, the report composer's origin check). A new install moves off a taken 80 or 443 to 8080 ... / 8443 ...; after that the choice is kept | `80`, `443`, `http://localhost` |
+| `ENGINE_PORT`, `HOMEPAGE_PORT_EXTERNAL`, `DASHBOARD_PORT_EXTERNAL`, `KEYCLOAK_PORT_EXTERNAL` | `env.local` (written by `aisc.py start`, git-ignored) | the four browser ports: steps 1 and 2, the launcher, the dashboard and the sign-in. `start` checks them before building. When one is taken, an install not served over https moves to a free one and keeps it; an https install stops instead. Edit `env.local` to choose a port yourself | `80`, `8100`, `8188`, `8081` |
+| `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`, `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL` | `env.local` | the address of each browser port, as the browser reaches it. `start` writes the address next to a port it moved; an https install sets its own public names | `http://localhost`, `http://localhost:8100/`, `http://localhost:8188`, `http://localhost:8081` |
+| `AISC_ADMIN_PORTS` | the environment or `env.local` | `on` adds `docker-compose.admin-ports.yml`, which publishes PostgreSQL (5432), Redis (6379), RabbitMQ (5672), MinIO (9000) and immudb (3322) on `127.0.0.1`, for tools on the host such as pgAdmin or psql. Nothing else needs them | unset: not published |
+| `ENGINE_HTTPS_PORT` | `env.local` | port 443's setting, in `docker-compose.https.yml`. `start` adds that file only when `CADDY_DOMAIN` is an https address, so a taken 443 never stops an install on plain http | `443` |
 | `AISC_PROJECT` | `aisc.py start` | the Compose project name, for a second copy beside an install's data | `aisc` |
+
+On every start, `start` tells the sign-in (Keycloak) the install's addresses, so a port that moved is
+also the address people are sent back to after they sign in.
 
 The secrets themselves (gateway cookie and client secrets, service tokens, database role passwords,
 `PLATFORM_SECRETS_KEY` that encrypts stored LLM keys, the ledger keys, `DASHBOARD_REDIS_PASSWORD`) are listed with their purpose
@@ -323,7 +329,7 @@ in `scripts/secrets.sh`. Never commit `env.secrets`, `env.runtime` or `immudb-si
 ## Tests
 
 The tests never need the running stack. **Never point a test at the live database** (PostgreSQL on
-`127.0.0.1:5432` of the running stack): tests that need a database get a throwaway container of
+`127.0.0.1:5432` of the running stack, which exists only with `AISC_ADMIN_PORTS=on`): tests that need a database get a throwaway container of
 their own (`aisc-t-*`, `postgres:15-alpine` through `scripts/lib/throwaway-pg.sh` or
 `scripts/lib/report_bed.py`) on a port the kernel picks, removed afterwards.
 
