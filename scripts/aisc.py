@@ -660,6 +660,20 @@ def answer_of(url: str) -> int | None:
         return None
 
 
+def keycloak_realm_url() -> str:
+    """The realm's own page, at the address compose gives Keycloak (the last KEYCLOAK_URL_EXTERNAL line of
+    env.runtime, as compose takes it), or START_SIGN_IN_URL."""
+    given = os.environ.get("START_SIGN_IN_URL")
+    if given:
+        return given
+    address = "http://localhost:8081"
+    if Path(COMBINED).is_file():
+        for line in lines_of(COMBINED):
+            if line.startswith("KEYCLOAK_URL_EXTERNAL="):
+                address = line.split("=", 1)[1].strip().strip("'\"") or address
+    return address.rstrip("/") + "/realms/aisc"
+
+
 def not_running(lines: str) -> list[str]:
     return [l for l in lines.splitlines() if l and not re.search(r"\t(Up|running|Exited \(0\))", l)]
 
@@ -684,7 +698,7 @@ def start(_args: list[str]) -> None:
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL,
-    START_MIN_DISK_GB (20)."""
+    START_SIGN_IN_URL (Keycloak's realm page), START_MIN_DISK_GB (20)."""
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
     url = os.environ.get("START_URL", "http://localhost:8100/")
@@ -760,6 +774,15 @@ def start(_args: list[str]) -> None:
                  "Services not running:")
             warn(*not_running(captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout))
             raise Refused(f"see why with: docker compose -p {PROJECT} logs <service>  (for example keycloak or oauth2-proxy)")
+        time.sleep(poll_s)
+    # The launcher redirects to the sign-in before Keycloak has imported its realm: a person who follows at once
+    # gets no form. The realm's own page answers 200 only once it is there.
+    realm = keycloak_realm_url()
+    while (code := answer_of(realm)) != 200:
+        if time.monotonic() >= deadline:
+            warn(f"Keycloak's realm page {realm} did not answer 200 within {wait_s:g}s (last answer: "
+                 f"{code or 'none'}), so the sign-in cannot be shown yet.")
+            raise Refused(f"see why with: docker compose -p {PROJECT} logs keycloak")
         time.sleep(poll_s)
 
     # A one-shot service (plugin-publisher, report-grants, the migrations) that exited non-zero: nothing waits on

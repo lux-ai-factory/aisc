@@ -52,9 +52,20 @@ esac
 
 def sign_in_page(d):
     """The gateway as the start sees it: 502 while `not-ready` counts down (or for ever: `never`), then the
-    sign-in's redirect."""
+    sign-in's redirect. The realm's own page (/realms/...) answers 503 while `realm-not-ready` counts down (or
+    for ever: `never`), then 200; every request's path is appended to `requests`, in the order it came."""
     class Page(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            with open(d / "requests", "a") as seen:
+                seen.write(self.path + "\n")
+            if self.path.startswith("/realms/"):
+                realm = d / "realm-not-ready"
+                left = realm.read_text().strip() if realm.exists() else "0"
+                if left != "never" and int(left) > 0:
+                    realm.write_text(str(int(left) - 1))
+                self.send_response(503 if left == "never" or int(left) > 0 else 200)
+                self.end_headers()
+                return
             ready = d / "not-ready"
             n = ready.read_text().strip() if ready.exists() else "0"
             if n != "never" and int(n) > 0:
@@ -91,7 +102,8 @@ def scratch(tmp_path):
 
 def run(d, **env_over):
     env = {**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}", "START_WAIT_S": "6", "START_POLL_S": "0",
-           "START_MIN_DISK_GB": "0", "START_URL": (d / "url").read_text(), **env_over}
+           "START_MIN_DISK_GB": "0", "START_URL": (d / "url").read_text(),
+           "START_SIGN_IN_URL": (d / "url").read_text() + "realms/aisc", **env_over}
     return subprocess.run(["bash", str(d / "scripts/start.sh")], cwd=d, env=env, capture_output=True, text=True,
                           timeout=60)
 
@@ -141,6 +153,37 @@ def test_a_stack_that_never_answers_says_what_is_not_running(scratch):
     assert r.returncode != 0
     out = r.stdout + r.stderr
     assert "keycloak" in out and "logs" in out
+
+
+def test_aisc_is_not_up_until_the_realm_has_been_imported(scratch):
+    """The launcher redirects to the sign-in before Keycloak has imported its realm; a person who follows at
+    once gets no form. So the realm's own page must answer 200 first."""
+    (scratch / "realm-not-ready").write_text("2")     # the realm answers 503 twice, then 200
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    realm = [p for p in (scratch / "requests").read_text().splitlines() if p.startswith("/realms/")]
+    assert realm == ["/realms/aisc"] * 3
+    assert "AISC is up" in r.stdout
+
+
+def test_a_realm_that_never_answers_gives_a_warning_naming_keycloak_and_no_aisc_is_up(scratch):
+    (scratch / "realm-not-ready").write_text("never")
+    r = run(scratch, START_WAIT_S="1")
+    assert r.returncode != 0
+    assert "Keycloak" in r.stderr and "AISC is up" not in r.stdout
+
+
+def test_the_realm_page_is_found_through_the_address_compose_gives_keycloak(scratch):
+    """Without START_SIGN_IN_URL: the last KEYCLOAK_URL_EXTERNAL of env.runtime, quotes stripped."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    settings = (scratch / "env.plugin_downloader").read_text()
+    (scratch / "env.plugin_downloader").write_text(
+        settings.replace('KEYCLOAK_URL_EXTERNAL="http://localhost:8081"',
+                         f'KEYCLOAK_URL_EXTERNAL="http://127.0.0.1:{port}"'))
+    r = run(scratch, START_SIGN_IN_URL="", START_WAIT_S="1")
+    assert f"http://127.0.0.1:{port}/realms/aisc" in r.stderr + r.stdout
 
 
 @pytest.mark.parametrize("setup, says", [
