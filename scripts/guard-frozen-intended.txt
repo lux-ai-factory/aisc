@@ -1,0 +1,70 @@
+# G4 (scripts/guard-frozen.sh): the files feat/deployment-modes changes in the webapp on top of
+# upstream origin/master, one per line, each with the area of the change and why. Every other
+# webapp file must be byte-identical to its base. The backend and the worker (apps/backend,
+# apps/eval) are ours to change and are not listed.
+#
+#   base <repo> <commit>             origin/master of the repo, the base of feat/deployment-modes
+#   <repo> <path> <labels>: <reason> a file feat/deployment-modes adds or changes on purpose
+#
+# Labels, comma-separated, name the area of the change:
+#   modes         the configurator mode next to upstream's standalone one: project, session, install
+#                 target and pages per mode
+#   reports       the /report links removed: the AISC stack never serves /report, the report is the
+#                 report composer's
+#   wording       the start button says Launch Evaluation
+#   project       each tab works on its own project: installs and saved selections never take another's
+#   errors        failed runs and refused actions shown with their reason
+#   dependencies  shipped dependencies above their vulnerable ranges
+#   docs          the README
+#
+# Derived with `git diff --name-only <base> HEAD` in apps/webapp.
+# A new change goes in here with its reason, in the same commit as the gitlink that brings it.
+
+base webapp ab9f19d
+
+# apps/webapp
+webapp .env modes: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
+webapp .env.development modes: standalone mode and launcher URL for dev
+webapp .env.test modes: the mode for plain vitest runs
+webapp Dockerfile modes: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's
+webapp src/DeploymentGate.tsx modes: error page for an unknown mode
+webapp src/MyApp.tsx modes: Tasks route standalone only
+webapp src/api/installProjectHeader.test.ts modes: the start-up wrapper names the project on fetch and axios
+webapp src/api/installProjectHeader.ts modes: installs the X-AISC-Project wrapper over fetch and axios at start, configurator only
+webapp src/api/projectHeader.callers.test.ts modes: every call names the project, through the start-up wrapper
+webapp src/api/projectHeader.ts modes: projectFetch and the axios interceptor: the X-AISC-Project header in configurator
+webapp src/components/LeftBar.tsx modes: Tasks link standalone only
+webapp src/components/PluginInstallDialog.modes.test.tsx modes: the install dialog in both modes
+webapp src/components/PluginInstallDialog.tsx modes, project: install into the project you came from (configurator), upstream's list standalone; installs into the tab's project, named, never the one last opened in another tab
+webapp src/components/TopBar.tsx modes: launcher's project in configurator, upstream's wizard standalone; Back goes one level up, to the AI Assessment Sandbox
+webapp src/context/AuthContext.tsx modes: the gateway's session in configurator, upstream's Keycloak login standalone
+webapp src/deployment.components.test.tsx modes: components by mode; Back goes one level up, to the AI Assessment Sandbox
+webapp src/deployment.test.ts modes: the mode switch
+webapp src/deployment.ts modes: APP_DEPLOYMENT read per call
+webapp src/main.tsx modes: DeploymentGate mounted; the project-header wrapper installed before render in configurator
+webapp src/pages/GlobalHome.tsx modes: the launcher's project in configurator
+webapp src/pages/Plugins.modes.test.tsx modes: the Plugins page by mode (configurator lists only the project's installed tests)
+webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place tests are found in configurator; upstream's package index standalone; uses pluginToggle
+webapp src/pages/PluginEvaluations.tsx reports, errors: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. Failed runs listed with their error
+webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words
+webapp src/pages/evaluationOutcome.test.ts errors: its tests
+webapp src/models/models.tsx errors: a run's plugin entry carries error_message
+webapp src/pages/PluginEvaluations.noReport.test.ts reports: no source of the app links to /report any more
+webapp src/pages/PluginStartEvaluation.tsx wording, project: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project
+webapp src/pages/PluginStartEvaluation.launch.test.ts wording: the start button says Launch Evaluation
+webapp src/pages/PluginStartEvaluation.test.tsx project: the saved selections are per project (start-eval-state:<projectUUID>), so switching projects in one tab never restores another's
+webapp src/platform/currentProject.test.ts modes: the tab's platform project; Back goes one level up, to the AI Assessment Sandbox
+webapp src/platform/currentProject.ts modes: the tab's platform project (pid only); Back goes one level up, to the AI Assessment Sandbox
+webapp src/platform/gatewaySession.test.ts modes: the gateway's session
+webapp src/platform/gatewaySession.ts modes: the gateway's session
+webapp src/pluginCatalogue/PluginInstallContext.tsx modes: install target by mode
+webapp src/pluginCatalogue/installUri.ts modes: catalogue slug of an install link
+webapp src/pluginCatalogue/testing.tsx modes: test helpers without a new dependency
+webapp src/upstreamFilesUnchanged.test.ts modes: the upstream files the configurator no longer edits equal master; PluginEvaluations.tsx and PluginStartEvaluation.tsx are not among them (reports, wording)
+webapp README.md docs: what the branch changes and how the frontend runs inside AISC
+webapp src/pages/OpenPluginFromUrl.tsx modes: the execution page opens the test ?plugin= names (step 4's E link)
+webapp src/pages/OpenPluginFromUrl.test.tsx modes: its test
+webapp package-lock.json dependencies: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.8, form-data 4.0.6, react-router/-dom 7.18.4)
+webapp src/patchedDependencies.test.ts dependencies: each shipped dependency above its vulnerable range
+webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin
+webapp src/pages/pluginToggle.test.ts errors: its test

@@ -1,0 +1,124 @@
+# Every module's tests, run from the aisc checkout with its public submodules. The database suites start
+# throwaway Postgres containers with scripts/lib/throwaway-pg.sh, as they do on a workstation.
+name: ci
+
+on:
+  push:
+    branches: [feat/unified-modules, main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PUBLIC_SUBMODULES: >-
+    apps/backend apps/eval apps/webapp apps/controls apps/qualification apps/control-objectives
+    apps/results-dashboard shared/plugin-interface shared/plugin-manager apps/catalogue apps/report-generator
+    shared/report-plugin-interface
+
+jobs:
+  python:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: identity
+            run: scripts/lib/identity-tests.sh
+          - suite: platform
+            run: scripts/test-platform.sh -q -p no:warnings
+          - suite: control-objectives
+            run: scripts/lib/co-tests.sh -p no:warnings
+          - suite: report-composer
+            run: cd apps/report-composer && uv run --extra dev pytest -q -p no:warnings
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - uses: astral-sh/setup-uv@v5
+      - run: ${{ matrix.run }}
+
+  repository-checks:
+    name: repository checks
+    runs-on: ubuntu-latest
+    steps:
+      # the guard compares against older commits of the root and of the engine: full history
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git submodule update --init $PUBLIC_SUBMODULES
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: astral-sh/setup-uv@v5
+      # the test beds run each module's own migrations, with the environment a workstation has
+      - run: |
+          for app in apps/backend apps/control-objectives apps/report-composer; do (cd "$app" && uv sync --all-extras); done
+          for app in apps/qualification apps/controls; do (cd "$app" && npm ci); done
+      - run: >-
+          cd scripts/tests && uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]'
+          python -m pytest -q -p no:cacheprovider -p no:warnings
+
+  # Windows: the public submodules check out (no file name Windows refuses, Linux line endings kept), and the
+  # install script's own tests pass there. Docker cannot run Linux containers on this runner, so the stack itself
+  # is not started; that is proven on Linux.
+  windows:
+    name: windows install
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - uses: astral-sh/setup-uv@v5
+      - run: >-
+          uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider
+          scripts/tests/test_aisc_py.py scripts/tests/test_windows_names.py scripts/tests/test_line_endings.py
+
+  node:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: qualification
+            database: cd apps/qualification && test/db/throwaway-db.sh
+          - app: controls
+            database: scripts/lib/controls-tests.sh
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: astral-sh/setup-uv@v5
+      - run: npm ci
+        working-directory: apps/${{ matrix.app }}
+      - run: npx tsc --noEmit -p .
+        working-directory: apps/${{ matrix.app }}
+      - run: npx vitest run test/unit test/vendor
+        working-directory: apps/${{ matrix.app }}
+      - run: ${{ matrix.database }}
+
+  sidecars:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - apps/qualification/services/agents
+          - apps/qualification/services/ontology
+          - apps/qualification/services/prefill
+          - apps/qualification/services/system_card_renderer
+          - apps/controls/services/pdf_renderer
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - uses: astral-sh/setup-uv@v5
+      - working-directory: ${{ matrix.service }}
+        run: |
+          dev=""
+          [ -f requirements-dev.txt ] && dev="--with-requirements requirements-dev.txt"
+          uv run --no-project --python 3.12 --with-requirements requirements.txt $dev \
+            --with pytest --with httpx python -m pytest -q -p no:cacheprovider -p no:warnings

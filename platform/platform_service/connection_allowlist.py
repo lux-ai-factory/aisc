@@ -25,7 +25,7 @@ from platform_service import connection_store
 #: (service, container and alias names), and localhost. scripts/tests/test_connections_stack.py
 #: checks it against the compose files.
 STACK_SERVICES = frozenset({
-    "add-controls", "aisc-backend", "aisc-backend-ledger", "aisc-backend-migrate", "aisc-backend-standalone", "aisc-eval", "aisc-eval-flower",
+    "aisc-backend", "aisc-backend-ledger", "aisc-backend-migrate", "aisc-backend-standalone", "aisc-eval", "aisc-eval-flower",
     "aisc-eval-worker", "aisc-eval-worker-standalone", "aisc-webapp", "aisc-webapp-standalone",
     "backend", "caddy", "catalogue-private", "control-objectives", "control-objectives-migrate", "controls-migrate",
     "controls-pdf", "controls-web", "dashboard", "dashboard-migrate", "dashboard-redis", "devpi", "devpi-standalone",
