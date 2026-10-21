@@ -37,7 +37,8 @@ case "$1" in
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
-      *" ps -a --status created"*) [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
+      *" ps -a --status created"*) [ -f "$d/created-fails" ] && exit 1
+        [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
       *" rm "*) exit 0 ;;
       *" up "*) [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
@@ -427,6 +428,28 @@ def test_start_clears_containers_a_failed_attempt_left_created(scratch):
     ups = [c for c in log if " up " in c]
     assert len(removal) == 1 and " rm -f aisc-webapp" in removal[0], log
     assert log.index(removal[0]) < log.index(ups[0])
+
+
+COMPOSE_OF_THE_STACK = ("compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml "
+                        "-f docker-compose-infra.development.yml -f docker-compose.development.yml")
+
+
+def test_start_asks_compose_for_this_project_s_created_containers_only(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    asked = [c for c in calls(scratch) if "--status created" in c]
+    assert asked == [COMPOSE_OF_THE_STACK + " ps -a --status created --format {{.Service}} | BAKE= LIMIT="]
+    assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
+    assert "Removing what an earlier attempt left" not in r.stdout
+
+
+def test_start_goes_on_when_compose_cannot_list_the_created_containers(scratch):
+    (scratch / "created-fails").write_text("")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
+    assert [c for c in calls(scratch) if " up -d" in c] and "AISC is up" in r.stdout
 
 
 def test_a_refused_start_says_not_to_run_compose_directly(scratch):
