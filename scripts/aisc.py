@@ -949,12 +949,11 @@ def start(_args: list[str]) -> None:
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
-    launcher's address in env.runtime), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
+    launcher on its published port on this machine), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
     sign-in the addresses, START_MIN_DISK_GB (20)."""
     global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
-    url = os.environ.get("START_URL") or effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/"
     min_disk_gb = int(os.environ.get("START_MIN_DISK_GB", "20"))
 
     # 1. The checkout and the machine
@@ -1008,6 +1007,12 @@ def start(_args: list[str]) -> None:
         say("If a port is held by something left from an earlier AISC run, restarting Docker frees it.")
     elif "API_URL_EXTERNAL" in settings:
         say(f"On this install, steps 1 and 2 open on {settings['API_URL_EXTERNAL']}.")
+
+    # Where to wait, read now that the ports are settled: an address read before step 3 may be the one another
+    # program holds. The launcher's published port on this machine, as for Keycloak's realm (keycloak_realm_url):
+    # an https install's public name may not resolve from here, nor its certificate be trusted.
+    url = os.environ.get("START_URL") or f"http://localhost:{effective('HOMEPAGE_PORT_EXTERNAL') or '8100'}/"
+    launcher = with_slash(effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/")
 
     # 4. The images
     for attempt in (1, 2, 3):
@@ -1085,7 +1090,7 @@ def start(_args: list[str]) -> None:
         sign_in = ["sign in as admin with this install's own password. Show it, and the ordinary account user's, with:",
                    "  uv run scripts/aisc.py password   (AISC_ADMIN_PASSWORD and AISC_USER_PASSWORD in env.secrets)"]
     say("",
-        f"AISC is up: open {url.rstrip('/')} and {sign_in[0]}", *sign_in[1:],
+        f"AISC is up: open {launcher.rstrip('/')} and {sign_in[0]}", *sign_in[1:],
         "If you installed AISC before on this machine, use a private window (an old session cookie is refused).")
 
 

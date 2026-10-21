@@ -58,7 +58,7 @@ case "$*" in
 esac
 """
 
-def sign_in_page(d):
+def sign_in_page(d, port=0):
     """The gateway as the start sees it: 502 while `not-ready` counts down (or for ever: `never`), then the
     sign-in's redirect. The realm's own page (/realms/...) answers 503 while `realm-not-ready` counts down (or
     for ever: `never`), then 200; every request's path is appended to `requests`, in the order it came."""
@@ -85,7 +85,7 @@ def sign_in_page(d):
         def log_message(self, *_args):
             pass
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Page)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Page)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -123,6 +123,7 @@ def calls(d):
 
 def test_a_good_checkout_is_built_started_and_waited_for(scratch):
     (scratch / "not-ready").write_text("2")          # the gateway answers 502 twice, then the sign-in
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)   # whatever holds them on the test machine
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert (scratch / "env.secrets").exists() and (scratch / "env.runtime").exists()
@@ -134,7 +135,7 @@ def test_a_good_checkout_is_built_started_and_waited_for(scratch):
         assert "-p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml" in c
         assert "-f docker-compose-infra.development.yml -f docker-compose.development.yml" in c
     assert "up -d" in ups[0]
-    assert (scratch / "url").read_text().rstrip("/") in r.stdout and "private window" in r.stdout
+    assert "AISC is up: open http://localhost:8100 " in r.stdout and "private window" in r.stdout
 
 
 def test_a_failed_build_is_tried_twice_more_with_fewer_builds_at_once(scratch):
@@ -500,3 +501,58 @@ def test_a_plain_http_install_s_sign_in_keeps_the_development_server(scratch):
     assert r.returncode == 0, r.stdout + r.stderr
     sent = (scratch / "exec-input").read_text()
     assert "http://localhost:5173/*" in sent and '"http://localhost:5173"' in sent
+
+
+def page_on(d, port):
+    """The stand-in sign-in page on 127.0.0.1:port, or a skip when this machine holds that port."""
+    try:
+        return sign_in_page(d, port)
+    except OSError:
+        pytest.skip(f"port {port} is held on this machine")
+
+
+def test_a_moved_launcher_is_waited_on_and_announced_at_its_new_address(scratch):
+    """8100 is held by another program, so the launcher moves to 8110: start waits on 8110, on this machine,
+    and names it at the end, not the address the other program holds."""
+    blocker = socket.socket()
+    try:
+        blocker.bind(("0.0.0.0", 8100))
+        blocker.listen()
+    except OSError:
+        pass                                    # something on this machine holds it already: taken either way
+    page = page_on(scratch, 8110)
+    try:
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", ":8110->"))
+        r = run(scratch, START_URL="", START_SIGN_IN_URL="http://127.0.0.1:8110/realms/aisc")
+    finally:
+        page.shutdown()
+        page.server_close()
+        blocker.close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "HOMEPAGE_PORT_EXTERNAL=8110" in (scratch / "env.local").read_text().splitlines()
+    assert [p for p in (scratch / "requests").read_text().splitlines() if not p.startswith("/realms/")] == ["/"]
+    assert "Waiting for the sign-in page at http://localhost:8110/" in r.stdout
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open http://localhost:8110 " in up[-1], r.stdout
+
+
+def test_an_https_install_is_announced_at_its_public_address_and_waited_on_here(scratch):
+    """Its public name may not resolve from this machine (hairpin NAT, a self-signed certificate): start waits
+    on the launcher's published port here, and names the public address."""
+    https_install(scratch)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    page = page_on(scratch, port)
+    try:
+        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n")
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", f":{port}->"))
+        r = run(scratch, START_URL="", START_SIGN_IN_URL=f"http://127.0.0.1:{port}/realms/aisc")
+    finally:
+        page.shutdown()
+        page.server_close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "/" in (scratch / "requests").read_text().splitlines()
+    assert f"Waiting for the sign-in page at http://localhost:{port}/" in r.stdout
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
