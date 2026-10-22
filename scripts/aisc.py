@@ -629,13 +629,120 @@ def held_by_aisc() -> set[int]:
     return {int(p) for p in re.findall(r":(\d+)->", ports)}
 
 
+#: the image the probe runs: the stack's own Caddy, which publishes these ports, so `up` would pull it anyway
+PROBE_IMAGE = "caddy:2.10.2"
+#: the name every probe container starts with, so one left behind (a probe cut short) is found and removed
+PROBE_PREFIX = "aisc-port-probe-"
+#: how long one probe may take: a container that only binds and exits needs well under a second
+PROBE_WAIT_S = float(os.environ.get("START_PROBE_WAIT_S", "10"))
+#: how long fetching the probe's image may take: tens of megabytes, on a slow link or through a proxy
+PULL_WAIT_S = float(os.environ.get("START_PULL_WAIT_S", "300"))
+#: how long listing or removing a container may take: a daemon slower than this is too busy to probe
+DOCKER_CALL_WAIT_S = 20
+#: how Docker words a refusal of a port it cannot publish: Docker Desktop's forwarder (Windows, macOS), the
+#: Linux daemon (a leftover forwarder, a program listening), Windows' reserved ranges and its own bind error
+PORT_TAKEN = re.compile(r"ports are not available|port is already allocated|address already in use|"
+                        r"bind: an attempt was made to access a socket in a way forbidden|"
+                        r"only one usage of each socket address", re.IGNORECASE)
+
+#: whether Docker left a call of the port check unanswered this start: no further probe is tried, each
+#: would wait its full time on the same busy daemon
+DOCKER_UNANSWERED = False
+#: whether this start already said Docker could not check the ports: once is enough
+PROBE_FAILED_SAID = False
+#: the ports Docker refused although the host saw them free: taken inside Docker, out of sight of the host's tools
+TAKEN_IN_DOCKER: set[int] = set()
+
+
+def docker_says_port_taken(message: str) -> bool:
+    """Whether a failed `docker run -p` failed because the port is taken, not for any other reason."""
+    return bool(PORT_TAKEN.search(message))
+
+
+def docker_in_time(argv: list[str], wait_s: float) -> subprocess.CompletedProcess | None:
+    """One docker call given wait_s seconds; None when it did not finish in time (it is stopped then)."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=wait_s)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(argv, 127, "", "")
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def prepare_port_probe() -> None:
+    """Remove probe containers an earlier start left behind, and make sure the probe's image is here. A leftover
+    would hold its port and be taken for another program; the image is fetched once, said beforehand since it
+    can take minutes, so no probe waits on it. Nothing here may stop or freeze the start: a call Docker does
+    not answer in time leaves the host's own check to decide for the rest of the start."""
+    global DOCKER_UNANSWERED
+    names = docker_in_time([DOCKER, "ps", "-a", "--filter", f"name={PROBE_PREFIX}", "--format", "{{.Names}}"],
+                           DOCKER_CALL_WAIT_S)
+    leftovers = [name for name in names.stdout.split() if name.startswith(PROBE_PREFIX)] if names else []
+    image = None
+    if names and (not leftovers or docker_in_time([DOCKER, "rm", "-f", *leftovers], DOCKER_CALL_WAIT_S)):
+        image = docker_in_time([DOCKER, "image", "inspect", PROBE_IMAGE], DOCKER_CALL_WAIT_S)
+    if image and image.returncode != 0:
+        say("Fetching the image the port check uses (once) ...")
+        image = docker_in_time([DOCKER, "pull", "--quiet", PROBE_IMAGE], PULL_WAIT_S)
+    if image is None:
+        DOCKER_UNANSWERED = True
+
+
+def docker_can_publish(port: int, host: str) -> bool | None:
+    """Whether Docker itself can publish this port on this address: a container that only binds and exits.
+    Docker Desktop publishes through its own VM, shared with WSL, where a program holding the port is out of
+    sight of a bind on the host; so is a forwarder an earlier container left behind. False when Docker refuses
+    the port as taken; None when the probe fails for any other reason (no image offline, a Docker error, no
+    answer in time), and the host's own check decides."""
+    global DOCKER_UNANSWERED
+    if DOCKER_UNANSWERED:
+        return None
+    name = f"{PROBE_PREFIX}{port}"
+    done = docker_in_time([DOCKER, "run", "--rm", "--name", name, "--pull", "never", "-p", f"{host}:{port}:80",
+                           "--entrypoint", "true", PROBE_IMAGE], PROBE_WAIT_S)
+    if done is None:
+        DOCKER_UNANSWERED = True
+        docker_in_time([DOCKER, "rm", "-f", name], DOCKER_CALL_WAIT_S)
+        return None
+    if done.returncode == 0:
+        return True
+    return False if docker_says_port_taken(done.stderr + done.stdout) else None
+
+
+def free_for_docker(port: int, host: str) -> bool:
+    """Whether start may publish this port: free on the host (port_is_free) and Docker can publish it
+    (docker_can_publish). A refusal from Docker alone is remembered (TAKEN_IN_DOCKER), so the advice names
+    Docker, not the host's tools; a probe that cannot tell leaves the host's answer, and says so once."""
+    global PROBE_FAILED_SAID
+    if not port_is_free(port, host):
+        return False
+    answer = docker_can_publish(port, host)
+    if answer is None and not PROBE_FAILED_SAID:
+        PROBE_FAILED_SAID = True
+        say("Docker could not check the ports itself; going by this computer's own check.")
+    if answer is False:
+        TAKEN_IN_DOCKER.add(port)
+    return answer is not False
+
+
+def docker_side_hint(windows: bool | None = None) -> str:
+    """What frees a port Docker cannot use although nothing on the host holds it. On Windows it is held inside
+    Docker Desktop's VM or a WSL distribution, which share their network."""
+    if os.name == "nt" if windows is None else windows:
+        return ("The port is taken inside Docker Desktop or WSL: running wsl --shutdown and restarting Docker "
+                "Desktop frees ports left by earlier runs.")
+    return ("Something inside Docker holds it, such as a forwarder an earlier container left: restarting Docker "
+            "frees it.")
+
+
 def who_holds(port: int) -> str:
     """The command that shows which program holds a port, on this system."""
     return f"netstat -ano | findstr :{port}" if os.name == "nt" else f"sudo lsof -i :{port}"
 
 
 def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
-                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str], list[str]]:
+                 is_free: Callable[[int, str], bool], taken_in_docker: Callable[[int], bool] = lambda port: False
+                 ) -> tuple[dict[str, str], list[str], list[str]]:
     """The browser ports' settings for env.local, one problem per port that stops the start, and one line per
     port that moved this start.
 
@@ -645,8 +752,14 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
     not, since its public names lead to the ports it has. A port picked for one role is never offered to the
     next. On plain http a port that is not at its preferred one gets its address written too; at its preferred
     one, or on an install served over https, the install's own address stands (it sets it itself). Every other
-    published port is checked as it is. A port this install's own containers hold is not taken."""
+    published port is checked as it is. A port this install's own containers hold is not taken. A port only
+    Docker refused (taken_in_docker) is explained as Docker's: the host's tools would show nothing holding it."""
     picked: set[int] = set()
+
+    def what_frees(port: int) -> str:
+        if taken_in_docker(port):
+            return f"Docker cannot use it, although nothing on this computer holds it. {docker_side_hint()}"
+        return f"Stop the program that holds it (see which with: {who_holds(port)})."
 
     def free(port: int, host: str = "0.0.0.0") -> bool:
         return port not in picked and (port in held or is_free(port, host))
@@ -660,15 +773,18 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
         elif not may_move:
             chosen = None
             problems.append(f"Port {first} is taken, and an install served over https does not move to another "
-                            f"port. Stop the program that holds it (see which with: {who_holds(first)}).")
+                            f"port. {what_frees(first)}")
         else:
             chosen = choose_port(role.preferred, role.fallbacks, lambda p, host=role.host: free(p, host))
             if chosen is None:
                 tried = ", ".join(str(p) for p in (role.preferred, *role.fallbacks))
+                in_docker = any(map(taken_in_docker, (role.preferred, *role.fallbacks)))
+                inside = " " + docker_side_hint() if in_docker else ""
                 problems.append(f"Ports {tried} are all taken. Free one of them (see which program holds one "
-                                f"with: {who_holds(role.preferred)}).")
+                                f"with: {who_holds(role.preferred)}).{inside}")
             else:
-                moved.append(f"Port {first} is taken on this computer, so AISC uses {address_of(role, chosen)} "
+                where = "(Docker cannot use it)" if taken_in_docker(first) else "on this computer"
+                moved.append(f"Port {first} is taken {where}, so AISC uses {address_of(role, chosen)} "
                              f"instead ({role.variable}={chosen}, kept in {LOCAL}).")
         if chosen is not None:
             picked.add(chosen)
@@ -684,8 +800,7 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
         if role and port in {role.preferred, *role.fallbacks, int(kept.get(role.variable, role.preferred))}:
             continue
         if not free(port, host):
-            problems.append(f"Port {port} is taken. Stop the program that holds it (see which with: "
-                            f"{who_holds(port)}).")
+            problems.append(f"Port {port} is taken. {what_frees(port)}")
     return settings, problems, moved
 
 
@@ -1026,7 +1141,8 @@ def start(_args: list[str]) -> None:
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
     launcher on its published port on this machine), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
-    sign-in the addresses, START_MIN_DISK_GB (20)."""
+    sign-in the addresses, START_MIN_DISK_GB (20), START_PROBE_WAIT_S (10) and START_PULL_WAIT_S (300) for asking
+    Docker whether it can publish the ports."""
     global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
@@ -1067,8 +1183,9 @@ def start(_args: list[str]) -> None:
     if not_ports:
         raise Refused("AISC cannot start: " + " ".join(not_ports))
     kept = read_local()
+    prepare_port_probe()
     settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
-                                             not served_over_https(), port_is_free)
+                                             not served_over_https(), free_for_docker, TAKEN_IN_DOCKER.__contains__)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
     # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose

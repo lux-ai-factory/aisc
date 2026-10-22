@@ -547,3 +547,84 @@ def test_every_kcadm_run_has_a_session_file_of_its_own():
     script = aisc_py().KCADM_RUN
     assert "mktemp" in script and "trap " in script
     assert not re.search(r"/tmp/[\w.-]", script)
+
+
+@pytest.mark.parametrize("message", [
+    "Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:80 -> 127.0.0.1:0: "
+    "/forwards/expose returned unexpected status: 500",
+    "Bind for 0.0.0.0:80 failed: port is already allocated",
+    "Error starting userland proxy: listen tcp4 0.0.0.0:80: bind: address already in use",
+    "listen tcp 0.0.0.0:80: bind: An attempt was made to access a socket in a way forbidden by its access "
+    "permissions.",
+    "PORTS ARE NOT AVAILABLE: exposing port TCP 0.0.0.0:80",
+    "listen tcp 0.0.0.0:80: bind: Only one usage of each socket address (protocol/network address/port) is "
+    "normally permitted.",
+])
+def test_docker_s_refusals_of_a_taken_port_are_recognised(message):
+    assert aisc_py().docker_says_port_taken(message)
+
+
+@pytest.mark.parametrize("message", [
+    "Unable to find image 'caddy:2.10.2' locally\npull access denied for caddy",
+    "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+    "",
+])
+def test_other_docker_errors_say_nothing_of_the_port(message):
+    assert not aisc_py().docker_says_port_taken(message)
+
+
+def test_the_probe_answers_free_taken_or_cannot_tell(monkeypatch):
+    """Docker publishing the port means free; refusing it as taken means taken; any other failure, or a probe
+    that hangs, cannot tell (None), and the host's own check decides."""
+    m = aisc_py()
+    answers = {}
+
+    def docker(argv, **_kwargs):
+        if argv[1] == "run":
+            if answers["run"] == "hangs":
+                raise subprocess.TimeoutExpired(argv, 1)
+            code, err = answers["run"]
+            return subprocess.CompletedProcess(argv, code, "", err)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(m.subprocess, "run", docker)
+    answers["run"] = (0, "")
+    assert m.docker_can_publish(80, "0.0.0.0") is True
+    answers["run"] = (125, "Bind for 0.0.0.0:80 failed: port is already allocated")
+    assert m.docker_can_publish(80, "0.0.0.0") is False
+    answers["run"] = (125, "pull access denied for caddy")
+    assert m.docker_can_publish(80, "0.0.0.0") is None
+    answers["run"] = "hangs"
+    assert m.docker_can_publish(80, "0.0.0.0") is None
+
+
+def test_a_port_docker_refuses_is_explained_as_docker_s_not_the_host_s():
+    """The host's tools cannot see a port taken inside Docker Desktop or WSL: the advice is Docker's."""
+    m = aisc_py()
+    windows, elsewhere = m.docker_side_hint(windows=True), m.docker_side_hint(windows=False)
+    assert "wsl --shutdown" in windows and "Docker Desktop" in windows and "netstat" not in windows
+    assert "restarting Docker" in elsewhere and "lsof" not in elsewhere
+    _settings, problems, _moved = m.settle_ports(PUBLISHED, set(), {}, False, taken(80),
+                                                 taken_in_docker=lambda port: port == 80)
+    assert len(problems) == 1 and "Docker cannot use it" in problems[0] and m.who_holds(80) not in problems[0]
+    _settings, _problems, moved = m.settle_ports(PUBLISHED, set(), {}, True, taken(80),
+                                                 taken_in_docker=lambda port: port == 80)
+    assert moved and moved[0].startswith("Port 80 is taken (Docker cannot use it), so AISC uses")
+    _settings, problems, moved = m.settle_ports(PUBLISHED, set(), {}, True, taken(80))
+    assert moved[0].startswith("Port 80 is taken on this computer")
+
+
+def test_a_probe_that_hangs_stops_further_probes(monkeypatch):
+    m = aisc_py()
+    runs = []
+
+    def docker(argv, **_kwargs):
+        if argv[1] == "run":
+            runs.append(argv)
+            raise subprocess.TimeoutExpired(argv, 1)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(m.subprocess, "run", docker)
+    assert m.docker_can_publish(80, "0.0.0.0") is None
+    assert m.docker_can_publish(8100, "0.0.0.0") is None
+    assert len(runs) == 1
