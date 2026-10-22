@@ -636,9 +636,10 @@ PROBE_PREFIX = "aisc-port-probe-"
 #: how long one probe may take: a container that only binds and exits needs well under a second
 PROBE_TIMEOUT_S = 10
 #: how Docker words a refusal of a port it cannot publish: Docker Desktop's forwarder (Windows, macOS), the
-#: Linux daemon (a leftover forwarder, a program listening), Windows' reserved ranges
+#: Linux daemon (a leftover forwarder, a program listening), Windows' reserved ranges and its own bind error
 PORT_TAKEN = re.compile(r"ports are not available|port is already allocated|address already in use|"
-                        r"bind: an attempt was made to access a socket in a way forbidden", re.IGNORECASE)
+                        r"bind: an attempt was made to access a socket in a way forbidden|"
+                        r"only one usage of each socket address", re.IGNORECASE)
 
 
 def docker_says_port_taken(message: str) -> bool:

@@ -557,6 +557,8 @@ def test_every_kcadm_run_has_a_session_file_of_its_own():
     "listen tcp 0.0.0.0:80: bind: An attempt was made to access a socket in a way forbidden by its access "
     "permissions.",
     "PORTS ARE NOT AVAILABLE: exposing port TCP 0.0.0.0:80",
+    "listen tcp 0.0.0.0:80: bind: Only one usage of each socket address (protocol/network address/port) is "
+    "normally permitted.",
 ])
 def test_docker_s_refusals_of_a_taken_port_are_recognised(message):
     assert aisc_py().docker_says_port_taken(message)
