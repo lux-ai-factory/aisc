@@ -650,6 +650,8 @@ PORT_TAKEN = re.compile(r"ports are not available|port is already allocated|addr
 DOCKER_UNANSWERED = False
 #: whether this start already said Docker could not check the ports: once is enough
 PROBE_FAILED_SAID = False
+#: the ports Docker refused although the host saw them free: taken inside Docker, out of sight of the host's tools
+TAKEN_IN_DOCKER: set[int] = set()
 
 
 def docker_says_port_taken(message: str) -> bool:
@@ -709,7 +711,8 @@ def docker_can_publish(port: int, host: str) -> bool | None:
 
 def free_for_docker(port: int, host: str) -> bool:
     """Whether start may publish this port: free on the host (port_is_free) and Docker can publish it
-    (docker_can_publish). A probe that cannot tell leaves the host's answer, and says so once."""
+    (docker_can_publish). A refusal from Docker alone is remembered (TAKEN_IN_DOCKER), so the advice names
+    Docker, not the host's tools; a probe that cannot tell leaves the host's answer, and says so once."""
     global PROBE_FAILED_SAID
     if not port_is_free(port, host):
         return False
@@ -717,7 +720,19 @@ def free_for_docker(port: int, host: str) -> bool:
     if answer is None and not PROBE_FAILED_SAID:
         PROBE_FAILED_SAID = True
         say("Docker could not check the ports itself; going by this computer's own check.")
+    if answer is False:
+        TAKEN_IN_DOCKER.add(port)
     return answer is not False
+
+
+def docker_side_hint(windows: bool | None = None) -> str:
+    """What frees a port Docker cannot use although nothing on the host holds it. On Windows it is held inside
+    Docker Desktop's VM or a WSL distribution, which share their network."""
+    if os.name == "nt" if windows is None else windows:
+        return ("The port is taken inside Docker Desktop or WSL: running wsl --shutdown and restarting Docker "
+                "Desktop frees ports left by earlier runs.")
+    return ("Something inside Docker holds it, such as a forwarder an earlier container left: restarting Docker "
+            "frees it.")
 
 
 def who_holds(port: int) -> str:
@@ -726,7 +741,8 @@ def who_holds(port: int) -> str:
 
 
 def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kept: dict[str, str], may_move: bool,
-                 is_free: Callable[[int, str], bool]) -> tuple[dict[str, str], list[str], list[str]]:
+                 is_free: Callable[[int, str], bool], taken_in_docker: Callable[[int], bool] = lambda port: False
+                 ) -> tuple[dict[str, str], list[str], list[str]]:
     """The browser ports' settings for env.local, one problem per port that stops the start, and one line per
     port that moved this start.
 
@@ -736,8 +752,14 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
     not, since its public names lead to the ports it has. A port picked for one role is never offered to the
     next. On plain http a port that is not at its preferred one gets its address written too; at its preferred
     one, or on an install served over https, the install's own address stands (it sets it itself). Every other
-    published port is checked as it is. A port this install's own containers hold is not taken."""
+    published port is checked as it is. A port this install's own containers hold is not taken. A port only
+    Docker refused (taken_in_docker) is explained as Docker's: the host's tools would show nothing holding it."""
     picked: set[int] = set()
+
+    def what_frees(port: int) -> str:
+        if taken_in_docker(port):
+            return f"Docker cannot use it, although nothing on this computer holds it. {docker_side_hint()}"
+        return f"Stop the program that holds it (see which with: {who_holds(port)})."
 
     def free(port: int, host: str = "0.0.0.0") -> bool:
         return port not in picked and (port in held or is_free(port, host))
@@ -751,15 +773,18 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
         elif not may_move:
             chosen = None
             problems.append(f"Port {first} is taken, and an install served over https does not move to another "
-                            f"port. Stop the program that holds it (see which with: {who_holds(first)}).")
+                            f"port. {what_frees(first)}")
         else:
             chosen = choose_port(role.preferred, role.fallbacks, lambda p, host=role.host: free(p, host))
             if chosen is None:
                 tried = ", ".join(str(p) for p in (role.preferred, *role.fallbacks))
+                in_docker = any(map(taken_in_docker, (role.preferred, *role.fallbacks)))
+                inside = " " + docker_side_hint() if in_docker else ""
                 problems.append(f"Ports {tried} are all taken. Free one of them (see which program holds one "
-                                f"with: {who_holds(role.preferred)}).")
+                                f"with: {who_holds(role.preferred)}).{inside}")
             else:
-                moved.append(f"Port {first} is taken on this computer, so AISC uses {address_of(role, chosen)} "
+                where = "(Docker cannot use it)" if taken_in_docker(first) else "on this computer"
+                moved.append(f"Port {first} is taken {where}, so AISC uses {address_of(role, chosen)} "
                              f"instead ({role.variable}={chosen}, kept in {LOCAL}).")
         if chosen is not None:
             picked.add(chosen)
@@ -775,8 +800,7 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
         if role and port in {role.preferred, *role.fallbacks, int(kept.get(role.variable, role.preferred))}:
             continue
         if not free(port, host):
-            problems.append(f"Port {port} is taken. Stop the program that holds it (see which with: "
-                            f"{who_holds(port)}).")
+            problems.append(f"Port {port} is taken. {what_frees(port)}")
     return settings, problems, moved
 
 
@@ -1161,7 +1185,7 @@ def start(_args: list[str]) -> None:
     kept = read_local()
     prepare_port_probe()
     settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
-                                             not served_over_https(), free_for_docker)
+                                             not served_over_https(), free_for_docker, TAKEN_IN_DOCKER.__contains__)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
     # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose

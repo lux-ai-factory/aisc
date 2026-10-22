@@ -814,3 +814,16 @@ def test_after_a_probe_that_hangs_no_other_port_is_probed(scratch):
     assert len([c for c in calls(scratch) if c.startswith("run ") and " -p " in c]) == 1
     assert r.stdout.count("Docker could not check the ports itself") == 1
 
+
+def test_a_port_docker_refuses_on_an_https_install_names_docker_not_the_host(scratch):
+    """Nothing on the host holds it, so the host's tools (netstat, lsof) would show nothing: the refusal says
+    Docker cannot use the port, and what frees one Docker holds."""
+    https_install(scratch)
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "probe-refuses").write_text("0.0.0.0:80:")
+    (scratch / "probe-says").write_text(WINDOWS_REFUSAL)
+    r = run(scratch, **host_sees_free(scratch, 80))
+    assert r.returncode == 1
+    assert "Port 80 is taken" in r.stderr and "Docker cannot use it" in r.stderr
+    assert "restarting Docker" in r.stderr
+    assert "lsof" not in r.stderr and "netstat" not in r.stderr

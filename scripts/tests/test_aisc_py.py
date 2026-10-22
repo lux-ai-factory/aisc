@@ -598,6 +598,22 @@ def test_the_probe_answers_free_taken_or_cannot_tell(monkeypatch):
     assert m.docker_can_publish(80, "0.0.0.0") is None
 
 
+def test_a_port_docker_refuses_is_explained_as_docker_s_not_the_host_s():
+    """The host's tools cannot see a port taken inside Docker Desktop or WSL: the advice is Docker's."""
+    m = aisc_py()
+    windows, elsewhere = m.docker_side_hint(windows=True), m.docker_side_hint(windows=False)
+    assert "wsl --shutdown" in windows and "Docker Desktop" in windows and "netstat" not in windows
+    assert "restarting Docker" in elsewhere and "lsof" not in elsewhere
+    _settings, problems, _moved = m.settle_ports(PUBLISHED, set(), {}, False, taken(80),
+                                                 taken_in_docker=lambda port: port == 80)
+    assert len(problems) == 1 and "Docker cannot use it" in problems[0] and m.who_holds(80) not in problems[0]
+    _settings, _problems, moved = m.settle_ports(PUBLISHED, set(), {}, True, taken(80),
+                                                 taken_in_docker=lambda port: port == 80)
+    assert moved and moved[0].startswith("Port 80 is taken (Docker cannot use it), so AISC uses")
+    _settings, problems, moved = m.settle_ports(PUBLISHED, set(), {}, True, taken(80))
+    assert moved[0].startswith("Port 80 is taken on this computer")
+
+
 def test_a_probe_that_hangs_stops_further_probes(monkeypatch):
     m = aisc_py()
     runs = []
