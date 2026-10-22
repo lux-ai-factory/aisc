@@ -133,19 +133,35 @@ def test_the_readme_says_admin_admin_holds_only_until_the_passwords_change():
     assert "rotate-infra-password" in sign_in and "last message" in sign_in
 
 
+def tracked_markdown():
+    """(name, folder) of every tracked Markdown file of this repository and of each checked-out submodule."""
+    folders = [ROOT]
+    paths = subprocess.run(["git", "config", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$"],
+                           cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+    for line in paths:
+        folder = ROOT / line.split(None, 1)[1]
+        if (folder / ".git").exists():
+            folders.append(folder)
+    for folder in folders:
+        listed = subprocess.run(["git", "-C", str(folder), "ls-files", "*.md"], capture_output=True, text=True,
+                                check=True)
+        for name in listed.stdout.splitlines():
+            yield name, folder
+
+
 def test_no_document_gives_a_compose_command_that_drops_the_https_file():
     """A hand-written `docker compose ... -f docker-compose-infra.development.yml ...` names the three base files
     only. On an install served over https, following it recreates Caddy without docker-compose.https.yml, and 443
     stops answering. The documents send the reader to `uv run scripts/aisc.py start` instead, which adds the file
-    when the install needs it. Only this repository's own Markdown: a submodule's documents are its own."""
-    tracked = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True)
+    when the install needs it. The same holds for the Markdown of every checked-out submodule, which is read
+    from inside the aisc folder."""
     offending = []
-    for name in tracked.stdout.split():
+    for name, base in tracked_markdown():
         # a command continued over several lines with a trailing backslash is read as one line
-        for command in (ROOT / name).read_text().replace("\\\n", " ").splitlines():
+        for command in (base / name).read_text().replace("\\\n", " ").splitlines():
             if ("docker compose" in command and "-f docker-compose-infra.development.yml" in command
                     and "docker-compose.https.yml" not in command):
-                offending.append(name)
+                offending.append(f"{base.relative_to(ROOT)}/{name}")
     assert offending == []
 
 
