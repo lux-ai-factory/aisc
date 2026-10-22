@@ -70,6 +70,19 @@ stack_compose() { # project, folder, env file, compose files (comma-separated), 
   (cd "$folder" && docker compose -p "$project" --env-file "$env_file" "${args[@]}" "$@")
 }
 
+# Whether a folder is one the check made, and its real path when it is. The folder is removed whole, so a name
+# that only looks right is not enough (aisc-ports.1/../.. matches */aisc-ports.* too): the real path must be
+# directly in the temporary folder the check makes its copies in, and hold the state file it writes there.
+check_folder() { # folder -> its real path, or nothing (and 1) when the check did not make it
+  local temp real
+  temp=$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P) || return 1
+  real=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  case "$real" in "$temp"/aisc-ports.*) ;; *) return 1 ;; esac
+  case "${real#"$temp"/}" in */*) return 1 ;; esac
+  [ -f "$real/taken-down" ] || return 1
+  printf '%s\n' "$real"
+}
+
 # Everything the check made, and the stack it took down back up. Also run by --clean-up on a kept copy.
 clean_up() { # work folder
   local work=$1 project folder
@@ -102,22 +115,20 @@ clean_up() { # work folder
       fi
     done < "$work/taken-down"
   fi
-  case "$work" in
-    */aisc-ports.*) rm -rf "$work" ;;
-  esac
+  local real
+  if real=$(check_folder "$work"); then
+    # the containers wrote into the bind-mounted clone as root (__pycache__ and the like), which this user
+    # cannot remove: a throwaway container does, mounting this folder and nothing else
+    if [ -d "$real/aisc" ]; then
+      docker run --rm -v "$real":/w alpine:3.20 rm -rf /w/aisc >/dev/null 2>&1 \
+        || echo "Some of the copy's files could not be removed through a container; see what is left in $real"
+    fi
+    rm -rf "$real"
+  fi
 }
 
 if [ -n "$CLEAN_UP" ]; then
-  # The folder is removed whole, so a name that only looks right is not enough (aisc-ports.1/../.. matches
-  # */aisc-ports.* too): the real path must be directly in the temporary folder the check makes its copies in,
-  # and hold the state file it writes there.
-  temp=$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)
-  work=$(cd "$CLEAN_UP" 2>/dev/null && pwd -P) || work=""
-  made=0
-  case "$work" in
-    "$temp"/aisc-ports.*) case "${work#"$temp"/}" in */*) ;; *) [ -f "$work/taken-down" ] && made=1 ;; esac ;;
-  esac
-  if [ "$made" = 0 ]; then
+  if ! work=$(check_folder "$CLEAN_UP"); then
     echo "$CLEAN_UP is not a folder this check made (aisc-ports.<random> directly in ${TMPDIR:-/tmp}, holding" \
          "its file taken-down); nothing was removed" >&2
     exit 2
@@ -195,6 +206,8 @@ EOF
 fi
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/aisc-ports.XXXXXX")
+# the state file, empty until a stack is taken down: it also marks the folder as the check's for clean_up
+: > "$WORK/taken-down"
 CLONE=$WORK/aisc
 on_exit() {
   local code=$?

@@ -437,3 +437,33 @@ def test_no_password_is_given_to_curl_on_its_command_line(copy_up):
 def json_of(text):
     import json
     return json.loads(text)
+
+
+def test_files_the_containers_wrote_as_root_go_through_a_container_mounting_only_the_copy_s_folder(fake_docker):
+    """The containers write into the bind-mounted clone as root (__pycache__): the user cannot remove those. A
+    throwaway container removes the clone, mounting the check's own folder and nothing else."""
+    work = kept_copy(fake_docker)
+    (work / "aisc").mkdir()
+    r = run(fake_docker, "--clean-up", str(work))
+    assert r.returncode == 0, r.stdout + r.stderr
+    runs = [c.split(" | ")[0] for c in calls(fake_docker) if c.startswith("run ")]
+    assert runs == [f"run --rm -v {work.resolve()}:/w alpine:3.20 rm -rf /w/aisc"], runs
+    assert not work.exists()
+
+
+def test_without_a_clone_no_container_removes_anything(fake_docker):
+    work = kept_copy(fake_docker)
+    r = run(fake_docker, "--clean-up", str(work))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not [c for c in calls(fake_docker) if c.startswith("run ")]
+
+
+def test_the_folder_removal_is_guarded_by_one_check_for_both_ways_of_removing():
+    """The container removal and the rm are each guarded by the same function that --clean-up's refusal uses: a
+    resolved path directly in the temporary folder, holding the state file."""
+    body = _function(SCRIPT.read_text(), "clean_up")
+    guard = re.search(r"(\w+)=\$\(check_folder \"\$work\"\)", body)
+    assert guard, body
+    real = guard.group(1)
+    assert f'-v "${real}":/w' in body and f'rm -rf "${real}"' in body
+    assert 'rm -rf "$work"' not in body
