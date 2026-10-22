@@ -49,9 +49,13 @@ case "$1" in
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
   ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
+  image) [ -f "$d/no-probe-image" ] && exit 1; exit 0 ;;
+  pull) [ -f "$d/pull-hangs" ] && exec sleep 5; exit 0 ;;
   run)
     # a port probe: `probe-fails` fails every one with its message; `probe-refuses` holds one -p spec
-    # (0.0.0.0:80:) refused with the message in `probe-says`, as Docker refuses a port it cannot publish
+    # (0.0.0.0:80:) refused with the message in `probe-says`, as Docker refuses a port it cannot publish;
+    # `probe-hangs`: a daemon too busy to answer
+    [ -f "$d/probe-hangs" ] && exec sleep 5
     [ -f "$d/probe-fails" ] && { cat "$d/probe-fails" >&2; exit 125; }
     if [ -f "$d/probe-refuses" ]; then
       case "$*" in *"-p $(cat "$d/probe-refuses")"*) cat "$d/probe-says" >&2; exit 125 ;; esac
@@ -782,3 +786,31 @@ def test_ports_this_install_holds_are_not_probed(scratch):
     for held in (80, 8100, 8188, 8081):
         assert not [c for c in probes if f":{held}:" in c], probes
     assert [c for c in probes if f"-p 127.0.0.1:{other}:" in c], probes
+
+
+def test_a_pull_of_the_probe_image_that_hangs_leaves_the_host_check_to_decide(scratch):
+    """A first start behind a slow link: the probe's image is fetched once, said before it starts, and a fetch
+    that does not finish in time is given up; the start goes on with the host's own check."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "no-probe-image").write_text("")
+    (scratch / "pull-hangs").write_text("")
+    r = run(scratch, START_PULL_WAIT_S="1", **host_sees_free(scratch, 80, 8080))
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = r.stdout.splitlines()
+    fetching = next(i for i, line in enumerate(out) if line.startswith("Fetching the image the port check uses"))
+    assert fetching < out.index("Docker could not check the ports itself; going by this computer's own check.")
+    assert not [c for c in calls(scratch) if c.startswith("run ") and " -p " in c]
+    assert "ENGINE_PORT=80" in (scratch / "env.local").read_text().splitlines()
+
+
+def test_after_a_probe_that_hangs_no_other_port_is_probed(scratch):
+    """A busy Docker Desktop would make each probe wait its full time: after the first that does not answer,
+    the host's own check decides for the rest of the start."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", "")
+                                        .replace("0.0.0.0:8100->8006/tcp, ", ""))
+    (scratch / "probe-hangs").write_text("")
+    r = run(scratch, START_PROBE_WAIT_S="1", **host_sees_free(scratch, 80, 8100))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len([c for c in calls(scratch) if c.startswith("run ") and " -p " in c]) == 1
+    assert r.stdout.count("Docker could not check the ports itself") == 1
+

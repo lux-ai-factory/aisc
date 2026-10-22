@@ -596,3 +596,19 @@ def test_the_probe_answers_free_taken_or_cannot_tell(monkeypatch):
     assert m.docker_can_publish(80, "0.0.0.0") is None
     answers["run"] = "hangs"
     assert m.docker_can_publish(80, "0.0.0.0") is None
+
+
+def test_a_probe_that_hangs_stops_further_probes(monkeypatch):
+    m = aisc_py()
+    runs = []
+
+    def docker(argv, **_kwargs):
+        if argv[1] == "run":
+            runs.append(argv)
+            raise subprocess.TimeoutExpired(argv, 1)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(m.subprocess, "run", docker)
+    assert m.docker_can_publish(80, "0.0.0.0") is None
+    assert m.docker_can_publish(8100, "0.0.0.0") is None
+    assert len(runs) == 1

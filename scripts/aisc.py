@@ -634,12 +634,22 @@ PROBE_IMAGE = "caddy:2.10.2"
 #: the name every probe container starts with, so one left behind (a probe cut short) is found and removed
 PROBE_PREFIX = "aisc-port-probe-"
 #: how long one probe may take: a container that only binds and exits needs well under a second
-PROBE_TIMEOUT_S = 10
+PROBE_WAIT_S = float(os.environ.get("START_PROBE_WAIT_S", "10"))
+#: how long fetching the probe's image may take: tens of megabytes, on a slow link or through a proxy
+PULL_WAIT_S = float(os.environ.get("START_PULL_WAIT_S", "300"))
+#: how long listing or removing a container may take: a daemon slower than this is too busy to probe
+DOCKER_CALL_WAIT_S = 20
 #: how Docker words a refusal of a port it cannot publish: Docker Desktop's forwarder (Windows, macOS), the
 #: Linux daemon (a leftover forwarder, a program listening), Windows' reserved ranges and its own bind error
 PORT_TAKEN = re.compile(r"ports are not available|port is already allocated|address already in use|"
                         r"bind: an attempt was made to access a socket in a way forbidden|"
                         r"only one usage of each socket address", re.IGNORECASE)
+
+#: whether Docker left a call of the port check unanswered this start: no further probe is tried, each
+#: would wait its full time on the same busy daemon
+DOCKER_UNANSWERED = False
+#: whether this start already said Docker could not check the ports: once is enough
+PROBE_FAILED_SAID = False
 
 
 def docker_says_port_taken(message: str) -> bool:
@@ -647,33 +657,50 @@ def docker_says_port_taken(message: str) -> bool:
     return bool(PORT_TAKEN.search(message))
 
 
-def remove_probe_leftovers() -> None:
+def docker_in_time(argv: list[str], wait_s: float) -> subprocess.CompletedProcess | None:
+    """One docker call given wait_s seconds; None when it did not finish in time (it is stopped then)."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=wait_s)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(argv, 127, "", "")
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def prepare_port_probe() -> None:
     """Remove probe containers an earlier start left behind, and make sure the probe's image is here. A leftover
-    would hold its port and be taken for another program; the image is pulled once, so no probe waits on it.
-    Neither may stop the start: a probe that cannot run leaves the host's own check to decide."""
-    names = captured([DOCKER, "ps", "-a", "--filter", f"name={PROBE_PREFIX}", "--format", "{{.Names}}"]).stdout
-    leftovers = [name for name in names.split() if name.startswith(PROBE_PREFIX)]
-    if leftovers:
-        captured([DOCKER, "rm", "-f", *leftovers])
-    if captured([DOCKER, "image", "inspect", PROBE_IMAGE]).returncode != 0:
-        captured([DOCKER, "pull", "--quiet", PROBE_IMAGE])
+    would hold its port and be taken for another program; the image is fetched once, said beforehand since it
+    can take minutes, so no probe waits on it. Nothing here may stop or freeze the start: a call Docker does
+    not answer in time leaves the host's own check to decide for the rest of the start."""
+    global DOCKER_UNANSWERED
+    names = docker_in_time([DOCKER, "ps", "-a", "--filter", f"name={PROBE_PREFIX}", "--format", "{{.Names}}"],
+                           DOCKER_CALL_WAIT_S)
+    leftovers = [name for name in names.stdout.split() if name.startswith(PROBE_PREFIX)] if names else []
+    image = None
+    if names and (not leftovers or docker_in_time([DOCKER, "rm", "-f", *leftovers], DOCKER_CALL_WAIT_S)):
+        image = docker_in_time([DOCKER, "image", "inspect", PROBE_IMAGE], DOCKER_CALL_WAIT_S)
+    if image and image.returncode != 0:
+        say("Fetching the image the port check uses (once) ...")
+        image = docker_in_time([DOCKER, "pull", "--quiet", PROBE_IMAGE], PULL_WAIT_S)
+    if image is None:
+        DOCKER_UNANSWERED = True
 
 
 def docker_can_publish(port: int, host: str) -> bool | None:
     """Whether Docker itself can publish this port on this address: a container that only binds and exits.
     Docker Desktop publishes through its own VM, shared with WSL, where a program holding the port is out of
     sight of a bind on the host; so is a forwarder an earlier container left behind. False when Docker refuses
-    the port as taken; None when the probe fails for any other reason (no image offline, a Docker error), and
-    the host's own check decides."""
-    name = f"{PROBE_PREFIX}{port}"
-    argv = [DOCKER, "run", "--rm", "--name", name, "--pull", "never", "-p", f"{host}:{port}:80",
-            "--entrypoint", "true", PROBE_IMAGE]
-    try:
-        done = subprocess.run(argv, capture_output=True, text=True, timeout=PROBE_TIMEOUT_S)
-    except FileNotFoundError:
+    the port as taken; None when the probe fails for any other reason (no image offline, a Docker error, no
+    answer in time), and the host's own check decides."""
+    global DOCKER_UNANSWERED
+    if DOCKER_UNANSWERED:
         return None
-    except subprocess.TimeoutExpired:
-        subprocess.run([DOCKER, "rm", "-f", name], capture_output=True, text=True)
+    name = f"{PROBE_PREFIX}{port}"
+    done = docker_in_time([DOCKER, "run", "--rm", "--name", name, "--pull", "never", "-p", f"{host}:{port}:80",
+                           "--entrypoint", "true", PROBE_IMAGE], PROBE_WAIT_S)
+    if done is None:
+        DOCKER_UNANSWERED = True
+        docker_in_time([DOCKER, "rm", "-f", name], DOCKER_CALL_WAIT_S)
         return None
     if done.returncode == 0:
         return True
@@ -691,10 +718,6 @@ def free_for_docker(port: int, host: str) -> bool:
         PROBE_FAILED_SAID = True
         say("Docker could not check the ports itself; going by this computer's own check.")
     return answer is not False
-
-
-#: whether this start already said Docker could not check the ports: once is enough
-PROBE_FAILED_SAID = False
 
 
 def who_holds(port: int) -> str:
@@ -1094,7 +1117,8 @@ def start(_args: list[str]) -> None:
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
     launcher on its published port on this machine), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
-    sign-in the addresses, START_MIN_DISK_GB (20)."""
+    sign-in the addresses, START_MIN_DISK_GB (20), START_PROBE_WAIT_S (10) and START_PULL_WAIT_S (300) for asking
+    Docker whether it can publish the ports."""
     global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
@@ -1135,7 +1159,7 @@ def start(_args: list[str]) -> None:
     if not_ports:
         raise Refused("AISC cannot start: " + " ".join(not_ports))
     kept = read_local()
-    remove_probe_leftovers()
+    prepare_port_probe()
     settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
                                              not served_over_https(), free_for_docker)
     if problems:
