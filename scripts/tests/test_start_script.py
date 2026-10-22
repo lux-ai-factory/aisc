@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import socket
+import ssl
 import subprocess
 import threading
 
@@ -560,28 +561,6 @@ def test_a_moved_launcher_is_waited_on_and_announced_at_its_new_address(scratch)
     assert up and "open http://localhost:8110 " in up[-1], r.stdout
 
 
-def test_an_https_install_is_announced_at_its_public_address_and_waited_on_here(scratch):
-    """Its public name may not resolve from this machine (hairpin NAT, a self-signed certificate): start waits
-    on the launcher's published port here, and names the public address."""
-    https_install(scratch)
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    page = page_on(scratch, port)
-    try:
-        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n")
-        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", f":{port}->"))
-        r = run(scratch, START_URL="", START_SIGN_IN_URL=f"http://127.0.0.1:{port}/realms/aisc")
-    finally:
-        page.shutdown()
-        page.server_close()
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "/" in (scratch / "requests").read_text().splitlines()
-    assert f"Waiting for the sign-in page at http://localhost:{port}/" in r.stdout
-    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
-    assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
-
-
 def test_a_refused_start_does_not_advise_running_compose(scratch):
     """start makes the secrets on its way; the secrets command's own advice (run the stack with docker
     compose ... up -d) is the very thing a refused start must not lead to."""
@@ -654,3 +633,71 @@ def test_an_https_install_tells_the_sign_in_its_https_addresses_only(scratch):
         "https://aisc.example.org:8188/oauth2/callback"]
     assert sent["id-of-aisc-webapp"]["baseUrl"] == "https://aisc.example.org"
     assert "localhost" not in (scratch / "exec-input").read_text()
+
+
+def tls_launcher(d, public_name):
+    """The launcher's Caddy listener on an install served over https, on a port of its own: TLS for the public
+    name only. A request over TLS whose SNI and Host are that name gets the sign-in's 302; any other TLS request
+    a 421; a plain-HTTP one a 400, as Caddy answers it. Each request is noted in `tls-requests`. The certificate
+    is a throwaway self-signed one, made with openssl."""
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj",
+                    f"/CN={public_name}", "-keyout", str(d / "tls.key"), "-out", str(d / "tls.crt")],
+                   check=True, capture_output=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(d / "tls.crt", d / "tls.key")
+    seen = {}
+    context.sni_callback = lambda _sock, name, _ctx: seen.__setitem__("sni", name)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+
+    def answer(conn):
+        with conn:
+            conn.settimeout(5)
+            if conn.recv(1, socket.MSG_PEEK) != b"\x16":           # not a TLS handshake
+                conn.recv(65536)
+                (d / "tls-requests").open("a").write("plain http\n")
+                conn.sendall(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"
+                             b"Client sent an HTTP request to an HTTPS server.\n")
+                return
+            seen.clear()
+            with context.wrap_socket(conn, server_side=True) as tls:
+                request = tls.recv(65536).decode("latin-1")
+                host = next((line.split(":", 1)[1].strip() for line in request.split("\r\n")
+                             if line.lower().startswith("host:")), "")
+                (d / "tls-requests").open("a").write(f"tls sni={seen.get('sni')} host={host}\n")
+                ok = seen.get("sni") == public_name and host == public_name
+                tls.sendall(b"HTTP/1.1 302 Found\r\nLocation: /sign-in\r\nContent-Length: 0\r\n\r\n" if ok
+                            else b"HTTP/1.1 421 Misdirected Request\r\nContent-Length: 0\r\n\r\n")
+
+    def serve():
+        while True:
+            try:
+                conn, _ = listener.accept()
+            except OSError:
+                return
+            try:
+                answer(conn)
+            except (OSError, ssl.SSLError):
+                pass
+
+    threading.Thread(target=serve, daemon=True).start()
+    return listener
+
+
+def test_an_https_install_is_waited_on_over_tls_for_its_public_name(scratch):
+    """The launcher's listener on an https install serves TLS for the public name only: a plain-HTTP request
+    gets a 400, and start would wait until it gives up. It asks over TLS, with that name, on this machine."""
+    https_install(scratch)
+    listener = tls_launcher(scratch, "aisc.example.org")
+    port = listener.getsockname()[1]
+    try:
+        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n")
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", f":{port}->"))
+        r = run(scratch, START_URL="", START_WAIT_S="4")
+    finally:
+        listener.close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "tls sni=aisc.example.org host=aisc.example.org" in (scratch / "tls-requests").read_text()
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
