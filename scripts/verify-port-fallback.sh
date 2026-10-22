@@ -268,6 +268,14 @@ started() { # exit code, log file, what: start went through and said so
   return 1
 }
 
+# An access token for an account of the copy's realm, from the client the checks use. The password goes to curl on
+# stdin, never on its command line, which every user of the machine can read.
+token_of() { # user, password, sign-in address -> the access token, or nothing
+  printf '%s' "$2" | curl -s --max-time 15 -d client_id=aisc-webapp -d grant_type=password -d scope=openid \
+      --data-urlencode "username=$1" --data-urlencode "password@-" "$3/realms/aisc/protocol/openid-connect/token" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null
+}
+
 # The checks made as a person: signed in at the moved launcher, through the gateway. In a subshell, inside the
 # clone, so the helpers read the copy's env.runtime and env.secrets, and addresses read earlier do not stick.
 signed_in_checks() { # engine port
@@ -291,11 +299,7 @@ signed_in_checks() { # engine port
       exit 1
     fi
 
-    token=$(curl -s --max-time 15 -d client_id=aisc-webapp -d grant_type=password -d scope=openid \
-              --data-urlencode "username=$ADMIN_NAME" --data-urlencode "password=$ADMIN_PASSWORD" \
-              "$KEYCLOAK_URL/realms/aisc/protocol/openid-connect/token" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
-    probe_project_for "$token"
+    probe_project_for "$(token_of "$ADMIN_NAME" "$ADMIN_PASSWORD" "$KEYCLOAK_URL")"
     listed=$(curl -s -b "$jar" --max-time 15 "$VERIFY_BASE_URL/api/projects" \
              | python3 -c 'import json,sys; print(" ".join(p.get("pid","") for p in json.load(sys.stdin)))' 2>/dev/null)
     case " $listed " in
@@ -317,6 +321,21 @@ signed_in_checks() { # engine port
         *) no "$what ($url) answered $code" ;;
       esac
     done
+
+    # verify-sso.sh signs in as the ordinary account and works in that account's first project. The project above
+    # is admin's, so the ordinary account joins it as a viewer, through the launcher as a project owner would
+    # add somebody. Its subject (Keycloak's id for it) is read from a token of its own: no admin tool needed.
+    subject=$(token_of "$USER_NAME" "$USER_PASSWORD" "$KEYCLOAK_URL" | python3 -c '
+import base64, json, sys
+claims = sys.stdin.read().strip().split(".")[1]
+print(json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))["sub"])' 2>/dev/null)
+    code=$(curl -s -b "$jar" -c "$jar" --max-time 15 -o /dev/null -w '%{http_code}' -X POST \
+             -H 'Content-Type: application/json' -d "{\"subject\": \"$subject\", \"role\": \"viewer\"}" \
+             "$VERIFY_BASE_URL/api/projects/$PROBE_PID/members")
+    case "${subject:+x}$code" in
+      x200|x201) ok "$USER_NAME is a viewer of $PROBE_PID, so verify-sso.sh (signed in as $USER_NAME) has a project to work in" ;;
+      *) no "$USER_NAME could not be made a viewer of ${PROBE_PID:-the project} (subject ${subject:-unknown}, answer ${code:-none})" ;;
+    esac
 
     if bash scripts/verify-sso.sh > "$WORK/verify-sso.log" 2>&1; then
       ok "verify-sso.sh in the copy: $(grep -c 'PASS' "$WORK/verify-sso.log") checks, all passed"
