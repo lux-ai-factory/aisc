@@ -167,8 +167,10 @@ def test_the_protocol_endpoints_follow_it_too(client, admin, project, stub, name
     name = connect(client, admin, project, stub)
     key = client.post(f"/internal/projects/{project['pid']}/connections/{name}/run-keys",
                       headers={"X-AISC-Service-Token": CONNECTIONS_TOKEN}).json()["key"]
-    ask = lambda: client.post(f"/internal/facade/{project['pid']}/{name}/aisc/ask", json={"input": "q"},
-                              headers={"Authorization": f"Bearer {key}"})
+    def ask():
+        return client.post(f"/internal/facade/{project['pid']}/{name}/aisc/ask", json={"input": "q"},
+                           headers={"Authorization": f"Bearer {key}"})
+
     assert ask().status_code == 502 and ask().json()["error"] == "blocked"
     client.put(f"{hosts(project)}/{stub.host}", json={}, headers=admin)
     assert ask().status_code == 200 and ask().json()["output"].startswith("Up to 5,000")

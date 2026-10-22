@@ -9,8 +9,8 @@ TRACKED = ["env.plugin_downloader"]
 
 def test_no_tracked_file_holds_the_immudb_superuser_password():
     for name in TRACKED:
-        lines = [l for l in (ROOT / name).read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
-        assert not [l for l in lines if l.startswith("IMMUDB_ADMIN_PASSWORD=")], f"{name} still sets it"
+        lines = [line for line in (ROOT / name).read_text().splitlines() if line.strip() and not line.lstrip().startswith("#")]
+        assert not [line for line in lines if line.startswith("IMMUDB_ADMIN_PASSWORD=")], f"{name} still sets it"
 
 
 def _immudb():

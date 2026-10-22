@@ -115,7 +115,7 @@ def put_evidence_links(slug: str, body: EvidenceLinksIn, caller: Caller = Depend
     if len(body.links) > 5000:
         raise HTTPException(status_code=422, detail="links: at most 5000")
     try:
-        evidence.replace(found["pid"], [(l.objective_id, l.kind, l.key) for l in body.links],
+        evidence.replace(found["pid"], [(link.objective_id, link.kind, link.key) for link in body.links],
                          caller.subject, body.version)
     except evidence.Refused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None

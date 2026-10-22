@@ -27,7 +27,7 @@ DB_A = ib.project_db(ib.A)
 
 def body() -> str:
     assert SCRIPT.exists(), "scripts/verify-project-databases.sh missing"
-    return "\n".join(l for l in SCRIPT.read_text().splitlines() if not l.lstrip().startswith("#"))
+    return "\n".join(line for line in SCRIPT.read_text().splitlines() if not line.lstrip().startswith("#"))
 
 
 # static
@@ -275,12 +275,12 @@ def test_databases_pass_with_a_warning_on_a_project_no_module_has_opened_yet(bed
     try:
         ib.provision(bed, [UNOPENED])
         r = run(bed)
-        mine = [l for l in r.stdout.splitlines() if db in l]
-        assert not [l for l in mine if "FAIL" in l], "\n".join(mine)
-        assert any("WARN" in l and "has not opened this project yet" in l for l in mine), "\n".join(mine)
+        mine = [line for line in r.stdout.splitlines() if db in line]
+        assert not [line for line in mine if "FAIL" in line], "\n".join(mine)
+        assert any("WARN" in line and "has not opened this project yet" in line for line in mine), "\n".join(mine)
         bed.psql(db, "CREATE TABLE report_composer.stray (x int)")
         r = run(bed)
-        assert any("FAIL" in l and db in l and "report_composer" in l for l in r.stdout.splitlines())
+        assert any("FAIL" in line and db in line and "report_composer" in line for line in r.stdout.splitlines())
     finally:
         bed.psql("postgres", f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE)')
         bed.psql("platform", f"DELETE FROM core.project WHERE pid = '{UNOPENED}'")

@@ -119,7 +119,9 @@ def test_a_stranger_gets_404_and_an_unanswering_public_catalogue_is_503(client, 
 def test_a_public_project_reads_the_public_catalogue_live_without_local_entries(client, as_user, evidence_project,
                                                                                    online, engine):
     assert choose(client, as_user, evidence_project, "public").status_code == 200
-    get = lambda tail: client.get(url(evidence_project, "/api/" + tail), headers=as_user(VERA))
+    def get(tail):
+        return client.get(url(evidence_project, "/api/" + tail), headers=as_user(VERA))
+
     detailed = get("tool/?detailed=true")
     assert detailed.status_code == 200, detailed.text
     assert [t["slug"] for t in detailed.json()] == [t["slug"] for t in SAMPLE["tool_detailed"]]

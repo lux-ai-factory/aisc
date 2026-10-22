@@ -7,31 +7,60 @@ two retries (fewer builds at once on a retry), starts the stack and waits until 
 answers, so "compose went through" no longer ends on a 502.
 """
 import http.server
+import json
 import os
+import re
 import shutil
+import socket
+import ssl
 import subprocess
 import threading
 
 import pytest
 
-from conftest import ROOT, copy_install_scripts
+from conftest import RUN_KCADM_IN_EXEC, ROOT, add_fake_kcadm, copy_install_scripts
 
 DOCKER = r"""#!/bin/sh
 d=$(dirname "$0")/..
-echo "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" >> "$d/docker.log"
+# one line per call, whatever the arguments hold (a script passed to bash -c has newlines)
+printf '%s' "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" | tr '\n' ' ' >> "$d/docker.log"
+echo >> "$d/docker.log"
+[ "$1" = exec ] && [ -f "$d/exec-fails" ] && { echo "Error response from daemon" >&2; exit 1; }
+""" + RUN_KCADM_IN_EXEC + r"""
 case "$1" in
   info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
   compose)
     case "$*" in
       *"version --short"*) cat "$d/compose-version"; exit 0 ;;
+      *" config --format json"*) if [ -f "$d/config-answer" ]; then cat "$d/config-answer"; else echo '{"services": {}}'; fi
+        exit 0 ;;
       *" build"*)
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
-      *" up "*) exit 0 ;;
+      *" ps -a --status created"*) [ -f "$d/created-fails" ] && exit 1
+        [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
+      *" rm "*) exit 0 ;;
+      *" up "*) [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
+      *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
+        exit 0 ;;
       *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
+  volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
+  ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
+  image) [ -f "$d/no-probe-image" ] && exit 1; exit 0 ;;
+  pull) [ -f "$d/pull-hangs" ] && exec sleep 5; exit 0 ;;
+  run)
+    # a port probe: `probe-fails` fails every one with its message; `probe-refuses` holds one -p spec
+    # (0.0.0.0:80:) refused with the message in `probe-says`, as Docker refuses a port it cannot publish;
+    # `probe-hangs`: a daemon too busy to answer
+    [ -f "$d/probe-hangs" ] && exec sleep 5
+    [ -f "$d/probe-fails" ] && { cat "$d/probe-fails" >&2; exit 125; }
+    if [ -f "$d/probe-refuses" ]; then
+      case "$*" in *"-p $(cat "$d/probe-refuses")"*) cat "$d/probe-says" >&2; exit 125 ;; esac
+    fi
+    exit 0 ;;
 esac
 exit 0
 """
@@ -44,11 +73,22 @@ case "$*" in
 esac
 """
 
-def sign_in_page(d):
+def sign_in_page(d, port=0):
     """The gateway as the start sees it: 502 while `not-ready` counts down (or for ever: `never`), then the
-    sign-in's redirect."""
+    sign-in's redirect. The realm's own page (/realms/...) answers 503 while `realm-not-ready` counts down (or
+    for ever: `never`), then 200; every request's path is appended to `requests`, in the order it came."""
     class Page(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            with open(d / "requests", "a") as seen:
+                seen.write(self.path + "\n")
+            if self.path.startswith("/realms/"):
+                realm = d / "realm-not-ready"
+                left = realm.read_text().strip() if realm.exists() else "0"
+                if left != "never" and int(left) > 0:
+                    realm.write_text(str(int(left) - 1))
+                self.send_response(503 if left == "never" or int(left) > 0 else 200)
+                self.end_headers()
+                return
             ready = d / "not-ready"
             n = ready.read_text().strip() if ready.exists() else "0"
             if n != "never" and int(n) > 0:
@@ -60,7 +100,7 @@ def sign_in_page(d):
         def log_message(self, *_args):
             pass
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Page)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Page)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -74,6 +114,7 @@ def scratch(tmp_path):
     for name, body in (("docker", DOCKER), ("git", GIT)):
         (shims / name).write_text(body)
         (shims / name).chmod(0o755)
+    add_fake_kcadm(shims)
     (tmp_path / "branch").write_text("feat/unified-modules\n")
     (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/feat/unified-modules)\n")
     (tmp_path / "compose-version").write_text("5.5.1\n")
@@ -85,7 +126,8 @@ def scratch(tmp_path):
 
 def run(d, **env_over):
     env = {**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}", "START_WAIT_S": "6", "START_POLL_S": "0",
-           "START_MIN_DISK_GB": "0", "START_URL": (d / "url").read_text(), **env_over}
+           "START_MIN_DISK_GB": "0", "START_URL": (d / "url").read_text(),
+           "START_SIGN_IN_URL": (d / "url").read_text() + "realms/aisc", **env_over}
     return subprocess.run(["bash", str(d / "scripts/start.sh")], cwd=d, env=env, capture_output=True, text=True,
                           timeout=60)
 
@@ -96,6 +138,7 @@ def calls(d):
 
 def test_a_good_checkout_is_built_started_and_waited_for(scratch):
     (scratch / "not-ready").write_text("2")          # the gateway answers 502 twice, then the sign-in
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)   # whatever holds them on the test machine
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert (scratch / "env.secrets").exists() and (scratch / "env.runtime").exists()
@@ -107,7 +150,7 @@ def test_a_good_checkout_is_built_started_and_waited_for(scratch):
         assert "-p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml" in c
         assert "-f docker-compose-infra.development.yml -f docker-compose.development.yml" in c
     assert "up -d" in ups[0]
-    assert (scratch / "url").read_text().rstrip("/") in r.stdout and "private window" in r.stdout
+    assert "AISC is up: open http://localhost:8100 " in r.stdout and "private window" in r.stdout
 
 
 def test_a_failed_build_is_tried_twice_more_with_fewer_builds_at_once(scratch):
@@ -135,6 +178,24 @@ def test_a_stack_that_never_answers_says_what_is_not_running(scratch):
     assert r.returncode != 0
     out = r.stdout + r.stderr
     assert "keycloak" in out and "logs" in out
+
+
+def test_aisc_is_not_up_until_the_realm_has_been_imported(scratch):
+    """The launcher redirects to the sign-in before Keycloak has imported its realm; a person who follows at
+    once gets no form. So the realm's own page must answer 200 first."""
+    (scratch / "realm-not-ready").write_text("2")     # the realm answers 503 twice, then 200
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    realm = [p for p in (scratch / "requests").read_text().splitlines() if p.startswith("/realms/")]
+    assert realm == ["/realms/aisc"] * 3
+    assert "AISC is up" in r.stdout
+
+
+def test_a_realm_that_never_answers_gives_a_warning_naming_keycloak_and_no_aisc_is_up(scratch):
+    (scratch / "realm-not-ready").write_text("never")
+    r = run(scratch, START_WAIT_S="1")
+    assert r.returncode != 0
+    assert "Keycloak" in r.stderr and "AISC is up" not in r.stdout
 
 
 @pytest.mark.parametrize("setup, says", [
@@ -185,3 +246,584 @@ def test_no_failed_one_shot_no_warning(scratch):
     (scratch / "ps-answer").write_text("report-grants\tExited (0) 9 seconds ago\nplatform\tUp 2 minutes\n")
     r = run(scratch)
     assert r.returncode == 0 and "did not finish" not in r.stdout
+
+
+def test_a_taken_port_stops_start_before_anything_is_built(scratch):
+    """A person learns of a taken port in seconds, not after the whole build."""
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        (scratch / "config-answer").write_text(json.dumps({"services": {"postgres": {"ports": [
+            {"host_ip": "127.0.0.1", "published": str(port), "target": 5432}]}}}))
+        r = run(scratch)
+    assert r.returncode == 1
+    assert f"Port {port} is taken" in r.stderr
+    assert not [c for c in calls(scratch) if " build" in c]
+
+
+#: what `docker ps` shows when this install's own Caddy and Keycloak hold the four browser ports
+OWN_BROWSER_PORTS = ("0.0.0.0:80->8005/tcp, 0.0.0.0:8100->8006/tcp, 0.0.0.0:8188->8008/tcp\n"
+                     "127.0.0.1:8081->8080/tcp\n")
+
+
+def test_start_keeps_the_browser_ports_it_chose(scratch):
+    """env.local holds the four browser ports, and compose reads them through env.runtime."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)   # whatever holds them on the test machine
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    local = (scratch / "env.local").read_text().splitlines()
+    assert local == ["ENGINE_PORT=80", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
+                     "KEYCLOAK_PORT_EXTERNAL=8081"]
+    assert (scratch / "env.runtime").read_text().splitlines()[-len(local):] == local
+
+
+def test_start_keeps_an_https_install_s_own_engine_address(scratch):
+    """An install served over https names its engine itself; start must not replace it with localhost."""
+    settings = (scratch / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    (scratch / "env.plugin_downloader").write_text(settings)
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    engine = [line for line in (scratch / "env.runtime").read_text().splitlines() if line.startswith("API_URL_EXTERNAL=")]
+    assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
+
+
+def test_an_https_install_with_a_port_kept_from_plain_http_keeps_its_own_address(scratch):
+    """Its engine stays on the port it kept, but its public https address is the one compose uses, and start
+    sends nobody to localhost."""
+    settings = (scratch / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    (scratch / "env.plugin_downloader").write_text(settings)
+    (scratch / "env.local").write_text("ENGINE_PORT=8090\n")
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->", "0.0.0.0:8090->"))
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    runtime = (scratch / "env.runtime").read_text().splitlines()
+    engine = [line for line in runtime if line.startswith("API_URL_EXTERNAL=")]
+    assert engine[-1] == 'API_URL_EXTERNAL="https://aisc.example.org"'
+    assert "ENGINE_PORT=8090" in (scratch / "env.local").read_text().splitlines()
+    assert "open on http://localhost" not in r.stdout
+
+
+def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "sign in as admin / admin" in r.stdout
+
+
+def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
+    """Passwords generated (https) or changed (rotate-infra-password): admin / admin would be refused."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    assert run(scratch).returncode == 0
+    secrets = (scratch / "env.secrets").read_text()
+    secrets = secrets.replace("AISC_ADMIN_PASSWORD=admin\n", "AISC_ADMIN_PASSWORD=Zq8-changed-by-its-admin\n")
+    (scratch / "env.secrets").write_text(secrets)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "admin / admin" not in r.stdout
+    assert "uv run scripts/aisc.py password" in r.stdout
+
+
+def test_a_quoted_port_kept_in_env_local_is_honoured(scratch):
+    """A person editing env.local may quote a value, as the other env files do."""
+    (scratch / "env.local").write_text('ENGINE_PORT="8090"\nHOMEPAGE_PORT_EXTERNAL="8100"\n')
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    local = (scratch / "env.local").read_text().splitlines()
+    assert "ENGINE_PORT=8090" in local and "HOMEPAGE_PORT_EXTERNAL=8100" in local
+
+
+def test_what_a_person_added_to_env_local_survives_a_start(scratch):
+    (scratch / "env.local").write_text("# my note\nENGINE_PORT=8090\nMY_SETTING=x\nENGINE_HTTPS_PORT=8453\n")
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (scratch / "env.local").read_text().splitlines() == [
+        "# my note", "ENGINE_PORT=8090", "MY_SETTING=x", "ENGINE_HTTPS_PORT=8453",
+        "API_URL_EXTERNAL=http://localhost:8090", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
+        "KEYCLOAK_PORT_EXTERNAL=8081"]
+
+
+def test_a_moved_port_is_announced_with_what_frees_a_leftover(scratch):
+    """The launcher's kept port is now held by another program: it moves (here back to 8100, which this
+    install's own stand-in holds), and start says so once, with what frees a port an earlier run left held."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    with socket.socket() as held:
+        held.bind(("0.0.0.0", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n"
+                                           f"LAUNCHER_EXTERNAL_URL=http://localhost:{port}/\n")
+        r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"Port {port} is taken" in r.stdout and "http://localhost:8100/" in r.stdout
+    assert r.stdout.count("restarting Docker frees it") == 1
+    local = (scratch / "env.local").read_text().splitlines()
+    assert "HOMEPAGE_PORT_EXTERNAL=8100" in local and not [line for line in local if "LAUNCHER" in line]
+
+
+def test_start_tells_the_sign_in_its_addresses_after_the_stack_is_up(scratch):
+    """A port that moved after the realm was first imported would otherwise sign nobody in: Keycloak keeps the
+    addresses it imported. So every start sends it the ones compose uses now (env.runtime, last line wins)."""
+    (scratch / "env.local").write_text("ENGINE_PORT=8090\nAPI_URL_EXTERNAL=http://localhost:8090\n")
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->", "0.0.0.0:8090->"))
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    up = next(i for i, c in enumerate(log) if " up " in c)
+    told = [i for i, c in enumerate(log) if c.startswith("exec ") and " kc-of-this-project " in c]
+    assert told and min(told) > up
+    sent = (scratch / "exec-input").read_text()
+    assert "http://localhost:8090/oauth2/callback" in sent and "http://localhost:8090/*" in sent
+    assert "update clients/id-of-aisc-gateway" in "\n".join(log)
+    admin = [line for line in (scratch / "env.secrets").read_text().splitlines()
+             if line.startswith("KEYCLOAK_ADMIN_PASSWORD=")][0].split("=", 1)[1]
+    assert admin not in (scratch / "docker.log").read_text()
+    assert "AISC is up" in r.stdout
+
+
+def test_start_stops_when_the_sign_in_cannot_be_told(scratch):
+    (scratch / "exec-fails").write_text("")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1
+    assert "could not be told" in r.stderr
+    assert "AISC is up" not in r.stdout
+    assert len([c for c in calls(scratch) if c.startswith("exec ") and " kc-of-this-project " in c]) == 2
+
+
+def test_start_tells_this_project_s_keycloak_and_no_other(scratch):
+    """A second copy beside an install (AISC_PROJECT and an override that renames its containers) must never
+    tell the first one's Keycloak its addresses: the container is the one compose runs for this project."""
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    execs = [c for c in calls(scratch) if c.startswith("exec ")]
+    assert execs and all(" kc-of-this-project bash " in c for c in execs)
+    assert not [c for c in execs if " keycloak bash " in c]
+
+
+def test_start_stops_when_this_project_runs_no_keycloak(scratch):
+    (scratch / "keycloak-id").write_text("")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1
+    assert "could not be told" in r.stderr and "AISC is up" not in r.stdout
+    assert not [c for c in calls(scratch) if c.startswith("exec ")]
+
+
+def test_no_secret_reaches_a_command_line_when_start_tells_the_sign_in(scratch):
+    """Neither docker's command line on the host nor kcadm's inside the container (which the host's `ps`
+    shows too): Keycloak's admin password reaches kcadm through KC_CLI_PASSWORD."""
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    secrets = [line.split("=", 1)[1] for line in (scratch / "env.secrets").read_text().splitlines()
+               if "=" in line and not line.startswith("#")]
+    for log in ("docker.log", "kcadm.log"):
+        text = (scratch / log).read_text()
+        assert not [v for v in secrets if len(v) >= 8 and v in text], log
+    admin = [v for v in (scratch / "env.secrets").read_text().splitlines() if v.startswith("KEYCLOAK_ADMIN_PASSWORD=")]
+    assert set((scratch / "kcadm-login").read_text().splitlines()) == {admin[0].split("=", 1)[1]}
+
+
+def test_start_clears_containers_a_failed_attempt_left_created(scratch):
+    """A refused start followed by a hand-run `docker compose up` leaves containers in state created, which
+    then block the next start; start removes them before it brings the stack up."""
+    (scratch / "created-answer").write_text("aisc-webapp\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    removal = [c for c in log if c.startswith("compose ") and " rm -f " in c and "kcadm" not in c]
+    ups = [c for c in log if " up " in c]
+    assert len(removal) == 1 and " rm -f aisc-webapp" in removal[0], log
+    assert log.index(removal[0]) < log.index(ups[0])
+
+
+COMPOSE_OF_THE_STACK = ("compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml "
+                        "-f docker-compose-infra.development.yml -f docker-compose.development.yml")
+
+
+def test_start_asks_compose_for_this_project_s_created_containers_only(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    asked = [c for c in calls(scratch) if "--status created" in c]
+    assert asked == [COMPOSE_OF_THE_STACK + " ps -a --status created --format {{.Service}} | BAKE= LIMIT="]
+    assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
+    assert "Removing what an earlier attempt left" not in r.stdout
+
+
+def test_start_goes_on_when_compose_cannot_list_the_created_containers(scratch):
+    (scratch / "created-fails").write_text("")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
+    assert [c for c in calls(scratch) if " up -d" in c] and "AISC is up" in r.stdout
+
+
+def test_a_refused_start_says_not_to_run_compose_directly(scratch):
+    (scratch / "branch").write_text("master\n")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "Nothing was started. Fix this and run start again, not docker compose directly." in r.stdout + r.stderr
+
+
+HINT = "Nothing was started. Fix this and run start again, not docker compose directly."
+
+
+def test_a_refusal_before_the_stack_starts_ends_with_the_hint_once(scratch):
+    (scratch / "branch").write_text("master\n")
+    r = run(scratch)
+    assert (r.stdout + r.stderr).count(HINT) == 1
+
+
+def test_the_build_refusal_tells_to_run_again_once(scratch):
+    (scratch / "build-failures").write_text("3")
+    r = run(scratch)
+    said = r.stderr.lower()
+    assert "build failed" in said and said.count("run ") == 1 and said.count("again") == 1, said
+
+
+def test_the_sign_in_refusal_does_not_claim_nothing_was_started(scratch):
+    (scratch / "exec-fails").write_text("")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert "could not be told" in r.stderr and "Nothing was started" not in r.stderr
+
+
+def test_a_refusal_after_up_does_not_claim_nothing_was_started(scratch):
+    (scratch / "up-fails").write_text("")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "did not start" in r.stderr and "Nothing was started" not in r.stderr
+
+
+def https_install(d, launcher='https://aisc.example.org:8100/'):
+    """The scratch copy served over https at aisc.example.org, its launcher at the address given."""
+    settings = (d / "env.plugin_downloader").read_text()
+    settings = settings.replace('API_URL_EXTERNAL="http://localhost"', 'API_URL_EXTERNAL="https://aisc.example.org"')
+    settings = settings.replace('CADDY_DOMAIN="http://localhost"', 'CADDY_DOMAIN="https://aisc.example.org"')
+    settings = settings.replace("LAUNCHER_EXTERNAL_URL=http://localhost:8100/", f"LAUNCHER_EXTERNAL_URL={launcher}")
+    (d / "env.plugin_downloader").write_text(settings)
+    (d / "held-ports").write_text(OWN_BROWSER_PORTS)
+
+
+def test_a_launcher_address_without_its_slash_is_used_with_one(scratch):
+    """The realm import makes its sign-out rule and callback from LAUNCHER_EXTERNAL_URL as it is: compose must
+    be given it with its slash, and so must the sign-in start tells."""
+    https_install(scratch, launcher="https://aisc.example.org")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    launcher = [line for line in (scratch / "env.runtime").read_text().splitlines()
+                if line.startswith("LAUNCHER_EXTERNAL_URL=")]
+    assert launcher[-1] == "LAUNCHER_EXTERNAL_URL=https://aisc.example.org/"
+    sent = (scratch / "exec-input").read_text()
+    assert "https://aisc.example.org/oauth2/callback" in sent and "https://aisc.example.org/*##" in sent
+    assert "aisc.example.orgoauth2" not in sent and "aisc.example.org*" not in sent
+
+
+def test_an_https_install_s_sign_in_gets_no_development_server(scratch):
+    https_install(scratch)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "5173" not in (scratch / "exec-input").read_text()
+
+
+def test_a_plain_http_install_s_sign_in_keeps_the_development_server(scratch):
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = (scratch / "exec-input").read_text()
+    assert "http://localhost:5173/*" in sent and '"http://localhost:5173"' in sent
+
+
+def page_on(d, port):
+    """The stand-in sign-in page on 127.0.0.1:port, or a skip when this machine holds that port."""
+    try:
+        return sign_in_page(d, port)
+    except OSError:
+        pytest.skip(f"port {port} is held on this machine")
+
+
+def test_a_moved_launcher_is_waited_on_and_announced_at_its_new_address(scratch):
+    """8100 is held by another program, so the launcher moves to 8110: start waits on 8110, on this machine,
+    and names it at the end, not the address the other program holds."""
+    blocker = socket.socket()
+    try:
+        blocker.bind(("0.0.0.0", 8100))
+        blocker.listen()
+    except OSError:
+        pass                                    # something on this machine holds it already: taken either way
+    page = page_on(scratch, 8110)
+    try:
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", ":8110->"))
+        r = run(scratch, START_URL="", START_SIGN_IN_URL="http://127.0.0.1:8110/realms/aisc")
+    finally:
+        page.shutdown()
+        page.server_close()
+        blocker.close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "HOMEPAGE_PORT_EXTERNAL=8110" in (scratch / "env.local").read_text().splitlines()
+    assert [p for p in (scratch / "requests").read_text().splitlines() if not p.startswith("/realms/")] == ["/"]
+    assert "Waiting for the sign-in page at http://localhost:8110/" in r.stdout
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open http://localhost:8110 " in up[-1], r.stdout
+
+
+def test_a_refused_start_does_not_advise_running_compose(scratch):
+    """start makes the secrets on its way; the secrets command's own advice (run the stack with docker
+    compose ... up -d) is the very thing a refused start must not lead to."""
+    (scratch / "build-failures").write_text("3")
+    r = run(scratch)
+    assert r.returncode != 0
+    assert "run the stack with" not in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("line", ["ENGINE_PORT=8090 # mine", "HOMEPAGE_PORT_EXTERNAL=70000",
+                                  "KEYCLOAK_PORT_EXTERNAL=", "DASHBOARD_PORT_EXTERNAL=0", 'ENGINE_PORT="eighty"'])
+def test_a_kept_port_that_is_not_a_port_is_refused_naming_its_line(scratch, line):
+    """env.local is the file a person edits to choose a port; a value that is not one ends start with a message
+    naming the line, not a traceback, and before anything is built."""
+    (scratch / "env.local").write_text(f"# my ports\n{line}\n")
+    r = run(scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    assert f"env.local line 2 ({line})" in r.stderr and "a whole number from 1 to 65535" in r.stderr
+    assert not [c for c in calls(scratch) if " build" in c]
+
+
+def moved_install(d):
+    """An install with data whose launcher and dashboard moved earlier (env.local keeps them), held by its own
+    containers."""
+    (d / "env.local").write_text("HOMEPAGE_PORT_EXTERNAL=8110\nLAUNCHER_EXTERNAL_URL=http://localhost:8110/\n"
+                                 "DASHBOARD_PORT_EXTERNAL=8198\nDASHBOARD_EXTERNAL_URL=http://localhost:8198\n")
+    (d / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", ":8110->").replace(":8188->", ":8198->"))
+
+
+def updates(d):
+    """What each client update sent, by the client id it named, in the order kcadm was asked."""
+    named = re.findall(r"^KCADM update clients/(\S+) ", (d / "kcadm.log").read_text(), re.M)
+    sent = [json.loads(line) for line in (d / "exec-input").read_text().splitlines() if line.strip()]
+    return list(zip(named, sent))
+
+
+def test_each_client_is_sent_its_own_moved_addresses(scratch):
+    moved_install(scratch)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    assert set(sent) == {"id-of-aisc-gateway", "id-of-aisc-webapp"}
+    gateway, webapp = sent["id-of-aisc-gateway"], sent["id-of-aisc-webapp"]
+    assert gateway["redirectUris"] == ["http://localhost/oauth2/callback", "http://localhost:8110/oauth2/callback",
+                                       "http://localhost:8198/oauth2/callback"]
+    assert gateway["attributes"]["post.logout.redirect.uris"] == "http://localhost:8110/*##http://localhost/*"
+    assert webapp["baseUrl"] == "http://localhost" and "8110" not in json.dumps(webapp)
+
+
+def test_a_second_client_that_cannot_be_updated_stops_start(scratch):
+    moved_install(scratch)
+    (scratch / "update-fails").write_text("clients/id-of-aisc-webapp")
+    r = run(scratch, START_SYNC_TRIES="2", START_SYNC_WAIT_S="0")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "could not be told" in r.stderr and "update refused" in r.stderr
+    assert "AISC is up" not in r.stdout
+    assert [client for client, _ in updates(scratch)] == ["id-of-aisc-gateway", "id-of-aisc-webapp"] * 2
+
+
+def test_an_https_install_tells_the_sign_in_its_https_addresses_only(scratch):
+    https_install(scratch)
+    with open(scratch / "env.plugin_downloader", "a") as settings:
+        settings.write("DASHBOARD_EXTERNAL_URL=https://aisc.example.org:8188\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    assert sent["id-of-aisc-gateway"]["redirectUris"] == [
+        "https://aisc.example.org/oauth2/callback", "https://aisc.example.org:8100/oauth2/callback",
+        "https://aisc.example.org:8188/oauth2/callback"]
+    assert sent["id-of-aisc-webapp"]["baseUrl"] == "https://aisc.example.org"
+    assert "localhost" not in (scratch / "exec-input").read_text()
+
+
+def tls_launcher(d, public_name):
+    """The launcher's Caddy listener on an install served over https, on a port of its own: TLS for the public
+    name only. A request over TLS whose SNI and Host are that name gets the sign-in's 302; any other TLS request
+    a 421; a plain-HTTP one a 400, as Caddy answers it. Each request is noted in `tls-requests`. The certificate
+    is a throwaway self-signed one, made with openssl."""
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj",
+                    f"/CN={public_name}", "-keyout", str(d / "tls.key"), "-out", str(d / "tls.crt")],
+                   check=True, capture_output=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(d / "tls.crt", d / "tls.key")
+    seen = {}
+    context.sni_callback = lambda _sock, name, _ctx: seen.__setitem__("sni", name)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+
+    def answer(conn):
+        with conn:
+            conn.settimeout(5)
+            if conn.recv(1, socket.MSG_PEEK) != b"\x16":           # not a TLS handshake
+                conn.recv(65536)
+                (d / "tls-requests").open("a").write("plain http\n")
+                conn.sendall(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"
+                             b"Client sent an HTTP request to an HTTPS server.\n")
+                return
+            seen.clear()
+            with context.wrap_socket(conn, server_side=True) as tls:
+                request = tls.recv(65536).decode("latin-1")
+                host = next((line.split(":", 1)[1].strip() for line in request.split("\r\n")
+                             if line.lower().startswith("host:")), "")
+                (d / "tls-requests").open("a").write(f"tls sni={seen.get('sni')} host={host}\n")
+                ok = seen.get("sni") == public_name and host == public_name
+                tls.sendall(b"HTTP/1.1 302 Found\r\nLocation: /sign-in\r\nContent-Length: 0\r\n\r\n" if ok
+                            else b"HTTP/1.1 421 Misdirected Request\r\nContent-Length: 0\r\n\r\n")
+
+    def serve():
+        while True:
+            try:
+                conn, _ = listener.accept()
+            except OSError:
+                return
+            try:
+                answer(conn)
+            except (OSError, ssl.SSLError):
+                pass
+
+    threading.Thread(target=serve, daemon=True).start()
+    return listener
+
+
+def test_an_https_install_is_waited_on_over_tls_for_its_public_name(scratch):
+    """The launcher's listener on an https install serves TLS for the public name only: a plain-HTTP request
+    gets a 400, and start would wait until it gives up. It asks over TLS, with that name, on this machine."""
+    https_install(scratch)
+    listener = tls_launcher(scratch, "aisc.example.org")
+    port = listener.getsockname()[1]
+    try:
+        (scratch / "env.local").write_text(f"HOMEPAGE_PORT_EXTERNAL={port}\n")
+        (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace(":8100->", f":{port}->"))
+        r = run(scratch, START_URL="", START_WAIT_S="4")
+    finally:
+        listener.close()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "tls sni=aisc.example.org host=aisc.example.org" in (scratch / "tls-requests").read_text()
+    up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
+    assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
+
+
+def host_sees_free(d, *ports):
+    """The host's own check (port_is_free) finds these ports free, whatever holds them on the test machine: a
+    bind succeeds and nothing answers. Docker's VM is where they are taken, as on Docker Desktop."""
+    (d / "pyshim").mkdir()
+    (d / "pyshim/sitecustomize.py").write_text(f"""import errno, socket
+FREE = {set(ports)!r}
+bind, connect_ex = socket.socket.bind, socket.socket.connect_ex
+socket.socket.bind = lambda self, address: None if address[1] in FREE else bind(self, address)
+socket.socket.connect_ex = (lambda self, address: errno.ECONNREFUSED if address[1] in FREE
+                            else connect_ex(self, address))
+""")
+    return {"PYTHONPATH": str(d / "pyshim")}
+
+
+WINDOWS_REFUSAL = ("Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:80 -> "
+                   "127.0.0.1:0: /forwards/expose returned unexpected status: 500")
+LEFTOVER_FORWARDER = ("docker: Error response from daemon: driver failed programming external connectivity on "
+                      "endpoint aisc-port-probe-80: Bind for 0.0.0.0:80 failed: port is already allocated.")
+
+
+@pytest.mark.parametrize("refusal", [WINDOWS_REFUSAL, LEFTOVER_FORWARDER])
+def test_a_port_docker_cannot_publish_moves_before_anything_is_built(scratch, refusal):
+    """On Docker Desktop a port can be held inside Docker's own VM (a web server in WSL, a leftover forwarder)
+    where a bind on the host does not see it: the host check passes, and `up` fails after the whole build.
+    Docker itself is asked first, so the engine moves to 8080 before anything is built."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "probe-refuses").write_text("0.0.0.0:80:")
+    (scratch / "probe-says").write_text(refusal)
+    r = run(scratch, **host_sees_free(scratch, 80, 8080))
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    probes = [c for c in log if c.startswith("run ") and " -p 0.0.0.0:80:" in c]
+    builds = [c for c in log if " build" in c]
+    assert probes and builds and log.index(probes[0]) < log.index(builds[0])
+    out = r.stdout.splitlines()
+    moved = [line for line in out if line.startswith("Port 80 is taken")]
+    assert moved and "http://localhost:8080" in moved[0]
+    assert out.index(moved[0]) < next(i for i, line in enumerate(out) if line.startswith("Building the images"))
+    assert "ENGINE_PORT=8080" in (scratch / "env.local").read_text().splitlines()
+    assert [c for c in log if " up " in c] and "AISC is up" in r.stdout
+
+
+def test_a_probe_docker_cannot_run_leaves_the_host_check_to_decide(scratch):
+    """No image offline, or a Docker error that says nothing of the port: the host's answer stands, the start
+    goes on, and nothing moves."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "probe-fails").write_text("Unable to find image 'caddy:2.10.2' locally\ndocker: Error response "
+                                         "from daemon: pull access denied for caddy, repository does not exist")
+    r = run(scratch, **host_sees_free(scratch, 80, 8080))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert [c for c in calls(scratch) if c.startswith("run ") and " -p 0.0.0.0:80:" in c]
+    assert "is taken" not in r.stdout + r.stderr
+    assert "ENGINE_PORT=80" in (scratch / "env.local").read_text().splitlines()
+    assert "AISC is up" in r.stdout
+
+
+def test_ports_this_install_holds_are_not_probed(scratch):
+    """Its own running containers hold them: a probe would be refused, and they are not taken. Any other
+    published port is asked of Docker."""
+    with socket.socket() as spare:
+        spare.bind(("127.0.0.1", 0))
+        other = spare.getsockname()[1]
+    (scratch / "config-answer").write_text(json.dumps({"services": {"postgres": {"ports": [
+        {"host_ip": "127.0.0.1", "published": str(other), "target": 5432}]}}}))
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    probes = [c for c in calls(scratch) if c.startswith("run ") and " -p " in c]
+    for held in (80, 8100, 8188, 8081):
+        assert not [c for c in probes if f":{held}:" in c], probes
+    assert [c for c in probes if f"-p 127.0.0.1:{other}:" in c], probes
+
+
+def test_a_pull_of_the_probe_image_that_hangs_leaves_the_host_check_to_decide(scratch):
+    """A first start behind a slow link: the probe's image is fetched once, said before it starts, and a fetch
+    that does not finish in time is given up; the start goes on with the host's own check."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "no-probe-image").write_text("")
+    (scratch / "pull-hangs").write_text("")
+    r = run(scratch, START_PULL_WAIT_S="1", **host_sees_free(scratch, 80, 8080))
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = r.stdout.splitlines()
+    fetching = next(i for i, line in enumerate(out) if line.startswith("Fetching the image the port check uses"))
+    assert fetching < out.index("Docker could not check the ports itself; going by this computer's own check.")
+    assert not [c for c in calls(scratch) if c.startswith("run ") and " -p " in c]
+    assert "ENGINE_PORT=80" in (scratch / "env.local").read_text().splitlines()
+
+
+def test_after_a_probe_that_hangs_no_other_port_is_probed(scratch):
+    """A busy Docker Desktop would make each probe wait its full time: after the first that does not answer,
+    the host's own check decides for the rest of the start."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", "")
+                                        .replace("0.0.0.0:8100->8006/tcp, ", ""))
+    (scratch / "probe-hangs").write_text("")
+    r = run(scratch, START_PROBE_WAIT_S="1", **host_sees_free(scratch, 80, 8100))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len([c for c in calls(scratch) if c.startswith("run ") and " -p " in c]) == 1
+    assert r.stdout.count("Docker could not check the ports itself") == 1
+
+
+def test_a_port_docker_refuses_on_an_https_install_names_docker_not_the_host(scratch):
+    """Nothing on the host holds it, so the host's tools (netstat, lsof) would show nothing: the refusal says
+    Docker cannot use the port, and what frees one Docker holds."""
+    https_install(scratch)
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "probe-refuses").write_text("0.0.0.0:80:")
+    (scratch / "probe-says").write_text(WINDOWS_REFUSAL)
+    r = run(scratch, **host_sees_free(scratch, 80))
+    assert r.returncode == 1
+    assert "Port 80 is taken" in r.stderr and "Docker cannot use it" in r.stderr
+    assert "restarting Docker" in r.stderr
+    assert "lsof" not in r.stderr and "netstat" not in r.stderr

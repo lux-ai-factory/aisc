@@ -13,6 +13,7 @@ scripts/guard-frozen.sh, scripts/test-pipeline-chain.sh and scripts/lib/; others
 import importlib.util
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -34,10 +35,13 @@ def copy_install_scripts(dest: Path) -> None:
         shutil.copy2(ROOT / path, dest / path)
 
 
-def aisc_py():
-    """scripts/aisc.py as a module: its list of secrets, the kind of value each takes, what --rotate keeps."""
-    spec = importlib.util.spec_from_file_location("aisc_install", ROOT / "scripts/aisc.py")
+def aisc_py(root: Path = ROOT):
+    """scripts/aisc.py as a module: its list of secrets, the kind of value each takes, what --rotate keeps.
+    root: a scratch copy of the checkout (copy_install_scripts) to load it from, so it reads that copy's files."""
+    spec = importlib.util.spec_from_file_location("aisc_install", root / "scripts/aisc.py")
     module = importlib.util.module_from_spec(spec)
+    # registered before it runs, as an import would: a dataclass looks its own module up while it is made
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -112,4 +116,50 @@ def guard_orders(tmp_path_factory):
 
 
 def verdict(output: str, check: str) -> list[str]:
-    return [l for l in output.splitlines() if l.startswith(check + " ")]
+    return [line for line in output.splitlines() if line.startswith(check + " ")]
+
+
+#: Keycloak's kcadm.sh as the tests see it, put beside a stand-in docker. Every call's own arguments (what the
+#: container's `ps` would show) go to kcadm.log, one line each; the password it signs in with must come from
+#: KC_CLI_PASSWORD (kept in kcadm-login), and what an update reads on stdin goes to exec-input. It answers a
+#: client or user lookup with one id made from the name asked for; update-fails holds a text that makes the
+#: update naming it fail.
+FAKE_KCADM = r"""#!/usr/bin/env bash
+d=$(dirname "$0")/..
+{ printf 'KCADM'; printf ' %q' "$@"; printf '\n'; } >> "$d/kcadm.log"
+all="$*"
+case "$1 $2" in
+  "config credentials")
+    [ -n "${KC_CLI_PASSWORD:-}" ] || { echo "no password in KC_CLI_PASSWORD" >&2; exit 1; }
+    printf '%s\n' "$KC_CLI_PASSWORD" >> "$d/kcadm-login" ;;
+  "get clients") name=${all##*clientId=}; name=${name%% *}; printf '[{"id": "id-of-%s"}]\n' "$name" ;;
+  "get users") name=${all##*username=}; name=${name%% *}
+    printf '[{"id": "id-of-%s", "username": "%s"}]\n' "$name" "$name" ;;
+  "update "*)
+    { cat; echo; } >> "$d/exec-input"
+    if [ -f "$d/update-fails" ] && [[ "$all" == *"$(cat "$d/update-fails")"* ]]; then
+      echo "update refused" >&2; exit 1
+    fi ;;
+esac
+exit 0
+"""
+
+#: The part of a stand-in docker that runs a kcadm script given to `exec ... bash -c` as the container would,
+#: with FAKE_KCADM (kcadm.sh in the stand-in's own folder) in place of Keycloak's. Any other exec is left to the
+#: rest of the stand-in.
+RUN_KCADM_IN_EXEC = r"""
+if [ "$1" = exec ]; then
+  for a in "$@"; do case "$a" in */opt/keycloak/bin/kcadm.sh*) kcadm_script=$a ;; esac; done
+  if [ -n "${kcadm_script:-}" ]; then
+    while [ "$1" != "-c" ]; do shift; done
+    shift 2
+    here=$(cd "$(dirname "$0")" && pwd)
+    exec bash -c "$(printf '%s' "$kcadm_script" | sed "s#/opt/keycloak/bin/kcadm.sh#$here/kcadm.sh#")" "$@"
+  fi
+fi
+"""
+
+
+def add_fake_kcadm(folder: Path) -> None:
+    (folder / "kcadm.sh").write_text(FAKE_KCADM)
+    (folder / "kcadm.sh").chmod(0o755)

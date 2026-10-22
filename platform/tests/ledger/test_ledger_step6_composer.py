@@ -90,7 +90,7 @@ CASES = [
      {"details": {"error": "renderer_unavailable", "format": "pdf"}, "content": {"layout": {"id": L, "revision": 1}}}),
     ("POST", f"/p/{{slug}}/layouts/{L}/download-report", "report.downloaded", "report", R,
      {"details": {"document_sha256": DOC}}),
-    ("POST", f"/api/p/{{slug}}/layouts/builtin-summary/reports", "report.layout.created", "layout", L,
+    ("POST", "/api/p/{slug}/layouts/builtin-summary/reports", "report.layout.created", "layout", L,
      {"item_version": "1", "details": {"from": "builtin", "builtin_id": "builtin-summary"}, "content": LAYOUT,
       "after": LAYOUT}),
     ("POST", "/p/{slug}/layouts/builtin-summary/generate", "report.layout.updated", "layout", L,

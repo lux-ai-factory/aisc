@@ -95,7 +95,9 @@ def test_the_endpoints_refuse_a_missing_wrong_expired_or_other_connections_key(c
     a = connection(client, admin, project, stub, "a-sys")
     b = connection(client, admin, project, stub, "b-sys")
     key_a = issue(client, project, a).json()["key"]
-    ask = lambda n, h: client.post(f"{base(project, n)}/aisc/ask", json={"input": "q"}, headers=h)
+    def ask(n, h):
+        return client.post(f"{base(project, n)}/aisc/ask", json={"input": "q"}, headers=h)
+
     assert ask(a, {}).status_code == 401
     assert ask(a, keyed("aisc-run-wrong")).status_code == 401
     assert ask(b, keyed(key_a)).status_code == 401

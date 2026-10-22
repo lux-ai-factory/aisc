@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import json as _json
 import math
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -55,11 +59,6 @@ def test_the_hash_is_the_sha256_of_the_canonical_bytes():
 
 
 # The shared test vectors, and the inputs canonical JSON refuses
-
-import json as _json
-from datetime import datetime, timezone
-from decimal import Decimal
-from pathlib import Path
 
 VECTORS = _json.loads((Path(__file__).parent / "fixtures" / "canonical_vectors.json").read_text())["vectors"]
 

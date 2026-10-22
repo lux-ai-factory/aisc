@@ -62,7 +62,7 @@ def test_a_new_install_gets_the_bridge_token_in_env_secrets_and_env_runtime(scra
 def test_an_existing_env_secrets_without_it_gets_it_added_and_keeps_every_byte(scratch):
     run_secrets(scratch)
     lines = (scratch / "env.secrets").read_text().splitlines(keepends=True)
-    before = "".join(l for l in lines if not l.startswith(NAME + "="))
+    before = "".join(line for line in lines if not line.startswith(NAME + "="))
     (scratch / "env.secrets").write_text(before)
     r = run_secrets(scratch)
     after = (scratch / "env.secrets").read_text()

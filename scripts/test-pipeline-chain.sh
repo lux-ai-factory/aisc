@@ -130,7 +130,7 @@ step_cmd() {
     # The engine runs in configurator mode, as the stack runs it (project databases, the door).
     4) echo "cd apps/backend && AISC_DEPLOYMENT=configurator AUTH_ENABLED=true DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
     5|7) echo "$ctrl" ;;
-    8) echo "uv run --quiet --no-project --with pytest python -m pytest -q -p no:cacheprovider scripts/pipeline_chain/test_dashboard_queries.py" ;;
+    8) echo "uv run --quiet --no-project --with pytest --with pyyaml python -m pytest -q -p no:cacheprovider scripts/pipeline_chain/test_dashboard_queries.py" ;;
   esac
 }
 STEP_NAME=([1]="platform: project and v1" [2]="qualification: card v1 with 2 card_component rows"

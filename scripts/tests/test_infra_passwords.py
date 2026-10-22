@@ -18,7 +18,7 @@ import subprocess
 import pytest
 import yaml
 
-from conftest import ROOT, aisc_py, copy_install_scripts
+from conftest import RUN_KCADM_IN_EXEC, ROOT, add_fake_kcadm, aisc_py, copy_install_scripts
 from test_dashboard_bridge_token import scratch  # noqa: F401 (fixture)
 from test_llm_keys import secrets_of
 
@@ -27,6 +27,8 @@ ROTATE = ROOT / "scripts/rotate-infra-password.sh"
 ACCOUNTS = {"admin": "AISC_ADMIN_PASSWORD", "user": "AISC_USER_PASSWORD"}
 ROTATABLE = ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
              "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
+#: the passwords set through kcadm in Keycloak's container
+KEYCLOAK_SET = ("KEYCLOAK_ADMIN_PASSWORD", "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
 
 
 def test_secrets_makes_the_accounts_passwords_and_keeps_them_like_the_other_volume_bound_ones():
@@ -87,7 +89,7 @@ def test_keycloak_is_given_the_accounts_passwords_and_refuses_to_start_without_t
 def test_the_tracked_env_file_holds_no_infrastructure_password():
     lines = (ROOT / "env.plugin_downloader").read_text().splitlines()
     for name in ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "S3_PASSWORD"):
-        [line] = [l for l in lines if l.startswith(name + "=")]
+        [line] = [line for line in lines if line.startswith(name + "=")]
         assert line == name + "=", name
 
 
@@ -113,8 +115,12 @@ def test_the_checks_read_the_accounts_passwords_from_env_secrets():
 # scripts/rotate-infra-password.sh, against a copy of the repo's env files and a docker that only records
 
 FAKE_DOCKER = """#!/usr/bin/env bash
-{ printf 'ARGV'; printf ' %q' "$@"; printf '\\n'; env | sed -n 's/^\\(NEW_VALUE\\|OLD_VALUE\\|ADMIN_VALUE\\)=/ENV \\1=/p'; } >> "$DOCKER_LOG"
+{ printf 'ARGV'; printf ' %q' "$@"; printf '\\n'; env | sed -n 's/^\\(NEW_VALUE\\|OLD_VALUE\\|ADMIN_VALUE\\|KC_CLI_PASSWORD\\)=/ENV \\1=/p'; } >> "$DOCKER_LOG"
+""" + RUN_KCADM_IN_EXEC + """
 cat > /dev/null
+# this project's Keycloak container, as compose ps -q names it (FAKE_KEYCLOAK_ID="": none running)
+[[ "$*" == *" ps -q keycloak"* ]] && printf '%s\n' "${FAKE_KEYCLOAK_ID-kc-of-this-project}"
+exit 0
 """
 
 
@@ -130,12 +136,13 @@ def install(tmp_path):
     bin_dir.mkdir()
     (bin_dir / "docker").write_text(FAKE_DOCKER)
     (bin_dir / "docker").chmod(0o755)
+    add_fake_kcadm(bin_dir)
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "DOCKER_LOG": str(tmp_path / "docker.log")}
     return tmp_path, env
 
 
 def values(path):
-    return dict(l.split("=", 1) for l in path.read_text().splitlines() if "=" in l and not l.startswith("#"))
+    return dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line and not line.startswith("#"))
 
 
 @pytest.mark.parametrize("name", ROTATABLE)
@@ -151,10 +158,12 @@ def test_rotating_one_password_changes_it_in_the_service_then_in_both_env_files_
     assert values(root / "env.runtime")[name] == after[name]
     log = (root / "docker.log").read_text() if (root / "docker.log").exists() else ""
     # the new value reaches the service by name, never in an argument
-    assert after[name] not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
-    assert before[name] not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
+    assert after[name] not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
+    assert before[name] not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
     assert after[name] not in r.stdout + r.stderr
-    if name != "S3_PASSWORD":  # MinIO takes its root password from its environment when it is recreated
+    if name in KEYCLOAK_SET:   # kcadm reads it as JSON on stdin
+        assert json.loads((root / "exec-input").read_text())["value"] == after[name]
+    elif name != "S3_PASSWORD":  # MinIO takes its root password from its environment when it is recreated
         assert f"ENV NEW_VALUE={after[name]}" in log
 
 
@@ -202,8 +211,8 @@ def test_a_chosen_password_is_set_in_the_service_and_both_env_files(install):
     assert values(root / "env.secrets")["AISC_ADMIN_PASSWORD"] == chosen
     assert values(root / "env.runtime")["AISC_ADMIN_PASSWORD"] == chosen
     log = (root / "docker.log").read_text()
-    assert f"ENV NEW_VALUE={chosen}" in log
-    assert chosen not in "".join(l for l in log.splitlines() if l.startswith("ARGV"))
+    assert json.loads((root / "exec-input").read_text())["value"] == chosen
+    assert chosen not in "".join(line for line in log.splitlines() if line.startswith("ARGV"))
     assert chosen not in r.stdout + r.stderr
 
 
@@ -216,3 +225,49 @@ def test_a_chosen_password_the_env_file_could_not_hold_is_refused(install, typed
     assert r.returncode == 2, r.stderr
     assert (root / "env.secrets").read_text() == before
     assert not (root / "docker.log").exists()
+
+
+def test_a_keycloak_password_is_set_in_this_project_s_keycloak_and_no_other(install):
+    """A second copy beside an install renames its containers: the bare name keycloak is the other install's."""
+    root, env = install
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", "AISC_USER_PASSWORD"], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    execs = [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+    # the account's id, then its new password
+    assert len(execs) == 2 and all(" kc-of-this-project bash " in e and " keycloak bash " not in e for e in execs)
+
+
+def test_a_keycloak_password_is_not_changed_when_this_project_runs_no_keycloak(install):
+    root, env = install
+    before = (root / "env.secrets").read_text()
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", "AISC_USER_PASSWORD"], cwd=root,
+                       env={**env, "FAKE_KEYCLOAK_ID": ""}, capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "Keycloak" in r.stderr
+    assert (root / "env.secrets").read_text() == before
+    assert not [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+
+
+@pytest.mark.parametrize("name", KEYCLOAK_SET)
+def test_no_secret_reaches_a_command_line_when_kcadm_sets_a_password(install, name):
+    """Neither docker's command line on the host nor kcadm's inside the container (which the host's `ps`
+    shows too): Keycloak's admin password reaches kcadm through KC_CLI_PASSWORD, the new one as JSON on stdin."""
+    root, env = install
+    before = values(root / "env.secrets")
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", name], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    after = values(root / "env.secrets")
+    secrets = {v for v in (*before.values(), *after.values()) if len(v) >= 8}
+    argv = "".join(line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV"))
+    assert not [v for v in secrets if v in argv]
+    assert not [v for v in secrets if v in (root / "kcadm.log").read_text()]
+    assert (root / "kcadm-login").read_text().splitlines() == [before["KEYCLOAK_ADMIN_PASSWORD"]] * 2
+    account = {"KEYCLOAK_ADMIN_PASSWORD": "admin", "AISC_ADMIN_PASSWORD": "admin", "AISC_USER_PASSWORD": "user"}[name]
+    realm = "master" if name == "KEYCLOAK_ADMIN_PASSWORD" else "aisc"
+    calls = (root / "kcadm.log").read_text()
+    assert f"get users -r {realm} -q username={account}" in calls
+    assert f"update users/id-of-{account}/reset-password -r {realm} -f -" in calls
+    assert json.loads((root / "exec-input").read_text()) == {"type": "password", "value": after[name],
+                                                              "temporary": False}

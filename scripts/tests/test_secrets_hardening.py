@@ -280,7 +280,7 @@ def test_a_new_install_gets_a_strong_engine_immudb_password_of_its_own(scratch):
 def test_an_existing_install_gains_it_and_keeps_every_other_value(scratch):  # noqa: F811
     run_secrets(scratch)
     out = scratch / "env.secrets"
-    lines = [l for l in out.read_text().splitlines() if not l.startswith("ENGINE_IMMUDB_PASSWORD=")]
+    lines = [line for line in out.read_text().splitlines() if not line.startswith("ENGINE_IMMUDB_PASSWORD=")]
     out.write_text("\n".join(lines) + "\n")                     # an env.secrets made before the name existed
     before = secrets_of(scratch)
     r = run_secrets(scratch)
@@ -290,8 +290,8 @@ def test_an_existing_install_gains_it_and_keeps_every_other_value(scratch):  # n
     assert strong, "ENGINE_IMMUDB_PASSWORD does not meet immudb's rules"
     others_after = _digest({k: v for k, v in after.items() if k != "ENGINE_IMMUDB_PASSWORD"})
     assert others_after == _digest(before), "another value changed"
-    runtime = dict(l.split("=", 1) for l in (scratch / "env.runtime").read_text().splitlines()
-                   if "=" in l and not l.startswith("#"))
+    runtime = dict(line.split("=", 1) for line in (scratch / "env.runtime").read_text().splitlines()
+                   if "=" in line and not line.startswith("#"))
     carried = runtime.get("ENGINE_IMMUDB_PASSWORD") == after["ENGINE_IMMUDB_PASSWORD"]
     assert carried, "env.runtime does not carry it"
     printed = after["ENGINE_IMMUDB_PASSWORD"] in r.stdout + r.stderr

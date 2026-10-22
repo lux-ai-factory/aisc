@@ -40,12 +40,14 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 export PGHOST=${PGHOST:-127.0.0.1} PGPORT=${PGPORT:-5432} PGUSER=${PGUSER:-aisc-postgres-user}
 export PGDATABASE=${PGDATABASE:-platform}
+. "$HERE/lib/database-published.sh"
 if [ -z "${PGPASSWORD:-}" ]; then
   PGPASSWORD=$(docker exec "${PGCONTAINER:-postgres}" printenv POSTGRES_PASSWORD 2>/dev/null) || {
     echo "no PGPASSWORD, and none readable from the ${PGCONTAINER:-postgres} container" >&2; exit 2; }
   export PGPASSWORD
 fi
 . "$HERE/lib/dev-accounts.sh"
+. "$HERE/lib/install-addresses.sh"
 for a in "$@"; do
   case "$a" in
     --privileges|--final-layout) ;;
@@ -444,7 +446,7 @@ def container_dsns():
 def _browser_like_cookies():
     """A cookie policy that treats localhost the way browsers (and curl) do. Python's default policy
     differs in two ways that break the sign-in: it sends a Secure cookie over https only, while Keycloak
-    marks its sign-in cookies Secure and browsers count http://localhost as secure; and it matches a
+    marks its sign-in cookies Secure and browsers count plain-http localhost as secure; and it matches a
     request to localhost against "localhost.local", so oauth2-proxy's CSRF cookie for ".localhost" never
     reaches its callback."""
     import http.cookiejar
@@ -478,8 +480,8 @@ class _Session:
     def __init__(self):
         import http.cookiejar
 
-        self.launcher = os.environ.get("VERIFY_BASE_URL", "http://localhost:8100").rstrip("/")
-        self.apps = os.environ.get("VERIFY_APPS_URL", "http://localhost").rstrip("/")
+        self.launcher = os.environ["VERIFY_BASE_URL"].rstrip("/")
+        self.apps = os.environ["VERIFY_APPS_URL"].rstrip("/")
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(
             http.cookiejar.CookieJar(policy=_browser_like_cookies())))
 

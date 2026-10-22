@@ -21,4 +21,4 @@ def _service_block(text: str, service: str) -> list[str]:
 def test_aisc_backend_has_no_platform_url():
     block = _service_block(COMPOSE.read_text(), "aisc-backend")
     assert block, "aisc-backend service found"
-    assert not [l for l in block if l.strip().startswith("PLATFORM_URL:")]
+    assert not [line for line in block if line.strip().startswith("PLATFORM_URL:")]

@@ -1,0 +1,213 @@
+"""Busy browser ports, really occupied: a listening socket on each, and the ports the real compose files publish.
+
+No stand-in for the port check here: aisc.py's own port_is_free decides, as it does for a person whose
+launcher, dashboard or sign-in port is held by another program. A test whose ports are already taken on the
+machine running it (an AISC stack, another program) cannot occupy them itself, so it is skipped there.
+"""
+from __future__ import annotations
+
+import contextlib
+import json
+import os
+import shutil
+import socket
+import subprocess
+import uuid
+
+import pytest
+
+import compose_cfg
+from conftest import aisc_py
+
+#: Keycloak is published on loopback only; the other browser ports on every address
+LOOPBACK_ONLY = {8081}
+
+
+def cannot_run(reason):
+    """A skip on a developer's machine. CI sets AISC_PORT_TESTS_MUST_RUN=1: its machines hold none of these ports,
+    so there a test that cannot run fails, rather than pass the run with the moves untested."""
+    if os.environ.get("AISC_PORT_TESTS_MUST_RUN") == "1":
+        pytest.fail(f"{reason}; AISC_PORT_TESTS_MUST_RUN=1 says this test must run here")
+    pytest.skip(reason)
+
+
+def host_of(port):
+    return "127.0.0.1" if port in LOOPBACK_ONLY else "0.0.0.0"
+
+
+def skip_unless_free(m, *ports):
+    """The ports a test occupies or expects a role to land on must be free before it starts."""
+    busy = [port for port in ports if not m.port_is_free(port, host_of(port))]
+    if busy:
+        cannot_run(f"already taken on this machine: {', '.join(map(str, busy))}")
+
+
+@contextlib.contextmanager
+def occupied(*ports, host=None):
+    """A real listening socket on each port, on the address Docker would publish it on (or `host`)."""
+    with contextlib.ExitStack() as stack:
+        for port in ports:
+            listener = stack.enter_context(socket.socket())
+            try:
+                listener.bind((host or host_of(port), port))
+            except OSError:
+                cannot_run(f"port {port} cannot be occupied on this machine")
+            listener.listen()
+        yield
+
+
+@pytest.fixture
+def published(tmp_path):
+    """What the real compose files publish, read with `docker compose config` (nothing is started)."""
+    if shutil.which("docker") is None:
+        cannot_run("docker is not installed")
+    variables = tuple(port.variable for port in aisc_py().BROWSER_PORTS)
+    r = compose_cfg.run(tmp_path, drop=variables)
+    if r.returncode != 0:
+        cannot_run(f"docker compose cannot read the files here: {r.stderr.strip()[-300:]}")
+    return aisc_py().published_ports(json.loads(r.stdout))
+
+
+def settle(m, published):
+    return m.settle_ports(published, set(), {}, True, m.port_is_free)
+
+
+def no_problem_names(problems, *ports):
+    """Before the infrastructure ports are opt-in, one held on a developer's machine is a problem of its own;
+    none may name a browser port the test occupied."""
+    return not [problem for problem in problems for port in ports if f"Port {port} " in problem]
+
+
+def test_busy_launcher_dashboard_and_sign_in_ports_are_moved(published):
+    m = aisc_py()
+    skip_unless_free(m, 8100, 8188, 8081, 8110, 8198, 8091)
+    with occupied(8100, 8188, 8081):
+        settings, problems, moved = settle(m, published)
+    assert settings["HOMEPAGE_PORT_EXTERNAL"] == "8110"
+    assert settings["DASHBOARD_PORT_EXTERNAL"] == "8198"
+    assert settings["KEYCLOAK_PORT_EXTERNAL"] == "8091"
+    assert settings["LAUNCHER_EXTERNAL_URL"] == "http://localhost:8110/"
+    assert settings["DASHBOARD_EXTERNAL_URL"] == "http://localhost:8198"
+    assert settings["KEYCLOAK_URL_EXTERNAL"] == "http://localhost:8091"
+    assert len(moved) == 3
+    assert no_problem_names(problems, 8100, 8188, 8081)
+
+
+def test_a_busy_first_fallback_is_skipped(published):
+    m = aisc_py()
+    skip_unless_free(m, 8100, 8110, 8120)
+    with occupied(8100, 8110):
+        settings, problems, _moved = settle(m, published)
+    assert settings["HOMEPAGE_PORT_EXTERNAL"] == "8120"
+    assert settings["LAUNCHER_EXTERNAL_URL"] == "http://localhost:8120/"
+    assert no_problem_names(problems, 8100, 8110)
+
+
+def test_a_listener_on_loopback_only_still_blocks_the_sign_in_port(published):
+    """Keycloak is published on 127.0.0.1: a program there blocks it, whatever the other addresses hold."""
+    m = aisc_py()
+    skip_unless_free(m, 8081, 8091)
+    with occupied(8081, host="127.0.0.1"):
+        settings, problems, _moved = settle(m, published)
+    assert settings["KEYCLOAK_PORT_EXTERNAL"] == "8091"
+    assert settings["KEYCLOAK_URL_EXTERNAL"] == "http://localhost:8091"
+    assert no_problem_names(problems, 8081)
+
+
+def test_a_busy_engine_port_is_moved(published):
+    """Port 80 cannot be opened without root on Linux, so a stand-in container holds it, as a stack or a
+    forwarder left from an earlier run would."""
+    m = aisc_py()
+    skip_unless_free(m, 80, 8080)
+    name = f"aisc-test-busy-80-{uuid.uuid4().hex[:8]}"
+    try:
+        run = subprocess.run(["docker", "run", "-d", "--name", name, "-p", "80:80", "nginx:1.27-alpine"],
+                             capture_output=True, text=True, timeout=300)
+        if run.returncode != 0:
+            cannot_run(f"a stand-in container cannot hold port 80 here: {run.stderr.strip()[-300:]}")
+        settings, problems, _moved = settle(m, published)
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=60)
+    assert settings["ENGINE_PORT"] == "8080"
+    assert settings["API_URL_EXTERNAL"] == "http://localhost:8080"
+    assert no_problem_names(problems, 80)
+
+
+@contextlib.contextmanager
+def listening_v6(address, v6only=True):
+    """A real IPv6 listener on a port the system picks; skipped where this machine has no IPv6."""
+    try:
+        listener = socket.socket(socket.AF_INET6)
+    except OSError:
+        cannot_run("no IPv6 on this machine")
+    with listener:
+        if v6only:
+            listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        try:
+            listener.bind((address, 0))
+        except OSError:
+            cannot_run(f"cannot listen on [{address}] here")
+        listener.listen()
+        yield listener.getsockname()[1]
+
+
+@pytest.mark.parametrize("address", ["::1", "::"])
+def test_a_program_on_ipv6_only_holds_an_all_interfaces_port(address):
+    """Docker publishes [::] too and fails after the whole build; or a browser's localhost (::1 first) reaches
+    the other program."""
+    with listening_v6(address) as port:
+        assert not aisc_py().port_is_free(port, "0.0.0.0")
+
+
+def test_a_program_on_ipv6_loopback_holds_a_loopback_port():
+    """The sign-in is published on 127.0.0.1, but a browser on this machine asks localhost, ::1 first."""
+    with listening_v6("::1") as port:
+        assert not aisc_py().port_is_free(port, "127.0.0.1")
+
+
+def test_a_program_on_ipv6_loopback_is_found_where_binding_cannot_tell(monkeypatch):
+    """A port below 1024 cannot be bound without root on Linux: whether something answers decides, ::1 too."""
+    m = aisc_py()
+    plain_bind = socket.socket.bind
+    with listening_v6("::1") as port:
+        def refused(self, address):
+            if address[1] == port:
+                raise PermissionError(13, "permission denied")
+            return plain_bind(self, address)
+
+        monkeypatch.setattr(socket.socket, "bind", refused)
+        monkeypatch.setattr(m.os, "name", "posix")
+        assert not m.port_is_free(port, "0.0.0.0")
+
+
+class EveryPortTaken:
+    @staticmethod
+    def port_is_free(_port, _host):
+        return False
+
+
+def test_a_test_that_cannot_run_is_skipped_on_a_developer_s_machine(monkeypatch):
+    monkeypatch.delenv("AISC_PORT_TESTS_MUST_RUN", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        skip_unless_free(EveryPortTaken, 8100)
+
+
+def test_a_test_that_cannot_run_fails_where_the_ports_tests_must_run(monkeypatch):
+    """CI sets AISC_PORT_TESTS_MUST_RUN=1: its machines hold none of these ports, so a skip there would hide that
+    the moves went untested."""
+    monkeypatch.setenv("AISC_PORT_TESTS_MUST_RUN", "1")
+    try:
+        skip_unless_free(EveryPortTaken, 8100)
+    except BaseException as stopped:   # a skip is no failure: caught here, so it cannot skip this test too
+        outcome = stopped
+    else:
+        outcome = None
+    assert isinstance(outcome, pytest.fail.Exception), repr(outcome)
+
+
+def test_ci_runs_the_port_tests_where_they_must_not_skip():
+    yaml = pytest.importorskip("yaml")
+    jobs = yaml.safe_load((compose_cfg.ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    for job in ("repository-checks", "windows"):
+        steps = [s for s in jobs[job]["steps"] if "pytest" in s.get("run", "")]
+        assert steps and all((s.get("env") or {}).get("AISC_PORT_TESTS_MUST_RUN") == "1" for s in steps), job

@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from conftest import ROOT, copy_install_scripts
+from conftest import ROOT, add_fake_kcadm, copy_install_scripts
 from test_start_script import DOCKER, GIT, sign_in_page
 
 #: Syntax bash 3.2 does not have: associative arrays, namerefs, mapfile/readarray, case modification,
@@ -107,13 +107,15 @@ def test_start_sh_runs_under_bash_3_2(tmp_path, tools_image):
     for name, body in (("docker", DOCKER), ("git", GIT)):
         (shims / name).write_text(body)
         (shims / name).chmod(0o755)
+    add_fake_kcadm(shims)
     (tmp_path / "branch").write_text("feat/unified-modules\n")
     (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/feat/unified-modules)\n")
     (tmp_path / "compose-version").write_text("5.5.1\n")
     (tmp_path / "build-failures").write_text("1")
     r = bash32(tmp_path, "scripts/start.sh", tools_image,
                env={"PATH": "/w/shims:/usr/local/bin:/usr/bin:/bin", "START_WAIT_S": "6", "START_POLL_S": "0",
-                    "START_MIN_DISK_GB": "0", "START_URL": f"http://127.0.0.1:{page.server_address[1]}/"})
+                    "START_MIN_DISK_GB": "0", "START_URL": f"http://127.0.0.1:{page.server_address[1]}/",
+                    "START_SIGN_IN_URL": f"http://127.0.0.1:{page.server_address[1]}/realms/aisc"})
     page.shutdown()
     assert "version 3.2" in r.stdout, r.stdout + r.stderr
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
