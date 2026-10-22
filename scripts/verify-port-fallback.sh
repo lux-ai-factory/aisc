@@ -15,8 +15,9 @@
 #
 # Scenarios, each a real start of the copy:
 #   new install, every default taken        80, 8100, 8188 and 127.0.0.1:8081 held: the four ports move, and
-#                                           the moved launcher signs in and serves steps 1, 2 and 4, the
-#                                           dashboard and everything verify-sso.sh checks
+#                                           the moved launcher signs in and serves steps 1 to 4 (the
+#                                           catalogue told the moved engine), the dashboard and everything
+#                                           verify-sso.sh checks
 #   ports nobody uses                       127.0.0.1:5432 held as well: start neither stops nor moves for it
 #   install with data, its port taken later the engine's new port taken too: it moves again, and the sign-in,
 #                                           told the new address, still lands on it
@@ -194,7 +195,8 @@ if [ "$DRY_RUN" = 1 ]; then
   set AISC_IMAGE_TAG=ports in the clone's env.plugin_downloader; run start as AISC_PROJECT=aisc-ports
   new install, every default taken: stand-ins ($STAND_IN_IMAGE) on 80, 8100, 8188, 127.0.0.1:8081; start;
     four moves, AISC is up, env.local 8080 8110 8198 8091; sign in at the moved launcher, the launcher lists
-    projects, steps 1, 2 and 4 and the dashboard answer signed in, verify-sso.sh passes
+    projects, steps 1, 2 and 4 and the dashboard answer signed in, the catalogue (step 3) is told
+    the moved engine and answers signed in, user joins the project as a viewer, verify-sso.sh passes
   ports nobody uses: a stand-in on 127.0.0.1:5432 during that start; start does not stop or move for it
   install with data, its port taken later: the copy down (volumes kept), a stand-in on 8080, start; the engine
     moves to 8090 and the signed-in checks pass again
@@ -334,6 +336,28 @@ signed_in_checks() { # engine port
         *) no "$what ($url) answered $code" ;;
       esac
     done
+
+    # Step 3, the catalogue, reads the engine's address from the launcher's /origins.json when it starts and
+    # trusts only that one: on a moved copy it must be the moved engine.
+    engine=$(curl -s --max-time 15 "$VERIFY_BASE_URL/origins.json" \
+             | python3 -c 'import json,sys; print(json.load(sys.stdin).get("engine",""))' 2>/dev/null)
+    if [ "$engine" = "http://localhost:$1" ]; then
+      ok "the launcher tells the catalogue the moved engine address, $engine"
+    else
+      no "the launcher tells the catalogue ${engine:-no engine address}, not http://localhost:$1"
+    fi
+    url=$VERIFY_BASE_URL/project-catalogue/
+    got=$(curl -s -b "$jar" -c "$jar" -L --max-time 30 -o "$WORK/catalogue.html" -w '%{http_code} %{url_effective}' "$url")
+    code=${got%% *}; landed=${got#* }
+    case "$code $landed" in
+      "200 $KEYCLOAK_URL"*) no "step 3, the catalogue ($url), sent the signed-in session back to the sign-in" ;;
+      "200 "*) if grep -q "project catalogue" "$WORK/catalogue.html"; then
+                 ok "step 3, the catalogue, answers signed in at $url"
+               else
+                 no "step 3, the catalogue ($url), answered 200 without the catalogue's page"
+               fi ;;
+      *) no "step 3, the catalogue ($url), answered $code" ;;
+    esac
 
     # verify-sso.sh signs in as the ordinary account and works in that account's first project. The project above
     # is admin's, so the ordinary account joins it as a viewer, through the launcher as a project owner would

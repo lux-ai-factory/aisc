@@ -467,3 +467,32 @@ def test_the_folder_removal_is_guarded_by_one_check_for_both_ways_of_removing():
     real = guard.group(1)
     assert f'-v "${real}":/w' in body and f'rm -rf "${real}"' in body
     assert 'rm -rf "$work"' not in body
+
+
+@pytest.mark.parametrize("port", ["8080", "8090"])
+def test_the_catalogue_is_told_the_moved_engine_and_answers_signed_in(copy_up, port):
+    """Step 3's catalogue trusts the engine address it reads from the launcher's /origins.json at startup: on a
+    moved copy that address must be the moved engine, and the catalogue must answer the signed-in session."""
+    (copy_up / "aisc/env.runtime").write_text(
+        (copy_up / "aisc/env.runtime").read_text().replace("localhost:8080", f"localhost:{port}"))
+    (copy_up / "engine").write_text(f"http://localhost:{port}")
+    r, log = signed_in(copy_up, port)
+    assert "FAIL" not in r.stdout, r.stdout + r.stderr
+    urls = [c["url"] for c in log]
+    assert "http://localhost:8110/origins.json" in urls and "http://localhost:8110/project-catalogue/" in urls
+    assert f"the launcher tells the catalogue the moved engine address, http://localhost:{port}" in r.stdout
+    assert "step 3, the catalogue, answers signed in at http://localhost:8110/project-catalogue/" in r.stdout
+
+
+@pytest.mark.parametrize("engine, page, wrong", [
+    ("http://localhost", None, "the launcher tells the catalogue http://localhost"),   # the address before the move
+    ("http://localhost:8080", "<html>Sign in to your account</html>", "step 3, the catalogue"),
+])
+def test_a_catalogue_on_the_wrong_engine_or_not_signed_in_fails(copy_up, engine, page, wrong):
+    (copy_up / "engine").write_text(engine)
+    if page:
+        curl = (copy_up / "shims/curl").read_text().replace(
+            '"<html><title>AI Assessment Sandbox Configurator: project catalogue</title></html>"', repr(page))
+        (copy_up / "shims/curl").write_text(curl)
+    r, _ = signed_in(copy_up)
+    assert any(line.startswith("  FAIL ") and wrong in line for line in r.stdout.splitlines()), r.stdout
