@@ -57,12 +57,14 @@ from __future__ import annotations
 import base64
 import errno
 import getpass
+import http.client
 import json
 import os
 import re
 import secrets as random_source
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -73,6 +75,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = "env.secrets"
@@ -882,6 +885,25 @@ def answer_of(url: str) -> int | None:
         return None
 
 
+def answer_over_tls(port: int, public_name: str) -> int | None:
+    """The HTTP status of `GET /` on this machine's port over TLS, asked as a browser asks for the public name
+    (SNI and Host), redirects not followed; None when nothing answers. An install served over https listens
+    there for its public name only: plain HTTP gets a 400, another name no site. The certificate is not checked:
+    the listener is this machine's own, and a development one signs its certificate itself (tls internal)."""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection(("localhost", port), timeout=5) as raw, \
+                context.wrap_socket(raw, server_hostname=public_name) as tls:
+            tls.sendall(f"GET / HTTP/1.1\r\nHost: {public_name}\r\nConnection: close\r\n\r\n".encode())
+            response = http.client.HTTPResponse(tls)
+            response.begin()
+            return response.status
+    except (OSError, ssl.SSLError, http.client.HTTPException, ValueError):
+        return None
+
+
 def keycloak_realm_url() -> str:
     """The realm's own page on Keycloak's published port on this machine (the last KEYCLOAK_PORT_EXTERNAL line
     of env.runtime, else 8081), or START_SIGN_IN_URL. Not its public address: an https or other-host install's
@@ -1067,9 +1089,17 @@ def start(_args: list[str]) -> None:
 
     # Where to wait, read now that the ports are settled: an address read before step 3 may be the one another
     # program holds. The launcher's published port on this machine, as for Keycloak's realm (keycloak_realm_url):
-    # an https install's public name may not resolve from here, nor its certificate be trusted.
-    url = os.environ.get("START_URL") or f"http://localhost:{effective('HOMEPAGE_PORT_EXTERNAL') or '8100'}/"
+    # an https install's public name may not resolve from here, nor its certificate be trusted. Its listener
+    # there serves TLS for that name only, so it is asked over TLS with the name (answer_over_tls).
     launcher = with_slash(effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/")
+    launcher_port = int(effective("HOMEPAGE_PORT_EXTERNAL") or "8100")
+    public_name = urlsplit(launcher).hostname or urlsplit(effective("CADDY_DOMAIN", TRACKED)).hostname or "localhost"
+    over_tls = served_over_https() and not os.environ.get("START_URL")
+    url = (f"https://localhost:{launcher_port}/ (as {public_name})" if over_tls
+           else os.environ.get("START_URL") or f"http://localhost:{launcher_port}/")
+
+    def launcher_answer() -> int | None:
+        return answer_over_tls(launcher_port, public_name) if over_tls else answer_of(url)
 
     # 4. The images
     for attempt in (1, 2, 3):
@@ -1101,7 +1131,7 @@ def start(_args: list[str]) -> None:
     say(f"Waiting for the sign-in page at {url} (Keycloak needs about 30 seconds on a first start) ...")
     deadline = time.monotonic() + wait_s
     while True:
-        code = answer_of(url)
+        code = launcher_answer()
         if code in (200, 302, 303):
             break
         if time.monotonic() >= deadline:

@@ -23,6 +23,9 @@
   again (Docker Desktop must itself start at sign-in; if it does not, start it). The engine's audit clerk logs
   in to immudb again by itself when its login ended, so no manual restart of `aisc-backend` is needed.
 - The checks (`verify-*.sh`) reach the install's real addresses, whichever port moved.
+- Step 3, the catalogue, follows a moved engine: it reads the engine's address from the launcher's
+  `/origins.json`, so its Back link, project and control install work without a rebuild. Check: open the
+  catalogue from a project on an install whose engine is on 8080.
 - Lint cleanup, with no change in behaviour.
 
 How to check: `uv run scripts/aisc.py start`; the tests named in each commit (`git log --oneline c504aac..HEAD`);

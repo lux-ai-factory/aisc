@@ -15,8 +15,9 @@
 #
 # Scenarios, each a real start of the copy:
 #   new install, every default taken        80, 8100, 8188 and 127.0.0.1:8081 held: the four ports move, and
-#                                           the moved launcher signs in and serves steps 1, 2 and 4, the
-#                                           dashboard and everything verify-sso.sh checks
+#                                           the moved launcher signs in and serves steps 1 to 4 (the
+#                                           catalogue told the moved engine), the dashboard and everything
+#                                           verify-sso.sh checks
 #   ports nobody uses                       127.0.0.1:5432 held as well: start neither stops nor moves for it
 #   install with data, its port taken later the engine's new port taken too: it moves again, and the sign-in,
 #                                           told the new address, still lands on it
@@ -70,6 +71,19 @@ stack_compose() { # project, folder, env file, compose files (comma-separated), 
   (cd "$folder" && docker compose -p "$project" --env-file "$env_file" "${args[@]}" "$@")
 }
 
+# Whether a folder is one the check made, and its real path when it is. The folder is removed whole, so a name
+# that only looks right is not enough (aisc-ports.1/../.. matches */aisc-ports.* too): the real path must be
+# directly in the temporary folder the check makes its copies in, and hold the state file it writes there.
+check_folder() { # folder -> its real path, or nothing (and 1) when the check did not make it
+  local temp real
+  temp=$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P) || return 1
+  real=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  case "$real" in "$temp"/aisc-ports.*) ;; *) return 1 ;; esac
+  case "${real#"$temp"/}" in */*) return 1 ;; esac
+  [ -f "$real/taken-down" ] || return 1
+  printf '%s\n' "$real"
+}
+
 # Everything the check made, and the stack it took down back up. Also run by --clean-up on a kept copy.
 clean_up() { # work folder
   local work=$1 project folder
@@ -102,22 +116,20 @@ clean_up() { # work folder
       fi
     done < "$work/taken-down"
   fi
-  case "$work" in
-    */aisc-ports.*) rm -rf "$work" ;;
-  esac
+  local real
+  if real=$(check_folder "$work"); then
+    # the containers wrote into the bind-mounted clone as root (__pycache__ and the like), which this user
+    # cannot remove: a throwaway container does, mounting this folder and nothing else
+    if [ -d "$real/aisc" ]; then
+      docker run --rm -v "$real":/w alpine:3.20 rm -rf /w/aisc >/dev/null 2>&1 \
+        || echo "Some of the copy's files could not be removed through a container; see what is left in $real"
+    fi
+    rm -rf "$real"
+  fi
 }
 
 if [ -n "$CLEAN_UP" ]; then
-  # The folder is removed whole, so a name that only looks right is not enough (aisc-ports.1/../.. matches
-  # */aisc-ports.* too): the real path must be directly in the temporary folder the check makes its copies in,
-  # and hold the state file it writes there.
-  temp=$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)
-  work=$(cd "$CLEAN_UP" 2>/dev/null && pwd -P) || work=""
-  made=0
-  case "$work" in
-    "$temp"/aisc-ports.*) case "${work#"$temp"/}" in */*) ;; *) [ -f "$work/taken-down" ] && made=1 ;; esac ;;
-  esac
-  if [ "$made" = 0 ]; then
+  if ! work=$(check_folder "$CLEAN_UP"); then
     echo "$CLEAN_UP is not a folder this check made (aisc-ports.<random> directly in ${TMPDIR:-/tmp}, holding" \
          "its file taken-down); nothing was removed" >&2
     exit 2
@@ -183,7 +195,8 @@ if [ "$DRY_RUN" = 1 ]; then
   set AISC_IMAGE_TAG=ports in the clone's env.plugin_downloader; run start as AISC_PROJECT=aisc-ports
   new install, every default taken: stand-ins ($STAND_IN_IMAGE) on 80, 8100, 8188, 127.0.0.1:8081; start;
     four moves, AISC is up, env.local 8080 8110 8198 8091; sign in at the moved launcher, the launcher lists
-    projects, steps 1, 2 and 4 and the dashboard answer signed in, verify-sso.sh passes
+    projects, steps 1, 2 and 4 and the dashboard answer signed in, the catalogue (step 3) is told
+    the moved engine and answers signed in, user joins the project as a viewer, verify-sso.sh passes
   ports nobody uses: a stand-in on 127.0.0.1:5432 during that start; start does not stop or move for it
   install with data, its port taken later: the copy down (volumes kept), a stand-in on 8080, start; the engine
     moves to 8090 and the signed-in checks pass again
@@ -195,6 +208,8 @@ EOF
 fi
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/aisc-ports.XXXXXX")
+# the state file, empty until a stack is taken down: it also marks the folder as the check's for clean_up
+: > "$WORK/taken-down"
 CLONE=$WORK/aisc
 on_exit() {
   local code=$?
@@ -268,6 +283,14 @@ started() { # exit code, log file, what: start went through and said so
   return 1
 }
 
+# An access token for an account of the copy's realm, from the client the checks use. The password goes to curl on
+# stdin, never on its command line, which every user of the machine can read.
+token_of() { # user, password, sign-in address -> the access token, or nothing
+  printf '%s' "$2" | curl -s --max-time 15 -d client_id=aisc-webapp -d grant_type=password -d scope=openid \
+      --data-urlencode "username=$1" --data-urlencode "password@-" "$3/realms/aisc/protocol/openid-connect/token" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null
+}
+
 # The checks made as a person: signed in at the moved launcher, through the gateway. In a subshell, inside the
 # clone, so the helpers read the copy's env.runtime and env.secrets, and addresses read earlier do not stick.
 signed_in_checks() { # engine port
@@ -291,11 +314,7 @@ signed_in_checks() { # engine port
       exit 1
     fi
 
-    token=$(curl -s --max-time 15 -d client_id=aisc-webapp -d grant_type=password -d scope=openid \
-              --data-urlencode "username=$ADMIN_NAME" --data-urlencode "password=$ADMIN_PASSWORD" \
-              "$KEYCLOAK_URL/realms/aisc/protocol/openid-connect/token" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
-    probe_project_for "$token"
+    probe_project_for "$(token_of "$ADMIN_NAME" "$ADMIN_PASSWORD" "$KEYCLOAK_URL")"
     listed=$(curl -s -b "$jar" --max-time 15 "$VERIFY_BASE_URL/api/projects" \
              | python3 -c 'import json,sys; print(" ".join(p.get("pid","") for p in json.load(sys.stdin)))' 2>/dev/null)
     case " $listed " in
@@ -317,6 +336,43 @@ signed_in_checks() { # engine port
         *) no "$what ($url) answered $code" ;;
       esac
     done
+
+    # Step 3, the catalogue, reads the engine's address from the launcher's /origins.json when it starts and
+    # trusts only that one: on a moved copy it must be the moved engine.
+    engine=$(curl -s --max-time 15 "$VERIFY_BASE_URL/origins.json" \
+             | python3 -c 'import json,sys; print(json.load(sys.stdin).get("engine",""))' 2>/dev/null)
+    if [ "$engine" = "http://localhost:$1" ]; then
+      ok "the launcher tells the catalogue the moved engine address, $engine"
+    else
+      no "the launcher tells the catalogue ${engine:-no engine address}, not http://localhost:$1"
+    fi
+    url=$VERIFY_BASE_URL/project-catalogue/
+    got=$(curl -s -b "$jar" -c "$jar" -L --max-time 30 -o "$WORK/catalogue.html" -w '%{http_code} %{url_effective}' "$url")
+    code=${got%% *}; landed=${got#* }
+    case "$code $landed" in
+      "200 $KEYCLOAK_URL"*) no "step 3, the catalogue ($url), sent the signed-in session back to the sign-in" ;;
+      "200 "*) if grep -q "project catalogue" "$WORK/catalogue.html"; then
+                 ok "step 3, the catalogue, answers signed in at $url"
+               else
+                 no "step 3, the catalogue ($url), answered 200 without the catalogue's page"
+               fi ;;
+      *) no "step 3, the catalogue ($url), answered $code" ;;
+    esac
+
+    # verify-sso.sh signs in as the ordinary account and works in that account's first project. The project above
+    # is admin's, so the ordinary account joins it as a viewer, through the launcher as a project owner would
+    # add somebody. Its subject (Keycloak's id for it) is read from a token of its own: no admin tool needed.
+    subject=$(token_of "$USER_NAME" "$USER_PASSWORD" "$KEYCLOAK_URL" | python3 -c '
+import base64, json, sys
+claims = sys.stdin.read().strip().split(".")[1]
+print(json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))["sub"])' 2>/dev/null)
+    code=$(curl -s -b "$jar" -c "$jar" --max-time 15 -o /dev/null -w '%{http_code}' -X POST \
+             -H 'Content-Type: application/json' -d "{\"subject\": \"$subject\", \"role\": \"viewer\"}" \
+             "$VERIFY_BASE_URL/api/projects/$PROBE_PID/members")
+    case "${subject:+x}$code" in
+      x200|x201) ok "$USER_NAME is a viewer of $PROBE_PID, so verify-sso.sh (signed in as $USER_NAME) has a project to work in" ;;
+      *) no "$USER_NAME could not be made a viewer of ${PROBE_PID:-the project} (subject ${subject:-unknown}, answer ${code:-none})" ;;
+    esac
 
     if bash scripts/verify-sso.sh > "$WORK/verify-sso.log" 2>&1; then
       ok "verify-sso.sh in the copy: $(grep -c 'PASS' "$WORK/verify-sso.log") checks, all passed"

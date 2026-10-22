@@ -322,3 +322,177 @@ def test_a_stack_that_does_not_come_back_is_named_with_the_command_and_the_copy_
     assert (f"cd {install} && docker compose -p aisc --env-file {install}/env.runtime -f {install}/one.yml "
             f"-f {install}/two.yml up -d --no-build") in r.stderr
     assert not work.exists()
+
+
+#: the copy's pages as the signed-in checks reach them, through a curl that records each call (arguments, what it
+#: was given on stdin) in `curl.log`. The gateway signs in and lands back on the launcher; the token endpoint
+#: issues a token whose subject is `id-of-<user>`; /origins.json names the engine in `engine`.
+CURL = r'''#!/usr/bin/env python3
+import base64, json, os, sys
+d = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+a = sys.argv[1:]
+opt = lambda name: a[a.index(name) + 1] if name in a else None
+url = [x for x in a if x.startswith("http")][-1]
+data = [a[i + 1] for i, x in enumerate(a) if x in ("-d", "--data-urlencode")]
+method = opt("-X") or ("POST" if data else "GET")
+stdin = sys.stdin.read() if any(x.endswith("@-") for x in data) else ""
+with open(os.path.join(d, "curl.log"), "a") as log:
+    log.write(json.dumps({"argv": a, "url": url, "method": method, "data": data, "stdin": stdin}) + "\n")
+launcher = "http://localhost:8110/"
+code, effective, body = 200, url, ""
+if url.endswith("/protocol/openid-connect/token"):
+    user = next(x.split("=", 1)[1] for x in data if x.startswith("username="))
+    claims = base64.urlsafe_b64encode(json.dumps({"sub": "id-of-" + user}).encode()).decode().rstrip("=")
+    body = json.dumps({"access_token": "header." + claims + ".signature"})
+elif "/login-actions/" in url:
+    effective = launcher
+elif url == launcher:
+    body = '<form action="http://localhost:8091/realms/aisc/login-actions/authenticate?a=1&amp;b=2">'
+elif url.endswith("/origins.json"):
+    body = json.dumps({"engine": open(os.path.join(d, "engine")).read().strip(), "keycloak": "", "dashboard": ""})
+elif url.endswith("/api/projects"):
+    body = json.dumps([{"pid": "p1"}])
+elif url.endswith("/members"):
+    code, body = 201, "{}"
+elif "/project-catalogue/" in url:
+    body = "<html><title>AI Assessment Sandbox Configurator: project catalogue</title></html>"
+out = opt("-o")
+if out and out != "/dev/null":
+    open(out, "w").write(body)
+elif not out:
+    sys.stdout.write(body)
+if opt("-w"):
+    sys.stdout.write(opt("-w").replace("%{http_code}", str(code)).replace("%{url_effective}", effective))
+'''
+
+
+@pytest.fixture
+def copy_up(tmp_path):
+    """A clone as the signed-in checks find it, on the moved ports, with stub curl and docker (the platform
+    answers one project, p1) and a verify-sso.sh that only records that it ran."""
+    clone = tmp_path / "aisc"
+    (clone / "scripts/lib").mkdir(parents=True)
+    for lib in ("dev-accounts.sh", "gateway-session.sh", "install-addresses.sh", "probe-project.sh"):
+        (clone / "scripts/lib" / lib).write_text((ROOT / "scripts/lib" / lib).read_text())
+    (clone / "scripts/verify-sso.sh").write_text(
+        f"printf '%s\\n' '{{\"url\": \"verify-sso.sh\"}}' >> {tmp_path}/curl.log\necho '  PASS sso'\n")
+    (clone / "env.runtime").write_text(
+        "API_URL_EXTERNAL=http://localhost:8080\nLAUNCHER_EXTERNAL_URL=http://localhost:8110/\n"
+        "DASHBOARD_EXTERNAL_URL=http://localhost:8198\nKEYCLOAK_URL_EXTERNAL=http://localhost:8091\n")
+    (clone / "env.secrets").write_text("AISC_ADMIN_PASSWORD=admin-secret-pw\nAISC_USER_PASSWORD=user-secret-pw\n")
+    (tmp_path / "engine").write_text("http://localhost:8080")
+    shims = tmp_path / "shims"
+    shims.mkdir()
+    (shims / "curl").write_text(CURL)
+    (shims / "docker").write_text("#!/bin/sh\necho '[{\"pid\": \"p1\"}]'\n")
+    for shim in shims.iterdir():
+        shim.chmod(0o755)
+    return tmp_path
+
+
+def signed_in(d, engine_port="8080"):
+    """The script's signed-in checks, run on the copy in `d`: what they printed, and the calls curl got."""
+    import json
+    text = SCRIPT.read_text()
+    helpers = "\n".join(re.search(rf"^{name}\(\) \{{.*\}}$", text, re.M).group(0) for name in ("ok", "no"))
+    functions = "".join(f"{name}() {{\n{_function(text, name)}}}\n"
+                        for name in re.findall(r"^(\w+)\(\) \{ # .*$", text, re.M)
+                        if name in ("signed_in_checks", "token_of"))
+    script = f"{helpers}\n{functions}CLONE={d}/aisc; WORK={d}; signed_in_checks {engine_port}"
+    env = {**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}"}
+    for name in ("VERIFY_APPS_URL", "VERIFY_BASE_URL", "VERIFY_DASHBOARD_URL", "KEYCLOAK_URL"):
+        env.pop(name, None)
+    r = subprocess.run(["bash", "-c", script], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+    log = d / "curl.log"
+    return r, [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+def test_the_ordinary_account_is_made_a_viewer_of_the_check_s_project_before_verify_sso_runs(copy_up):
+    """verify-sso.sh signs in as `user` and works in that account's first project: the project the check made
+    as admin must have `user` in it, or verify-sso.sh finds none."""
+    r, log = signed_in(copy_up)
+    assert "FAIL" not in r.stdout, r.stdout + r.stderr
+    urls = [c["url"] for c in log]
+    members = [c for c in log if c["url"] == "http://localhost:8110/api/projects/p1/members"]
+    assert len(members) == 1, urls
+    assert members[0]["method"] == "POST"
+    body = next(x for x in members[0]["data"])
+    assert json_of(body) == {"subject": "id-of-user", "role": "viewer"}
+    assert urls.index("http://localhost:8110/api/projects") < urls.index(members[0]["url"]) \
+        < urls.index("verify-sso.sh")
+    assert "PASS" in r.stdout and "viewer" in r.stdout
+
+
+def test_no_password_is_given_to_curl_on_its_command_line(copy_up):
+    """A command line is readable by every user of the machine (ps): the tokens are asked for with the password
+    on stdin. gateway_session, a shared helper, still posts the sign-in form with it."""
+    _, log = signed_in(copy_up)
+    tokens = [c for c in log if c["url"].endswith("/protocol/openid-connect/token")]
+    assert {next(x for x in c["data"] if x.startswith("username=")) for c in tokens} >= {"username=user"}
+    for c in tokens:
+        assert not any("secret-pw" in x for x in c["argv"]), c["argv"]
+        assert c["stdin"] in ("admin-secret-pw", "user-secret-pw")
+
+
+def json_of(text):
+    import json
+    return json.loads(text)
+
+
+def test_files_the_containers_wrote_as_root_go_through_a_container_mounting_only_the_copy_s_folder(fake_docker):
+    """The containers write into the bind-mounted clone as root (__pycache__): the user cannot remove those. A
+    throwaway container removes the clone, mounting the check's own folder and nothing else."""
+    work = kept_copy(fake_docker)
+    (work / "aisc").mkdir()
+    r = run(fake_docker, "--clean-up", str(work))
+    assert r.returncode == 0, r.stdout + r.stderr
+    runs = [c.split(" | ")[0] for c in calls(fake_docker) if c.startswith("run ")]
+    assert runs == [f"run --rm -v {work.resolve()}:/w alpine:3.20 rm -rf /w/aisc"], runs
+    assert not work.exists()
+
+
+def test_without_a_clone_no_container_removes_anything(fake_docker):
+    work = kept_copy(fake_docker)
+    r = run(fake_docker, "--clean-up", str(work))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not [c for c in calls(fake_docker) if c.startswith("run ")]
+
+
+def test_the_folder_removal_is_guarded_by_one_check_for_both_ways_of_removing():
+    """The container removal and the rm are each guarded by the same function that --clean-up's refusal uses: a
+    resolved path directly in the temporary folder, holding the state file."""
+    body = _function(SCRIPT.read_text(), "clean_up")
+    guard = re.search(r"(\w+)=\$\(check_folder \"\$work\"\)", body)
+    assert guard, body
+    real = guard.group(1)
+    assert f'-v "${real}":/w' in body and f'rm -rf "${real}"' in body
+    assert 'rm -rf "$work"' not in body
+
+
+@pytest.mark.parametrize("port", ["8080", "8090"])
+def test_the_catalogue_is_told_the_moved_engine_and_answers_signed_in(copy_up, port):
+    """Step 3's catalogue trusts the engine address it reads from the launcher's /origins.json at startup: on a
+    moved copy that address must be the moved engine, and the catalogue must answer the signed-in session."""
+    (copy_up / "aisc/env.runtime").write_text(
+        (copy_up / "aisc/env.runtime").read_text().replace("localhost:8080", f"localhost:{port}"))
+    (copy_up / "engine").write_text(f"http://localhost:{port}")
+    r, log = signed_in(copy_up, port)
+    assert "FAIL" not in r.stdout, r.stdout + r.stderr
+    urls = [c["url"] for c in log]
+    assert "http://localhost:8110/origins.json" in urls and "http://localhost:8110/project-catalogue/" in urls
+    assert f"the launcher tells the catalogue the moved engine address, http://localhost:{port}" in r.stdout
+    assert "step 3, the catalogue, answers signed in at http://localhost:8110/project-catalogue/" in r.stdout
+
+
+@pytest.mark.parametrize("engine, page, wrong", [
+    ("http://localhost", None, "the launcher tells the catalogue http://localhost"),   # the address before the move
+    ("http://localhost:8080", "<html>Sign in to your account</html>", "step 3, the catalogue"),
+])
+def test_a_catalogue_on_the_wrong_engine_or_not_signed_in_fails(copy_up, engine, page, wrong):
+    (copy_up / "engine").write_text(engine)
+    if page:
+        curl = (copy_up / "shims/curl").read_text().replace(
+            '"<html><title>AI Assessment Sandbox Configurator: project catalogue</title></html>"', repr(page))
+        (copy_up / "shims/curl").write_text(curl)
+    r, _ = signed_in(copy_up)
+    assert any(line.startswith("  FAIL ") and wrong in line for line in r.stdout.splitlines()), r.stdout
