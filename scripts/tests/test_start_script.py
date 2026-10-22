@@ -49,6 +49,14 @@ case "$1" in
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
   ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
+  run)
+    # a port probe: `probe-fails` fails every one with its message; `probe-refuses` holds one -p spec
+    # (0.0.0.0:80:) refused with the message in `probe-says`, as Docker refuses a port it cannot publish
+    [ -f "$d/probe-fails" ] && { cat "$d/probe-fails" >&2; exit 125; }
+    if [ -f "$d/probe-refuses" ]; then
+      case "$*" in *"-p $(cat "$d/probe-refuses")"*) cat "$d/probe-says" >&2; exit 125 ;; esac
+    fi
+    exit 0 ;;
 esac
 exit 0
 """
@@ -701,3 +709,76 @@ def test_an_https_install_is_waited_on_over_tls_for_its_public_name(scratch):
     assert "tls sni=aisc.example.org host=aisc.example.org" in (scratch / "tls-requests").read_text()
     up = [line for line in r.stdout.splitlines() if line.startswith("AISC is up")]
     assert up and "open https://aisc.example.org:8100 " in up[-1], r.stdout
+
+
+def host_sees_free(d, *ports):
+    """The host's own check (port_is_free) finds these ports free, whatever holds them on the test machine: a
+    bind succeeds and nothing answers. Docker's VM is where they are taken, as on Docker Desktop."""
+    (d / "pyshim").mkdir()
+    (d / "pyshim/sitecustomize.py").write_text(f"""import errno, socket
+FREE = {set(ports)!r}
+bind, connect_ex = socket.socket.bind, socket.socket.connect_ex
+socket.socket.bind = lambda self, address: None if address[1] in FREE else bind(self, address)
+socket.socket.connect_ex = (lambda self, address: errno.ECONNREFUSED if address[1] in FREE
+                            else connect_ex(self, address))
+""")
+    return {"PYTHONPATH": str(d / "pyshim")}
+
+
+WINDOWS_REFUSAL = ("Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:80 -> "
+                   "127.0.0.1:0: /forwards/expose returned unexpected status: 500")
+LEFTOVER_FORWARDER = ("docker: Error response from daemon: driver failed programming external connectivity on "
+                      "endpoint aisc-port-probe-80: Bind for 0.0.0.0:80 failed: port is already allocated.")
+
+
+@pytest.mark.parametrize("refusal", [WINDOWS_REFUSAL, LEFTOVER_FORWARDER])
+def test_a_port_docker_cannot_publish_moves_before_anything_is_built(scratch, refusal):
+    """On Docker Desktop a port can be held inside Docker's own VM (a web server in WSL, a leftover forwarder)
+    where a bind on the host does not see it: the host check passes, and `up` fails after the whole build.
+    Docker itself is asked first, so the engine moves to 8080 before anything is built."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "probe-refuses").write_text("0.0.0.0:80:")
+    (scratch / "probe-says").write_text(refusal)
+    r = run(scratch, **host_sees_free(scratch, 80, 8080))
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    probes = [c for c in log if c.startswith("run ") and " -p 0.0.0.0:80:" in c]
+    builds = [c for c in log if " build" in c]
+    assert probes and builds and log.index(probes[0]) < log.index(builds[0])
+    out = r.stdout.splitlines()
+    moved = [line for line in out if line.startswith("Port 80 is taken")]
+    assert moved and "http://localhost:8080" in moved[0]
+    assert out.index(moved[0]) < next(i for i, line in enumerate(out) if line.startswith("Building the images"))
+    assert "ENGINE_PORT=8080" in (scratch / "env.local").read_text().splitlines()
+    assert [c for c in log if " up " in c] and "AISC is up" in r.stdout
+
+
+def test_a_probe_docker_cannot_run_leaves_the_host_check_to_decide(scratch):
+    """No image offline, or a Docker error that says nothing of the port: the host's answer stands, the start
+    goes on, and nothing moves."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS.replace("0.0.0.0:80->8005/tcp, ", ""))
+    (scratch / "probe-fails").write_text("Unable to find image 'caddy:2.10.2' locally\ndocker: Error response "
+                                         "from daemon: pull access denied for caddy, repository does not exist")
+    r = run(scratch, **host_sees_free(scratch, 80, 8080))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert [c for c in calls(scratch) if c.startswith("run ") and " -p 0.0.0.0:80:" in c]
+    assert "is taken" not in r.stdout + r.stderr
+    assert "ENGINE_PORT=80" in (scratch / "env.local").read_text().splitlines()
+    assert "AISC is up" in r.stdout
+
+
+def test_ports_this_install_holds_are_not_probed(scratch):
+    """Its own running containers hold them: a probe would be refused, and they are not taken. Any other
+    published port is asked of Docker."""
+    with socket.socket() as spare:
+        spare.bind(("127.0.0.1", 0))
+        other = spare.getsockname()[1]
+    (scratch / "config-answer").write_text(json.dumps({"services": {"postgres": {"ports": [
+        {"host_ip": "127.0.0.1", "published": str(other), "target": 5432}]}}}))
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    probes = [c for c in calls(scratch) if c.startswith("run ") and " -p " in c]
+    for held in (80, 8100, 8188, 8081):
+        assert not [c for c in probes if f":{held}:" in c], probes
+    assert [c for c in probes if f"-p 127.0.0.1:{other}:" in c], probes

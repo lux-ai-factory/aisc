@@ -629,6 +629,73 @@ def held_by_aisc() -> set[int]:
     return {int(p) for p in re.findall(r":(\d+)->", ports)}
 
 
+#: the image the probe runs: the stack's own Caddy, which publishes these ports, so `up` would pull it anyway
+PROBE_IMAGE = "caddy:2.10.2"
+#: the name every probe container starts with, so one left behind (a probe cut short) is found and removed
+PROBE_PREFIX = "aisc-port-probe-"
+#: how long one probe may take: a container that only binds and exits needs well under a second
+PROBE_TIMEOUT_S = 10
+#: how Docker words a refusal of a port it cannot publish: Docker Desktop's forwarder (Windows, macOS), the
+#: Linux daemon (a leftover forwarder, a program listening), Windows' reserved ranges
+PORT_TAKEN = re.compile(r"ports are not available|port is already allocated|address already in use|"
+                        r"bind: an attempt was made to access a socket in a way forbidden", re.IGNORECASE)
+
+
+def docker_says_port_taken(message: str) -> bool:
+    """Whether a failed `docker run -p` failed because the port is taken, not for any other reason."""
+    return bool(PORT_TAKEN.search(message))
+
+
+def remove_probe_leftovers() -> None:
+    """Remove probe containers an earlier start left behind, and make sure the probe's image is here. A leftover
+    would hold its port and be taken for another program; the image is pulled once, so no probe waits on it.
+    Neither may stop the start: a probe that cannot run leaves the host's own check to decide."""
+    names = captured([DOCKER, "ps", "-a", "--filter", f"name={PROBE_PREFIX}", "--format", "{{.Names}}"]).stdout
+    leftovers = [name for name in names.split() if name.startswith(PROBE_PREFIX)]
+    if leftovers:
+        captured([DOCKER, "rm", "-f", *leftovers])
+    if captured([DOCKER, "image", "inspect", PROBE_IMAGE]).returncode != 0:
+        captured([DOCKER, "pull", "--quiet", PROBE_IMAGE])
+
+
+def docker_can_publish(port: int, host: str) -> bool | None:
+    """Whether Docker itself can publish this port on this address: a container that only binds and exits.
+    Docker Desktop publishes through its own VM, shared with WSL, where a program holding the port is out of
+    sight of a bind on the host; so is a forwarder an earlier container left behind. False when Docker refuses
+    the port as taken; None when the probe fails for any other reason (no image offline, a Docker error), and
+    the host's own check decides."""
+    name = f"{PROBE_PREFIX}{port}"
+    argv = [DOCKER, "run", "--rm", "--name", name, "--pull", "never", "-p", f"{host}:{port}:80",
+            "--entrypoint", "true", PROBE_IMAGE]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=PROBE_TIMEOUT_S)
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        subprocess.run([DOCKER, "rm", "-f", name], capture_output=True, text=True)
+        return None
+    if done.returncode == 0:
+        return True
+    return False if docker_says_port_taken(done.stderr + done.stdout) else None
+
+
+def free_for_docker(port: int, host: str) -> bool:
+    """Whether start may publish this port: free on the host (port_is_free) and Docker can publish it
+    (docker_can_publish). A probe that cannot tell leaves the host's answer, and says so once."""
+    global PROBE_FAILED_SAID
+    if not port_is_free(port, host):
+        return False
+    answer = docker_can_publish(port, host)
+    if answer is None and not PROBE_FAILED_SAID:
+        PROBE_FAILED_SAID = True
+        say("Docker could not check the ports itself; going by this computer's own check.")
+    return answer is not False
+
+
+#: whether this start already said Docker could not check the ports: once is enough
+PROBE_FAILED_SAID = False
+
+
 def who_holds(port: int) -> str:
     """The command that shows which program holds a port, on this system."""
     return f"netstat -ano | findstr :{port}" if os.name == "nt" else f"sudo lsof -i :{port}"
@@ -1067,8 +1134,9 @@ def start(_args: list[str]) -> None:
     if not_ports:
         raise Refused("AISC cannot start: " + " ".join(not_ports))
     kept = read_local()
+    remove_probe_leftovers()
     settings, problems, moved = settle_ports(published_ports(json.loads(config.stdout)), held_by_aisc(), kept,
-                                             not served_over_https(), port_is_free)
+                                             not served_over_https(), free_for_docker)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
     # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose
