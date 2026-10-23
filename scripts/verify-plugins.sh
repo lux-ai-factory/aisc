@@ -262,7 +262,10 @@ def private_catalogue(session, slug, held, slug_to_install=None):
     if status == 503:
         say("WARN", "catalogue", f"not run: the public catalogue did not answer, so no private copy ({detail(chosen)})")
         return
-    if status != 200:
+    # the project is reused and a catalogue choice is final: the platform answers 409 with this detail (and no
+    # other) when it was chosen on an earlier run
+    already = status == 409 and detail(chosen) == "this project chose its catalogue already"
+    if status != 200 and not already:
         say("FAIL", "catalogue", f"choosing a private catalogue answered {status}: {detail(chosen)}")
         return
     if slug_to_install:

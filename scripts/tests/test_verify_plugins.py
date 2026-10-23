@@ -106,3 +106,28 @@ def test_install_mode_takes_a_slug_and_needs_no_secret_on_the_command_line():
     ns, _ = _load(_answer(""))
     assert ns["install_slug"](["--install", "langbite"]) == "langbite"
     assert ns["install_slug"]([]) is None
+
+
+def test_a_catalogue_chosen_on_an_earlier_run_is_not_a_failure():
+    """The project is reused, and a catalogue choice is final: the platform answers 409 "this project chose its
+    catalogue already". That is "already chosen", so the check goes on; any other 409 is still a failure."""
+    class Session:
+        def __init__(self, detail):
+            self.detail, self.asked = detail, []
+
+        def call(self, method, path, body=None, timeout=60):
+            self.asked.append((method, path))
+            if method == "POST":
+                return 409, {"detail": self.detail}
+            return 200, []
+
+    ns, lines = _load(_answer(""))
+    again = Session("this project chose its catalogue already")
+    ns["private_catalogue"](again, "verify-plugins", {})
+    assert not [k for k, _, _ in lines if k == "FAIL"], lines
+    assert ("GET", "/api/projects/verify-plugins/catalogue/api/tool/?detailed=true") in again.asked
+
+    ns, lines = _load(_answer(""))
+    other = Session("some other conflict")
+    ns["private_catalogue"](other, "verify-plugins", {})
+    assert [k for k, c, _ in lines] == ["FAIL"] and len(other.asked) == 1

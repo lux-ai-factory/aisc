@@ -14,6 +14,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import threading
 
 import pytest
@@ -44,7 +45,9 @@ helper_step() {
 }
 """ + RUN_KCADM_IN_EXEC + r"""
 case "$1" in
-  info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
+  info) [ -f "$d/no-daemon" ] && exit 1
+        case "$*" in *SystemTime*) [ -f "$d/docker-time" ] && cat "$d/docker-time" ;; esac
+        exit 0 ;;
   compose)
     case "$*" in
       *"version --short"*) cat "$d/compose-version"; exit 0 ;;
@@ -61,9 +64,23 @@ case "$1" in
       *" up "*) helper_step up; [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
         exit 0 ;;
-      *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
+      *" config --services"*) [ -f "$d/services-answer" ] && cat "$d/services-answer"; exit 0 ;;
+      *" logs "*) [ -f "$d/logs-hangs" ] && exec sleep 5
+        # honours --tail N as Docker does
+        for last; do :; done; n=all; case "$*" in *"--tail "*) n=$(echo "$*" | sed 's/.*--tail \([0-9]*\).*/\1/') ;; esac
+        [ -f "$d/logs-$last" ] && { if [ "$n" = all ]; then cat "$d/logs-$last"; else tail -n "$n" "$d/logs-$last"; fi; }
+        exit 0 ;;
+      *" ps "*)
+        # ps-answer-1, ps-answer-2 ... are the answers of the first, second ... call; later calls get ps-answer
+        n=$(( $(cat "$d/ps-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$d/ps-calls"
+        [ -f "$d/ps-answer-$n" ] && { cat "$d/ps-answer-$n"; exit 0; }
+        if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	Up 2 minutes"; fi; exit 0 ;;
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
+  inspect) for last; do :; done
+           # `restarts-<container>` holds that container's RestartCount; `inspect-<container>` its FinishedAt
+           case "$*" in *RestartCount*) [ -f "$d/restarts-$last" ] && cat "$d/restarts-$last"; exit 0 ;; esac
+           [ -f "$d/inspect-$last" ] && cat "$d/inspect-$last"; exit 0 ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
   ps) case "$*" in *"name=^plugin-downloader$"*) [ -f "$d/old-downloader" ] && cat "$d/old-downloader"; exit 0 ;; esac
       [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
@@ -193,6 +210,7 @@ def test_three_failed_builds_stop_before_starting_anything(scratch):
 
 def test_a_stack_that_never_answers_says_what_is_not_running(scratch):
     (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("keycloak\tCreated\n")      # neither restarting nor failed: just not running
     r = run(scratch, START_WAIT_S="1")
     assert r.returncode != 0
     out = r.stdout + r.stderr
@@ -265,6 +283,246 @@ def test_no_failed_one_shot_no_warning(scratch):
     (scratch / "ps-answer").write_text("report-grants\tExited (0) 9 seconds ago\nplatform\tUp 2 minutes\n")
     r = run(scratch)
     assert r.returncode == 0 and "did not finish" not in r.stdout
+
+
+def test_a_restarting_container_is_named_with_its_last_log_lines_and_start_stops_early(scratch):
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\nplatform\tUp 2 minutes\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_text("".join(f"minio line {i}\n" for i in range(1, 31)))
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "minio" in out and "minio line 30" in out and "minio line 11" in out
+    assert "minio line 10\n" not in out
+    assert "docker compose -p aisc logs minio" in out
+    assert any(" logs " in c and "--tail 20" in c and c.split("|")[0].split()[-1] == "minio" for c in calls(scratch))
+    assert "AISC is up" not in out
+
+
+def test_secrets_in_those_log_lines_are_hidden(scratch):
+    (scratch / "env.secrets").write_text("S3_PASSWORD=plainvalue-4711\n")
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_text("starting minio\nMINIO_ROOT_PASSWORD=abc123\n"
+                                        "auth token: xyz789\nthe Secret is s3cr3t\nSOME_key=k1\n"
+                                        "login failed for plainvalue-4711 at 10:00\nfatal: bad config\n")
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "starting minio" in out and "fatal: bad config" in out
+    for hidden in ("abc123", "xyz789", "s3cr3t", "k1", "plainvalue-4711"):
+        assert hidden not in out, hidden
+
+
+def test_one_shots_that_finished_are_not_reported(scratch):
+    (scratch / "ps-answer").write_text("make_buckets\tExited (0) 5 seconds ago\n"
+                                       "ledger-pool\tExited (0) 9 seconds ago\n"
+                                       "report-grants\tExited (1) 9 seconds ago\nplatform\tUp 2 minutes\n")
+    (scratch / "logs-report-grants").write_text("grants failed\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "make_buckets" not in r.stdout and "ledger-pool" not in r.stdout
+    assert "grants failed" not in r.stdout          # a failed one-shot keeps its warning, not the crash report
+
+
+def test_a_container_that_restarts_once_and_recovers_does_not_stop_start(scratch):
+    (scratch / "not-ready").write_text("2")
+    (scratch / "ps-answer-1").write_text("minio\tRestarting (1) 4 seconds ago\n")
+    (scratch / "ps-answer").write_text("minio\tUp 3 seconds\nplatform\tUp 2 minutes\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "AISC is up" in r.stdout
+
+
+def test_a_container_restarting_on_two_polls_with_few_restarts_does_not_stop_start(scratch):
+    """A service that crash-loops for a few seconds while a dependency comes up is normal on a slow machine."""
+    (scratch / "not-ready").write_text("3")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\nplatform\tUp 2 minutes\n")
+    (scratch / "restarts-c-min").write_text("2\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "AISC is up" in r.stdout
+
+
+def test_a_container_restarting_on_two_polls_with_five_restarts_stops_start(scratch):
+    (scratch / "not-ready").write_text("3")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\nplatform\tUp 2 minutes\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_text("minio: unknown flag\n")
+    r = run(scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "minio keeps restarting" in r.stdout + r.stderr and "AISC is up" not in r.stdout
+
+
+@pytest.mark.parametrize("seconds_since_began, stops", [(89, False), (91, True)])
+def test_a_container_restarting_for_over_ninety_seconds_stops_start_whatever_its_count(
+        monkeypatch, seconds_since_began, stops):
+    from datetime import datetime, timedelta, timezone
+    aisc = aisc_module(monkeypatch)
+    began = datetime(2026, 10, 23, 16, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(aisc, "docker_now", lambda: began + timedelta(seconds=seconds_since_began))
+    monkeypatch.setattr(aisc, "docker_in_time", lambda argv, wait: subprocess.CompletedProcess(argv, 0, "2\n", ""))
+    stuck, restarting = aisc.stuck_services("minio\tRestarting (1) 4 seconds ago\tc-min\n", {"minio"}, None, began)
+    assert (stuck == ["minio"]) is stops and restarting == {"minio"}
+
+
+def test_the_ninety_seconds_can_be_set_for_tests(monkeypatch):
+    monkeypatch.setenv("START_RESTART_GRACE_S", "7")
+    assert aisc_module(monkeypatch).RESTART_GRACE_S == 7
+
+
+LONG_AGO, FAR_FUTURE = "2000-01-01T00:00:00.123456789Z", "2999-01-01T00:00:00.123456789Z"
+
+
+def api_exited(scratch, finished_at, services="api\nplatform\n"):
+    """`api` exited with an error at finished_at; the services this start has are `services`."""
+    (scratch / "not-ready").write_text("never")
+    (scratch / "services-answer").write_text(services)
+    (scratch / "ps-answer").write_text("api\tExited (1) 3 seconds ago\tc-api\nplatform\tUp 2 minutes\tc-pl\n")
+    (scratch / "inspect-c-api").write_text(finished_at + "\n")
+    (scratch / "logs-api").write_text("api crashed: bad config\n")
+
+
+def test_a_service_that_exits_with_an_error_during_this_start_is_named_and_stops_start(scratch):
+    api_exited(scratch, FAR_FUTURE)
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "api crashed: bad config" in out and "docker compose -p aisc logs api" in out
+
+
+@pytest.mark.parametrize("docker_time_zone", ["Z", "+02:00"])
+def test_a_docker_clock_ahead_of_the_host_is_the_one_a_stop_is_judged_by(scratch, docker_time_zone):
+    """WSL2 and Docker Desktop VM clocks drift by minutes: the reference time comes from Docker's own clock."""
+    from datetime import datetime, timedelta, timezone
+
+    def stamp(minutes, zone="Z"):
+        """The instant `minutes` from now, written in the given zone as Docker writes it."""
+        at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        if zone != "Z":
+            at = at.astimezone(timezone(timedelta(hours=int(zone[:3]))))
+        return at.strftime("%Y-%m-%dT%H:%M:%S.123456789") + zone
+
+    (scratch / "docker-time").write_text(stamp(10, docker_time_zone) + "\n")           # Docker's clock runs 10 minutes ahead
+    api_exited(scratch, stamp(5))                                       # after the host's time, before Docker's
+    (scratch / "not-ready").write_text("1")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    api_exited(scratch, stamp(15))                                      # after Docker's time: this start's doing
+    r = run(scratch, START_WAIT_S="60")
+    assert r.returncode == 1 and "api crashed" in r.stdout + r.stderr
+
+
+def test_an_exited_container_from_an_earlier_run_does_not_stop_start(scratch):
+    api_exited(scratch, LONG_AGO)
+    (scratch / "not-ready").write_text("1")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "api crashed" not in r.stdout + r.stderr
+
+
+def test_a_container_of_a_service_not_in_this_start_does_not_stop_start(scratch):
+    api_exited(scratch, FAR_FUTURE, services="platform\n")         # api: an inspect-profile or orphan container
+    (scratch / "not-ready").write_text("1")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def aisc_module(monkeypatch):
+    """scripts/aisc.py imported for a direct call of one function."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("aisc_under_test", ROOT / "scripts" / "aisc.py")
+    aisc = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "aisc_under_test", aisc)      # its dataclasses look the module up
+    spec.loader.exec_module(aisc)
+    return aisc
+
+
+@pytest.mark.parametrize("text, utc", [
+    ("2026-10-23T18:24:33.785320213+02:00", "2026-10-23T16:24:33.785320"),    # as `docker info` prints it here
+    ("2026-10-23T18:24:33.785320213-05:00", "2026-10-23T23:24:33.785320"),
+    ("2026-10-23T16:24:33.785320213Z", "2026-10-23T16:24:33.785320"),
+    ("2026-10-23T16:24:33Z", "2026-10-23T16:24:33"),
+])
+def test_docker_times_in_any_offset_are_read_as_the_right_utc_instant(monkeypatch, text, utc):
+    from datetime import datetime, timezone
+    parsed = aisc_module(monkeypatch).parse_docker_time(text)
+    assert parsed == datetime.fromisoformat(utc).replace(tzinfo=timezone.utc)
+
+
+def test_docker_s_time_of_a_container_that_never_ran_is_long_before_any_start(monkeypatch):
+    from datetime import datetime, timezone
+    parsed = aisc_module(monkeypatch).parse_docker_time("0001-01-01T00:00:00Z")
+    assert parsed is not None and parsed < datetime(2000, 1, 1, tzinfo=timezone.utc)
+    assert aisc_module(monkeypatch).parse_docker_time("not a time") is None
+
+
+def test_a_missing_env_secrets_still_shows_the_report(tmp_path, monkeypatch):
+    """The report must never crash on the file it hides values from: without it only the secret-word lines go."""
+    aisc = aisc_module(monkeypatch)
+    monkeypatch.chdir(tmp_path)                       # no env.secrets here
+    assert aisc.hide_secrets("starting\nDB_PASSWORD=abc123\nfatal: bad config") == \
+        "starting\n[a line naming a secret is hidden]\nfatal: bad config"
+    (tmp_path / "env.secrets").mkdir()                # unreadable as a file
+    assert "fatal: bad config" in aisc.hide_secrets("fatal: bad config")
+
+
+def test_logs_that_docker_does_not_give_in_time_are_said_so_and_start_still_stops(scratch):
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-hangs").write_text("")
+    r = run(scratch, START_WAIT_S="60", START_LOG_WAIT_S="1")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "no logs (Docker did not answer in time)" in out and "docker compose -p aisc logs minio" in out
+
+
+def test_a_log_line_with_bytes_that_are_not_text_still_gives_the_report(scratch):
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_bytes(b"starting minio\nbad bytes \xff\xfe here\nfatal: bad config\n")
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "Traceback" not in out and "UnicodeDecodeError" not in out
+    assert "fatal: bad config" in out and "minio keeps restarting" in out
+
+
+def test_a_service_that_keeps_restarting_is_named_even_when_up_itself_fails(scratch):
+    """Others wait on minio's health, so compose's `up -d` fails with "container minio is unhealthy" and never
+    reaches the waits: the report has to come before the refusal."""
+    (scratch / "up-fails").write_text("")
+    (scratch / "ps-answer").write_text("minio\tRestarting (3) 4 seconds ago\tc-min\nplatform\tCreated\tc-pl\n")
+    (scratch / "logs-minio").write_text("minio: unknown flag\n")
+    r = run(scratch, START_STUCK_RECHECK_S="0")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "minio keeps restarting" in out and "minio: unknown flag" in out
+    assert "docker compose -p aisc logs minio" in out
+
+
+def test_a_service_that_exited_with_an_error_is_named_even_when_up_itself_fails(scratch):
+    (scratch / "up-fails").write_text("")
+    (scratch / "ps-answer").write_text("minio\tExited (3) 4 seconds ago\tc-min\n")
+    (scratch / "inspect-c-min").write_text(FAR_FUTURE + "\n")
+    (scratch / "logs-minio").write_text("minio: unknown flag\n")
+    r = run(scratch, START_STUCK_RECHECK_S="0")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "minio: unknown flag" in out and "docker compose -p aisc logs minio" in out
+
+
+def test_an_up_that_fails_with_nothing_stuck_keeps_the_old_message(scratch):
+    (scratch / "up-fails").write_text("")
+    (scratch / "ps-answer").write_text("minio\tUp 2 seconds\tc-min\n")
+    r = run(scratch, START_STUCK_RECHECK_S="0")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "the stack did not start: see the error above." in out
+    assert "keeps restarting" not in out
 
 
 def test_a_taken_port_stops_start_before_anything_is_built(scratch):

@@ -664,7 +664,7 @@ def docker_says_port_taken(message: str) -> bool:
 def docker_in_time(argv: list[str], wait_s: float) -> subprocess.CompletedProcess | None:
     """One docker call given wait_s seconds; None when it did not finish in time (it is stopped then)."""
     try:
-        return subprocess.run(argv, capture_output=True, text=True, timeout=wait_s)
+        return subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=wait_s)
     except FileNotFoundError:
         return subprocess.CompletedProcess(argv, 127, "", "")
     except subprocess.TimeoutExpired:
@@ -982,7 +982,7 @@ BRANCH = "feat/unified-modules"
 
 def captured(argv: list[str]) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(argv, capture_output=True, text=True)
+        return subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except FileNotFoundError:
         return subprocess.CompletedProcess(argv, 127, "", "")
 
@@ -1268,6 +1268,134 @@ def sync_sign_in() -> None:
                   f"See why with: docker compose -p {PROJECT} logs keycloak. Run start again.")
 
 
+#: services that run once and exit (restart "no"): finished with code 0 is their good end, so they are never
+#: reported as stopped; one that exited non-zero keeps its own warning at the end of start
+ONE_SHOT_SERVICES = frozenset({
+    "make_buckets", "postgres-setup", "immudb-key", "ledger-pool", "report-grants", "aisc-backend-migrate",
+    "controls-migrate", "qualification-migrate", "control-objectives-migrate", "report-composer-migrate",
+    "dashboard-migrate",
+})
+#: a log line holding one of these is hidden whole: it is a secret's name or the secret itself
+SECRET_WORDS = re.compile(r"PASSWORD|TOKEN|SECRET|KEY=", re.IGNORECASE)
+LOG_TAIL_LINES = 20
+#: the pause between the two polls made after a failed `up -d`
+STUCK_RECHECK_S = float(os.environ.get("START_STUCK_RECHECK_S", "2"))
+#: how long fetching those lines may take: a wedged daemon must not hang start while it reports
+LOG_WAIT_S = float(os.environ.get("START_LOG_WAIT_S", "20"))
+#: in the wait loops, a container seen restarting on two polls is stuck only once Docker has restarted it this
+#: many times (its backoff starts at 100 ms and doubles, so a few restarts are a dependency not yet up) ...
+CRASH_LOOP_RESTARTS = 5
+#: ... or once this many seconds have passed on Docker's clock since this start began
+RESTART_GRACE_S = float(os.environ.get("START_RESTART_GRACE_S", "90"))
+
+
+def hide_secrets(text: str) -> str:
+    """Log lines safe to show: a line naming a secret (PASSWORD, TOKEN, SECRET, KEY=) is replaced by a note, and
+    the value of every secret in env.secrets is masked wherever else it appears. Without a readable env.secrets
+    only the first applies: this runs while reporting a failure and must not fail itself."""
+    try:
+        values = [v for v in (value_in(name, OUT).strip("'\"") for name, _ in SECRETS) if len(v) >= 4]
+    except (OSError, ValueError):
+        values = []
+    shown = []
+    for line in text.splitlines():
+        if SECRET_WORDS.search(line):
+            line = "[a line naming a secret is hidden]"
+        for value in values:
+            line = line.replace(value, "***")
+        shown.append(line)
+    return "\n".join(shown)
+
+
+def finished_after(container: str, began_at: datetime) -> bool:
+    """Whether this container stopped after began_at, by Docker's own FinishedAt (RFC 3339 with nanoseconds,
+    in UTC). False when Docker does not say or it never ran: such a container is not this start's doing."""
+    said = docker_in_time([DOCKER, "inspect", "--format", "{{.State.FinishedAt}}", container], DOCKER_CALL_WAIT_S)
+    if not said or said.returncode != 0:
+        return False
+    finished = parse_docker_time(said.stdout)
+    return finished is not None and finished > began_at
+
+
+def parse_docker_time(text: str) -> datetime | None:
+    """Docker's RFC 3339 time (nanoseconds; `Z` or an offset like +02:00, as `docker info` prints it) as an aware
+    UTC datetime with microseconds; None if it is not one. 0001-01-01T00:00:00Z, a container that never ran,
+    parses to a year long before any start."""
+    match = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)$", text.strip())
+    if not match:
+        return None
+    zone = "+00:00" if match.group(3) == "Z" else match.group(3)
+    try:
+        return datetime.fromisoformat(f"{match.group(1)}.{(match.group(2) or '0')[:6].ljust(6, '0')}{zone}"
+                                      ).astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
+
+def docker_now() -> datetime:
+    """The time on Docker's own clock, the one a container's FinishedAt is on: a VM's clock (WSL2, Docker Desktop)
+    can drift by minutes from the host's. The host's clock only when Docker does not say."""
+    said = docker_in_time([DOCKER, "info", "--format", "{{.SystemTime}}"], DOCKER_CALL_WAIT_S)
+    return (said and said.returncode == 0 and parse_docker_time(said.stdout)) or datetime.now(timezone.utc)
+
+
+def crash_looping(container: str, began_at: datetime) -> bool:
+    """Whether a container seen restarting on two polls has been at it long enough to be stuck: Docker has
+    restarted it CRASH_LOOP_RESTARTS times (RestartCount), or RESTART_GRACE_S have passed since began_at on
+    Docker's clock. A count Docker does not give in time counts as none."""
+    said = docker_in_time([DOCKER, "inspect", "--format", "{{.RestartCount}}", container], DOCKER_CALL_WAIT_S) \
+        if container else None
+    if said and said.returncode == 0 and said.stdout.strip().isdigit() \
+            and int(said.stdout.strip()) >= CRASH_LOOP_RESTARTS:
+        return True
+    return (docker_now() - began_at).total_seconds() > RESTART_GRACE_S
+
+
+def stuck_services(ps_lines: str, was_restarting: set[str], this_start: set[str] | None, began_at: datetime,
+                   after_failed_up: bool = False) -> tuple[list[str], set[str]]:
+    """(the services to report, the services restarting now), from lines of `service TAB status TAB container`.
+    Only this start's services count (this_start; None when compose would not list them): the project also holds
+    containers of earlier runs (an inspect profile) and of removed services, which `up -d` leaves as they are.
+    A container that restarts once and then stays up is normal (it waited for a dependency), so a restarting
+    one counts only when it was restarting on the poll before as well and, in the wait loops, has also restarted
+    CRASH_LOOP_RESTARTS times or been at it for RESTART_GRACE_S since began_at (crash_looping): a service waiting
+    for a dependency on a slow machine restarts a few times. After a failed `up` (after_failed_up) compose has
+    already failed, so two polls are enough. A service that exited non-zero counts at
+    once if it stopped after this start began (an earlier run's exit is not this start's problem) and is not
+    a one-shot."""
+    restarting, stuck = set(), []
+    for line in ps_lines.splitlines():
+        service, _, rest = line.partition("\t")
+        status, _, container = rest.partition("\t")
+        if this_start is not None and service not in this_start:
+            continue
+        if status.lower().startswith("restarting"):
+            restarting.add(service)
+            if service in was_restarting and (after_failed_up or crash_looping(container, began_at)):
+                stuck.append(service)
+        elif (re.match(r"exited \([1-9]", status.lower()) and service not in ONE_SHOT_SERVICES
+              and container and finished_after(container, began_at)):
+            stuck.append(service)
+    return stuck, restarting
+
+
+def refuse_if_stuck(was_restarting: set[str], this_start: set[str] | None, began_at: datetime,
+                    after_failed_up: bool = False) -> set[str]:
+    """Called on every poll of start and once at its end: names each container that keeps restarting or died,
+    with its last log lines, and stops start at once instead of waiting out the whole timeout."""
+    ps = captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}\t{{.ID}}"])
+    stuck, restarting = stuck_services(ps.stdout, was_restarting, this_start, began_at, after_failed_up)
+    if not stuck:
+        return restarting
+    for service in stuck:
+        logs = docker_in_time([*COMPOSE, "logs", "--tail", str(LOG_TAIL_LINES), service], LOG_WAIT_S)
+        shown = hide_secrets(logs.stdout + logs.stderr) if logs else "no logs (Docker did not answer in time)"
+        warn(f"{service} keeps restarting or has stopped. Its last {LOG_TAIL_LINES} log lines:", shown,
+             f"See all of it with: docker compose -p {PROJECT} logs {service}")
+    raise Refused(f"{', '.join(stuck)} keeps restarting or has stopped, so the stack cannot come up. "
+                  "Fix what the lines above say, then run start again.")
+
+
 def not_running(lines: str) -> list[str]:
     return [line for line in lines.splitlines() if line and not re.search(r"\t(Up|running|Exited \(0\))", line)]
 
@@ -1293,14 +1421,18 @@ def start(_args: list[str]) -> None:
     5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
        ready, and a page opened then shows 502. Then tells the sign-in (Keycloak) the install's addresses, which
        its realm otherwise keeps from the first start. Then names, as a warning, every one-shot service that
-       exited non-zero (make_buckets when it could not make the buckets). No plugin is fetched: the publisher
+       exited non-zero (make_buckets when it could not make the buckets). While it waits, a service that keeps
+       restarting (seen restarting twice in a row, and restarted 5 times or for 90 seconds) or that exited
+       with an error is named with its last log lines and stops the start at once; so does one that does so
+       when `up -d` itself fails. No plugin is fetched: the publisher
        fetches and builds one when an admin installs it.
     6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
     Settings for the impatient or the tests: START_WAIT_S (default 300), START_POLL_S (5), START_URL (default: the
     launcher on its published port on this machine), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
-    sign-in the addresses, START_MIN_DISK_GB (20), START_PROBE_WAIT_S (10) and START_PULL_WAIT_S (300) for asking
+    sign-in the addresses, START_MIN_DISK_GB (20), START_RESTART_GRACE_S (90) for how long a restarting service
+    may be waited on, START_PROBE_WAIT_S (10) and START_PULL_WAIT_S (300) for asking
     Docker whether it can publish the ports."""
     try:
         start_steps()
@@ -1417,12 +1549,25 @@ def start_steps() -> None:
         say("Removing the plugin-downloader container left from the old plugin download.")
         subprocess.run([DOCKER, "rm", "-f", *old_ids], capture_output=True)
     STACK_BEING_STARTED = True
+    # the services this start has (not an inspect profile's, not a removed service's) and when `up` began: a
+    # container that exited with an error counts only if it is one of them and stopped after that
+    listed = captured([*COMPOSE, "config", "--services"])
+    this_start = set(listed.stdout.split()) if listed.returncode == 0 and listed.stdout.split() else None
+    began_at = docker_now()
     say("Starting the stack ...")
     if run_step([*COMPOSE, "up", "-d"])[0] != 0:
+        # `up -d` waits for the health of what others depend on (minio, postgres, keycloak ...), so a service
+        # that keeps dying fails it before any wait below: name that service and its log lines first. Two polls,
+        # a moment apart, so the restarting rule (restarting twice in a row) can apply here too.
+        restarting = refuse_if_stuck(set(), this_start, began_at, after_failed_up=True)
+        time.sleep(STUCK_RECHECK_S)
+        refuse_if_stuck(restarting, this_start, began_at, after_failed_up=True)
         raise Refused("the stack did not start: see the error above.")
     say(f"Waiting for the sign-in page at {url} (Keycloak needs about 30 seconds on a first start) ...")
     deadline = time.monotonic() + wait_s
+    restarting: set[str] = set()
     while True:
+        restarting = refuse_if_stuck(restarting, this_start, began_at)
         code = launcher_answer()
         if code in (200, 302, 303):
             break
@@ -1436,6 +1581,7 @@ def start_steps() -> None:
     # gets no form. The realm's own page answers 200 only once it is there.
     realm = keycloak_realm_url()
     while (code := answer_of(realm)) != 200:
+        restarting = refuse_if_stuck(restarting, this_start, began_at)
         if time.monotonic() >= deadline:
             warn(f"Keycloak's realm page {realm} did not answer 200 within {wait_s:g}s (last answer: "
                  f"{code or 'none'}), so the sign-in cannot be shown yet.")
@@ -1444,6 +1590,7 @@ def start_steps() -> None:
     # The realm answers: now it can be told this install's addresses, which may have moved since it was imported
     sync_sign_in()
 
+    refuse_if_stuck(restarting, this_start, began_at)
     # A one-shot service (make_buckets, report-grants, the migrations) that exited non-zero: nothing waits on
     # some of them, so `up -d` went through and the sign-in answers without them.
     for line in captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout.splitlines():
