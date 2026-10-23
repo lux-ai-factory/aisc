@@ -140,6 +140,18 @@ def test_a_name_that_resolves_to_a_stack_service_is_refused(client, as_user, pro
     assert client.put(f"{hosts(project)}/172.20.0.5", json={}, headers=as_user(ALICE)).status_code == 422
 
 
+@pytest.mark.parametrize("denied", ["aisc-a1b2c3-postgres:5432", "aisc-a1b2c3-aisc-backend:8000"])
+def test_the_installs_prefixed_container_names_are_never_allowed(client, as_user, project, names, denied):
+    """A new install's containers answer to aisc-<6 hex>-<service>: refused by name, like the bare ones."""
+    r = client.put(f"{hosts(project)}/{denied}", json={}, headers=as_user(ALICE))
+    assert r.status_code == 422 and "service of this deployment" in r.json()["detail"], (denied, r.text)
+
+
+@pytest.mark.parametrize("allowed", ["aisc-a1b2c3-notaservice:80", "aisc-a1b2c-postgres:5432"])
+def test_a_prefixed_name_of_no_service_is_not_refused_by_name(names, allowed):
+    assert connection_allowlist.why_denied(allowed) is None
+
+
 # The deployment's floor
 
 def test_the_env_entries_are_listed_read_only(client, as_user, project, names, monkeypatch):

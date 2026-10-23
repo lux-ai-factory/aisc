@@ -19,5 +19,8 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/minio /usr/bin/minio
 COPY --from=build /out/mc /usr/bin/mc
+# starts the server and sets aside a stored config written by another MinIO version (see the script)
+COPY entrypoint.sh /usr/local/bin/minio-entrypoint.sh
+RUN chmod 755 /usr/local/bin/minio-entrypoint.sh
 EXPOSE 9000 9001
-ENTRYPOINT ["/usr/bin/minio"]
+ENTRYPOINT ["/usr/local/bin/minio-entrypoint.sh"]

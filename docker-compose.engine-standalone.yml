@@ -20,7 +20,7 @@ services:
   aisc-backend:
     build: apps/backend/
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
-    container_name: aisc-backend-standalone
+    container_name: ${CONTAINER_PREFIX:-}aisc-backend-standalone
     environment:
       DB_ENGINE: django.db.backends.postgresql
       DB_NAME: ${DB_NAME:-aisc}
@@ -71,7 +71,7 @@ services:
     build:
       context: apps/eval/
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
-    container_name: aisc-eval-worker-standalone
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker-standalone
     environment:
       API_URL: http://aisc-backend:8000
       API_PREFIX: ${API_PREFIX:-/api/v1/internal}
@@ -97,7 +97,7 @@ services:
   aisc-webapp:
     build: apps/webapp/
     image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
-    container_name: aisc-webapp-standalone
+    container_name: ${CONTAINER_PREFIX:-}aisc-webapp-standalone
     environment:
       APP_API_URL: ${API_URL_EXTERNAL:-http://localhost:8000}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION:-true}
@@ -114,7 +114,7 @@ services:
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     build: ./infra/minio
     pull_policy: never
-    container_name: minio-standalone
+    container_name: ${CONTAINER_PREFIX:-}minio-standalone
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_USER:-s3-user}
@@ -153,7 +153,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: rabbitmq-standalone
+    container_name: ${CONTAINER_PREFIX:-}rabbitmq-standalone
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-rabbit-user}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
@@ -164,7 +164,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: redis-standalone
+    container_name: ${CONTAINER_PREFIX:-}redis-standalone
     restart: unless-stopped
     volumes:
       - engine_redis_data:/data
@@ -173,7 +173,7 @@ services:
 
   postgres:
     image: postgres:15-alpine   # a PG14 data dir does not start under 15: fresh volumes
-    container_name: postgres-standalone
+    container_name: ${CONTAINER_PREFIX:-}postgres-standalone
     environment:
       POSTGRES_USER: ${DB_USER:-aisc}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
@@ -187,7 +187,7 @@ services:
   devpi:
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
-    container_name: devpi-standalone
+    container_name: ${CONTAINER_PREFIX:-}devpi-standalone
     environment:
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
       DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:?set DEVPI_ROOT_PASSWORD}

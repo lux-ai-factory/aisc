@@ -1,0 +1,4 @@
+# made by the test command (uv run --with pytest pytest -q), not part of the image
+.venv/
+uv.lock
+.pytest_cache/

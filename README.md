@@ -51,8 +51,8 @@ New to these tools? Follow the three steps below.
 | **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
 | **Disk** | 30 GB free |
 | **Free ports** | 80, 8100, 8188, and 8081 on `127.0.0.1`. If one is taken, `start` moves AISC to a free one and tells you (not on an install served over https, which also needs 443) |
-| **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors) |
-| **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private and are skipped) |
+| **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors), and GitHub again when a test is first installed from the catalogue |
+| **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private: installing one needs a `GITHUB_TOKEN` in `env.secrets`) |
 
 **Tested so far:** Linux. The install works the same way on Windows and macOS, but nobody has run it there end
 to end yet. Computers with Apple Silicon (M1 to M4) and other ARM processors are not tested. If you try one of
@@ -161,16 +161,19 @@ All commands run in the `aisc` folder.
 
 | To | Run |
 |---|---|
-| Stop AISC | `docker compose -p aisc stop` |
+| Stop AISC | `uv run scripts/aisc.py stop` |
 | Start it again after stopping it | `uv run scripts/aisc.py start` |
 | Update to the latest version | `git pull`, then `git submodule update --init --recursive`, then `uv run scripts/aisc.py start` |
 | Check that everything works | `./scripts/verify.sh --stack` (macOS and Linux; it needs Python 3 and takes a while) |
-| Remove AISC and all its data | `docker compose -p aisc down -v`, then delete the `aisc` folder |
+| Remove AISC and all its data | `uv run scripts/aisc.py remove`, then delete the `aisc` folder if you like |
+
+AISC runs one install at a time. Each new download starts with its own, empty data; an earlier install's
+data stays on the computer until you remove that install (`uv run scripts/aisc.py remove` in its folder).
 
 After the computer restarts, AISC comes back by itself once Docker is running. If Docker Desktop does not start when
 you sign in, start it. If a page still does not answer, run `uv run scripts/aisc.py start`.
 
-`down -v` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
+`remove` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
 Desktop's **Images** page, or with `docker image prune -a` if you use Docker for nothing else.
 
 ## If something goes wrong

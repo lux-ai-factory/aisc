@@ -10,8 +10,9 @@ from pathlib import Path
 import pytest
 
 from platform_service import catalogue as cat
+from platform_service import publisher as publisher_client
 from tests.conftest import needs_database
-from tests.http_stub import Stub
+from tests.http_stub import Canned, Stub, _canned, closed_port_url
 from tests.test_evidence import ALICE, BOB, VERA, _reader, catalogue, evidence_project, sql  # noqa: F401
 
 pytestmark = needs_database
@@ -215,8 +216,37 @@ def index(monkeypatch):
     stub.stop()
 
 
+PUBLISHER_TOKEN = "publisher-token-for-tests"
+SOURCES = {
+    "aisc-plugin-langbite": {"repo": "aisc-plugin-langbite", "branch": "feat/unified-modules",
+                             "package": "aisc-plugin-langbite", "version": "0.1.1"},
+    "aisc-plugin-data-evaluation": {"repo": "aisc-plugin-data-evaluation", "branch": "main",
+                                    "package": "data-monitor", "version": "0.3.1"},
+}
+
+
+def source_route(stub, repo, answer):
+    stub.route("GET", f"/sources/{repo}", answer)
+
+
+@pytest.fixture
+def publisher(monkeypatch):
+    """The plugin publisher, which reads a test's source on GitHub and publishes it to the index. By
+    default langbite's source is at the version the index holds, data-monitor's is not on the index,
+    and a publish answers the source's version as just published."""
+    stub = Stub()
+    for repo, found in SOURCES.items():
+        source_route(stub, repo, (200, found))
+    stub.route("POST", "/publish", lambda seen: (200, {
+        "package": seen.json["package"], "version": SOURCES[seen.json["repo"]]["version"], "published": True}))
+    monkeypatch.setenv("PLUGIN_PUBLISHER_URL", stub.base)
+    monkeypatch.setenv("PLUGIN_PUBLISHER_TOKEN", PUBLISHER_TOKEN)
+    yield stub
+    stub.stop()
+
+
 def test_install_info_is_answered_from_the_stacks_own_index(client, as_user, evidence_project, public, engine,
-                                                                 index):
+                                                                 index, publisher):
     """The public catalogue's install-info shape, but what decides is this stack's index: the newest
     release it serves, the pre-release only when nothing else is there."""
     assert choose(client, as_user, evidence_project, "private").status_code == 200
@@ -226,7 +256,8 @@ def test_install_info_is_answered_from_the_stacks_own_index(client, as_user, evi
     r = info("langbite")
     assert r.status_code == 200, r.text
     assert r.json() == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.1",
-                        "index_url": f"{index.base}/root/public/+simple/", "installable": True, "reason": None}
+                        "index_url": f"{index.base}/root/public/+simple/", "installable": True, "reason": None,
+                        "fetched_on_install": False, "source": "lux-ai-factory/aisc-plugin-langbite"}
     local = info("local-my-probe").json()                    # an engine package the index doesn't serve
     assert local["package_name"] == "my-probe" and local["installable"] is False
     assert local["reason"] == "my-probe is not in this installation's package index"
@@ -255,7 +286,8 @@ def test_install_info_of_no_entry_and_with_the_index_down(client, as_user, evide
                       headers=as_user(VERA)).status_code == 404
     r = client.get(url(evidence_project, "/api/tool/langbite/install-info"), headers=as_user(VERA))
     down.stop()
-    assert r.status_code == 200 and r.json()["installable"] is False      # nothing guessed
+    # nothing guessed: no version, and neither index nor source answered, so only the publish can say
+    assert r.status_code == 200 and r.json()["version"] is None and r.json()["fetched_on_install"] is True
 
 
 def test_an_entry_the_public_catalogue_names_under_another_package_installs_as_the_published_one(
@@ -288,19 +320,23 @@ def test_an_entry_the_public_catalogue_names_under_another_package_installs_as_t
 def test_a_test_is_ready_exactly_when_this_stacks_index_has_its_package(client, as_user, evidence_project, public,
                                                                              engine, index):
     """completion_status drives the card's colour and the Plugin available filter. In a private copy it
-    says whether the test can be installed here: blue only then, pink otherwise, whatever the public
-    catalogue says. Controls keep the public value."""
+    says whether the test can be installed here, from the index or from its lux-ai-factory source: blue
+    only then, pink otherwise, whatever the public catalogue says. Controls keep the public value."""
     sample = copy.deepcopy(SAMPLE)
     stub_here = copy.deepcopy(next(t for t in sample["tool_detailed"] if t["slug"] == "langbite"))
     stub_here.update(id=503, slug="probe-entry", name="Probe", package_name="my-probe", completion_status="stub")
     sample["tool_detailed"].append(stub_here)
+    nowhere = copy.deepcopy(stub_here)
+    nowhere.update(id=504, slug="nowhere-entry", name="Nowhere", package_name="nowhere-tool", completion_status="full")
+    sample["tool_detailed"].append(nowhere)
     public_routes(public, sample)
     assert choose(client, as_user, evidence_project, "private").status_code == 200
     tools = {t["slug"]: t for t in client.get(url(evidence_project, "/api/tool/?detailed=true"),
                                               headers=as_user(VERA)).json()}
     assert tools["langbite"]["completion_status"] == "full"            # on the index
     assert tools["probe-entry"]["completion_status"] == "full"         # "stub" upstream, but installable here
-    assert tools["snt-data-drift"]["completion_status"] == "stub"      # "full" upstream, data-monitor not here
+    assert tools["snt-data-drift"]["completion_status"] == "full"      # not on the index, but fetched on install
+    assert tools["nowhere-entry"]["completion_status"] == "stub"       # "full" upstream, no index and no source
     controls = [t for t in SAMPLE["tool_detailed"] if (t.get("storage_path") or "").startswith("/controls/")]
     for c in controls:
         assert tools[c["slug"]]["completion_status"] == c.get("completion_status")
@@ -376,6 +412,47 @@ def engine_takes_installs(engine, project, status=201):
     engine.route("POST", "/api/v1/plugins", (status, {"detail": "refused"} if status >= 300 else {"ok": True}))
 
 
+def engine_like_the_real_one(engine, publisher, project, sees_published=True):
+    """The engine as it behaves: it installs only a package==version it has listed since that package
+    reached the index (its loader keeps the list in memory and only GET /api/v1/plugins refreshes it;
+    anything else is its 500, a KeyError in load_package). The publisher's current /publish answer is
+    wrapped so a successful publish puts the package on the index. `order` records publish, list and
+    install as they happen."""
+    order = []
+    on_index = [("aisc-plugin-langbite", v) for v in ("0.1.0", "0.1.1", "0.2.0rc1")]
+    listed = set()
+    answers = list(publisher.routes[("POST", "/publish")])
+
+    def publish(seen):
+        answer = answers.pop(0) if len(answers) > 1 else answers[0]
+        canned = _canned(answer, seen)
+        order.append("publish")
+        if canned.status == 200:
+            body = json.loads(canned.body)
+            if sees_published:
+                on_index.append((body["package"], body["version"]))
+        return canned
+
+    def available(seen):
+        order.append("list")
+        listed.clear()
+        listed.update(on_index)
+        return (200, [{"package_name": p, "version": v, "source": "registry"} for p, v in on_index]
+                + [{"package_name": "my-probe", "version": "0.2.0+local", "source": "local"}])
+
+    def install(seen):
+        order.append("install")
+        if (seen.json["package_name"], seen.json["version"]) not in listed:
+            return (500, {"detail": "Internal Server Error"})
+        return (201, {"ok": True})
+
+    publisher.route("POST", "/publish", publish)
+    engine.route("GET", "/api/v1/plugins", available)
+    engine.route("POST", f"/api/v1/projects/for-platform/{project['pid']}", (200, {"pid": ENGINE_PID, "name": "evd"}))
+    engine.route("POST", "/api/v1/plugins", install)
+    return order
+
+
 def test_a_test_is_installed_from_the_catalogue_into_its_project(client, as_user, evidence_project, public, engine,
                                                                  index):
     assert choose(client, as_user, evidence_project, "private").status_code == 200
@@ -399,12 +476,257 @@ def test_installing_a_test_from_the_catalogue_takes_the_admin_role(client, as_us
     assert engine.requests("POST", "/api/v1/plugins") == []
 
 
-def test_a_test_the_index_does_not_hold_is_not_installed(client, as_user, evidence_project, public, engine, index):
+def test_a_test_the_index_does_not_hold_is_not_installed(client, as_user, evidence_project, public, engine, index,
+                                                         publisher):
+    """my-probe is not on the index and no lux-ai-factory repo builds it: nothing to fetch."""
     assert choose(client, as_user, evidence_project, "private").status_code == 200
     engine_takes_installs(engine, evidence_project)
     r = client.post(url(evidence_project, "/api/tool/local-my-probe/install"), headers=admin(as_user))
     assert r.status_code == 409 and "not in this installation's package index" in r.json()["detail"]
     assert engine.requests("POST", "/api/v1/plugins") == []
+    assert publisher.seen == []
+
+
+# ── a test whose package the index lacks is fetched from its source when it is installed ─────────────
+
+def install_info_of(client, as_user, project, slug):
+    r = client.get(url(project, f"/api/tool/{slug}/install-info"), headers=as_user(VERA))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_a_test_not_on_the_index_but_with_a_source_is_installable_and_fetched_on_install(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "snt-data-drift")
+    assert got["package_name"] == "data-monitor" and got["version"] == "0.3.1"
+    assert got["installable"] is True and got["reason"] is None
+    assert got["fetched_on_install"] is True and got["source"] == "lux-ai-factory/aisc-plugin-data-evaluation"
+    assert [s.path for s in publisher.seen] == ["/sources/aisc-plugin-data-evaluation"]   # read, not published
+
+
+def test_a_test_on_the_index_at_the_source_version_is_not_fetched(client, as_user, evidence_project, public, engine,
+                                                                 index, publisher):
+    """An existing install whose index already holds the plugin: it installs with no publish."""
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "langbite")
+    assert got["version"] == "0.1.1" and got["installable"] and got["fetched_on_install"] is False
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/langbite/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert publisher.requests("POST") == []
+    assert engine.requests("POST", "/api/v1/plugins")[-1]["json"]["version"] == "0.1.1"
+
+
+def test_a_source_newer_than_the_index_is_fetched_on_install(client, as_user, evidence_project, public, engine,
+                                                             index, publisher):
+    source_route(publisher, "aisc-plugin-langbite", (200, {**SOURCES["aisc-plugin-langbite"], "version": "0.2.0"}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "langbite")
+    assert got["version"] == "0.2.0" and got["installable"] and got["fetched_on_install"] is True
+
+
+def test_the_publisher_down_falls_back_to_the_index_and_says_why(client, as_user, evidence_project, public, engine,
+                                                                 index, monkeypatch):
+    """No source can be read: what the index holds still installs from the index, what it lacks is left
+    to the publish on install, and each answer names the repo it could not read. Never a 500, never the
+    publisher's token."""
+    monkeypatch.setenv("PLUGIN_PUBLISHER_URL", closed_port_url())
+    monkeypatch.setenv("PLUGIN_PUBLISHER_TOKEN", PUBLISHER_TOKEN)
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    held = install_info_of(client, as_user, evidence_project, "langbite")
+    assert held["version"] == "0.1.1" and held["installable"] is True and held["fetched_on_install"] is False
+    assert "aisc-plugin-langbite" in held["reason"]
+    # not on the index: still offered, the publish on install reads the version (and fails here)
+    lacking = install_info_of(client, as_user, evidence_project, "snt-data-drift")
+    assert lacking["installable"] is True and lacking["version"] is None and lacking["fetched_on_install"] is True
+    assert "will be read on install" in lacking["reason"]
+    assert "aisc-plugin-data-evaluation" in lacking["reason"] and PUBLISHER_TOKEN not in lacking["reason"]
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 502, r.text
+    assert r.json()["detail"].startswith("could not fetch aisc-plugin-data-evaluation: ")
+    assert r.json()["detail"].endswith("; nothing was installed") and PUBLISHER_TOKEN not in r.text
+    assert engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_installing_publishes_first_then_calls_the_engine_with_the_published_version(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    """The branch moved on between the read and the publish: the engine installs what was published,
+    in one click, after it has listed the package that just reached the index."""
+    publisher.route("POST", "/publish", (200, {"package": "data-monitor", "version": "0.3.2", "published": True}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    order = engine_like_the_real_one(engine, publisher, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"slug": "snt-data-drift", "package_name": "data-monitor", "version": "0.3.2"}
+    assert order[-3:] == ["publish", "list", "install"] and order.count("install") == 1
+    sent = publisher.requests("POST", "/publish")[-1]
+    assert sent.json == {"repo": "aisc-plugin-data-evaluation", "package": "data-monitor"}
+    assert sent.header("X-AISC-Service-Token") == PUBLISHER_TOKEN
+    assert engine.requests("POST", "/api/v1/plugins")[-1]["json"]["version"] == "0.3.2"
+
+
+def test_an_engine_that_does_not_see_the_published_package_is_502_and_nothing_is_installed(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    order = engine_like_the_real_one(engine, publisher, evidence_project, sees_published=False)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 502
+    assert r.json()["detail"] == ("could not fetch aisc-plugin-data-evaluation: the engine does not see "
+                                  "data-monitor 0.3.1 after publishing; nothing was installed")
+    assert order[-2:] == ["publish", "list"] and "install" not in order
+
+
+def test_the_engine_listing_a_published_version_under_its_canonical_spelling_installs_it(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    """The publisher says the version as the pyproject spells it (0.3.2-rc1), the engine lists it as
+    pip does (0.3.2rc1, data_monitor): the same release, so it installs, in the engine's spelling."""
+    publisher.route("POST", "/publish", (200, {"package": "data-monitor", "version": "0.3.2-rc1",
+                                               "published": True}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_takes_installs(engine, evidence_project)
+    engine.route("GET", "/api/v1/plugins", (200, [
+        {"package_name": "aisc-plugin-langbite", "version": "0.1.0", "source": "registry"},
+        {"package_name": "data_monitor", "version": "0.3.2rc1", "source": "registry"},
+    ]))
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    sent = engine.requests("POST", "/api/v1/plugins")[-1]["json"]
+    assert sent["package_name"] == "data-monitor" and sent["version"] == "0.3.2rc1"
+
+
+def test_a_test_installed_before_but_gone_from_the_index_is_published_again(
+        client, as_user, evidence_project, dsn, public, engine, index, publisher):
+    """The index's volume was wiped after the install: installing again fetches and publishes it again."""
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    sql(dsn, evidence_project["pid"], "INSERT INTO engine.aisc_backend_plugin (package_name, version, display_name)"
+        " VALUES ('data-monitor', '0.3.1', 'Data monitor')")
+    assert install_info_of(client, as_user, evidence_project, "snt-data-drift")["fetched_on_install"] is True
+    engine_like_the_real_one(engine, publisher, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert len(publisher.requests("POST", "/publish")) == 1
+
+
+def test_a_publish_that_finds_the_package_already_there_installs_normally(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    publisher.route("POST", "/publish", (200, {"package": "data-monitor", "version": "0.3.1", "published": False}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_like_the_real_one(engine, publisher, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert engine.requests("POST", "/api/v1/plugins")[-1]["json"]["version"] == "0.3.1"
+
+
+def test_a_publisher_failure_is_502_naming_the_repo_and_the_engine_is_not_called(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    publisher.route("POST", "/publish", (502, {"detail": "build failed for aisc-plugin-data-evaluation: boom",
+                                               "step": "build"}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 502, r.text
+    assert r.json()["detail"] == ("could not fetch aisc-plugin-data-evaluation: build failed for "
+                                  "aisc-plugin-data-evaluation: boom; nothing was installed")
+    assert engine.requests("POST", "/api/v1/plugins") == []
+
+
+@pytest.mark.parametrize("unreadable", ["publisher error", "too slow"])
+def test_a_source_that_cannot_be_read_is_still_published_then_installed(
+        client, as_user, evidence_project, public, engine, index, publisher, monkeypatch, unreadable):
+    """A slow source read, or a publisher that errors, does not stop an install: the publish fetches,
+    checks the package and says the version, which the engine then installs."""
+    if unreadable == "too slow":
+        monkeypatch.setattr(publisher_client, "SOURCE_TIMEOUT_S", 0.3)
+        source_route(publisher, "aisc-plugin-data-evaluation",
+                     Canned(200, json.dumps(SOURCES["aisc-plugin-data-evaluation"]).encode(), delay=1.5))
+    else:
+        source_route(publisher, "aisc-plugin-data-evaluation", (503, {"detail": "busy"}))
+    publisher.route("POST", "/publish", (200, {"package": "data-monitor", "version": "0.3.2", "published": True}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "snt-data-drift")
+    assert got["installable"] is True and got["fetched_on_install"] is True and got["version"] is None
+    assert "aisc-plugin-data-evaluation" in got["reason"] and "will be read on install" in got["reason"]
+    engine_like_the_real_one(engine, publisher, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert r.json()["version"] == "0.3.2"
+    assert engine.requests("POST", "/api/v1/plugins")[-1]["json"]["version"] == "0.3.2"
+
+
+def test_a_source_that_cannot_be_read_then_a_failed_publish_is_502_and_nothing_is_installed(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    source_route(publisher, "aisc-plugin-data-evaluation", (503, {"detail": "busy"}))
+    publisher.route("POST", "/publish", (502, {"detail": "could not clone aisc-plugin-data-evaluation: timeout"}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 502
+    assert r.json()["detail"] == ("could not fetch aisc-plugin-data-evaluation: could not clone "
+                                  "aisc-plugin-data-evaluation: timeout; nothing was installed")
+    assert engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_a_source_the_publisher_cannot_find_and_the_index_lacks_is_not_installable(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    """The publisher answers 404 for the repo (private with no GITHUB_TOKEN, or no such repo): no
+    install can succeed, so none is offered, and the install is a 409 that publishes nothing."""
+    source_route(publisher, "aisc-plugin-data-evaluation", (404, {"detail": "could not clone"}))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "snt-data-drift")
+    assert got["installable"] is False and got["fetched_on_install"] is False and got["version"] is None
+    assert got["reason"].startswith("data-monitor is not in this installation's package index; ")
+    assert "lux-ai-factory/aisc-plugin-data-evaluation" in got["reason"]
+    assert "private" in got["reason"] and "GITHUB_TOKEN" in got["reason"] and "env.secrets" in got["reason"]
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/snt-data-drift/install"), headers=admin(as_user))
+    assert r.status_code == 409 and r.json()["detail"] == got["reason"]
+    assert publisher.requests("POST") == [] and engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_a_local_entry_is_never_replaced_by_a_github_source(client, as_user, evidence_project, public, engine,
+                                                            index, publisher):
+    """A local entry is this stack's own build: even under an aisc-plugin-* name it is not fetched."""
+    engine.route("GET", "/api/v1/plugins", (200, [
+        {"package_name": "aisc-plugin-langbite", "version": "0.1.0", "source": "registry"},
+        {"package_name": "aisc-plugin-homegrown", "version": "0.1.0+local", "source": "local"},
+    ]))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "local-aisc-plugin-homegrown")
+    assert got["source"] is None and got["fetched_on_install"] is False and got["installable"] is False
+    assert got["reason"] == "aisc-plugin-homegrown is not in this installation's package index"
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/local-aisc-plugin-homegrown/install"), headers=admin(as_user))
+    assert r.status_code == 409
+    assert publisher.seen == [] and engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_a_package_without_a_source_and_not_on_the_index_is_still_409(client, as_user, evidence_project, public,
+                                                                      engine, index, publisher):
+    sample = copy.deepcopy(SAMPLE)
+    nowhere = copy.deepcopy(next(t for t in sample["tool_detailed"] if t["slug"] == "langbite"))
+    nowhere.update(id=505, slug="nowhere-entry", name="Nowhere", package_name="nowhere-tool")
+    sample["tool_detailed"].append(nowhere)
+    public_routes(public, sample)
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "nowhere-entry")
+    assert got["installable"] is False and got["source"] is None and got["fetched_on_install"] is False
+    assert got["reason"] == "nowhere-tool is not in this installation's package index"
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/nowhere-entry/install"), headers=admin(as_user))
+    assert r.status_code == 409 and r.json()["detail"] == "nowhere-tool is not in this installation's package index"
+    assert publisher.seen == [] and engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_an_entry_with_a_source_is_ready_without_asking_github(client, as_user, evidence_project, public, engine,
+                                                               index, publisher):
+    """The catalogue's colours come from the index and the table of sources alone: no publisher call."""
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    tools = {t["slug"]: t for t in client.get(url(evidence_project, "/api/tool/?detailed=true"),
+                                              headers=as_user(VERA)).json()}
+    assert tools["snt-data-drift"]["completion_status"] == "full"
+    assert publisher.seen == []
 
 
 def test_the_engines_refusal_is_passed_on(client, as_user, evidence_project, public, engine, index):

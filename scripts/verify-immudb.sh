@@ -9,7 +9,8 @@
 # its password handed by name from env.secrets, as scripts/ledger-pool.sh hands its own.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-PROJECT=${COMPOSE_PROJECT:-aisc}
+. scripts/lib/stack-name.sh
+PROJECT=${COMPOSE_PROJECT:-$(aisc_stack)}
 pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
@@ -65,7 +66,7 @@ ENGINE_IMMUDB_PASSWORD=$(awk 'index($0, "ENGINE_IMMUDB_PASSWORD=") == 1 { print 
 if [ -z "$ENGINE_IMMUDB_PASSWORD" ]; then no "ENGINE_IMMUDB_PASSWORD is missing from env.secrets (run scripts/secrets.sh)"; else
   LEDGER_IMMUDB_URL=${LEDGER_IMMUDB_URL:-immudb:3322}
   export ENGINE_IMMUDB_PASSWORD LEDGER_IMMUDB_URL
-  if out=$(docker compose -p "$PROJECT" --env-file env.runtime -f docker-compose.plugin_downloader.yml \
+  if out=$(docker compose -p "$PROJECT" --env-file env.runtime \
         -f docker-compose-infra.development.yml -f docker-compose.development.yml \
         run --rm --no-deps -e ENGINE_IMMUDB_PASSWORD -e LEDGER_IMMUDB_URL \
         platform python -m platform_service.ledger.engine_account check 2>&1); then

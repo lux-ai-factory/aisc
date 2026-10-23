@@ -1,4 +1,4 @@
-# The project a check run acts in. Sourced, never executed.
+# The project a check run acts in. Sourced, never executed (the caller has sourced stack-name.sh).
 #
 #   . scripts/lib/probe-project.sh
 #   probe_project_for "$TOKEN"   # sets PROBE_PID: the account's first project, or the probe made for it
@@ -14,7 +14,7 @@ PROBE_NAME="verify probe"
 PROBE_PID=""
 
 _platform() { # method path token [json body]
-  docker exec -e M="$1" -e P="$2" -e T="$3" -e B="${4:-}" platform python -c '
+  docker exec -e M="$1" -e P="$2" -e T="$3" -e B="${4:-}" "$(aisc_container platform)" python -c '
 import os, sys, urllib.request
 body = os.environ["B"].encode() or None
 req = urllib.request.Request("http://localhost:8000" + os.environ["P"], data=body, method=os.environ["M"],

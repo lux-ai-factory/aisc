@@ -2,7 +2,7 @@ services:
   # Caddy, the reverse proxy
   caddy:
     image: caddy:2.10.2
-    container_name: caddy
+    container_name: ${CONTAINER_PREFIX:-}caddy
     restart: always
     ports:
       - 443:8005
@@ -26,7 +26,7 @@ services:
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     build: ./infra/minio
     pull_policy: never
-    container_name: minio
+    container_name: ${CONTAINER_PREFIX:-}minio
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -67,7 +67,7 @@ services:
   # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: rabbitmq
+    container_name: ${CONTAINER_PREFIX:-}rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -79,7 +79,7 @@ services:
   # Redis, where the worker's Celery results are kept
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: ${CONTAINER_PREFIX:-}redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -89,7 +89,7 @@ services:
   # PostgreSQL
   postgres:
     image: postgres:15-alpine   # the backend requires PG15; a PG14 data dir needs fresh volumes
-    container_name: postgres
+    container_name: ${CONTAINER_PREFIX:-}postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -110,7 +110,7 @@ services:
   #   3. for a production realm, remove the dev users (admin, user).
   keycloak:
     image: quay.io/keycloak/keycloak:26.6.3
-    container_name: keycloak
+    container_name: ${CONTAINER_PREFIX:-}keycloak
     restart: always
     command: start --import-realm
     volumes:

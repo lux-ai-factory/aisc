@@ -30,7 +30,7 @@ STACK_SERVICES = frozenset({
     "backend", "caddy", "catalogue-private", "control-objectives", "control-objectives-migrate", "controls-migrate",
     "controls-pdf", "controls-web", "dashboard", "dashboard-migrate", "dashboard-redis", "devpi", "devpi-standalone",
     "eval", "immudb", "immudb-key", "isolate", "keycloak", "ledger-pool", "make_buckets", "minio", "minio-standalone",
-    "oauth2-proxy", "pgadmin", "platform", "plugin-downloader", "plugin-publisher", "postgres",
+    "oauth2-proxy", "pgadmin", "platform", "plugin-publisher", "postgres",
     "postgres-setup", "postgres-standalone", "qualification-agents", "qualification-llm",
     "qualification-migrate", "qualification-ontology", "qualification-pdf", "qualification-prefill",
     "qualification-web", "rabbitmq", "rabbitmq-standalone", "redis", "redis-standalone",
@@ -41,6 +41,9 @@ STACK_SERVICES = frozenset({
 #: metadata: 169.254.170.2; AWS IPv6: fd00:ec2::254; Alibaba: 100.100.100.200).
 METADATA_ADDRESSES = frozenset({"169.254.169.254", "169.254.170.2", "fd00:ec2::254", "100.100.100.200"})
 METADATA_NAMES = frozenset({"metadata.google.internal", "metadata", "instance-data", "instance-data.ec2.internal"})
+
+#: A new install names its containers aisc-<6 hex>-<service> (CONTAINER_PREFIX in env.runtime).
+_PREFIXED_NAME = re.compile(r"aisc-[0-9a-f]{6}-(.+)")
 
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _HOSTNAME = re.compile(rf"^{_LABEL}(?:\.{_LABEL})*$")
@@ -138,7 +141,8 @@ def _literal(host: str) -> bool:
 def why_denied(entry: str) -> str | None:
     """Why an entry can never be allowed from the UI, or None."""
     host, _port = split(entry)
-    if host in STACK_SERVICES:
+    prefixed = _PREFIXED_NAME.fullmatch(host)
+    if host in STACK_SERVICES or (prefixed and prefixed.group(1) in STACK_SERVICES):
         return f"{host} is a service of this deployment: never allowed here"
     if host in METADATA_NAMES or host in METADATA_ADDRESSES:
         return f"{host} is a cloud metadata address: never allowed here"

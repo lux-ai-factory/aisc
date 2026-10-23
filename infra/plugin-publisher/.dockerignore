@@ -1,0 +1,5 @@
+.venv
+.pytest_cache
+uv.lock
+tests
+**/__pycache__

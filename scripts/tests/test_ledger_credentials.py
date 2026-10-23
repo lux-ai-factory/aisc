@@ -8,7 +8,7 @@ import yaml
 
 from conftest import ROOT
 
-FILES = ["docker-compose.plugin_downloader.yml", "docker-compose-infra.development.yml", "docker-compose.development.yml"]
+FILES = ["docker-compose-infra.development.yml", "docker-compose.development.yml"]
 #: credential -> the only services that may hold it. The engine's token may only go to a process that
 #: never imports plugin code: aisc-backend loads plugin packages in-process, so its events wait in the
 #: outbox and aisc-backend-ledger, which has no plugin folder and serves no route, sends them.
@@ -26,8 +26,9 @@ HOLDERS = {
 #: Credentials a process that runs plugin code may hold anyway, and through which service only.
 PLUGIN_HOLDER_ACCEPTED = {"ENGINE_IMMUDB_PASSWORD": {"aisc-backend"}}
 #: Processes that run or import plugin code: the eval worker runs it, the engine backend imports
-#: plugin packages to read their configuration (shared/plugin-manager loader).
-RUNS_PLUGINS = {"aisc-eval-worker", "plugin-downloader", "plugin-publisher", "aisc-eval-flower", "aisc-backend"}
+#: plugin packages to read their configuration (shared/plugin-manager loader), and the publisher runs a
+#: plugin repo's build code (its build backend, setup.py) when it builds it.
+RUNS_PLUGINS = {"aisc-eval-worker", "plugin-publisher", "aisc-eval-flower", "aisc-backend"}
 
 
 def services() -> dict:

@@ -246,7 +246,7 @@ STILL_TRACKED = {"POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCL
 
 
 def test_rotate_keeps_what_stored_data_needs_and_names_real_steps(scratch):  # noqa: F811
-    """Devpi refuses to start when its volume's root password is not DEVPI_ROOT_PASSWORD,
+    """Devpi keeps its root password in its volume (it resets it in place to DEVPI_ROOT_PASSWORD),
     and Superset's SECRET_KEY encrypts the stored database connections; --rotate keeps both. The
     header names no `make` target (there is no Makefile)."""
     run_secrets(scratch)

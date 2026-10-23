@@ -22,9 +22,10 @@ def test_the_platform_runner_runs_the_database_tests_instead_of_skipping_them():
 
 def test_only_the_compose_files_something_starts_are_left():
     left = {f.name for f in ROOT.glob("docker-compose*.yml")}
-    assert not left & {"docker-compose.yml", "docker-compose-infra.yml", "docker-compose.demo.nbg.yml"}
+    assert not left & {"docker-compose.yml", "docker-compose-infra.yml", "docker-compose.demo.nbg.yml",
+                       "docker-compose.plugin_downloader.yml"}
     assert {"docker-compose-infra.development.yml", "docker-compose.development.yml",
-            "docker-compose.engine-standalone.yml", "docker-compose.plugin_downloader.yml"} <= left
+            "docker-compose.engine-standalone.yml"} <= left
     # the MQ_* aliases fed only docker-compose-infra.yml's ${MQ_*}: the eval worker takes CELERY_BROKER_URL,
     # and an env file here only fills compose's ${...}, it is not handed to a container
     for f in ("docker-compose-infra.development.yml", "docker-compose.development.yml", "env.plugin_downloader"):

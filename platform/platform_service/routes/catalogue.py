@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from platform_service import catalogue, db
+from platform_service import catalogue, db, publisher
 from platform_service.routes.admission import ADMIN_ROLE, no_project, role_or_404
 
 router = APIRouter()
@@ -139,15 +139,38 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
         raise HTTPException(status_code=404, detail=str(exc))
     if not info["installable"]:
         raise HTTPException(status_code=409, detail=info["reason"])
+    version = info["version"]
+    if info["fetched_on_install"]:
+        repo = info["source"].removeprefix("lux-ai-factory/")
+        # published before it is installed, never the other way round; published but not installed is reusable
+        try:
+            version = publisher.publish(repo, info["package_name"])["version"]
+        except publisher.PublisherError as exc:
+            raise HTTPException(status_code=502, detail=f"could not fetch {repo}: {exc}; nothing was installed")
     try:
-        engine_components.install_plugin(pid, token, info["package_name"], info["version"], entry)
+        if info["fetched_on_install"]:
+            # The engine installs only what it has listed since the package reached the index: its
+            # plugin loader keeps that list in memory and only its package list refreshes it. The list
+            # read above came before the publish, so it is read again, and must now hold this version.
+            # Names compare as PEP 503 does and versions as PEP 440 does (1.0.0-rc1 is 1.0.0rc1);
+            # the engine is then given the version as it lists it.
+            listed = engine_components.available_plugins(pid, token)
+            seen = next((p for p in listed
+                         if catalogue._dist(p.get("package_name") or "") == catalogue._dist(info["package_name"])
+                         and catalogue._same_version(str(p.get("version") or ""), version)), None)
+            if seen is None:
+                raise HTTPException(status_code=502, detail=(
+                    f"could not fetch {repo}: the engine does not see {info['package_name']} {version} "
+                    "after publishing; nothing was installed"))
+            version = seen["version"]
+        engine_components.install_plugin(pid, token, info["package_name"], version, entry)
     except engine_components.EngineUnavailable as exc:
         if exc.status == 403:
             raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
         if exc.status == 404:
             raise no_project(slug)
         raise HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
-    return {"slug": entry, "package_name": info["package_name"], "version": info["version"]}
+    return {"slug": entry, "package_name": info["package_name"], "version": version}
 
 
 @router.get("/projects/{slug}/catalogue/api/tags/")

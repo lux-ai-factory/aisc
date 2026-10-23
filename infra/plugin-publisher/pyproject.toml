@@ -1,0 +1,5 @@
+# Only for the tests (cd infra/plugin-publisher && uv run --with pytest pytest -q): the service
+# itself uses the standard library alone, plus build and twine pinned in the Dockerfile.
+[tool.pytest.ini_options]
+pythonpath = [".", "tests"]
+testpaths = ["tests"]

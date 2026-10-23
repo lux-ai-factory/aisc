@@ -17,6 +17,7 @@ set -uo pipefail
 J=$(mktemp); trap 'rm -f "$J"' EXIT
 . "$(dirname "$0")/lib/dev-accounts.sh"
 . "$(dirname "$0")/lib/install-addresses.sh"
+. "$(dirname "$0")/lib/stack-name.sh"
 U=${KC_USER:-$USER_NAME}; P=${KC_PASS:-$USER_PASSWORD}
 KC=$KEYCLOAK_URL
 pass=0; fail=0
@@ -113,10 +114,10 @@ for e in "qualification|$VERIFY_APPS_URL/qualification/p/$PROJECT|Back to the pr
     *) no "$n has a Back that does not point at this project" ;;
   esac
 done
-bundle=$(docker exec aisc-webapp sh -c 'cat /usr/share/nginx/html/assets/*.js' | tr -d '\n')
+bundle=$(docker exec "$(aisc_container aisc-webapp)" sh -c 'cat /usr/share/nginx/html/assets/*.js' | tr -d '\n')
 # an empty bundle (the container or its files not there) proves neither check
 if [ -z "$bundle" ]; then
-  no "the engine's bundle could not be read (docker exec aisc-webapp)"
+  no "the engine's bundle could not be read (docker exec $(aisc_container aisc-webapp))"
 else
   case "$bundle" in
     *"Back to the AI Assessment Sandbox"*evidence.html?project=*|*evidence.html?project=*"Back to the AI Assessment Sandbox"*) ok "the engine's bundle carries the Back to the AI Assessment Sandbox" ;;
@@ -136,7 +137,7 @@ echo "2d. the gateway is the only session (wave 1)"
 #
 # So oauth2-proxy passes the token it already has, Caddy copies that header onto
 # the proxied request, and the engine's page holds none. These assertions check that.
-cmd=$(docker inspect oauth2-proxy --format '{{json .Config.Cmd}}' 2>/dev/null)
+cmd=$(docker inspect "$(aisc_container oauth2-proxy)" --format '{{json .Config.Cmd}}' 2>/dev/null)
 case "$cmd" in
   *pass-access-token*) ok "the gateway passes the token it holds to what it protects" ;;
   *) no "the gateway keeps its token to itself: what it protects has to find its own" ;;
@@ -185,7 +186,7 @@ SHIPPED_COOKIE_SHA=68468559c25d06fff2b3653eaf81c2dff9dc1069f6e58be81c326fca91392
 SHIPPED_CLIENT_SHA=73ce74bda63a34da96e9cf3e53562c1a36c487e57498d402a961313e4340717a
 flag(){ printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
 gateway_flag(){ # name -> the value oauth2-proxy runs with for --<name>
-  docker inspect oauth2-proxy --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
+  docker inspect "$(aisc_container oauth2-proxy)" --format '{{range .Config.Cmd}}{{println .}}{{end}}' 2>/dev/null \
     | sed -n "s/^--$1=//p" | head -1
 }
 running_cookie=$(gateway_flag cookie-secret)
@@ -239,7 +240,7 @@ case "$bundle" in
   *) no "could not find the engine's Keycloak client (clientId aisc-webapp) in the bundle" ;;
 esac
 for path in /admin/ /_allauth/browser/v1/config; do
-  c=$(docker exec caddy wget -qSO /dev/null "http://aisc-backend:8000$path" 2>&1 | grep -oE 'HTTP/[0-9.]+ [0-9]+' | tail -1)
+  c=$(docker exec "$(aisc_container caddy)" wget -qSO /dev/null "http://aisc-backend:8000$path" 2>&1 | grep -oE 'HTTP/[0-9.]+ [0-9]+' | tail -1)
   case "$c" in
     *404) ok "the engine backend has no $path ($c)" ;;
     *) no "the engine backend still answers $path (${c:-no answer})" ;;
@@ -271,7 +272,7 @@ c=$(curl -s -b "$J" --max-time 20 -o /dev/null -w '%{http_code}' -H 'Content-Typ
 [ "$c" = "404" ] && ok "Superset's password login is gone (404)" || no "Superset's password login answered $c"
 # Since the dashboard left the host network (18dec61) Superset listens on no host port: only Caddy, on
 # the compose network, reaches it. So the container must publish nothing.
-published=$(docker port dashboard 2>/dev/null | tr '\n' ' ')
+published=$(docker port "$(aisc_container dashboard)" 2>/dev/null | tr '\n' ' ')
 if [ -n "$published" ]; then no "the dashboard publishes a host port: $published"
 else ok "Superset publishes no host port; only Caddy reaches it"; fi
 
@@ -283,7 +284,7 @@ for e in "control objectives|control-objectives|8090" "immudb console|immudb|808
   n=$(echo "$e" | cut -d'|' -f1)
   container=$(echo "$e" | cut -d'|' -f2)
   port=$(echo "$e" | cut -d'|' -f3)
-  published=$(docker inspect "$container" \
+  published=$(docker inspect "$(aisc_container "$container")" \
                 --format "{{range \$p, \$conf := .NetworkSettings.Ports}}{{if \$conf}}{{\$p}} {{end}}{{end}}" 2>/dev/null)
   case "$published" in
     *"$port"*) no "$n publishes :$port itself" ;;
@@ -291,12 +292,12 @@ for e in "control objectives|control-objectives|8090" "immudb console|immudb|808
   esac
 done
 # The compose project is the one the running postgres belongs to: `aisc`, or whatever -p named it.
-STACK=$(docker inspect postgres --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
+STACK=$(docker inspect "$(aisc_container postgres)" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)
 # The infrastructure is published only with docker-compose.admin-ports.yml, and then on the loopback: either
 # way no other machine reaches it.
 for e in "postgres|5432" "redis|6379" "minio|9000" "immudb|3322" "rabbitmq|5672" "keycloak|${KEYCLOAK_URL##*:}"; do
   n=${e%%|*}; port=${e#*|}
-  docker ps --filter "label=com.docker.compose.project=${STACK:-aisc}" --format '{{.Ports}}' \
+  docker ps --filter "label=com.docker.compose.project=${STACK:-$(aisc_stack)}" --format '{{.Ports}}' \
       | grep -qE "(0\.0\.0\.0|\[::\]|:::):$port->" \
     && no "$n is published on every address on :$port" || ok "$n is on the loopback only, or not published"
 done
@@ -383,10 +384,10 @@ c=$(curl -s -b "$J" -H "X-AISC-Project: $PROJECT" -o /dev/null -w '%{http_code}'
   || no "a signed-in session was refused: /api/v1/projects -> $c"
 # The engine's "Public Catalogue" button reads a placeholder that env.sh
 # replaces at container start; unset, it opens the literal string.
-docker exec aisc-webapp sh -c 'grep -qoh "APP_CATALOG_URL" /usr/share/nginx/html/assets/*.js' 2>/dev/null \
+docker exec "$(aisc_container aisc-webapp)" sh -c 'grep -qoh "APP_CATALOG_URL" /usr/share/nginx/html/assets/*.js' 2>/dev/null \
   && no "the engine's catalogue link is still the unsubstituted placeholder" \
   || ok "the engine's catalogue link is substituted, not a placeholder"
-docker exec aisc-webapp sh -c "grep -qoh '${CATALOGUE_EXTERNAL_URL:-https://sandboxconfigurator.aifactory.lu/catalogue}' /usr/share/nginx/html/assets/*.js" 2>/dev/null \
+docker exec "$(aisc_container aisc-webapp)" sh -c "grep -qoh '${CATALOGUE_EXTERNAL_URL:-https://sandboxconfigurator.aifactory.lu/catalogue}' /usr/share/nginx/html/assets/*.js" 2>/dev/null \
   && ok "and it points at the hosted catalogue" \
   || no "the catalogue URL is not in the engine's bundle"
 

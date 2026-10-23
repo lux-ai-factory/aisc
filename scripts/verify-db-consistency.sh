@@ -24,10 +24,11 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 export PGHOST=${PGHOST:-127.0.0.1} PGPORT=${PGPORT:-5432} PGUSER=${PGUSER:-aisc-postgres-user}
+. "$HERE/lib/stack-name.sh"
 . "$HERE/lib/database-published.sh"
 if [ -z "${PGPASSWORD:-}" ]; then
-  PGPASSWORD=$(docker exec "${PGCONTAINER:-postgres}" printenv POSTGRES_PASSWORD 2>/dev/null) || {
-    echo "no PGPASSWORD, and none readable from the ${PGCONTAINER:-postgres} container" >&2; exit 2; }
+  PGPASSWORD=$(docker exec "${PGCONTAINER:-$(aisc_container postgres)}" printenv POSTGRES_PASSWORD 2>/dev/null) || {
+    echo "no PGPASSWORD, and none readable from the ${PGCONTAINER:-$(aisc_container postgres)} container" >&2; exit 2; }
   export PGPASSWORD
 fi
 cd "$HERE" && exec uv run --no-project --quiet --with 'psycopg[binary]' python -m db_consistency "$@"

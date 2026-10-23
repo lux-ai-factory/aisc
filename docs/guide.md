@@ -39,7 +39,7 @@ Part of this repository:
 | `keycloak/` | the realm export (template) and the login theme |
 | `inspector/` | pgAdmin and SchemaSpy, for admins, at `:8100/inspect/` |
 | `infra/minio/` | builds MinIO from source |
-| `def_plugins/`, `local_plugins/` | the default plugins (downloaded at start) and your own plugin sources (`PLUGIN_PATH`) |
+| `def_plugins/`, `local_plugins/` | `def_plugins/` is no longer used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
 | `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
 | `docs/` | design history; not needed to run anything |
 
@@ -80,17 +80,20 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   what this stack's index has. A control's Install button installs the checklist into the controls
   app, which asks the platform for its package; the platform answers from the project's catalogue.
   Tests are installed into the engine from the stack's own package index, `devpi`
-  (`PACKAGE_REGISTRY_URL=http://devpi:3141` in `env.plugin_downloader`), which `plugin-publisher`
-  fills at start from `def_plugins/`. `plugin-downloader` clones into it every plugin repo of
-  github.com/lux-ai-factory, on its `feat/unified-modules` branch where it has one and its default
-  branch otherwise: the public ones always, the private ones (agentseal, counterfactual,
-  evasion, example, luxeval, uncertainty) only with a `GITHUB_TOKEN` that can read them, which you
-  add to `env.secrets` yourself before running `scripts/secrets.sh`. Without it they are skipped,
-  each with a line in `docker logs plugin-downloader`; a plugin that fails to build is named, with
-  its error, in `docker logs plugin-publisher`, the others are still uploaded, and the one-shot exits 1
-  (`docker compose -p aisc ps -a` shows `plugin-publisher` as `Exited (1)`, and `scripts/start.sh`
-  ends with a warning naming it). The index is not kept
-  between starts, so every start uploads every plugin again.
+  (`PACKAGE_REGISTRY_URL=http://devpi:3141` in `env.plugin_downloader`), which is kept in the
+  `devpi_data` volume, so it survives restarts. At start `plugin-publisher` puts only the shared plugin
+  interface on it. A test's plugin is fetched when an admin installs it from the catalogue: the platform
+  asks `plugin-publisher` to clone the plugin's repo from github.com/lux-ai-factory (its
+  `feat/unified-modules` branch where it has one, its default branch otherwise), build it and upload it,
+  and then installs it. So installs need GitHub reachable from the stack, and the first install of a test
+  takes about a minute (later installs of the same version reuse what is on the index). Builds run one
+  at a time, as an unprivileged user with no secrets. The public plugin repos need nothing more; the
+  private ones (agentseal, counterfactual, evasion, example, luxeval, uncertainty) need a `GITHUB_TOKEN`
+  that can read them, which you add to `env.secrets` (it goes to `plugin-publisher` only). Without it
+  their install fails with "could not fetch <repo>: ...; nothing was installed". A plugin that fails to
+  build is named, with its error, in the install dialog and in the log of `plugin-publisher`. A container's
+  name is the service's name behind the install's prefix, `aisc-<id>-plugin-publisher`: `docker ps -a`
+  lists them, and `docker logs` takes that name.
   Controls are installed by the controls app from the catalogue's API.
 - **The assessed system over the network.** Under a project's **Manage > Components and connections** an admin
   registers the AI systems the project assesses (OpenAI-compatible, A2A, Open Inference Protocol, or
@@ -131,7 +134,8 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   that rare, and at every immudb restart, so compose restarts `aisc-backend` whenever it restarts `immudb`.
   The engine's audit clerk also logs in again by itself when a call fails because the login ended
   (`apps/backend/aisc_backend/audit/clerk.py`), so an immudb restarted outside compose
-  (`docker restart immudb`, or Docker itself restarting) needs no restart of `aisc-backend`. The
+  (`docker restart aisc-<id>-immudb`, this install's immudb container, or `docker restart immudb` on an
+  install made before ids; or Docker itself restarting) needs no restart of `aisc-backend`. The
   trade-off: a token, held only in the memory of the services that logged in, stays valid for a year
   unless immudb restarts. If `scripts/verify-rbac.sh`'s audit check FAILs, the cause is immudb itself
   (down, or refusing the engine's account); `scripts/verify-immudb.sh` shows which.
@@ -185,6 +189,14 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   `*-migrate` services migrate each module before it starts, and `ledger-pool` makes the ledger's
   databases. The first start takes several minutes (it builds every image, and compiles MinIO from
   source because MinIO publishes no community images).
+- **One install at a time; stop and remove.** `start` refuses while another install's stack runs, and names
+  its folder and the command that stops it (its data kept). `uv run scripts/aisc.py stop` stops this
+  install's containers, data kept; `start` brings them back. `uv run scripts/aisc.py remove` deletes this
+  install's containers, networks and volumes (`down -v` on its own stack) after you type the folder's name.
+  Both act on this folder's stack only: they refuse, naming the folder, when a container of the stack was
+  made from another folder, and `remove` refuses a stack with no container left unless its name holds this
+  install's id (every install made before ids names its stack `aisc`); it then says how to list and delete
+  the volumes by hand.
 - **A project's page** shows two blocks: **Plan the assessment** (1 Qualify the AI system, 2 Set control
   objectives, 3 Choose tests and checklists) and below it **4 Collect evidence**, where checklists are
   answered, tests run, results are looked at and the report is composed.
@@ -211,9 +223,12 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   check whose probe cannot run (a missing database, a failed query, an unreadable bundle) is a FAIL,
   never a PASS. `verify.sh --superset-upgrade [image]` checks the stack's own Superset image (the
   `FROM` line of `apps/results-dashboard/Dockerfile`) unless an image is given.
-  `verify-plugins.sh` is the one to run before a demo: it installs every plugin on the stack's index
-  into its own project (`verify plugins`), checks that the private catalogue offers each one with a blue, installable
-  entry, and names any plugin that was skipped or failed to download, build or install.
+  `verify-plugins.sh` is the one to run before a demo: it checks that `plugin-publisher` is up and has
+  published the shared interface, installs every plugin on the stack's index into its own project
+  (`verify plugins`), and checks that the private catalogue offers each one with a blue, installable
+  entry. `verify-plugins.sh --install langbite` also installs that catalogue entry as the admin, which
+  fetches its repo from GitHub and builds it (about a minute); the admin password is read from the
+  environment, never from the command line.
 - **Optional model keys**, for steps 1 and 2 to suggest answers: `MISTRAL_API_KEY` or
   `ANTHROPIC_API_KEY` for qualification; control objectives defaults to a local Ollama on the host and
   takes `CONTROL_OBJECTIVES_LLM_PROVIDER` plus that provider's key instead. Per-project keys for the
@@ -303,7 +318,8 @@ likely to change:
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
 | `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | generated |
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
-| `GITHUB_TOKEN` | `plugin-downloader` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: private plugins skipped |
+| `GITHUB_TOKEN` | `plugin-publisher` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: installing a private plugin fails |
+| `PLUGIN_PUBLISHER_TOKEN` | `platform`, `plugin-publisher` (made by `start`) | the token the platform presents when it asks the publisher to fetch a plugin | generated |
 | `PLUGIN_PATH` | `env.plugin_downloader` | your plugin sources, mounted into the engine | `./local_plugins/` |
 | `PACKAGE_REGISTRY_URL` | `env.plugin_downloader` | the index the engine installs plugins from | `http://devpi:3141` |
 | `CATALOGUE_EXTERNAL_URL`, `CATALOGUE_API_URL` | `env.plugin_downloader` | the hosted catalogue's page and API | `https://sandboxconfigurator.aifactory.lu/...` |
@@ -321,7 +337,9 @@ likely to change:
 | `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`, `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL` | `env.local` | the address of each browser port, as the browser reaches it. `start` writes the address next to a port it moved, on plain http only. `env.local` comes last in `env.runtime`, so it wins over `env.plugin_downloader`. For an install served from another host, set these four in `env.plugin_downloader` (an https install does so; `start` writes no address for it) | `http://localhost`, `http://localhost:8100/`, `http://localhost:8188`, `http://localhost:8081` |
 | `AISC_ADMIN_PORTS` | the environment or `env.local` | `on` adds `docker-compose.admin-ports.yml`, which publishes PostgreSQL (5432), Redis (6379), RabbitMQ (5672), MinIO (9000) and immudb (3322) on `127.0.0.1`, for tools on the host such as pgAdmin or psql. Nothing else needs them | unset: not published |
 | `ENGINE_HTTPS_PORT` | `env.local` | port 443's setting, in `docker-compose.https.yml`. `start` adds that file only when `CADDY_DOMAIN` is an https address, so a taken 443 never stops an install on plain http | `443` |
-| `AISC_PROJECT` | `aisc.py start` | the Compose project name, for a second copy beside an install's data | `aisc` |
+| `AISC_INSTALL` | `env.secrets` (written with it by `start` or `secrets.sh`) | this install's id, six hex characters: its stack is `aisc-<id>`, its volumes `aisc-<id>_*`, its containers `aisc-<id>-<service>`. Kept by `--rotate`; do not edit or delete it (the install would fall back to the stack `aisc` and lose sight of its data). An install made before ids has none and keeps the stack `aisc` and the bare container names | generated for a new install |
+| `CONTAINER_PREFIX` | `env.runtime` (made from `AISC_INSTALL`) | what every container's name starts with, `aisc-<id>-`; compose puts it before each `container_name` | `aisc-<id>-`; unset (bare names) for an install made before ids |
+| `AISC_PROJECT` | the environment (`aisc.py`, the scripts) | the Compose project (stack) name, for a second copy beside an install's data. Unset, the stack is `aisc-<id>` from `AISC_INSTALL` | `aisc-<id>`; `aisc` for an install made before ids |
 
 On every start, `start` tells the sign-in (Keycloak) the install's addresses, so a port that moved is
 also the address people are sent back to after they sign in.

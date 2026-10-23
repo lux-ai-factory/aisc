@@ -16,7 +16,7 @@ from pathlib import Path
 
 from conftest import ROOT
 
-#: the files scripts/start.sh starts the stack with, but the plugin downloader's
+#: the files scripts/start.sh starts the stack with (scripts/aisc.py adds the optional https and admin-ports ones)
 FILES = ["docker-compose-infra.development.yml", "docker-compose.development.yml"]
 SETTINGS = ROOT / "env.plugin_downloader"
 

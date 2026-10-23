@@ -12,6 +12,7 @@
 # ordinary account.
 set -uo pipefail
 . "$(dirname "$0")/lib/install-addresses.sh"
+. "$(dirname "$0")/lib/stack-name.sh"
 KC=$KEYCLOAK_URL
 REALM=$KC/realms/aisc
 pass=0; fail=0
@@ -28,8 +29,8 @@ token_for() {
 # not published to the host: the gateway is the only door, and it carries a
 # cookie session rather than a token, so these go through a container that is
 # already on the network.
-call() {  # call <container> <url> <method> <token> [body]   (XP=<platform pid> names the project)
-  docker exec -e U="$2" -e M="$3" -e T="$4" -e B="${5:-}" -e XP="${XP:-}" "$1" python -c '
+call() {  # call <service> <url> <method> <token> [body]   (XP=<platform pid> names the project)
+  docker exec -e U="$2" -e M="$3" -e T="$4" -e B="${5:-}" -e XP="${XP:-}" "$(aisc_container "$1")" python -c '
 import os, urllib.request, urllib.error
 headers = {"Content-Type": "application/json"}
 if os.environ["T"]:
@@ -135,7 +136,7 @@ is "a signed-in account sees its own projects" 200 "$(call platform $PLAT/projec
 # A project nobody is in: the stranger's answer is the same as for one that is
 # not there, so no name leaks. The admin's "verify rbac scratch", made by the first run and found again by
 # every later one: a project keeps its ledger database for good, so one per run would use up the pool.
-STRANGER=$(docker exec platform python -c "
+STRANGER=$(docker exec "$(aisc_container platform)" python -c "
 import json, urllib.request
 headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer $ADMIN'}
 try:
@@ -154,7 +155,7 @@ if [ -n "$STRANGER" ]; then
   is "and its systems are not"                     404 "$(call platform $PLAT/projects/$STRANGER/systems GET "$USER")"
   is "the owner reads it"                          200 "$(call platform $PLAT/projects/$STRANGER GET "$ADMIN")"
   is "authz answers a stranger without refusing"   200 "$(call platform $PLAT/authz/projects/$STRANGER GET "$USER")"
-  role=$(docker exec platform python -c "
+  role=$(docker exec "$(aisc_container platform)" python -c "
 import json, urllib.request
 req = urllib.request.Request('http://localhost:8000/authz/projects/$STRANGER', headers={'Authorization':'Bearer $USER'})
 print(json.load(urllib.request.urlopen(req, timeout=20)).get('role'))
@@ -166,7 +167,7 @@ fi
 
 echo
 echo "4. the modules, inside a project the account is in"
-PROJECT=$(docker exec platform python -c "
+PROJECT=$(docker exec "$(aisc_container platform)" python -c "
 import json, urllib.request
 req = urllib.request.Request('http://localhost:8000/projects', headers={'Authorization':'Bearer $USER'})
 found = json.load(urllib.request.urlopen(req, timeout=20))
@@ -183,7 +184,7 @@ if [ -n "$PROJECT" ]; then
   # The two Next apps, through the container rather than the gateway: their door
   # reads the same token, and the gateway wants a cookie session instead.
   page() {  # page <container:port/path> <token>
-    docker exec caddy wget -q -O /dev/null -S --header="Authorization: Bearer $2" "http://$1" 2>&1 \
+    docker exec "$(aisc_container caddy)" wget -q -O /dev/null -S --header="Authorization: Bearer $2" "http://$1" 2>&1 \
       | grep -m1 'HTTP/' | awk '{print $2}'
   }
   NOBODY=00000000-0000-0000-0000-000000000000
@@ -197,7 +198,7 @@ if [ -n "$PROJECT" ]; then
   # project; there is no per-project install page to check.
   is "the project chooser opens for anyone signed in" 200 "$(page "controls-web:3000/controls/install?slug=accuracy-checklist" "$USER")"
   echo "the controls schema no longer lives in the shared database"
-  left=$(docker exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select count(*) from pg_namespace where nspname = \$\$controls\$\$"')
+  left=$(docker exec "$(aisc_container postgres)" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select count(*) from pg_namespace where nspname = \$\$controls\$\$"')
   is "no shared controls schema" 0 "$left"
 else
   no "the ordinary account is in no project at all"
@@ -217,7 +218,7 @@ echo
 echo "6. the dashboard: a viewer looks and comments"
 # the query failing (no superset database, no container) is a FAIL, not "nobody can reach it"
 roles_read=1
-roles=$(docker exec postgres psql -U aisc-postgres-user -d superset -At -c \
+roles=$(docker exec "$(aisc_container postgres)" psql -U aisc-postgres-user -d superset -At -c \
   "select r.name from ab_permission_view_role prv
      join ab_role r on r.id = prv.role_id
      join ab_permission_view pv on pv.id = prv.permission_view_id
@@ -236,7 +237,7 @@ else
 fi
 # Without this the count below is zero for a role that does not exist, which
 # would pass for the wrong reason.
-held=$(docker exec postgres psql -U aisc-postgres-user -d superset -At -c \
+held=$(docker exec "$(aisc_container postgres)" psql -U aisc-postgres-user -d superset -At -c \
   "select count(*) from ab_permission_view_role prv join ab_role r on r.id = prv.role_id
     where r.name = 'AiscViewer'" 2>/dev/null | tail -1)
 [ "${held:-0}" -gt 0 ] 2>/dev/null \
@@ -244,14 +245,14 @@ held=$(docker exec postgres psql -U aisc-postgres-user -d superset -At -c \
   || no "there is no AiscViewer role: accounts still land somewhere else"
 # Every role of the ordinary account: AiscViewer, plus one AiscProject_<hex> per project it is in
 # (given at sign-in). Any other role (Gamma, Alpha, Admin) is wrong, and so is no AiscViewer.
-landed=$(docker exec postgres psql -U aisc-postgres-user -d superset -At -c \
+landed=$(docker exec "$(aisc_container postgres)" psql -U aisc-postgres-user -d superset -At -c \
   "select r.name from ab_user u join ab_user_role ur on ur.user_id = u.id
      join ab_role r on r.id = ur.role_id where u.username = 'user' order by 1" 2>/dev/null | tr '\n' ' ')
 # Owners and editors also hold AiscProjectEditor_<hex> (write charts and dashboards), for exactly
 # the projects where the platform says so; anywhere else it is a role too many.
-email=$(docker exec postgres psql -U aisc-postgres-user -d superset -At -c \
+email=$(docker exec "$(aisc_container postgres)" psql -U aisc-postgres-user -d superset -At -c \
   "select email from ab_user where username = 'user'" 2>/dev/null)
-editing=$(docker exec postgres psql -U aisc-postgres-user -d platform -At -c \
+editing=$(docker exec "$(aisc_container postgres)" psql -U aisc-postgres-user -d platform -At -c \
   "select 'AiscProjectEditor_' || replace(project_id::text, '-', '') from core.project_member
     where email = '${email}' and role in ('owner', 'editor')" 2>/dev/null | tr '\n' ' ')
 other=$(printf '%s' "$landed" | tr ' ' '\n' | grep -vE '^(AiscViewer|AiscProject_[0-9a-f]{32})?$' \
@@ -262,7 +263,7 @@ case " $landed " in
                           || no "an ordinary account also holds $other on the dashboard" ;;
   *)                    no "an ordinary account is ${landed% } on the dashboard, not AiscViewer" ;;
 esac
-writes=$(docker exec postgres psql -U aisc-postgres-user -d superset -At -c \
+writes=$(docker exec "$(aisc_container postgres)" psql -U aisc-postgres-user -d superset -At -c \
   "select count(*) from ab_permission_view_role prv
      join ab_role r on r.id = prv.role_id
      join ab_permission_view pv on pv.id = prv.permission_view_id

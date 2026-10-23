@@ -37,7 +37,7 @@ from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from platform_service import db, engine_components, evidence, projectdb
+from platform_service import db, engine_components, evidence, plugin_sources, projectdb, publisher
 from platform_service.local_controls import LOCAL_CONTROLS_DIR, local_controls  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -368,10 +368,14 @@ def tools(pid, token: str, detailed: bool) -> list[dict]:
     for t in public:
         installed = (package_of(t) in packages) or (t.get("slug") in checklists)
         entry = {**t, "aisc_local": t.get("slug") in local_controls_here, "aisc_installed": bool(installed)}
-        # completion_status is what colours a test's card and what Plugin available keeps: in a private
-        # copy it says whether the test can be installed on this stack (blue) or not (pink).
-        if held is not None and not _is_control(t):
-            entry["completion_status"] = "full" if _dist(package_of(t)) in held else "stub"
+        # completion_status is what colours a test's card and what Plugin available keeps: it says whether
+        # the test can be installed on this stack (blue), from the index or fetched from its source on
+        # install, or not (pink). No network per entry: a source is a line of the table, not a read.
+        if not _is_control(t):
+            if plugin_sources.repo_of(package_of(t)) is not None:
+                entry["completion_status"] = "full"
+            elif held is not None:
+                entry["completion_status"] = "full" if _dist(package_of(t)) in held else "stub"
         out.append(entry)
     if not private:
         # a public project gets the local controls too, live from the folder (no copy to store them in)
@@ -408,10 +412,10 @@ def tool_tags(pid, tool_id: int, token: str) -> list[dict]:
 
 # ── install-info, from this stack's own package index ───────────────────────
 # The public catalogue answers `GET /tool/{slug}/install-info` against its own index; a private copy
-# answers it against the index the engine installs from (PACKAGE_REGISTRY_URL), so every plugin this
-# stack has is installable and none it lacks is offered. The rules are the public catalogue's
-# (catalogue branch `dev`, backend/catalogue_bridge.py): the package from the entry, the version from the
-# index.
+# answers it for this stack: the version at the head of the entry's lux-ai-factory repo (plugin_sources,
+# read by the plugin publisher), else the newest on the index the engine installs from
+# (PACKAGE_REGISTRY_URL). A version the index lacks is published there by the install. The package comes
+# from the entry, as in the public catalogue (catalogue branch `dev`, backend/catalogue_bridge.py).
 
 #: the files an index serves for a release: an sdist or a wheel
 _ARTEFACT = r"\.(?:tar\.gz|whl|zip)"
@@ -502,16 +506,62 @@ def newest(versions: list[str]) -> str | None:
     return max(finals or parsed)[1]
 
 
+def _same_version(a: str, b: str) -> bool:
+    try:
+        return Version(a) == Version(b)
+    except InvalidVersion:
+        return a == b
+
+
+def _source_version(repo: str, package: str) -> tuple[str | None, str | None, bool]:
+    """(the version at the head of the repo, why there is none, whether the publisher said it has no
+    such source). Only the publisher's answer is trusted, and only when the repo builds the entry's
+    package. A publisher that errors or does not answer in time says nothing about the repo."""
+    try:
+        found = publisher.source(repo)
+    except publisher.PublisherError as exc:
+        logger.warning("source of %s not read: %s", repo, exc)
+        return None, f"the source {repo} could not be read: {exc}", False
+    if found is None:
+        return None, f"the source {repo} could not be read", True
+    if _dist(found.get("package") or "") != _dist(package):
+        return None, f"the source {repo} builds the package {found.get('package')}, not {package}", False
+    return found.get("version") or None, None, False
+
+
 def install_info(pid, slug: str, token: str) -> dict:
-    """The public catalogue's InstallInfo for one entry, answered from this stack's index."""
+    """The public catalogue's InstallInfo for one entry, answered for this stack: the version at the
+    head of the entry's lux-ai-factory repo, read by the plugin publisher, else the newest on this
+    stack's index. fetched_on_install says the install will have the publisher fetch, build and
+    publish it first, because the index lacks that version."""
     entry = next((t for t in tools(pid, token, detailed=True) if t["slug"] == slug), None)
     if entry is None:
         raise NoEntry(f"no entry {slug!r}")
     package = package_of(entry)
-    version = newest(versions_on_index(package))
+    # a local entry is this stack's own build: never replaced by a fetch from GitHub
+    repo = None if entry.get("aisc_local") else plugin_sources.repo_of(package)
+    on_index = versions_on_index(package)
+    from_source, why_not, no_such_source = _source_version(repo, package) if repo else (None, None, False)
+    version = from_source or newest(on_index)
+    fetched = from_source is not None and not any(_same_version(v, from_source) for v in on_index)
+    not_on_index = f"{package} is not in this installation's package index"
+    installable = version is not None
+    if version is None and repo and no_such_source:
+        # the publisher could not clone it: a fetch on install would fail the same way
+        reason = (f"{not_on_index}; the publisher cannot read lux-ai-factory/{repo}: it may be private "
+                  "(set GITHUB_TOKEN in env.secrets) or not exist")
+    elif version is None and repo:
+        # the source could not be read in time: the publish on install fetches it, checks the
+        # package and says the version
+        installable, fetched = True, True
+        reason = f"{why_not}; the version will be read on install"
+    elif version is None:
+        reason = not_on_index
+    else:
+        reason = why_not                    # the index's version is offered, and why not the source's
     return {"slug": slug, "package_name": package, "version": version, "index_url": index_url(),
-            "installable": version is not None,
-            "reason": None if version else f"{package} is not in this installation's package index"}
+            "installable": installable, "reason": reason,
+            "fetched_on_install": fetched, "source": f"lux-ai-factory/{repo}" if repo else None}
 
 
 def tags(pid) -> list[dict]:

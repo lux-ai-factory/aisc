@@ -64,7 +64,7 @@ def _snippet(path, start, end):
 
 
 def _run_snippet(snippet, env):
-    harness = "set -uo pipefail\nok(){ printf 'OK %s\\n' \"$1\"; }\nno(){ printf 'NO %s\\n' \"$1\"; }\n" + snippet
+    harness = "set -uo pipefail\n. " + str(ROOT / "scripts/lib/stack-name.sh") + "\nok(){ printf 'OK %s\\n' \"$1\"; }\nno(){ printf 'NO %s\\n' \"$1\"; }\n" + snippet
     r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, timeout=30)
     return r.stdout
 
@@ -85,14 +85,14 @@ def test_rbac_a_readable_superset_database_still_passes(tmp_path):
 
 def test_sso_an_unreadable_bundle_is_not_a_pass(tmp_path):
     env = _fake_docker(tmp_path, "#!/bin/sh\necho 'Error: No such container: aisc-webapp' >&2\nexit 1\n")
-    snippet = _snippet(ROOT / "scripts/verify-sso.sh", "bundle=$(docker exec aisc-webapp", 'echo "2d.')
+    snippet = _snippet(ROOT / "scripts/verify-sso.sh", 'bundle=$(docker exec "$(aisc_container aisc-webapp)"', 'echo "2d.')
     out = _run_snippet(snippet, env)
     assert "NO" in out and "OK" not in out, out
 
 
 def test_sso_a_good_bundle_still_passes(tmp_path):
     env = _fake_docker(tmp_path, "#!/bin/sh\nprintf 'var a=\"Back to the AI Assessment Sandbox\";var u=\"http://launcher/evidence.html?project=\";'\n")
-    snippet = _snippet(ROOT / "scripts/verify-sso.sh", "bundle=$(docker exec aisc-webapp", 'echo "2d.')
+    snippet = _snippet(ROOT / "scripts/verify-sso.sh", 'bundle=$(docker exec "$(aisc_container aisc-webapp)"', 'echo "2d.')
     out = _run_snippet(snippet, env)
     assert "NO" not in out and out.count("OK") == 2, out
 
