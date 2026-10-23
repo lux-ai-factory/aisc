@@ -15,7 +15,8 @@ import pytest
 from platform_service import catalogue as cat
 from tests.conftest import needs_database
 from tests.http_stub import Stub
-from tests.test_catalogue_choice import EXTRA, SAMPLE, admin, choose, engine, index, public_routes, url  # noqa: F401
+from tests.test_catalogue_choice import (  # noqa: F401
+    EXTRA, SAMPLE, admin, choose, engine, index, public_routes, publisher, url)
 from tests.test_evidence import ALICE, VERA, _reader, catalogue, evidence_project, sql  # noqa: F401
 
 EXPORTS = json.loads((Path(__file__).parent / "fixtures" / "control_exports_2026-10-04.json").read_text())
@@ -137,7 +138,8 @@ def test_a_public_project_reads_the_public_catalogue_live_without_local_entries(
 
 @needs_database
 def test_a_public_project_says_what_it_installed_and_what_this_stack_can_install(client, as_user, evidence_project,
-                                                                                    dsn, online, engine, index):
+                                                                                    dsn, online, engine, index,
+                                                                                    publisher):
     assert choose(client, as_user, evidence_project, "public").status_code == 200
     sql(dsn, evidence_project["pid"],
         "INSERT INTO controls.checklist (id, \"catalogueId\", title) VALUES ('ck8', %s, 'x')",
@@ -148,6 +150,9 @@ def test_a_public_project_says_what_it_installed_and_what_this_stack_can_install
     assert tools["langbite"]["completion_status"] == "full"   # on this stack's index
     info = client.get(url(evidence_project, "/api/tool/langbite/install-info"), headers=as_user(VERA))
     assert info.status_code == 200 and info.json()["installable"] is True
+    assert info.json()["fetched_on_install"] is False
+    assert tools["snt-data-drift"]["completion_status"] == "full"   # not on the index, fetched on install
+    assert publisher.requests("GET", "/sources/aisc-plugin-langbite") and not publisher.requests("POST")
 
 
 @needs_database

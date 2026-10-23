@@ -51,8 +51,8 @@ New to these tools? Follow the three steps below.
 | **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
 | **Disk** | 30 GB free |
 | **Free ports** | 80, 8100, 8188, and 8081 on `127.0.0.1`. If one is taken, `start` moves AISC to a free one and tells you (not on an install served over https, which also needs 443) |
-| **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors) |
-| **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private and are skipped) |
+| **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors), and GitHub again when a test is first installed from the catalogue |
+| **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private: installing one needs a `GITHUB_TOKEN` in `env.secrets`) |
 
 **Tested so far:** Linux. The install works the same way on Windows and macOS, but nobody has run it there end
 to end yet. Computers with Apple Silicon (M1 to M4) and other ARM processors are not tested. If you try one of

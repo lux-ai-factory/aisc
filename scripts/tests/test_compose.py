@@ -179,42 +179,50 @@ def test_the_runtime_env_points_at_the_hosted_catalogue():
     assert "CATALOGUE_PORT_EXTERNAL" not in env, base
 
 
-def test_the_plugin_downloader_fills_what_the_publisher_publishes(tmp_path):
-    """With docker-compose.plugin_downloader.yml (the full run), the downloader clones the default
-    plugins into ./def_plugins, the folder plugin-publisher builds and uploads to the index, and the
-    publisher waits for it: on a fresh clone def_plugins holds only its README, and without the wait
-    the publisher finds nothing to upload, so no test can be installed."""
-    services = compose_cfg.config(tmp_path, files=FILES + ["docker-compose.plugin_downloader.yml"])["services"]
-    targets = [v["source"] for v in services["plugin-downloader"]["volumes"] if v["target"] == "/downloads"]
-    sources = [v["source"] for v in services["plugin-publisher"]["volumes"] if v["target"] == "/src"]
-    assert targets == sources == [str(ROOT / "def_plugins")], (targets, sources)
-    wait = services["plugin-publisher"].get("depends_on", {}).get("plugin-downloader", {})
-    assert wait.get("condition") == "service_completed_successfully"
+def _compose_files_start_runs_with():
+    """The -f files of scripts/aisc.py's COMPOSE: what start builds and brings up."""
+    compose = aisc_py().COMPOSE
+    return [compose[i + 1] for i, arg in enumerate(compose) if arg == "-f"]
 
 
-#: every plugin repo of github.com/lux-ai-factory (aisc-plugin-builder, -integrator, -interface and -manager
-#: are the plugin tooling, not plugins)
-PLUGIN_REPOS = {f"aisc-plugin-{n}" for n in (
-    "agentdojo", "agentseal", "counterfactual", "data-evaluation", "evasion", "example", "explitest",
-    "fairness", "langbite", "llm-eval", "luxeval", "performance", "promptfoo", "ragas", "strongreject",
-    "uncertainty")}
+def test_start_clones_no_plugin():
+    """Start fetches no plugin: a plugin is fetched and built when an admin installs it, by the publisher.
+    No compose file start runs with defines a service that clones, and the downloader's file is gone."""
+    import yaml
+
+    assert not (ROOT / "docker-compose.plugin_downloader.yml").exists()
+    files = _compose_files_start_runs_with()
+    assert "docker-compose.plugin_downloader.yml" not in files
+    for f in files:
+        for name, spec in (yaml.safe_load((ROOT / f).read_text()).get("services") or {}).items():
+            run = json.dumps([spec.get("command"), spec.get("entrypoint")])
+            assert "git clone" not in run and "git -c" not in run, f"{f}:{name} clones at start"
 
 
-def test_the_plugin_downloader_clones_every_lux_ai_factory_plugin():
-    """The stack's index holds what the downloader clones, and the engine installs only from that
-    index: a plugin left out of the list can't be installed in any project."""
-    text = (ROOT / "docker-compose.plugin_downloader.yml").read_text()
-    listed = set(re.findall(r"^\s+(aisc-plugin-[a-z0-9-]+)\s*\\?$", text, flags=re.M))
-    assert listed == PLUGIN_REPOS, (sorted(PLUGIN_REPOS - listed), sorted(listed - PLUGIN_REPOS))
-
-
-def test_the_plugin_publisher_says_why_a_plugin_did_not_build():
-    """A plugin that fails to build is skipped; its build output must reach the log, or nobody can
-    tell why the plugin is missing from the index."""
-    text = (ROOT / "docker-compose.development.yml").read_text()
-    command = text.split("container_name: plugin-publisher", 1)[1].split("depends_on:", 1)[0]
-    assert "could not build" in command
-    assert "tail" in command.split("could not build", 1)[1].split("continue", 1)[0], command
+def test_the_publisher_is_a_service_on_the_backend_network_with_a_healthcheck(compose):
+    """It waits for the platform's requests: it comes back after a restart, says when it is up, builds
+    nothing from def_plugins/ and still publishes the shared plugin interface it is given read-only."""
+    q, cfg = compose
+    svc = cfg["services"]["plugin-publisher"]
+    assert svc.get("restart") == "unless-stopped"
+    assert svc.get("healthcheck", {}).get("test"), "no healthcheck"
+    assert "/health" in " ".join(svc["healthcheck"]["test"])
+    assert "backend" in (svc.get("networks") or {})
+    assert svc.get("init") is True, "orphaned build processes would stay as zombies"
+    volumes = svc.get("volumes") or []
+    assert not [v for v in volumes if "def_plugins" in v["source"]], volumes
+    interface = [v for v in volumes if v["target"] == "/interface"]
+    assert interface and interface[0]["source"] == str(ROOT / "shared/plugin-interface") \
+        and interface[0].get("read_only") is True, volumes
+    # the image's own command runs the service: no one-shot shell loop over a folder
+    assert not svc.get("command") and not svc.get("entrypoint"), (svc.get("entrypoint"), svc.get("command"))
+    assert "working_dir" not in svc
+    # Only started, never healthy: a slow machine (Windows, WSL) can take minutes to get devpi
+    # healthy, and a healthy condition then fails the whole `up` with "dependency failed to start".
+    # The publisher waits for devpi itself, retrying the interface publish in the background.
+    assert svc.get("depends_on", {}).get("devpi", {}).get("condition") == "service_started"
+    # devpi's healthcheck stays, for information
+    assert cfg["services"]["devpi"].get("healthcheck", {}).get("test"), "devpi has no healthcheck"
 
 
 def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
@@ -222,7 +230,7 @@ def test_every_variable_compose_takes_without_a_default_is_in_the_runtime_env():
     it, which a strict parser refuses (MODEL_LISTING_SSL_VERIFY='' stops the engine's migration with
     'Not a valid boolean'). env.runtime is env.plugin_downloader plus the secrets."""
     bare = set()
-    for f in FILES + ["docker-compose.plugin_downloader.yml"]:
+    for f in FILES:
         # $${VAR} is escaped: the container's shell expands it, not compose
         bare |= set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)\}", (ROOT / f).read_text()))
     env = {line.split("=", 1)[0].strip() for line in (ROOT / "env.plugin_downloader").read_text().splitlines()
@@ -326,8 +334,8 @@ def test_the_webapp_gets_the_launcher_url(compose):
     assert value, "APP_LAUNCHER_URL is not set on aisc-webapp"
 
 
-# Where the engine installs from: the stack's own devpi, which plugin-publisher fills from
-# def_plugins/ with exactly the packages and versions the hosted catalogue names. The online index
+# Where the engine installs from: the stack's own devpi, which plugin-publisher fills, a plugin when
+# an admin installs it, with exactly the packages and versions the hosted catalogue names. The online index
 # at 10.50.3.47 lacks most of them, so nothing may point there. The catalogue sends a package name
 # and version, and any index holding them works.
 
@@ -357,7 +365,7 @@ def test_the_runtime_env_installs_from_the_stacks_own_index():
 
 def test_the_engine_installs_from_the_index_the_publisher_fills(compose):
     """The engine (backend, migrate, eval worker) installs from the very index plugin-publisher
-    uploads def_plugins/ to, so every package the catalogue names can be installed."""
+    uploads plugins to, so every package the catalogue names can be installed."""
     q, cfg = compose
     twine = (cfg["services"]["plugin-publisher"].get("environment") or {}).get("TWINE_REPOSITORY_URL", "")
     assert twine.startswith(LOCAL_INDEX + "/"), twine
@@ -457,22 +465,24 @@ def test_the_standalone_compose_uses_the_engines_settings_names_pg15_and_the_mou
     assert "one project, one database" not in text
 
 
-def test_the_plugin_publisher_also_publishes_the_shared_plugin_interface():
+def test_the_plugin_publisher_also_publishes_the_shared_plugin_interface(compose):
     """A plugin's run installs its dependencies from PyPI and the stack's index; uv takes a package from
     the first index that has it, devpi first. With the shared plugin-interface on devpi a run gets this
-    stack's library (its connector, the declarations), not PyPI's release of the same name."""
+    stack's library (its connector, the declarations), not PyPI's release of the same name. The publisher
+    publishes it from /interface (INTERFACE_PATH) at its start."""
     text = (ROOT / "docker-compose.development.yml").read_text()
     block = text.split("  plugin-publisher:", 1)[1].split("\n  # ", 1)[0]
     assert re.search(r"- \./shared/plugin-interface:/interface:ro", block), block
-    command = block.split("command:", 1)[1]
-    assert "/interface" in command and "python -m build" in command, command
+    q, cfg = compose
+    env = cfg["services"]["plugin-publisher"].get("environment") or {}
+    assert env.get("INTERFACE_PATH", "/interface") == "/interface"
 
 
 def test_every_service_that_uses_postgres_waits_until_it_is_ready_and_set_up(tmp_path):
     """postgres-setup waits for pg_isready and makes the databases (init/, superset-db.sql among them). A
     service that only waits for the postgres container to start races it: dashboard-migrate lost that race
     on a fresh clone (connection refused) and the whole `up` failed."""
-    services = compose_cfg.config(tmp_path, files=FILES + ["docker-compose.plugin_downloader.yml"])["services"]
+    services = compose_cfg.config(tmp_path)["services"]
 
     def waits_for_setup(name, seen=()):
         deps = services[name].get("depends_on") or {}
@@ -496,8 +506,7 @@ def test_an_image_is_built_by_one_service_only():
     image; the others that run it (a migrate job, the bucket job) only name it, pull_policy never."""
     import yaml
 
-    groups = [["docker-compose-infra.development.yml", "docker-compose.development.yml",
-               "docker-compose.plugin_downloader.yml"]]
+    groups = [["docker-compose-infra.development.yml", "docker-compose.development.yml"]]
     groups += [[p.name] for p in sorted(ROOT.glob("docker-compose*.yml"))]
     for files in groups:
         builders = {}
@@ -676,14 +685,12 @@ def test_keycloak_gets_the_engine_address_for_its_realm(tmp_path):
 
 # What runs once and exits: these must not come back after a restart.
 ONE_SHOT = ("aisc-backend-migrate", "control-objectives-migrate", "controls-migrate", "dashboard-migrate",
-            "immudb-key", "ledger-pool", "make_buckets", "plugin-downloader", "plugin-publisher", "postgres-setup",
+            "immudb-key", "ledger-pool", "make_buckets", "postgres-setup",
             "qualification-migrate", "report-composer-migrate", "report-grants")
 
 
 #: the file sets an install runs with: the default ones, and with the https and admin-ports files added
-RUN_FILES = [FILES + ["docker-compose.plugin_downloader.yml"],
-             FILES + ["docker-compose.plugin_downloader.yml", "docker-compose.https.yml",
-                      "docker-compose.admin-ports.yml"]]
+RUN_FILES = [FILES, FILES + ["docker-compose.https.yml", "docker-compose.admin-ports.yml"]]
 
 
 @pytest.mark.parametrize("files", RUN_FILES, ids=["default", "https-and-admin-ports"])

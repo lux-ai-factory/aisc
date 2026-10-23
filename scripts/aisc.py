@@ -244,6 +244,8 @@ SECRETS = [
     ("PLATFORM_LEDGER_ENGINE_TOKEN", "rand"),
     ("PLATFORM_LEDGER_DASHBOARD_TOKEN", "rand"),
     ("PLATFORM_LEDGER_AGENTS_TOKEN", "rand"),
+    # the platform asks the plugin publisher to fetch, build and publish a plugin with it; held by the two only
+    ("PLUGIN_PUBLISHER_TOKEN", "rand"),
 ]
 # The infrastructure passwords: their volumes hold them (see the top of this file).
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
@@ -305,10 +307,10 @@ def value_in(name: str, path: str) -> str:
 
 
 #: the stack's compose command; start puts the docker it found first
-COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED, "-f", "docker-compose.plugin_downloader.yml",
+COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED,
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml",
            *[arg for name in optional_compose_files() for arg in ("-f", name)]]
-UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
+UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime \\\n"
            "    -f docker-compose-infra.development.yml -f docker-compose.development.yml"
            + "".join(f" -f {name}" for name in optional_compose_files()) + " up -d")
 
@@ -398,7 +400,7 @@ def rotate_one(name: str) -> None:
     if not any(line.startswith(name + "=") for line in lines_of(OUT)):
         raise Refused(f"{name} is missing from {OUT}: run scripts/aisc.py secrets (scripts/secrets.sh) first")
     write_beside(OUT, text_of(with_value(lines_of(OUT), name, immudbpw())))
-    hint = ("  docker compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml \\\n"
+    hint = ("  docker compose -p aisc --env-file env.runtime \\\n"
             "    -f docker-compose-infra.development.yml -f docker-compose.development.yml")
     say(f"rotated {name} in {OUT}. To apply it, recreate immudb, ledger-pool, platform and aisc-backend:",
         hint + " up -d immudb ledger-pool platform aisc-backend",
@@ -1135,7 +1137,8 @@ def start(_args: list[str]) -> None:
     5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
        ready, and a page opened then shows 502. Then tells the sign-in (Keycloak) the install's addresses, which
        its realm otherwise keeps from the first start. Then names, as a warning, every one-shot service that
-       exited non-zero (plugin-publisher when a plugin did not build).
+       exited non-zero (make_buckets when it could not make the buckets). No plugin is fetched: the publisher
+       fetches and builds one when an admin installs it.
     6. Lists the local controls (local_controls/) every project catalogue gets; one it cannot read is a warning,
        not a failure.
 
@@ -1241,6 +1244,14 @@ def start(_args: list[str]) -> None:
     if left_over:
         say(f"Removing what an earlier attempt left unstarted: {' '.join(left_over)}")
         subprocess.run([*COMPOSE, "rm", "-f", *left_over], capture_output=True)
+    # An install from before plugins were fetched on install keeps the exited one-shot plugin-downloader;
+    # no service has that name now, so compose would warn about an orphan on every start.
+    old = captured([DOCKER, "ps", "-a", "--filter", "name=^plugin-downloader$",
+                    "--filter", f"label=com.docker.compose.project={PROJECT}", "--format", "{{.ID}}"])
+    old_ids = old.stdout.split() if old.returncode == 0 else []
+    if old_ids:
+        say("Removing the plugin-downloader container left from the old plugin download.")
+        subprocess.run([DOCKER, "rm", "-f", *old_ids], capture_output=True)
     STACK_BEING_STARTED = True
     say("Starting the stack ...")
     if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
@@ -1269,7 +1280,7 @@ def start(_args: list[str]) -> None:
     # The realm answers: now it can be told this install's addresses, which may have moved since it was imported
     sync_sign_in()
 
-    # A one-shot service (plugin-publisher, report-grants, the migrations) that exited non-zero: nothing waits on
+    # A one-shot service (make_buckets, report-grants, the migrations) that exited non-zero: nothing waits on
     # some of them, so `up -d` went through and the sign-in answers without them.
     for line in captured([*COMPOSE, "ps", "-a", "--format", "{{.Service}}\t{{.Status}}"]).stdout.splitlines():
         service, _, status = line.partition("\t")

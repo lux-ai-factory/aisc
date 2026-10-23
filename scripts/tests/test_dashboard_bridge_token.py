@@ -112,7 +112,7 @@ def test_compose_requires_the_token_for_platform_and_dashboard():
     text = (ROOT / "docker-compose.development.yml").read_text()
     assert f"{NAME}: {REQUIRED}" in text
     assert text.count(REQUIRED) == 2, "platform and dashboard, each once"
-    for f in FILES + ["docker-compose.plugin_downloader.yml"]:
+    for f in FILES:
         assert not re.search(r"\$\{DASHBOARD_BRIDGE_TOKEN:?-", (ROOT / f).read_text()), f"{f} has a fallback"
 
 

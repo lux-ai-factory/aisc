@@ -859,21 +859,18 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # Publishes the bundled plugins in def_plugins/ to the stack's devpi at bring-up.
-  #
-  # Without this the index is empty on a fresh install and nothing can be installed:
-  # the engine installs plugins only from that index. Every start builds and uploads them
-  # again (the index is volatile, so a file of the same version is replaced). A plugin that
-  # does not build is named, the rest are still uploaded, and the one-shot then exits 1, so
-  # `docker compose ps -a` shows it.
+  # The plugin publisher (infra/plugin-publisher): an internal service the platform asks, with its own
+  # token, to fetch one plugin repo from github.com/lux-ai-factory when an admin installs a test whose
+  # package devpi lacks; it builds it and uploads it to the stack's devpi, the index the engine
+  # installs from. At its own start it publishes the shared plugin interface. Start fetches nothing.
   plugin-publisher:
     build: infra/plugin-publisher
     image: aisc-plugin-publisher:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: plugin-publisher
-    working_dir: /src
+    # processes a build leaves behind are reaped instead of staying as zombies
+    init: true
     volumes:
-      - ./def_plugins:/src:ro
       # published too: a plugin's run installs its dependencies from PyPI and this index, and takes
       # the plugin interface from here (the first index that has it), not PyPI's release of that name
       - ./shared/plugin-interface:/interface:ro
@@ -882,12 +879,23 @@ services:
       TWINE_USERNAME: root
       TWINE_PASSWORD: ${DEVPI_ROOT_PASSWORD:?run scripts/secrets.sh first}
       TWINE_REPOSITORY_URL: http://devpi:3141/${DEVPI_INDEX:-root/public}/
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - "out=$$(mktemp -d) && failed='' && for d in /src/*/ /interface/; do [ -f \"$$d/pyproject.toml\" ] || continue; python -m build --outdir $$out \"$$d\" >/tmp/build.log 2>&1 || { echo \"could not build $$d:\"; tail -n 20 /tmp/build.log; failed=\"$$failed $$d\"; }; done; if [ -n \"$$(ls -A $$out)\" ]; then twine upload --non-interactive $$out/* || exit 1; echo 'built plugins and the plugin interface published to the index'; fi; [ -z \"$$failed\" ] || { echo \"not published, they did not build:$$failed\"; exit 1; }"
+      # what the platform sends on every request; held by the two of them only
+      PLUGIN_PUBLISHER_TOKEN: ${PLUGIN_PUBLISHER_TOKEN:?run scripts/secrets.sh first}
+      # reads the private plugin repos (env.secrets); empty: the public ones only
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    healthcheck:
+      # answers 200 once it serves, whether or not the interface is on the index yet
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # only started: on a slow machine devpi can take minutes to be healthy, which must not fail the
+    # whole start; the publisher retries the interface publish in the background until devpi answers
     depends_on:
-      - devpi
-    restart: "no"
+      devpi:
+        condition: service_started
+    restart: unless-stopped
     networks:
       - backend
 
@@ -963,6 +971,10 @@ services:
       # under Manage -> Connections (host or host:port, comma list; empty: none).
       PLATFORM_CONNECTIONS_TOKEN: ${PLATFORM_CONNECTIONS_TOKEN:?run scripts/secrets.sh first}
       ENGINE_URL: http://aisc-backend:8000
+      # Installing a test whose package devpi lacks: the publisher fetches, builds and uploads it
+      # first, asked with this token (held by the platform and the publisher only)
+      PLUGIN_PUBLISHER_URL: http://plugin-publisher:8000
+      PLUGIN_PUBLISHER_TOKEN: ${PLUGIN_PUBLISHER_TOKEN:?run scripts/secrets.sh first}
       CONNECTIONS_ALLOWED_HOSTS: ${CONNECTIONS_ALLOWED_HOSTS:-}
       # The protocol endpoints a run reaches a connection through (AISC, OpenAI-compatible, A2A,
       # Open Inference Protocol) are announced at this internal URL; a run's key lasts this long.
@@ -1043,8 +1055,8 @@ services:
   # The package index tests are installed from. Step 3's catalogue data is the hosted one
   # (https://sandboxconfigurator.aifactory.lu/catalogue), read through the platform; no catalogue
   # backend runs here. The engine installs from this devpi (PACKAGE_REGISTRY_URL in
-  # env.plugin_downloader), which plugin-publisher fills from def_plugins/. Its image is built
-  # from the catalogue submodule's devpi folder.
+  # env.plugin_downloader), which plugin-publisher fills: a plugin when an admin installs it. Its
+  # image is built from the catalogue submodule's devpi folder.
   devpi:
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
@@ -1057,6 +1069,14 @@ services:
       DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:?run scripts/secrets.sh first}
     volumes:
       - devpi_data:/data
+    healthcheck:
+      # on the container's own address, not the loopback: while the entrypoint sets root's password
+      # and the index up, the server listens on the loopback only, and is started again after
+      test: ["CMD-SHELL", "curl -sf -o /dev/null \"http://$$(hostname):3141/+api\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     restart: unless-stopped
     networks:
       - backend

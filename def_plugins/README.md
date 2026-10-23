@@ -1,6 +1,8 @@
 ## def_plugins folder
 
-If you decide to have a test run of the platform using the plugin_downloader compose file, this folder will be used to
-store some default plugins that can be used to test/play with the platform.
-After running docker compose as mentioned in the main readme, you'll find the code of the plugins in this folder, eval and backend will
-mount it and pick up the available plugins.
+`start` no longer uses this folder. Plugins are fetched from GitHub, built and published to the stack's
+package index when an admin installs a test from the catalogue, so nothing is cloned here at start.
+If an older install left plugin sources in it, you can delete them by hand.
+
+The one exception is `docker-compose.engine-standalone.yml`, which still mounts this folder as a local
+plugin folder for a standalone engine.
