@@ -120,6 +120,8 @@ FAKE_DOCKER = """#!/usr/bin/env bash
 cat > /dev/null
 # this project's Keycloak container, as compose ps -q names it (FAKE_KEYCLOAK_ID="": none running)
 [[ "$*" == *" ps -q keycloak"* ]] && printf '%s\n' "${FAKE_KEYCLOAK_ID-kc-of-this-project}"
+[[ "$*" == *" ps -q postgres"* ]] && printf '%s\n' "${FAKE_POSTGRES_ID-pg-of-this-project}"
+[[ "$*" == *" ps -q rabbitmq"* ]] && printf '%s\n' "${FAKE_RABBITMQ_ID-mq-of-this-project}"
 exit 0
 """
 
@@ -245,6 +247,38 @@ def test_a_keycloak_password_is_not_changed_when_this_project_runs_no_keycloak(i
                        env={**env, "FAKE_KEYCLOAK_ID": ""}, capture_output=True, text=True)
     assert r.returncode != 0
     assert "Keycloak" in r.stderr
+    assert (root / "env.secrets").read_text() == before
+    assert not [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
+
+
+IN_ITS_OWN_VOLUME = {"POSTGRES_PASSWORD": ("postgres", "pg-of-this-project", "FAKE_POSTGRES_ID"),
+                     "RABBITMQ_PASSWORD": ("rabbitmq", "mq-of-this-project", "FAKE_RABBITMQ_ID")}
+
+
+@pytest.mark.parametrize("name", IN_ITS_OWN_VOLUME)
+def test_a_postgres_or_rabbitmq_password_is_set_in_this_project_s_container_and_no_other(install, name):
+    """The bare name postgres or rabbitmq is an older install's container, which may be the one running."""
+    root, env = install
+    service, container, _ = IN_ITS_OWN_VOLUME[name]
+    stack = "aisc-" + values(root / "env.secrets")["AISC_INSTALL"]
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", name], cwd=root, env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    log = (root / "docker.log").read_text().splitlines()
+    assert [line for line in log if line.startswith("ARGV compose -p " + stack) and line.endswith(" ps -q " + service)]
+    execs = [line for line in log if line.startswith("ARGV exec ")]
+    assert len(execs) == 1 and f" {container} sh " in execs[0] and f" {service} sh " not in execs[0]
+
+
+@pytest.mark.parametrize("name", IN_ITS_OWN_VOLUME)
+def test_a_postgres_or_rabbitmq_password_is_not_changed_when_this_project_runs_no_such_container(install, name):
+    root, env = install
+    service, _, unset = IN_ITS_OWN_VOLUME[name]
+    before = (root / "env.secrets").read_text()
+    r = subprocess.run(["bash", "scripts/rotate-infra-password.sh", name], cwd=root, env={**env, unset: ""},
+                       capture_output=True, text=True)
+    assert r.returncode != 0
+    assert f"ps {service}" in r.stderr and "nothing changed" in r.stderr
     assert (root / "env.secrets").read_text() == before
     assert not [line for line in (root / "docker.log").read_text().splitlines() if line.startswith("ARGV exec ")]
 

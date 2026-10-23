@@ -2,7 +2,7 @@ services:
   # Caddy, the gateway: every browser request comes in here
   caddy:
     image: caddy:2.10.2
-    container_name: caddy
+    container_name: ${CONTAINER_PREFIX:-}caddy
     restart: unless-stopped
     ports:
       # Only the ports a browser reaches, each at the port aisc.py start chose (env.local). 443 is published
@@ -45,7 +45,7 @@ services:
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     build: ./infra/minio
     pull_policy: never
-    container_name: minio
+    container_name: ${CONTAINER_PREFIX:-}minio
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -89,7 +89,7 @@ services:
   rabbitmq:
     restart: unless-stopped
     image: rabbitmq:3-management
-    container_name: rabbitmq
+    container_name: ${CONTAINER_PREFIX:-}rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -101,7 +101,7 @@ services:
   # Redis, where the worker's Celery results are kept
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: ${CONTAINER_PREFIX:-}redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -112,7 +112,7 @@ services:
   # PostgreSQL: the platform database, one database per project, Keycloak's and Superset's
   postgres:
     image: postgres:15-alpine   # the engine backend requires PostgreSQL 15; a 14 data directory does not start
-    container_name: postgres
+    container_name: ${CONTAINER_PREFIX:-}postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -145,7 +145,7 @@ services:
   # an empty one. Idempotent, so it runs on every start and then exits.
   postgres-setup:
     image: postgres:15-alpine
-    container_name: postgres-setup
+    container_name: ${CONTAINER_PREFIX:-}postgres-setup
     environment:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER}
@@ -214,7 +214,7 @@ services:
   # and the session ended on keycloak:8080. Keycloak's KC_HOSTNAME keeps the issuer the same either way.
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0
-    container_name: oauth2-proxy
+    container_name: ${CONTAINER_PREFIX:-}oauth2-proxy
     restart: unless-stopped
     depends_on:
       - keycloak
@@ -268,7 +268,7 @@ services:
     restart: unless-stopped
     # A pinned version.
     image: quay.io/keycloak/keycloak:26.6.3
-    container_name: keycloak
+    container_name: ${CONTAINER_PREFIX:-}keycloak
     # --import-realm imports the realm files in /opt/keycloak/data/import/ at start, but only
     # creates realms that do not exist yet. On a fresh keycloak database it creates the whole
     # `aisc` realm; an existing realm is left as it is.
@@ -320,7 +320,7 @@ services:
   immudb:
     restart: unless-stopped
     image: codenotary/immudb:1.11.1
-    container_name: immudb
+    container_name: ${CONTAINER_PREFIX:-}immudb
     environment:
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD:?run scripts/secrets.sh first}
       IMMUDB_FORCE_ADMIN_PASSWORD: "true"               # applies that password at every start
@@ -351,7 +351,7 @@ services:
   # file whoever owns it, with no file ACL (setfacl does not exist on macOS). Runs at every start.
   immudb-key:
     image: postgres:15-alpine
-    container_name: immudb-key
+    container_name: ${CONTAINER_PREFIX:-}immudb-key
     user: "0"
     volumes:
       - ./immudb-signing.key:/src/signing.key:ro,Z
@@ -372,7 +372,7 @@ services:
     # a developer tool: started only with --profile inspect (Caddy says so when it is off)
     profiles: ["inspect"]
     image: dpage/pgadmin4:9
-    container_name: pgadmin
+    container_name: ${CONTAINER_PREFIX:-}pgadmin
     environment:
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
@@ -408,7 +408,7 @@ services:
     build: inspector/schema-docs/
     image: aisc-schema-docs:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
-    container_name: schema-docs
+    container_name: ${CONTAINER_PREFIX:-}schema-docs
     environment:
       PGHOST: postgres
       INSPECTOR_PASSWORD: ${INSPECTOR_PASSWORD:?run scripts/secrets.sh first}

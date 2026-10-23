@@ -253,7 +253,7 @@ def test_sso_superset_is_checked_as_publishing_no_host_port():
     container publishes no port: only Caddy reaches it."""
     text = (ROOT / "scripts/verify-sso.sh").read_text()
     assert "ss -tln" not in text
-    assert "docker port dashboard" in text
+    assert 'docker port "$(aisc_container dashboard)"' in text
 
 
 # 2c. each tool's Back: qualification and control objectives go to the project page; controls and the

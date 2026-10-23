@@ -1,7 +1,7 @@
 """scripts/verify-port-fallback.sh: a whole copy of AISC started with its default browser ports taken, then signed
 into on the ports it moved to. It builds and starts a stack, so here it is only read and run against a stand-in
-`docker` that records what it is asked: it must refuse to run beside an install (the compose files fix the
-container names), always clean up after itself, and never remove another install's data."""
+`docker` that records what it is asked: it must refuse to run beside a running install (the copy's own start
+refuses while another install runs), always clean up after itself, and never remove another install's data."""
 import os
 import re
 import subprocess
@@ -12,17 +12,31 @@ from conftest import ROOT
 
 SCRIPT = ROOT / "scripts/verify-port-fallback.sh"
 
-#: a docker that records every call in `docker.log` (its arguments, then the folder it ran in). `ps` answers the
-#: names in `names` until a stack was taken down; `inspect` answers the compose labels of an install in
-#: `install/`; `image ls` answers by reference only when asked for one (`-q` gets an id shared with :latest);
-#: bringing the install back up fails while `up-fails` exists.
+#: a docker that records every call in `docker.log` (its arguments, then the folder it ran in). `ps` answers by
+#: label, as Docker filters: the running platform containers in `platform`, an earlier check's containers in
+#: `leftovers` (project aisc-ports), the install's containers in `names` (project `project`, else aisc), and
+#: nothing for the install once it was taken down; `inspect` answers the compose labels of that install in
+#: `install/` (a leftover's are the copy's); `image ls` answers by reference only when asked for one (`-q` gets
+#: an id shared with :latest); bringing the install back up fails while `up-fails` exists.
 DOCKER = r"""#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 printf '%s | cwd=%s\n' "$*" "$PWD" >> "$d/docker.log"
 case "$1" in
   info) exit 0 ;;
-  ps) [ -f "$d/names" ] && [ ! -f "$d/taken-down" ] && cat "$d/names"; exit 0 ;;
-  inspect) printf 'aisc\t%s\t%s\t%s\n' "$d/install" "$d/install/env.runtime" \
+  ps)
+    case "$*" in
+      *"label=com.docker.compose.project=aisc-ports"*) [ -f "$d/leftovers" ] && cat "$d/leftovers"; exit 0 ;;
+    esac
+    [ -f "$d/taken-down" ] && exit 0
+    case "$*" in
+      *"label=com.docker.compose.service=platform"*) [ -f "$d/platform" ] && cat "$d/platform" ;;
+      *"label=com.docker.compose.project="*) [ -f "$d/names" ] && cat "$d/names" ;;
+      *) [ -f "$d/names" ] && cat "$d/names"; [ -f "$d/leftovers" ] && cat "$d/leftovers" ;;
+    esac
+    exit 0 ;;
+  inspect)
+    case "$*" in *" aisc-ports-"*) printf 'aisc-ports\t%s\t\t\n' "$d/aisc-ports.old/aisc"; exit 0 ;; esac
+    printf '%s\t%s\t%s\t%s\n' "$(cat "$d/project" 2>/dev/null || echo aisc)" "$d/install" "$d/install/env.runtime" \
              "$d/install/docker-compose.one.yml,$d/install/docker-compose.two.yml"; exit 0 ;;
   image)
     case "$*" in
@@ -71,33 +85,44 @@ def calls(d):
     return log.read_text().splitlines() if log.exists() else []
 
 
-def test_the_check_refuses_beside_a_running_install(fake_docker):
-    (fake_docker / "names").write_text("caddy\nsome-other-container\n")
+def running_install(d, stack="aisc", platform="platform"):
+    """An install whose stack runs: its platform container, and the rest of its containers."""
+    prefix = platform[:-len("platform")]
+    (d / "platform").write_text(f"{platform}\n")
+    (d / "names").write_text(f"{prefix}caddy\n{platform}\n{prefix}postgres\n")
+    (d / "project").write_text(stack)
+
+
+@pytest.mark.parametrize("stack, platform", [("aisc", "platform"), ("aisc-a1b2c3", "aisc-a1b2c3-platform")])
+def test_the_check_refuses_beside_a_running_install(fake_docker, stack, platform):
+    """An install made before ids runs bare names, a new one its own prefixed names: both are seen by label."""
+    running_install(fake_docker, stack, platform)
     r = run(fake_docker)
     assert r.returncode == 2, r.stdout + r.stderr
     said = r.stdout + r.stderr
-    assert "caddy" in said and "--take-down-running" in said
+    assert f"stack {stack}" in said and str(fake_docker / "install") in said and "--take-down-running" in said
     assert "some-other-container" not in said
     # nothing was taken down, started or removed
     assert all(c.split()[0] in ("ps", "inspect", "info") for c in calls(fake_docker)), calls(fake_docker)
 
 
 def test_the_check_runs_beside_containers_that_are_not_aiscs(fake_docker):
-    """Only AISC's own container names stop it: a dry run beside an unrelated container lists its steps."""
+    """Only a running AISC stack stops it: a dry run beside an unrelated container lists its steps."""
     (fake_docker / "names").write_text("some-other-container\n")
     r = run(fake_docker, "--dry-run")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "aisc-ports" in r.stdout and "AISC_IMAGE_TAG=ports" in r.stdout
+    assert "take down" not in r.stdout
 
 
 def test_a_dry_run_changes_nothing(fake_docker):
-    (fake_docker / "names").write_text("caddy\n")
+    running_install(fake_docker)
     r = run(fake_docker, "--dry-run", "--take-down-running")
     assert r.returncode == 0, r.stdout + r.stderr
     for step in ("new install, every default taken", "install with data, its port taken later",
                  "leftover of a failed attempt", "ports nobody uses"):
         assert step in r.stdout
-    assert "take down" in r.stdout and "caddy" in r.stdout
+    assert f"take down the stack aisc in {fake_docker / 'install'}" in r.stdout
     assert all(c.split()[0] in ("ps", "inspect", "info") for c in calls(fake_docker)), calls(fake_docker)
 
 
@@ -206,7 +231,7 @@ def test_a_stack_taken_down_comes_back_exactly_as_it_ran(fake_docker):
     """Taken down and brought back from its own folder with its own compose files and env file, as its containers'
     labels say: no rebuild from the folder's current files, no port moved, no branch check (aisc.py start would
     do all three), and its volumes kept."""
-    (fake_docker / "names").write_text("caddy\n")
+    running_install(fake_docker)
     r = run(fake_docker, "--take-down-running", failing=("git", "uv"))
     assert r.returncode == 1, r.stdout + r.stderr          # the copy cannot be cloned here: the check fails
     install = fake_docker / "install"
@@ -221,6 +246,20 @@ def test_a_stack_taken_down_comes_back_exactly_as_it_ran(fake_docker):
     assert not [c for c in log if c.startswith("compose -p aisc ") and c not in down + up], log
     assert not (fake_docker / "uv.log").exists(), "aisc.py was run"
     assert "aisc.py" not in r.stdout + r.stderr
+    # after the take-down, nothing of that stack is left: asked by its label, not by fixed names
+    asked = [c for c in log if c.startswith("ps -a --filter label=com.docker.compose.project=aisc ")]
+    assert asked and log.index(down[0]) < log.index(asked[0]) < log.index(up[0]), log
+    assert "still here" not in r.stdout + r.stderr
+
+
+def test_containers_an_earlier_check_left_are_found_by_the_copy_s_project_and_are_not_another_install(fake_docker):
+    """The copy's containers carry its own install's prefix: its project label (aisc-ports) finds them, running
+    or not, and they never count as an install to take down."""
+    (fake_docker / "leftovers").write_text("aisc-ports-f00d12-postgres\n")
+    r = run(fake_docker, "--dry-run")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "remove the containers an earlier check left" in r.stdout
+    assert "take down" not in r.stdout
 
 
 @pytest.mark.parametrize("log, spoke", [

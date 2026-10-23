@@ -91,7 +91,9 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   private ones (agentseal, counterfactual, evasion, example, luxeval, uncertainty) need a `GITHUB_TOKEN`
   that can read them, which you add to `env.secrets` (it goes to `plugin-publisher` only). Without it
   their install fails with "could not fetch <repo>: ...; nothing was installed". A plugin that fails to
-  build is named, with its error, in the install dialog and in `docker logs plugin-publisher`.
+  build is named, with its error, in the install dialog and in the log of `plugin-publisher`. A container's
+  name is the service's name behind the install's prefix, `aisc-<id>-plugin-publisher`: `docker ps -a`
+  lists them, and `docker logs` takes that name.
   Controls are installed by the controls app from the catalogue's API.
 - **The assessed system over the network.** Under a project's **Manage > Components and connections** an admin
   registers the AI systems the project assesses (OpenAI-compatible, A2A, Open Inference Protocol, or
@@ -132,7 +134,8 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   that rare, and at every immudb restart, so compose restarts `aisc-backend` whenever it restarts `immudb`.
   The engine's audit clerk also logs in again by itself when a call fails because the login ended
   (`apps/backend/aisc_backend/audit/clerk.py`), so an immudb restarted outside compose
-  (`docker restart immudb`, or Docker itself restarting) needs no restart of `aisc-backend`. The
+  (`docker restart aisc-<id>-immudb`, this install's immudb container, or `docker restart immudb` on an
+  install made before ids; or Docker itself restarting) needs no restart of `aisc-backend`. The
   trade-off: a token, held only in the memory of the services that logged in, stays valid for a year
   unless immudb restarts. If `scripts/verify-rbac.sh`'s audit check FAILs, the cause is immudb itself
   (down, or refusing the engine's account); `scripts/verify-immudb.sh` shows which.
@@ -186,6 +189,14 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   `*-migrate` services migrate each module before it starts, and `ledger-pool` makes the ledger's
   databases. The first start takes several minutes (it builds every image, and compiles MinIO from
   source because MinIO publishes no community images).
+- **One install at a time; stop and remove.** `start` refuses while another install's stack runs, and names
+  its folder and the command that stops it (its data kept). `uv run scripts/aisc.py stop` stops this
+  install's containers, data kept; `start` brings them back. `uv run scripts/aisc.py remove` deletes this
+  install's containers, networks and volumes (`down -v` on its own stack) after you type the folder's name.
+  Both act on this folder's stack only: they refuse, naming the folder, when a container of the stack was
+  made from another folder, and `remove` refuses a stack with no container left unless its name holds this
+  install's id (every install made before ids names its stack `aisc`); it then says how to list and delete
+  the volumes by hand.
 - **A project's page** shows two blocks: **Plan the assessment** (1 Qualify the AI system, 2 Set control
   objectives, 3 Choose tests and checklists) and below it **4 Collect evidence**, where checklists are
   answered, tests run, results are looked at and the report is composed.
@@ -326,7 +337,9 @@ likely to change:
 | `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`, `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL` | `env.local` | the address of each browser port, as the browser reaches it. `start` writes the address next to a port it moved, on plain http only. `env.local` comes last in `env.runtime`, so it wins over `env.plugin_downloader`. For an install served from another host, set these four in `env.plugin_downloader` (an https install does so; `start` writes no address for it) | `http://localhost`, `http://localhost:8100/`, `http://localhost:8188`, `http://localhost:8081` |
 | `AISC_ADMIN_PORTS` | the environment or `env.local` | `on` adds `docker-compose.admin-ports.yml`, which publishes PostgreSQL (5432), Redis (6379), RabbitMQ (5672), MinIO (9000) and immudb (3322) on `127.0.0.1`, for tools on the host such as pgAdmin or psql. Nothing else needs them | unset: not published |
 | `ENGINE_HTTPS_PORT` | `env.local` | port 443's setting, in `docker-compose.https.yml`. `start` adds that file only when `CADDY_DOMAIN` is an https address, so a taken 443 never stops an install on plain http | `443` |
-| `AISC_PROJECT` | `aisc.py start` | the Compose project name, for a second copy beside an install's data | `aisc` |
+| `AISC_INSTALL` | `env.secrets` (written with it by `start` or `secrets.sh`) | this install's id, six hex characters: its stack is `aisc-<id>`, its volumes `aisc-<id>_*`, its containers `aisc-<id>-<service>`. Kept by `--rotate`; do not edit or delete it (the install would fall back to the stack `aisc` and lose sight of its data). An install made before ids has none and keeps the stack `aisc` and the bare container names | generated for a new install |
+| `CONTAINER_PREFIX` | `env.runtime` (made from `AISC_INSTALL`) | what every container's name starts with, `aisc-<id>-`; compose puts it before each `container_name` | `aisc-<id>-`; unset (bare names) for an install made before ids |
+| `AISC_PROJECT` | the environment (`aisc.py`, the scripts) | the Compose project (stack) name, for a second copy beside an install's data. Unset, the stack is `aisc-<id>` from `AISC_INSTALL` | `aisc-<id>`; `aisc` for an install made before ids |
 
 On every start, `start` tells the sign-in (Keycloak) the install's addresses, so a port that moved is
 also the address people are sent back to after they sign in.

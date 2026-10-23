@@ -127,5 +127,8 @@ def test_every_name_a_stack_service_answers_to_is_on_the_deny_list():
             if isinstance(nets, dict):
                 for v in nets.values():
                     names |= set((v or {}).get("aliases") or [])
+    prefix = "${CONTAINER_PREFIX:-}"
+    names = {n.removeprefix(prefix) for n in names}
     missing = sorted(n for n in names if "${" not in n and n not in listed)
     assert not missing, f"stack names the UI could allow: {missing}"
+

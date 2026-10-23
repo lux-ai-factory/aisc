@@ -77,15 +77,17 @@ def test_an_existing_env_secrets_without_it_gets_it_added_and_keeps_every_byte(s
 
 
 def test_any_secret_missing_from_an_existing_env_secrets_is_added(scratch):
-    """Not only the bridge token: every secret a fresh install gets, whatever this install lacks."""
+    """Not only the bridge token: every secret a fresh install gets, whatever this install lacks. Not the
+    install's id: an install made before ids keeps the stack aisc and its data, so it never gets one."""
     run_secrets(scratch)
-    fresh = set(secrets_of(scratch))
+    fresh = set(secrets_of(scratch)) - {"AISC_INSTALL"}
     kept = "# made before\nGATEWAY_CLIENT_SECRET=old-client\n"
     (scratch / "env.secrets").write_text(kept)
     r = run_secrets(scratch)
     after = (scratch / "env.secrets").read_text()
     assert after.startswith(kept)
     values = secrets_of(scratch)
+    assert "AISC_INSTALL" not in values, "an existing install was given an id"
     assert set(values) == fresh, sorted(fresh ^ set(values))
     assert values["GATEWAY_CLIENT_SECRET"] == "old-client"
     assert len(values["GATEWAY_COOKIE_SECRET"]) == 43

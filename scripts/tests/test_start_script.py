@@ -14,6 +14,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import threading
 
 import pytest
@@ -26,30 +27,70 @@ d=$(dirname "$0")/..
 printf '%s' "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" | tr '\n' ' ' >> "$d/docker.log"
 echo >> "$d/docker.log"
 [ "$1" = exec ] && [ -f "$d/exec-fails" ] && { echo "Error response from daemon" >&2; exit 1; }
+# A build or up, as Docker runs it with a credential helper: `<step>-credentials-fail` makes the helper named in
+# the config fail (a config without one passes; `credentials-always-fail`: that one too). Each such call, and
+# the Docker config it ran with, goes to steps.log; a config other than the user's is copied to seen-config.json.
+helper_step() {
+  printf '%s | CFG=%s\n' "$1" "${DOCKER_CONFIG:-}" >> "$d/steps.log"
+  if [ -n "${DOCKER_CONFIG:-}" ] && [ "$DOCKER_CONFIG" != "$(cd "$d" && pwd)/user-docker" ]; then
+    cp "$DOCKER_CONFIG/config.json" "$d/seen-config.json"
+    [ -e "$DOCKER_CONFIG/cli-plugins/docker-compose" ] && touch "$d/seen-compose-plugin"
+  fi
+  [ -f "$d/$1-says" ] && { cat "$d/$1-says" >&2; exit 1; }
+  if [ -f "$d/$1-credentials-fail" ]; then
+    if [ -f "$d/credentials-always-fail" ] || grep -q credsStore "${DOCKER_CONFIG:-$d/none}/config.json" 2>/dev/null; then
+      echo 'error getting credentials - err: exit status 1, out: ``' >&2; exit 1
+    fi
+  fi
+}
 """ + RUN_KCADM_IN_EXEC + r"""
 case "$1" in
-  info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
+  info) [ -f "$d/no-daemon" ] && exit 1
+        case "$*" in *SystemTime*) [ -f "$d/docker-time" ] && cat "$d/docker-time" ;; esac
+        exit 0 ;;
   compose)
     case "$*" in
       *"version --short"*) cat "$d/compose-version"; exit 0 ;;
       *" config --format json"*) if [ -f "$d/config-answer" ]; then cat "$d/config-answer"; else echo '{"services": {}}'; fi
         exit 0 ;;
       *" build"*)
+        helper_step build
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
       *" ps -a --status created"*) [ -f "$d/created-fails" ] && exit 1
         [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
       *" rm "*) exit 0 ;;
-      *" up "*) [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
+      *" up "*) helper_step up; [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
         exit 0 ;;
-      *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
+      *" config --services"*) [ -f "$d/services-answer" ] && cat "$d/services-answer"; exit 0 ;;
+      *" logs "*) [ -f "$d/logs-hangs" ] && exec sleep 5
+        # honours --tail N as Docker does
+        for last; do :; done; n=all; case "$*" in *"--tail "*) n=$(echo "$*" | sed 's/.*--tail \([0-9]*\).*/\1/') ;; esac
+        [ -f "$d/logs-$last" ] && { if [ "$n" = all ]; then cat "$d/logs-$last"; else tail -n "$n" "$d/logs-$last"; fi; }
+        exit 0 ;;
+      *" ps "*)
+        # ps-answer-1, ps-answer-2 ... are the answers of the first, second ... call; later calls get ps-answer
+        n=$(( $(cat "$d/ps-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$d/ps-calls"
+        [ -f "$d/ps-answer-$n" ] && { cat "$d/ps-answer-$n"; exit 0; }
+        if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	Up 2 minutes"; fi; exit 0 ;;
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
+  inspect) for last; do :; done
+           # `restarts-<container>` holds that container's RestartCount; `inspect-<container>` its FinishedAt
+           case "$*" in *RestartCount*) [ -f "$d/restarts-$last" ] && cat "$d/restarts-$last"; exit 0 ;; esac
+           [ -f "$d/inspect-$last" ] && cat "$d/inspect-$last"; exit 0 ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
-  ps) case "$*" in *"name=^plugin-downloader$"*) [ -f "$d/old-downloader" ] && cat "$d/old-downloader"; exit 0 ;; esac
-      [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
+  ps)
+    # the running AISC stacks (project<TAB>folder), as start asks before the ports: none unless `platform-stacks`
+    # says so; `platform-check-fails`: Docker gives no answer
+    case "$*" in *"label=com.docker.compose.service=platform"*)
+      [ -f "$d/platform-check-fails" ] && exit 1
+      [ -f "$d/platform-stacks" ] && cat "$d/platform-stacks"; exit 0 ;;
+    *"name=^plugin-downloader$"*) [ -f "$d/old-downloader" ] && cat "$d/old-downloader"; exit 0 ;;
+    esac
+    [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
   image) [ -f "$d/no-probe-image" ] && exit 1; exit 0 ;;
   pull) [ -f "$d/pull-hangs" ] && exec sleep 5; exit 0 ;;
   run)
@@ -137,6 +178,13 @@ def calls(d):
     return (d / "docker.log").read_text().splitlines() if (d / "docker.log").exists() else []
 
 
+def stack_of(d):
+    """The stack this checkout's start runs: aisc-<id>, the id its env.secrets was made with."""
+    ids = [line.split("=", 1)[1] for line in (d / "env.secrets").read_text().splitlines()
+           if line.startswith("AISC_INSTALL=")]
+    return f"aisc-{ids[0]}"
+
+
 def test_a_good_checkout_is_built_started_and_waited_for(scratch):
     (scratch / "not-ready").write_text("2")          # the gateway answers 502 twice, then the sign-in
     (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)   # whatever holds them on the test machine
@@ -148,7 +196,7 @@ def test_a_good_checkout_is_built_started_and_waited_for(scratch):
     ups = [c for c in log if " up " in c]
     assert len(builds) == 1 and len(ups) == 1 and log.index(builds[0]) < log.index(ups[0])
     for c in builds + ups:
-        assert "-p aisc --env-file env.runtime -f docker-compose-infra.development.yml " \
+        assert f"-p {stack_of(scratch)} --env-file env.runtime -f docker-compose-infra.development.yml " \
                "-f docker-compose.development.yml" in c
         assert "plugin_downloader" not in c
     assert "up -d" in ups[0]
@@ -176,6 +224,7 @@ def test_three_failed_builds_stop_before_starting_anything(scratch):
 
 def test_a_stack_that_never_answers_says_what_is_not_running(scratch):
     (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("keycloak\tCreated\n")      # neither restarting nor failed: just not running
     r = run(scratch, START_WAIT_S="1")
     assert r.returncode != 0
     out = r.stdout + r.stderr
@@ -241,13 +290,253 @@ def test_a_one_shot_that_failed_is_named_after_the_sign_in_answers(scratch):
     warnings = [line for line in r.stdout.splitlines() if "Warning" in line]
     assert any("make_buckets" in w for w in warnings), r.stdout
     assert not any("report-grants" in w or "platform" in w for w in warnings), r.stdout
-    assert "docker compose -p aisc logs make_buckets" in r.stdout
+    assert f"docker compose -p {stack_of(scratch)} logs make_buckets" in r.stdout
 
 
 def test_no_failed_one_shot_no_warning(scratch):
     (scratch / "ps-answer").write_text("report-grants\tExited (0) 9 seconds ago\nplatform\tUp 2 minutes\n")
     r = run(scratch)
     assert r.returncode == 0 and "did not finish" not in r.stdout
+
+
+def test_a_restarting_container_is_named_with_its_last_log_lines_and_start_stops_early(scratch):
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\nplatform\tUp 2 minutes\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_text("".join(f"minio line {i}\n" for i in range(1, 31)))
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "minio" in out and "minio line 30" in out and "minio line 11" in out
+    assert "minio line 10\n" not in out
+    assert f"docker compose -p {stack_of(scratch)} logs minio" in out
+    assert any(" logs " in c and "--tail 20" in c and c.split("|")[0].split()[-1] == "minio" for c in calls(scratch))
+    assert "AISC is up" not in out
+
+
+def test_secrets_in_those_log_lines_are_hidden(scratch):
+    (scratch / "env.secrets").write_text("S3_PASSWORD=plainvalue-4711\n")
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_text("starting minio\nMINIO_ROOT_PASSWORD=abc123\n"
+                                        "auth token: xyz789\nthe Secret is s3cr3t\nSOME_key=k1\n"
+                                        "login failed for plainvalue-4711 at 10:00\nfatal: bad config\n")
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "starting minio" in out and "fatal: bad config" in out
+    for hidden in ("abc123", "xyz789", "s3cr3t", "k1", "plainvalue-4711"):
+        assert hidden not in out, hidden
+
+
+def test_one_shots_that_finished_are_not_reported(scratch):
+    (scratch / "ps-answer").write_text("make_buckets\tExited (0) 5 seconds ago\n"
+                                       "ledger-pool\tExited (0) 9 seconds ago\n"
+                                       "report-grants\tExited (1) 9 seconds ago\nplatform\tUp 2 minutes\n")
+    (scratch / "logs-report-grants").write_text("grants failed\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "make_buckets" not in r.stdout and "ledger-pool" not in r.stdout
+    assert "grants failed" not in r.stdout          # a failed one-shot keeps its warning, not the crash report
+
+
+def test_a_container_that_restarts_once_and_recovers_does_not_stop_start(scratch):
+    (scratch / "not-ready").write_text("2")
+    (scratch / "ps-answer-1").write_text("minio\tRestarting (1) 4 seconds ago\n")
+    (scratch / "ps-answer").write_text("minio\tUp 3 seconds\nplatform\tUp 2 minutes\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "AISC is up" in r.stdout
+
+
+def test_a_container_restarting_on_two_polls_with_few_restarts_does_not_stop_start(scratch):
+    """A service that crash-loops for a few seconds while a dependency comes up is normal on a slow machine."""
+    (scratch / "not-ready").write_text("3")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\nplatform\tUp 2 minutes\n")
+    (scratch / "restarts-c-min").write_text("2\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "AISC is up" in r.stdout
+
+
+def test_a_container_restarting_on_two_polls_with_five_restarts_stops_start(scratch):
+    (scratch / "not-ready").write_text("3")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\nplatform\tUp 2 minutes\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_text("minio: unknown flag\n")
+    r = run(scratch)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "minio keeps restarting" in r.stdout + r.stderr and "AISC is up" not in r.stdout
+
+
+@pytest.mark.parametrize("seconds_since_began, stops", [(89, False), (91, True)])
+def test_a_container_restarting_for_over_ninety_seconds_stops_start_whatever_its_count(
+        monkeypatch, seconds_since_began, stops):
+    from datetime import datetime, timedelta, timezone
+    aisc = aisc_module(monkeypatch)
+    began = datetime(2026, 10, 23, 16, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(aisc, "docker_now", lambda: began + timedelta(seconds=seconds_since_began))
+    monkeypatch.setattr(aisc, "docker_in_time", lambda argv, wait: subprocess.CompletedProcess(argv, 0, "2\n", ""))
+    stuck, restarting = aisc.stuck_services("minio\tRestarting (1) 4 seconds ago\tc-min\n", {"minio"}, None, began)
+    assert (stuck == ["minio"]) is stops and restarting == {"minio"}
+
+
+def test_the_ninety_seconds_can_be_set_for_tests(monkeypatch):
+    monkeypatch.setenv("START_RESTART_GRACE_S", "7")
+    assert aisc_module(monkeypatch).RESTART_GRACE_S == 7
+
+
+LONG_AGO, FAR_FUTURE = "2000-01-01T00:00:00.123456789Z", "2999-01-01T00:00:00.123456789Z"
+
+
+def api_exited(scratch, finished_at, services="api\nplatform\n"):
+    """`api` exited with an error at finished_at; the services this start has are `services`."""
+    (scratch / "not-ready").write_text("never")
+    (scratch / "services-answer").write_text(services)
+    (scratch / "ps-answer").write_text("api\tExited (1) 3 seconds ago\tc-api\nplatform\tUp 2 minutes\tc-pl\n")
+    (scratch / "inspect-c-api").write_text(finished_at + "\n")
+    (scratch / "logs-api").write_text("api crashed: bad config\n")
+
+
+def test_a_service_that_exits_with_an_error_during_this_start_is_named_and_stops_start(scratch):
+    api_exited(scratch, FAR_FUTURE)
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "api crashed: bad config" in out and f"docker compose -p {stack_of(scratch)} logs api" in out
+
+
+@pytest.mark.parametrize("docker_time_zone", ["Z", "+02:00"])
+def test_a_docker_clock_ahead_of_the_host_is_the_one_a_stop_is_judged_by(scratch, docker_time_zone):
+    """WSL2 and Docker Desktop VM clocks drift by minutes: the reference time comes from Docker's own clock."""
+    from datetime import datetime, timedelta, timezone
+
+    def stamp(minutes, zone="Z"):
+        """The instant `minutes` from now, written in the given zone as Docker writes it."""
+        at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        if zone != "Z":
+            at = at.astimezone(timezone(timedelta(hours=int(zone[:3]))))
+        return at.strftime("%Y-%m-%dT%H:%M:%S.123456789") + zone
+
+    (scratch / "docker-time").write_text(stamp(10, docker_time_zone) + "\n")           # Docker's clock runs 10 minutes ahead
+    api_exited(scratch, stamp(5))                                       # after the host's time, before Docker's
+    (scratch / "not-ready").write_text("1")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    api_exited(scratch, stamp(15))                                      # after Docker's time: this start's doing
+    r = run(scratch, START_WAIT_S="60")
+    assert r.returncode == 1 and "api crashed" in r.stdout + r.stderr
+
+
+def test_an_exited_container_from_an_earlier_run_does_not_stop_start(scratch):
+    api_exited(scratch, LONG_AGO)
+    (scratch / "not-ready").write_text("1")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "api crashed" not in r.stdout + r.stderr
+
+
+def test_a_container_of_a_service_not_in_this_start_does_not_stop_start(scratch):
+    api_exited(scratch, FAR_FUTURE, services="platform\n")         # api: an inspect-profile or orphan container
+    (scratch / "not-ready").write_text("1")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def aisc_module(monkeypatch):
+    """scripts/aisc.py imported for a direct call of one function."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("aisc_under_test", ROOT / "scripts" / "aisc.py")
+    aisc = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "aisc_under_test", aisc)      # its dataclasses look the module up
+    spec.loader.exec_module(aisc)
+    return aisc
+
+
+@pytest.mark.parametrize("text, utc", [
+    ("2026-10-23T18:24:33.785320213+02:00", "2026-10-23T16:24:33.785320"),    # as `docker info` prints it here
+    ("2026-10-23T18:24:33.785320213-05:00", "2026-10-23T23:24:33.785320"),
+    ("2026-10-23T16:24:33.785320213Z", "2026-10-23T16:24:33.785320"),
+    ("2026-10-23T16:24:33Z", "2026-10-23T16:24:33"),
+])
+def test_docker_times_in_any_offset_are_read_as_the_right_utc_instant(monkeypatch, text, utc):
+    from datetime import datetime, timezone
+    parsed = aisc_module(monkeypatch).parse_docker_time(text)
+    assert parsed == datetime.fromisoformat(utc).replace(tzinfo=timezone.utc)
+
+
+def test_docker_s_time_of_a_container_that_never_ran_is_long_before_any_start(monkeypatch):
+    from datetime import datetime, timezone
+    parsed = aisc_module(monkeypatch).parse_docker_time("0001-01-01T00:00:00Z")
+    assert parsed is not None and parsed < datetime(2000, 1, 1, tzinfo=timezone.utc)
+    assert aisc_module(monkeypatch).parse_docker_time("not a time") is None
+
+
+def test_a_missing_env_secrets_still_shows_the_report(tmp_path, monkeypatch):
+    """The report must never crash on the file it hides values from: without it only the secret-word lines go."""
+    aisc = aisc_module(monkeypatch)
+    monkeypatch.chdir(tmp_path)                       # no env.secrets here
+    assert aisc.hide_secrets("starting\nDB_PASSWORD=abc123\nfatal: bad config") == \
+        "starting\n[a line naming a secret is hidden]\nfatal: bad config"
+    (tmp_path / "env.secrets").mkdir()                # unreadable as a file
+    assert "fatal: bad config" in aisc.hide_secrets("fatal: bad config")
+
+
+def test_logs_that_docker_does_not_give_in_time_are_said_so_and_start_still_stops(scratch):
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-hangs").write_text("")
+    r = run(scratch, START_WAIT_S="60", START_LOG_WAIT_S="1")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "no logs (Docker did not answer in time)" in out and f"docker compose -p {stack_of(scratch)} logs minio" in out
+
+
+def test_a_log_line_with_bytes_that_are_not_text_still_gives_the_report(scratch):
+    (scratch / "not-ready").write_text("never")
+    (scratch / "ps-answer").write_text("minio\tRestarting (1) 4 seconds ago\tc-min\n")
+    (scratch / "restarts-c-min").write_text("5\n")
+    (scratch / "logs-minio").write_bytes(b"starting minio\nbad bytes \xff\xfe here\nfatal: bad config\n")
+    r = run(scratch, START_WAIT_S="60")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "Traceback" not in out and "UnicodeDecodeError" not in out
+    assert "fatal: bad config" in out and "minio keeps restarting" in out
+
+
+def test_a_service_that_keeps_restarting_is_named_even_when_up_itself_fails(scratch):
+    """Others wait on minio's health, so compose's `up -d` fails with "container minio is unhealthy" and never
+    reaches the waits: the report has to come before the refusal."""
+    (scratch / "up-fails").write_text("")
+    (scratch / "ps-answer").write_text("minio\tRestarting (3) 4 seconds ago\tc-min\nplatform\tCreated\tc-pl\n")
+    (scratch / "logs-minio").write_text("minio: unknown flag\n")
+    r = run(scratch, START_STUCK_RECHECK_S="0")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "minio keeps restarting" in out and "minio: unknown flag" in out
+    assert f"docker compose -p {stack_of(scratch)} logs minio" in out
+
+
+def test_a_service_that_exited_with_an_error_is_named_even_when_up_itself_fails(scratch):
+    (scratch / "up-fails").write_text("")
+    (scratch / "ps-answer").write_text("minio\tExited (3) 4 seconds ago\tc-min\n")
+    (scratch / "inspect-c-min").write_text(FAR_FUTURE + "\n")
+    (scratch / "logs-minio").write_text("minio: unknown flag\n")
+    r = run(scratch, START_STUCK_RECHECK_S="0")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "minio: unknown flag" in out and f"docker compose -p {stack_of(scratch)} logs minio" in out
+
+
+def test_an_up_that_fails_with_nothing_stuck_keeps_the_old_message(scratch):
+    (scratch / "up-fails").write_text("")
+    (scratch / "ps-answer").write_text("minio\tUp 2 seconds\tc-min\n")
+    r = run(scratch, START_STUCK_RECHECK_S="0")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "the stack did not start: see the error above." in out
+    assert "keeps restarting" not in out
 
 
 def test_a_taken_port_stops_start_before_anything_is_built(scratch):
@@ -277,7 +566,10 @@ def test_start_keeps_the_browser_ports_it_chose(scratch):
     local = (scratch / "env.local").read_text().splitlines()
     assert local == ["ENGINE_PORT=80", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
                      "KEYCLOAK_PORT_EXTERNAL=8081"]
-    assert (scratch / "env.runtime").read_text().splitlines()[-len(local):] == local
+    # a new install's container prefix is added after them
+    runtime = [line for line in (scratch / "env.runtime").read_text().splitlines()
+               if not line.startswith("CONTAINER_PREFIX=")]
+    assert runtime[-len(local):] == local
 
 
 def test_start_keeps_an_https_install_s_own_engine_address(scratch):
@@ -445,6 +737,11 @@ def test_start_clears_containers_a_failed_attempt_left_created(scratch):
     assert log.index(removal[0]) < log.index(ups[0])
 
 
+def compose_of_the_stack(d):
+    return (f"compose -p {stack_of(d)} --env-file env.runtime "
+            "-f docker-compose-infra.development.yml -f docker-compose.development.yml")
+
+
 def test_start_removes_the_exited_plugin_downloader_an_old_install_left(scratch):
     """Plugins are fetched on install now, so the old one-shot container has no service: it would make
     compose warn about an orphan on every start. Only that container, only of this project."""
@@ -453,7 +750,7 @@ def test_start_removes_the_exited_plugin_downloader_an_old_install_left(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     log = calls(scratch)
     asked = [c for c in log if c.startswith("ps ") and "plugin-downloader" in c]
-    assert len(asked) == 1 and "label=com.docker.compose.project=aisc" in asked[0], log
+    assert len(asked) == 1 and f"label=com.docker.compose.project={stack_of(scratch)}" in asked[0], log
     removed = [c for c in log if c.startswith("rm ")]
     assert len(removed) == 1 and removed[0].startswith("rm -f abc123"), log
     assert log.index(removed[0]) < log.index([c for c in log if " up " in c][0])
@@ -467,16 +764,13 @@ def test_start_removes_nothing_when_no_plugin_downloader_is_left(scratch):
     assert "plugin download" not in r.stdout
 
 
-COMPOSE_OF_THE_STACK = ("compose -p aisc --env-file env.runtime "
-                        "-f docker-compose-infra.development.yml -f docker-compose.development.yml")
-
 
 def test_start_asks_compose_for_this_project_s_created_containers_only(scratch):
     (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     asked = [c for c in calls(scratch) if "--status created" in c]
-    assert asked == [COMPOSE_OF_THE_STACK + " ps -a --status created --format {{.Service}} | BAKE= LIMIT="]
+    assert asked == [compose_of_the_stack(scratch) + " ps -a --status created --format {{.Service}} | BAKE= LIMIT="]
     assert not [c for c in calls(scratch) if c.startswith("compose ") and " rm " in c]
     assert "Removing what an earlier attempt left" not in r.stdout
 
@@ -851,3 +1145,175 @@ def test_a_port_docker_refuses_on_an_https_install_names_docker_not_the_host(scr
     assert "Port 80 is taken" in r.stderr and "Docker cannot use it" in r.stderr
     assert "restarting Docker" in r.stderr
     assert "lsof" not in r.stderr and "netstat" not in r.stderr
+
+
+# Only one install runs at a time: start looks for another AISC stack's running platform before the ports
+
+def secrets_made(d):
+    """env.secrets written before start, as `scripts/aisc.py secrets` on its own writes it."""
+    subprocess.run(["bash", "scripts/secrets.sh"], cwd=d, check=True, capture_output=True,
+                   env={**os.environ, "PATH": f"{d}/shims:{os.environ['PATH']}"})
+
+
+def test_start_refuses_while_another_install_runs_naming_its_folder(scratch):
+    (scratch / "platform-stacks").write_text("aisc\t/home/someone/older-aisc\n")
+    r = run(scratch)
+    assert r.returncode == 1
+    assert "/home/someone/older-aisc" in r.stderr and "docker compose -p aisc stop" in r.stderr
+    log = calls(scratch)
+    # refused before the port check: compose was never asked for its ports, and nothing was built or started
+    assert not [c for c in log if " config --format json" in c or " build" in c or " up " in c], log
+
+
+def test_start_is_not_refused_by_this_install_s_own_running_stack(scratch):
+    secrets_made(scratch)
+    (scratch / "platform-stacks").write_text(f"{stack_of(scratch)}\t{scratch}\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "another AISC install" not in r.stderr and "AISC is up" in r.stdout
+
+
+def test_start_carries_on_when_docker_gives_no_answer_about_other_installs(scratch):
+    (scratch / "platform-check-fails").write_text("")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert [c for c in calls(scratch) if "label=com.docker.compose.service=platform" in c]
+    assert "AISC is up" in r.stdout
+
+
+def test_a_new_checkout_s_first_start_runs_its_own_stack(scratch):
+    """The id is born with env.secrets in this very start, and every compose call already uses its stack."""
+    assert not (scratch / "env.secrets").exists()
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    stack = stack_of(scratch)
+    assert re.fullmatch(r"aisc-[0-9a-f]{6}", stack)
+    composes = [c for c in calls(scratch) if c.startswith("compose ") and "version --short" not in c]
+    assert composes and all(c.startswith(f"compose -p {stack} ") for c in composes), composes
+    assert f"CONTAINER_PREFIX={stack}-" in (scratch / "env.runtime").read_text().splitlines()
+
+
+def test_an_install_made_before_ids_keeps_starting_the_stack_aisc(scratch):
+    secrets_made(scratch)
+    secrets = (scratch / "env.secrets").read_text().splitlines()
+    (scratch / "env.secrets").write_text("\n".join(s for s in secrets if not s.startswith("AISC_INSTALL=")) + "\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    composes = [c for c in calls(scratch) if c.startswith("compose ") and "version --short" not in c]
+    assert composes and all(c.startswith("compose -p aisc --env-file ") for c in composes), composes
+    assert "AISC_INSTALL" not in (scratch / "env.secrets").read_text()
+    assert "CONTAINER_PREFIX" not in (scratch / "env.runtime").read_text()
+
+
+# ---------------------------------------------------------------------------------- a broken credential helper
+
+#: what a registry login looks like in config.json: user:password in base64, never to be shown
+LOGIN = "dXNlcjpzZWNyZXQtcGFzc3dvcmQ="
+
+
+def users_docker_config(d):
+    """The person's Docker config, as Docker Desktop's WSL integration writes it: a credential helper that fails,
+    a registry login, the Compose plugin among its own cli-plugins."""
+    config = d / "user-docker"
+    (config / "cli-plugins").mkdir(parents=True)
+    (config / "cli-plugins/docker-compose").write_text("")
+    (config / "config.json").write_text(json.dumps({
+        "credsStore": "desktop.exe", "credHelpers": {"gcr.io": "gcloud"},
+        "auths": {"registry.example.org": {"auth": LOGIN}}, "currentContext": "default"}, indent=1))
+    return config
+
+
+def steps(d, step):
+    """(the Docker config each `step` call ran with), in order."""
+    log = (d / "steps.log").read_text().splitlines() if (d / "steps.log").exists() else []
+    return [line.split(" | CFG=")[1] for line in log if line.startswith(step + " ")]
+
+
+@pytest.mark.parametrize("step", ["build", "up"])
+def test_a_step_that_fails_on_the_credential_helper_is_run_once_more_without_it(scratch, step):
+    user = users_docker_config(scratch)
+    before = (user / "config.json").read_bytes()
+    (scratch / f"{step}-credentials-fail").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode == 0, r.stdout + r.stderr
+    ran_with = steps(scratch, step)
+    assert len(ran_with) == 2 and ran_with[0] == str(user)
+    retried_with = ran_with[1]
+    assert retried_with and retried_with != str(user)
+    seen = json.loads((scratch / "seen-config.json").read_text())
+    assert "credsStore" not in seen and "credHelpers" not in seen
+    assert seen["auths"] == {"registry.example.org": {"auth": LOGIN}} and seen["currentContext"] == "default"
+    assert (scratch / "seen-compose-plugin").exists()
+    assert (user / "config.json").read_bytes() == before
+    assert not os.path.exists(retried_with)
+    assert ("Docker's credential helper (desktop.exe) failed; pulled without it for this run. To fix it for good: "
+            in r.stdout)
+    assert LOGIN not in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("step", ["build", "up"])
+def test_an_unrelated_pull_failure_is_not_retried(scratch, step):
+    user = users_docker_config(scratch)
+    (scratch / f"{step}-says").write_text("Error response from daemon: pull access denied for aisc/nothing\n")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode != 0
+    assert set(steps(scratch, step)) == {str(user)}
+    assert "credential helper" not in r.stdout + r.stderr
+    assert "pull access denied" in r.stderr
+
+
+@pytest.mark.parametrize("step", ["build", "up"])
+def test_only_one_retry(scratch, step):
+    """The person's config is tried once: after the helper failed, every later run of the step (the build's own
+    retries, with fewer builds at once) goes without it, in the same temporary config."""
+    user = users_docker_config(scratch)
+    (scratch / f"{step}-credentials-fail").write_text("")
+    (scratch / "credentials-always-fail").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode != 0
+    ran_with = steps(scratch, step)
+    assert ran_with[0] == str(user) and str(user) not in ran_with[1:]
+    assert len(ran_with) == (4 if step == "build" else 2)
+    assert len(set(ran_with[1:])) == 1
+    assert "pulled without it" not in r.stdout
+    assert (r.stdout + r.stderr).count("credential helper (desktop.exe) failed") == 1
+    assert not os.path.exists(ran_with[1])
+
+
+def test_after_the_helper_failed_the_builds_retries_keep_going_without_it(scratch):
+    """A slow network on top of a broken helper: the retry without the helper times out, and the build's next
+    attempt still goes without the helper, in the same temporary config, rather than fail on it at once."""
+    user = users_docker_config(scratch)
+    (scratch / "build-credentials-fail").write_text("")
+    (scratch / "build-failures").write_text("1")     # the first run without the helper fails on the network
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode == 0, r.stdout + r.stderr
+    builds = steps(scratch, "build")
+    assert len(builds) == 3 and builds[0] == str(user)
+    assert builds[1] == builds[2] != str(user)
+    assert steps(scratch, "up") == [builds[1]]
+    assert r.stdout.count("Docker's credential helper (desktop.exe) failed; pulled without it for this run.") == 1
+    assert not os.path.exists(builds[1])
+
+
+def test_a_bypassed_build_is_followed_by_an_up_without_the_helper_and_one_line(scratch):
+    user = users_docker_config(scratch)
+    (scratch / "build-credentials-fail").write_text("")
+    (scratch / "up-credentials-fail").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode == 0, r.stdout + r.stderr
+    builds = steps(scratch, "build")
+    assert len(builds) == 2 and steps(scratch, "up") == [builds[1]]
+    assert (r.stdout + r.stderr).count("Docker's credential helper (desktop.exe) failed") == 1
+    assert not os.path.exists(builds[1])
+
+
+def test_the_temporary_config_is_gone_when_start_fails_after_the_bypass(scratch):
+    user = users_docker_config(scratch)
+    (scratch / "build-credentials-fail").write_text("")
+    (scratch / "up-fails").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode != 0 and "did not start" in r.stderr
+    folder = steps(scratch, "build")[1]
+    assert steps(scratch, "up") == [folder]
+    assert not os.path.exists(folder)

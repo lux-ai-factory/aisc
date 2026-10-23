@@ -40,10 +40,12 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 export PGHOST=${PGHOST:-127.0.0.1} PGPORT=${PGPORT:-5432} PGUSER=${PGUSER:-aisc-postgres-user}
 export PGDATABASE=${PGDATABASE:-platform}
+. "$HERE/lib/stack-name.sh"
+export CONTAINER_PREFIX=$(aisc_container '')
 . "$HERE/lib/database-published.sh"
 if [ -z "${PGPASSWORD:-}" ]; then
-  PGPASSWORD=$(docker exec "${PGCONTAINER:-postgres}" printenv POSTGRES_PASSWORD 2>/dev/null) || {
-    echo "no PGPASSWORD, and none readable from the ${PGCONTAINER:-postgres} container" >&2; exit 2; }
+  PGPASSWORD=$(docker exec "${PGCONTAINER:-$(aisc_container postgres)}" printenv POSTGRES_PASSWORD 2>/dev/null) || {
+    echo "no PGPASSWORD, and none readable from the ${PGCONTAINER:-$(aisc_container postgres)} container" >&2; exit 2; }
   export PGPASSWORD
 fi
 . "$HERE/lib/dev-accounts.sh"
@@ -385,6 +387,9 @@ def databases_at_head(project_list, dbs):
 
 # containers: the containers name project databases
 
+#: the stack's container names carry this install's prefix
+PREFIX = os.environ.get("CONTAINER_PREFIX", "")
+
 #: container -> the variables that may name `platform` (as scripts/tests/test_compose_isolation.py)
 CONTAINERS = {
     "qualification-web": set(),
@@ -412,7 +417,7 @@ def container_dsns():
         return
     ok = True
     for name, allowed in CONTAINERS.items():
-        r = subprocess.run(["docker", "inspect", name, "--format", "{{range .Config.Env}}{{println .}}{{end}}"],
+        r = subprocess.run(["docker", "inspect", PREFIX + name, "--format", "{{range .Config.Env}}{{println .}}{{end}}"],
                            capture_output=True, text=True)
         if r.returncode != 0:
             ok = False

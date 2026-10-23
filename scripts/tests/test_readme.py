@@ -71,8 +71,8 @@ def test_the_readme_walks_the_four_steps_of_the_project_page():
 
 def test_the_readme_says_how_to_stop_restart_update_and_remove():
     everyday = section("Everyday use")
-    for command in ("docker compose -p aisc stop", "uv run scripts/aisc.py start", "git pull",
-                    "git submodule update --init --recursive", "docker compose -p aisc down -v"):
+    for command in ("uv run scripts/aisc.py stop", "uv run scripts/aisc.py start", "git pull",
+                    "git submodule update --init --recursive", "uv run scripts/aisc.py remove"):
         assert command in everyday, command
 
 
@@ -170,3 +170,10 @@ def test_the_readme_gives_the_launcher_address_as_a_default_that_may_have_moved(
     for line in README.read_text().splitlines():
         if "localhost:8100" in line and "Open" in line or "open <http://localhost:8100>" in line:
             assert "last message of `start`" in line or "moved" in line, line
+
+
+def test_the_readme_stops_and_removes_with_aisc_py():
+    text = README.read_text()
+    assert "uv run scripts/aisc.py stop" in text and "uv run scripts/aisc.py remove" in text
+    assert "docker compose -p aisc" not in text
+    assert "one install at a time" in text.lower()

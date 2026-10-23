@@ -10,6 +10,7 @@
 # created on first use and granted read-write on each new database.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/lib/stack-name.sh
 : "${IMMUDB_ADMIN_PASSWORD:?set IMMUDB_ADMIN_PASSWORD (the immudb superuser password) in this shell first}"
 COUNT=${1:-20}
 [[ "$COUNT" =~ ^[0-9]+$ ]] || { echo "N must be a number" >&2; exit 2; }
@@ -19,7 +20,7 @@ LEDGER_IMMUDB_PASSWORD=$(awk 'index($0, "LEDGER_IMMUDB_PASSWORD=") == 1 { print 
 [ -n "$LEDGER_IMMUDB_PASSWORD" ] || { echo "LEDGER_IMMUDB_PASSWORD is missing from env.secrets: run scripts/secrets.sh first" >&2; exit 1; }
 LEDGER_IMMUDB_URL=${LEDGER_IMMUDB_URL:-immudb:3322}
 export IMMUDB_ADMIN_PASSWORD LEDGER_IMMUDB_PASSWORD LEDGER_IMMUDB_URL
-docker compose -p "${COMPOSE_PROJECT:-aisc}" --env-file env.runtime \
+docker compose -p "${COMPOSE_PROJECT:-$(aisc_stack)}" --env-file env.runtime \
   -f docker-compose-infra.development.yml -f docker-compose.development.yml \
   run --rm --no-deps -e IMMUDB_ADMIN_PASSWORD -e LEDGER_IMMUDB_PASSWORD -e LEDGER_IMMUDB_URL \
   platform python -m platform_service.ledger.pool create "$COUNT"

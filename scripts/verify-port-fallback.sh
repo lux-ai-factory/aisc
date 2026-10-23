@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Does AISC start, and can a person sign in, when its default browser ports are taken? Proven on a whole copy.
 #
-#   ./scripts/verify-port-fallback.sh                       # refuses while an AISC stack is on this machine
+#   ./scripts/verify-port-fallback.sh                       # refuses while an AISC stack runs on this machine
 #   ./scripts/verify-port-fallback.sh --take-down-running   # takes that stack down (data kept), back at the end
 #   ./scripts/verify-port-fallback.sh --keep                # leaves the copy up as the last scenario left it, every port moved
 #   ./scripts/verify-port-fallback.sh --dry-run             # prints what it would do, changes nothing
@@ -10,8 +10,8 @@
 # A copy of the current commit is cloned into a temporary folder and started with `scripts/aisc.py start`, as a
 # person installing it would, while stand-in web servers hold the ports it prefers. It runs as its own Compose
 # project (aisc-ports) on its own image tag (ports), so no install's data or images are touched; everything it
-# made is removed on any exit. The compose files fix the containers' names, though, so the copy cannot run
-# beside an installed stack: that one has to be taken down for the length of the check.
+# made is removed on any exit. Its start refuses while another install runs (one install runs at a time), so a
+# running stack has to be taken down for the length of the check.
 #
 # Scenarios, each a real start of the copy:
 #   new install, every default taken        80, 8100, 8188 and 127.0.0.1:8081 held: the four ports move, and
@@ -143,15 +143,14 @@ if ! docker info >/dev/null 2>&1; then
   exit 2
 fi
 
-# 1. AISC's container names already in use: the copy would collide with them
-aisc_names() {
-  (cd "$ROOT" && sed -n 's/^[[:space:]]*container_name:[[:space:]]*//p' $COMPOSE_FILES | tr -d "\"' " | sort -u)
-}
-held=$(docker ps -a --format '{{.Names}}' | grep -Fx -f <(aisc_names))
+# 1. A running AISC stack, as start finds one: its platform container, by label (an install's container names
+# are its own: bare for one made before ids, aisc-<id>-... for a new one). The copy's start would refuse beside it.
+held=$(docker ps --filter label=com.docker.compose.service=platform --format '{{.Names}}')
 TAKE_DOWN_LIST=""   # project|folder|env file|compose files, one per line: how to bring it back as it ran
 LEFTOVER=0          # containers of an earlier check's copy, removed before this one starts
+[ -z "$(docker ps -a --filter label=com.docker.compose.project=aisc-ports --format '{{.Names}}')" ] || LEFTOVER=1
 UNLABELLED=""       # containers no compose project made, or made without the labels to bring them back
-others=""
+others=""           # the stacks found, as "stack <project> in <folder>"
 for name in $held; do
   labels=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}	{{index .Config.Labels "com.docker.compose.project.working_dir"}}	{{index .Config.Labels "com.docker.compose.project.environment_file"}}	{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$name" 2>/dev/null)
   project=$(printf '%s' "$labels" | cut -f1)
@@ -162,31 +161,31 @@ for name in $held; do
     LEFTOVER=1
     continue
   fi
-  others="$others$name "
   if [ -z "$project" ] || [ -z "$folder" ] || [ -z "$files" ]; then
     UNLABELLED="$UNLABELLED $name"
   elif ! printf '%s\n' "$TAKE_DOWN_LIST" | grep -q "^$project|"; then
+    others="${others:+$others, }stack $project in $folder"
     # an older compose did not record the env file: the one aisc.py start makes
     TAKE_DOWN_LIST="$TAKE_DOWN_LIST$project|$folder|${env_file:-env.runtime}|$files
 "
   fi
 done
 if [ -n "$UNLABELLED" ]; then
-  echo "Containers with AISC's names that the check cannot bring back as they ran (no compose project, folder or" \
-       "files on them):$UNLABELLED. Remove them first (docker rm -f); the copy uses the same names." >&2
+  echo "Running AISC containers that the check cannot bring back as they ran (no compose project, folder or" \
+       "files on them):$UNLABELLED. Stop them first (docker stop); the copy's start refuses beside them." >&2
   exit 2
 fi
 if [ -n "$others" ] && [ "$TAKE_DOWN" = 0 ]; then
-  echo "An AISC stack is on this machine (containers: ${others% }). The compose files fix the containers' names," \
-       "so the copy this check starts cannot run beside it. Run again with --take-down-running to take that" \
-       "stack down for the check (its data is kept) and bring it back at the end." >&2
+  echo "An AISC install is running on this machine ($others). One install runs at a time, so the copy this" \
+       "check starts would refuse to start beside it. Run again with --take-down-running to take that stack down" \
+       "for the check (its data is kept) and bring it back at the end." >&2
   exit 2
 fi
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "What the check would do (nothing is done in a dry run):"
   printf '%s' "$TAKE_DOWN_LIST" | while IFS='|' read -r project folder env_file files; do
-    [ -n "$project" ] && echo "  take down the stack $project in $folder (containers: ${others% }), its data kept;" \
+    [ -n "$project" ] && echo "  take down the stack $project in $folder, its data kept;" \
                               "bring it back at the end with its own files, up -d --no-build"
   done
   [ "$LEFTOVER" = 1 ] && echo "  remove the containers an earlier check left (project aisc-ports)"
@@ -245,10 +244,11 @@ while IFS='|' read -r project folder env_file files; do
   stack_compose "$project" "$folder" "$env_file" "$files" down </dev/null >/dev/null 2>&1 \
     || { no "take down the stack $project"; exit 1; }
 done < "$WORK/taken-down"
-if [ -s "$WORK/taken-down" ]; then
-  still=$(docker ps -a --format '{{.Names}}' | grep -Fx -f <(aisc_names) | tr '\n' ' ')
-  [ -z "$still" ] || { no "containers with AISC's names are still here after the take-down: $still"; exit 1; }
-fi
+while IFS='|' read -r project _; do
+  [ -n "$project" ] || continue
+  still=$(docker ps -a --filter "label=com.docker.compose.project=$project" --format '{{.Names}}' | tr '\n' ' ')
+  [ -z "$still" ] || { no "containers of the stack $project are still here after the take-down: $still"; exit 1; }
+done < "$WORK/taken-down"
 
 stand_in() { # [address:]port -> a web server holding it
   local name
