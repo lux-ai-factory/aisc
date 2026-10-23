@@ -10,6 +10,8 @@
     uv run scripts/aisc.py secrets --add-ledger-key           # add the next version of the ledger's master key
     uv run scripts/aisc.py secrets --rotate-one NAME          # a new IMMUDB_ADMIN_PASSWORD, LEDGER_IMMUDB_PASSWORD
                                                               # or ENGINE_IMMUDB_PASSWORD
+    uv run scripts/aisc.py stop                               # stop this install's containers, keep its data
+    uv run scripts/aisc.py remove                             # delete this install's containers and all its data
     uv run scripts/aisc.py password                           # the admin and user accounts' passwords
     uv run scripts/aisc.py rotate-infra-password NAME [--ask] # a new value for an infrastructure password
 
@@ -109,8 +111,8 @@ BROWSER_PORTS: tuple[BrowserPort, ...] = (
                 "127.0.0.1"),
 )
 
-#: the Compose project: aisc, unless AISC_PROJECT names another (a second copy beside an install's data)
-PROJECT = os.environ.get("AISC_PROJECT", "aisc")
+#: the setting that names one install: made with its env.secrets, kept by --rotate
+INSTALL = "AISC_INSTALL"
 NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
              "service, then run this again.")
 #: the docker command start found on PATH (see find_docker); every docker call runs this one
@@ -306,13 +308,46 @@ def value_in(name: str, path: str) -> str:
     return ""
 
 
+def install_id(path: str = OUT) -> str:
+    """This install's id: empty when the file or its line is missing (an install from before ids, which keeps the
+    shared names)."""
+    return value_in(INSTALL, path) if Path(path).is_file() else ""
+
+
+def new_install_id() -> str:
+    return random_source.token_hex(3)
+
+
+def stack_name(install: str) -> str:
+    """The Compose project: AISC_PROJECT if set (a second copy beside an install's data), else aisc-<id>, else
+    aisc for an install without an id."""
+    return os.environ.get("AISC_PROJECT") or (f"aisc-{install}" if install else "aisc")
+
+
+def container_prefix(install: str) -> str:
+    return f"aisc-{install}-" if install else ""
+
+
+#: the Compose project of this checkout's own env.secrets: COMPOSE asks this on import, before main moves there
+PROJECT = stack_name(install_id(str(ROOT / OUT)))
+
+
 #: the stack's compose command; start puts the docker it found first
 COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED,
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml",
            *[arg for name in optional_compose_files() for arg in ("-f", name)]]
-UP_HINT = (f"  docker compose -p {PROJECT} --env-file env.runtime \\\n"
-           "    -f docker-compose-infra.development.yml -f docker-compose.development.yml"
-           + "".join(f" -f {name}" for name in optional_compose_files()) + " up -d")
+
+
+def use_stack(name: str) -> None:
+    """Run the stack under this Compose project from here on."""
+    global PROJECT
+    PROJECT = COMPOSE[3] = name
+
+
+def up_hint() -> str:
+    return (f"  docker compose -p {PROJECT} --env-file env.runtime \\\n"
+            "    -f docker-compose-infra.development.yml -f docker-compose.development.yml"
+            + "".join(f" -f {name}" for name in optional_compose_files()) + " up -d")
 
 
 def kept_value(name: str) -> str:
@@ -400,13 +435,18 @@ def rotate_one(name: str) -> None:
     if not any(line.startswith(name + "=") for line in lines_of(OUT)):
         raise Refused(f"{name} is missing from {OUT}: run scripts/aisc.py secrets (scripts/secrets.sh) first")
     write_beside(OUT, text_of(with_value(lines_of(OUT), name, immudbpw())))
-    hint = ("  docker compose -p aisc --env-file env.runtime \\\n"
+    hint = (f"  docker compose -p {PROJECT} --env-file env.runtime \\\n"
             "    -f docker-compose-infra.development.yml -f docker-compose.development.yml")
     say(f"rotated {name} in {OUT}. To apply it, recreate immudb, ledger-pool, platform and aisc-backend:",
         hint + " up -d immudb ledger-pool platform aisc-backend",
-        "  ledger-pool must exit 0 (docker compose -p aisc ps -a ledger-pool), then, whichever name was rotated:",
+        f"  ledger-pool must exit 0 (docker compose -p {PROJECT} ps -a ledger-pool), then, whichever name was rotated:",
         hint + " restart aisc-backend",
         "  (immudb's restart ended the engine's audit session, and the engine does not log in again by itself)")
+
+
+def install_line(path: str) -> str | None:
+    """The file's AISC_INSTALL line, None when it has none."""
+    return next((line for line in lines_of(path) if line.startswith(INSTALL + "=")), None)
 
 
 def new_file(rotate: bool, existed: bool) -> list[str]:
@@ -415,6 +455,10 @@ def new_file(rotate: bool, existed: bool) -> list[str]:
              "# Rotating these signs everyone out. Keycloak keeps the old GATEWAY_CLIENT_SECRET: set the new one",
              "# on its aisc-gateway client (admin console, Clients, Credentials), or delete the aisc realm to "
              "re-import it."]
+    if not existed:
+        lines.append(f"{INSTALL}={new_install_id()}")
+    elif install_line(OUT) is not None:
+        lines.append(install_line(OUT))
     for name, kind in SECRETS:
         if name in KEPT_ON_ROTATE and kept_value(name):
             lines.append(f"{name}={kept_value(name)}")
@@ -473,6 +517,9 @@ def write_runtime() -> None:
     local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     combined = ([line for line in secret_lines if infra(line)] + [line for line in tracked if not infra(line)]
                 + [line for line in secret_lines if not infra(line)] + local)
+    prefix = container_prefix(install_id())
+    if prefix:
+        combined.append(f"CONTAINER_PREFIX={prefix}")
     write_beside(COMBINED, text_of(combined))
     say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
 
@@ -618,10 +665,14 @@ def find_docker() -> str | None:
     return shutil.which("docker", path=os.environ.get("PATH"))
 
 
+def stack_container(docker_command: str, service: str) -> str:
+    """The id of this project's running container of one service, empty when it runs none. Not the service's
+    bare name: that is an older install's container, or a second copy's beside an install."""
+    return captured([docker_command, *COMPOSE[1:], "ps", "-q", service]).stdout.strip()
+
+
 def keycloak_container(docker_command: str) -> str:
-    """The id of this project's running Keycloak container, empty when it runs none. Not the name keycloak: a
-    second copy beside an install renames its containers, and that name is then the other install's."""
-    return captured([docker_command, *COMPOSE[1:], "ps", "-q", "keycloak"]).stdout.strip()
+    return stack_container(docker_command, "keycloak")
 
 
 def held_by_aisc() -> set[int]:
@@ -669,6 +720,48 @@ def docker_in_time(argv: list[str], wait_s: float) -> subprocess.CompletedProces
         return subprocess.CompletedProcess(argv, 127, "", "")
     except subprocess.TimeoutExpired:
         return None
+
+
+def failing_services(ps_json: str) -> list[str]:
+    """The services `compose ps -a --format json` shows unhealthy, or exited with an error, in the order listed.
+    Compose prints one object per line, older versions one array: both are read; anything else names none."""
+    text = ps_json.strip()
+    try:
+        parsed = json.loads(text) if text.startswith("[") else [json.loads(line) for line in text.splitlines()]
+    except ValueError:
+        return []
+    return [entry["Service"] for entry in parsed
+            if isinstance(entry, dict) and entry.get("Service")
+            and (entry.get("Health") == "unhealthy"
+                 or (entry.get("State") == "exited" and entry.get("ExitCode") not in (0, None)))]
+
+
+def show_failing_logs() -> None:
+    """After a failed `up`, the last lines of each failing service: compose names only the dependency that failed,
+    the cause is in that service's own log. Says nothing when Docker does not answer."""
+    listed = docker_in_time([*COMPOSE, "ps", "-a", "--format", "json"], DOCKER_CALL_WAIT_S)
+    if listed is None or listed.returncode != 0:
+        return
+    for service in failing_services(listed.stdout):
+        logs = docker_in_time([*COMPOSE, "logs", "--no-color", "--tail", "20", service], DOCKER_CALL_WAIT_S)
+        if logs is None:
+            continue
+        warn(f"--- {service}: its last log lines ---", *(logs.stdout + logs.stderr).splitlines())
+
+
+def other_stacks(ps_output: str, own: str) -> list[tuple[str, str]]:
+    """The running stacks other than own, from `project<TAB>working_dir` lines: each once, in the order seen."""
+    found: list[tuple[str, str]] = []
+    for line in ps_output.splitlines():
+        project, _, folder = line.partition("\t")
+        if project and project != own and (project, folder) not in found:
+            found.append((project, folder))
+    return found
+
+
+def another_install_refusal(stack: str, folder: str) -> str:
+    return (f"another AISC install is running from {folder} (stack {stack}). Only one runs at a time: stop it with  "
+            f"docker compose -p {stack} stop  (its data is kept), then run start again.")
 
 
 def prepare_port_probe() -> None:
@@ -806,8 +899,8 @@ def settle_ports(published: list[tuple[str, str, int, int]], held: set[int], kep
     return settings, problems, moved
 
 
-def make_secrets(args: list[str], up_hint: bool = True) -> None:
-    """The secrets command. up_hint: end with how to run the stack by hand; start, which runs it itself, does
+def make_secrets(args: list[str], hint: bool = True) -> None:
+    """The secrets command. hint: end with how to run the stack by hand; start, which runs it itself, does
     not want a refusal of its own to be followed by that."""
     # Every file written here holds secrets or is made from them: private from the moment it exists.
     os.umask(0o077)
@@ -831,8 +924,12 @@ def make_secrets(args: list[str], up_hint: bool = True) -> None:
         if first == name + "=":
             lines = with_value(lines, name, fresh(kind, name))
             say(f"generated the empty {name} again")
+    if INSTALL + "=" in lines:
+        lines = with_value(lines, INSTALL, new_install_id())
+        say(f"generated the empty {INSTALL} again")
     write_beside(OUT, text_of(lines))
     say(f"wrote {OUT} ({made})")
+    use_stack(stack_name(install_id()))
 
     # The one with a shape requirement, checked here rather than discovered by a gateway that will not start.
     length = len(value_in("GATEWAY_COOKIE_SECRET", OUT))
@@ -840,8 +937,8 @@ def make_secrets(args: list[str], up_hint: bool = True) -> None:
         raise Refused(f"GATEWAY_COOKIE_SECRET is {length} characters; oauth2-proxy needs 32 bytes base64url (43)")
     make_signing_key()
     write_runtime()
-    if up_hint:
-        say("", "run the stack with:", UP_HINT)
+    if hint:
+        say("", "run the stack with:", up_hint())
 
 
 def show_passwords(_args: list[str]) -> None:
@@ -951,11 +1048,19 @@ def rotate_infra_password(args: list[str]) -> None:
         if done.returncode != 0:
             raise Refused(f"the service did not take the new {name}; nothing changed", done.returncode)
 
+    def running(service: str) -> str:
+        """This stack's own container of the service; never the bare name, which may be another install's."""
+        container = stack_container(docker_command, service)
+        if not container:
+            raise Refused(f"{service} is not running in this install (docker compose -p {PROJECT} ps {service}); "
+                          "nothing changed")
+        return container
+
     if name == "POSTGRES_PASSWORD":
-        docker("exec", "-i", "-e", "NEW_VALUE", "postgres", "sh", "-c",
+        docker("exec", "-i", "-e", "NEW_VALUE", running("postgres"), "sh", "-c",
                'exec psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d postgres', stdin=PSQL)
     elif name == "RABBITMQ_PASSWORD":
-        docker("exec", "-e", "NEW_VALUE", "rabbitmq", "sh", "-c",
+        docker("exec", "-e", "NEW_VALUE", running("rabbitmq"), "sh", "-c",
                'rabbitmqctl --quiet change_password "$RABBITMQ_DEFAULT_USER" "$NEW_VALUE"')
     elif name == "KEYCLOAK_ADMIN_PASSWORD":
         # the console admin's name, as compose gives it to Keycloak (KC_BOOTSTRAP_ADMIN_USERNAME)
@@ -972,7 +1077,7 @@ def rotate_infra_password(args: list[str]) -> None:
             make_secrets([])
         finally:
             sys.stdout = stdout
-    say(f"{name} has a new value in the service, {OUT} and env.runtime. Recreate what reads it:", UP_HINT)
+    say(f"{name} has a new value in the service, {OUT} and env.runtime. Recreate what reads it:", up_hint())
 
 
 # --------------------------------------------------------------------------------------------------- start
@@ -1472,7 +1577,17 @@ def start_steps() -> None:
             "'no space left on device'.")
 
     # 2. The secrets
-    make_secrets([], up_hint=False)
+    make_secrets([], hint=False)
+
+    # Only one install runs at a time: refuse before the ports are looked at, so the other stack's are never taken
+    # for ours to move. PROJECT is this install's stack by now. No answer from Docker: carry on.
+    running = docker_in_time([DOCKER, "ps", "--filter", "label=com.docker.compose.service=platform", "--format",
+                              '{{.Label "com.docker.compose.project"}}\t'
+                              '{{.Label "com.docker.compose.project.working_dir"}}'], DOCKER_CALL_WAIT_S)
+    if running is not None and running.returncode == 0:
+        elsewhere = other_stacks(running.stdout, PROJECT)
+        if elsewhere:
+            raise Refused(another_install_refusal(*elsewhere[0]))
 
     # 3. The ports, before anything is built: a taken one would otherwise surface only after the whole build
     config = captured([*COMPOSE, "config", "--format", "json"])
@@ -1562,6 +1677,9 @@ def start_steps() -> None:
         restarting = refuse_if_stuck(set(), this_start, began_at, after_failed_up=True)
         time.sleep(STUCK_RECHECK_S)
         refuse_if_stuck(restarting, this_start, began_at, after_failed_up=True)
+        # Nothing restarting or dead: a service that runs but never turns healthy (MinIO refusing its stored
+        # config) is named here with its own log lines.
+        show_failing_logs()
         raise Refused("the stack did not start: see the error above.")
     say(f"Waiting for the sign-in page at {url} (Keycloak needs about 30 seconds on a first start) ...")
     deadline = time.monotonic() + wait_s
@@ -1620,8 +1738,72 @@ def start_steps() -> None:
         "If you installed AISC before on this machine, use a private window (an old session cookie is refused).")
 
 
+def same_folder(folder: str) -> bool:
+    return bool(folder) and os.path.normcase(str(Path(folder).resolve())) == os.path.normcase(str(ROOT.resolve()))
+
+
+def own_compose(verb: str) -> list[str]:
+    """The compose command for `stop` or `remove`: this checkout's own stack (PROJECT) and no other. Refuses,
+    before any docker call, where nothing was installed: PROJECT would then be the plain `aisc`, which may be
+    an older install's. Refuses too when a container of the stack was made from another folder (every install
+    made before ids is `aisc`, and AISC_PROJECT may be left in the shell), and when Docker cannot say."""
+    if not (ROOT / OUT).exists():
+        raise Refused(f"no AISC install in this folder (no {OUT}): nothing to {verb}")
+    docker_command = find_docker()
+    if docker_command is None:
+        raise Refused(NO_DOCKER)
+    done = "stopped" if verb == "stop" else "removed"
+    listed = docker_in_time([docker_command, "ps", "-a", "--filter", f"label=com.docker.compose.project={PROJECT}",
+                             "--format", '{{.Label "com.docker.compose.project.working_dir"}}'], DOCKER_CALL_WAIT_S)
+    if listed is None or listed.returncode != 0:
+        raise Refused(f"Docker did not list the containers of stack {PROJECT}, so nothing shows they are this "
+                      f"folder's; nothing was {done}")
+    folders = listed.stdout.splitlines()
+    for folder in folders:
+        if not same_folder(folder.strip()):
+            raise Refused(f"stack {PROJECT} belongs to {folder.strip() or 'a folder Docker does not name'}: run this "
+                          f"there; nothing was {done}")
+    # with no container left, only a name made from this folder's own id shows the volumes are this folder's
+    own = install_id(str(ROOT / OUT))
+    if verb == "remove" and not folders and (not own or PROJECT != f"aisc-{own}"):
+        why = ("every install made before ids names its stack aisc" if PROJECT == "aisc"
+               else "its name comes from AISC_PROJECT, not from this install's id")
+        raise Refused(f"stack {PROJECT} has no container left to show it is this folder's ({why}). See its volumes "
+                      f"with  docker volume ls --filter label=com.docker.compose.project={PROJECT}  and, if they are "
+                      "this install's, delete them with  docker volume rm <name> ...; nothing was removed")
+    return [docker_command, *COMPOSE[1:]]
+
+
+def run_compose(argv: list[str]) -> None:
+    done = subprocess.run(argv)
+    if done.returncode:
+        raise Refused(f"docker compose failed (exit {done.returncode})", done.returncode)
+
+
+def stop(_args: list[str]) -> None:
+    """Stop this install's containers. Their data stays; start brings them back."""
+    argv = own_compose("stop")
+    run_compose([*argv, "stop"])
+    say(f"Stopped the containers of {PROJECT}. Their data is kept: run start to bring them back.")
+
+
+def remove(_args: list[str]) -> None:
+    """Delete this install's containers and volumes (all its data), after the person types this folder's name.
+    No answer, or any other, removes nothing."""
+    argv = own_compose("remove")
+    try:
+        typed = input(f"This deletes this install's containers and all its data (stack {PROJECT}). "
+                      f"Type the folder name ({ROOT.name}) to go on: ")
+    except EOFError:
+        typed = ""
+    if typed.strip() != ROOT.name:
+        raise Refused("nothing was removed")
+    run_compose([*argv, "down", "-v", "--remove-orphans"])
+    say(f"Removed the containers and data of {PROJECT}. This folder can now be deleted.")
+
+
 COMMANDS = {"start": start, "secrets": make_secrets, "password": show_passwords,
-            "rotate-infra-password": rotate_infra_password}
+            "rotate-infra-password": rotate_infra_password, "stop": stop, "remove": remove}
 
 
 def main(argv: list[str]) -> int:

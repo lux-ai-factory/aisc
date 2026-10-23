@@ -4,7 +4,7 @@ services:
     image: ghcr.io/lux-ai-factory/aisc-webapp:wip-plugins
     ports:
       - "5173:80" # Development server port
-    container_name: aisc-webapp
+    container_name: ${CONTAINER_PREFIX:-}aisc-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
@@ -17,7 +17,7 @@ services:
 
   aisc-backend:
     image: ghcr.io/lux-ai-factory/aisc-backend:wip-plugins
-    container_name: aisc-backend
+    container_name: ${CONTAINER_PREFIX:-}aisc-backend
     environment:
       S3_MODELS_BUCKET: ${S3_MODELS_BUCKET}
       S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
@@ -56,7 +56,7 @@ services:
 
   aisc-eval-worker:
     image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
-    container_name: aisc-eval-worker
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker
     environment:
       API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
@@ -85,7 +85,7 @@ services:
 
   aisc-eval-flower:
     image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
-    container_name: aisc-eval-flower
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-flower
     environment:
       API_URL: ${API_URL} # the engine backend's API
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}

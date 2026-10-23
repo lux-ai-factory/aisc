@@ -9,7 +9,8 @@
 # the same cluster, made as the platform makes one (platform_rw, the project template) and
 # removed afterwards.
 set -uo pipefail
-PGC=${PGCONTAINER:-postgres}
+. "$(dirname "$0")/lib/stack-name.sh"
+PGC=${PGCONTAINER:-$(aisc_container postgres)}
 HOST=${PGHOST:-localhost}
 DB=${PLATFORM_DB:-platform}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

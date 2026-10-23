@@ -161,16 +161,19 @@ All commands run in the `aisc` folder.
 
 | To | Run |
 |---|---|
-| Stop AISC | `docker compose -p aisc stop` |
+| Stop AISC | `uv run scripts/aisc.py stop` |
 | Start it again after stopping it | `uv run scripts/aisc.py start` |
 | Update to the latest version | `git pull`, then `git submodule update --init --recursive`, then `uv run scripts/aisc.py start` |
 | Check that everything works | `./scripts/verify.sh --stack` (macOS and Linux; it needs Python 3 and takes a while) |
-| Remove AISC and all its data | `docker compose -p aisc down -v`, then delete the `aisc` folder |
+| Remove AISC and all its data | `uv run scripts/aisc.py remove`, then delete the `aisc` folder if you like |
+
+AISC runs one install at a time. Each new download starts with its own, empty data; an earlier install's
+data stays on the computer until you remove that install (`uv run scripts/aisc.py remove` in its folder).
 
 After the computer restarts, AISC comes back by itself once Docker is running. If Docker Desktop does not start when
 you sign in, start it. If a page still does not answer, run `uv run scripts/aisc.py start`.
 
-`down -v` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
+`remove` deletes every project for good. The images stay on disk (about 14 GB). Remove them from Docker
 Desktop's **Images** page, or with `docker image prune -a` if you use Docker for nothing else.
 
 ## If something goes wrong

@@ -19,8 +19,10 @@ SUPER_PW = "super-secret-0123456789"
 
 @pytest.fixture
 def scratch(tmp_path):
-    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts/lib").mkdir(parents=True)
     shutil.copy(ROOT / "scripts/ledger-pool.sh", tmp_path / "scripts/ledger-pool.sh")
+    # the stack's name, which the script reads from this copy's env.secrets
+    shutil.copy(ROOT / "scripts/lib/stack-name.sh", tmp_path / "scripts/lib/stack-name.sh")
     (tmp_path / "env.secrets").write_text(f"LEDGER_IMMUDB_PASSWORD={SECRET_PW}\nOTHER=x\n")
     (tmp_path / "env.runtime").write_text("")
     bin_dir = tmp_path / "shims"
@@ -34,7 +36,8 @@ def scratch(tmp_path):
 
 
 def run(d, *args, super_pw=SUPER_PW):
-    env = {k: v for k, v in os.environ.items() if k not in ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD")}
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "COMPOSE_PROJECT", "AISC_PROJECT")}
     env["PATH"] = f"{d}/shims:{env['PATH']}"
     if super_pw is not None:
         env["IMMUDB_ADMIN_PASSWORD"] = super_pw
@@ -66,3 +69,13 @@ def test_without_the_ledger_users_password_nothing_runs(scratch):
     (scratch / "env.secrets").write_text("OTHER=x\n")
     r = run(scratch)
     assert r.returncode != 0 and "LEDGER_IMMUDB_PASSWORD" in r.stderr and not (scratch / "argv").exists()
+
+
+@pytest.mark.parametrize("install_line, stack", [("AISC_INSTALL=a1b2c3\n", "aisc-a1b2c3"), ("", "aisc")])
+def test_the_pool_is_filled_in_this_install_s_own_stack(scratch, install_line, stack):
+    """A new install's stack is aisc-<id>; one made before ids keeps aisc."""
+    (scratch / "env.secrets").write_text(f"LEDGER_IMMUDB_PASSWORD={SECRET_PW}\n{install_line}")
+    r = run(scratch, "5")
+    assert r.returncode == 0, r.stderr
+    argv = (scratch / "argv").read_text().split("\n")
+    assert argv[:3] == ["compose", "-p", stack], argv

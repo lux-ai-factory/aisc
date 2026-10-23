@@ -24,6 +24,8 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/lib/dev-accounts.sh"
 . "$HERE/lib/install-addresses.sh"
+. "$HERE/lib/stack-name.sh"
+export CONTAINER_PREFIX=$(aisc_container '')
 cd "$HERE/.." && exec uv run --no-project --quiet --with packaging python - "$@" <<'PY'
 import json
 import os
@@ -37,6 +39,8 @@ from urllib.parse import urlsplit, urlencode
 
 from packaging.version import InvalidVersion, Version
 
+#: the stack's container names carry this install's prefix
+PREFIX = os.environ.get("CONTAINER_PREFIX", "")
 failed = False
 #: the project the check installs into: made by the first run, reused by every later one (a project keeps its
 #: ledger database for good, deleted or not, so one per run would use up the ledger pool)
@@ -66,7 +70,7 @@ def newest_last(versions):
 def index():
     """{normalised name: (name, [versions])} of what devpi holds, read inside the devpi container."""
     def get(path):
-        r = subprocess.run(["docker", "exec", "devpi", "curl", "-s", "-H", "Accept: application/json",
+        r = subprocess.run(["docker", "exec", f"{PREFIX}devpi", "curl", "-s", "-H", "Accept: application/json",
                             f"http://localhost:3141/{path}"], capture_output=True, text=True, timeout=60)
         return json.loads(r.stdout)["result"]
     index_name = os.environ.get("PACKAGE_REGISTRY_INDEX", "root/public").strip("/")
@@ -95,14 +99,14 @@ def interface_on_index(held):
         say("PASS", "interface", f"the index holds the shared {name} {version}, which plugin runs install")
     else:
         say("FAIL", "interface", f"the index lacks the shared {name} {version}: runs would take PyPI's, which has no"
-                          " connector (docker logs plugin-publisher)")
+                          f" connector (docker logs {PREFIX}plugin-publisher)")
     held.pop(norm(name or ""), None)          # the interface is no plugin: the install and catalogue checks skip it
 
 
 def publisher_health():
     """plugin-publisher answers /health (asked inside its container: it publishes no port) and has put the
     shared interface on the index."""
-    r = subprocess.run(["docker", "exec", "plugin-publisher", "python", "-c",
+    r = subprocess.run(["docker", "exec", f"{PREFIX}plugin-publisher", "python", "-c",
                         "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health',"
                         " timeout=4).read().decode())"], capture_output=True, text=True, timeout=60)
     try:
@@ -110,12 +114,12 @@ def publisher_health():
     except ValueError:
         health = None
     if r.returncode != 0 or not isinstance(health, dict):
-        say("FAIL", "publisher", "plugin-publisher does not answer /health (docker logs plugin-publisher)")
+        say("FAIL", "publisher", f"plugin-publisher does not answer /health (docker logs {PREFIX}plugin-publisher)")
     elif health.get("interface_published"):
         say("PASS", "publisher", "plugin-publisher is up and has published the shared plugin interface")
     else:
         say("FAIL", "publisher", "plugin-publisher is up but has not published the shared plugin interface"
-                                 " (docker logs plugin-publisher)")
+                                 f" (docker logs {PREFIX}plugin-publisher)")
 
 
 def install_slug(argv):
@@ -300,7 +304,7 @@ publisher_health()
 slug_to_install = install_slug(sys.argv[1:])
 held = index()
 if not held:
-    say("FAIL", "index", "the package index holds nothing (docker logs plugin-publisher)")
+    say("FAIL", "index", f"the package index holds nothing (docker logs {PREFIX}plugin-publisher)")
 interface_on_index(held)
 installs_and_catalogue(held, slug_to_install)
 sys.exit(1 if failed else 0)

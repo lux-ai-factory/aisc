@@ -9,7 +9,8 @@
 # its password handed by name from env.secrets, as scripts/ledger-pool.sh hands its own.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-PROJECT=${COMPOSE_PROJECT:-aisc}
+. scripts/lib/stack-name.sh
+PROJECT=${COMPOSE_PROJECT:-$(aisc_stack)}
 pass=0; fail=0
 ok(){ printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }

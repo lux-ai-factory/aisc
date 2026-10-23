@@ -719,3 +719,13 @@ def test_a_service_stopped_on_purpose_stays_stopped(tmp_path, files):
     purpose (caddy came back alone after `docker compose stop`); unless-stopped does not."""
     services = compose_cfg.config(tmp_path, files=files)["services"]
     assert not sorted(n for n, s in services.items() if s.get("restart") == "always")
+
+
+def test_every_container_name_carries_the_install_prefix():
+    """Each container_name starts with ${CONTAINER_PREFIX:-}, so an install's containers are its own."""
+    import yaml
+    for f in ROOT.glob("docker-compose*.yml"):
+        for svc, spec in (yaml.safe_load(f.read_text()).get("services") or {}).items():
+            name = (spec or {}).get("container_name")
+            if name:
+                assert name.startswith("${CONTAINER_PREFIX:-}"), (f.name, svc)
