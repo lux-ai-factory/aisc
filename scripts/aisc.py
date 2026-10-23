@@ -987,6 +987,158 @@ def captured(argv: list[str]) -> subprocess.CompletedProcess:
         return subprocess.CompletedProcess(argv, 127, "", "")
 
 
+# ------------------------------------------------------------------------ a Docker credential helper that fails
+
+#: what Docker says when the credential helper its config names fails; it asks the helper even for public images
+CREDENTIAL_HELPER_FAILED = "error getting credentials"
+#: the config.json keys that name credential helpers; everything else (registry logins in auths too) is kept
+HELPER_KEYS = ("credsStore", "credHelpers")
+
+
+def run_and_watch(argv: list[str], env: dict[str, str] | None = None) -> tuple[int, str]:
+    """Runs a Docker step with its output shown as it comes; returns its exit code and what it wrote on stderr."""
+    try:
+        with subprocess.Popen(argv, env=env, stderr=subprocess.PIPE) as step:
+            said = []
+            for line in step.stderr:
+                text = line.decode(errors="replace")
+                said.append(text)
+                sys.stderr.write(text)
+                sys.stderr.flush()
+            return step.wait(), "".join(said)
+    except FileNotFoundError:
+        return 127, ""
+
+
+def docker_config_folder(env: dict[str, str] | None = None) -> Path:
+    """The folder Docker reads its config.json from: DOCKER_CONFIG, else ~/.docker."""
+    return Path((env or os.environ).get("DOCKER_CONFIG") or Path.home() / ".docker")
+
+
+def helpers_named(config: dict) -> str:
+    """The credential helper a Docker config names for every registry (credsStore), else the per-registry ones
+    (credHelpers); empty for none."""
+    if config.get("credsStore"):
+        return str(config["credsStore"])
+    return ", ".join(sorted(set(map(str, (config.get("credHelpers") or {}).values()))))
+
+
+def machine_kind() -> str:
+    """windows, macos, wsl or linux: where the fix for a broken credential helper differs."""
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    if os.environ.get("WSL_DISTRO_NAME") or "microsoft" in os.uname().release.lower():
+        return "wsl"
+    return "linux"
+
+
+def credential_helper_fix(kind: str, helper: str, config_file: Path) -> str:
+    """One line: how to mend the credential helper for good on this kind of machine."""
+    if kind == "wsl" and any(name in ("desktop", "desktop.exe") for name in helper.split(", ")):
+        return ("start Docker Desktop and turn on WSL integration for this distribution, or remove credsStore "
+                f"from {config_file}.")
+    if kind == "wsl":
+        return (f'in {config_file} inside WSL, remove "credsStore", or set it to "desktop.exe" with Docker Desktop '
+                "running.")
+    if kind == "macos":
+        return "unlock the login keychain (open Keychain Access, or run: security unlock-keychain), then start again."
+    if kind == "windows":
+        return f'restart Docker Desktop and sign in to it again; if it still fails, remove "credsStore" from {config_file}.'
+    return (f"make docker-credential-{helper.split(', ')[0]} work (it must be on PATH and answer), or remove "
+            f'"credsStore" and "credHelpers" from {config_file}.')
+
+
+def config_without_helpers(source: Path, folder: Path, config: dict) -> None:
+    """Fills folder as a Docker config folder like source, but whose config.json names no credential helper.
+    Everything else in source (cli-plugins, so `docker compose` is still found; contexts; buildx) is linked."""
+    kept = {key: value for key, value in config.items() if key not in HELPER_KEYS}
+    written = os.open(folder / "config.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(written, "w") as file:
+        json.dump(kept, file, indent=1)
+    for entry in source.iterdir() if source.is_dir() else ():
+        if entry.name == "config.json":
+            continue
+        try:
+            (folder / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
+        except OSError:      # Windows without the right to make links: a copy does as well for one run
+            if entry.is_dir():
+                shutil.copytree(entry, folder / entry.name, symlinks=True)
+            else:
+                shutil.copy2(entry, folder / entry.name)
+
+
+@dataclass
+class HelperBypass:
+    """This start's way round a credential helper that failed: the temporary Docker config naming no helper,
+    which every later step of the start runs with, and what to tell the person about it."""
+    folder: Path
+    helper: str
+    fix: str
+    told: bool = False
+
+
+#: set once the credential helper has failed in this start; end_helper_bypass removes its folder
+HELPER_BYPASS: HelperBypass | None = None
+
+
+def bypass_helper(env: dict[str, str] | None) -> HelperBypass | None:
+    """A temporary Docker config like the person's but naming no credential helper; None when theirs names none
+    (or cannot be read), so there is nothing to go round."""
+    source = docker_config_folder(env)
+    try:
+        config = json.loads((source / "config.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    helper = helpers_named(config) if isinstance(config, dict) else ""
+    if not helper:
+        return None
+    folder = Path(tempfile.mkdtemp(prefix="aisc-docker-config-"))     # readable by this user only
+    try:
+        config_without_helpers(source, folder, config)
+    except BaseException:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    return HelperBypass(folder, helper, credential_helper_fix(machine_kind(), helper, source / "config.json"))
+
+
+def run_step(argv: list[str], env: dict[str, str] | None = None) -> tuple[int, bool]:
+    """Runs a Docker step (a build, a pull, an up). When it fails because the configured credential helper failed
+    (`error getting credentials`), runs it once more with a temporary DOCKER_CONFIG naming no helper: registry
+    logins in auths still hold. From then on every step of this start runs with that config, so the build's own
+    retries and the up are not lost to the helper again; end_helper_bypass removes it when the start ends. The
+    person's config is only read. Returns the exit code and whether the step ran without the helper. Any other
+    failure is returned as it is."""
+    global HELPER_BYPASS
+    if HELPER_BYPASS is None:
+        code, said = run_and_watch(argv, env)
+        if code == 0 or CREDENTIAL_HELPER_FAILED not in said:
+            return code, False
+        HELPER_BYPASS = bypass_helper(env)
+        if HELPER_BYPASS is None:
+            return code, False
+    code, _ = run_and_watch(argv, {**(env or os.environ), "DOCKER_CONFIG": str(HELPER_BYPASS.folder)})
+    if code == 0 and not HELPER_BYPASS.told:
+        HELPER_BYPASS.told = True
+        say(f"Docker's credential helper ({HELPER_BYPASS.helper}) failed; pulled without it for this run. "
+            f"To fix it for good: {HELPER_BYPASS.fix}")
+    return code, True
+
+
+def end_helper_bypass() -> None:
+    """Removes this start's temporary Docker config, if the helper failed. When no step went through without the
+    helper either, says so here: the helper may still be what is wrong."""
+    global HELPER_BYPASS
+    if HELPER_BYPASS is None:
+        return
+    bypass, HELPER_BYPASS = HELPER_BYPASS, None
+    shutil.rmtree(bypass.folder, ignore_errors=True)
+    if not bypass.told:
+        warn(f"Docker's credential helper ({bypass.helper}) failed, and the steps failed again without it: see the "
+             f"error above. To fix the helper: {bypass.fix}")
+
+
 def answer_of(url: str) -> int | None:
     """The HTTP status of one request, redirects not followed: a 302 to the sign-in is an answer."""
     class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -1134,6 +1286,10 @@ def start(_args: list[str]) -> None:
        which program holds it.
     4. Builds every image. A failed build is tried twice more, with fewer builds at once: a timeout on a slow
        network or a laptop short of memory usually passes the second time, and the cache keeps what was built.
+       A build or start that fails because Docker's credential helper failed (`error getting credentials`, as
+       when WSL's "credsStore": "desktop.exe" cannot reach Docker Desktop) runs once more without the helper,
+       for the rest of this start only (run_step); the person's Docker config is not changed, and the way to mend
+       it is named once.
     5. Starts the stack and waits until the sign-in page answers: `up -d` returns before the gateway's sign-in is
        ready, and a page opened then shows 502. Then tells the sign-in (Keycloak) the install's addresses, which
        its realm otherwise keeps from the first start. Then names, as a warning, every one-shot service that
@@ -1146,6 +1302,14 @@ def start(_args: list[str]) -> None:
     launcher on its published port on this machine), START_SIGN_IN_URL (Keycloak's realm page), START_SYNC_TRIES (6) and START_SYNC_WAIT_S (5) for telling the
     sign-in the addresses, START_MIN_DISK_GB (20), START_PROBE_WAIT_S (10) and START_PULL_WAIT_S (300) for asking
     Docker whether it can publish the ports."""
+    try:
+        start_steps()
+    finally:
+        end_helper_bypass()
+
+
+def start_steps() -> None:
+    """start's steps 1 to 6, in order (see start)."""
     global STACK_BEING_STARTED
     wait_s = float(os.environ.get("START_WAIT_S", "300"))
     poll_s = float(os.environ.get("START_POLL_S", "5"))
@@ -1229,7 +1393,7 @@ def start(_args: list[str]) -> None:
         else:
             say(f"The build failed; trying again ({attempt} of 3), fewer images at once ...")
             env = {**os.environ, "COMPOSE_BAKE": "false", "COMPOSE_PARALLEL_LIMIT": "2"}
-        if subprocess.run([*COMPOSE, "build"], env=env).returncode == 0:
+        if run_step([*COMPOSE, "build"], env)[0] == 0:
             break
     else:
         raise Refused("the build failed three times. The first error above says why: often the network (pip, uv or "
@@ -1254,7 +1418,7 @@ def start(_args: list[str]) -> None:
         subprocess.run([DOCKER, "rm", "-f", *old_ids], capture_output=True)
     STACK_BEING_STARTED = True
     say("Starting the stack ...")
-    if subprocess.run([*COMPOSE, "up", "-d"]).returncode != 0:
+    if run_step([*COMPOSE, "up", "-d"])[0] != 0:
         raise Refused("the stack did not start: see the error above.")
     say(f"Waiting for the sign-in page at {url} (Keycloak needs about 30 seconds on a first start) ...")
     deadline = time.monotonic() + wait_s

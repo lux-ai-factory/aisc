@@ -26,6 +26,22 @@ d=$(dirname "$0")/..
 printf '%s' "$* | BAKE=${COMPOSE_BAKE:-} LIMIT=${COMPOSE_PARALLEL_LIMIT:-}" | tr '\n' ' ' >> "$d/docker.log"
 echo >> "$d/docker.log"
 [ "$1" = exec ] && [ -f "$d/exec-fails" ] && { echo "Error response from daemon" >&2; exit 1; }
+# A build or up, as Docker runs it with a credential helper: `<step>-credentials-fail` makes the helper named in
+# the config fail (a config without one passes; `credentials-always-fail`: that one too). Each such call, and
+# the Docker config it ran with, goes to steps.log; a config other than the user's is copied to seen-config.json.
+helper_step() {
+  printf '%s | CFG=%s\n' "$1" "${DOCKER_CONFIG:-}" >> "$d/steps.log"
+  if [ -n "${DOCKER_CONFIG:-}" ] && [ "$DOCKER_CONFIG" != "$(cd "$d" && pwd)/user-docker" ]; then
+    cp "$DOCKER_CONFIG/config.json" "$d/seen-config.json"
+    [ -e "$DOCKER_CONFIG/cli-plugins/docker-compose" ] && touch "$d/seen-compose-plugin"
+  fi
+  [ -f "$d/$1-says" ] && { cat "$d/$1-says" >&2; exit 1; }
+  if [ -f "$d/$1-credentials-fail" ]; then
+    if [ -f "$d/credentials-always-fail" ] || grep -q credsStore "${DOCKER_CONFIG:-$d/none}/config.json" 2>/dev/null; then
+      echo 'error getting credentials - err: exit status 1, out: ``' >&2; exit 1
+    fi
+  fi
+}
 """ + RUN_KCADM_IN_EXEC + r"""
 case "$1" in
   info) [ -f "$d/no-daemon" ] && exit 1; exit 0 ;;
@@ -35,13 +51,14 @@ case "$1" in
       *" config --format json"*) if [ -f "$d/config-answer" ]; then cat "$d/config-answer"; else echo '{"services": {}}'; fi
         exit 0 ;;
       *" build"*)
+        helper_step build
         n=$(cat "$d/build-failures" 2>/dev/null || echo 0)
         if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$d/build-failures"; echo "failed to solve" >&2; exit 1; fi
         exit 0 ;;
       *" ps -a --status created"*) [ -f "$d/created-fails" ] && exit 1
         [ -f "$d/created-answer" ] && cat "$d/created-answer"; exit 0 ;;
       *" rm "*) exit 0 ;;
-      *" up "*) [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
+      *" up "*) helper_step up; [ -f "$d/up-fails" ] && exit 1; exit 0 ;;
       *" ps -q keycloak"*) if [ -f "$d/keycloak-id" ]; then cat "$d/keycloak-id"; else echo kc-of-this-project; fi
         exit 0 ;;
       *" ps "*) if [ -f "$d/ps-answer" ]; then cat "$d/ps-answer"; else echo "keycloak	exited (1)"; fi; exit 0 ;;
@@ -851,3 +868,117 @@ def test_a_port_docker_refuses_on_an_https_install_names_docker_not_the_host(scr
     assert "Port 80 is taken" in r.stderr and "Docker cannot use it" in r.stderr
     assert "restarting Docker" in r.stderr
     assert "lsof" not in r.stderr and "netstat" not in r.stderr
+
+
+# ---------------------------------------------------------------------------------- a broken credential helper
+
+#: what a registry login looks like in config.json: user:password in base64, never to be shown
+LOGIN = "dXNlcjpzZWNyZXQtcGFzc3dvcmQ="
+
+
+def users_docker_config(d):
+    """The person's Docker config, as Docker Desktop's WSL integration writes it: a credential helper that fails,
+    a registry login, the Compose plugin among its own cli-plugins."""
+    config = d / "user-docker"
+    (config / "cli-plugins").mkdir(parents=True)
+    (config / "cli-plugins/docker-compose").write_text("")
+    (config / "config.json").write_text(json.dumps({
+        "credsStore": "desktop.exe", "credHelpers": {"gcr.io": "gcloud"},
+        "auths": {"registry.example.org": {"auth": LOGIN}}, "currentContext": "default"}, indent=1))
+    return config
+
+
+def steps(d, step):
+    """(the Docker config each `step` call ran with), in order."""
+    log = (d / "steps.log").read_text().splitlines() if (d / "steps.log").exists() else []
+    return [line.split(" | CFG=")[1] for line in log if line.startswith(step + " ")]
+
+
+@pytest.mark.parametrize("step", ["build", "up"])
+def test_a_step_that_fails_on_the_credential_helper_is_run_once_more_without_it(scratch, step):
+    user = users_docker_config(scratch)
+    before = (user / "config.json").read_bytes()
+    (scratch / f"{step}-credentials-fail").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode == 0, r.stdout + r.stderr
+    ran_with = steps(scratch, step)
+    assert len(ran_with) == 2 and ran_with[0] == str(user)
+    retried_with = ran_with[1]
+    assert retried_with and retried_with != str(user)
+    seen = json.loads((scratch / "seen-config.json").read_text())
+    assert "credsStore" not in seen and "credHelpers" not in seen
+    assert seen["auths"] == {"registry.example.org": {"auth": LOGIN}} and seen["currentContext"] == "default"
+    assert (scratch / "seen-compose-plugin").exists()
+    assert (user / "config.json").read_bytes() == before
+    assert not os.path.exists(retried_with)
+    assert ("Docker's credential helper (desktop.exe) failed; pulled without it for this run. To fix it for good: "
+            in r.stdout)
+    assert LOGIN not in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("step", ["build", "up"])
+def test_an_unrelated_pull_failure_is_not_retried(scratch, step):
+    user = users_docker_config(scratch)
+    (scratch / f"{step}-says").write_text("Error response from daemon: pull access denied for aisc/nothing\n")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode != 0
+    assert set(steps(scratch, step)) == {str(user)}
+    assert "credential helper" not in r.stdout + r.stderr
+    assert "pull access denied" in r.stderr
+
+
+@pytest.mark.parametrize("step", ["build", "up"])
+def test_only_one_retry(scratch, step):
+    """The person's config is tried once: after the helper failed, every later run of the step (the build's own
+    retries, with fewer builds at once) goes without it, in the same temporary config."""
+    user = users_docker_config(scratch)
+    (scratch / f"{step}-credentials-fail").write_text("")
+    (scratch / "credentials-always-fail").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode != 0
+    ran_with = steps(scratch, step)
+    assert ran_with[0] == str(user) and str(user) not in ran_with[1:]
+    assert len(ran_with) == (4 if step == "build" else 2)
+    assert len(set(ran_with[1:])) == 1
+    assert "pulled without it" not in r.stdout
+    assert (r.stdout + r.stderr).count("credential helper (desktop.exe) failed") == 1
+    assert not os.path.exists(ran_with[1])
+
+
+def test_after_the_helper_failed_the_builds_retries_keep_going_without_it(scratch):
+    """A slow network on top of a broken helper: the retry without the helper times out, and the build's next
+    attempt still goes without the helper, in the same temporary config, rather than fail on it at once."""
+    user = users_docker_config(scratch)
+    (scratch / "build-credentials-fail").write_text("")
+    (scratch / "build-failures").write_text("1")     # the first run without the helper fails on the network
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode == 0, r.stdout + r.stderr
+    builds = steps(scratch, "build")
+    assert len(builds) == 3 and builds[0] == str(user)
+    assert builds[1] == builds[2] != str(user)
+    assert steps(scratch, "up") == [builds[1]]
+    assert r.stdout.count("Docker's credential helper (desktop.exe) failed; pulled without it for this run.") == 1
+    assert not os.path.exists(builds[1])
+
+
+def test_a_bypassed_build_is_followed_by_an_up_without_the_helper_and_one_line(scratch):
+    user = users_docker_config(scratch)
+    (scratch / "build-credentials-fail").write_text("")
+    (scratch / "up-credentials-fail").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode == 0, r.stdout + r.stderr
+    builds = steps(scratch, "build")
+    assert len(builds) == 2 and steps(scratch, "up") == [builds[1]]
+    assert (r.stdout + r.stderr).count("Docker's credential helper (desktop.exe) failed") == 1
+    assert not os.path.exists(builds[1])
+
+
+def test_the_temporary_config_is_gone_when_start_fails_after_the_bypass(scratch):
+    user = users_docker_config(scratch)
+    (scratch / "build-credentials-fail").write_text("")
+    (scratch / "up-fails").write_text("")
+    r = run(scratch, DOCKER_CONFIG=str(user))
+    assert r.returncode != 0 and "did not start" in r.stderr
+    folder = steps(scratch, "build")[1]
+    assert steps(scratch, "up") == [folder]
+    assert not os.path.exists(folder)
