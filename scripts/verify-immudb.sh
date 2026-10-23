@@ -65,7 +65,7 @@ ENGINE_IMMUDB_PASSWORD=$(awk 'index($0, "ENGINE_IMMUDB_PASSWORD=") == 1 { print 
 if [ -z "$ENGINE_IMMUDB_PASSWORD" ]; then no "ENGINE_IMMUDB_PASSWORD is missing from env.secrets (run scripts/secrets.sh)"; else
   LEDGER_IMMUDB_URL=${LEDGER_IMMUDB_URL:-immudb:3322}
   export ENGINE_IMMUDB_PASSWORD LEDGER_IMMUDB_URL
-  if out=$(docker compose -p "$PROJECT" --env-file env.runtime -f docker-compose.plugin_downloader.yml \
+  if out=$(docker compose -p "$PROJECT" --env-file env.runtime \
         -f docker-compose-infra.development.yml -f docker-compose.development.yml \
         run --rm --no-deps -e ENGINE_IMMUDB_PASSWORD -e LEDGER_IMMUDB_URL \
         platform python -m platform_service.ledger.engine_account check 2>&1); then

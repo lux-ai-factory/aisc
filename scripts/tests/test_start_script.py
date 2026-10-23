@@ -48,7 +48,8 @@ case "$1" in
       *" exec "*) [ -f "$d/local-controls" ] || exit 1; cat "$d/local-controls"; exit 0 ;;
     esac ;;
   volume) [ -f "$d/has-data" ] && exit 0; exit 1 ;;
-  ps) [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
+  ps) case "$*" in *"name=^plugin-downloader$"*) [ -f "$d/old-downloader" ] && cat "$d/old-downloader"; exit 0 ;; esac
+      [ -f "$d/held-ports" ] && cat "$d/held-ports"; exit 0 ;;
   image) [ -f "$d/no-probe-image" ] && exit 1; exit 0 ;;
   pull) [ -f "$d/pull-hangs" ] && exec sleep 5; exit 0 ;;
   run)
@@ -147,8 +148,9 @@ def test_a_good_checkout_is_built_started_and_waited_for(scratch):
     ups = [c for c in log if " up " in c]
     assert len(builds) == 1 and len(ups) == 1 and log.index(builds[0]) < log.index(ups[0])
     for c in builds + ups:
-        assert "-p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml" in c
-        assert "-f docker-compose-infra.development.yml -f docker-compose.development.yml" in c
+        assert "-p aisc --env-file env.runtime -f docker-compose-infra.development.yml " \
+               "-f docker-compose.development.yml" in c
+        assert "plugin_downloader" not in c
     assert "up -d" in ups[0]
     assert "AISC is up: open http://localhost:8100 " in r.stdout and "private window" in r.stdout
 
@@ -229,17 +231,17 @@ def test_local_controls_it_cannot_read_do_not_stop_the_start(scratch):
 
 
 def test_a_one_shot_that_failed_is_named_after_the_sign_in_answers(scratch):
-    """Plugin-publisher exits 1 naming the plugins it could not build, but nothing waits on it, so
-    `up -d` returns 0 and the script said "AISC is up" with the plugin missing from the index."""
-    (scratch / "ps-answer").write_text("plugin-publisher\tExited (1) 5 seconds ago\n"
+    """make_buckets exits 1 when it cannot make the buckets, but nothing waits on it, so `up -d`
+    returns 0 and the script said "AISC is up" with nothing to store results in."""
+    (scratch / "ps-answer").write_text("make_buckets\tExited (1) 5 seconds ago\n"
                                        "report-grants\tExited (0) 9 seconds ago\n"
                                        "platform\tUp 2 minutes (healthy)\n")
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     warnings = [line for line in r.stdout.splitlines() if "Warning" in line]
-    assert any("plugin-publisher" in w for w in warnings), r.stdout
+    assert any("make_buckets" in w for w in warnings), r.stdout
     assert not any("report-grants" in w or "platform" in w for w in warnings), r.stdout
-    assert "docker compose -p aisc logs plugin-publisher" in r.stdout
+    assert "docker compose -p aisc logs make_buckets" in r.stdout
 
 
 def test_no_failed_one_shot_no_warning(scratch):
@@ -443,7 +445,29 @@ def test_start_clears_containers_a_failed_attempt_left_created(scratch):
     assert log.index(removal[0]) < log.index(ups[0])
 
 
-COMPOSE_OF_THE_STACK = ("compose -p aisc --env-file env.runtime -f docker-compose.plugin_downloader.yml "
+def test_start_removes_the_exited_plugin_downloader_an_old_install_left(scratch):
+    """Plugins are fetched on install now, so the old one-shot container has no service: it would make
+    compose warn about an orphan on every start. Only that container, only of this project."""
+    (scratch / "old-downloader").write_text("abc123\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = calls(scratch)
+    asked = [c for c in log if c.startswith("ps ") and "plugin-downloader" in c]
+    assert len(asked) == 1 and "label=com.docker.compose.project=aisc" in asked[0], log
+    removed = [c for c in log if c.startswith("rm ")]
+    assert len(removed) == 1 and removed[0].startswith("rm -f abc123"), log
+    assert log.index(removed[0]) < log.index([c for c in log if " up " in c][0])
+    assert r.stdout.count("plugin download") == 1, r.stdout
+
+
+def test_start_removes_nothing_when_no_plugin_downloader_is_left(scratch):
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not [c for c in calls(scratch) if c.startswith("rm ")]
+    assert "plugin download" not in r.stdout
+
+
+COMPOSE_OF_THE_STACK = ("compose -p aisc --env-file env.runtime "
                         "-f docker-compose-infra.development.yml -f docker-compose.development.yml")
 
 

@@ -1,5 +1,22 @@
 # Changelog of the aisc root repository (newest first).
 
+## 2026-10-23: plugins are fetched on install
+
+### Changes
+- `start` no longer clones any plugin. The `plugin-downloader` service and `docker-compose.plugin_downloader.yml`
+  are gone, and `def_plugins/` is not used by `start` (it can be deleted by hand; the engine-standalone compose
+  still mounts it). `plugin-publisher` is now a service that stays up: it puts the shared plugin interface on
+  the package index at its start, and publishes one plugin when an admin installs a test from the catalogue
+  (the platform asks it, with `PLUGIN_PUBLISHER_TOKEN`). The first install of a test takes about a minute and
+  needs GitHub reachable from the stack. Check: install a test from a project's catalogue.
+- `GITHUB_TOKEN`, for the private plugin repos, now goes to `plugin-publisher` only.
+- An install that failed to fetch says "could not fetch <repo>: ...; nothing was installed".
+- `start` removes the exited `plugin-downloader` container an older install left, so compose stops warning
+  about an orphan. Check: `scripts/tests/test_start_script.py`.
+- `scripts/verify-plugins.sh` checks the publisher and the interface instead of reading the downloader's
+  logs, and `--install <slug>` installs one catalogue entry end to end.
+- The package index is kept between starts (the `devpi_data` volume); the guide said otherwise.
+
 ## 2026-10-21: AISC starts whatever ports are taken
 
 ### Changes

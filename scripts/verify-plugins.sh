@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Can every plugin this stack downloaded be installed, from the private catalogue, by a person?
+# Is the plugin path working: is the publisher up, the shared interface on the index, and can what was
+# installed so far be installed again, from the private catalogue, by a person?
 #
-#   ./scripts/verify-plugins.sh
+#   ./scripts/verify-plugins.sh                    what is there now
+#   ./scripts/verify-plugins.sh --install langbite   also installs the catalogue entry "langbite" as the
+#                                                    admin, which fetches its repo from GitHub and builds it
+#                                                    (about a minute; needs GitHub reachable from the stack)
 #
+#   publisher  plugin-publisher answers /health and has published the shared plugin interface
 #   interface  the index holds the shared plugin interface (shared/plugin-interface) at its version: a
 #              plugin's run installs its dependencies from PyPI and this index, and takes it from here
-#   index      every plugin repo plugin-downloader cloned into def_plugins/ is on the stack's package index
-#              (devpi), under its pyproject name and version; a missing one names `docker logs plugin-publisher`
-#   download   what plugin-downloader skipped (a private repo without GITHUB_TOKEN: WARN) or could not clone
-#              (FAIL)
 #   install    the check's own project ("verify plugins", made by the first run and reused), through the
 #              launcher as the development admin (VERIFY_ADMIN_USER / VERIFY_ADMIN_PASSWORD, by default
-#              `admin` and its password from env.secrets, never printed): every package on the index installs
-#              into its engine project
+#              `admin` and its password from env.secrets, never printed): every plugin package on the index
+#              (a test is on it only after someone installed it) installs into its engine project. With
+#              --install <slug>, that entry is installed first, through the private catalogue
 #   catalogue  the same project with a private catalogue: every package on the index is offered by a blue
 #              entry whose install check says installable, and every blue test is installable (no blue entry
 #              that can't be installed, no pink one that can). The public catalogue not answering is a WARN
@@ -74,6 +76,11 @@ def index():
     return out
 
 
+def index_now(package):
+    """{normalised name: (name, versions)} of one package, read from the index again after an install."""
+    return {key: value for key, value in index().items() if key == norm(package)}
+
+
 def pyproject_name_version(path):
     text = path.read_text()
     name = re.search(r'^name\s*=\s*"([^"]+)"', text, re.M)
@@ -92,20 +99,34 @@ def interface_on_index(held):
     held.pop(norm(name or ""), None)          # the interface is no plugin: the install and catalogue checks skip it
 
 
-def plugins_on_index_and_downloads(held):
-    for repo in sorted(Path("def_plugins").glob("*/pyproject.toml")):
-        name, version = pyproject_name_version(repo)
-        found = held.get(norm(name or ""))
-        if found and version in found[1]:
-            say("PASS", "index", f"{repo.parent.name}: {name} {version} is on the index")
-        else:
-            say("FAIL", "index", f"{repo.parent.name}: {name} {version} is not on the index"
-                              " (docker logs plugin-publisher says why it did not build)")
-    log = subprocess.run(["docker", "logs", "plugin-downloader"], capture_output=True, text=True).stdout
-    for repo in sorted(set(re.findall(r"^skipped (\S+?):", log, re.M))):
-        say("WARN", "download", f"{repo} was skipped: a private repo, and env.secrets has no GITHUB_TOKEN")
-    for repo in sorted(set(re.findall(r"^could not (?:clone|update) (\S+)", log, re.M))):
-        say("FAIL", "download", f"{repo} could not be downloaded (docker logs plugin-downloader)")
+def publisher_health():
+    """plugin-publisher answers /health (asked inside its container: it publishes no port) and has put the
+    shared interface on the index."""
+    r = subprocess.run(["docker", "exec", "plugin-publisher", "python", "-c",
+                        "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health',"
+                        " timeout=4).read().decode())"], capture_output=True, text=True, timeout=60)
+    try:
+        health = json.loads(r.stdout)
+    except ValueError:
+        health = None
+    if r.returncode != 0 or not isinstance(health, dict):
+        say("FAIL", "publisher", "plugin-publisher does not answer /health (docker logs plugin-publisher)")
+    elif health.get("interface_published"):
+        say("PASS", "publisher", "plugin-publisher is up and has published the shared plugin interface")
+    else:
+        say("FAIL", "publisher", "plugin-publisher is up but has not published the shared plugin interface"
+                                 " (docker logs plugin-publisher)")
+
+
+def install_slug(argv):
+    """The catalogue entry named by `--install <slug>`, or None."""
+    if "--install" in argv:
+        rest = argv[argv.index("--install") + 1:]
+        if rest and not rest[0].startswith("-"):
+            return rest[0]
+        say("FAIL", "install", "--install takes the slug of a catalogue entry, for example --install langbite")
+        sys.exit(2)
+    return None
 
 
 def _browser_like_cookies():
@@ -187,7 +208,7 @@ def detail(body):
     return body.get("detail") if isinstance(body, dict) else body
 
 
-def installs_and_catalogue(held):
+def installs_and_catalogue(held, slug_to_install=None):
     session = Session()
     try:
         signed = session.sign_in(os.environ["VERIFY_ADMIN_USER"], os.environ["VERIFY_ADMIN_PASSWORD"])
@@ -209,6 +230,9 @@ def installs_and_catalogue(held):
     if status != 200:
         say("FAIL", "install", f"the engine did not make the project's engine project ({status}: {detail(engine)})")
         return
+    if not held and not slug_to_install:
+        say("WARN", "install", "no test is on the index yet (a test is fetched when it is first installed);"
+                               " ./scripts/verify-plugins.sh --install <slug> fetches one")
     for key in sorted(held):
         package, versions = held[key]
         version = versions[-1]
@@ -219,10 +243,21 @@ def installs_and_catalogue(held):
             say("PASS", "install", f"{package} {version} installs ({', '.join(p['name'] for p in made)})")
         else:
             say("FAIL", "install", f"{package} {version} does not install ({status}: {str(detail(made))[:300]})")
-    private_catalogue(session, slug, held)
+    private_catalogue(session, slug, held, slug_to_install)
 
 
-def private_catalogue(session, slug, held):
+def fetch_and_install(session, slug, entry):
+    """Install one test of the private catalogue as the admin: the platform has the publisher fetch and build
+    its repo, then installs it. Returns the package name, or None."""
+    status, done = session.call("POST", f"/api/projects/{slug}/catalogue/api/tool/{entry}/install", {}, timeout=1500)
+    if status == 200 and isinstance(done, dict):
+        say("PASS", "install", f"{entry}: fetched, built and installed as {done['package_name']} {done['version']}")
+        return done["package_name"]
+    say("FAIL", "install", f"{entry} was not installed ({status}: {str(detail(done))[:300]})")
+    return None
+
+
+def private_catalogue(session, slug, held, slug_to_install=None):
     status, chosen = session.call("POST", f"/api/projects/{slug}/catalogue", {"mode": "private"}, timeout=120)
     if status == 503:
         say("WARN", "catalogue", f"not run: the public catalogue did not answer, so no private copy ({detail(chosen)})")
@@ -230,6 +265,10 @@ def private_catalogue(session, slug, held):
     if status != 200:
         say("FAIL", "catalogue", f"choosing a private catalogue answered {status}: {detail(chosen)}")
         return
+    if slug_to_install:
+        package = fetch_and_install(session, slug, slug_to_install)
+        if package:
+            held.update(index_now(package))
     status, tools = session.call("GET", f"/api/projects/{slug}/catalogue/api/tool/?detailed=true")
     if status != 200:
         say("FAIL", "catalogue", f"the private catalogue's entries answered {status}")
@@ -254,11 +293,12 @@ def private_catalogue(session, slug, held):
             say("FAIL", "catalogue", f"{held[key][0]} is on the index but no entry of the private catalogue offers it")
 
 
+publisher_health()
+slug_to_install = install_slug(sys.argv[1:])
 held = index()
 if not held:
     say("FAIL", "index", "the package index holds nothing (docker logs plugin-publisher)")
 interface_on_index(held)
-plugins_on_index_and_downloads(held)
-installs_and_catalogue(held)
+installs_and_catalogue(held, slug_to_install)
 sys.exit(1 if failed else 0)
 PY

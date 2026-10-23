@@ -58,3 +58,51 @@ def test_the_install_check_installs_the_newest_version_not_the_lexically_last():
     ns["subprocess"] = types.SimpleNamespace(run=run)
     held = ns["index"]()
     assert held["aisc-langbite"][1] == ["0.2.8", "0.2.9", "0.2.10"]
+
+
+def test_the_check_no_longer_reads_what_the_removed_downloader_cloned():
+    """Plugins are fetched when a person installs a test: there is no def_plugins folder to glob and no
+    plugin-downloader container to read logs from."""
+    text = SCRIPT.read_text()
+    assert "def_plugins" not in text and "plugin-downloader" not in text
+
+
+def _load(run):
+    import types
+    ns = {"__name__": "verify_plugins"}
+    exec(compile(_definitions(), str(SCRIPT), "exec"), ns)
+    ns["subprocess"] = types.SimpleNamespace(run=run)
+    lines = []
+    ns["say"] = lambda kind, check, text: lines.append((kind, check, text))
+    return ns, lines
+
+
+def _answer(stdout, returncode=0):
+    import types
+    return lambda cmd, **kw: types.SimpleNamespace(stdout=stdout, stderr="", returncode=returncode)
+
+
+def test_a_healthy_publisher_passes_and_says_when_the_interface_is_not_published_yet():
+    ns, lines = _load(_answer('{"interface_published": true}'))
+    ns["publisher_health"]()
+    assert [k for k, c, _ in lines if c == "publisher"] == ["PASS"]
+    ns, lines = _load(_answer('{"interface_published": false}'))
+    ns["publisher_health"]()
+    assert [k for k, c, _ in lines if c == "publisher"] == ["FAIL"]
+
+
+def test_a_publisher_that_does_not_answer_fails_naming_its_logs():
+    ns, lines = _load(_answer("", returncode=1))
+    ns["publisher_health"]()
+    kind, check, text = lines[0]
+    assert (kind, check) == ("FAIL", "publisher") and "docker logs plugin-publisher" in text
+
+
+def test_install_mode_takes_a_slug_and_needs_no_secret_on_the_command_line():
+    """The admin password stays in the environment; the argument is the catalogue entry's slug only."""
+    text = SCRIPT.read_text()
+    assert "--install" in text
+    assert "/install\"" in text or "/install'" in text or "/install\"," in text
+    ns, _ = _load(_answer(""))
+    assert ns["install_slug"](["--install", "langbite"]) == "langbite"
+    assert ns["install_slug"]([]) is None

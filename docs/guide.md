@@ -39,7 +39,7 @@ Part of this repository:
 | `keycloak/` | the realm export (template) and the login theme |
 | `inspector/` | pgAdmin and SchemaSpy, for admins, at `:8100/inspect/` |
 | `infra/minio/` | builds MinIO from source |
-| `def_plugins/`, `local_plugins/` | the default plugins (downloaded at start) and your own plugin sources (`PLUGIN_PATH`) |
+| `def_plugins/`, `local_plugins/` | `def_plugins/` is no longer used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
 | `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
 | `docs/` | design history; not needed to run anything |
 
@@ -80,17 +80,18 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   what this stack's index has. A control's Install button installs the checklist into the controls
   app, which asks the platform for its package; the platform answers from the project's catalogue.
   Tests are installed into the engine from the stack's own package index, `devpi`
-  (`PACKAGE_REGISTRY_URL=http://devpi:3141` in `env.plugin_downloader`), which `plugin-publisher`
-  fills at start from `def_plugins/`. `plugin-downloader` clones into it every plugin repo of
-  github.com/lux-ai-factory, on its `feat/unified-modules` branch where it has one and its default
-  branch otherwise: the public ones always, the private ones (agentseal, counterfactual,
-  evasion, example, luxeval, uncertainty) only with a `GITHUB_TOKEN` that can read them, which you
-  add to `env.secrets` yourself before running `scripts/secrets.sh`. Without it they are skipped,
-  each with a line in `docker logs plugin-downloader`; a plugin that fails to build is named, with
-  its error, in `docker logs plugin-publisher`, the others are still uploaded, and the one-shot exits 1
-  (`docker compose -p aisc ps -a` shows `plugin-publisher` as `Exited (1)`, and `scripts/start.sh`
-  ends with a warning naming it). The index is not kept
-  between starts, so every start uploads every plugin again.
+  (`PACKAGE_REGISTRY_URL=http://devpi:3141` in `env.plugin_downloader`), which is kept in the
+  `devpi_data` volume, so it survives restarts. At start `plugin-publisher` puts only the shared plugin
+  interface on it. A test's plugin is fetched when an admin installs it from the catalogue: the platform
+  asks `plugin-publisher` to clone the plugin's repo from github.com/lux-ai-factory (its
+  `feat/unified-modules` branch where it has one, its default branch otherwise), build it and upload it,
+  and then installs it. So installs need GitHub reachable from the stack, and the first install of a test
+  takes about a minute (later installs of the same version reuse what is on the index). Builds run one
+  at a time, as an unprivileged user with no secrets. The public plugin repos need nothing more; the
+  private ones (agentseal, counterfactual, evasion, example, luxeval, uncertainty) need a `GITHUB_TOKEN`
+  that can read them, which you add to `env.secrets` (it goes to `plugin-publisher` only). Without it
+  their install fails with "could not fetch <repo>: ...; nothing was installed". A plugin that fails to
+  build is named, with its error, in the install dialog and in `docker logs plugin-publisher`.
   Controls are installed by the controls app from the catalogue's API.
 - **The assessed system over the network.** Under a project's **Manage > Components and connections** an admin
   registers the AI systems the project assesses (OpenAI-compatible, A2A, Open Inference Protocol, or
@@ -211,9 +212,12 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   check whose probe cannot run (a missing database, a failed query, an unreadable bundle) is a FAIL,
   never a PASS. `verify.sh --superset-upgrade [image]` checks the stack's own Superset image (the
   `FROM` line of `apps/results-dashboard/Dockerfile`) unless an image is given.
-  `verify-plugins.sh` is the one to run before a demo: it installs every plugin on the stack's index
-  into its own project (`verify plugins`), checks that the private catalogue offers each one with a blue, installable
-  entry, and names any plugin that was skipped or failed to download, build or install.
+  `verify-plugins.sh` is the one to run before a demo: it checks that `plugin-publisher` is up and has
+  published the shared interface, installs every plugin on the stack's index into its own project
+  (`verify plugins`), and checks that the private catalogue offers each one with a blue, installable
+  entry. `verify-plugins.sh --install langbite` also installs that catalogue entry as the admin, which
+  fetches its repo from GitHub and builds it (about a minute); the admin password is read from the
+  environment, never from the command line.
 - **Optional model keys**, for steps 1 and 2 to suggest answers: `MISTRAL_API_KEY` or
   `ANTHROPIC_API_KEY` for qualification; control objectives defaults to a local Ollama on the host and
   takes `CONTROL_OBJECTIVES_LLM_PROVIDER` plus that provider's key instead. Per-project keys for the
@@ -303,7 +307,8 @@ likely to change:
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
 | `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | generated |
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
-| `GITHUB_TOKEN` | `plugin-downloader` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: private plugins skipped |
+| `GITHUB_TOKEN` | `plugin-publisher` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: installing a private plugin fails |
+| `PLUGIN_PUBLISHER_TOKEN` | `platform`, `plugin-publisher` (made by `start`) | the token the platform presents when it asks the publisher to fetch a plugin | generated |
 | `PLUGIN_PATH` | `env.plugin_downloader` | your plugin sources, mounted into the engine | `./local_plugins/` |
 | `PACKAGE_REGISTRY_URL` | `env.plugin_downloader` | the index the engine installs plugins from | `http://devpi:3141` |
 | `CATALOGUE_EXTERNAL_URL`, `CATALOGUE_API_URL` | `env.plugin_downloader` | the hosted catalogue's page and API | `https://sandboxconfigurator.aifactory.lu/...` |

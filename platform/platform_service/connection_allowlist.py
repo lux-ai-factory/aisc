@@ -30,7 +30,7 @@ STACK_SERVICES = frozenset({
     "backend", "caddy", "catalogue-private", "control-objectives", "control-objectives-migrate", "controls-migrate",
     "controls-pdf", "controls-web", "dashboard", "dashboard-migrate", "dashboard-redis", "devpi", "devpi-standalone",
     "eval", "immudb", "immudb-key", "isolate", "keycloak", "ledger-pool", "make_buckets", "minio", "minio-standalone",
-    "oauth2-proxy", "pgadmin", "platform", "plugin-downloader", "plugin-publisher", "postgres",
+    "oauth2-proxy", "pgadmin", "platform", "plugin-publisher", "postgres",
     "postgres-setup", "postgres-standalone", "qualification-agents", "qualification-llm",
     "qualification-migrate", "qualification-ontology", "qualification-pdf", "qualification-prefill",
     "qualification-web", "rabbitmq", "rabbitmq-standalone", "redis", "redis-standalone",

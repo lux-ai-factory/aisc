@@ -20,6 +20,6 @@ LEDGER_IMMUDB_PASSWORD=$(awk 'index($0, "LEDGER_IMMUDB_PASSWORD=") == 1 { print 
 LEDGER_IMMUDB_URL=${LEDGER_IMMUDB_URL:-immudb:3322}
 export IMMUDB_ADMIN_PASSWORD LEDGER_IMMUDB_PASSWORD LEDGER_IMMUDB_URL
 docker compose -p "${COMPOSE_PROJECT:-aisc}" --env-file env.runtime \
-  -f docker-compose.plugin_downloader.yml -f docker-compose-infra.development.yml -f docker-compose.development.yml \
+  -f docker-compose-infra.development.yml -f docker-compose.development.yml \
   run --rm --no-deps -e IMMUDB_ADMIN_PASSWORD -e LEDGER_IMMUDB_PASSWORD -e LEDGER_IMMUDB_URL \
   platform python -m platform_service.ledger.pool create "$COUNT"

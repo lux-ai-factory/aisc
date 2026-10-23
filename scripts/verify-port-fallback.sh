@@ -26,7 +26,7 @@
 # Prints "  PASS <check>" or "  FAIL <check>" per check; exits 1 on any FAIL, 2 when it refuses to run.
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-COMPOSE_FILES="docker-compose.plugin_downloader.yml docker-compose-infra.development.yml docker-compose.development.yml"
+COMPOSE_FILES="docker-compose-infra.development.yml docker-compose.development.yml"
 STAND_IN_IMAGE=nginx:1.27-alpine
 
 usage() {
