@@ -486,6 +486,27 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
     return _targets_answer(found["pid"], synced)
 
 
+@router.get("/projects/{slug}/targets/assessable-by")
+def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Per target, the installed tests that can assess it, from what the engine says each declares
+    (asked with the caller's own token). An engine that does not answer lists none, and says so."""
+    from platform_service import engine_components
+
+    role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    targets.ensure_system(found["pid"], found["name"])
+    rows = targets.view(found["pid"], None)
+    try:
+        plugins = engine_components.plugin_declarations(found["pid"], token_from_headers(request.headers) or "")
+    except engine_components.EngineUnavailable as exc:
+        logger.warning("installed tests of project %s not read: %s", found["pid"], exc)
+        return {"assessable_by": {t["key"]: [] for t in rows},
+                "reason": "the installed tests could not be read: try again later"}
+    return {"assessable_by": targets.assessable_by(rows, plugins), "reason": None}
+
+
 # ── Allowed internal hosts ────────────────────────────────────────────────────
 # Per project; its owners and platform admins edit it. The deployment's CONNECTIONS_ALLOWED_HOSTS
 # is a floor shown read-only; the stack's own services, loopback and metadata are never allowed

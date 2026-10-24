@@ -218,6 +218,16 @@ def view(pid, latest_card: int | None) -> list[dict]:
     } for r in rows]
 
 
+def assessable_by(target_rows: list[dict], plugins: list[dict]) -> dict[str, list[str]]:
+    """Per target key, the installed tests that can assess it: those whose kinds include an AI card
+    target, and of those that call their target only a target that has a connection. Its protocol
+    does not narrow it: the facade gives a text tool any connection's answer."""
+    card = [p for p in plugins if "card" in (p.get("target_kinds") or [])]
+    return {t["key"]: [p.get("display_name") or p["name"] for p in card
+                       if t.get("endpoint") or not p.get("card_needs_connection")]
+            for t in target_rows}
+
+
 def is_key(key: str) -> bool:
     import re
 

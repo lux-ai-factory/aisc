@@ -43,6 +43,13 @@ def available_plugins(pid, token: str) -> list[dict]:
     return list(_call("GET", "/api/v1/plugins", pid, token) or [])
 
 
+def plugin_declarations(pid, token: str) -> list[dict]:
+    """What each test installed in this project declares about what it assesses (`target_kinds`,
+    `card_protocols`, `card_needs_connection`, with its `name` and `display_name`): the engine's own
+    GET /api/v1/plugins/declarations."""
+    return list(_call("GET", "/api/v1/plugins/declarations", pid, token) or [])
+
+
 def engine_project(pid, token: str) -> str:
     """The engine's pid of this platform project."""
     return str(_call("POST", f"/api/v1/projects/for-platform/{pid}", pid, token)["pid"])
