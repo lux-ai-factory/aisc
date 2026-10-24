@@ -320,6 +320,7 @@ likely to change:
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
 | `GITHUB_TOKEN` | `plugin-publisher` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: installing a private plugin fails |
 | `PLUGIN_PUBLISHER_TOKEN` | `platform`, `plugin-publisher` (made by `start`) | the token the platform presents when it asks the publisher to fetch a plugin | generated |
+| `PLATFORM_ENGINE_TOKEN` | `platform`, `aisc-backend` (made by `start`) | the token the engine presents when it asks the platform whether a card target has a connection | generated |
 | `PLUGIN_PATH` | `env.plugin_downloader` | your plugin sources, mounted into the engine | `./local_plugins/` |
 | `PACKAGE_REGISTRY_URL` | `env.plugin_downloader` | the index the engine installs plugins from | `http://devpi:3141` |
 | `CATALOGUE_EXTERNAL_URL`, `CATALOGUE_API_URL` | `env.plugin_downloader` | the hosted catalogue's page and API | `https://sandboxconfigurator.aifactory.lu/...` |
