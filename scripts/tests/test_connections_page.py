@@ -162,13 +162,15 @@ def test_the_key_row_is_the_field_and_its_remove_box_side_by_side():
 
 # the allowed internal hosts
 
-def test_the_page_has_an_allowlist_section_outside_the_admins_part():
+def test_the_allowed_hosts_are_collapsed_at_the_bottom_outside_the_admins_part():
     html = markup_of(read(PAGE))
-    section = re.search(r'<section id="allowlist" hidden>.*?</section>', html, re.S)
-    assert section, "no allowlist section"
-    settings = re.search(r'<div id="settings" hidden>.*?</div>\s*(?=<section id="allowlist")', html, re.S)
-    assert settings, "the allowlist section must sit outside the admins' part, so owners see it"
-    assert "Allowed internal hosts" in section.group(0)
+    section = re.search(r'<details id="allowed-hosts" hidden>\s*<summary>Allowed internal hosts</summary>.*?</details>',
+                        html, re.S)
+    assert section, "no collapsed allowed hosts section"
+    assert not re.search(r'<details id="allowed-hosts"[^>]*\bopen\b', html), "collapsed until opened"
+    settings = re.search(r'<div id="settings" hidden>.*?</div>\s*(?=<details id="allowed-hosts")', html, re.S)
+    assert settings, "the allowed hosts must sit outside the admins' part, so owners see them"
+    assert html.index('id="allowed-hosts"') > html.index('id="targets"')
     for needed in ('id="f-allow-host"', 'id="f-allow-note"', 'id="allow-add"', 'id="allow-rows"', 'id="allow-msg"'):
         assert needed in section.group(0), needed
 
@@ -176,7 +178,7 @@ def test_the_page_has_an_allowlist_section_outside_the_admins_part():
 def test_an_owner_gets_the_allowlist_and_an_admin_gets_everything():
     script = script_of(read(PAGE))
     assert re.search(r"a\.admin\s*\|\|\s*a\.role === 'owner'", script)
-    assert "show('allowlist')" in script and "show('settings')" in script
+    assert "show('allowed-hosts')" in script and "show('settings')" in script
     assert script.index("show('settings')") > script.index("if (a.admin)")
 
 
@@ -318,10 +320,25 @@ def test_the_name_is_derived_from_the_label_until_typed_over():
     assert "$('f-label').addEventListener('input'" in script and "nameTyped" in script
 
 
-def test_each_connection_says_what_it_is_the_endpoint_of():
+def test_connections_without_a_target_are_listed_apart_for_admins():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    section = re.search(r'<section id="unlinked"[^>]*>\s*<h2>Connections without a target</h2>.*?</section>', markup, re.S)
+    assert section and 'id="unlinked-rows"' in section.group(0)
+    assert re.search(r'<div id="settings" hidden>.*id="unlinked".*</div>', markup, re.S), "an admin's part"
+    assert "filter(function (c) { return !c.target; })" in script
+    assert "'Link to a target'" in script and "'Remove'" in script
+    assert 'id="list"' not in markup and "connects to" not in script
+
+
+def test_linking_saves_the_connection_as_it_is_with_a_target_never_its_key():
     script = script_of(read(PAGE))
-    assert "c.target" in script and "'connects to ' + c.target.label" in script
-    assert "'connects to nothing: edit it to name what it reaches'" in script and "no target" not in script
+    fn = re.search(r"function linkTo\(.*?\n  \}\n", script, re.S)
+    assert fn and "savedFields(c)" in fn.group(0) and "body.target = key" in fn.group(0) and "'PUT'" in fn.group(0)
+    fields = re.search(r"var SAVED = \[(.*?)\];", script, re.S).group(1)
+    assert "'label'" in fields and "'base_url'" in fields and "secret'" not in fields.replace("secret_header", "")
+    # only a target that has no connection can be linked to
+    assert "!connectionsByTarget[t.key]" in script
 
 
 # importing an endpoint from a file (a connection saved in the shape it is saved in)

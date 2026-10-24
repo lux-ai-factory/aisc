@@ -90,9 +90,12 @@
   td.reach small{display:block; font-family:var(--mono); font-size:11px; color:var(--faint)}
   td.reach .fields{margin-top:8px}
   td.tests{color:var(--muted)} td.tests .none{color:var(--faint)} td.tests small{display:block; font-size:12px}
-  #allowlist{margin-top:34px}
-  #allowlist td.note{color:var(--muted)} #allowlist td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
-  #allowlist .denied{display:block; color:var(--error); font-size:12px}
+  #allowed-hosts{margin-top:34px}
+  #allowed-hosts > summary{cursor:pointer; font-family:"MuseoModerno",ui-sans-serif,system-ui,sans-serif;
+                           font-size:1.25em; font-weight:600; color:var(--heading)}
+  #allowed-hosts td.note{color:var(--muted)} #allowed-hosts td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
+  #allowed-hosts .denied{display:block; color:var(--error); font-size:12px}
+  #unlinked{margin-top:34px}
   form.inline{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
   form.inline input{flex:1}
   .fields{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
@@ -177,14 +180,14 @@
   </section>
 
   <div id="settings" hidden>
-    <section id="list">
-      <h2>Connections</h2>
-      <p>How the system or a component is reached over the network, when a test calls it: at most one
-         connection for each. A test that calls a system goes through the connection of what its run
-         tests. A key is stored encrypted for this project only and is never shown again.</p>
+    <section id="unlinked" hidden>
+      <h2>Connections without a target</h2>
+      <p>Connections made before every connection had to name what it reaches. A test that names one
+         directly can still use it; link it to the system or a component that has no connection yet so
+         that tests picking that target reach it.</p>
       <table>
         <thead><tr><th>Connection</th><th>Status</th><th></th></tr></thead>
-        <tbody id="rows"></tbody>
+        <tbody id="unlinked-rows"></tbody>
       </table>
     </section>
 
@@ -221,6 +224,7 @@
         <label for="f-secret">Key</label>
         <div class="fields"><input id="f-secret" autocomplete="new-password"/>
           <label class="check"><input id="f-secret-remove" type="checkbox"/> remove the stored key</label></div>
+        <p class="help">Stored encrypted for this project only, and never shown again.</p>
         <details id="advanced">
           <summary>Advanced</summary>
           <div class="grid">
@@ -242,8 +246,8 @@
     </section>
   </div>
 
-  <section id="allowlist" hidden>
-    <h2>Allowed internal hosts</h2>
+  <details id="allowed-hosts" hidden>
+    <summary>Allowed internal hosts</summary>
     <p>A connection may call any public address. An internal one (a private network, the Docker
        host, a machine on your LAN) is refused unless it is listed here, as a host or host:port.
        Changes apply to the next call, with no restart. The services of this deployment, loopback
@@ -258,7 +262,7 @@
       <button type="submit" id="allow-add">Allow</button>
     </form>
     <span class="msg" id="allow-msg"></span>
-  </section>
+  </details>
 </main>
 
 </div>
@@ -273,6 +277,7 @@
   var editing = null;                       // the name of the connection being edited, or null for a new one
   var isAdmin = false;                      // a platform admin manages the connections; an owner sees them
   var connectionsByTarget = {};             // target key -> its connection, for an admin
+  var unlinked = [];                        // an admin's connections that name no target
   var editTarget = null;                    // the target whose row the editor is open under
   var nameTyped = false;                    // the person typed a name: the label no longer makes it
 
@@ -327,7 +332,7 @@
         // an owner decides which internal hosts the project's connections may reach; managing the
         // connections themselves is a platform admin's
         show('target-section');
-        show('allowlist');
+        show('allowed-hosts');
         reloadAllowlist();
         if (a.admin) {
           isAdmin = true;
@@ -356,43 +361,63 @@
           if (!res.ok) { show('page-message', refusal(res, d)); return; }
           connectionsByTarget = {};
           d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
-          render(d.connections);
-          reloadTargets(false);
+          unlinked = d.connections.filter(function (c) { return !c.target; });
+          reloadTargets(false);                   // draws the connections without a target too
         });
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
   }
 
-  function render(connections) {
-    var rows = $('rows');
+  /** The connections that name no target, read-only, each with Link to a target (one that has no connection
+   *  yet) and Remove. */
+  function renderUnlinked() {
+    var rows = $('unlinked-rows');
     rows.replaceChildren();
-    if (!connections.length) {
-      var tr0 = el('tr'); var td0 = el('td', '', 'No connection yet.'); td0.colSpan = 3; tr0.appendChild(td0); rows.appendChild(tr0);
-    }
-    connections.forEach(function (c) {
+    $('unlinked').hidden = !unlinked.length;
+    var free = knownTargets.filter(function (t) { return !connectionsByTarget[t.key]; });
+    unlinked.forEach(function (c) {
       var tr = el('tr');
       var name = el('td', 'name', c.label);
       name.appendChild(el('small', '', c.name + ' · ' + describe(c) + ' · ' + c.base_url));
       tr.appendChild(name);
-
       var state = el('td', 'state');
       state.appendChild(el('div', c.has_secret ? 'ok' : '', c.has_secret ? 'key stored' : 'no key'));
-      state.appendChild(c.target ? el('div', 'ok', 'connects to ' + c.target.label)
-                                 : el('div', 'bad', 'connects to nothing: edit it to name what it reaches'));
       if (c.last_test_at) state.appendChild(el('div', c.last_test_ok ? 'ok' : 'bad',
-        'last tried ' + String(c.last_test_at).slice(0, 16).replace('T', ' ') + (c.last_test_ok ? ': ok' : ': failed')));
+        (c.last_test_ok ? 'last try OK ' : 'last try failed ') + when(c.last_test_at)));
       tr.appendChild(state);
 
       var act = el('td');
       var af = el('div', 'fields');
       var msg = el('span', 'msg');
-      var del = el('button', 'danger', 'Delete'); del.type = 'button';
-      del.addEventListener('click', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); });
-      af.appendChild(del);
+      var pick = el('select');
+      pick.setAttribute('aria-label', c.label + ': the target to link it to');
+      free.forEach(function (t) { var o = el('option', '', targetName(t)); o.value = t.key; pick.appendChild(o); });
+      var link = button('ghost', 'Link to a target', function () { linkTo(c, pick.value, msg); });
+      if (!free.length) { pick.disabled = true; link.disabled = true; say(msg, 'Every target has a connection already.'); }
+      af.appendChild(pick); af.appendChild(link);
+      af.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
       act.appendChild(af); act.appendChild(msg);
       tr.appendChild(act);
       rows.appendChild(tr);
     });
+  }
+
+  // what a connection is, as the platform saves it (its key is not among them: left out, it is kept)
+  var SAVED = ['label', 'kind', 'base_url', 'method', 'path', 'headers', 'secret_header', 'body_template',
+               'response_path', 'refusal', 'model', 'timeout_s', 'protocol_version'];
+
+  function savedFields(c) {
+    var body = {};
+    SAVED.forEach(function (k) { if (c[k] !== undefined && c[k] !== null) body[k] = c[k]; });
+    return body;
+  }
+
+  /** Link a connection to a target: saved as it is, now naming the target (set once). */
+  function linkTo(c, key, msg) {
+    if (!key) { say(msg, 'Pick the system or a component.', true); return; }
+    var body = savedFields(c);
+    body.target = key;
+    write('PUT', base() + '/' + enc(c.name), body, msg);
   }
 
   /** Try: the prompt goes through the client the tests use (the platform's /test), and what comes back is
@@ -698,6 +723,7 @@
       if (open && open.key === t.key) placeEditor(tr);      // a refresh keeps the open form where it was
     });
     if (open && !editRow.parentNode) closeEditor();
+    if (isAdmin) renderUnlinked();
     if (knownTargets.length < 2) {
       var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the AI card, in step 1, Qualify, then refresh.');
       td0.colSpan = 3; tr0.appendChild(td0); rows.appendChild(tr0);
