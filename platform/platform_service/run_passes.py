@@ -119,3 +119,21 @@ def uses_of(evaluation_plugin, pid=None) -> list[dict]:
             " FROM core.run_pass_use WHERE evaluation_plugin = %s AND (%s::uuid IS NULL OR pid = %s::uuid)"
             " GROUP BY pid, connection, protocol, fingerprint ORDER BY min(used_at), min(id)",
             (str(evaluation_plugin), pid, pid)).fetchall()
+
+
+def uses_by_run(evaluation_plugins, pid) -> dict[str, list[dict]]:
+    """uses_of for several evaluation plugins of project `pid` at once: {evaluation plugin: its uses}, only
+    those with some."""
+    if not evaluation_plugins:
+        return {}
+    with db.pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT evaluation_plugin::text AS evaluation_plugin, connection, protocol, fingerprint,"
+            " min(used_at) AS used_at FROM core.run_pass_use"
+            " WHERE evaluation_plugin = ANY(%s::uuid[]) AND pid = %s::uuid"
+            " GROUP BY evaluation_plugin, connection, protocol, fingerprint ORDER BY min(used_at), min(id)",
+            ([str(e) for e in evaluation_plugins], str(pid))).fetchall()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        out.setdefault(r.pop("evaluation_plugin"), []).append(r)
+    return out

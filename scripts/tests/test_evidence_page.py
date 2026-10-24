@@ -215,6 +215,42 @@ def test_an_old_platform_without_targets_draws_no_tiles():
     assert re.search(r"if \(!data\.targets\) return;", _target_tiles_body())
 
 
+# ── the runs on a local model file, apart ───────────────────────────────────
+
+def _local_body():
+    m = re.search(r"function renderLocal\(\) \{(.*?)\n  \}", script_of(read(PAGE)), re.S)
+    assert m, "no renderLocal"
+    return m.group(1)
+
+
+def test_local_runs_are_a_block_of_their_own_under_the_results_targets():
+    markup = markup_of(read(PAGE))
+    assert re.search(r'<div class="tiles" id="target-tiles"[^>]*></div>\s*'
+                     r'<div class="local" id="local" hidden>\s*<h3>Local, not part of the assessment record</h3>',
+                     markup), "no local block under the Results tiles"
+    assert '<div class="tiles" id="local-runs"' in markup
+    assert "renderLocal();" in script_of(read(PAGE))
+
+
+def test_a_local_run_names_its_tool_file_hash_status_and_day():
+    body = _local_body()
+    assert "(data.local_runs || []).forEach" in body
+    assert "r.label" in body and "r.assessed.file.name" in body and "r.status" in body and "day(r.created_at)" in body
+    # a run that failed before reading its file has no hash yet
+    assert "r.assessed.file.sha256 ? ' (sha256 ' + r.assessed.file.sha256.slice(0, 12)" in body
+
+
+def test_the_local_block_shows_only_when_there_are_local_runs():
+    body = _local_body()
+    assert "box.textContent = '';" in body and "$('local').hidden = !box.children.length;" in body
+
+
+def test_the_page_builds_its_nodes_without_markup_strings_or_inline_handlers():
+    html = read(PAGE)
+    assert "innerHTML" not in script_of(html) and "insertAdjacentHTML" not in script_of(html)
+    assert not re.search(r"\son[a-z]+\s*=", markup_of(html))
+
+
 # ── the four columns use the whole page width ───────────────────────────────
 
 def test_the_four_columns_sit_side_by_side_across_the_whole_page():

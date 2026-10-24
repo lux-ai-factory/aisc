@@ -13,6 +13,7 @@ whose checklist is gone is kept and shown with its reason; no new link may be ma
 """
 from __future__ import annotations
 
+import json
 import os
 
 import psycopg
@@ -41,11 +42,13 @@ CREATE TABLE IF NOT EXISTS engine.aisc_backend_project (id serial PRIMARY KEY, n
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_pluginconfig (id serial PRIMARY KEY, plugin_id int NOT NULL, name text);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluation (
     id serial PRIMARY KEY, status text NOT NULL, system_id uuid, created_at timestamptz NOT NULL DEFAULT now());
-CREATE TABLE IF NOT EXISTS engine.aisc_backend_aicomponent (id serial PRIMARY KEY, pid uuid NOT NULL);
+CREATE TABLE IF NOT EXISTS engine.aisc_backend_aicomponent (id serial PRIMARY KEY, pid uuid NOT NULL, name text);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationinput (
-    id serial PRIMARY KEY, evaluation_plugin_id int NOT NULL, name text NOT NULL, component_id int);
+    id serial PRIMARY KEY, evaluation_plugin_id int NOT NULL, name text NOT NULL, component_id int,
+    value jsonb NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationplugin (
-    id serial PRIMARY KEY, evaluation_id int NOT NULL, plugin_config_id int, status text NOT NULL);
+    id serial PRIMARY KEY, pid uuid NOT NULL DEFAULT gen_random_uuid(), evaluation_id int NOT NULL,
+    plugin_config_id int, status text NOT NULL);
 CREATE TABLE IF NOT EXISTS controls.checklist (id text PRIMARY KEY, "catalogueId" text, title text NOT NULL);
 CREATE TABLE IF NOT EXISTS controls.checklist_question (
     id text PRIMARY KEY, "checklistId" text NOT NULL, "order" int NOT NULL, text text NOT NULL DEFAULT 'q');
@@ -608,14 +611,18 @@ def test_template_0019_gives_every_link_its_version(evidence_project, dsn):
 # ── step 4 test tiles: each test's engine name and its runs on the version shown ──
 
 def _runs(dsn, pid, plugin, version, *statuses, by="package_name", evaluation_status="Done", component=None,
-          when=None):
+          when=None, local=None, helpers=()):
     """One plugin config of the engine plugin whose `by` column is `plugin`, then one evaluation of `version`
     per status running it once; each on the engine component `component` (an evaluation input named
-    target) or with no target input, created at `when` (default now)."""
+    target) or with no target input, created at `when` (default now). `local`: the marker the worker
+    stores on the model input of a run on a local model file; `helpers`: (role, model) of each helper
+    model input, model None when the run's value names none (optionally a third item, the endpoint's name,
+    default "<role> endpoint"). The evaluation plugins' pids, in order."""
     assert by in ("package_name", "name")
     plugin = sql(dsn, pid, f"SELECT id FROM engine.aisc_backend_plugin WHERE {by} = %s", (plugin,))[0][0]
     config = sql(dsn, pid, "INSERT INTO engine.aisc_backend_pluginconfig (plugin_id, name) VALUES (%s, 'c')"
                            " RETURNING id", (plugin,))[0][0]
+    made = []
     for status in statuses:
         ev = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluation (status, system_id, created_at)"
                            " VALUES (%s, %s, COALESCE(%s::timestamptz, now())) RETURNING id",
@@ -625,6 +632,20 @@ def _runs(dsn, pid, plugin, version, *statuses, by="package_name", evaluation_st
         if component is not None:
             sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, component_id)"
                           " VALUES (%s, 'target', %s)", (ep, component))
+        if local is not None:
+            sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, value)"
+                          " VALUES (%s, 'model', %s::jsonb)", (ep, json.dumps({"local_model": local})))
+        for role, model, *endpoint in helpers:
+            endpoint = endpoint[0] if endpoint else f"{role} endpoint"
+            llm = sql(dsn, pid, "INSERT INTO engine.aisc_backend_aicomponent (id, pid, name)"
+                                " SELECT coalesce(max(id), 0) + 1, gen_random_uuid(), %s"
+                                " FROM engine.aisc_backend_aicomponent RETURNING id", (endpoint,))[0][0]
+            sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, component_id,"
+                          " value) VALUES (%s, %s, %s, %s::jsonb)",
+                (ep, f"helper:{role}", llm, json.dumps({"model": model} if model else {})))
+        made.append(sql(dsn, pid, "SELECT pid::text FROM engine.aisc_backend_evaluationplugin WHERE id = %s",
+                        (ep,))[0][0])
+    return made
 
 
 @pytest.fixture
@@ -874,7 +895,8 @@ def test_each_target_counts_its_tools_runs_on_the_version_shown(client, as_user,
     _runs(dsn, pid, "aisc-plugin-langbite", V1, "Done", component=1)          # another version
     _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=2)          # the stale component
     got = {t["key"]: t for t in _targets(client, as_user, targets)}
-    assert got[COMP]["tools"] == [
+    counted = ("key", "label", "executed", "failed", "running", "last_run")
+    assert [{k: tool[k] for k in counted} for tool in got[COMP]["tools"]] == [
         {"key": "aisc-plugin-langbite", "label": "LangBiTe", "executed": 1, "failed": 1, "running": 1,
          "last_run": "2026-10-01T09:30:00+00:00"},
         {"key": "aisc-plugin-promptfoo", "label": "Promptfoo", "executed": 1, "failed": 0, "running": 0,
@@ -898,3 +920,154 @@ def test_no_target_table_reads_as_no_targets(client, as_user, evidence_project, 
     sql(dsn, evidence_project["pid"], "DROP TABLE engine.aisc_backend_evaluationinput")
     sql(dsn, evidence_project["pid"], "ALTER TABLE target.target RENAME TO target_gone")
     assert _targets(client, as_user, evidence_project) == []
+
+
+# ── what each run assessed, how it was reached, and with which helper models ──────────
+
+FINGERPRINT = "sha256:" + "ab" * 32
+SHA = "0123456789abcdef" * 4
+
+
+def _use(dsn, pid, run, connection="assistant-api", protocol="openai", fingerprint=FINGERPRINT):
+    """The platform's record that the run `run` (its evaluation plugin's pid) reached `connection`."""
+    with psycopg.connect(dsn) as conn:
+        conn.execute("INSERT INTO core.run_pass_use (pass_hash, evaluation_plugin, pid, connection, protocol,"
+                     " fingerprint) VALUES ('h', %s, %s, %s, %s, %s)", (run, pid, connection, protocol, fingerprint))
+
+
+def _body(client, as_user, project):
+    return client.get(f"/projects/{project['slug']}/evidence", headers=as_user(ALICE)).json()
+
+
+def test_a_card_run_says_which_connection_reached_its_target(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    run, = _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, when="2026-10-01 09:30+00")
+    _use(dsn, pid, run)
+    _use(dsn, targets["pid"], run, connection="assistant-api")                    # the same use again: one
+    tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
+    reached = {"name": "assistant-api", "protocol": "openai", "protocol_name": "OpenAI-compatible",
+               "fingerprint": FINGERPRINT}
+    assert tool["runs"] == [{"run": run, "status": "Done", "created_at": "2026-10-01T09:30:00+00:00",
+                             "assessed": {"family": "card", "label": "Explanation assistant",
+                                          "connection": reached, "file": None},
+                             "helpers": []}]
+    assert tool["connections"] == [reached] and tool["helpers"] == []
+
+
+def test_a_card_run_with_no_recorded_use_names_no_connection(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    run, = _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1)
+    other = client.post("/projects", json={"name": "elsewhere"}, headers=as_user(ALICE)).json()
+    _use(dsn, other["pid"], run)                                                # another project's use
+    tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
+    assert tool["runs"][0]["assessed"]["connection"] is None and tool["connections"] == []
+
+
+def test_a_tool_lists_each_connection_its_runs_reached_once(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    first, second, third = _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", "Done", "Done", component=1)
+    _use(dsn, pid, first)
+    _use(dsn, pid, second)
+    _use(dsn, pid, third, connection="assistant-a2a", protocol="a2a", fingerprint="sha256:" + "cd" * 32)
+    tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
+    assert [(c["name"], c["protocol_name"]) for c in tool["connections"]] == [
+        ("assistant-api", "OpenAI-compatible"), ("assistant-a2a", "A2A agent")]
+
+
+def test_each_run_lists_its_helper_models_and_the_tool_each_one_once(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1,
+          helpers=(("judge", "gpt-4o-mini"), ("attacker", "llama-3")))
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, helpers=(("judge", "gpt-4o-mini"),))
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, helpers=(("grader", None),))
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, helpers=(("embedder", None, None),))
+    tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
+    assert [r["helpers"] for r in tool["runs"]] == [                    # newest first
+        [{"role": "embedder", "model": "unnamed endpoint"}],            # neither a model nor an endpoint name
+        [{"role": "grader", "model": "grader endpoint"}],               # no model picked: the endpoint's name
+        [{"role": "judge", "model": "gpt-4o-mini"}],
+        [{"role": "attacker", "model": "llama-3"}, {"role": "judge", "model": "gpt-4o-mini"}],
+    ]
+    assert tool["helpers"] == [{"role": "attacker", "model": "llama-3"},
+                               {"role": "embedder", "model": "unnamed endpoint"},
+                               {"role": "grader", "model": "grader endpoint"},
+                               {"role": "judge", "model": "gpt-4o-mini"}]
+
+
+def test_a_local_run_is_listed_apart_and_never_counted_with_the_ai_cards(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", local={"file": "scoring.onnx", "sha256": SHA},
+          when="2026-10-02 08:00+00", helpers=(("judge", "gpt-4o-mini"),))
+    # marked local, whatever else it has: a target input too
+    _runs(dsn, pid, "aisc-plugin-promptfoo", V2, "Failed", component=1,
+          local={"file": "other.onnx", "sha256": SHA}, when="2026-10-03 08:00+00")
+    body = _body(client, as_user, targets)
+    assert all(t["tools"] == [] for t in body["targets"]) and all(t["kind"] != "unassigned" for t in body["targets"])
+    assert all(t["runs"] == {"executed": 0, "failed": 0, "running": 0} for t in body["tests"])
+    assert all(p["runs"] == {"executed": 0, "failed": 0, "running": 0} for p in body["plugins"])
+    assert [{k: r[k] for k in ("key", "label", "status", "created_at", "assessed", "helpers")}
+            for r in body["local_runs"]] == [
+        {"key": "aisc-plugin-promptfoo", "label": "Promptfoo", "status": "Failed",
+         "created_at": "2026-10-03T08:00:00+00:00",
+         "assessed": {"family": "local", "label": "other.onnx", "connection": None,
+                      "file": {"name": "other.onnx", "sha256": SHA}}, "helpers": []},
+        {"key": "aisc-plugin-langbite", "label": "LangBiTe", "status": "Done",
+         "created_at": "2026-10-02T08:00:00+00:00",
+         "assessed": {"family": "local", "label": "scoring.onnx", "connection": None,
+                      "file": {"name": "scoring.onnx", "sha256": SHA}},
+         "helpers": [{"role": "judge", "model": "gpt-4o-mini"}]},
+    ]
+
+
+def test_local_runs_are_listed_even_before_the_project_has_targets(client, as_user, engine, dsn):
+    _runs(dsn, engine["pid"], "aisc-plugin-langbite", V2, "Done", local={"file": "scoring.onnx", "sha256": SHA})
+    sql(dsn, engine["pid"], "DELETE FROM target.target")
+    body = _body(client, as_user, engine)
+    assert body["targets"] == [] and [r["key"] for r in body["local_runs"]] == ["aisc-plugin-langbite"]
+
+
+def test_runs_before_targets_stay_no_target_and_name_nothing_they_assessed(client, as_user, targets, dsn):
+    run, = _runs(dsn, targets["pid"], "aisc-plugin-langbite", V2, "Done")
+    last = _body(client, as_user, targets)["targets"][-1]
+    assert (last["key"], last["label"]) == (None, "No target")
+    assert [r["assessed"] for r in last["tools"][0]["runs"]] == [None]
+    assert last["tools"][0]["connections"] == [] and _body(client, as_user, targets)["local_runs"] == []
+
+
+def test_no_engine_tables_yet_reads_as_no_local_runs(client, as_user, evidence_project, dsn):
+    sql(dsn, evidence_project["pid"], "DROP TABLE engine.aisc_backend_evaluationinput")
+    assert _body(client, as_user, evidence_project)["local_runs"] == []
+
+
+def test_a_failed_local_run_marked_at_its_creation_is_local_without_a_hash(client, as_user, targets, dsn):
+    """The engine marks a local run when it creates it, with the file's name; the worker adds the hash once
+    the run reads the file. A run that failed before has the name alone, and is still local."""
+    _runs(dsn, targets["pid"], "aisc-plugin-langbite", V2, "Failed", local={"file": "scoring.onnx"})
+    body = _body(client, as_user, targets)
+    assert all(t["tools"] == [] for t in body["targets"])
+    assert all(p["runs"] == {"executed": 0, "failed": 0, "running": 0} for p in body["plugins"])
+    assert [(r["status"], r["assessed"]) for r in body["local_runs"]] == [
+        ("Failed", {"family": "local", "label": "scoring.onnx", "connection": None,
+                    "file": {"name": "scoring.onnx", "sha256": None}})]
+
+
+def test_local_runs_are_listed_whatever_card_version_they_were_made_on(client, as_user, engine, dsn):
+    pid = engine["pid"]
+    _runs(dsn, pid, "aisc-plugin-langbite", V1, "Done", local={"file": "old.onnx", "sha256": SHA},
+          when="2026-10-01 08:00+00")
+    _runs(dsn, pid, "aisc-plugin-langbite", None, "Done", local={"file": "unstamped.onnx", "sha256": SHA},
+          when="2026-10-02 08:00+00")
+    for version in (V1, V2):
+        body = client.get(f"/projects/{engine['slug']}/evidence?version={version}", headers=as_user(ALICE)).json()
+        assert [r["assessed"]["label"] for r in body["local_runs"]] == ["unstamped.onnx", "old.onnx"]
+
+
+def test_a_project_with_no_ai_card_version_lists_its_local_runs(client, as_user, make_project, dsn):
+    p = make_project()
+    sql(dsn, p["pid"], MODULE_TABLES)
+    sql(dsn, p["pid"], "INSERT INTO engine.aisc_backend_plugin (package_name, version, display_name, enabled)"
+                       " VALUES ('aisc-plugin-performance', '1.0', 'Performance', true)")
+    _runs(dsn, p["pid"], "aisc-plugin-performance", None, "Done", local={"file": "scoring.onnx", "sha256": SHA})
+    body = _body(client, as_user, p)
+    assert body["version"] is None
+    assert [(r["label"], r["assessed"]["label"]) for r in body["local_runs"]] == [("Performance", "scoring.onnx")]

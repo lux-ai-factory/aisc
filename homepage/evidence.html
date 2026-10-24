@@ -125,6 +125,11 @@
   select.version{font:inherit; font-size:14px; font-weight:700; color:var(--text); background:var(--panel);
                  border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer}
   .empty{padding:18px; color:var(--muted); font-size:13.5px}
+  /* runs on a local model file, under Results but apart from the AI card's systems and components */
+  .local{margin-top:18px}
+  .local h3{margin:0 0 4px; font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase}
+  .local p{margin:0 0 8px; color:var(--muted); font-size:12.5px}
+  .local .tile{border-left-color:var(--border-strong); border-style:dashed}
 
   @media (max-width:1200px){
     .ways{grid-template-columns:repeat(2, minmax(0, 1fr))}
@@ -169,6 +174,12 @@
       <div class="way-col">
         <a class="way" id="visualise" data-origin="dashboard" data-path="/">Results</a>
         <div class="tiles" id="target-tiles" aria-label="The system and its components"></div>
+        <div class="local" id="local" hidden>
+          <h3>Local, not part of the assessment record</h3>
+          <p>Runs on a model file uploaded in Settings, not on the AI card, whatever its version: never counted
+             with the AI card's results or put in its reports.</p>
+          <div class="tiles" id="local-runs" aria-label="Runs on a local model file"></div>
+        </div>
       </div>
       <div class="way-col">
         <a class="way" id="write-report" data-origin="engine" data-path="/report-composer/">Report</a>
@@ -344,6 +355,25 @@
     }
   }
 
+  // under Results, apart: each run on a local model file, of any card version, with its tool, the file's
+  // name and the start of its sha256 (none yet for a run that failed before reading it), its helper models
+  function renderLocal() {
+    var box = $('local-runs');
+    box.textContent = '';
+    (data.local_runs || []).forEach(function (r) {
+      var tile = el('div', 'tile'), main = el('div', 'tile-main');
+      main.appendChild(el('div', 'tile-name', r.label));
+      main.appendChild(el('div', 'tile-runs', r.assessed.file.name +
+        (r.assessed.file.sha256 ? ' (sha256 ' + r.assessed.file.sha256.slice(0, 12) + '…)' : '') +
+        ' · ' + r.status + ' · ' + day(r.created_at)));
+      if (r.helpers && r.helpers.length) main.appendChild(el('div', 'tile-runs', 'Helper models: ' +
+        r.helpers.map(function (h) { return h.role.charAt(0).toUpperCase() + h.role.slice(1) + ' ' + h.model; }).join(', ')));
+      tile.appendChild(main);
+      box.appendChild(tile);
+    });
+    $('local').hidden = !box.children.length;
+  }
+
   // under Report: how many reports of the card version shown were generated (failed ones not counted), and
   // the newest, which Open downloads. The composer keeps them; the platform asks it for this page.
   function renderReportTiles() {
@@ -375,10 +405,16 @@
     renderTiles();
     renderControlTiles();
     renderTargetTiles();
+    renderLocal();
     renderReportTiles();
   }
 
   function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function day(iso) {
+    var d = new Date(iso);
+    return [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join('.');
+  }
 
   function load() {
     return api('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
