@@ -248,6 +248,8 @@ SECRETS = [
     ("PLATFORM_LEDGER_AGENTS_TOKEN", "rand"),
     # the platform asks the plugin publisher to fetch, build and publish a plugin with it; held by the two only
     ("PLUGIN_PUBLISHER_TOKEN", "rand"),
+    # the engine backend asks the platform whether a card target has a connection with it; held by the two only
+    ("PLATFORM_ENGINE_TOKEN", "rand"),
 ]
 # The infrastructure passwords: their volumes hold them (see the top of this file).
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",

@@ -87,6 +87,10 @@ services:
       # its changes wait in each project's outbox for aisc-backend-ledger: it imports plugin code, so it
       # never holds the engine's ledger token
       LEDGER_MODE: ${LEDGER_MODE:-record}
+      # Before it stores an evaluation it asks the platform whether the card target picked has a
+      # connection (GET /internal/projects/{pid}/targets/{key}/reachable): the answer carries no key
+      PLATFORM_URL: http://platform:8000
+      PLATFORM_ENGINE_TOKEN: ${PLATFORM_ENGINE_TOKEN:?run scripts/secrets.sh first}
     networks:
       - backend
     depends_on:
@@ -935,6 +939,8 @@ services:
       PLATFORM_LEDGER_ENGINE_TOKEN: ${PLATFORM_LEDGER_ENGINE_TOKEN:?run scripts/secrets.sh first}
       PLATFORM_LEDGER_DASHBOARD_TOKEN: ${PLATFORM_LEDGER_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
       PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
+      # the engine backend's token for asking whether a card target has a connection
+      PLATFORM_ENGINE_TOKEN: ${PLATFORM_ENGINE_TOKEN:?run scripts/secrets.sh first}
       # platform_rw's generated password: postgres-setup applies the same value to the role
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
