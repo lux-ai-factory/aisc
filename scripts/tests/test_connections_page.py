@@ -121,6 +121,8 @@ def test_the_kind_menu_offers_a2a_and_oip():
     html = read(PAGE)
     kinds = re.search(r'<select id="f-kind">(.*?)</select>', html, re.S).group(1)
     assert set(re.findall(r'value="([a-z0-9]+)"', kinds)) == {"rest", "openai", "a2a", "oip"}
+    # each kind is named in the menu as the rows name its protocol
+    assert '<option value="oip">Open Inference Protocol</option>' in kinds
 
 
 def test_an_a2a_connection_sends_its_path_and_protocol_version_and_oip_its_model():
