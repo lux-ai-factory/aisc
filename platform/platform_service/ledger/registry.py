@@ -339,7 +339,7 @@ _ACTIONS = [
     _a("engine.evaluation.run_requested", 4, ("engine",), "evaluation",
        caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),), details_keys=("plugins",),
        runs=("engine.evaluation.status_changed", "engine.evaluation.plugin_status_changed", "engine.measures.recorded",
-             "engine.artifact.uploaded"),
+             "engine.artifact.uploaded", "engine.evaluation.input_marked_local"),
        routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "create_evaluation_task"),)),
     # the worker's: written by the engine when the worker reports, citing the run its evaluation started
     _a("engine.evaluation.status_changed", 4, ("engine",), "evaluation", actor_kinds=("worker",),
@@ -352,6 +352,10 @@ _ACTIONS = [
        details_keys=("count",), routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "create_evaluation_measures"),)),
     _a("engine.artifact.uploaded", 4, ("engine",), "artifact", actor_kinds=("worker",), per_request=None,
        details_keys=("size",), routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "upload_evaluation_artifact"),)),
+    # the local model file a run was on: its name and hash, which keep the run apart from the AI card's
+    _a("engine.evaluation.input_marked_local", 4, ("engine",), "evaluation", actor_kinds=("worker",), per_request=None,
+       details_keys=("input", "file", "sha256"),
+       routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "store_evaluation_input_value"),)),
     _a("engine.plugin.configured", 4, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/(?P<item>[^/]+)/config$"),
                   ("engine", "POST", _EN + r"/plugins/(?P<item>[^/]+)/configs/[^/]+/restore$")),

@@ -87,3 +87,16 @@ def test_a_plugins_status_in_a_run_is_accepted_as_the_runs(client, project, memo
     assert rejected(memory_ledger, project["pid"]) == []
     assert [e.action for e in entries(memory_ledger, log_of(project["pid"])) if e.item_id == run] == [
         "engine.evaluation.run_requested", "engine.evaluation.plugin_status_changed"]
+
+
+def test_a_run_marked_local_is_accepted_as_the_runs(client, project, memory_ledger, witnessed):
+    run = str(uuid.uuid4())
+    request_id = witnessed(MEMBER, "POST", "engine", "/api/v1/evaluations/task", project_header=project["pid"])
+    send(client, project, request_id, "engine.evaluation.run_requested", "evaluation", run, run_id=run,
+         details={"plugins": ["DemoPlugin"]})
+    send(client, project, request_id, "engine.evaluation.input_marked_local", "evaluation", run, run_id=run,
+         details={"input": "model", "file": "model.onnx", "sha256": "ab" * 32})
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+    assert [e.action for e in entries(memory_ledger, log_of(project["pid"])) if e.item_id == run] == [
+        "engine.evaluation.run_requested", "engine.evaluation.input_marked_local"]
