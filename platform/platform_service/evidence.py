@@ -356,9 +356,8 @@ def target_view(found: Choices, latest_number: int | None, uses: dict[str, list[
     """The targets with their tools' runs: the system first, then the components by
     label, then, only when some run has no target input, a "No target" entry. Each tool also lists its
     runs one by one (_run), newest first, every connection they reached (each connection as it was, once,
-    in the order first reached)
-    and every helper model they used (once each). `uses`: run -> the connection uses the platform recorded
-    (run_passes.uses_by_run). A local run is in none of them."""
+    in the order first reached) and every helper model they used (once each). `uses`: run -> the
+    connection uses the platform recorded (run_passes.uses_by_run). A local run is in none of them."""
     uses = uses or {}
 
     def tools(rows):
