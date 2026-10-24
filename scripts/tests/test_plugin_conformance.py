@@ -25,7 +25,7 @@ def conformance():
 def declared(**changes):
     out = {"name": "chat", "package_name": "aisc-chat", "target_kinds": ["card"], "card_protocols": ["openai"],
            "card_needs_connection": True, "adopted": True, "helper_roles": ["judge"], "config_fields": ["rounds"],
-           "hidden_config_fields": {}}
+           "hidden_config_fields": {}, "config_fields_unreadable": False}
     return {**out, **changes}
 
 
@@ -89,6 +89,11 @@ def test_a_hidden_target_field_with_a_default_of_its_own_fails_as_a_silent_fallb
     assert check(declared(hidden_config_fields={"page_size": False})) == []
 
 
+def test_a_config_form_the_engine_could_not_build_warns_that_its_fields_were_not_checked():
+    [(level, text)] = check(declared(config_fields=[], config_fields_unreadable=True))
+    assert level == "WARN" and "config form" in text and "not checked" in text
+
+
 def test_a_test_that_has_not_adopted_warns_naming_what_is_missing():
     [(level, text)] = check(declared(adopted=False, target_kinds=[], card_protocols=[], helper_roles=[]))
     assert level == "WARN" and "@assesses" in text and "nothing" in text
@@ -103,7 +108,8 @@ def test_a_test_that_has_not_adopted_still_fails_on_an_unknown_helper_role():
 
 def test_an_engine_whose_declarations_lack_the_new_keys_is_a_warn_not_a_guess():
     old = {k: v for k, v in declared().items()
-           if k not in ("adopted", "helper_roles", "config_fields", "hidden_config_fields")}
+           if k not in ("adopted", "helper_roles", "config_fields", "hidden_config_fields",
+                        "config_fields_unreadable")}
     [(level, text)] = check(old)
     assert level == "WARN" and "engine" in text
 

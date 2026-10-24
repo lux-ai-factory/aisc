@@ -13,6 +13,7 @@ of (level, message), empty when the test conforms:
         is empty (the platform fills it) and FAILs with a default of its own (a silent fallback to the
         plugin's own model)
   WARN  a test that has not adopted @assesses: what it is missing
+  WARN  a config form the engine could not build (config_fields_unreadable): its fields are not checked
 
 Field names only: the route never sends a value, and nothing here prints one.
 """
@@ -27,7 +28,7 @@ TARGET_FIELD = re.compile(r"(^|_)(target_(model|model_id|api_key|key|base_url|ur
                           r"|model_under_test|model_credentials?)(_|$)")
 CARD = "card"
 #: what the engine adds to each declaration for this check
-CHECKED_KEYS = ("adopted", "helper_roles", "config_fields", "hidden_config_fields")
+CHECKED_KEYS = ("adopted", "helper_roles", "config_fields", "hidden_config_fields", "config_fields_unreadable")
 
 
 def _snake(name):
@@ -52,6 +53,9 @@ def check(declaration: dict, config_fields: list[str]) -> list[tuple[str, str]]:
         findings.append(("FAIL", f"declares the helper role {', '.join(unknown)}, which the interface does not know"
                                  f" (known: {', '.join(HELPER_ROLES)})"))
     asked = _target_fields(config_fields)
+    if declaration["config_fields_unreadable"]:
+        findings.append(("WARN", "the engine could not build its config form, so its config fields were not checked"
+                                 " (the engine's log names the error)"))
     # hidden fields the platform fills: {name: whether its default is empty}
     fallbacks = _target_fields([f for f, empty in declaration["hidden_config_fields"].items() if not empty])
     if declaration["adopted"]:
