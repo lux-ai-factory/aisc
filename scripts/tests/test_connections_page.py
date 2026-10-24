@@ -78,11 +78,6 @@ def test_connections_are_no_engine_components_any_more_so_the_page_offers_no_eng
     assert "Link to the engine" not in html and "not linked to the engine" not in html
 
 
-def test_it_shows_an_answer_a_refusal_or_the_error_of_a_test():
-    script = script_of(read(PAGE))
-    assert ".answer" in script and ".refused" in script and ".refusal_reason" in script and ".error" in script
-
-
 def test_json_fields_are_parsed_on_the_page_and_a_bad_one_is_said_before_sending():
     script = script_of(read(PAGE))
     assert "JSON.parse" in script and "is not valid JSON" in script
@@ -205,8 +200,9 @@ def test_the_deployments_entries_are_shown_read_only_and_denials_are_said():
 def test_the_page_is_named_targets_and_endpoints():
     html = read(PAGE)
     assert "<title>Components and connections" in html
-    assert re.search(r'<section id="targets" hidden>.*?<h2>System and components</h2>', markup_of(html), re.S)
-    assert re.search(r'<section id="list">\s*<h2>Connections</h2>', markup_of(html))
+    section = re.search(r'<section id="target-section" hidden>.*?</section>', markup_of(html), re.S)
+    assert section and "<h2>System and components</h2>" in section.group(0)
+    assert re.search(r'<table id="targets">', section.group(0))
     assert "Targets" not in markup_of(html) and "Endpoint" not in markup_of(html)
 
 
@@ -217,14 +213,45 @@ def test_it_lists_the_targets_and_refreshes_them_from_the_card():
     assert "'/targets/sync'" in script and "Refresh from the AI card" in html
     for field in (".status", ".first_card_number", ".last_card_number", ".endpoint", ".component_kind", ".reason"):
         assert field in script, field
-    assert "not in AI card v" in script and "'no connection'" in script and "no endpoint" not in script
+    assert "not in AI card v" in script and "no endpoint" not in script
 
 
-def test_the_targets_are_shown_to_owners_and_admins_alike():
+def test_one_row_per_target_carries_its_key():
     script = script_of(read(PAGE))
-    gate = script.index("if (!a || !(a.admin || a.role === 'owner'))")
-    assert script.index("show('targets')") > gate
-    assert script.index("show('targets')") < script.index("if (a.admin) {")
+    assert "setAttribute('data-target-key', t.key)" in script
+
+
+def test_a_connected_row_says_how_it_is_reached_with_try_edit_and_remove():
+    script = script_of(read(PAGE))
+    assert "'reached through ' + protocolName(" in script and "' at ' + c.base_url" in script
+    assert "'key stored'" in script and "'no key'" in script
+    assert "'last try OK '" in script and "'last try failed '" in script
+    for label in ("'Try'", "'Edit'", "'Remove'"):
+        assert "el('button', " in script and label in script, label
+
+
+def test_a_row_without_a_connection_says_not_connected_and_offers_connect():
+    script = script_of(read(PAGE))
+    assert "'not connected'" in script and "'Connect'" in script
+
+
+def test_an_owner_sees_how_each_target_is_reached_but_no_buttons():
+    # the connections themselves (base URL, key) are a platform admin's; the targets list names the protocol
+    script = script_of(read(PAGE))
+    assert re.search(r"if \(!isAdmin\)", script)
+    assert "'reached through ' + protocolName(t.endpoint.kind)" in script
+
+
+def test_try_shows_what_a_test_will_get():
+    script = script_of(read(PAGE))
+    fn = re.search(r"function tryIt\(.*?\n  \}\n", script, re.S)
+    assert fn, "no tryIt()"
+    body = fn.group(0)
+    assert "/test'" in body
+    for field in ("d.answer", "d.refused", "d.refusal_reason", "d.error", "d.reachable_only", "d.detail"):
+        assert field in body, field
+    assert "What a test gets: " in body and "The system refused: " in body
+    assert "JSON.parse" in body, "a JSON prompt is sent as an object, for a structured system"
 
 
 def test_a_new_connection_names_its_target_and_a_taken_one_is_not_offered():
@@ -267,16 +294,6 @@ def test_the_import_picks_the_target_by_its_label_since_keys_differ_per_project(
     assert "target_label" in body
 
 
-def test_a_json_test_input_is_sent_as_an_object_for_a_structured_system():
-    probe = re.search(r"function probeIt\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "JSON.parse" in probe
-
-
-def test_a_ping_that_only_shows_the_system_is_reached_says_so():
-    probe = re.search(r"function probeIt\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "d.reachable_only" in probe and "d.detail" in probe
-
-
 def test_a_key_in_the_file_goes_into_the_key_field_and_is_saved_like_a_typed_one():
     """An endpoint file may carry its key ("secret"), as one handed to the person may. Import puts
     it into the Key field (still nothing is saved until Save, and Save stores it encrypted like a typed key)."""
@@ -295,7 +312,7 @@ def test_after_a_save_or_a_delete_the_targets_are_read_again():
 def test_the_probe_is_try_it_and_creating_says_create():
     html = read(PAGE)
     markup, script = markup_of(html), script_of(html)
-    assert "<th>Try it</th>" in markup and "el('button', 'ghost', 'Try it')" in script
+    assert "Try it" not in html and "probeIt" not in script, "a connection is tried from its target's row"
     assert '<button type="button" class="ghost" id="new">Create connection</button>' in markup
     assert "'Create connection'" in script and "New connection" not in html
     assert "'No such project: ' + slug + '.'" in script

@@ -86,6 +86,9 @@
   td.name small{display:block; font-family:var(--mono); font-size:11px; font-weight:400; color:var(--faint)}
   td.state{font-family:var(--mono); font-size:11.5px; color:var(--muted)}
   td.state .ok{color:var(--primary)} td.state .bad{color:var(--error)}
+  td.reach .ok{color:var(--primary)} td.reach .bad{color:var(--error)}
+  td.reach small{display:block; font-family:var(--mono); font-size:11px; color:var(--faint)}
+  td.reach .fields{margin-top:8px}
   #allowlist{margin-top:34px}
   #allowlist td.note{color:var(--muted)} #allowlist td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
   #allowlist .denied{display:block; color:var(--error); font-size:12px}
@@ -149,14 +152,15 @@
   <p class="note" id="gate" hidden>Only a platform admin manages connections.</p>
   <p class="note" id="page-message" hidden></p>
 
-  <section id="targets" hidden>
+  <section id="target-section" hidden>
     <h2>System and components</h2>
     <p>What an assessment can be about: the system, and each component its AI card lists (models,
        rule engines, the data it is trained on, ...). Every run names the one it tested, and every
        result says which. A component the latest AI card no longer lists stays, marked, with its
-       results. Components are added on the AI card, in step 1, Qualify.</p>
-    <table>
-      <thead><tr><th>System or component</th><th>Status</th><th>In AI card versions</th><th>Connection</th></tr></thead>
+       results. Components are added on the AI card, in step 1, Qualify. A test that calls the system
+       or a component reaches it through its connection, shown on its row.</p>
+    <table id="targets">
+      <thead><tr><th>System or component</th><th>How it is reached</th></tr></thead>
       <tbody id="target-rows"></tbody>
     </table>
     <p><button type="button" class="ghost" id="targets-sync">Refresh from the AI card</button>
@@ -170,7 +174,7 @@
          connection for each. A test that calls a system goes through the connection of what its run
          tests. A key is stored encrypted for this project only and is never shown again.</p>
       <table>
-        <thead><tr><th>Connection</th><th>Status</th><th>Try it</th><th></th></tr></thead>
+        <thead><tr><th>Connection</th><th>Status</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <p><button type="button" class="ghost" id="new">Create connection</button>
@@ -256,6 +260,8 @@
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
   var editing = null;                       // the name of the connection being edited, or null for a new one
+  var isAdmin = false;                      // a platform admin manages the connections; an owner sees them
+  var connectionsByTarget = {};             // target key -> its connection, for an admin
 
   function api(path, opts) {
     opts = opts || {};
@@ -307,10 +313,11 @@
         }
         // an owner decides which internal hosts the project's connections may reach; managing the
         // connections themselves is a platform admin's
-        show('targets');
+        show('target-section');
         show('allowlist');
         reloadAllowlist();
         if (a.admin) {
+          isAdmin = true;
           $('who').textContent = 'admin';
           show('settings');
           reload();                                     // reads the targets too
@@ -328,13 +335,16 @@
   function base() { return '/api/projects/' + enc(slug) + '/connections'; }
 
   function reload() {
-    // a save or a delete changes which targets have an endpoint: read them again too
-    reloadTargets(false);
+    // a save or a delete changes which targets have an endpoint: read them again too, once the
+    // connections are known (each target's row shows its own)
     return api(base())
       .then(function (res) {
         return bodyOf(res).then(function (d) {
           if (!res.ok) { show('page-message', refusal(res, d)); return; }
+          connectionsByTarget = {};
+          d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
           render(d.connections);
+          reloadTargets(false);
         });
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
@@ -344,7 +354,7 @@
     var rows = $('rows');
     rows.replaceChildren();
     if (!connections.length) {
-      var tr0 = el('tr'); var td0 = el('td', '', 'No connection yet.'); td0.colSpan = 4; tr0.appendChild(td0); rows.appendChild(tr0);
+      var tr0 = el('tr'); var td0 = el('td', '', 'No connection yet.'); td0.colSpan = 3; tr0.appendChild(td0); rows.appendChild(tr0);
     }
     connections.forEach(function (c) {
       var tr = el('tr');
@@ -359,16 +369,6 @@
       if (c.last_test_at) state.appendChild(el('div', c.last_test_ok ? 'ok' : 'bad',
         'last tried ' + String(c.last_test_at).slice(0, 16).replace('T', ' ') + (c.last_test_ok ? ': ok' : ': failed')));
       tr.appendChild(state);
-
-      var test = el('td');
-      var probe = el('input'); probe.type = 'text'; probe.placeholder = 'a test prompt'; probe.value = 'ping';
-      probe.setAttribute('aria-label', c.label + ' test prompt');
-      var run = el('button', 'ghost', 'Try it'); run.type = 'button';
-      var result = el('span', 'msg');
-      var tf = el('div', 'fields'); tf.appendChild(probe); tf.appendChild(run);
-      test.appendChild(tf); test.appendChild(result);
-      run.addEventListener('click', function () { probeIt(c.name, probe.value, result); });
-      tr.appendChild(test);
 
       var act = el('td');
       var af = el('div', 'fields');
@@ -385,7 +385,9 @@
     });
   }
 
-  function probeIt(name, input, result) {
+  /** Try: the prompt goes through the client the tests use (the platform's /test), and what comes back is
+   *  what a test will get: the extracted answer, or the system's refusal. The row's last try is updated. */
+  function tryIt(name, input, result, lastTry) {
     say(result, 'Calling the system...');
     // a JSON object is sent as one, for a structured system (a scorer takes an applicant)
     var sent = input || 'ping';
@@ -397,8 +399,9 @@
           if (!d.ok) { say(result, 'Failed (' + d.error + '): ' + (d.detail || ''), true); }
           else if (d.reachable_only) { say(result, 'OK, ' + d.detail); }
           else if (d.refused) { say(result, 'The system refused: ' + (d.refusal_reason || '(no reason given)') + ' (' + d.latency_ms + ' ms)'); }
-          else { say(result, 'Answer (' + d.latency_ms + ' ms): ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer))); }
-          reload();
+          else { say(result, 'What a test gets: ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer)) + ' (' + d.latency_ms + ' ms)'); }
+          lastTry.textContent = (d.ok ? 'last try OK ' : 'last try failed ') + 'just now';
+          lastTry.className = d.ok ? 'ok' : 'bad';
         });
       })
       .catch(function () { say(result, NOT_ANSWERING, true); });
@@ -419,6 +422,9 @@
 
   // ── the editor ──
 
+  var PROTOCOLS = {openai: 'OpenAI-compatible', rest: 'REST API', a2a: 'A2A agent', oip: 'Open Inference Protocol'};
+  function protocolName(kind) { return PROTOCOLS[kind] || kind; }
+
   function describe(c) {
     if (c.kind === 'openai') return 'OpenAI-compatible, ' + c.model;
     if (c.kind === 'oip') return 'Open Inference Protocol, ' + c.model;
@@ -435,12 +441,13 @@
     [].forEach.call(document.querySelectorAll('#editor .a2a'), function (n) { n.hidden = kind !== 'a2a'; });
   }
 
-  function openEditor(c) {
+  function openEditor(c, target) {
     editing = c ? c.name : null;
     $('edit-title').textContent = c ? 'Edit ' + c.label : 'Create connection';
     $('f-name').value = c ? c.name : ''; $('f-name').disabled = !!c;
     $('f-label').value = c ? c.label : '';
     fillTargets(c);
+    if (target && !(c && c.target)) $('f-target').value = target.key;
     $('f-kind').value = c ? c.kind : 'rest';
     $('f-base').value = c ? c.base_url : '';
     $('f-model').value = c && c.model ? c.model : '';
@@ -574,24 +581,70 @@
     return t.label + (t.component_kind ? ' (' + (KIND_LABELS[t.component_kind] || t.component_kind) + ')' : '');
   }
 
+  function when(v) { return String(v).slice(0, 16).replace('T', ' '); }
+
+  function button(cls, text, onClick) {
+    var b = el('button', cls, text); b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  /** How a target is reached: its connection's protocol and address, key and last try, with Try, Edit and
+   *  Remove; or "not connected" with Connect. An owner sees the protocol only, and no buttons. */
+  function reachCell(t) {
+    var td = el('td', 'reach');
+    if (!isAdmin) {
+      td.appendChild(el('div', t.endpoint ? 'ok' : 'bad', t.endpoint ? 'reached through ' + protocolName(t.endpoint.kind) : 'not connected'));
+      return td;
+    }
+    var c = connectionsByTarget[t.key];
+    var msg = el('span', 'msg');
+    var actions = el('div', 'fields');
+    if (!c) {
+      td.appendChild(el('div', 'bad', 'not connected'));
+      actions.appendChild(button('ghost', 'Connect', function () { openEditor(null, t); }));
+      td.appendChild(actions); td.appendChild(msg);
+      return td;
+    }
+    td.appendChild(el('div', 'ok', 'reached through ' + protocolName(c.kind) + ' at ' + c.base_url));
+    td.appendChild(el('small', '', c.name + ' · ' + describe(c)));
+    td.appendChild(el('div', c.has_secret ? 'ok' : '', c.has_secret ? 'key stored' : 'no key'));
+    var lastTry = el('div', c.last_test_ok ? 'ok' : 'bad',
+                     c.last_test_at ? (c.last_test_ok ? 'last try OK ' : 'last try failed ') + when(c.last_test_at) : '');
+    td.appendChild(lastTry);
+
+    var tryBox = el('div', 'fields'); tryBox.hidden = true;
+    var prompt = el('input'); prompt.type = 'text'; prompt.placeholder = 'a prompt, or a JSON request'; prompt.value = 'ping';
+    prompt.setAttribute('aria-label', targetName(t) + ': prompt to try');
+    var result = el('span', 'msg');
+    tryBox.appendChild(prompt);
+    tryBox.appendChild(button('', 'Send', function () { tryIt(c.name, prompt.value, result, lastTry); }));
+
+    actions.appendChild(button('ghost', 'Try', function () { tryBox.hidden = !tryBox.hidden; if (!tryBox.hidden) prompt.focus(); }));
+    actions.appendChild(button('ghost', 'Edit', function () { openEditor(c, t); }));
+    actions.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
+    td.appendChild(actions); td.appendChild(tryBox); td.appendChild(result); td.appendChild(msg);
+    return td;
+  }
+
   function renderTargets(d) {
     knownTargets = d.targets || [];
     var rows = $('target-rows');
     rows.replaceChildren();
     knownTargets.forEach(function (t) {
       var tr = el('tr');
-      tr.appendChild(el('td', 'name', targetName(t)));
-      var st = el('td', 'state');
-      st.appendChild(el('div', t.status === 'stale' ? 'bad' : 'ok', t.status === 'stale' ? 'not in AI card v' + d.latest_card : 'current'));
-      tr.appendChild(st);
-      tr.appendChild(el('td', 'when', t.first_card_number ? 'v' + t.first_card_number +
-        (t.last_card_number && t.last_card_number !== t.first_card_number ? ' to v' + t.last_card_number : '') : ''));
-      tr.appendChild(el('td', '', t.endpoint ? t.endpoint.label + ' (' + t.endpoint.name + ')' : 'no connection'));
+      tr.setAttribute('data-target-key', t.key);
+      var name = el('td', 'name', targetName(t));
+      var versions = t.first_card_number ? 'AI card v' + t.first_card_number +
+        (t.last_card_number && t.last_card_number !== t.first_card_number ? ' to v' + t.last_card_number : '') : '';
+      name.appendChild(el('small', '', t.status === 'stale' ? 'not in AI card v' + d.latest_card + (versions ? ' · ' + versions : '') : versions));
+      tr.appendChild(name);
+      tr.appendChild(reachCell(t));
       rows.appendChild(tr);
     });
     if (knownTargets.length < 2) {
       var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the AI card, in step 1, Qualify, then refresh.');
-      td0.colSpan = 4; tr0.appendChild(td0); rows.appendChild(tr0);
+      td0.colSpan = 2; tr0.appendChild(td0); rows.appendChild(tr0);
     }
     say($('targets-msg'), d.reason ? 'Not everything could be brought up to date: ' + d.reason : '', !!d.reason);
   }
