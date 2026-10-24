@@ -78,9 +78,11 @@ _PLUGINS = ("SELECT id, package_name, display_name, enabled, catalogue_slug, nam
 _WORKSPACE = "SELECT name FROM engine.aisc_backend_project ORDER BY id LIMIT 1"
 #: A run on a local model file: the engine worker stores {"local_model": {"file", "sha256"}} as the value of
 #: the plugin's model input. It is not part of the assessment record: never counted with the AI card's
-#: runs, whatever else it has, and listed apart (_LOCAL_RUNS, local_runs).
+#: runs, whatever else it has, and listed apart (_LOCAL_RUNS, local_runs). A local_model that is not an
+#: object is not that marker, and the run is an ordinary one.
+_IS_LOCAL_INPUT = "jsonb_typeof(li.value->'local_model') = 'object'"
 _LOCAL = ("EXISTS (SELECT 1 FROM engine.aisc_backend_evaluationinput li"
-          " WHERE li.evaluation_plugin_id = ep.id AND li.value ? 'local_model')")
+          " WHERE li.evaluation_plugin_id = ep.id AND " + _IS_LOCAL_INPUT + ")")
 #: Step 4's test tiles: each installed test's runs on one card version, as the engine's
 #: per-plugin rows count them; an archived evaluation is hidden in the engine, so it is not counted.
 _RUNS = (
@@ -156,7 +158,7 @@ _RUN_COLUMNS = (
     " COALESCE(pl.display_name, pl.name, pl.package_name) AS label,"
     " t.key AS target_key, ti.id IS NULL AS unassigned, t.label AS target_label,"
     " (SELECT li.value->'local_model' FROM engine.aisc_backend_evaluationinput li"
-    "   WHERE li.evaluation_plugin_id = ep.id AND li.value ? 'local_model' ORDER BY li.name LIMIT 1) AS local_model,"
+    "   WHERE li.evaluation_plugin_id = ep.id AND " + _IS_LOCAL_INPUT + " ORDER BY li.name LIMIT 1) AS local_model,"
     " (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', substr(hi.name, 8),"
     "                                               'model', COALESCE(NULLIF(hi.value->>'model', ''), hc.name,"
     "                                                               'unnamed endpoint'))"
@@ -334,9 +336,10 @@ def _run(row: dict, uses: dict[str, list[dict]]) -> dict:
     platform recorded it reaching; a local model file, with its hash; None for a run with no target, as
     every run made before targets), its helper models."""
     if row["local_model"] is not None:
-        name = row["local_model"].get("file") or "local model"
+        lm = row["local_model"] if isinstance(row["local_model"], dict) else {}
+        name = lm.get("file") or "local model"
         assessed = {"family": "local", "label": name, "connection": None,
-                    "file": {"name": name, "sha256": row["local_model"].get("sha256")}}
+                    "file": {"name": name, "sha256": lm.get("sha256")}}
     elif row["target_key"] is None:
         assessed = None
     else:

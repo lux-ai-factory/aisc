@@ -1051,6 +1051,21 @@ def test_a_failed_local_run_marked_at_its_creation_is_local_without_a_hash(clien
                     "file": {"name": "scoring.onnx", "sha256": None}})]
 
 
+def test_a_local_marker_that_is_not_an_object_is_not_a_local_run_and_breaks_nothing(client, as_user, targets, dsn):
+    """The worker always marks a local run with an object (the file's name, then its hash). A model input
+    whose local_model is anything else is not that marker: the run is an ordinary run, counted where its
+    target puts it (here none), and it assesses nothing named."""
+    _runs(dsn, targets["pid"], "aisc-plugin-langbite", V2, "Done", local="scoring.onnx")
+    response = client.get(f"/projects/{targets['slug']}/evidence", headers=as_user(ALICE))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["local_runs"] == []
+    last = body["targets"][-1]
+    assert (last["kind"], [(t["key"], t["executed"]) for t in last["tools"]]) == (
+        "unassigned", [("aisc-plugin-langbite", 1)])
+    assert [r["assessed"] for r in last["tools"][0]["runs"]] == [None]
+
+
 def test_local_runs_are_listed_whatever_card_version_they_were_made_on(client, as_user, engine, dsn):
     pid = engine["pid"]
     _runs(dsn, pid, "aisc-plugin-langbite", V1, "Done", local={"file": "old.onnx", "sha256": SHA},
