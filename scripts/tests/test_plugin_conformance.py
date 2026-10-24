@@ -52,11 +52,15 @@ def test_an_unknown_helper_role_fails_naming_it_and_the_known_ones():
 TARGET_NAMED = ("target_model", "target_model_id", "target.model", "target_api_key", "target.api_key", "target_key",
                 "target_base_url", "target_url", "target_endpoint", "target_credential", "target_provider",
                 "model_under_test", "Model_Under_Test", "model_credential", "targetModel", "targetApiKey",
-                "targetBaseUrl", "modelUnderTest", "aisc_target_model", "llm.target_api_key")
+                "targetBaseUrl", "modelUnderTest", "aisc_target_model", "llm.target_api_key",
+                "targetAPIKey", "targetURL", "TargetBaseURL", "modelUnderTestAPIKey")
 #: a dataset's column roles and other names that only start like one
 NOT_TARGET_NAMED = ("target_feature", "target_column", "target_probability_field", "targetFeature",
                     "target_row_limit", "target_calls_at_once", "target_label", "model", "api_key", "base_url",
-                    "target", "model_name", "target_models_dir")
+                    "target", "model_name", "target_models_dir",
+                    "target_key_column", "target_key_columns", "target_model_feature", "target_url_field",
+                    "targetKeyColumn", "targetAPIKeyColumn", "target_endpoint_fields",
+                    "target_model_id_column", "target_key_column_name")
 
 
 def test_asking_for_the_target_in_the_config_while_declaring_card_fails_naming_the_fields():

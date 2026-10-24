@@ -196,7 +196,7 @@
       <h2 id="edit-title">Connect</h2>
       <form id="editor" autocomplete="off">
         <label for="f-kind">Protocol</label>
-        <select id="f-kind"><option value="rest">REST API</option><option value="openai">OpenAI-compatible</option><option value="a2a">A2A agent</option><option value="oip">Open Inference Protocol model server</option></select>
+        <select id="f-kind"><option value="rest">REST API</option><option value="openai">OpenAI-compatible</option><option value="a2a">A2A agent</option><option value="oip">Open Inference Protocol</option></select>
         <label for="f-label">Label</label>
         <input id="f-label" type="text" placeholder="e.g. MCAS chat assistant"/>
         <label for="f-name">Name</label>
@@ -358,14 +358,14 @@
     return api(base())
       .then(function (res) {
         return bodyOf(res).then(function (d) {
-          if (!res.ok) { show('page-message', refusal(res, d)); return; }
+          if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }
           connectionsByTarget = {};
           d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
           unlinked = d.connections.filter(function (c) { return !c.target; });
           reloadTargets(false);                   // draws the connections without a target too
         });
       })
-      .catch(function () { show('page-message', NOT_ANSWERING); });
+      .catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });
   }
 
   /** The connections that name no target, read-only, each with Link to a target (one that has no connection
@@ -699,8 +699,14 @@
     if (!able) { td.appendChild(el('span', 'none', 'not known')); return td; }
     var names = (able.assessable_by || {})[t.key] || [];
     td.appendChild(names.length ? el('div', '', names.join(', ')) : el('div', 'none', 'no installed test can assess it'));
-    if (!t.endpoint) td.appendChild(el('small', 'none', 'tests that call it need a connection'));
+    if (!t.endpoint && able.some_need_a_connection) td.appendChild(el('small', 'none', 'tests that call it need a connection'));
     return td;
+  }
+
+  /** Whether the admin's connections, as last read, still include the one named `name`. */
+  function connectionNamed(name) {
+    return Object.keys(connectionsByTarget).some(function (k) { return connectionsByTarget[k].name === name; }) ||
+      unlinked.some(function (c) { return c.name === name; });
   }
 
   function renderTargets(d, able) {
@@ -723,6 +729,7 @@
       if (open && open.key === t.key) placeEditor(tr);      // a refresh keeps the open form where it was
     });
     if (open && !editRow.parentNode) closeEditor();
+    if (editing && !connectionNamed(editing)) closeEditor();      // removed while its editor was open
     if (isAdmin) renderUnlinked();
     if (knownTargets.length < 2) {
       var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the AI card, in step 1, Qualify, then refresh.');

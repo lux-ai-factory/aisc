@@ -241,6 +241,11 @@ def assessable_by(target_rows: list[dict], plugins: list[dict]) -> dict[str, lis
             for t in target_rows}
 
 
+def some_need_a_connection(plugins: list[dict]) -> bool:
+    """Whether some installed test of an AI card target calls its target, so assesses only a connected one."""
+    return any("card" in (p.get("target_kinds") or []) and p.get("card_needs_connection") for p in plugins)
+
+
 def is_key(key: str) -> bool:
     import re
 

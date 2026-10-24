@@ -121,6 +121,8 @@ def test_the_kind_menu_offers_a2a_and_oip():
     html = read(PAGE)
     kinds = re.search(r'<select id="f-kind">(.*?)</select>', html, re.S).group(1)
     assert set(re.findall(r'value="([a-z0-9]+)"', kinds)) == {"rest", "openai", "a2a", "oip"}
+    # each kind is named in the menu as the rows name its protocol
+    assert '<option value="oip">Open Inference Protocol</option>' in kinds
 
 
 def test_an_a2a_connection_sends_its_path_and_protocol_version_and_oip_its_model():
@@ -255,6 +257,12 @@ def test_each_row_lists_the_installed_tests_that_can_assess_it():
     assert "'tests that call it need a connection'" in script
 
 
+def test_the_need_a_connection_hint_shows_only_when_some_installed_test_needs_one():
+    cell = re.search(r"function testsCell\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert ("if (!t.endpoint && able.some_need_a_connection) td.appendChild(el('small', 'none', "
+            "'tests that call it need a connection'));") in cell
+
+
 def test_the_tests_are_read_with_the_targets_for_owners_and_admins_alike():
     reload_targets = re.search(r"function reloadTargets\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
     assert "/targets/assessable-by'" in reload_targets and "Promise.all" in reload_targets
@@ -387,3 +395,17 @@ def test_connections_are_tried_and_made_from_the_rows_only():
     assert "Try it" not in html and "probeIt" not in script, "a connection is tried from its target's row"
     assert 'id="new"' not in markup and "Create connection" not in html and "New connection" not in html
     assert "'No such project: ' + slug + '.'" in script
+
+
+def test_connections_that_cannot_be_read_still_leave_the_admin_the_targets():
+    reload_fn = re.search(r"function reload\(\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }" in reload_fn
+    assert ".catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });" in reload_fn
+
+
+def test_an_editor_open_on_a_connection_since_removed_closes():
+    render = re.search(r"function renderTargets\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "if (editing && !connectionNamed(editing)) closeEditor();" in render
+    named = re.search(r"function connectionNamed\(name\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S)
+    assert named, "no connectionNamed()"
+    assert "connectionsByTarget" in named.group(0) and "unlinked" in named.group(0)

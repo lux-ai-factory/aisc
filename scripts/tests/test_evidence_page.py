@@ -235,9 +235,16 @@ def test_local_runs_are_a_block_of_their_own_under_the_results_targets():
 def test_a_local_run_names_its_tool_file_hash_status_and_day():
     body = _local_body()
     assert "(data.local_runs || []).forEach" in body
-    assert "r.label" in body and "r.assessed.file.name" in body and "r.status" in body and "day(r.created_at)" in body
+    assert "r.label" in body and "file.name" in body and "r.status" in body and "day(r.created_at)" in body
     # a run that failed before reading its file has no hash yet
-    assert "r.assessed.file.sha256 ? ' (sha256 ' + r.assessed.file.sha256.slice(0, 12)" in body
+    assert "file.sha256 ? ' (sha256 ' + file.sha256.slice(0, 12)" in body
+
+
+def test_a_local_run_with_no_file_named_still_draws_its_tile():
+    body = _local_body()
+    assert "var file = (r.assessed && r.assessed.file) || {};" in body
+    assert "(file.name || 'local model')" in body
+    assert "r.assessed.file" not in body.replace("r.assessed && r.assessed.file", "")
 
 
 def test_the_local_block_shows_only_when_there_are_local_runs():

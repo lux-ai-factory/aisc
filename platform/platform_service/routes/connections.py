@@ -489,7 +489,8 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
 @router.get("/projects/{slug}/targets/assessable-by")
 def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
     """Per target, the installed tests that can assess it, from what the engine says each declares
-    (asked with the caller's own token). An engine that does not answer lists none, and says so."""
+    (asked with the caller's own token), and whether some of them call their target (so need a
+    connection). An engine that does not answer lists none, and says so."""
     from platform_service import engine_components
 
     role_or_404(slug, caller)
@@ -502,9 +503,10 @@ def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(
         plugins = engine_components.plugin_declarations(found["pid"], token_from_headers(request.headers) or "")
     except engine_components.EngineUnavailable as exc:
         logger.warning("installed tests of project %s not read: %s", found["pid"], exc)
-        return {"assessable_by": {t["key"]: [] for t in rows},
+        return {"assessable_by": {t["key"]: [] for t in rows}, "some_need_a_connection": False,
                 "reason": "the installed tests could not be read: try again later"}
-    return {"assessable_by": targets.assessable_by(rows, plugins), "reason": None}
+    return {"assessable_by": targets.assessable_by(rows, plugins),
+            "some_need_a_connection": targets.some_need_a_connection(plugins), "reason": None}
 
 
 # ── Allowed internal hosts ────────────────────────────────────────────────────
