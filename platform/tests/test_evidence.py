@@ -1038,3 +1038,15 @@ def test_no_engine_tables_yet_reads_as_no_local_runs(client, as_user, evidence_p
     sql(dsn, evidence_project["pid"], "DROP TABLE engine.aisc_backend_evaluationinput")
     assert _body(client, as_user, evidence_project)["local_runs"] == []
 
+
+def test_a_failed_local_run_marked_at_its_creation_is_local_without_a_hash(client, as_user, targets, dsn):
+    """The engine marks a local run when it creates it, with the file's name; the worker adds the hash once
+    the run reads the file. A run that failed before has the name alone, and is still local."""
+    _runs(dsn, targets["pid"], "aisc-plugin-langbite", V2, "Failed", local={"file": "scoring.onnx"})
+    body = _body(client, as_user, targets)
+    assert all(t["tools"] == [] for t in body["targets"])
+    assert all(p["runs"] == {"executed": 0, "failed": 0, "running": 0} for p in body["plugins"])
+    assert [(r["status"], r["assessed"]) for r in body["local_runs"]] == [
+        ("Failed", {"family": "local", "label": "scoring.onnx", "connection": None,
+                    "file": {"name": "scoring.onnx", "sha256": None}})]
+
