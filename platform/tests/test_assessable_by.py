@@ -57,6 +57,14 @@ def test_any_protocol_serves_a_text_tool_through_the_facade(kind):
     assert targets.assessable_by([target], [plugin("probe", protocols=("openai",))]) == {"system": ["Probe"]}
 
 
+def test_some_need_a_connection_only_when_an_installed_card_test_calls_its_target():
+    reads = plugin("survey", needs_connection=False, protocols=())
+    local = plugin("onnx", kinds=("local_model",), needs_connection=True)
+    assert targets.some_need_a_connection([reads, local]) is False
+    assert targets.some_need_a_connection([]) is False
+    assert targets.some_need_a_connection([reads, plugin("probe")]) is True
+
+
 # the route
 
 @pytest.fixture
@@ -93,7 +101,7 @@ def test_the_route_answers_per_target_from_the_engines_declarations(client, as_u
     r = client.get(f"/projects/{project['slug']}/targets/assessable-by", headers=alice)
     assert r.status_code == 200, r.text
     assert r.json() == {"assessable_by": {"system": ["Probe", "Survey"], f"component:{K1}": ["Survey"]},
-                        "reason": None}
+                        "some_need_a_connection": True, "reason": None}
     call = stub.requests("GET", "/api/v1/plugins/declarations")[-1]
     assert call["headers"]["authorization"] == alice["Authorization"]
     assert call["headers"]["x-aisc-project"] == str(project["pid"])
@@ -106,6 +114,7 @@ def test_an_engine_that_does_not_answer_lists_no_tests_and_says_why(client, as_u
     r = client.get(f"/projects/{project['slug']}/targets/assessable-by", headers=as_user(ALICE))
     assert r.status_code == 200, r.text
     assert r.json()["assessable_by"] == {"system": []}
+    assert r.json()["some_need_a_connection"] is False
     assert r.json()["reason"] == "the installed tests could not be read: try again later"
 
 
