@@ -242,6 +242,22 @@ def test_an_owner_sees_how_each_target_is_reached_but_no_buttons():
     assert "'reached through ' + protocolName(t.endpoint.kind)" in script
 
 
+def test_each_row_lists_the_installed_tests_that_can_assess_it():
+    html = read(PAGE)
+    script = script_of(html)
+    head = re.search(r'<table id="targets">\s*<thead>(.*?)</thead>', markup_of(html), re.S).group(1)
+    assert "<th>Tests that can assess it</th>" in head
+    assert "'/api/projects/' + enc(slug) + '/targets/assessable-by'" in script
+    assert ".assessable_by" in script
+    assert "'no installed test can assess it'" in script
+    assert "'tests that call it need a connection'" in script
+
+
+def test_the_tests_are_read_with_the_targets_for_owners_and_admins_alike():
+    reload_targets = re.search(r"function reloadTargets\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "/targets/assessable-by'" in reload_targets and "Promise.all" in reload_targets
+
+
 def test_try_shows_what_a_test_will_get():
     script = script_of(read(PAGE))
     fn = re.search(r"function tryIt\(.*?\n  \}\n", script, re.S)

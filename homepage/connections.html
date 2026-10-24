@@ -89,6 +89,7 @@
   td.reach .ok{color:var(--primary)} td.reach .bad{color:var(--error)}
   td.reach small{display:block; font-family:var(--mono); font-size:11px; color:var(--faint)}
   td.reach .fields{margin-top:8px}
+  td.tests{color:var(--muted)} td.tests .none{color:var(--faint)} td.tests small{display:block; font-size:12px}
   #allowlist{margin-top:34px}
   #allowlist td.note{color:var(--muted)} #allowlist td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
   #allowlist .denied{display:block; color:var(--error); font-size:12px}
@@ -165,9 +166,10 @@
        rule engines, the data it is trained on, ...). Every run names the one it tested, and every
        result says which. A component the latest AI card no longer lists stays, marked, with its
        results. Components are added on the AI card, in step 1, Qualify. A test that calls the system
-       or a component reaches it through its connection, shown on its row.</p>
+       or a component reaches it through its connection, shown on its row; next to it, the installed
+       tests that can assess it.</p>
     <table id="targets">
-      <thead><tr><th>System or component</th><th>How it is reached</th></tr></thead>
+      <thead><tr><th>System or component</th><th>How it is reached</th><th>Tests that can assess it</th></tr></thead>
       <tbody id="target-rows"></tbody>
     </table>
     <p><button type="button" class="ghost" id="targets-sync">Refresh from the AI card</button>
@@ -666,7 +668,17 @@
     return td;
   }
 
-  function renderTargets(d) {
+  /** The installed tests that can assess target t (`able` is the platform's assessable-by answer). */
+  function testsCell(t, able) {
+    var td = el('td', 'tests');
+    if (!able) { td.appendChild(el('span', 'none', 'not known')); return td; }
+    var names = (able.assessable_by || {})[t.key] || [];
+    td.appendChild(names.length ? el('div', '', names.join(', ')) : el('div', 'none', 'no installed test can assess it'));
+    if (!t.endpoint) td.appendChild(el('small', 'none', 'tests that call it need a connection'));
+    return td;
+  }
+
+  function renderTargets(d, able) {
     knownTargets = d.targets || [];
     var rows = $('target-rows');
     var open = editSection.hidden ? null : editTarget;
@@ -681,25 +693,32 @@
       name.appendChild(el('small', '', t.status === 'stale' ? 'not in AI card v' + d.latest_card + (versions ? ' · ' + versions : '') : versions));
       tr.appendChild(name);
       tr.appendChild(reachCell(t, tr));
+      tr.appendChild(testsCell(t, able));
       rows.appendChild(tr);
       if (open && open.key === t.key) placeEditor(tr);      // a refresh keeps the open form where it was
     });
     if (open && !editRow.parentNode) closeEditor();
     if (knownTargets.length < 2) {
       var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the AI card, in step 1, Qualify, then refresh.');
-      td0.colSpan = 2; tr0.appendChild(td0); rows.appendChild(tr0);
+      td0.colSpan = 3; tr0.appendChild(td0); rows.appendChild(tr0);
     }
-    say($('targets-msg'), d.reason ? 'Not everything could be brought up to date: ' + d.reason : '', !!d.reason);
+    var reasons = [d.reason, able && able.reason].filter(Boolean);
+    say($('targets-msg'), reasons.length ? 'Not everything could be brought up to date: ' + reasons.join('; ') : '', reasons.length > 0);
   }
 
   function reloadTargets(sync) {
-    return api(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
-               sync ? {method: 'POST', body: {}} : undefined)
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say($('targets-msg'), refusal(res, d), true); return; }
-          renderTargets(d);
-        });
+    // the installed tests that can assess each target come with them (from what each test declares)
+    var listed = api(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
+                     sync ? {method: 'POST', body: {}} : undefined)
+      .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); });
+    var tests = api('/api/projects/' + enc(slug) + '/targets/assessable-by')
+      .then(function (res) { return res.ok ? bodyOf(res) : null; })
+      .catch(function () { return null; });
+    return Promise.all([listed, tests])
+      .then(function (both) {
+        var res = both[0].res, d = both[0].d;
+        if (!res.ok) { say($('targets-msg'), refusal(res, d), true); return; }
+        renderTargets(d, both[1]);
       })
       .catch(function () { say($('targets-msg'), NOT_ANSWERING, true); });
   }
