@@ -97,21 +97,25 @@ def revoke(run_pass: str) -> None:
         conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s", (_hash(run_pass or ""),))
 
 
-def record(run_pass: str, connection: str, protocol: str, fingerprint: str) -> None:
-    """That this pass's run reached `connection`, of kind `protocol` and this fingerprint, now. Nothing for
-    a pass that names no evaluation plugin, or one no longer open."""
+def record(run_pass: str, pid: str, connection: str, protocol: str, fingerprint: str) -> None:
+    """That this pass's run reached `connection` of project `pid`, of kind `protocol` and this fingerprint,
+    now. Nothing for a pass that names no evaluation plugin, or one no longer open."""
     with db.pool().connection() as conn:
         conn.execute(
-            "INSERT INTO core.run_pass_use (pass_hash, evaluation_plugin, connection, protocol, fingerprint)"
-            " SELECT pass_hash, evaluation_plugin, %s, %s, %s FROM core.run_pass"
+            "INSERT INTO core.run_pass_use (pass_hash, evaluation_plugin, pid, connection, protocol, fingerprint)"
+            " SELECT pass_hash, evaluation_plugin, %s, %s, %s, %s FROM core.run_pass"
             " WHERE pass_hash = %s AND evaluation_plugin IS NOT NULL AND expires_at > clock_timestamp()",
-            (connection, protocol, fingerprint, _hash(run_pass or "")))
+            (pid, connection, protocol, fingerprint, _hash(run_pass or "")))
 
 
-def uses_of(evaluation_plugin) -> list[dict]:
-    """The connections an evaluation plugin's runs reached, in time order: connection, protocol (its kind
-    then), fingerprint (then), used_at."""
+def uses_of(evaluation_plugin, pid=None) -> list[dict]:
+    """The connections an evaluation plugin's runs reached, in the order first reached: pid, connection,
+    protocol (its kind then), fingerprint (then), used_at (the first time). A connection reached again as
+    it was (a retry, its resolve then its run key) is one use; changed in between, it is two. Only
+    project `pid`'s when given."""
     with db.pool().connection() as conn:
         return conn.execute(
-            "SELECT connection, protocol, fingerprint, used_at FROM core.run_pass_use"
-            " WHERE evaluation_plugin = %s ORDER BY used_at, id", (str(evaluation_plugin),)).fetchall()
+            "SELECT pid::text AS pid, connection, protocol, fingerprint, min(used_at) AS used_at"
+            " FROM core.run_pass_use WHERE evaluation_plugin = %s AND (%s::uuid IS NULL OR pid = %s::uuid)"
+            " GROUP BY pid, connection, protocol, fingerprint ORDER BY min(used_at), min(id)",
+            (str(evaluation_plugin), pid, pid)).fetchall()

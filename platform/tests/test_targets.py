@@ -29,6 +29,13 @@ def _env(monkeypatch, stub):
     monkeypatch.setenv("ENGINE_URL", stub.base)
 
 
+def card_version(client, as_user, project):
+    """The project's first AI card version: until it has one its system is not offered in the engine."""
+    r = client.post(f"/projects/{project['slug']}/system-versions", json={"name": project["name"], "version": "1.0.0"},
+                    headers=as_user(ALICE))
+    assert r.status_code == 201, r.text
+
+
 def one(dsn, pid, sql, params=()):
     with psycopg.connect(make_conninfo(dsn, dbname=projectdb.database_name(pid))) as conn:
         return conn.execute(sql, params).fetchall()
@@ -62,6 +69,7 @@ def test_a_new_project_has_its_system_target(client, as_user, make_project, stub
 def test_the_system_target_is_mirrored_in_the_engine_with_the_callers_token(client, as_user, make_project, stub,
                                                                                  dsn):
     project = make_project(prefix="tgt")
+    card_version(client, as_user, project)
     engine = EngineFake(stub, project["pid"])
     targets.ensure_mirrors(project["pid"], "caller-token")
     mirror = engine.named(f"target:{project['pid']}/system")
@@ -73,6 +81,7 @@ def test_the_system_target_is_mirrored_in_the_engine_with_the_callers_token(clie
 
 def test_mirrors_are_made_once_and_found_again_by_their_value(client, as_user, make_project, stub, dsn):
     project = make_project(prefix="tgt")
+    card_version(client, as_user, project)
     engine = EngineFake(stub, project["pid"])
     targets.ensure_mirrors(project["pid"], "t")
     # the platform lost the pid (a half-finished sync): the next pass finds the mirror, makes no second one
@@ -92,6 +101,7 @@ def test_two_passes_at_once_make_one_mirror(client, as_user, make_project, stub,
     from platform_service import engine_components
 
     project = make_project(prefix="tgt")
+    card_version(client, as_user, project)
     engine = EngineFake(stub, project["pid"])
     real = engine_components.components
 
@@ -111,8 +121,22 @@ def test_two_passes_at_once_make_one_mirror(client, as_user, make_project, stub,
     assert len([c for c in engine.components if c["json_value"]["value"].endswith("/system")]) == 1
 
 
+def test_a_project_without_an_ai_card_version_has_no_system_in_the_engine(client, as_user, make_project, stub, dsn):
+    """A project used only for the engine has no AI card targets: its system row stays on the platform,
+    but the engine offers it only once the project has a card version."""
+    project = make_project(prefix="tgt")
+    engine = EngineFake(stub, project["pid"])
+    assert targets.ensure_mirrors(project["pid"], "t") is None
+    assert engine.named(f"target:{project['pid']}/system") is None
+    assert one(dsn, project["pid"], "select key, engine_component from target.target") == [("system", None)]
+    card_version(client, as_user, project)
+    targets.ensure_mirrors(project["pid"], "t", 1)
+    assert engine.named(f"target:{project['pid']}/system") is not None
+
+
 def test_an_engine_that_does_not_answer_leaves_the_target_unmirrored_with_a_reason(client, as_user, make_project, stub, dsn):
     project = make_project(prefix="tgt")
+    card_version(client, as_user, project)
     stub.route("POST", f"/api/v1/projects/for-platform/{project['pid']}", (503, {"detail": "down"}))
     reason = targets.ensure_mirrors(project["pid"], "t")
     assert reason and reason.startswith("the components could not be passed on to the tests") and "engine" not in reason
@@ -121,6 +145,7 @@ def test_an_engine_that_does_not_answer_leaves_the_target_unmirrored_with_a_reas
 
 def test_a_renamed_target_renames_its_mirror(client, as_user, make_project, stub, dsn):
     project = make_project(prefix="tgt")
+    card_version(client, as_user, project)
     engine = EngineFake(stub, project["pid"])
     targets.ensure_mirrors(project["pid"], "t")
     one(dsn, project["pid"], "update target.target set label = 'MCAS' where key = 'system' returning key")

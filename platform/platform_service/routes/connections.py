@@ -414,10 +414,17 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
         pid, name, request.headers.get(run_passes.HEADER))
 
 
-def _record_use(run_pass: str | None, row: dict, fingerprint: str) -> None:
+def _fingerprint_of(descriptor: dict) -> str:
+    """The plugin-side Descriptor fingerprint of a connection as descriptor_of gives it, what a run key
+    and a recorded use both carry."""
+    from aisc_plugin_interface import connections as client
+    return client.Descriptor.from_dict(descriptor).fingerprint()
+
+
+def _record_use(run_pass: str | None, pid: str, row: dict, fingerprint: str) -> None:
     """A run reached this connection under its pass (run_passes.record); the key never goes in."""
     if run_pass is not None:
-        run_passes.record(run_pass, row["name"], row["kind"], fingerprint)
+        run_passes.record(run_pass, pid, row["name"], row["kind"], fingerprint)
 
 
 def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
@@ -435,11 +442,10 @@ def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSO
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
         return _internal(409, {"detail": str(exc)})
-    if run_pass is not None:
-        from aisc_plugin_interface import connections as client
-        _record_use(run_pass, row, client.Descriptor.from_dict(out).fingerprint())
+    fingerprint = _fingerprint_of(out) if run_pass is not None else None
     # the network rule of the project, now: the run's own environment opens nothing
     out.update(connection_allowlist.rule(pid))
+    _record_use(run_pass, pid, row, fingerprint)
     logger.info("connection %s of project %s resolved for a run", name, pid)
     return _internal(200, out)
 
@@ -478,6 +484,27 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
     targets.ensure_system(found["pid"], found["name"])
     synced = targets.sync(found["pid"], token_from_headers(request.headers) or "")
     return _targets_answer(found["pid"], synced)
+
+
+@router.get("/projects/{slug}/targets/assessable-by")
+def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Per target, the installed tests that can assess it, from what the engine says each declares
+    (asked with the caller's own token). An engine that does not answer lists none, and says so."""
+    from platform_service import engine_components
+
+    role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    targets.ensure_system(found["pid"], found["name"])
+    rows = targets.view(found["pid"], None)
+    try:
+        plugins = engine_components.plugin_declarations(found["pid"], token_from_headers(request.headers) or "")
+    except engine_components.EngineUnavailable as exc:
+        logger.warning("installed tests of project %s not read: %s", found["pid"], exc)
+        return {"assessable_by": {t["key"]: [] for t in rows},
+                "reason": "the installed tests could not be read: try again later"}
+    return {"assessable_by": targets.assessable_by(rows, plugins), "reason": None}
 
 
 # ── Allowed internal hosts ────────────────────────────────────────────────────
@@ -574,9 +601,8 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     row = connection_store.descriptor(pid, name) if CONNECTION_NAME.match(name) else None
     if row is None or row["deleted_at"] is not None:
         return _internal(404, {"detail": f"no connection {name!r}"})
-    from aisc_plugin_interface import connections as client
     try:
-        fingerprint = client.Descriptor.from_dict(descriptor_of(row, pid)).fingerprint()
+        fingerprint = _fingerprint_of(descriptor_of(row, pid))
     except llm_store.SecretsKeyError as exc:
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
@@ -584,7 +610,7 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     key = RUN_KEY_PREFIX + secrets.token_hex(32)
     ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
     expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
-    _record_use(run_pass, row, fingerprint)
+    _record_use(run_pass, pid, row, fingerprint)
     root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
     logger.info("run key issued for connection %s of project %s", name, pid)
     # What the platform's endpoints carry (connection_facade translates to text and a history): a

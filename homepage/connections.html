@@ -86,9 +86,16 @@
   td.name small{display:block; font-family:var(--mono); font-size:11px; font-weight:400; color:var(--faint)}
   td.state{font-family:var(--mono); font-size:11.5px; color:var(--muted)}
   td.state .ok{color:var(--primary)} td.state .bad{color:var(--error)}
-  #allowlist{margin-top:34px}
-  #allowlist td.note{color:var(--muted)} #allowlist td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
-  #allowlist .denied{display:block; color:var(--error); font-size:12px}
+  td.reach .ok{color:var(--primary)} td.reach .bad{color:var(--error)}
+  td.reach small{display:block; font-family:var(--mono); font-size:11px; color:var(--faint)}
+  td.reach .fields{margin-top:8px}
+  td.tests{color:var(--muted)} td.tests .none{color:var(--faint)} td.tests small{display:block; font-size:12px}
+  #allowed-hosts{margin-top:34px}
+  #allowed-hosts > summary{cursor:pointer; font-family:"MuseoModerno",ui-sans-serif,system-ui,sans-serif;
+                           font-size:1.25em; font-weight:600; color:var(--heading)}
+  #allowed-hosts td.note{color:var(--muted)} #allowed-hosts td.when{font-family:var(--mono); font-size:11.5px; color:var(--faint)}
+  #allowed-hosts .denied{display:block; color:var(--error); font-size:12px}
+  #unlinked{margin-top:34px}
   form.inline{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
   form.inline input{flex:1}
   .fields{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
@@ -114,7 +121,13 @@
   form#editor label{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
                     color:var(--muted); padding-top:9px}
   form#editor .help{grid-column:2; margin:-6px 0 0; font-size:12px; color:var(--faint)}
-  form#editor .actions{grid-column:2; display:flex; gap:10px}
+  form#editor .actions{grid-column:2; display:flex; flex-wrap:wrap; gap:10px}
+  form#editor .msg{grid-column:2}
+  form#editor details{grid-column:1 / -1}
+  form#editor summary{cursor:pointer; font-family:var(--mono); font-size:11px; letter-spacing:.06em;
+                      text-transform:uppercase; color:var(--muted)}
+  form#editor details .grid{display:grid; grid-template-columns:200px 1fr; gap:12px 18px; align-items:start; margin-top:12px}
+  tr.editing > td{background:var(--panel-2)}
   /* .fields and .help set display, which would win over the hidden attribute: a hidden kind's row
      would stay in the grid and shift every later label and field by one cell */
   form#editor [hidden]{display:none !important}
@@ -127,7 +140,8 @@
     .topbar{padding:12px 18px; gap:14px}
     main{padding:28px 18px 40px}
     form#editor{grid-template-columns:1fr}
-    form#editor .help, form#editor .actions{grid-column:1}
+    form#editor .help, form#editor .actions, form#editor .msg{grid-column:1}
+    form#editor details .grid{grid-template-columns:1fr}
     input, select{min-width:0; width:100%}
   }
 </style>
@@ -149,14 +163,16 @@
   <p class="note" id="gate" hidden>Only a platform admin manages connections.</p>
   <p class="note" id="page-message" hidden></p>
 
-  <section id="targets" hidden>
+  <section id="target-section" hidden>
     <h2>System and components</h2>
     <p>What an assessment can be about: the system, and each component its AI card lists (models,
        rule engines, the data it is trained on, ...). Every run names the one it tested, and every
        result says which. A component the latest AI card no longer lists stays, marked, with its
-       results. Components are added on the AI card, in step 1, Qualify.</p>
-    <table>
-      <thead><tr><th>System or component</th><th>Status</th><th>In AI card versions</th><th>Connection</th></tr></thead>
+       results. Components are added on the AI card, in step 1, Qualify. A test that calls the system
+       or a component reaches it through its connection, shown on its row; next to it, the installed
+       tests that can assess it.</p>
+    <table id="targets">
+      <thead><tr><th>System or component</th><th>How it is reached</th><th>Tests that can assess it</th></tr></thead>
       <tbody id="target-rows"></tbody>
     </table>
     <p><button type="button" class="ghost" id="targets-sync">Refresh from the AI card</button>
@@ -164,34 +180,28 @@
   </section>
 
   <div id="settings" hidden>
-    <section id="list">
-      <h2>Connections</h2>
-      <p>How the system or a component is reached over the network, when a test calls it: at most one
-         connection for each. A test that calls a system goes through the connection of what its run
-         tests. A key is stored encrypted for this project only and is never shown again.</p>
+    <section id="unlinked" hidden>
+      <h2>Connections without a target</h2>
+      <p>Connections made before every connection had to name what it reaches. A test that names one
+         directly can still use it; link it to the system or a component that has no connection yet so
+         that tests picking that target reach it.</p>
       <table>
-        <thead><tr><th>Connection</th><th>Status</th><th>Try it</th><th></th></tr></thead>
-        <tbody id="rows"></tbody>
+        <thead><tr><th>Connection</th><th>Status</th><th></th></tr></thead>
+        <tbody id="unlinked-rows"></tbody>
       </table>
-      <p><button type="button" class="ghost" id="new">Create connection</button>
-        <button type="button" class="ghost" id="import">Import from file</button>
-        <input id="import-file" type="file" accept=".json,application/json" hidden/>
-        <span class="msg" id="import-msg"></span></p>
     </section>
 
+    <!-- the editor opens under the row of the target it connects (placeEditor); it waits here -->
     <section id="edit" hidden>
-      <h2 id="edit-title">Create connection</h2>
+      <h2 id="edit-title">Connect</h2>
       <form id="editor" autocomplete="off">
-        <label for="f-name">Name</label>
-        <input id="f-name" type="text" placeholder="e.g. mcas-chat"/>
-        <p class="help">Lower-case letters, digits and hyphens. It identifies the connection and cannot change.</p>
-        <label for="f-label">Label</label>
-        <input id="f-label" type="text" placeholder="e.g. MCAS chat assistant"/>
-        <label for="f-target">Connects to</label>
-        <select id="f-target" required></select>
-        <p class="help">The system or component this connection reaches. Set once: reaching another one is a new connection.</p>
         <label for="f-kind">Protocol</label>
         <select id="f-kind"><option value="rest">REST API</option><option value="openai">OpenAI-compatible</option><option value="a2a">A2A agent</option><option value="oip">Open Inference Protocol model server</option></select>
+        <label for="f-label">Label</label>
+        <input id="f-label" type="text" placeholder="e.g. MCAS chat assistant"/>
+        <label for="f-name">Name</label>
+        <input id="f-name" type="text" placeholder="e.g. mcas-chat"/>
+        <p class="help">Made from the label; lower-case letters, digits and hyphens. It identifies the connection and cannot change.</p>
         <label for="f-base">Base URL</label>
         <input id="f-base" type="url" placeholder="https://system.example.com"/>
         <label class="model" for="f-model">Model</label>
@@ -211,24 +221,33 @@
         <label class="rest" for="f-refusal">Refusal (JSON, optional)</label>
         <textarea class="rest" id="f-refusal" placeholder='{"status": [502], "path": "detail.reason", "match": {"detail.error": "answer_not_grounded"}}'></textarea>
         <p class="help rest">A response that matches is the system refusing, recorded as its answer, not as an error.</p>
-        <label for="f-headers">Headers (JSON, optional)</label>
-        <textarea id="f-headers" placeholder='{"X-Client": "aisc"}'></textarea>
-        <label for="f-secret-header">Key header</label>
-        <input id="f-secret-header" type="text" placeholder="Authorization: Bearer {{secret}}"/>
-        <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible, A2A and OIP: leave empty for Authorization: Bearer.</p>
         <label for="f-secret">Key</label>
         <div class="fields"><input id="f-secret" autocomplete="new-password"/>
           <label class="check"><input id="f-secret-remove" type="checkbox"/> remove the stored key</label></div>
-        <label for="f-timeout">Timeout (seconds)</label>
-        <input id="f-timeout" type="number" min="1" max="600" value="60"/>
-        <div class="actions"><button type="submit">Save</button><button type="button" class="ghost" id="cancel">Cancel</button></div>
+        <p class="help">Stored encrypted for this project only, and never shown again.</p>
+        <details id="advanced">
+          <summary>Advanced</summary>
+          <div class="grid">
+            <label for="f-headers">Headers (JSON, optional)</label>
+            <textarea id="f-headers" placeholder='{"X-Client": "aisc"}'></textarea>
+            <label for="f-secret-header">Key header</label>
+            <input id="f-secret-header" type="text" placeholder="Authorization: Bearer {{secret}}"/>
+            <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible, A2A and OIP: leave empty for Authorization: Bearer.</p>
+            <label for="f-timeout">Timeout (seconds)</label>
+            <input id="f-timeout" type="number" min="1" max="600" value="60"/>
+          </div>
+        </details>
+        <div class="actions"><button type="submit">Save</button><button type="button" class="ghost" id="cancel">Cancel</button>
+          <button type="button" class="ghost" id="import">Import from file</button>
+          <input id="import-file" type="file" accept=".json,application/json" hidden/></div>
+        <span class="msg" id="import-msg"></span>
         <span class="msg" id="edit-msg"></span>
       </form>
     </section>
   </div>
 
-  <section id="allowlist" hidden>
-    <h2>Allowed internal hosts</h2>
+  <details id="allowed-hosts" hidden>
+    <summary>Allowed internal hosts</summary>
     <p>A connection may call any public address. An internal one (a private network, the Docker
        host, a machine on your LAN) is refused unless it is listed here, as a host or host:port.
        Changes apply to the next call, with no restart. The services of this deployment, loopback
@@ -243,7 +262,7 @@
       <button type="submit" id="allow-add">Allow</button>
     </form>
     <span class="msg" id="allow-msg"></span>
-  </section>
+  </details>
 </main>
 
 </div>
@@ -256,6 +275,11 @@
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
   var editing = null;                       // the name of the connection being edited, or null for a new one
+  var isAdmin = false;                      // a platform admin manages the connections; an owner sees them
+  var connectionsByTarget = {};             // target key -> its connection, for an admin
+  var unlinked = [];                        // an admin's connections that name no target
+  var editTarget = null;                    // the target whose row the editor is open under
+  var nameTyped = false;                    // the person typed a name: the label no longer makes it
 
   function api(path, opts) {
     opts = opts || {};
@@ -307,10 +331,11 @@
         }
         // an owner decides which internal hosts the project's connections may reach; managing the
         // connections themselves is a platform admin's
-        show('targets');
-        show('allowlist');
+        show('target-section');
+        show('allowed-hosts');
         reloadAllowlist();
         if (a.admin) {
+          isAdmin = true;
           $('who').textContent = 'admin';
           show('settings');
           reload();                                     // reads the targets too
@@ -328,64 +353,76 @@
   function base() { return '/api/projects/' + enc(slug) + '/connections'; }
 
   function reload() {
-    // a save or a delete changes which targets have an endpoint: read them again too
-    reloadTargets(false);
+    // a save or a delete changes which targets have an endpoint: read them again too, once the
+    // connections are known (each target's row shows its own)
     return api(base())
       .then(function (res) {
         return bodyOf(res).then(function (d) {
           if (!res.ok) { show('page-message', refusal(res, d)); return; }
-          render(d.connections);
+          connectionsByTarget = {};
+          d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
+          unlinked = d.connections.filter(function (c) { return !c.target; });
+          reloadTargets(false);                   // draws the connections without a target too
         });
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
   }
 
-  function render(connections) {
-    var rows = $('rows');
+  /** The connections that name no target, read-only, each with Link to a target (one that has no connection
+   *  yet) and Remove. */
+  function renderUnlinked() {
+    var rows = $('unlinked-rows');
     rows.replaceChildren();
-    if (!connections.length) {
-      var tr0 = el('tr'); var td0 = el('td', '', 'No connection yet.'); td0.colSpan = 4; tr0.appendChild(td0); rows.appendChild(tr0);
-    }
-    connections.forEach(function (c) {
+    $('unlinked').hidden = !unlinked.length;
+    var free = knownTargets.filter(function (t) { return !connectionsByTarget[t.key]; });
+    unlinked.forEach(function (c) {
       var tr = el('tr');
       var name = el('td', 'name', c.label);
       name.appendChild(el('small', '', c.name + ' · ' + describe(c) + ' · ' + c.base_url));
       tr.appendChild(name);
-
       var state = el('td', 'state');
       state.appendChild(el('div', c.has_secret ? 'ok' : '', c.has_secret ? 'key stored' : 'no key'));
-      state.appendChild(c.target ? el('div', 'ok', 'connects to ' + c.target.label)
-                                 : el('div', 'bad', 'connects to nothing: edit it to name what it reaches'));
       if (c.last_test_at) state.appendChild(el('div', c.last_test_ok ? 'ok' : 'bad',
-        'last tried ' + String(c.last_test_at).slice(0, 16).replace('T', ' ') + (c.last_test_ok ? ': ok' : ': failed')));
+        (c.last_test_ok ? 'last try OK ' : 'last try failed ') + when(c.last_test_at)));
       tr.appendChild(state);
-
-      var test = el('td');
-      var probe = el('input'); probe.type = 'text'; probe.placeholder = 'a test prompt'; probe.value = 'ping';
-      probe.setAttribute('aria-label', c.label + ' test prompt');
-      var run = el('button', 'ghost', 'Try it'); run.type = 'button';
-      var result = el('span', 'msg');
-      var tf = el('div', 'fields'); tf.appendChild(probe); tf.appendChild(run);
-      test.appendChild(tf); test.appendChild(result);
-      run.addEventListener('click', function () { probeIt(c.name, probe.value, result); });
-      tr.appendChild(test);
 
       var act = el('td');
       var af = el('div', 'fields');
-      var edit = el('button', 'ghost', 'Edit'); edit.type = 'button';
-      edit.addEventListener('click', function () { openEditor(c); });
-      af.appendChild(edit);
       var msg = el('span', 'msg');
-      var del = el('button', 'danger', 'Delete'); del.type = 'button';
-      del.addEventListener('click', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); });
-      af.appendChild(del);
+      var pick = el('select');
+      pick.setAttribute('aria-label', c.label + ': the target to link it to');
+      free.forEach(function (t) { var o = el('option', '', targetName(t)); o.value = t.key; pick.appendChild(o); });
+      var link = button('ghost', 'Link to a target', function () { linkTo(c, pick.value, msg); });
+      if (!free.length) { pick.disabled = true; link.disabled = true; say(msg, 'Every target has a connection already.'); }
+      af.appendChild(pick); af.appendChild(link);
+      af.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
       act.appendChild(af); act.appendChild(msg);
       tr.appendChild(act);
       rows.appendChild(tr);
     });
   }
 
-  function probeIt(name, input, result) {
+  // what a connection is, as the platform saves it (its key is not among them: left out, it is kept)
+  var SAVED = ['label', 'kind', 'base_url', 'method', 'path', 'headers', 'secret_header', 'body_template',
+               'response_path', 'refusal', 'model', 'timeout_s', 'protocol_version'];
+
+  function savedFields(c) {
+    var body = {};
+    SAVED.forEach(function (k) { if (c[k] !== undefined && c[k] !== null) body[k] = c[k]; });
+    return body;
+  }
+
+  /** Link a connection to a target: saved as it is, now naming the target (set once). */
+  function linkTo(c, key, msg) {
+    if (!key) { say(msg, 'Pick the system or a component.', true); return; }
+    var body = savedFields(c);
+    body.target = key;
+    write('PUT', base() + '/' + enc(c.name), body, msg);
+  }
+
+  /** Try: the prompt goes through the client the tests use (the platform's /test), and what comes back is
+   *  what a test will get: the extracted answer, or the system's refusal. The row's last try is updated. */
+  function tryIt(name, input, result, lastTry) {
     say(result, 'Calling the system...');
     // a JSON object is sent as one, for a structured system (a scorer takes an applicant)
     var sent = input || 'ping';
@@ -397,8 +434,9 @@
           if (!d.ok) { say(result, 'Failed (' + d.error + '): ' + (d.detail || ''), true); }
           else if (d.reachable_only) { say(result, 'OK, ' + d.detail); }
           else if (d.refused) { say(result, 'The system refused: ' + (d.refusal_reason || '(no reason given)') + ' (' + d.latency_ms + ' ms)'); }
-          else { say(result, 'Answer (' + d.latency_ms + ' ms): ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer))); }
-          reload();
+          else { say(result, 'What a test gets: ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer)) + ' (' + d.latency_ms + ' ms)'); }
+          lastTry.textContent = (d.ok ? 'last try OK ' : 'last try failed ') + 'just now';
+          lastTry.className = d.ok ? 'ok' : 'bad';
         });
       })
       .catch(function () { say(result, NOT_ANSWERING, true); });
@@ -419,6 +457,9 @@
 
   // ── the editor ──
 
+  var PROTOCOLS = {openai: 'OpenAI-compatible', rest: 'REST API', a2a: 'A2A agent', oip: 'Open Inference Protocol'};
+  function protocolName(kind) { return PROTOCOLS[kind] || kind; }
+
   function describe(c) {
     if (c.kind === 'openai') return 'OpenAI-compatible, ' + c.model;
     if (c.kind === 'oip') return 'Open Inference Protocol, ' + c.model;
@@ -435,13 +476,15 @@
     [].forEach.call(document.querySelectorAll('#editor .a2a'), function (n) { n.hidden = kind !== 'a2a'; });
   }
 
-  function openEditor(c) {
+  /** The editor of target t's connection c (null: a new one), opened under the target's row. */
+  function openEditor(c, t, tr) {
     editing = c ? c.name : null;
-    $('edit-title').textContent = c ? 'Edit ' + c.label : 'Create connection';
-    $('f-name').value = c ? c.name : ''; $('f-name').disabled = !!c;
-    $('f-label').value = c ? c.label : '';
-    fillTargets(c);
-    $('f-kind').value = c ? c.kind : 'rest';
+    editTarget = t;
+    nameTyped = !!c;
+    $('edit-title').textContent = c ? 'Edit the connection of ' + targetName(t) : 'Connect ' + targetName(t);
+    $('f-label').value = c ? c.label : t.label;
+    $('f-name').value = c ? c.name : nameFrom(t.label); $('f-name').disabled = !!c;
+    $('f-kind').value = c ? c.kind : 'openai';
     $('f-base').value = c ? c.base_url : '';
     $('f-model').value = c && c.model ? c.model : '';
     $('f-version').value = c && c.protocol_version ? c.protocol_version : '1.0';
@@ -453,16 +496,47 @@
     $('f-refusal').value = c ? jsonText(c.refusal) : '';
     $('f-headers').value = c && c.headers && Object.keys(c.headers).length ? jsonText(c.headers) : '';
     $('f-secret-header').value = c && c.secret_header ? c.secret_header : '';
+    $('advanced').open = !!($('f-headers').value || $('f-secret-header').value);
     var secretField = $('f-secret');
     secretField.type = 'password';
     secretField.value = '';
     secretField.placeholder = c && c.has_secret ? 'key stored: enter a new one to replace it' : 'no key: enter one if the system needs it';
     $('f-secret-remove').checked = false;
     $('f-timeout').value = c ? c.timeout_s : 60;
-    say($('edit-msg'), '');
+    say($('edit-msg'), ''); say($('import-msg'), '');
     kindShown();
-    show('edit');
-    $('f-label').focus();
+    placeEditor(tr);
+    $('f-base').focus();
+  }
+
+  /** A connection's name from its label: lower-case letters, digits and hyphens, as the platform takes it. */
+  function nameFrom(label) {
+    return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
+      .replace(/-+$/, '');
+  }
+
+  var editSection = $('edit');
+  var editHome = editSection.parentNode;
+  var editRow = el('tr', 'editing');
+  var editCell = el('td'); editCell.colSpan = 3; editRow.appendChild(editCell);
+
+  function placeEditor(tr) {
+    editCell.appendChild(editSection);
+    tr.after(editRow);
+    editSection.hidden = false;
+  }
+
+  /** Back where it waits, closed: before the rows are drawn again, so it is not dropped with them. */
+  function parkEditor() {
+    editHome.appendChild(editSection);
+    if (editRow.parentNode) editRow.parentNode.removeChild(editRow);
+  }
+
+  function closeEditor() {
+    parkEditor();
+    editSection.hidden = true;
+    editing = null; editTarget = null;
+    $('f-secret').value = '';
   }
 
   function parsed(id, label) {
@@ -479,10 +553,8 @@
     var kind = $('f-kind').value;
     var body = {label: $('f-label').value.trim(), kind: kind, base_url: $('f-base').value.trim(),
                 timeout_s: parseInt($('f-timeout').value, 10) || 60};
-    if (!$('f-target').disabled) {
-      if (!$('f-target').value) { say(msg, 'Pick what this connection reaches.', true); return; }
-      body.target = $('f-target').value;
-    }
+    if (!name) { say(msg, 'Give the connection a name.', true); return; }
+    if (!editing && editTarget) body.target = editTarget.key;
     var headers = parsed('f-headers', 'Headers');
     if (headers.error) { say(msg, headers.error, true); return; }
     body.headers = headers.value || {};
@@ -510,23 +582,25 @@
     else if (typed) body.secret = typed;
     secretField.value = '';
     write('PUT', base() + '/' + enc(name), body, msg).then(function (ok) {
-      if (ok) { $('edit').hidden = true; editing = null; }
+      if (ok) closeEditor();
     });
   }
 
-  // An endpoint file (a connection in the shape it is saved in) fills the editor; nothing is saved until
-  // Save. The target is picked by its label (target_label): a component's key differs in every project.
-  // A file may carry its key ("secret", as a shared endpoint file may): it goes into the Key field and is
-  // saved like a typed key (stored encrypted, never shown again).
+  // An endpoint file (a connection in the shape it is saved in) fills the open row's form; nothing is
+  // saved until Save, and the target stays the row's. A file may carry its key ("secret", as a shared
+  // endpoint file may): it goes into the Key field and is saved like a typed key (stored encrypted,
+  // never shown again).
   function importFile(file) {
     var msg = $('import-msg');
     file.text().then(function (text) {
       var c;
       try { c = JSON.parse(text); } catch (e) { say(msg, file.name + ' is not valid JSON.', true); return; }
       if (!c || typeof c !== 'object' || !c.kind) { say(msg, file.name + ' is not a connection file (it has no protocol, "kind").', true); return; }
-      openEditor(null);
-      $('f-name').value = c.name || '';
-      $('f-label').value = c.label || '';
+      if (!editing) {
+        $('f-name').value = c.name || nameFrom(c.label || '');
+        nameTyped = !!c.name;
+      }
+      $('f-label').value = c.label || $('f-label').value;
       $('f-kind').value = c.kind;
       $('f-base').value = c.base_url || '';
       $('f-model').value = c.model || '';
@@ -540,24 +614,23 @@
       $('f-headers').value = c.headers && Object.keys(c.headers).length ? jsonText(c.headers) : '';
       $('f-secret-header').value = c.secret_header || '';
       $('f-timeout').value = c.timeout_s || 60;
+      $('advanced').open = !!($('f-headers').value || $('f-secret-header').value);
       var keyed = typeof c.secret === 'string' && c.secret !== '';
       if (keyed) $('f-secret').value = c.secret;
-      var picked = c.target_label && knownTargets.filter(function (t) { return t.label === c.target_label && !t.endpoint; })[0];
-      if (picked) $('f-target').value = picked.key;
       kindShown();
-      say(msg, 'Imported ' + file.name + (picked ? '' : ': pick what it connects to') +
-               (keyed ? ', key from the file filled in' : ', enter the key if the system needs one') + ', then Save.');
+      say(msg, 'Imported ' + file.name + (keyed ? ', key from the file filled in' : ', enter the key if the system needs one') + ', then Save.');
     }).catch(function () { say(msg, 'Could not read ' + file.name + '.', true); });
   }
 
-  $('new').addEventListener('click', function () { openEditor(null); });
   $('import').addEventListener('click', function () { $('import-file').click(); });
   $('import-file').addEventListener('change', function () {
     var file = this.files && this.files[0];
     if (file) importFile(file);
     this.value = '';
   });
-  $('cancel').addEventListener('click', function () { $('edit').hidden = true; editing = null; $('f-secret').value = ''; });
+  $('cancel').addEventListener('click', closeEditor);
+  $('f-name').addEventListener('input', function () { nameTyped = true; });
+  $('f-label').addEventListener('input', function () { if (!nameTyped && !editing) $('f-name').value = nameFrom(this.value); });
   $('f-kind').addEventListener('change', kindShown);
   $('editor').addEventListener('submit', submit);
 
@@ -574,53 +647,106 @@
     return t.label + (t.component_kind ? ' (' + (KIND_LABELS[t.component_kind] || t.component_kind) + ')' : '');
   }
 
-  function renderTargets(d) {
+  function when(v) { return String(v).slice(0, 16).replace('T', ' '); }
+
+  function button(cls, text, onClick) {
+    var b = el('button', cls, text); b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  /** How a target is reached: its connection's protocol and address, key and last try, with Try, Edit and
+   *  Remove; or "not connected" with Connect. An owner sees the protocol only, and no buttons. */
+  function reachCell(t, tr) {
+    var td = el('td', 'reach');
+    if (!isAdmin) {
+      td.appendChild(el('div', t.endpoint ? 'ok' : 'bad', t.endpoint ? 'reached through ' + protocolName(t.endpoint.kind) : 'not connected'));
+      return td;
+    }
+    var c = connectionsByTarget[t.key];
+    var msg = el('span', 'msg');
+    var actions = el('div', 'fields');
+    if (!c) {
+      td.appendChild(el('div', 'bad', 'not connected'));
+      actions.appendChild(button('ghost', 'Connect', function () { openEditor(null, t, tr); }));
+      td.appendChild(actions); td.appendChild(msg);
+      return td;
+    }
+    td.appendChild(el('div', 'ok', 'reached through ' + protocolName(c.kind) + ' at ' + c.base_url));
+    td.appendChild(el('small', '', c.name + ' · ' + describe(c)));
+    td.appendChild(el('div', c.has_secret ? 'ok' : '', c.has_secret ? 'key stored' : 'no key'));
+    var lastTry = el('div', c.last_test_ok ? 'ok' : 'bad',
+                     c.last_test_at ? (c.last_test_ok ? 'last try OK ' : 'last try failed ') + when(c.last_test_at) : '');
+    td.appendChild(lastTry);
+
+    var tryBox = el('div', 'fields'); tryBox.hidden = true;
+    var prompt = el('input'); prompt.type = 'text'; prompt.placeholder = 'a prompt, or a JSON request'; prompt.value = 'ping';
+    prompt.setAttribute('aria-label', targetName(t) + ': prompt to try');
+    var result = el('span', 'msg');
+    tryBox.appendChild(prompt);
+    tryBox.appendChild(button('', 'Send', function () { tryIt(c.name, prompt.value, result, lastTry); }));
+
+    actions.appendChild(button('ghost', 'Try', function () { tryBox.hidden = !tryBox.hidden; if (!tryBox.hidden) prompt.focus(); }));
+    actions.appendChild(button('ghost', 'Edit', function () { openEditor(c, t, tr); }));
+    actions.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
+    td.appendChild(actions); td.appendChild(tryBox); td.appendChild(result); td.appendChild(msg);
+    return td;
+  }
+
+  /** The installed tests that can assess target t (`able` is the platform's assessable-by answer). */
+  function testsCell(t, able) {
+    var td = el('td', 'tests');
+    if (!able) { td.appendChild(el('span', 'none', 'not known')); return td; }
+    var names = (able.assessable_by || {})[t.key] || [];
+    td.appendChild(names.length ? el('div', '', names.join(', ')) : el('div', 'none', 'no installed test can assess it'));
+    if (!t.endpoint) td.appendChild(el('small', 'none', 'tests that call it need a connection'));
+    return td;
+  }
+
+  function renderTargets(d, able) {
     knownTargets = d.targets || [];
     var rows = $('target-rows');
+    var open = editSection.hidden ? null : editTarget;
+    parkEditor();
     rows.replaceChildren();
     knownTargets.forEach(function (t) {
       var tr = el('tr');
-      tr.appendChild(el('td', 'name', targetName(t)));
-      var st = el('td', 'state');
-      st.appendChild(el('div', t.status === 'stale' ? 'bad' : 'ok', t.status === 'stale' ? 'not in AI card v' + d.latest_card : 'current'));
-      tr.appendChild(st);
-      tr.appendChild(el('td', 'when', t.first_card_number ? 'v' + t.first_card_number +
-        (t.last_card_number && t.last_card_number !== t.first_card_number ? ' to v' + t.last_card_number : '') : ''));
-      tr.appendChild(el('td', '', t.endpoint ? t.endpoint.label + ' (' + t.endpoint.name + ')' : 'no connection'));
+      tr.setAttribute('data-target-key', t.key);
+      var name = el('td', 'name', targetName(t));
+      var versions = t.first_card_number ? 'AI card v' + t.first_card_number +
+        (t.last_card_number && t.last_card_number !== t.first_card_number ? ' to v' + t.last_card_number : '') : '';
+      name.appendChild(el('small', '', t.status === 'stale' ? 'not in AI card v' + d.latest_card + (versions ? ' · ' + versions : '') : versions));
+      tr.appendChild(name);
+      tr.appendChild(reachCell(t, tr));
+      tr.appendChild(testsCell(t, able));
       rows.appendChild(tr);
+      if (open && open.key === t.key) placeEditor(tr);      // a refresh keeps the open form where it was
     });
+    if (open && !editRow.parentNode) closeEditor();
+    if (isAdmin) renderUnlinked();
     if (knownTargets.length < 2) {
       var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the AI card, in step 1, Qualify, then refresh.');
-      td0.colSpan = 4; tr0.appendChild(td0); rows.appendChild(tr0);
+      td0.colSpan = 3; tr0.appendChild(td0); rows.appendChild(tr0);
     }
-    say($('targets-msg'), d.reason ? 'Not everything could be brought up to date: ' + d.reason : '', !!d.reason);
+    var reasons = [d.reason, able && able.reason].filter(Boolean);
+    say($('targets-msg'), reasons.length ? 'Not everything could be brought up to date: ' + reasons.join('; ') : '', reasons.length > 0);
   }
 
   function reloadTargets(sync) {
-    return api(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
-               sync ? {method: 'POST', body: {}} : undefined)
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say($('targets-msg'), refusal(res, d), true); return; }
-          renderTargets(d);
-        });
+    // the installed tests that can assess each target come with them (from what each test declares)
+    var listed = api(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
+                     sync ? {method: 'POST', body: {}} : undefined)
+      .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); });
+    var tests = api('/api/projects/' + enc(slug) + '/targets/assessable-by')
+      .then(function (res) { return res.ok ? bodyOf(res) : null; })
+      .catch(function () { return null; });
+    return Promise.all([listed, tests])
+      .then(function (both) {
+        var res = both[0].res, d = both[0].d;
+        if (!res.ok) { say($('targets-msg'), refusal(res, d), true); return; }
+        renderTargets(d, both[1]);
       })
       .catch(function () { say($('targets-msg'), NOT_ANSWERING, true); });
-  }
-
-  /** The editor's "Connects to": the system and every component, those that have a connection already not offered. */
-  function fillTargets(c) {
-    var select = $('f-target');
-    select.replaceChildren();
-    var none = el('option', '', 'Choose…'); none.value = ''; select.appendChild(none);
-    knownTargets.forEach(function (t) {
-      var o = el('option', '', targetName(t) + (t.endpoint && (!c || t.endpoint.name !== c.name) ? ' (connection: ' + t.endpoint.name + ')' : ''));
-      o.value = t.key;
-      if (t.endpoint && (!c || t.endpoint.name !== c.name)) o.disabled = true;
-      select.appendChild(o);
-    });
-    select.value = c && c.target ? c.target.key : '';
-    select.disabled = !!(c && c.target);
   }
 
   $('targets-sync').addEventListener('click', function () {

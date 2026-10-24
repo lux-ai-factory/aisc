@@ -78,11 +78,6 @@ def test_connections_are_no_engine_components_any_more_so_the_page_offers_no_eng
     assert "Link to the engine" not in html and "not linked to the engine" not in html
 
 
-def test_it_shows_an_answer_a_refusal_or_the_error_of_a_test():
-    script = script_of(read(PAGE))
-    assert ".answer" in script and ".refused" in script and ".refusal_reason" in script and ".error" in script
-
-
 def test_json_fields_are_parsed_on_the_page_and_a_bad_one_is_said_before_sending():
     script = script_of(read(PAGE))
     assert "JSON.parse" in script and "is not valid JSON" in script
@@ -167,13 +162,15 @@ def test_the_key_row_is_the_field_and_its_remove_box_side_by_side():
 
 # the allowed internal hosts
 
-def test_the_page_has_an_allowlist_section_outside_the_admins_part():
+def test_the_allowed_hosts_are_collapsed_at_the_bottom_outside_the_admins_part():
     html = markup_of(read(PAGE))
-    section = re.search(r'<section id="allowlist" hidden>.*?</section>', html, re.S)
-    assert section, "no allowlist section"
-    settings = re.search(r'<div id="settings" hidden>.*?</div>\s*(?=<section id="allowlist")', html, re.S)
-    assert settings, "the allowlist section must sit outside the admins' part, so owners see it"
-    assert "Allowed internal hosts" in section.group(0)
+    section = re.search(r'<details id="allowed-hosts" hidden>\s*<summary>Allowed internal hosts</summary>.*?</details>',
+                        html, re.S)
+    assert section, "no collapsed allowed hosts section"
+    assert not re.search(r'<details id="allowed-hosts"[^>]*\bopen\b', html), "collapsed until opened"
+    settings = re.search(r'<div id="settings" hidden>.*?</div>\s*(?=<details id="allowed-hosts")', html, re.S)
+    assert settings, "the allowed hosts must sit outside the admins' part, so owners see them"
+    assert html.index('id="allowed-hosts"') > html.index('id="targets"')
     for needed in ('id="f-allow-host"', 'id="f-allow-note"', 'id="allow-add"', 'id="allow-rows"', 'id="allow-msg"'):
         assert needed in section.group(0), needed
 
@@ -181,7 +178,7 @@ def test_the_page_has_an_allowlist_section_outside_the_admins_part():
 def test_an_owner_gets_the_allowlist_and_an_admin_gets_everything():
     script = script_of(read(PAGE))
     assert re.search(r"a\.admin\s*\|\|\s*a\.role === 'owner'", script)
-    assert "show('allowlist')" in script and "show('settings')" in script
+    assert "show('allowed-hosts')" in script and "show('settings')" in script
     assert script.index("show('settings')") > script.index("if (a.admin)")
 
 
@@ -205,8 +202,9 @@ def test_the_deployments_entries_are_shown_read_only_and_denials_are_said():
 def test_the_page_is_named_targets_and_endpoints():
     html = read(PAGE)
     assert "<title>Components and connections" in html
-    assert re.search(r'<section id="targets" hidden>.*?<h2>System and components</h2>', markup_of(html), re.S)
-    assert re.search(r'<section id="list">\s*<h2>Connections</h2>', markup_of(html))
+    section = re.search(r'<section id="target-section" hidden>.*?</section>', markup_of(html), re.S)
+    assert section and "<h2>System and components</h2>" in section.group(0)
+    assert re.search(r'<table id="targets">', section.group(0))
     assert "Targets" not in markup_of(html) and "Endpoint" not in markup_of(html)
 
 
@@ -217,31 +215,130 @@ def test_it_lists_the_targets_and_refreshes_them_from_the_card():
     assert "'/targets/sync'" in script and "Refresh from the AI card" in html
     for field in (".status", ".first_card_number", ".last_card_number", ".endpoint", ".component_kind", ".reason"):
         assert field in script, field
-    assert "not in AI card v" in script and "'no connection'" in script and "no endpoint" not in script
+    assert "not in AI card v" in script and "no endpoint" not in script
 
 
-def test_the_targets_are_shown_to_owners_and_admins_alike():
+def test_one_row_per_target_carries_its_key():
     script = script_of(read(PAGE))
-    gate = script.index("if (!a || !(a.admin || a.role === 'owner'))")
-    assert script.index("show('targets')") > gate
-    assert script.index("show('targets')") < script.index("if (a.admin) {")
+    assert "setAttribute('data-target-key', t.key)" in script
 
 
-def test_a_new_connection_names_its_target_and_a_taken_one_is_not_offered():
+def test_a_connected_row_says_how_it_is_reached_with_try_edit_and_remove():
+    script = script_of(read(PAGE))
+    assert "'reached through ' + protocolName(" in script and "' at ' + c.base_url" in script
+    assert "'key stored'" in script and "'no key'" in script
+    assert "'last try OK '" in script and "'last try failed '" in script
+    for label in ("'Try'", "'Edit'", "'Remove'"):
+        assert "el('button', " in script and label in script, label
+
+
+def test_a_row_without_a_connection_says_not_connected_and_offers_connect():
+    script = script_of(read(PAGE))
+    assert "'not connected'" in script and "'Connect'" in script
+
+
+def test_an_owner_sees_how_each_target_is_reached_but_no_buttons():
+    # the connections themselves (base URL, key) are a platform admin's; the targets list names the protocol
+    script = script_of(read(PAGE))
+    assert re.search(r"if \(!isAdmin\)", script)
+    assert "'reached through ' + protocolName(t.endpoint.kind)" in script
+
+
+def test_each_row_lists_the_installed_tests_that_can_assess_it():
     html = read(PAGE)
     script = script_of(html)
-    assert re.search(r'<select id="f-target"[^>]*required', html)
-    assert "body.target" in script and ".disabled = true" in script
-    assert '<label for="f-target">Connects to</label>' in html and "Endpoint of" not in html
-    assert '<label for="f-kind">Protocol</label>' in html
-    assert '<label class="rest" for="f-answer">Answer field (JSON path)</label>' in html
-    assert "'Pick what this connection reaches.'" in script
+    head = re.search(r'<table id="targets">\s*<thead>(.*?)</thead>', markup_of(html), re.S).group(1)
+    assert "<th>Tests that can assess it</th>" in head
+    assert "'/api/projects/' + enc(slug) + '/targets/assessable-by'" in script
+    assert ".assessable_by" in script
+    assert "'no installed test can assess it'" in script
+    assert "'tests that call it need a connection'" in script
 
 
-def test_each_connection_says_what_it_is_the_endpoint_of():
+def test_the_tests_are_read_with_the_targets_for_owners_and_admins_alike():
+    reload_targets = re.search(r"function reloadTargets\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "/targets/assessable-by'" in reload_targets and "Promise.all" in reload_targets
+
+
+def test_try_shows_what_a_test_will_get():
     script = script_of(read(PAGE))
-    assert "c.target" in script and "'connects to ' + c.target.label" in script
-    assert "'connects to nothing: edit it to name what it reaches'" in script and "no target" not in script
+    fn = re.search(r"function tryIt\(.*?\n  \}\n", script, re.S)
+    assert fn, "no tryIt()"
+    body = fn.group(0)
+    assert "/test'" in body
+    for field in ("d.answer", "d.refused", "d.refusal_reason", "d.error", "d.reachable_only", "d.detail"):
+        assert field in body, field
+    assert "What a test gets: " in body and "The system refused: " in body
+    assert "JSON.parse" in body, "a JSON prompt is sent as an object, for a structured system"
+
+
+def test_a_connection_is_made_from_its_targets_row_which_fixes_the_target():
+    html = read(PAGE)
+    script = script_of(html)
+    assert "f-target" not in html and "Connects to" not in html
+    assert "body.target = editTarget.key" in script
+    assert "'Connect ' + targetName(t)" in script and "'Edit the connection of ' + targetName(t)" in script
+
+
+def test_the_editor_opens_under_its_targets_row():
+    script = script_of(read(PAGE))
+    place = re.search(r"function placeEditor\(.*?\n  \}\n", script, re.S)
+    assert place and ".after(editRow)" in place.group(0) and "editSection" in place.group(0)
+    # re-drawing the rows must not drop the editor with them
+    render = re.search(r"function renderTargets\(.*?\n  \}\n", script, re.S).group(0)
+    assert "parkEditor()" in render
+
+
+def test_the_form_is_shaped_by_protocol():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    form = re.search(r'<form id="editor".*?</form>', markup, re.S).group(0)
+    assert form.index('<label for="f-kind">Protocol</label>') < form.index('<label for="f-base">Base URL</label>')
+    assert '<label class="rest" for="f-answer">Answer field (JSON path)</label>' in form
+    assert re.search(r'<label class="model" for="f-model">Model</label>', form)
+    for field in ("f-body", "f-answer", "f-refusal"):
+        assert re.search(r'<(?:input|textarea)[^>]*class="rest"[^>]*id="' + field + '"', form), field
+    assert re.search(r'<div class="rest fields"><select id="f-method">', form)
+    assert re.search(r'<div class="a2a fields"><select id="f-version">', form)
+    shown = re.search(r"function kindShown\(.*?\n  \}\n", script, re.S).group(0)
+    assert "'#editor .rest'" in shown and "'#editor .model'" in shown and "'#editor .a2a'" in shown
+
+
+def test_headers_key_header_and_timeout_are_under_advanced():
+    form = re.search(r'<form id="editor".*?</form>', markup_of(read(PAGE)), re.S).group(0)
+    advanced = re.search(r'<details id="advanced"[^>]*>\s*<summary>Advanced</summary>.*?</details>', form, re.S)
+    assert advanced, "no Advanced section"
+    for field in ('id="f-headers"', 'id="f-secret-header"', 'id="f-timeout"'):
+        assert field in advanced.group(0) and form.count(field) == 1, field
+    assert 'id="f-secret"' not in advanced.group(0), "the key is asked of every protocol, not hidden"
+
+
+def test_the_name_is_derived_from_the_label_until_typed_over():
+    script = script_of(read(PAGE))
+    fn = re.search(r"function nameFrom\(.*?\n  \}\n", script, re.S)
+    assert fn and "/[^a-z0-9]+/g" in fn.group(0) and ".slice(0, 63)" in fn.group(0)
+    assert "$('f-label').addEventListener('input'" in script and "nameTyped" in script
+
+
+def test_connections_without_a_target_are_listed_apart_for_admins():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    section = re.search(r'<section id="unlinked"[^>]*>\s*<h2>Connections without a target</h2>.*?</section>', markup, re.S)
+    assert section and 'id="unlinked-rows"' in section.group(0)
+    assert re.search(r'<div id="settings" hidden>.*id="unlinked".*</div>', markup, re.S), "an admin's part"
+    assert "filter(function (c) { return !c.target; })" in script
+    assert "'Link to a target'" in script and "'Remove'" in script
+    assert 'id="list"' not in markup and "connects to" not in script
+
+
+def test_linking_saves_the_connection_as_it_is_with_a_target_never_its_key():
+    script = script_of(read(PAGE))
+    fn = re.search(r"function linkTo\(.*?\n  \}\n", script, re.S)
+    assert fn and "savedFields(c)" in fn.group(0) and "body.target = key" in fn.group(0) and "'PUT'" in fn.group(0)
+    fields = re.search(r"var SAVED = \[(.*?)\];", script, re.S).group(1)
+    assert "'label'" in fields and "'base_url'" in fields and "secret'" not in fields.replace("secret_header", "")
+    # only a target that has no connection can be linked to
+    assert "!connectionsByTarget[t.key]" in script
 
 
 # importing an endpoint from a file (a connection saved in the shape it is saved in)
@@ -255,26 +352,18 @@ def test_an_endpoint_file_is_imported_into_the_editor_not_saved():
     imp = re.search(r"function importFile\(.*?\n  \}\n", script, re.S)
     assert imp, "no importFile()"
     body = imp.group(0)
-    assert "openEditor(null)" in body and "JSON.parse" in body
+    assert "openEditor" not in body and "JSON.parse" in body, "it fills the open row's form"
     assert "write(" not in body and "fetch(" not in body and "api(" not in body, "an import must not save by itself"
     for field in ("f-name", "f-label", "f-kind", "f-base", "f-method", "f-path", "f-body", "f-answer", "f-refusal",
                   "f-headers", "f-secret-header", "f-timeout"):
         assert field in body, field
+    form = re.search(r'<form id="editor".*?</form>', markup, re.S).group(0)
+    assert 'id="import"' in form, "Import from file is in the row's form"
 
 
-def test_the_import_picks_the_target_by_its_label_since_keys_differ_per_project():
+def test_the_import_keeps_the_rows_target():
     body = re.search(r"function importFile\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "target_label" in body
-
-
-def test_a_json_test_input_is_sent_as_an_object_for_a_structured_system():
-    probe = re.search(r"function probeIt\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "JSON.parse" in probe
-
-
-def test_a_ping_that_only_shows_the_system_is_reached_says_so():
-    probe = re.search(r"function probeIt\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "d.reachable_only" in probe and "d.detail" in probe
+    assert "target_label" not in body and "f-target" not in body
 
 
 def test_a_key_in_the_file_goes_into_the_key_field_and_is_saved_like_a_typed_one():
@@ -292,10 +381,9 @@ def test_after_a_save_or_a_delete_the_targets_are_read_again():
     assert "reloadTargets(false)" in reload_fn
 
 
-def test_the_probe_is_try_it_and_creating_says_create():
+def test_connections_are_tried_and_made_from_the_rows_only():
     html = read(PAGE)
     markup, script = markup_of(html), script_of(html)
-    assert "<th>Try it</th>" in markup and "el('button', 'ghost', 'Try it')" in script
-    assert '<button type="button" class="ghost" id="new">Create connection</button>' in markup
-    assert "'Create connection'" in script and "New connection" not in html
+    assert "Try it" not in html and "probeIt" not in script, "a connection is tried from its target's row"
+    assert 'id="new"' not in markup and "Create connection" not in html and "New connection" not in html
     assert "'No such project: ' + slug + '.'" in script
