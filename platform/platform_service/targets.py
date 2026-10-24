@@ -87,13 +87,26 @@ def ensure_mirrors(pid, token: str, latest_card: int | None = None) -> str | Non
         return _ensure_mirrors(pid, token, latest_card)
 
 
+def _has_card(pid) -> bool:
+    from platform_service import db
+
+    _exists, latest = db.latest_version(str(pid))
+    return latest is not None
+
+
 def _ensure_mirrors(pid, token: str, latest_card: int | None) -> str | None:
+    # a project used only for the engine has no AI card targets: its system row stays here, but the
+    # engine offers it only once the project has a card version
+    has_card = _has_card(pid)
+    offered = [row for row in target_store.all_targets(pid) if row["kind"] != "system" or has_card]
+    if not offered:
+        return None
     try:
         engine_pid = engine_components.engine_project(pid, token)
         existing = {engine_components.value_of(c): c for c in engine_components.components(pid, token, engine_pid)}
         from platform_service import connection_store
         endpoints = connection_store.endpoints_by_target(pid)
-        for row in target_store.all_targets(pid):
+        for row in offered:
             name = mirror_name(row, endpoints.get(row["key"]), latest_card)
             found = existing.get(reference(pid, row["key"]))
             if found is None:
