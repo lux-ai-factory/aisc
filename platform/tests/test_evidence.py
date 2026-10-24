@@ -616,7 +616,8 @@ def _runs(dsn, pid, plugin, version, *statuses, by="package_name", evaluation_st
     per status running it once; each on the engine component `component` (an evaluation input named
     target) or with no target input, created at `when` (default now). `local`: the marker the worker
     stores on the model input of a run on a local model file; `helpers`: (role, model) of each helper
-    model input, model None when the run's value names none. The evaluation plugins' pids, in order."""
+    model input, model None when the run's value names none (optionally a third item, the endpoint's name,
+    default "<role> endpoint"). The evaluation plugins' pids, in order."""
     assert by in ("package_name", "name")
     plugin = sql(dsn, pid, f"SELECT id FROM engine.aisc_backend_plugin WHERE {by} = %s", (plugin,))[0][0]
     config = sql(dsn, pid, "INSERT INTO engine.aisc_backend_pluginconfig (plugin_id, name) VALUES (%s, 'c')"
@@ -634,10 +635,11 @@ def _runs(dsn, pid, plugin, version, *statuses, by="package_name", evaluation_st
         if local is not None:
             sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, value)"
                           " VALUES (%s, 'model', %s::jsonb)", (ep, json.dumps({"local_model": local})))
-        for role, model in helpers:
+        for role, model, *endpoint in helpers:
+            endpoint = endpoint[0] if endpoint else f"{role} endpoint"
             llm = sql(dsn, pid, "INSERT INTO engine.aisc_backend_aicomponent (id, pid, name)"
                                 " SELECT coalesce(max(id), 0) + 1, gen_random_uuid(), %s"
-                                " FROM engine.aisc_backend_aicomponent RETURNING id", (f"{role} endpoint",))[0][0]
+                                " FROM engine.aisc_backend_aicomponent RETURNING id", (endpoint,))[0][0]
             sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, component_id,"
                           " value) VALUES (%s, %s, %s, %s::jsonb)",
                 (ep, f"helper:{role}", llm, json.dumps({"model": model} if model else {})))
@@ -978,13 +980,17 @@ def test_each_run_lists_its_helper_models_and_the_tool_each_one_once(client, as_
           helpers=(("judge", "gpt-4o-mini"), ("attacker", "llama-3")))
     _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, helpers=(("judge", "gpt-4o-mini"),))
     _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, helpers=(("grader", None),))
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1, helpers=(("embedder", None, None),))
     tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
     assert [r["helpers"] for r in tool["runs"]] == [                    # newest first
+        [{"role": "embedder", "model": "unnamed endpoint"}],            # neither a model nor an endpoint name
         [{"role": "grader", "model": "grader endpoint"}],               # no model picked: the endpoint's name
         [{"role": "judge", "model": "gpt-4o-mini"}],
         [{"role": "attacker", "model": "llama-3"}, {"role": "judge", "model": "gpt-4o-mini"}],
     ]
-    assert tool["helpers"] == [{"role": "attacker", "model": "llama-3"}, {"role": "grader", "model": "grader endpoint"},
+    assert tool["helpers"] == [{"role": "attacker", "model": "llama-3"},
+                               {"role": "embedder", "model": "unnamed endpoint"},
+                               {"role": "grader", "model": "grader endpoint"},
                                {"role": "judge", "model": "gpt-4o-mini"}]
 
 
@@ -1031,3 +1037,4 @@ def test_runs_before_targets_stay_no_target_and_name_nothing_they_assessed(clien
 def test_no_engine_tables_yet_reads_as_no_local_runs(client, as_user, evidence_project, dsn):
     sql(dsn, evidence_project["pid"], "DROP TABLE engine.aisc_backend_evaluationinput")
     assert _body(client, as_user, evidence_project)["local_runs"] == []
+

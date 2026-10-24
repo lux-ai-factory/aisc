@@ -149,7 +149,8 @@ _TARGET_RUNS = (
 #: The same runs one by one, newest first, with what each was on: its target (as above) or, for a local
 #: run, the marker of its model input (the first by name when several are marked); and its helper models,
 #: the inputs named helper:<role>, each with the model picked for the run (the endpoint's name when the
-#: run's value names none). The evaluation plugin's pid is what the platform recorded its connection uses by.
+#: run's value names none, "unnamed endpoint" when it has none either). The evaluation plugin's pid is
+#: what the platform recorded its connection uses by.
 _RUN_DETAILS = (
     "SELECT ep.pid::text AS run, ep.status, e.created_at, pl.package_name,"
     " COALESCE(pl.display_name, pl.name, pl.package_name) AS label,"
@@ -157,7 +158,8 @@ _RUN_DETAILS = (
     " (SELECT li.value->'local_model' FROM engine.aisc_backend_evaluationinput li"
     "   WHERE li.evaluation_plugin_id = ep.id AND li.value ? 'local_model' ORDER BY li.name LIMIT 1) AS local_model,"
     " (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', substr(hi.name, 8),"
-    "                                               'model', COALESCE(NULLIF(hi.value->>'model', ''), hc.name))"
+    "                                               'model', COALESCE(NULLIF(hi.value->>'model', ''), hc.name,"
+    "                                                               'unnamed endpoint'))"
     "                            ORDER BY hi.name), '[]'::jsonb)"
     "   FROM engine.aisc_backend_evaluationinput hi"
     "   LEFT JOIN engine.aisc_backend_aicomponent hc ON hc.id = hi.component_id"
@@ -369,7 +371,7 @@ def target_view(found: Choices, latest_number: int | None, uses: dict[str, list[
                 "failed": r["failed"], "running": r["running"],
                 "last_run": r["last_run"].isoformat() if r["last_run"] else None,
                 "runs": [_run(d, uses) for d in mine], "connections": connections,
-                "helpers": sorted(helpers, key=lambda h: (h["role"], h["model"] or ""))}
+                "helpers": sorted(helpers, key=lambda h: (h["role"], h["model"]))}
 
     out = []
     for t in sorted(found.targets, key=lambda t: (t["kind"] != "system", t["label"].lower())):
