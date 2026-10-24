@@ -1050,3 +1050,24 @@ def test_a_failed_local_run_marked_at_its_creation_is_local_without_a_hash(clien
         ("Failed", {"family": "local", "label": "scoring.onnx", "connection": None,
                     "file": {"name": "scoring.onnx", "sha256": None}})]
 
+
+def test_local_runs_are_listed_whatever_card_version_they_were_made_on(client, as_user, engine, dsn):
+    pid = engine["pid"]
+    _runs(dsn, pid, "aisc-plugin-langbite", V1, "Done", local={"file": "old.onnx", "sha256": SHA},
+          when="2026-10-01 08:00+00")
+    _runs(dsn, pid, "aisc-plugin-langbite", None, "Done", local={"file": "unstamped.onnx", "sha256": SHA},
+          when="2026-10-02 08:00+00")
+    for version in (V1, V2):
+        body = client.get(f"/projects/{engine['slug']}/evidence?version={version}", headers=as_user(ALICE)).json()
+        assert [r["assessed"]["label"] for r in body["local_runs"]] == ["unstamped.onnx", "old.onnx"]
+
+
+def test_a_project_with_no_ai_card_version_lists_its_local_runs(client, as_user, make_project, dsn):
+    p = make_project()
+    sql(dsn, p["pid"], MODULE_TABLES)
+    sql(dsn, p["pid"], "INSERT INTO engine.aisc_backend_plugin (package_name, version, display_name, enabled)"
+                       " VALUES ('aisc-plugin-performance', '1.0', 'Performance', true)")
+    _runs(dsn, p["pid"], "aisc-plugin-performance", None, "Done", local={"file": "scoring.onnx", "sha256": SHA})
+    body = _body(client, as_user, p)
+    assert body["version"] is None
+    assert [(r["label"], r["assessed"]["label"]) for r in body["local_runs"]] == [("Performance", "scoring.onnx")]

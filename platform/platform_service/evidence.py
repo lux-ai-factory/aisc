@@ -78,7 +78,7 @@ _PLUGINS = ("SELECT id, package_name, display_name, enabled, catalogue_slug, nam
 _WORKSPACE = "SELECT name FROM engine.aisc_backend_project ORDER BY id LIMIT 1"
 #: A run on a local model file: the engine worker stores {"local_model": {"file", "sha256"}} as the value of
 #: the plugin's model input. It is not part of the assessment record: never counted with the AI card's
-#: runs, whatever else it has, and listed apart (_RUN_DETAILS, local_runs).
+#: runs, whatever else it has, and listed apart (_LOCAL_RUNS, local_runs).
 _LOCAL = ("EXISTS (SELECT 1 FROM engine.aisc_backend_evaluationinput li"
           " WHERE li.evaluation_plugin_id = ep.id AND li.value ? 'local_model')")
 #: Step 4's test tiles: each installed test's runs on one card version, as the engine's
@@ -151,7 +151,7 @@ _TARGET_RUNS = (
 #: the inputs named helper:<role>, each with the model picked for the run (the endpoint's name when the
 #: run's value names none, "unnamed endpoint" when it has none either). The evaluation plugin's pid is
 #: what the platform recorded its connection uses by.
-_RUN_DETAILS = (
+_RUN_COLUMNS = (
     "SELECT ep.pid::text AS run, ep.status, e.created_at, pl.package_name,"
     " COALESCE(pl.display_name, pl.name, pl.package_name) AS label,"
     " t.key AS target_key, ti.id IS NULL AS unassigned, t.label AS target_label,"
@@ -171,9 +171,13 @@ _RUN_DETAILS = (
     " LEFT JOIN engine.aisc_backend_evaluationinput ti ON ti.evaluation_plugin_id = ep.id AND ti.name = 'target'"
     " LEFT JOIN engine.aisc_backend_aicomponent tc ON tc.id = ti.component_id"
     " LEFT JOIN target.target t ON t.engine_component = tc.pid"
-    " WHERE e.system_id::text = %s AND e.status <> 'Archived'"
-    " ORDER BY e.created_at DESC, ep.id DESC"
 )
+_RUN_DETAILS = (_RUN_COLUMNS + " WHERE e.system_id::text = %s AND e.status <> 'Archived' AND NOT " + _LOCAL +
+                " ORDER BY e.created_at DESC, ep.id DESC")
+#: The project's local runs, whatever card version they were made on (or none): they are not part of
+#: any version's assessment record.
+_LOCAL_RUNS = (_RUN_COLUMNS + " WHERE e.status <> 'Archived' AND " + _LOCAL +
+               " ORDER BY e.created_at DESC, ep.id DESC")
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
 #: The project's own objectives (objective sets), each as its latest published version words it.
 _OWN_OBJECTIVES = (
@@ -233,8 +237,10 @@ class Choices:
     targets: list[dict] = field(default_factory=list)
     #: each tool's runs per target on the card version asked for (_TARGET_RUNS rows)
     target_runs: list[dict] = field(default_factory=list)
-    #: the same runs one by one, and the local runs, newest first (_RUN_DETAILS rows)
+    #: the same runs one by one, newest first (_RUN_DETAILS rows)
     run_details: list[dict] = field(default_factory=list)
+    #: the runs on a local model file, of any card version, newest first (_LOCAL_RUNS rows)
+    local_runs: list[dict] = field(default_factory=list)
 
 
 def _reader(pid) -> psycopg.Connection:
@@ -292,6 +298,7 @@ def choices(pid, version_pid: str | None) -> Choices:
         targets = _rows(conn, _TARGETS)
         target_runs = _rows(conn, _TARGET_RUNS, (version_pid,)) if version_pid and targets else []
         run_details = _rows(conn, _RUN_DETAILS, (version_pid,)) if version_pid else []
+        local = _rows(conn, _LOCAL_RUNS)
     per_checklist = {r["checklist_id"]: r["n"] for r in questions}
     return Choices(
         selected=sorted(selected[0]["objective_ids"], key=_objective_order) if selected else [],
@@ -313,6 +320,7 @@ def choices(pid, version_pid: str | None) -> Choices:
         targets=targets,
         target_runs=target_runs,
         run_details=run_details,
+        local_runs=local,
     )
 
 
@@ -341,8 +349,7 @@ def _run(row: dict, uses: dict[str, list[dict]]) -> dict:
 
 def local_runs(found: Choices) -> list[dict]:
     """The runs on a local model file, newest first, each with its tool: not part of the assessment record."""
-    return [{"key": r["package_name"], "label": r["label"], **_run(r, {})}
-            for r in found.run_details if r["local_model"] is not None]
+    return [{"key": r["package_name"], "label": r["label"], **_run(r, {})} for r in found.local_runs]
 
 
 def target_view(found: Choices, latest_number: int | None, uses: dict[str, list[dict]] | None = None) -> list[dict]:
@@ -358,7 +365,7 @@ def target_view(found: Choices, latest_number: int | None, uses: dict[str, list[
         return sorted((tool(r) for r in rows), key=lambda t: t["label"].lower())
 
     def tool(r):
-        mine = [d for d in found.run_details if d["local_model"] is None and d["package_name"] == r["package_name"]
+        mine = [d for d in found.run_details if d["package_name"] == r["package_name"]
                 and d["label"] == r["label"] and d["unassigned"] == r["unassigned"]
                 and (r["unassigned"] or d["target_key"] == r["target_key"])]
         connections, helpers = [], []
@@ -590,8 +597,7 @@ def view(pid, version: str | None = None) -> dict:
         "carried_from": carried_from,
         "engine_workspace": found.workspace,
         "targets": target_view(found, all_versions[0]["number"] if all_versions else None,
-                               run_passes.uses_by_run([d["run"] for d in found.run_details
-                                                       if d["local_model"] is None and d["target_key"]], pid)),
+                               run_passes.uses_by_run([d["run"] for d in found.run_details if d["target_key"]], pid)),
         "local_runs": local_runs(found),
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
         "dimensions_known": catalogue is not None and bool(dims),
