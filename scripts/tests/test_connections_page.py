@@ -254,15 +254,52 @@ def test_try_shows_what_a_test_will_get():
     assert "JSON.parse" in body, "a JSON prompt is sent as an object, for a structured system"
 
 
-def test_a_new_connection_names_its_target_and_a_taken_one_is_not_offered():
+def test_a_connection_is_made_from_its_targets_row_which_fixes_the_target():
     html = read(PAGE)
     script = script_of(html)
-    assert re.search(r'<select id="f-target"[^>]*required', html)
-    assert "body.target" in script and ".disabled = true" in script
-    assert '<label for="f-target">Connects to</label>' in html and "Endpoint of" not in html
-    assert '<label for="f-kind">Protocol</label>' in html
-    assert '<label class="rest" for="f-answer">Answer field (JSON path)</label>' in html
-    assert "'Pick what this connection reaches.'" in script
+    assert "f-target" not in html and "Connects to" not in html
+    assert "body.target = editTarget.key" in script
+    assert "'Connect ' + targetName(t)" in script and "'Edit the connection of ' + targetName(t)" in script
+
+
+def test_the_editor_opens_under_its_targets_row():
+    script = script_of(read(PAGE))
+    place = re.search(r"function placeEditor\(.*?\n  \}\n", script, re.S)
+    assert place and ".after(editRow)" in place.group(0) and "editSection" in place.group(0)
+    # re-drawing the rows must not drop the editor with them
+    render = re.search(r"function renderTargets\(.*?\n  \}\n", script, re.S).group(0)
+    assert "parkEditor()" in render
+
+
+def test_the_form_is_shaped_by_protocol():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    form = re.search(r'<form id="editor".*?</form>', markup, re.S).group(0)
+    assert form.index('<label for="f-kind">Protocol</label>') < form.index('<label for="f-base">Base URL</label>')
+    assert '<label class="rest" for="f-answer">Answer field (JSON path)</label>' in form
+    assert re.search(r'<label class="model" for="f-model">Model</label>', form)
+    for field in ("f-body", "f-answer", "f-refusal"):
+        assert re.search(r'<(?:input|textarea)[^>]*class="rest"[^>]*id="' + field + '"', form), field
+    assert re.search(r'<div class="rest fields"><select id="f-method">', form)
+    assert re.search(r'<div class="a2a fields"><select id="f-version">', form)
+    shown = re.search(r"function kindShown\(.*?\n  \}\n", script, re.S).group(0)
+    assert "'#editor .rest'" in shown and "'#editor .model'" in shown and "'#editor .a2a'" in shown
+
+
+def test_headers_key_header_and_timeout_are_under_advanced():
+    form = re.search(r'<form id="editor".*?</form>', markup_of(read(PAGE)), re.S).group(0)
+    advanced = re.search(r'<details id="advanced"[^>]*>\s*<summary>Advanced</summary>.*?</details>', form, re.S)
+    assert advanced, "no Advanced section"
+    for field in ('id="f-headers"', 'id="f-secret-header"', 'id="f-timeout"'):
+        assert field in advanced.group(0) and form.count(field) == 1, field
+    assert 'id="f-secret"' not in advanced.group(0), "the key is asked of every protocol, not hidden"
+
+
+def test_the_name_is_derived_from_the_label_until_typed_over():
+    script = script_of(read(PAGE))
+    fn = re.search(r"function nameFrom\(.*?\n  \}\n", script, re.S)
+    assert fn and "/[^a-z0-9]+/g" in fn.group(0) and ".slice(0, 63)" in fn.group(0)
+    assert "$('f-label').addEventListener('input'" in script and "nameTyped" in script
 
 
 def test_each_connection_says_what_it_is_the_endpoint_of():
@@ -282,16 +319,18 @@ def test_an_endpoint_file_is_imported_into_the_editor_not_saved():
     imp = re.search(r"function importFile\(.*?\n  \}\n", script, re.S)
     assert imp, "no importFile()"
     body = imp.group(0)
-    assert "openEditor(null)" in body and "JSON.parse" in body
+    assert "openEditor" not in body and "JSON.parse" in body, "it fills the open row's form"
     assert "write(" not in body and "fetch(" not in body and "api(" not in body, "an import must not save by itself"
     for field in ("f-name", "f-label", "f-kind", "f-base", "f-method", "f-path", "f-body", "f-answer", "f-refusal",
                   "f-headers", "f-secret-header", "f-timeout"):
         assert field in body, field
+    form = re.search(r'<form id="editor".*?</form>', markup, re.S).group(0)
+    assert 'id="import"' in form, "Import from file is in the row's form"
 
 
-def test_the_import_picks_the_target_by_its_label_since_keys_differ_per_project():
+def test_the_import_keeps_the_rows_target():
     body = re.search(r"function importFile\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "target_label" in body
+    assert "target_label" not in body and "f-target" not in body
 
 
 def test_a_key_in_the_file_goes_into_the_key_field_and_is_saved_like_a_typed_one():
@@ -309,10 +348,9 @@ def test_after_a_save_or_a_delete_the_targets_are_read_again():
     assert "reloadTargets(false)" in reload_fn
 
 
-def test_the_probe_is_try_it_and_creating_says_create():
+def test_connections_are_tried_and_made_from_the_rows_only():
     html = read(PAGE)
     markup, script = markup_of(html), script_of(html)
     assert "Try it" not in html and "probeIt" not in script, "a connection is tried from its target's row"
-    assert '<button type="button" class="ghost" id="new">Create connection</button>' in markup
-    assert "'Create connection'" in script and "New connection" not in html
+    assert 'id="new"' not in markup and "Create connection" not in html and "New connection" not in html
     assert "'No such project: ' + slug + '.'" in script
