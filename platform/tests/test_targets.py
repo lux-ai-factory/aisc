@@ -65,7 +65,7 @@ def test_the_system_target_is_mirrored_in_the_engine_with_the_callers_token(clie
     engine = EngineFake(stub, project["pid"])
     targets.ensure_mirrors(project["pid"], "caller-token")
     mirror = engine.named(f"target:{project['pid']}/system")
-    assert mirror and mirror["name"] == f"Target · System: {project['name']} · no endpoint" and mirror["component_type"] == "resource"
+    assert mirror and mirror["name"] == f"AI card · System: {project['name']} · not connected" and mirror["component_type"] == "resource"
     assert one(dsn, project["pid"], "select engine_component::text from target.target where key = 'system'") == [(mirror["pid"],)]
     call = stub.requests("POST", f"/api/v1/projects/{engine.engine_pid}/components")[-1]
     assert call["headers"]["authorization"] == "Bearer caller-token"
@@ -125,4 +125,4 @@ def test_a_renamed_target_renames_its_mirror(client, as_user, make_project, stub
     targets.ensure_mirrors(project["pid"], "t")
     one(dsn, project["pid"], "update target.target set label = 'MCAS' where key = 'system' returning key")
     targets.ensure_mirrors(project["pid"], "t")
-    assert engine.named(f"target:{project['pid']}/system")["name"] == "Target · System: MCAS · no endpoint"
+    assert engine.named(f"target:{project['pid']}/system")["name"] == "AI card · System: MCAS · not connected"

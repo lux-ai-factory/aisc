@@ -207,7 +207,7 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
 
 
 def _rename_targets(pid, request: Request) -> None:
-    """The target dropdown names say whether each target has an endpoint: refresh them when one is
+    """The target dropdown names say whether and how each target is connected: refresh them when one is
     bound or removed. An engine that doesn't answer leaves the old names until the next refresh."""
     _exists, latest = db.latest_version(str(pid))
     reason = targets.ensure_mirrors(pid, token_from_headers(request.headers) or "",
@@ -370,7 +370,7 @@ def _endpoint_of_target(pid: str, key: str) -> tuple[str | None, JSONResponse | 
     if name is None:
         # reason: the one 404 a plugin may read as "skip an optional target" (plugin-interface is_no_endpoint)
         return None, _internal(404, {"detail": f"{target['label']} has no endpoint: set one under Manage,"
-                                               " Targets and endpoints", "reason": "no_endpoint"})
+                                               " Components and connections", "reason": "no_endpoint"})
     return name, None
 
 

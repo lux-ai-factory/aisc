@@ -29,18 +29,26 @@ def reference(pid, key: str) -> str:
     return f"target:{pid}/{key}"
 
 
-def mirror_name(row: dict, latest_card: int | None, endpoint: dict | None = None) -> str:
-    """What the evaluation form shows for this target. The form lists every target, so the name says
-    whether it has an endpoint: a plugin that calls its target can only use one that has."""
+PROTOCOL_NAMES = {"openai": "OpenAI-compatible", "rest": "REST API", "a2a": "A2A agent",
+                  "oip": "Open Inference Protocol"}
+
+
+def mirror_name(row: dict, connection: dict | None = None, latest_card: int | None = None) -> str:
+    """What the evaluation form shows for this target: that it comes from the AI card and how it is
+    reached. The form lists every target, so the name says whether it is connected: a plugin that
+    calls its target can only use one that is."""
     if row["kind"] == "system":
-        name = f"Target · System: {row['label']}"
+        name = f"AI card · System: {row['label']}"
     else:
-        name = f"Target · Component: {row['label']} ({KIND_LABELS.get(row['component_kind'], 'component')})"
-        if latest_card is not None and (row["last_card_number"] or 0) < latest_card:
-            name += f" (not in card v{latest_card})"
-    if endpoint:
-        return f"{name} · endpoint: {endpoint.get('label') or endpoint['name']}"
-    return f"{name} · no endpoint"
+        name = f"AI card · Component: {row['label']} ({KIND_LABELS.get(row['component_kind'], 'component')})"
+    if connection:
+        protocol = PROTOCOL_NAMES.get(connection.get("kind"), connection.get("kind") or "unknown protocol")
+        name += f" · reached through {protocol}"
+    else:
+        name += " · not connected"
+    if row["kind"] != "system" and latest_card is not None and (row["last_card_number"] or 0) < latest_card:
+        name += f" · not in AI card v{latest_card}"
+    return name
 
 
 def status(row: dict, latest_card: int | None) -> str:
@@ -86,7 +94,7 @@ def _ensure_mirrors(pid, token: str, latest_card: int | None) -> str | None:
         from platform_service import connection_store
         endpoints = connection_store.endpoints_by_target(pid)
         for row in target_store.all_targets(pid):
-            name = mirror_name(row, latest_card, endpoints.get(row["key"]))
+            name = mirror_name(row, endpoints.get(row["key"]), latest_card)
             found = existing.get(reference(pid, row["key"]))
             if found is None:
                 component = engine_components.create(pid, token, name, reference(pid, row["key"]), engine_pid)

@@ -85,7 +85,7 @@ def test_every_keyed_component_of_the_latest_card_becomes_a_target(client, as_us
     assert t[f"component:{K1}"]["label"] == "Scoring model" and t[f"component:{K1}"]["component_kind"] == "model"
     assert t[f"component:{K2}"]["first_card_number"] == 1 and t[f"component:{K2}"]["status"] == "current"
     assert engine.named(f"target:{project['pid']}/component:{K2}")["name"] == \
-        "Target · Component: Training data (training data) · no endpoint"
+        "AI card · Component: Training data (training data) · not connected"
 
 
 def test_the_callers_token_goes_to_qualification_both_ways(client, as_user, project, stub):
@@ -107,7 +107,7 @@ def test_the_system_target_is_named_after_the_latest_card(client, as_user, proje
     card(stub, project, v1, jsonld())
     t = by_key(sync(client, as_user, project).json())
     assert t["system"]["label"] == "MicroCredit Assist Score"
-    assert engine.named(f"target:{project['pid']}/system")["name"] == "Target · System: MicroCredit Assist Score · no endpoint"
+    assert engine.named(f"target:{project['pid']}/system")["name"] == "AI card · System: MicroCredit Assist Score · not connected"
 
 
 # A later card
@@ -122,7 +122,7 @@ def test_a_component_the_latest_card_no_longer_has_stays_flagged(client, as_user
     t = by_key(sync(client, as_user, project).json())
     gone = t[f"component:{K3}"]
     assert gone["status"] == "stale" and gone["last_card_number"] == 1
-    assert engine.named(f"target:{project['pid']}/component:{K3}")["name"].endswith("(not in card v2) · no endpoint")
+    assert engine.named(f"target:{project['pid']}/component:{K3}")["name"].endswith("· not connected · not in AI card v2")
     assert t[f"component:{K1}"]["status"] == "current" and t[f"component:{K1}"]["last_card_number"] == 2
 
 
@@ -137,7 +137,7 @@ def test_a_renamed_component_is_the_same_target_renamed(client, as_user, project
     t = by_key(sync(client, as_user, project).json())
     assert t[f"component:{K1}"]["label"] == "Credit scoring model" and t[f"component:{K1}"]["first_card_number"] == 1
     renamed = engine.named(f"target:{project['pid']}/component:{K1}")
-    assert renamed["pid"] == mirror and renamed["name"].startswith("Target · Component: Credit scoring model")
+    assert renamed["pid"] == mirror and renamed["name"].startswith("AI card · Component: Credit scoring model")
 
 
 # When the card cannot be read
