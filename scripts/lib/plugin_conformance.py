@@ -22,8 +22,8 @@ import re
 #: as aisc_plugin_interface.helpers.HELPER_ROLES (the interface is not installed where the check runs)
 HELPER_ROLES = ("judge", "attacker", "grader", "embedder", "generator")
 #: config field names that select or key the model under test, matched as whole words of the snake_case
-#: name (camelCase split, dots read as underscores): target_model_id and llm.target_api_key match, a
-#: dataset's column roles (target_feature, target_column, target_probability_field) do not
+#: name (camelCase split, acronyms too, dots read as underscores): target_model_id, targetAPIKey and
+#: llm.target_api_key match, a dataset's column roles (target_feature, target_column, target_probability_field) do not
 TARGET_FIELD = re.compile(r"(^|_)(target_(model|model_id|api_key|key|base_url|url|endpoint|credentials?|provider)"
                           r"|model_under_test|model_credentials?)(_|$)")
 CARD = "card"
@@ -32,7 +32,7 @@ CHECKED_KEYS = ("adopted", "helper_roles", "config_fields", "hidden_config_field
 
 
 def _snake(name):
-    name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name)    # targetAPIKey: target_API_Key
     return re.sub(r"[^a-z0-9]+", "_", name.lower())
 
 
