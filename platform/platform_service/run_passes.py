@@ -5,6 +5,9 @@ catalogue code, so it never gets that token: before it starts, the worker asks f
 run's own references (``target:<pid>/<key>``, ``connection:<pid>/<name>``), and the plugin presents the
 pass instead. A pass opens the routes of exactly those references, until it expires or the worker revokes
 it when the run ends. Only its hash is kept.
+
+A pass may name the evaluation plugin it runs; then every connection resolved or run key issued under it is
+recorded (record, uses_of), so results can say which connection a run reached and what it was then.
 """
 from __future__ import annotations
 
@@ -49,10 +52,16 @@ def _grant(ref) -> tuple[str, str, str]:
         raise Refused(422, f"not a target or connection reference: {ref!r}") from None
 
 
-def mint(refs, ttl_s: int | None = None) -> tuple[str, datetime]:
-    """A new pass for these references, and when it expires."""
+def mint(refs, ttl_s: int | None = None, evaluation_plugin=None) -> tuple[str, datetime]:
+    """A new pass for these references, and when it expires. `evaluation_plugin`, the uuid of the
+    evaluation plugin the run is, is optional: a pass without one records no use."""
     if not isinstance(refs, list) or not refs:
         raise Refused(422, "refs: name the run's target or connection references")
+    if evaluation_plugin is not None:
+        try:
+            evaluation_plugin = str(uuid.UUID(evaluation_plugin))
+        except (ValueError, TypeError, AttributeError):
+            raise Refused(422, "evaluation_plugin: the uuid of the evaluation plugin the run is") from None
     grants = sorted({_grant(ref) for ref in refs})
     for pid in {pid for _, pid, _ in grants}:
         if db.get_project(pid) is None:
@@ -62,9 +71,9 @@ def mint(refs, ttl_s: int | None = None) -> tuple[str, datetime]:
     with db.pool().connection() as conn:
         conn.execute("DELETE FROM core.run_pass WHERE expires_at < clock_timestamp()")
         expires = conn.execute(
-            "INSERT INTO core.run_pass (pass_hash, refs, expires_at)"
-            " VALUES (%s, %s::jsonb, clock_timestamp() + make_interval(secs => %s)) RETURNING expires_at",
-            (_hash(run_pass), json.dumps([list(g) for g in grants]), ttl)).fetchone()["expires_at"]
+            "INSERT INTO core.run_pass (pass_hash, refs, evaluation_plugin, expires_at)"
+            " VALUES (%s, %s::jsonb, %s, clock_timestamp() + make_interval(secs => %s)) RETURNING expires_at",
+            (_hash(run_pass), json.dumps([list(g) for g in grants]), evaluation_plugin, ttl)).fetchone()["expires_at"]
     return run_pass, expires
 
 
@@ -86,3 +95,23 @@ def check(run_pass: str, pid: str, kind: str, name: str) -> None:
 def revoke(run_pass: str) -> None:
     with db.pool().connection() as conn:
         conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s", (_hash(run_pass or ""),))
+
+
+def record(run_pass: str, connection: str, protocol: str, fingerprint: str) -> None:
+    """That this pass's run reached `connection`, of kind `protocol` and this fingerprint, now. Nothing for
+    a pass that names no evaluation plugin, or one no longer open."""
+    with db.pool().connection() as conn:
+        conn.execute(
+            "INSERT INTO core.run_pass_use (pass_hash, evaluation_plugin, connection, protocol, fingerprint)"
+            " SELECT pass_hash, evaluation_plugin, %s, %s, %s FROM core.run_pass"
+            " WHERE pass_hash = %s AND evaluation_plugin IS NOT NULL AND expires_at > clock_timestamp()",
+            (connection, protocol, fingerprint, _hash(run_pass or "")))
+
+
+def uses_of(evaluation_plugin) -> list[dict]:
+    """The connections an evaluation plugin's runs reached, in time order: connection, protocol (its kind
+    then), fingerprint (then), used_at."""
+    with db.pool().connection() as conn:
+        return conn.execute(
+            "SELECT connection, protocol, fingerprint, used_at FROM core.run_pass_use"
+            " WHERE evaluation_plugin = %s ORDER BY used_at, id", (str(evaluation_plugin),)).fetchall()
