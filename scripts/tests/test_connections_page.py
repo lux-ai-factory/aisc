@@ -393,3 +393,11 @@ def test_connections_that_cannot_be_read_still_leave_the_admin_the_targets():
     reload_fn = re.search(r"function reload\(\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
     assert "if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }" in reload_fn
     assert ".catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });" in reload_fn
+
+
+def test_an_editor_open_on_a_connection_since_removed_closes():
+    render = re.search(r"function renderTargets\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "if (editing && !connectionNamed(editing)) closeEditor();" in render
+    named = re.search(r"function connectionNamed\(name\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S)
+    assert named, "no connectionNamed()"
+    assert "connectionsByTarget" in named.group(0) and "unlinked" in named.group(0)

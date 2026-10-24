@@ -703,6 +703,12 @@
     return td;
   }
 
+  /** Whether the admin's connections, as last read, still include the one named `name`. */
+  function connectionNamed(name) {
+    return Object.keys(connectionsByTarget).some(function (k) { return connectionsByTarget[k].name === name; }) ||
+      unlinked.some(function (c) { return c.name === name; });
+  }
+
   function renderTargets(d, able) {
     knownTargets = d.targets || [];
     var rows = $('target-rows');
@@ -723,6 +729,7 @@
       if (open && open.key === t.key) placeEditor(tr);      // a refresh keeps the open form where it was
     });
     if (open && !editRow.parentNode) closeEditor();
+    if (editing && !connectionNamed(editing)) closeEditor();      // removed while its editor was open
     if (isAdmin) renderUnlinked();
     if (knownTargets.length < 2) {
       var tr0 = el('tr'); var td0 = el('td', 'note', 'The AI card lists no components yet: add them on the AI card, in step 1, Qualify, then refresh.');
