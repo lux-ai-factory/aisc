@@ -56,11 +56,14 @@ def test_s6a_qualification_web_reaches_the_agents(compose):
     assert value == f"http://qualification-agents:{port}"
 
 
-def test_aisc_backend_has_no_platform_url(compose):
-    """aisc-backend has no PLATFORM_URL."""
+def test_aisc_backend_reaches_the_platform_with_the_engine_token_only(compose):
+    """aisc-backend asks the platform one thing, whether a card target has a connection, with its own
+    token: it imports plugin code, so it holds no ledger or connections token."""
     q, cfg = compose
-    names = set(cfg["services"]["aisc-backend"].get("environment") or {})
-    assert "PLATFORM_URL" not in names
+    env = cfg["services"]["aisc-backend"].get("environment") or {}
+    assert env.get("PLATFORM_URL") == "http://platform:8000"
+    platform_tokens = {n for n in env if n.startswith("PLATFORM_") and n.endswith(("_TOKEN", "_KEY", "_KEYS"))}
+    assert platform_tokens == {"PLATFORM_ENGINE_TOKEN"}
 
 
 # LLM keys. A secret given as `${NAME:?...}` is in the fixture's `required` set and so resolves to

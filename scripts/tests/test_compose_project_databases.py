@@ -118,13 +118,15 @@ def test_report_grants_waits_for_the_engine_one_shot(default_tag):
 
 def test_the_engine_one_shot_has_the_backend_environment(default_tag):
     """aisc-backend-migrate connects exactly as aisc-backend does, but for what only serving takes: the
-    engine's own immudb account (the migration never uses immudb), the clients whose tokens it accepts, and
-    the ledger mode its changes are written under."""
+    engine's own immudb account (the migration never uses immudb), the clients whose tokens it accepts,
+    the ledger mode its changes are written under, and the platform it asks whether a card target has a
+    connection."""
     svc = default_tag["aisc-backend-migrate"]
     engine = dict(default_tag["aisc-backend"].get("environment") or {})
     immudb = {k: engine.pop(k) for k in list(engine) if k.startswith("IMMUDB_")}
     assert set(immudb) == {"IMMUDB_URL", "IMMUDB_USER", "IMMUDB_PASSWORD", "IMMUDB_DATABASE"}
-    serving = {k: engine.pop(k) for k in ("ENGINE_ACCEPTED_CLIENTS", "LEDGER_MODE")}
+    serving = {k: engine.pop(k) for k in ("ENGINE_ACCEPTED_CLIENTS", "LEDGER_MODE", "PLATFORM_URL",
+                                          "PLATFORM_ENGINE_TOKEN")}
     assert serving["ENGINE_ACCEPTED_CLIENTS"] == "aisc-gateway"
     assert svc.get("environment") == engine
     assert svc["image"] == default_tag["aisc-backend"]["image"]

@@ -29,18 +29,26 @@ def reference(pid, key: str) -> str:
     return f"target:{pid}/{key}"
 
 
-def mirror_name(row: dict, latest_card: int | None, endpoint: dict | None = None) -> str:
-    """What the evaluation form shows for this target. The form lists every target, so the name says
-    whether it has an endpoint: a plugin that calls its target can only use one that has."""
+PROTOCOL_NAMES = {"openai": "OpenAI-compatible", "rest": "REST API", "a2a": "A2A agent",
+                  "oip": "Open Inference Protocol"}
+
+
+def mirror_name(row: dict, connection: dict | None = None, latest_card: int | None = None) -> str:
+    """What the evaluation form shows for this target: that it comes from the AI card and how it is
+    reached. The form lists every target, so the name says whether it is connected: a plugin that
+    calls its target can only use one that is."""
     if row["kind"] == "system":
-        name = f"Target · System: {row['label']}"
+        name = f"AI card · System: {row['label']}"
     else:
-        name = f"Target · Component: {row['label']} ({KIND_LABELS.get(row['component_kind'], 'component')})"
-        if latest_card is not None and (row["last_card_number"] or 0) < latest_card:
-            name += f" (not in card v{latest_card})"
-    if endpoint:
-        return f"{name} · endpoint: {endpoint.get('label') or endpoint['name']}"
-    return f"{name} · no endpoint"
+        name = f"AI card · Component: {row['label']} ({KIND_LABELS.get(row['component_kind'], 'component')})"
+    if connection:
+        protocol = PROTOCOL_NAMES.get(connection.get("kind"), connection.get("kind") or "unknown protocol")
+        name += f" · reached through {protocol}"
+    else:
+        name += " · not connected"
+    if row["kind"] != "system" and latest_card is not None and (row["last_card_number"] or 0) < latest_card:
+        name += f" · not in AI card v{latest_card}"
+    return name
 
 
 def status(row: dict, latest_card: int | None) -> str:
@@ -79,14 +87,27 @@ def ensure_mirrors(pid, token: str, latest_card: int | None = None) -> str | Non
         return _ensure_mirrors(pid, token, latest_card)
 
 
+def _has_card(pid) -> bool:
+    from platform_service import db
+
+    _exists, latest = db.latest_version(str(pid))
+    return latest is not None
+
+
 def _ensure_mirrors(pid, token: str, latest_card: int | None) -> str | None:
+    # a project used only for the engine has no AI card targets: its system row stays here, but the
+    # engine offers it only once the project has a card version
+    has_card = _has_card(pid)
+    offered = [row for row in target_store.all_targets(pid) if row["kind"] != "system" or has_card]
+    if not offered:
+        return None
     try:
         engine_pid = engine_components.engine_project(pid, token)
         existing = {engine_components.value_of(c): c for c in engine_components.components(pid, token, engine_pid)}
         from platform_service import connection_store
         endpoints = connection_store.endpoints_by_target(pid)
-        for row in target_store.all_targets(pid):
-            name = mirror_name(row, latest_card, endpoints.get(row["key"]))
+        for row in offered:
+            name = mirror_name(row, endpoints.get(row["key"]), latest_card)
             found = existing.get(reference(pid, row["key"]))
             if found is None:
                 component = engine_components.create(pid, token, name, reference(pid, row["key"]), engine_pid)
@@ -208,6 +229,21 @@ def view(pid, latest_card: int | None) -> list[dict]:
         "engine_component": str(r["engine_component"]) if r["engine_component"] else None,
         "endpoint": endpoints.get(r["key"]),
     } for r in rows]
+
+
+def assessable_by(target_rows: list[dict], plugins: list[dict]) -> dict[str, list[str]]:
+    """Per target key, the installed tests that can assess it: those whose kinds include an AI card
+    target, and of those that call their target only a target that has a connection. Its protocol
+    does not narrow it: the facade gives a text tool any connection's answer."""
+    card = [p for p in plugins if "card" in (p.get("target_kinds") or [])]
+    return {t["key"]: [p.get("display_name") or p["name"] for p in card
+                       if t.get("endpoint") or not p.get("card_needs_connection")]
+            for t in target_rows}
+
+
+def some_need_a_connection(plugins: list[dict]) -> bool:
+    """Whether some installed test of an AI card target calls its target, so assesses only a connected one."""
+    return any("card" in (p.get("target_kinds") or []) and p.get("card_needs_connection") for p in plugins)
 
 
 def is_key(key: str) -> bool:

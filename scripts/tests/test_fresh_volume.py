@@ -113,7 +113,7 @@ def test_init_files_and_migrations_apply_on_a_fresh_volume(fresh):
 def test_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
     """`platform` holds core, catalogue, report_library, the ledger's own schema and an empty public (forms
     are per project, so there is no form library); core holds the projects, their members, the migration
-    history and the platform's ledger outbox."""
+    history, the platform's ledger outbox, the run passes it issued and the connections those runs reached."""
     fresh.require("init")
     schemas = {r["nspname"] for r in fresh.rows("platform", """
         SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'""")}
@@ -121,7 +121,7 @@ def test_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
     core = {r["relname"] for r in fresh.rows("platform", """
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'core' AND c.relkind = 'r'""")}
-    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass"}, f"core has {sorted(core)}"
+    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}, f"core has {sorted(core)}"
 
 
 @pytest.mark.parametrize("schema,owner", [("report_library", "report_composer_rw")])

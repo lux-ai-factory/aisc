@@ -507,8 +507,9 @@ def test_a_fresh_platform_database_has_no_module_schema_and_no_core_system():
     assert not schemas & {"qualification", "control_objectives", "engine", "report_composer"}, \
         f"platform-db.sql still makes module schemas: {sorted(schemas)}"
     # core.outbox is the platform's own ledger outbox (migration 0008), core.run_pass the plugin runs' passes
-    # (migration 0012); neither is a module's table
-    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass"}, f"core has {sorted(core)}"
+    # (migration 0012) and core.run_pass_use the connections those runs reached (0013); none is a module's table
+    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}, \
+        f"core has {sorted(core)}"
     # (forms are per project: there is no form library in platform)
     assert "form_library" not in schemas and "report_library" in schemas, "report_library only"
     assert owners.get("report_library") == "report_composer_rw", "report_composer_rw owns report_library"

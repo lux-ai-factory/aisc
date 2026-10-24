@@ -207,7 +207,7 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
 
 
 def _rename_targets(pid, request: Request) -> None:
-    """The target dropdown names say whether each target has an endpoint: refresh them when one is
+    """The target dropdown names say whether and how each target is connected: refresh them when one is
     bound or removed. An engine that doesn't answer leaves the old names until the next refresh."""
     _exists, latest = db.latest_version(str(pid))
     reason = targets.ensure_mirrors(pid, token_from_headers(request.headers) or "",
@@ -346,7 +346,8 @@ def mint_run_pass(body: dict, request: Request) -> JSONResponse:
     except ServiceRefused as refused:
         return _internal(refused.status, {"detail": refused.detail})
     try:
-        run_pass, expires = run_passes.mint(body.get("refs") if isinstance(body, dict) else None)
+        body = body if isinstance(body, dict) else {}
+        run_pass, expires = run_passes.mint(body.get("refs"), evaluation_plugin=body.get("evaluation_plugin"))
     except run_passes.Refused as refused:
         return _internal(refused.status, {"detail": refused.detail})
     return _internal(201, {"pass": run_pass, "expires_at": expires.isoformat()})
@@ -370,7 +371,7 @@ def _endpoint_of_target(pid: str, key: str) -> tuple[str | None, JSONResponse | 
     if name is None:
         # reason: the one 404 a plugin may read as "skip an optional target" (plugin-interface is_no_endpoint)
         return None, _internal(404, {"detail": f"{target['label']} has no endpoint: set one under Manage,"
-                                               " Targets and endpoints", "reason": "no_endpoint"})
+                                               " Components and connections", "reason": "no_endpoint"})
     return name, None
 
 
@@ -389,7 +390,7 @@ def resolve_target_connection(pid: str, key: str, request: Request) -> JSONRespo
     if refused:
         return refused
     name, missing = _endpoint_of_target(pid, key)
-    return missing or _resolve_connection(pid, name)
+    return missing or _resolve_connection(pid, name, request.headers.get(run_passes.HEADER))
 
 
 @router.post("/internal/projects/{pid}/targets/{key}/run-keys")
@@ -399,7 +400,7 @@ def issue_target_run_key(pid: str, key: str, request: Request) -> JSONResponse:
     if refused:
         return refused
     name, missing = _endpoint_of_target(pid, key)
-    return missing or _issue_run_key(pid, name)
+    return missing or _issue_run_key(pid, name, request.headers.get(run_passes.HEADER))
 
 
 @router.get("/internal/projects/{pid}/connections/{name}")
@@ -409,11 +410,25 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
     Same guards as the LLM resolve route: not through the gateway (404), closed without
     PLATFORM_CONNECTIONS_TOKEN (503), the token in X-AISC-Service-Token compared in constant time
     (401). A deleted connection is 410. The key is never logged."""
-    return _internal_gate(pid, request, "connection", name) or _resolve_connection(pid, name)
+    return _internal_gate(pid, request, "connection", name) or _resolve_connection(
+        pid, name, request.headers.get(run_passes.HEADER))
 
 
-def _resolve_connection(pid: str, name: str) -> JSONResponse:
-    """resolve_connection past the gate, for a caller that has run it."""
+def _fingerprint_of(descriptor: dict) -> str:
+    """The plugin-side Descriptor fingerprint of a connection as descriptor_of gives it, what a run key
+    and a recorded use both carry."""
+    from aisc_plugin_interface import connections as client
+    return client.Descriptor.from_dict(descriptor).fingerprint()
+
+
+def _record_use(run_pass: str | None, pid: str, row: dict, fingerprint: str) -> None:
+    """A run reached this connection under its pass (run_passes.record); the key never goes in."""
+    if run_pass is not None:
+        run_passes.record(run_pass, pid, row["name"], row["kind"], fingerprint)
+
+
+def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
+    """resolve_connection past the gate, for a caller that has run it; a use is recorded under `run_pass`."""
     if not CONNECTION_NAME.match(name):
         return _internal(404, {"detail": f"no connection {name!r}"})
     row = connection_store.descriptor(pid, name)
@@ -427,8 +442,10 @@ def _resolve_connection(pid: str, name: str) -> JSONResponse:
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
         return _internal(409, {"detail": str(exc)})
+    fingerprint = _fingerprint_of(out) if run_pass is not None else None
     # the network rule of the project, now: the run's own environment opens nothing
     out.update(connection_allowlist.rule(pid))
+    _record_use(run_pass, pid, row, fingerprint)
     logger.info("connection %s of project %s resolved for a run", name, pid)
     return _internal(200, out)
 
@@ -467,6 +484,29 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
     targets.ensure_system(found["pid"], found["name"])
     synced = targets.sync(found["pid"], token_from_headers(request.headers) or "")
     return _targets_answer(found["pid"], synced)
+
+
+@router.get("/projects/{slug}/targets/assessable-by")
+def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Per target, the installed tests that can assess it, from what the engine says each declares
+    (asked with the caller's own token), and whether some of them call their target (so need a
+    connection). An engine that does not answer lists none, and says so."""
+    from platform_service import engine_components
+
+    role_or_404(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    targets.ensure_system(found["pid"], found["name"])
+    rows = targets.view(found["pid"], None)
+    try:
+        plugins = engine_components.plugin_declarations(found["pid"], token_from_headers(request.headers) or "")
+    except engine_components.EngineUnavailable as exc:
+        logger.warning("installed tests of project %s not read: %s", found["pid"], exc)
+        return {"assessable_by": {t["key"]: [] for t in rows}, "some_need_a_connection": False,
+                "reason": "the installed tests could not be read: try again later"}
+    return {"assessable_by": targets.assessable_by(rows, plugins),
+            "some_need_a_connection": targets.some_need_a_connection(plugins), "reason": None}
 
 
 # ── Allowed internal hosts ────────────────────────────────────────────────────
@@ -554,17 +594,17 @@ def _key_hash(key: str) -> str:
 def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
     """A key for one evaluation run to reach one connection through the protocol endpoints; only its
     hash is stored. Guarded like the resolve route. Valid CONNECTIONS_RUN_KEY_TTL_S (12 h)."""
-    return _internal_gate(pid, request, "connection", name) or _issue_run_key(pid, name)
+    return _internal_gate(pid, request, "connection", name) or _issue_run_key(
+        pid, name, request.headers.get(run_passes.HEADER))
 
 
-def _issue_run_key(pid: str, name: str) -> JSONResponse:
-    """issue_run_key past the gate, for a caller that has run it."""
+def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
+    """issue_run_key past the gate, for a caller that has run it; a use is recorded under `run_pass`."""
     row = connection_store.descriptor(pid, name) if CONNECTION_NAME.match(name) else None
     if row is None or row["deleted_at"] is not None:
         return _internal(404, {"detail": f"no connection {name!r}"})
-    from aisc_plugin_interface import connections as client
     try:
-        fingerprint = client.Descriptor.from_dict(descriptor_of(row, pid)).fingerprint()
+        fingerprint = _fingerprint_of(descriptor_of(row, pid))
     except llm_store.SecretsKeyError as exc:
         return _internal(503, {"detail": str(exc)})
     except llm_store.KeyUnreadable as exc:
@@ -572,6 +612,7 @@ def _issue_run_key(pid: str, name: str) -> JSONResponse:
     key = RUN_KEY_PREFIX + secrets.token_hex(32)
     ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
     expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
+    _record_use(run_pass, pid, row, fingerprint)
     root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
     logger.info("run key issued for connection %s of project %s", name, pid)
     # What the platform's endpoints carry (connection_facade translates to text and a history): a

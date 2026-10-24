@@ -263,15 +263,18 @@ def _mirror(engine, project, key):
     return engine.named(f"target:{project['pid']}/{key}")["name"]
 
 
-def test_binding_and_removing_an_endpoint_renames_the_target_at_once(client, admin, project, stub):
+def test_binding_and_removing_an_endpoint_renames_the_target_at_once(client, admin, as_user, project, stub):
     from platform_service import targets
     engine = EngineFake(stub, project["pid"])
+    # the system is offered in the engine once the project has an AI card version
+    assert client.post(f"/projects/{project['slug']}/system-versions", json={"name": "MCAS", "version": "1.0.0"},
+                       headers=as_user(ALICE)).status_code == 201
     targets.ensure_mirrors(project["pid"], "t")
     assert put(client, project, "mcas-chat", admin, body(stub, target="system")).status_code == 200
-    assert _mirror(engine, project, "system") == f"Target · System: {project['name']} · endpoint: MCAS chat"
-    assert _mirror(engine, project, f"component:{K1}").endswith("· no endpoint")
+    assert _mirror(engine, project, "system") == f"AI card · System: {project['name']} · reached through REST API"
+    assert _mirror(engine, project, f"component:{K1}").endswith("· not connected")
     assert client.delete(f"/projects/{project['slug']}/connections/mcas-chat", headers=admin).status_code == 204
-    assert _mirror(engine, project, "system") == f"Target · System: {project['name']} · no endpoint"
+    assert _mirror(engine, project, "system") == f"AI card · System: {project['name']} · not connected"
 
 
 def test_the_run_key_says_what_the_platforms_endpoint_carries(client, admin, project, stub):
