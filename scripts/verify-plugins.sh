@@ -18,6 +18,10 @@
 #   catalogue  the same project with a private catalogue: every package on the index is offered by a blue
 #              entry whose install check says installable, and every blue test is installable (no blue entry
 #              that can't be installed, no pink one that can). The public catalogue not answering is a WARN
+#   conformance  per test installed in that project, what it declares it assesses and its helper models
+#              (the engine's /api/v1/plugins/declarations, checked by scripts/lib/plugin_conformance.py): one
+#              that adopted @assesses with no target kind, or asking for its AI card target in its config
+#              form, or any unknown helper role, FAILs; one that has not adopted yet WARNs, naming what is missing
 #
 # Output lines are "  PASS|FAIL|WARN <check> <text>"; exit status 1 on any FAIL.
 set -uo pipefail
@@ -38,6 +42,9 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlencode
 
 from packaging.version import InvalidVersion, Version
+
+sys.path.insert(0, str(Path("scripts/lib").resolve()))
+from plugin_conformance import check as conformance_of
 
 #: the stack's container names carry this install's prefix
 PREFIX = os.environ.get("CONTAINER_PREFIX", "")
@@ -248,6 +255,25 @@ def installs_and_catalogue(held, slug_to_install=None):
         else:
             say("FAIL", "install", f"{package} {version} does not install ({status}: {str(detail(made))[:300]})")
     private_catalogue(session, slug, held, slug_to_install)
+    conformance(session, pid)
+
+
+def conformance(session, project):
+    """What each test installed in the check's project declares it assesses, and its helper models."""
+    status, declared = session.call("GET", "/api/v1/plugins/declarations", project=project)
+    if status != 200 or not isinstance(declared, list):
+        say("FAIL", "conformance", f"the engine's declarations answered {status}: {str(detail(declared))[:300]}")
+        return
+    if not declared:
+        say("WARN", "conformance", "no test is installed in the check's project, so none is checked")
+    for d in declared:
+        test = f"{d.get('package_name')}/{d.get('name')}"
+        findings = conformance_of(d, d.get("config_fields") or [])
+        for level, text in findings:
+            say(level, "conformance", f"{test} {text}")
+        if not findings:
+            say("PASS", "conformance", f"{test} assesses {', '.join(d['target_kinds'])}; helper models:"
+                                       f" {', '.join(d['helper_roles']) or 'none'}")
 
 
 def fetch_and_install(session, slug, entry):
