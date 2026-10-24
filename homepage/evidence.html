@@ -362,9 +362,10 @@
     box.textContent = '';
     (data.local_runs || []).forEach(function (r) {
       var tile = el('div', 'tile'), main = el('div', 'tile-main');
+      var file = (r.assessed && r.assessed.file) || {};
       main.appendChild(el('div', 'tile-name', r.label));
-      main.appendChild(el('div', 'tile-runs', r.assessed.file.name +
-        (r.assessed.file.sha256 ? ' (sha256 ' + r.assessed.file.sha256.slice(0, 12) + '…)' : '') +
+      main.appendChild(el('div', 'tile-runs', (file.name || 'local model') +
+        (file.sha256 ? ' (sha256 ' + file.sha256.slice(0, 12) + '…)' : '') +
         ' · ' + r.status + ' · ' + day(r.created_at)));
       if (r.helpers && r.helpers.length) main.appendChild(el('div', 'tile-runs', 'Helper models: ' +
         r.helpers.map(function (h) { return h.role.charAt(0).toUpperCase() + h.role.slice(1) + ' ' + h.model; }).join(', ')));
