@@ -129,12 +129,11 @@ def test_each_tool_lists_its_helper_models_or_nothing():
     assert "h.role.charAt(0).toUpperCase() + h.role.slice(1) + ' ' + h.model" in script
 
 
-def test_local_runs_are_a_section_apart_never_a_tool_of_the_target():
+def test_local_runs_are_not_on_a_targets_page():
+    # they are listed once, on step 4 (evidence.html): a target's page shows only the AI card's runs
     html = read(PAGE)
-    markup, script = markup_of(html), script_of(html)
-    assert 'id="local"' in markup and "Local, not part of the assessment record" in markup
-    assert "(data.local_runs || []).forEach" in script
-    assert "r.assessed.file.name" in script and "r.assessed.file.sha256.slice(0, 12)" in script
+    assert 'id="local"' not in markup_of(html) and "Local, not part of the assessment record" not in html
+    assert "local_runs" not in script_of(html)
 
 
 def test_the_page_builds_its_nodes_without_markup_strings_or_inline_handlers():
