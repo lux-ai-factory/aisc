@@ -152,7 +152,7 @@ your passwords.
 The **Manage** menu, top right, holds the settings: components and connections to the systems you test, the
 models and keys used by the AI assistant, the activity log and background tasks.
 
-Some helpers, such as the assistant that fills in the AI card, use a language model. They need a model and an
+Some AI assistants, such as the one that fills in the AI card, use a language model. They need a model and an
 API key, which an administrator adds under **Manage > AI assistant models and keys**.
 
 ## Everyday use

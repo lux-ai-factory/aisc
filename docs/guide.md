@@ -95,6 +95,16 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   name is the service's name behind the install's prefix, `aisc-<id>-plugin-publisher`: `docker ps -a`
   lists them, and `docker logs` takes that name.
   Controls are installed by the controls app from the catalogue's API.
+- **What a test assesses, and the models that help it.** A test's target is what it assesses: the AI
+  system or one component its AI card lists ("What is assessed (AI card)" in the evaluation form), or a
+  local model file uploaded in step 4's Settings ("What is assessed (local model file)"). Each plugin
+  declares which of the two it accepts (`@assesses`, section 13 of the plugin interface's
+  `PLUGIN_DEVELOPER_GUIDE.md`), and the form offers only those. Runs on a local model file are listed
+  apart under step 4's Results, never counted with the AI card's results or put in its reports. A helper model is a model a test uses
+  as a tool, a judge, an attacker, a grader, an embedder or a generator, and is never what is assessed:
+  the form asks for one per role ("Helper model · Judge (not assessed)"). The datashape role `target`
+  of a dataset column (beside `feature`, `date` and `ignore`) marks the label column, the outcome each
+  row records; it names no target.
 - **The assessed system over the network.** Under a project's **Manage > Components and connections** an admin
   registers the AI systems the project assesses (OpenAI-compatible, A2A, Open Inference Protocol, or
   a REST API with a request template). A plugin reaches a connection through the platform. Calls to
