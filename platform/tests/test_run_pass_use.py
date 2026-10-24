@@ -40,8 +40,8 @@ def test_a_resolve_under_the_pass_records_the_connection_and_its_fingerprint(cli
     run_pass = mint(client, [f"target:{project['pid']}/system"], plugin).json()["pass"]
     assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 200
     uses = run_passes.uses_of(plugin)
-    assert [(u["connection"], u["protocol"], u["fingerprint"]) for u in uses] == \
-        [("system-chat", "rest", fingerprint_of(project, "system-chat"))]
+    assert [(u["pid"], u["connection"], u["protocol"], u["fingerprint"]) for u in uses] == \
+        [(project["pid"], "system-chat", "rest", fingerprint_of(project, "system-chat"))]
     assert uses[0]["used_at"] is not None
 
 
@@ -53,9 +53,48 @@ def test_a_run_key_issued_under_the_pass_is_recorded_too_in_time_order(client, p
     assert with_pass(client, run_pass, project, "connections/spare").status_code == 200
     assert with_pass(client, run_pass, project, "connections/spare/run-keys", "POST").status_code == 201
     uses = run_passes.uses_of(plugin)
-    assert [u["connection"] for u in uses] == ["system-chat", "spare", "spare"]
-    assert [u["used_at"] for u in uses] == sorted(u["used_at"] for u in uses)
+    # spare's resolve and its run key reached the same connection as it was: one use
+    assert [u["connection"] for u in uses] == ["system-chat", "spare"]
+    assert uses[0]["used_at"] < uses[1]["used_at"]
     assert uses[0]["fingerprint"] == fingerprint_of(project, "system-chat")
+
+
+def test_a_retried_resolve_is_one_use_from_its_first_time(client, project):
+    plugin = str(uuid.uuid4())
+    run_pass = mint(client, [f"target:{project['pid']}/system"], plugin).json()["pass"]
+    for _ in range(3):
+        assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 200
+    with db.pool().connection() as conn:
+        first = conn.execute("SELECT min(used_at) AS t FROM core.run_pass_use WHERE evaluation_plugin = %s",
+                             (plugin,)).fetchone()["t"]
+    uses = run_passes.uses_of(plugin)
+    assert [u["connection"] for u in uses] == ["system-chat"] and uses[0]["used_at"] == first
+
+
+def test_the_uses_of_one_project_are_not_another_projects(client, project, make_project, admin, stub):  # noqa: F811
+    other = made_with_endpoints(make_project, client, admin, stub)
+    plugin = str(uuid.uuid4())
+    run_pass = mint(client, [f"target:{project['pid']}/system", f"target:{other['pid']}/system"],
+                    plugin).json()["pass"]
+    assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 200
+    assert [u["pid"] for u in run_passes.uses_of(plugin, pid=project["pid"])] == [project["pid"]]
+    assert run_passes.uses_of(plugin, pid=other["pid"]) == []
+    assert with_pass(client, run_pass, other, "targets/system/connection").status_code == 200
+    assert [u["pid"] for u in run_passes.uses_of(plugin, pid=other["pid"])] == [other["pid"]]
+    assert {u["pid"] for u in run_passes.uses_of(plugin)} == {project["pid"], other["pid"]}
+
+
+def test_a_resolve_that_fails_after_reading_the_connection_records_nothing(client, project, monkeypatch):
+    from platform_service import connection_allowlist
+
+    def broken(pid):
+        raise RuntimeError("allowlist unreadable")
+    monkeypatch.setattr(connection_allowlist, "rule", broken)
+    plugin = str(uuid.uuid4())
+    run_pass = mint(client, [f"target:{project['pid']}/system"], plugin).json()["pass"]
+    with pytest.raises(RuntimeError):
+        with_pass(client, run_pass, project, "targets/system/connection")
+    assert run_passes.uses_of(plugin) == []
 
 
 def test_the_use_keeps_the_kind_and_fingerprint_of_that_moment(client, project, admin, stub):  # noqa: F811

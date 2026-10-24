@@ -8,9 +8,10 @@ CREATE TABLE IF NOT EXISTS core.run_pass_use (
     id bigserial PRIMARY KEY,
     pass_hash text NOT NULL,
     evaluation_plugin uuid NOT NULL,
+    pid uuid NOT NULL,
     connection text NOT NULL,
     protocol text NOT NULL,
     fingerprint text NOT NULL,
     used_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
-CREATE INDEX IF NOT EXISTS run_pass_use_evaluation_plugin ON core.run_pass_use (evaluation_plugin, used_at);
+CREATE INDEX IF NOT EXISTS run_pass_use_evaluation_plugin ON core.run_pass_use (evaluation_plugin, pid, used_at);
