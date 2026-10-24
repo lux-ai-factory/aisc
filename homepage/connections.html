@@ -699,7 +699,7 @@
     if (!able) { td.appendChild(el('span', 'none', 'not known')); return td; }
     var names = (able.assessable_by || {})[t.key] || [];
     td.appendChild(names.length ? el('div', '', names.join(', ')) : el('div', 'none', 'no installed test can assess it'));
-    if (!t.endpoint) td.appendChild(el('small', 'none', 'tests that call it need a connection'));
+    if (!t.endpoint && able.some_need_a_connection) td.appendChild(el('small', 'none', 'tests that call it need a connection'));
     return td;
   }
 

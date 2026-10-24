@@ -255,6 +255,12 @@ def test_each_row_lists_the_installed_tests_that_can_assess_it():
     assert "'tests that call it need a connection'" in script
 
 
+def test_the_need_a_connection_hint_shows_only_when_some_installed_test_needs_one():
+    cell = re.search(r"function testsCell\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert ("if (!t.endpoint && able.some_need_a_connection) td.appendChild(el('small', 'none', "
+            "'tests that call it need a connection'));") in cell
+
+
 def test_the_tests_are_read_with_the_targets_for_owners_and_admins_alike():
     reload_targets = re.search(r"function reloadTargets\(.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
     assert "/targets/assessable-by'" in reload_targets and "Promise.all" in reload_targets
