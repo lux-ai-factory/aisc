@@ -24,7 +24,8 @@ def conformance():
 
 def declared(**changes):
     out = {"name": "chat", "package_name": "aisc-chat", "target_kinds": ["card"], "card_protocols": ["openai"],
-           "card_needs_connection": True, "adopted": True, "helper_roles": ["judge"], "config_fields": ["rounds"]}
+           "card_needs_connection": True, "adopted": True, "helper_roles": ["judge"], "config_fields": ["rounds"],
+           "hidden_config_fields": {}}
     return {**out, **changes}
 
 
@@ -76,6 +77,18 @@ def test_the_failure_says_on_its_own_what_to_do():
     assert "remove the field" in text and "hide it with an empty default" in text and "platform fills it" in text
 
 
+def test_a_hidden_target_field_with_an_empty_default_passes_the_platform_fills_it():
+    assert check(declared(hidden_config_fields={"target_model_id": True, "target_api_key": True})) == []
+
+
+def test_a_hidden_target_field_with_a_default_of_its_own_fails_as_a_silent_fallback():
+    [(level, text)] = check(declared(hidden_config_fields={"target_model_id": False, "target_api_key": True}))
+    assert level == "FAIL" and "target_model_id" in text and "target_api_key" not in text
+    assert "own model" in text and "empty default" in text
+    # a hidden field that is not the model under test may keep its default
+    assert check(declared(hidden_config_fields={"page_size": False})) == []
+
+
 def test_a_test_that_has_not_adopted_warns_naming_what_is_missing():
     [(level, text)] = check(declared(adopted=False, target_kinds=[], card_protocols=[], helper_roles=[]))
     assert level == "WARN" and "@assesses" in text and "nothing" in text
@@ -89,7 +102,8 @@ def test_a_test_that_has_not_adopted_still_fails_on_an_unknown_helper_role():
 
 
 def test_an_engine_whose_declarations_lack_the_new_keys_is_a_warn_not_a_guess():
-    old = {k: v for k, v in declared().items() if k not in ("adopted", "helper_roles", "config_fields")}
+    old = {k: v for k, v in declared().items()
+           if k not in ("adopted", "helper_roles", "config_fields", "hidden_config_fields")}
     [(level, text)] = check(old)
     assert level == "WARN" and "engine" in text
 

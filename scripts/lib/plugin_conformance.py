@@ -1,15 +1,17 @@
 """What an installed test declares it assesses, and its helper models: does it follow the plugin interface?
 
 verify-plugins.sh gives `check` one entry of the engine's GET /api/v1/plugins/declarations (what the
-plugin interface reads from the plugin class: target_kinds, adopted, helper_roles, config_fields) and
-the names of the config fields its form asks a person for. It answers a list of (level, message), empty
-when the test conforms:
+plugin interface reads from the plugin: target_kinds, adopted, helper_roles, config_fields,
+hidden_config_fields) and the names of the config fields its form asks a person for. It answers a list
+of (level, message), empty when the test conforms:
 
   FAIL  a test that adopted @assesses declares no target kind
   FAIL  a helper role the interface does not know (HELPER_ROLES of aisc_plugin_interface.helpers)
   FAIL  a test that adopted @assesses and declares an AI card target asks a person for that target in
         its config form (a field that selects or keys the model under test, TARGET_FIELD): the platform
-        reaches the target, so the person never gives it there
+        reaches the target, so the person never gives it there. A hidden such field passes when its default
+        is empty (the platform fills it) and FAILs with a default of its own (a silent fallback to the
+        plugin's own model)
   WARN  a test that has not adopted @assesses: what it is missing
 
 Field names only: the route never sends a value, and nothing here prints one.
@@ -25,7 +27,7 @@ TARGET_FIELD = re.compile(r"(^|_)(target_(model|model_id|api_key|key|base_url|ur
                           r"|model_under_test|model_credentials?)(_|$)")
 CARD = "card"
 #: what the engine adds to each declaration for this check
-CHECKED_KEYS = ("adopted", "helper_roles", "config_fields")
+CHECKED_KEYS = ("adopted", "helper_roles", "config_fields", "hidden_config_fields")
 
 
 def _snake(name):
@@ -50,6 +52,8 @@ def check(declaration: dict, config_fields: list[str]) -> list[tuple[str, str]]:
         findings.append(("FAIL", f"declares the helper role {', '.join(unknown)}, which the interface does not know"
                                  f" (known: {', '.join(HELPER_ROLES)})"))
     asked = _target_fields(config_fields)
+    # hidden fields the platform fills: {name: whether its default is empty}
+    fallbacks = _target_fields([f for f, empty in declaration["hidden_config_fields"].items() if not empty])
     if declaration["adopted"]:
         if not kinds:
             findings.append(("FAIL", "adopted @assesses but declares no target kind: declare card=, local_model="
@@ -59,6 +63,10 @@ def check(declaration: dict, config_fields: list[str]) -> list[tuple[str, str]]:
                                      f" in its config form ({', '.join(asked)}): the platform reaches the target,"
                                      " so remove the field, or hide it with an empty default so the platform"
                                      " fills it (@assesses(card=...) fields=)"))
+        if CARD in kinds and fallbacks:
+            findings.append(("FAIL", f"hides {', '.join(fallbacks)} in its config form with a default of its own: a"
+                                     " run the platform does not fill would silently fall back to the plugin's own"
+                                     " model; give it an empty default so the platform fills it, or remove it"))
     elif kinds:
         findings.append(("WARN", "reads as an AI card target through an older declaration: it has not adopted"
                                  " @assesses (card=, local_model=)"))
