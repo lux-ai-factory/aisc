@@ -227,6 +227,11 @@
   .tool-open{margin-top:auto; font-family:var(--mono); font-size:13px; letter-spacing:.08em; text-align:right}
   .tool.is-off{background:var(--panel-2); color:var(--muted); border:2px dashed var(--border-strong); min-height:110px}
   .tool.is-off .tool-name{font-size:20px}
+  /* what the tool's runs assessed, how they reached it, and the helper models they used */
+  .tool-assessed, .tool-helpers{font-family:var(--mono); font-size:12px; opacity:.9}
+  /* runs on a local model file: apart from the AI card's, below its tools */
+  #local{margin-top:44px}
+  #local .tile{border-left-color:var(--border-strong); border-style:dashed}
 </style>
 </head>
 <body>
@@ -250,6 +255,12 @@
     <a id="all-tools" href="#"></a>
   </div>
   <div class="tools" id="tools"></div>
+  <section id="local" hidden>
+    <h2>Local, not part of the assessment record</h2>
+    <p>Runs on a model file uploaded in Settings, not on the AI card: they are never counted with the AI card's results
+       or put in its reports.</p>
+    <div class="tiles" id="local-runs"></div>
+  </section>
 </main>
 </div>
 
@@ -291,6 +302,49 @@
     return (t.component_kind || 'component').replace(/_/g, ' ');
   }
 
+  // "Helper models: Judge gpt-4o-mini, Attacker llama-3", or '' when the runs used none
+  function helpersLine(helpers) {
+    if (!helpers || !helpers.length) return '';
+    return 'Helper models: ' + helpers.map(function (h) {
+      return h.role.charAt(0).toUpperCase() + h.role.slice(1) + ' ' + h.model;
+    }).join(', ');
+  }
+
+  // what a tool's runs on this target assessed and through which connections (each named once, its
+  // fingerprint in the tooltip); nothing for the "No target" entry, runs made before targets
+  function assessedLine(target, it) {
+    var line = el('span', 'tool-assessed');
+    if (target.key !== null) {
+      var seen = {}, through = [], prints = [];
+      (it.connections || []).forEach(function (c) {
+        var text = c.protocol_name + ' (' + c.name + ')';
+        prints.push(c.name + ': ' + c.fingerprint);
+        if (!seen[text]) { seen[text] = true; through.push(text); }
+      });
+      line.textContent = 'AI card · ' + target.label + (through.length ? ' · reached through ' + through.join(', ') : '');
+      if (prints.length) line.title = 'Fingerprint at run time, ' + prints.join('; ');
+    }
+    return line;
+  }
+
+  // the runs on a local model file, apart: tool, file name and the start of its sha256
+  function renderLocal(data) {
+    var box = $('local-runs');
+    (data.local_runs || []).forEach(function (r) {
+      var tile = el('div', 'tile');
+      var main = el('div', 'tile-main');
+      main.appendChild(el('div', 'tile-name', r.label));
+      main.appendChild(el('div', 'tile-runs', 'Local model file · ' + r.assessed.file.name +
+        (r.assessed.file.sha256 ? ' (sha256 ' + r.assessed.file.sha256.slice(0, 12) + '…)' : '') +
+        ' · ' + r.status + ' · ' + day(r.created_at)));
+      var helpers = helpersLine(r.helpers);
+      if (helpers) main.appendChild(el('div', 'tile-runs', helpers));
+      tile.appendChild(main);
+      box.appendChild(tile);
+    });
+    if (box.children.length) show('local');
+  }
+
   function render(pid, data) {
     var crumb = $('crumb');
     var back = el('a', null, 'Collect evidence · Results');
@@ -299,6 +353,7 @@
     var target = (data.targets || []).filter(function (t) {
       return (t.key === null ? 'none' : t.key) === targetKey;
     })[0];
+    renderLocal(data);
     if (!target) { show('page-message', 'No such system or component in this project.'); return; }
     crumb.appendChild(el('span', null, '›'));
     crumb.appendChild(el('b', null, 'Tested: ' + target.label + ' (' + kindOf(target) + ')'));
@@ -316,6 +371,9 @@
       a.appendChild(el('span', 'tool-name', it.label));
       a.appendChild(el('span', 'tool-runs', it.executed + ' completed · ' + it.failed + ' failed · ' +
         it.running + ' running' + (it.last_run ? ' · last run ' + day(it.last_run) : '')));
+      var assessed = assessedLine(target, it);
+      if (assessed.textContent) a.appendChild(assessed);
+      if (it.helpers && it.helpers.length) a.appendChild(el('span', 'tool-helpers', helpersLine(it.helpers)));
       a.appendChild(el('span', 'tool-open', 'Open charts →'));
       box.appendChild(a);
     });

@@ -110,3 +110,34 @@ def test_the_heading_and_the_crumb_name_what_was_tested():
     assert "return 'unassigned';" in script and "'no target'" not in script
     assert "'No tests installed yet: pick them in step 3, Tests and checklists.'" in script
     assert "'No such project: ' + slug + '.'" in script
+
+
+# ── what each tool's runs assessed, how they reached it, and which helper models they used ──
+
+def test_each_tool_says_it_assessed_the_ai_card_target_and_through_which_connection():
+    script = script_of(read(PAGE))
+    assert "'AI card · ' + target.label" in script
+    assert "' · reached through '" in script
+    assert "c.protocol_name + ' (' + c.name + ')'" in script
+    assert "it.connections" in script and "target.key !== null" in script     # "No target" runs name no target
+
+
+def test_each_tool_lists_its_helper_models_or_nothing():
+    script = script_of(read(PAGE))
+    assert "'Helper models: '" in script
+    assert "if (it.helpers && it.helpers.length)" in script
+    assert "h.role.charAt(0).toUpperCase() + h.role.slice(1) + ' ' + h.model" in script
+
+
+def test_local_runs_are_a_section_apart_never_a_tool_of_the_target():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    assert 'id="local"' in markup and "Local, not part of the assessment record" in markup
+    assert "(data.local_runs || []).forEach" in script
+    assert "r.assessed.file.name" in script and "r.assessed.file.sha256.slice(0, 12)" in script
+
+
+def test_the_page_builds_its_nodes_without_markup_strings_or_inline_handlers():
+    html = read(PAGE)
+    assert "innerHTML" not in script_of(html) and "insertAdjacentHTML" not in script_of(html)
+    assert not re.search(r"\son[a-z]+\s*=", markup_of(html))
