@@ -337,7 +337,7 @@ _ACTIONS = [
        caused_by=(("platform", "PUT", _LAUNCH + "/evidence/links$"),),
        details_keys=("added", "removed", "carried"), content_required=True, empty_content=True),
     _a("engine.evaluation.run_requested", 4, ("engine",), "evaluation",
-       caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),), details_keys=("plugins",),
+       caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),), details_keys=("plugins", "local_models"),
        runs=("engine.evaluation.status_changed", "engine.evaluation.plugin_status_changed", "engine.measures.recorded",
              "engine.artifact.uploaded", "engine.evaluation.input_marked_local"),
        routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "create_evaluation_task"),)),
