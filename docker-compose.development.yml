@@ -88,7 +88,8 @@ services:
       # never holds the engine's ledger token
       LEDGER_MODE: ${LEDGER_MODE:-record}
       # Before it stores an evaluation it asks the platform whether the card target picked has a
-      # connection (GET /internal/projects/{pid}/targets/{key}/reachable): the answer carries no key
+      # connection (GET /internal/projects/{pid}/targets/{key}/reachable). Plugin code loaded here can
+      # read PLATFORM_ENGINE_TOKEN; the token grants only that answer (connected, protocol), no key
       PLATFORM_URL: http://platform:8000
       PLATFORM_ENGINE_TOKEN: ${PLATFORM_ENGINE_TOKEN:?run scripts/secrets.sh first}
     networks:
