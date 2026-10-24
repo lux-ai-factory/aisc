@@ -387,3 +387,9 @@ def test_connections_are_tried_and_made_from_the_rows_only():
     assert "Try it" not in html and "probeIt" not in script, "a connection is tried from its target's row"
     assert 'id="new"' not in markup and "Create connection" not in html and "New connection" not in html
     assert "'No such project: ' + slug + '.'" in script
+
+
+def test_connections_that_cannot_be_read_still_leave_the_admin_the_targets():
+    reload_fn = re.search(r"function reload\(\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
+    assert "if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }" in reload_fn
+    assert ".catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });" in reload_fn

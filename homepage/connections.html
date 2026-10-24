@@ -358,14 +358,14 @@
     return api(base())
       .then(function (res) {
         return bodyOf(res).then(function (d) {
-          if (!res.ok) { show('page-message', refusal(res, d)); return; }
+          if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }
           connectionsByTarget = {};
           d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
           unlinked = d.connections.filter(function (c) { return !c.target; });
           reloadTargets(false);                   // draws the connections without a target too
         });
       })
-      .catch(function () { show('page-message', NOT_ANSWERING); });
+      .catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });
   }
 
   /** The connections that name no target, read-only, each with Link to a target (one that has no connection
