@@ -83,14 +83,33 @@ def findings(line: str) -> list[str]:
     return out
 
 
-def scan(repo) -> list[str]:
-    """file:line: text, for every line of the repo's tracked text files that holds history."""
-    r = subprocess.run(["git", "-C", str(repo), "grep", "-n", "-I", "-E", GREP, "--", "."] + EXCLUDE,
+def _grep(repo, pattern: str) -> list[tuple[str, str, str]]:
+    """(path, line number, text) of every line of the repo's tracked text files matching the pattern,
+    except files stored in Git LFS: those are data (their filter attribute says so, whether the working
+    copy holds the data or only a pointer)."""
+    r = subprocess.run(["git", "-C", str(repo), "grep", "-n", "-I", "-E", pattern, "--", "."] + EXCLUDE,
                        capture_output=True, text=True)
     assert r.returncode in (0, 1), r.stderr
+    rows = [tuple(row.split(":", 2)) for row in r.stdout.splitlines()]
+    lfs = _stored_in_lfs(repo, {path for path, _, _ in rows})
+    return [row for row in rows if row[0] not in lfs]
+
+
+def _stored_in_lfs(repo, paths: set[str]) -> set[str]:
+    """The paths whose filter attribute is lfs."""
+    if not paths:
+        return set()
+    r = subprocess.run(["git", "-C", str(repo), "check-attr", "-z", "--stdin", "filter"],
+                       input="\0".join(sorted(paths)) + "\0", capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    fields = r.stdout.split("\0")
+    return {fields[i] for i in range(0, len(fields) - 2, 3) if fields[i + 2] == "lfs"}
+
+
+def scan(repo) -> list[str]:
+    """file:line: text, for every line of the repo's tracked text files that holds history."""
     hits = []
-    for row in r.stdout.splitlines():
-        path, num, text = row.split(":", 2)
+    for path, num, text in _grep(repo, GREP):
         if findings(text):
             hits.append(f"{path}:{num}: {text.strip()[:160]}")
     return hits
@@ -98,12 +117,8 @@ def scan(repo) -> list[str]:
 
 def plan_names(repo) -> list[str]:
     """file:line: text, for every test of the repo's tracked files named after a plan item."""
-    r = subprocess.run(["git", "-C", str(repo), "grep", "-n", "-I", "-E", PLAN_GREP, "--", "."] + EXCLUDE,
-                       capture_output=True, text=True)
-    assert r.returncode in (0, 1), r.stderr
     hits = []
-    for row in r.stdout.splitlines():
-        path, num, text = row.split(":", 2)
+    for path, num, text in _grep(repo, PLAN_GREP):
         if PLAN_TEST.search(text) or PLAN_SPEC.search(text):
             hits.append(f"{path}:{num}: {text.strip()[:160]}")
     return hits
