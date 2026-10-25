@@ -11,9 +11,11 @@ Trusts nothing in the file but the public key it is given (immudb's --signingKey
 - format `chain` (the platform's memory store, tests): every hash link from the first entry, and the
   head signed over {log, seq, chain}.
 It also recomputes each frozen content's keyed digest with the project's content key the head carries
-(--no-content-check skips that, and says so). It refuses duplicate JSON keys, NaN, unknown fields and
-entries of more than one project, and prints the log and the project it checked; --log and --project
-make it refuse any other. Exit 0 only if every check passes. Needs Python 3.10+ and the `cryptography`
+(--no-content-check skips that, and says so). A line may instead carry `content_redacted`, the reason its
+content was removed: it is accepted only when a later ledger.content.redacted entry of the same log names its
+event id with that reason, and the ok line counts those marks (with --no-content-check they are not
+checked). It refuses duplicate JSON keys, NaN, unknown fields and entries of more than one project, and
+prints the log and the project it checked; --log and --project make it refuse any other. Exit 0 only if every check passes. Needs Python 3.10+ and the `cryptography`
 package; nothing from the platform.
 """
 import argparse
@@ -195,7 +197,10 @@ def _check_immudb(lines, head, public_key_pem) -> tuple[list[str], list]:
     return problems, entry_lines
 
 
-_FIELDS = {"chain": ({"entry", "proof"}, {"content"}), "immudb": ({"entry", "tx"}, {"content"})}
+_FIELDS = {"chain": ({"entry", "proof"}, {"content", "content_redacted"}),
+           "immudb": ({"entry", "tx"}, {"content", "content_redacted"})}
+#: The entry that names the event ids whose frozen content was redacted, and why.
+REDACTED = "ledger.content.redacted"
 
 
 def _shape(lines, fmt) -> list[str]:
@@ -259,10 +264,56 @@ def check(lines, public_key_pem: bytes, check_content: bool = True) -> list[str]
     return problems
 
 
+def _redactions(body) -> dict:
+    """event id -> (reason, seq) of the earliest ledger.content.redacted entry naming it."""
+    named = {}
+    for line in body:
+        entry = line.get("entry") or {}
+        if entry.get("action") != REDACTED:
+            continue
+        details = entry.get("details") or {}
+        ids = details.get("event_ids")
+        for event_id in ids if isinstance(ids, list) else []:
+            if event_id not in named or entry.get("seq", 0) < named[event_id][1]:
+                named[event_id] = (details.get("reason"), entry.get("seq", 0))
+    return named
+
+
+def _mark_problem(n, line, named) -> str | None:
+    """Why a line's redaction mark is not backed by the log, or None when it is."""
+    entry = line.get("entry") or {}
+    if "content" in line:
+        return f"line {n}: both a content and a redaction mark"
+    if entry.get("content_sha256") is None:
+        return f"line {n}: marked redacted but the entry has no content digest"
+    if entry.get("event_id") not in named:
+        return f"line {n}: marked redacted but no ledger.content.redacted entry names it"
+    reason, seq = named[entry["event_id"]]
+    if reason != line["content_redacted"]:
+        return f"line {n}: its redaction reason is not the one the log recorded"
+    if not (isinstance(seq, int) and isinstance(entry.get("seq"), int) and seq > entry["seq"]):
+        return f"line {n}: redacted before it was logged"
+    return None
+
+
+def redacted_count(lines) -> int:
+    """The redaction marks of an export that its log backs."""
+    body = [line for line in lines if "entry" in line]
+    named = _redactions(body)
+    return sum(1 for n, line in enumerate(body, 1)
+               if "content_redacted" in line and _mark_problem(n, line, named) is None)
+
+
 def _check_contents(body, head) -> list[str]:
     problems = []
     keys = (head.get("keys") or {}).get("content") or {}
+    named = _redactions(body)
     for n, line in enumerate(body, 1):
+        if "content_redacted" in line:
+            problem = _mark_problem(n, line, named)
+            if problem:
+                problems.append(problem)
+            continue
         made = (line.get("entry") or {}).get("content_sha256")
         if made is None and "content" not in line:
             continue
@@ -373,9 +424,12 @@ def main(argv=None) -> int:
         return 1
     for note in notes:
         print(note)
+    redacted = 0 if args.no_content_check else redacted_count(lines)
     print(f"ok: log {head.get('log')}, project {project_of(lines)}, {head.get('seq')} entries, "
           f"format {head.get('format') or 'chain'}, signed"
-          + ("; frozen contents NOT checked" if args.no_content_check else "; frozen contents checked"))
+          + ("; frozen contents NOT checked" if args.no_content_check else "; frozen contents checked")
+          + (f"; {redacted} frozen content{'' if redacted == 1 else 's'} redacted, each named by a "
+             f"{REDACTED} entry" if redacted else ""))
     return 0
 
 
