@@ -87,7 +87,7 @@ intended_base() { awk -v r="$1" '$1 == "base" && $2 == r { print $3 }' "$INTENDE
 # Pinned references
 ORDERS_ENGINE_REF=e34fca3   # --orders: the pre-isolation reference its six orders are compared with
 QUAL_REF=e112001            # qualification before the card-versions migration
-PI_REF=b9f805c              # plugin-interface 0.4.0: upstream 0.3.0 merged, optional card access, value output, rejected rows counted, asks through the platform facade, tool calls
+PI_REF=0ce373e              # plugin-interface 0.4.0: upstream 0.3.0 merged, optional card access, value output, rejected rows counted, asks through the platform facade (hardened), tool calls; 408 and 429 stop the run
 # G4 checks this checkout of plugin-interface; overridable only so a test can point it at a moved or dirty copy
 PI_DIR=${GUARD_PI_DIR:-$ROOT/shared/plugin-interface}
 PM_REF=16ee78e              # plugin-manager: the configured plugin folder wins and local plugins in worktrees are followed, on its maintainers' feat/dev-catalogue-staging line
