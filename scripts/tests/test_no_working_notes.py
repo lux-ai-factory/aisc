@@ -172,3 +172,43 @@ def test_a_submodule_explains_without_history(path):
         pytest.skip(f"{path} is not checked out")
     hits = scan(repo)
     assert hits == [], f"history in {path}:\n" + "\n".join(hits)
+
+
+def _repo(path, files: dict[str, str]):
+    """A scratch git repo with these files committed (no global or system git config)."""
+    env = {**__import__("os").environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+    path.mkdir()
+    for cmd in (["init", "-q"], ["config", "user.name", "t"], ["config", "user.email", "t@example.invalid"]):
+        subprocess.run(["git", "-C", str(path), *cmd], check=True, env=env, capture_output=True)
+    for name, text in files.items():
+        (path / name).write_text(text)
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True, env=env, capture_output=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-q", "-m", "files"], check=True, env=env, capture_output=True)
+    return path
+
+
+LFS_ATTRIBUTES = "*.csv filter=lfs diff=lfs merge=lfs -text\n"
+LFS_DATA = "4000.0,36,9.76,128.62,5,10,2,90000.0,2,2012-03-01,3,0.87,3\n"
+DATED_NOTE = "Fixed on 2026-10-01 after review\n"
+
+
+def test_a_file_stored_in_lfs_is_data_and_is_not_scanned(tmp_path):
+    repo = _repo(tmp_path / "r", {".gitattributes": LFS_ATTRIBUTES, "data.csv": LFS_DATA, "notes.txt": DATED_NOTE})
+    hits = scan(repo)
+    assert [h for h in hits if h.startswith("notes.txt:1: ")], hits
+    assert not [h for h in hits if h.startswith("data.csv")], hits
+
+
+def test_a_csv_not_in_lfs_is_still_scanned(tmp_path):
+    repo = _repo(tmp_path / "r", {"data.csv": LFS_DATA, "notes.txt": DATED_NOTE})
+    hits = scan(repo)
+    assert [h for h in hits if h.startswith("notes.txt:1: ")], hits
+    assert [h for h in hits if h.startswith("data.csv:1: ")], hits
+
+
+def test_a_file_stored_in_lfs_is_not_read_for_test_names(tmp_path):
+    repo = _repo(tmp_path / "r", {".gitattributes": LFS_ATTRIBUTES, "data.csv": LFS_DATA, "notes.txt": DATED_NOTE,
+                                  "test_plan.csv": "def test_t12_x():\n", "test_other.py": "def test_t12_x():\n"})
+    hits = plan_names(repo)
+    assert not [h for h in hits if h.startswith("test_plan.csv")], hits
+    assert [h for h in hits if h.startswith("test_other.py:1: ")], hits
