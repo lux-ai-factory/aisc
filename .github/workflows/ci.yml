@@ -52,9 +52,7 @@ jobs:
           node-version: 20
       - uses: astral-sh/setup-uv@v5
       # the test beds run each module's own migrations, with the environment a workstation has
-      - run: |
-          for app in apps/backend apps/control-objectives apps/report-composer; do (cd "$app" && uv sync --all-extras); done
-          for app in apps/qualification apps/controls; do (cd "$app" && npm ci); done
+      - run: scripts/prepare-tests.sh
       # the port tests occupy ports this machine leaves free: one that cannot run here fails instead of skipping
       - env:
           AISC_PORT_TESTS_MUST_RUN: "1"
