@@ -333,13 +333,26 @@ def test_the_count_command_prints_counts_and_names_never_a_value(leaked):
     assert KEY not in r.stdout + r.stderr
 
 
+def _unsigned(lines):
+    """The lines with the head's signature left out: each export signs its head afresh (ECDSA draws a new
+    random value every time), so two exports of the same log differ only there."""
+    out = json.loads(json.dumps(lines))
+    for line in out:
+        if "head" in line:
+            line["head"].pop("signature", None)
+    return out
+
+
 def test_the_export_command_prints_the_export(leaked, capsys):
     from platform_service.ledger import export
 
     pid = leaked["pid"]
     assert cleanup().main(["export", pid]) == 0
     printed = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
-    assert printed == json.loads(json.dumps(export.lines(pid)))
+    assert printed[-1]["head"]["signature"]
+    assert _unsigned(printed) == _unsigned(export.lines(pid))
+    pem = leaked["store"].public_key_pem()
+    assert checker().check(printed, pem.encode() if isinstance(pem, str) else pem) == []
 
 
 def test_an_unknown_command_is_a_usage_error():
