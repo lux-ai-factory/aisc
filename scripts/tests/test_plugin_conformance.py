@@ -323,6 +323,101 @@ def test_the_unadopted_catalogue_plugins_that_ask_for_a_model_are_warned_naming_
     assert check(declaration) == [NOTHING, ("WARN", m1(fields))]
 
 
+# more ways to name a model: an LLM, a provider's key or token, a model server's address, a model file
+
+#: the model under test called an LLM
+LLM_FIELDS = ("llm", "target_llm")
+#: the words that name a model provider or a model server's client
+PROVIDER_WORDS = ("openai", "anthropic", "azure", "hf", "huggingface", "mistral", "cohere", "google", "gemini",
+                  "groq", "together", "ollama", "litellm", "vllm")
+#: a provider's key or token
+PROVIDER_KEY_FIELDS = tuple(f"{word}{suffix}" for word in PROVIDER_WORDS for suffix in ("_key", "_api_key", "_token")
+                            ) + ("hfToken", "OPENAI_KEY", "anthropicKey")
+#: the words that start a model's or a model server's address
+ADDRESS_WORDS = ("model", "llm", "api", "ollama", "litellm", "vllm", "openai", "inference", "target")
+#: a model's or a model server's address
+ADDRESS_FIELDS = tuple(f"{word}{suffix}" for word in ADDRESS_WORDS
+                       for suffix in ("_url", "_uri", "_base", "_host", "_endpoint")) + (
+                     "openai_api_base", "apiBase", "modelUri", "targetHost")
+#: a model file, and the system under test
+MODEL_FILE_FIELDS = ("model_file", "model_path", "system_under_test", "systemUnderTest")
+#: agentseal's model server addresses (its config form today)
+AGENTSEAL_MODEL_FIELDS = ("ollama_url", "litellm_url")
+#: what the wider rules add
+WIDER_MODEL_FIELDS = LLM_FIELDS + PROVIDER_KEY_FIELDS + ADDRESS_FIELDS + MODEL_FILE_FIELDS + AGENTSEAL_MODEL_FIELDS
+#: a helper called by its word alone, or a helper's LLM: the integrator's helper rule catches them, not this one
+HELPER_WORD_FIELDS = ("judge", "grader", "grader_llm")
+#: too generic to read as a model, by design
+GENERIC_FIELDS = ("url", "host", "deployment", "engine")
+#: every field of the catalogue plugins and of the integrator's reference examples that selects no model
+REAL_CLEAN_FIELDS = (
+    "accepted_target_values", "answer", "assertion_types", "attack", "attack_categories", "avatar_url",
+    "batch_size", "batch_size_judge", "branch", "brief_description", "cf_nb", "color_bg", "comments",
+    "communities", "concern", "config", "config_id", "created_at", "custom_adversarial_prompts", "dataset",
+    "dataset_1", "date_feature", "defense", "delta", "description", "dimension", "email", "enable_top_p",
+    "enable_top_p_judge", "entities", "entries", "error", "eval", "evaluates", "evaluates_id", "evaluator",
+    "expected_contains", "f_date", "f_features", "features", "first_name", "focus_areas", "frequency", "history",
+    "id", "injection_tasks", "inputs", "interest_features", "involves", "is_active", "is_deleted", "jailbreaks",
+    "label", "label_mapping", "label_mappings", "language", "languages", "last_login", "last_name", "legal_ref",
+    "legal_requirements", "licensing", "link", "llm_rubric_criteria", "markup", "max", "max_concurrency",
+    "max_new_tokens", "max_new_tokens_judge", "max_prompts", "max_workers", "measurand", "measurand_id",
+    "metadata", "metric", "metric_id", "min", "mode", "nRetries", "nTemplates", "name", "num_tests_per_category",
+    "observation", "observation_id", "observations", "page_slug", "parent_id", "partners", "password_hash",
+    "pid", "principle", "project", "project_1", "project_1_id", "project_id", "project_maturity", "prompt",
+    "prompt_language", "prompt_template", "promptfoo_email", "prompts", "purpose", "rationale", "raw_yaml",
+    "ref", "reflections", "regex_pattern", "requirements", "retries_judge", "reviewed_at", "reviewed_by", "role",
+    "row_nb", "scientific_reference", "section", "slug", "sort_order", "standard", "status", "storage_path",
+    "strategies", "submitted_by", "suite", "tags", "target", "target_calls_at_once", "target_feature",
+    "target_probability_field", "target_row_limit", "task_source", "temperature", "temperature_judge",
+    "test_cases", "text", "timeStamp", "tokens", "tolerance", "tools_catalogue", "tools_catalogue_1",
+    "tools_catalogue_1_id", "tools_catalogue_id", "top_p", "top_p_judge", "total_investment", "type",
+    "uncertainty", "unit", "updated_at", "useLLMEval", "user_id", "user_tasks", "value", "vars", "version",
+    "window_size",
+    # agentseal, luxeval, evasion and uncertainty settings
+    "adaptive", "agent_name", "concurrency", "message_field", "response_field", "store_all_probe_evidence",
+    "system_prompt", "target_type", "timeout_per_probe", "anthropic_effort", "anthropic_max_tokens",
+    "anthropic_thinking_budget_tokens", "anthropic_thinking_mode", "execution_mode", "levels", "nebius_max_tokens",
+    "ollama_max_output_tokens", "ollama_reasoning_effort", "openai_max_output_tokens", "openai_reasoning_effort",
+    "openai_reasoning_mode", "timeout_seconds", "vllm_parse_rule", "max_L2_perturbation", "max_samples",
+    "activation_function", "mc_dropout", "task")
+
+
+@pytest.mark.parametrize("field", WIDER_MODEL_FIELDS)
+def test_a_model_named_another_way_fails_in_an_adopted_test(field):
+    assert check(declared(config_fields=["rounds", field])) == [("FAIL", m1(field))]
+
+
+@pytest.mark.parametrize("field", ("llm", "target_llm", "openai_key", "hf_token", "ollama_url", "api_base",
+                                   "model_uri", "target_uri", "model_file", "system_under_test"))
+def test_a_model_named_another_way_warns_in_a_test_that_has_not_adopted(field):
+    assert check(unadopted(config_fields=["rounds", field])) == [NOTHING, ("WARN", m1(field))]
+
+
+@pytest.mark.parametrize("field", ("ollama_url", "openai_key", "model_file", "target_llm"))
+def test_a_model_named_another_way_hidden_with_a_default_of_its_own_fails(field):
+    assert check(declared(hidden_config_fields={field: False})) == [("FAIL", m2(field))]
+
+
+@pytest.mark.parametrize("field", ("ollama_url", "openai_key", "model_file", "target_llm"))
+def test_a_model_named_another_way_hidden_with_an_empty_default_passes(field):
+    assert check(declared(hidden_config_fields={field: True})) == []
+
+
+@pytest.mark.parametrize("field", HELPER_WORD_FIELDS + GENERIC_FIELDS)
+def test_a_helper_word_alone_or_a_generic_address_is_not_a_model_field_here(field):
+    assert check(declared(config_fields=["rounds", field])) == []
+
+
+@pytest.mark.parametrize("field", REAL_CLEAN_FIELDS)
+def test_a_real_catalogue_field_that_selects_no_model_stays_clean(field):
+    assert check(declared(config_fields=["rounds", field])) == []
+
+
+def test_a_name_ending_in_model_is_an_accepted_over_match_and_the_rules_say_so():
+    assert check(declared(config_fields=["rounds", "threat_model"])) == [("FAIL", m1("threat_model"))]
+    assert "threat_model" in LIB.read_text()
+
+
 # the shell wiring: the check's Python, its functions only, with a stubbed engine route
 
 def _load(monkeypatch):

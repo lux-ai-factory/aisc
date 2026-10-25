@@ -15,8 +15,9 @@ from aisc_identity.headers import token_from_headers
 from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, ServiceRefused, identify
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+import psycopg
 from psycopg import errors
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 
 from platform_service import (connection_allowlist, connection_facade, connection_store, db, llm_store, run_passes,
                               target_store, targets)
@@ -35,6 +36,10 @@ logger = logging.getLogger(__name__)
 CONNECTION_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 _SECRET_HEADERS = {"authorization", "proxy-authorization", "cookie", "x-api-key"}
+#: a plain header with a name like these is refused: its value would be stored and shown in the clear
+_CREDENTIAL_LIKE = re.compile(r"(?i)(token|secret|passw|api[-_]?key|auth|session|cookie|signature|credential)")
+MAX_SECRET_HEADERS = 20
+MASK = "***"
 
 
 class ConnectionIn(BaseModel):
@@ -53,6 +58,12 @@ class ConnectionIn(BaseModel):
     timeout_s: int = 60
     protocol_version: StrictStr | None = None
     secret: StrictStr | None = None
+    #: credentials in headers of the connection's own choosing, write-only like `secret`: absent keeps the
+    #: stored set, {name: value} sets that header, {name: ""} removes it, names not mentioned are kept
+    secret_headers: dict[str, StrictStr] | None = None
+    #: an OpenAI-compatible connection's function calling and log probabilities (a PUT without them: false)
+    supports_tools: StrictBool = False
+    supports_logprobs: StrictBool = False
     #: the assessment target this is the endpoint of ('system' or 'component:<key>'); set once
     target: StrictStr | None = None
 
@@ -85,10 +96,23 @@ def connection_fields(body: ConnectionIn) -> dict:
             raise _invalid_connection(f"headers: {name!r} is not a header name")
         if name.lower() in _SECRET_HEADERS:
             raise _invalid_connection(f"headers: {name} carries a credential; put it in secret_header")
+        if _CREDENTIAL_LIKE.search(name):
+            raise _invalid_connection(f"headers: {name} looks like a credential; mark it secret (secret_headers)")
     if body.secret_header is not None:
         name, sep, value = body.secret_header.partition(":")
         if not sep or not _HEADER_NAME.match(name.strip()) or "{{secret}}" not in value:
             raise _invalid_connection("secret_header: 'Name: ...{{secret}}...'")
+    plain = {h.lower() for h in body.headers}
+    key_header = body.secret_header.partition(":")[0].strip().lower() if body.secret_header else None
+    for name, value in (body.secret_headers or {}).items():
+        if not _HEADER_NAME.match(name):
+            raise _invalid_connection(f"secret_headers: {name!r} is not a header name")
+        if "\r" in value or "\n" in value or len(value) > 4096:
+            raise _invalid_connection(f"secret_headers: {name}: a header value on one line, up to 4096 characters")
+        if name.lower() in plain:
+            raise _invalid_connection(f"secret_headers: {name} is also a plain header")
+        if name.lower() == key_header:
+            raise _invalid_connection(f"secret_headers: {name} is where the key goes (secret_header)")
     if not 1 <= body.timeout_s <= 600:
         raise _invalid_connection("timeout_s: 1 to 600")
     if body.refusal is not None:
@@ -108,11 +132,16 @@ def connection_fields(body: ConnectionIn) -> dict:
         raise _invalid_connection("model: the model the endpoint serves")
     if body.protocol_version is not None and (body.kind != "a2a" or body.protocol_version not in ("1.0", "0.3")):
         raise _invalid_connection("protocol_version: 1.0 or 0.3, for an a2a connection")
+    if body.supports_tools and body.kind != "openai":
+        raise _invalid_connection("supports_tools: only an OpenAI-compatible connection carries tools")
+    if body.supports_logprobs and body.kind != "openai":
+        raise _invalid_connection("supports_logprobs: only an OpenAI-compatible connection carries log probabilities")
     return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": method,
             "path": body.path.strip(), "headers": dict(body.headers), "secret_header": body.secret_header,
             "body_template": body.body_template, "response_path": body.response_path,
             "refusal": body.refusal, "model": body.model, "timeout_s": body.timeout_s,
-            "protocol_version": body.protocol_version}
+            "protocol_version": body.protocol_version, "supports_tools": body.supports_tools,
+            "supports_logprobs": body.supports_logprobs}
 
 
 def connection_view(row: dict) -> dict:
@@ -121,6 +150,7 @@ def connection_view(row: dict) -> dict:
         out[k] = row[k].isoformat() if row.get(k) else None
     out["engine_component"] = str(row["engine_component"]) if row.get("engine_component") else None
     out["has_secret"] = bool(row.get("has_secret"))
+    out["secret_headers"] = list(out.pop("secret_header_names", None) or [])
     target = target_store.get(row["pid"], row["target_key"]) if row.get("target_key") and row.get("pid") else None
     out["target"] = {"key": target["key"], "kind": target["kind"], "label": target["label"]} if target else None
     out.pop("target_key", None)
@@ -181,6 +211,11 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
             ciphertext = llm_store.encrypt(body.secret) if body.secret else None
         except llm_store.SecretsKeyError as exc:
             raise secrets_unavailable(exc) from None
+    header_ciphertext = connection_store.KEEP
+    if body.secret_headers:
+        names, header_ciphertext = _merged_secret_headers(pid, name, body.secret_headers)
+        if header_ciphertext is not connection_store.KEEP:
+            fields["secret_header_names"] = names
     before = connection_store.get(pid, name, with_deleted=True)
     if "target" in body.model_fields_set and body.target is not None:
         if not targets.is_key(body.target) or target_store.get(pid, body.target) is None:
@@ -192,7 +227,8 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
             raise HTTPException(status_code=409, detail=f"target: {body.target} already has a connection, {holder}")
         fields["target_key"] = body.target
     try:
-        row = connection_store.save(pid, name, fields, ciphertext=ciphertext, subject=caller.username or caller.subject)
+        row = connection_store.save(pid, name, fields, ciphertext=ciphertext, header_ciphertext=header_ciphertext,
+                                    subject=caller.username or caller.subject)
     except errors.UniqueViolation:
         # A revive keeps its old target_key, which another connection may hold now
         key = fields.get("target_key") or (before or {}).get("target_key")
@@ -205,6 +241,35 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
     if row.get("target_key"):
         _rename_targets(pid, request)
     return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
+
+
+def _stored_secret_headers(row: dict | None) -> dict[str, str]:
+    """The decrypted secret headers of a stored connection; {} without any."""
+    token = (row or {}).get("secret_headers_ciphertext")
+    return json.loads(llm_store.decrypt((row or {}).get("name") or "", token)) if token else {}
+
+
+def _merged_secret_headers(pid: str, name: str, change: dict[str, str]):
+    """(names, ciphertext) of the stored set with `change` applied ("" removes a name), or (names, KEEP)
+    when nothing changes. 503 without the secrets key, 409 for a stored set no key decrypts, 422 over
+    MAX_SECRET_HEADERS."""
+    try:
+        values = _stored_secret_headers(connection_store.descriptor(pid, name))
+        merged = dict(values)
+        for header, value in change.items():
+            if value:
+                merged[header] = value
+            else:
+                merged.pop(header, None)
+        if len(merged) > MAX_SECRET_HEADERS:
+            raise _invalid_connection(f"secret_headers: up to {MAX_SECRET_HEADERS}")
+        if merged == values:
+            return sorted(values), connection_store.KEEP
+        return sorted(merged), (llm_store.encrypt(json.dumps(merged, sort_keys=True)) if merged else None)
+    except llm_store.SecretsKeyError as exc:
+        raise secrets_unavailable(exc) from None
+    except llm_store.KeyUnreadable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
 
 
 def _rename_targets(pid, request: Request) -> None:
@@ -250,6 +315,8 @@ def descriptor_of(row: dict, pid: str | None = None) -> dict:
                                                                        "last_test_ok", "last_test_detail",
                                                                        "target_key")}
     out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
+    # the secret headers by name, their values masked: the fingerprint and the client's copy hold none
+    out["headers"] = {**(out.get("headers") or {}), **{h: MASK for h in out.pop("secret_header_names", None) or []}}
     out["has_secret"] = row.get("secret_ciphertext") is not None
     out["target"] = _target_of(pid, row) if pid else None
     return out
@@ -263,12 +330,19 @@ def call_descriptor_of(row: dict, pid: str | None = None):
 
     out = descriptor_of(row, pid)
     out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
-    return client.Descriptor.from_dict(out)
+    secret_headers = _stored_secret_headers(row)
+    out["headers"] = {**out["headers"], **secret_headers}
+    descriptor = client.Descriptor.from_dict(out)
+    descriptor.secret_header_names = sorted(secret_headers)       # for secret_values
+    return descriptor
 
 
 def secret_values(descriptor) -> list[str]:
-    """The values to scrub from any error text of a call with this descriptor: its key."""
-    return [v for v in (descriptor.secret,) if v]
+    """The values to scrub from any error text of a call with this descriptor: its key and the values of
+    its secret headers."""
+    headers = descriptor.headers or {}
+    values = [descriptor.secret] + [headers.get(h) for h in getattr(descriptor, "secret_header_names", [])]
+    return [v for v in values if v]
 
 
 _PROBE_ERRORS = connection_facade.ERROR_CODES
@@ -287,7 +361,9 @@ def _reached_by_ping(descriptor, sent, exc) -> bool:
 
 @router.post("/projects/{slug}/connections/{name}/test")
 def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depends(caller_dependency)) -> dict:
-    """One probe, without retries, through the same client the plugins use; the result is stored."""
+    """One probe, without retries, through the same client the plugins use; the result is stored. A
+    connection that says it carries tools or log probabilities gets one more probe for each, and fails as
+    `capability_missing` when one fails."""
     from aisc_plugin_interface import connections as client
 
     pid = admin_connection(slug, caller, name)
@@ -309,7 +385,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
             connection_store.record_test(pid, name, True, detail, result="reachable")
             return {"ok": True, "refused": False, "reachable_only": True, "status": exc.status, "detail": detail}
         error = next((code for cls, code in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
-        message = str(exc).replace(descriptor.secret, "***") if descriptor.secret else str(exc)
+        message = connection_facade.scrub(str(exc), secret_values(descriptor))
         connection_store.record_test(pid, name, False, message, result=error)
         return {"ok": False, "error": error, "detail": message}
     if answer.refused:
@@ -317,13 +393,60 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
         return {"ok": True, "refused": True, "refusal_reason": answer.refusal_reason, "status": answer.status,
                 "latency_ms": answer.latency_ms}
     if isinstance(answer.text, (dict, list)):
-        connection_store.record_test(pid, name, True, json.dumps(answer.text)[:2000])
-        return {"ok": True, "refused": False, "answer": answer.text, "status": answer.status,
-                "latency_ms": answer.latency_ms}
-    text = str(answer.text)
-    connection_store.record_test(pid, name, True, text)
-    return {"ok": True, "refused": False, "answer": text[:500], "status": answer.status,
-            "latency_ms": answer.latency_ms}
+        recorded = json.dumps(answer.text)[:2000]
+        out = {"ok": True, "refused": False, "answer": answer.text, "status": answer.status,
+               "latency_ms": answer.latency_ms}
+    else:
+        recorded = str(answer.text)
+        out = {"ok": True, "refused": False, "answer": recorded[:500], "status": answer.status,
+               "latency_ms": answer.latency_ms}
+    checks = _capability_checks(pid, row, descriptor)
+    if checks:
+        out["capabilities"] = checks
+        failing = next((c for c in checks.values() if not c["ok"]), None)
+        if failing:
+            connection_store.record_test(pid, name, False, failing["detail"], result="capability_missing")
+            return {"ok": False, "error": "capability_missing", "detail": failing["detail"], "capabilities": checks}
+    connection_store.record_test(pid, name, True, recorded)
+    return out
+
+
+#: the function the Test button asks a connection that carries tools to call
+PROBE_TOOL = {"type": "function", "function": {"name": "aisc_probe", "description": "Answers that the endpoint calls tools.",
+                                               "parameters": {"type": "object", "properties": {}}}}
+
+
+def _capability_checks(pid: str, row: dict, descriptor) -> dict:
+    """One more probe per capability the connection says it has, tools before logprobs: {name: {ok, detail}};
+    {} without any."""
+    from aisc_plugin_interface import connections as client
+
+    checks = {}
+    secrets = secret_values(descriptor)
+    if row.get("supports_tools"):
+        try:
+            answer = client.call(descriptor, "Call the function aisc_probe.", None, params={
+                "tools": [PROBE_TOOL], "tool_choice": {"type": "function", "function": {"name": "aisc_probe"}}},
+                waits=(), **connection_allowlist.rule(pid))
+            called = any(isinstance(c, dict) and (c.get("function") or {}).get("name") == "aisc_probe"
+                         for c in answer.tool_calls or [])
+            checks["tools"] = {"ok": True, "detail": "called aisc_probe"} if called else {
+                "ok": False, "detail": "tools: the endpoint answered without calling the function it was asked to call"}
+        except client.EndpointError as exc:
+            checks["tools"] = {"ok": False, "detail": f"tools: {connection_facade.error_code(exc)}: "
+                                                      f"{connection_facade.scrub(str(exc), secrets)}"}
+    if row.get("supports_logprobs"):
+        try:
+            client.call(descriptor, "ping", None, params={"logprobs": True, "top_logprobs": 1}, waits=(),
+                        **connection_allowlist.rule(pid))
+            checks["logprobs"] = {"ok": True,
+                                  "detail": "the endpoint accepted logprobs: true; the log probabilities are not read"}
+        except client.EndpointError as exc:
+            status = getattr(exc, "status", None)
+            checks["logprobs"] = {"ok": False, "detail": (
+                f"logprobs: the endpoint refused logprobs: true ({status})" if status is not None else
+                f"logprobs: {connection_facade.error_code(exc)}: {connection_facade.scrub(str(exc), secrets)}")}
+    return checks
 
 
 def _behind_gateway(request: Request) -> bool:
@@ -372,10 +495,17 @@ def mint_run_pass(body: dict, request: Request) -> JSONResponse:
 
 @router.delete("/internal/run-passes")
 def revoke_run_pass(request: Request) -> Response:
-    """The worker ends a run's pass when the run ends; an unknown or already ended pass is no error."""
+    """The worker ends a run's pass when the run ends, and with it the run keys issued under it in every
+    project it named; an unknown or already ended pass is no error."""
     if _behind_gateway(request):
         return _internal(404, {"detail": "not here"})
-    run_passes.revoke(request.headers.get(run_passes.HEADER) or "")
+    run_pass = request.headers.get(run_passes.HEADER) or ""
+    for pid in run_passes.revoke(run_pass):
+        # the keys issued under it; one left by a database that fails here is refused at use anyway
+        try:
+            connection_store.revoke_run_keys(pid, run_passes.hash_of(run_pass))
+        except psycopg.Error as exc:
+            logger.warning("run keys of project %s for an ended pass not deleted: %s", pid, exc)
     return Response(status_code=204)
 
 
@@ -606,7 +736,8 @@ def _key_hash(key: str) -> str:
 @router.post("/internal/projects/{pid}/connections/{name}/run-keys")
 def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
     """A key for one evaluation run to reach one connection through the protocol endpoints; only its
-    hash is stored. Guarded like the resolve route. Valid CONNECTIONS_RUN_KEY_TTL_S (12 h)."""
+    hash is stored. Guarded like the resolve route. Valid CONNECTIONS_RUN_KEY_TTL_S (12 h); under a run pass,
+    no longer than the pass, and deleted when the pass is revoked."""
     return _internal_gate(pid, request, "connection", name) or _issue_run_key(
         pid, name, request.headers.get(run_passes.HEADER))
 
@@ -619,14 +750,17 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     fingerprint = _fingerprint_of(descriptor_of(row, pid))
     key = RUN_KEY_PREFIX + secrets.token_hex(32)
     ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
-    expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
+    # under a pass, the key ends with it: never after it, and deleted when the worker revokes it
+    pass_hash = run_passes.hash_of(run_pass) if run_pass is not None else None
+    not_after = run_passes.expires_at(run_pass) if run_pass is not None else None
+    expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl, pass_hash, not_after)
     _record_use(run_pass, pid, row, fingerprint)
     root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
     logger.info("run key issued for connection %s of project %s", name, pid)
-    # What the platform's endpoints carry (connection_facade translates to text and a history): a
-    # plugin that needs more, tool calls or logprobs, refuses the run before it starts.
+    # What the platform's endpoints carry: text and a history, and tools on an OpenAI-compatible connection
+    # that carries them; a plugin that needs more refuses the run before it starts.
     return _internal(201, {"key": key, "expires_at": expires.isoformat(), "connection": name,
-                           "capabilities": ["text", "history"],
+                           "capabilities": connection_facade.capabilities(row["kind"], bool(row.get("supports_tools"))),
                            "target": _target_of(pid, row), "endpoints": {
         "aisc": {"ask_url": f"{root}/aisc/ask"},
         "openai": {"base_url": f"{root}/openai/v1", "model": name},

@@ -43,6 +43,12 @@ ASK_SHAPE = "{input, history?: [messages], params?: {}}"
 MAX_ASK_BYTES = 2_097_152
 
 
+def capabilities(kind: str, supports_tools: bool) -> list[str]:
+    """What a run key advertises: text and a history always, tools for an OpenAI-compatible connection
+    that carries them."""
+    return ["text", "history", "tools"] if kind == "openai" and supports_tools else ["text", "history"]
+
+
 def _check_tools(params: dict) -> None:
     tools = params.get("tools")
     if "tools" in params:
@@ -148,27 +154,45 @@ def ask_failure(exc, secrets: list) -> tuple[int, dict]:
 
 
 # OpenAI-compatible
-def openai_to_core(body: dict) -> tuple[str, list]:
-    """(input, history) from a chat.completions request: the last user message is the input, the ones
-    before it the history."""
+def openai_to_core(body: dict, kind: str, supports_tools: bool) -> tuple[object, list, dict]:
+    """(input, history, params) from a chat.completions request. The last message is the user's (the
+    input; the ones before it the history) or, on an OpenAI-compatible connection, a tool's result (no
+    input: the whole conversation is the history, and the model continues it). Params are the body's
+    OPENAI_PARAMS, other keys dropped (the connection's model is used); on another kind only the tool
+    params are kept, so that tools are refused rather than dropped."""
+    from aisc_plugin_interface import connections as client
+
     if body.get("stream"):
         raise BadRequest("streaming is not supported; send stream: false")
     messages = body.get("messages")
     if not isinstance(messages, list) or not messages:
         raise BadRequest("messages is required")
-    for m in messages:
-        if not isinstance(m, dict) or m.get("role") not in ("system", "user", "assistant") or not isinstance(m.get("content"), str):
-            raise BadRequest("each message needs a role (system, user or assistant) and text content")
-    if messages[-1]["role"] != "user":
-        raise BadRequest("the last message must be the user's")
-    return messages[-1]["content"], [{"role": m["role"], "content": m["content"]} for m in messages[:-1]]
+    try:
+        messages = client.check_history(messages)
+    except client.BadRequest as exc:
+        raise BadRequest(str(exc).replace("history", "messages", 1)) from None
+    kept = OPENAI_PARAMS if kind == "openai" else TOOL_PARAMS
+    params = check_params(kind, supports_tools, {k: v for k, v in body.items() if k in kept})
+    last = messages[-1]["role"]
+    if last == "user":
+        return messages[-1]["content"], messages[:-1], params
+    if last == "tool":
+        if kind != "openai":
+            raise BadRequest("a tool's result can only be sent to an OpenAI-compatible connection")
+        return None, messages, params
+    raise BadRequest("the last message must be the user's, or a tool's result")
 
 
 def core_to_openai(model: str, answer) -> dict:
+    calls = getattr(answer, "tool_calls", None)
     if answer.refused:
         reason = answer.refusal_reason or ""
         message = {"role": "assistant", "content": f"Refused: {reason}" if reason else "Refused", "refusal": reason}
         finish = "content_filter"
+    elif calls:
+        message = {"role": "assistant", "content": answer.text if isinstance(answer.text, str) else None,
+                   "refusal": None, "tool_calls": calls}
+        finish = "tool_calls"
     else:
         text = answer.text if isinstance(answer.text, str) else _json_text(answer.text)
         message, finish = {"role": "assistant", "content": text, "refusal": None}, "stop"

@@ -19,7 +19,10 @@ A name is a model field when its snake_case words hold the old target words (tar
 model_under_test and the like, not followed by a column, feature or field word), or end with a selector
 (model, model_name, model_id, endpoint, endpoint_url, provider, api_key, base_url, credential), or end with
 a model word (model, llm, provider, judge, attacker, grader, embedder, embedding(s), generator) and an
-identifier (name, id, url, key, path); a dataset's column roles and run settings end in another word.
+identifier (name, id, url, key, path); a dataset's column roles and run settings end in another word. It is
+also a model field when it is the model called an LLM (llm, target_llm), a provider's key or token (openai_key,
+hf_token, anthropic_api_key), a model's or model server's address (ollama_url, litellm_url, api_base,
+model_uri, target_host), a model file (model_file, model_path) or the system under test.
 
 Field names only: the route never sends a value, and nothing here prints one.
 """
@@ -33,14 +36,26 @@ HELPER_ROLES = ("judge", "attacker", "grader", "embedder", "generator")
 #: word is column, feature or field), a selector at the end (model, model_name, endpoint, provider, api_key,
 #: evaluator_llm_model, judgeModel), or a model word and an identifier at the end (model_judge_name,
 #: judge_id, model_path). A dataset's column roles and settings (target_feature, target_column,
-#: target_row_limit, model_temperature, judge_threshold) end in another word and do not match
+#: target_row_limit, model_temperature, judge_threshold) end in another word and do not match. Further
+#: names that pick a model: llm alone or target_llm (a helper's llm, judge_llm, is the integrator's helper
+#: rule; use_llm is a setting), a provider's key or token with the provider word right before it (openai_key,
+#: hf_token, groq_api_key; anthropic_max_tokens is a setting), a model's or model server's address
+#: (ollama_url, litellm_url, api_base, model_uri, target_host, openai_api_base), a model file and the system
+#: under test. Bare url, host, deployment and engine are too generic and do not match. Accepted over-matches,
+#: renamed when they occur: a name ending in model that is not a model (threat_model), and one ending in
+#: provider, endpoint, credential(s), api_key or base_url that keys no model (data_provider)
 TARGET_FIELD = re.compile(r"(^|_)(target_(model|model_id|api_key|key|base_url|url|endpoint|credentials?|provider)"
                           r"(?![a-z0-9_]*_(column|feature|field)s?(_|$))"
-                          r"|model_under_test|model_credentials?)(_|$)"
+                          r"|model_under_test|model_credentials?|system_under_test)(_|$)"
                           r"|(^|_)(model|model_name|model_id|endpoint|endpoint_url|provider|api_key|base_url"
-                          r"|credential)s?$"
+                          r"|credential|model_file)s?$"
                           r"|(^|_)(model|llm|provider|judge|attacker|grader|embedder|embeddings?|generator)"
-                          r"_(name|id|url|key|path)s?$")
+                          r"_(name|id|url|key|path)s?$"
+                          r"|^llms?$|(^|_)target_llms?$"
+                          r"|(^|_)(openai|anthropic|azure|hf|huggingface|mistral|cohere|google|gemini|groq|together"
+                          r"|ollama|litellm|vllm)_(api_)?(key|token)s?$"
+                          r"|(^|_)(model|llm|api|ollama|litellm|vllm|openai|inference|target)"
+                          r"_(url|uri|base|host|endpoint)s?$")
 #: what the engine adds to each declaration for this check
 CHECKED_KEYS = ("adopted", "helper_roles", "config_fields", "hidden_config_fields", "config_fields_unreadable")
 
