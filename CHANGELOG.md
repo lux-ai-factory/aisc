@@ -1,5 +1,28 @@
 # Changelog of the aisc root repository (newest first).
 
+## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass
+
+### Changes
+- The internal resolve routes answer a connection's descriptor without its key (`has_secret` says whether it has
+  one), under a run pass and under the connections token alike; only the protocol doors and the Test button
+  decrypt it. Resolve and run-key issuance no longer need `PLATFORM_SECRETS_KEY`.
+- `aisc/ask` takes `params` (a template's `{{params.x}}`, or an OpenAI-compatible model's settings) and full
+  OpenAI-style histories (tool calls, tool results). A request the platform will not send is a 400 with the
+  reason; a failed call is a 502 `{error, status, detail}` with every key scrubbed. Bodies over 2 MiB are 413.
+- A run key issued under a run's pass ends with it: deleted when the worker revokes the pass, refused once the
+  pass is gone, and never valid past the pass's expiry. Project migration `0022_run_key_pass.sql`.
+- The protocol doors cap calls per run (`PLATFORM_FACADE_RUN_CAP`, default 8) as well as across the platform
+  (`PLATFORM_FACADE_THREADS`, now 32 by default). A call over a cap waits.
+- Credentials in custom headers (`secret_headers`): stored encrypted, sent with every call, masked as `***` on
+  resolve, scrubbed from errors, rotated with the key. A plain header whose name looks like a credential is
+  refused at save. Project migration `0023_connection_secret_headers.sql`; Manage, Connections, Advanced lists
+  them by name with a remove box.
+- An OpenAI-compatible connection can say it carries tools and log probabilities (`supports_tools`,
+  `supports_logprobs`; project migration `0024_connection_capabilities.sql`). The run key advertises `tools`
+  then, `aisc/ask` and the OpenAI door carry tools and tool results to it and its tool calls back, and the Test
+  button checks each flag with one more call (`capability_missing` when one fails).
+  Check: `scripts/test-platform.sh tests/test_facade_tools.py`.
+
 ## 2026-10-23: plugins are fetched on install
 
 ### Changes

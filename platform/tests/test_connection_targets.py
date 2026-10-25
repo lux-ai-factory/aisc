@@ -155,7 +155,7 @@ def test_the_internal_route_gives_the_endpoint_of_a_target(client, admin, projec
     r = internal(client, project, "system/connection")
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["name"] == "mcas-chat" and d["secret"] and d["target"]["key"] == "system"
+    assert d["name"] == "mcas-chat" and "secret" not in d and d["has_secret"] is True and d["target"]["key"] == "system"
     assert d["allowed_hosts"] == [stub.host]
 
 

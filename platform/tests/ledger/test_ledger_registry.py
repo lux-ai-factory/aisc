@@ -21,7 +21,7 @@ from platform_service.ledger.registry import APP_PROJECT_RULES, KNOWN_APPS, REGI
 ACTOR_KINDS = {"user", "ai", "worker", "system", "operator"}
 #: Actions the witness or the beacon itself produces: no app emits them, no other request causes them.
 WITNESS_BORN = {"request.witnessed", "request.unverified", "flower.request", "pgadmin.request"}
-PLATFORM_ONLY = WITNESS_BORN | {"ledger.rejected", "ledger.reanchored"}
+PLATFORM_ONLY = WITNESS_BORN | {"ledger.rejected", "ledger.reanchored", "ledger.content.redacted"}
 GATEWAY_APPS = {"engine", "engine_webapp", "flower", "controls", "qualification", "control_objectives",
                 "report_composer", "platform", "launcher", "pgadmin", "schema", "dashboard"}
 

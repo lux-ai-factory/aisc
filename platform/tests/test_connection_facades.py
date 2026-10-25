@@ -402,6 +402,7 @@ def test_the_facade_calls_have_their_own_thread_cap_and_leave_the_shared_pool_fr
     key = issue(client, project, name).json()["key"]
     monkeypatch.setenv("PLATFORM_FACADE_THREADS", "2")
     monkeypatch.setattr(facade, "_FACADE_LIMITER", None, raising=False)
+    monkeypatch.setattr(facade, "_RUN_LIMITERS", {}, raising=False)
     with client as shared:
         # the shared pool as small as 3 threads: before, three facade calls took all of it
         shared.portal.call(lambda: setattr(anyio.to_thread.current_default_thread_limiter(), "total_tokens", 3))

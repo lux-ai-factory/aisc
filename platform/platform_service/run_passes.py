@@ -30,7 +30,8 @@ class Refused(Exception):
         self.status, self.detail = status, detail
 
 
-def _hash(run_pass: str) -> str:
+def hash_of(run_pass: str) -> str:
+    """What is stored of a pass (sha256 hex): core.run_pass's key, and a run key's pass_hash."""
     return hashlib.sha256(run_pass.encode()).hexdigest()
 
 
@@ -73,7 +74,7 @@ def mint(refs, ttl_s: int | None = None, evaluation_plugin=None) -> tuple[str, d
         expires = conn.execute(
             "INSERT INTO core.run_pass (pass_hash, refs, evaluation_plugin, expires_at)"
             " VALUES (%s, %s::jsonb, %s, clock_timestamp() + make_interval(secs => %s)) RETURNING expires_at",
-            (_hash(run_pass), json.dumps([list(g) for g in grants]), evaluation_plugin, ttl)).fetchone()["expires_at"]
+            (hash_of(run_pass), json.dumps([list(g) for g in grants]), evaluation_plugin, ttl)).fetchone()["expires_at"]
     return run_pass, expires
 
 
@@ -81,7 +82,7 @@ def check(run_pass: str, pid: str, kind: str, name: str) -> None:
     """Refused(401) for an unknown or expired pass, Refused(403) when it does not name this reference."""
     with db.pool().connection() as conn:
         row = conn.execute("SELECT refs FROM core.run_pass WHERE pass_hash = %s AND expires_at > clock_timestamp()",
-                           (_hash(run_pass or ""),)).fetchone()
+                           (hash_of(run_pass or ""),)).fetchone()
     if row is None:
         raise Refused(401, "unknown or expired run pass")
     try:
@@ -92,9 +93,28 @@ def check(run_pass: str, pid: str, kind: str, name: str) -> None:
         raise Refused(403, "this run pass does not open that")
 
 
-def revoke(run_pass: str) -> None:
+def expires_at(run_pass: str) -> datetime | None:
+    """When a live pass expires; None for an unknown or expired one."""
     with db.pool().connection() as conn:
-        conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s", (_hash(run_pass or ""),))
+        row = conn.execute("SELECT expires_at FROM core.run_pass WHERE pass_hash = %s"
+                           " AND expires_at > clock_timestamp()", (hash_of(run_pass or ""),)).fetchone()
+    return row["expires_at"] if row else None
+
+
+def is_live(pass_hash: str) -> bool:
+    """Whether the pass of this hash is still open (a run key under it may be used)."""
+    with db.pool().connection() as conn:
+        return conn.execute("SELECT 1 FROM core.run_pass WHERE pass_hash = %s AND expires_at > clock_timestamp()",
+                            (pass_hash,)).fetchone() is not None
+
+
+def revoke(run_pass: str) -> list[str]:
+    """End a pass; the projects its references named (sorted, unique), whose run keys under it the
+    caller deletes. [] for an unknown pass."""
+    with db.pool().connection() as conn:
+        row = conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s RETURNING refs",
+                           (hash_of(run_pass or ""),)).fetchone()
+    return sorted({ref[1] for ref in row["refs"]}) if row else []
 
 
 def record(run_pass: str, pid: str, connection: str, protocol: str, fingerprint: str) -> None:
@@ -105,7 +125,7 @@ def record(run_pass: str, pid: str, connection: str, protocol: str, fingerprint:
             "INSERT INTO core.run_pass_use (pass_hash, evaluation_plugin, pid, connection, protocol, fingerprint)"
             " SELECT pass_hash, evaluation_plugin, %s, %s, %s, %s FROM core.run_pass"
             " WHERE pass_hash = %s AND evaluation_plugin IS NOT NULL AND expires_at > clock_timestamp()",
-            (pid, connection, protocol, fingerprint, _hash(run_pass or "")))
+            (pid, connection, protocol, fingerprint, hash_of(run_pass or "")))
 
 
 def uses_of(evaluation_plugin, pid=None) -> list[dict]:

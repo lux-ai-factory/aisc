@@ -476,6 +476,16 @@ def _sent_form(row: dict) -> dict:
                                    default=str, sort_keys=True))
 
 
+def _with_config_masked(row: dict) -> dict:
+    """A configuration event's row with its config's secrets masked; any other row as it is."""
+    from platform_service.ledger.config_secrets import masked_for_ledger
+
+    content = row.get("content")
+    if row.get("action") != "engine.plugin.configured" or not isinstance(content, dict) or "config" not in content:
+        return row
+    return {**row, "content": {**content, "config": masked_for_ledger(content["config"])}}
+
+
 def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
     from psycopg import errors as pg_errors
 
@@ -503,6 +513,10 @@ def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
         sent[key] = None if sent[key] is None else str(uuid.UUID(str(sent[key])))
     if stored is not None and _sent_form(stored) == _sent_form(sent):
         return _internal(202, {"queued": event["event_id"], "replay": True})   # a retry: the same event
+    if stored is not None and _sent_form(_with_config_masked(stored)) == _sent_form(sent):
+        # the engine masks a configuration's secrets on delivery: its masked re-send of an event the platform
+        # holds unmasked is the same event, a retry; the stored row stays as it is
+        return _internal(202, {"queued": event["event_id"], "replay": True})
     logger.error("ledger: event %s re-sent by %s with other content (or by another caller)", event["event_id"], caller)
     return _internal(409, {"detail": "this event_id was already sent with other content or by another caller"})
 
