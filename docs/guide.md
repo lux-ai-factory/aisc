@@ -367,13 +367,13 @@ their own (`aisc-t-*`, `postgres:15-alpine` through `scripts/lib/throwaway-pg.sh
 `scripts/lib/report_bed.py`) on a port the kernel picks, removed afterwards.
 
 The harnesses in `scripts/tests` migrate their throwaway project databases with each module's own
-migration scripts, so a fresh clone needs those modules' dependencies first (Node.js 20 and uv):
+migration scripts, so a fresh clone needs those modules' dependencies first:
 
 ```bash
-(cd apps/qualification && npm ci) && (cd apps/controls && npm ci)
-(cd apps/control-objectives && uv sync --extra dev) && (cd apps/report-composer && uv sync --extra dev)
-(cd apps/backend && uv sync)
+scripts/prepare-tests.sh
 ```
+
+It needs Node.js 20 and uv; rerun it after pulling, and `scripts/prepare-tests.sh --check` lists what is missing.
 
 From the repository root:
 

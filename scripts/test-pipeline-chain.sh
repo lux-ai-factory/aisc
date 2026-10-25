@@ -56,6 +56,13 @@ if [ -n "$BREAK" ] && [ -z "$(consumer_step "$BREAK")" ]; then
   echo "unknown link: $BREAK (one of: qualification_fk, card_component, co_fk, engine_stamp, controls_stamp)" >&2; exit 2
 fi
 
+# every module environment the steps run, before any container: a missing one is named with its fix
+if ! MISSING_ENVIRONMENTS=$("$ROOT/scripts/prepare-tests.sh" --check); then
+  printf '%s\n' "$MISSING_ENVIRONMENTS" | sed '/^$/d; s/^/chain: /'
+  echo "CHAIN FAIL before step 1 (module environments missing)"
+  exit 1
+fi
+
 SCRATCH=${CHAIN_SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/pipeline-chain.XXXXXX")}
 mkdir -p "$SCRATCH"
 export CHAIN_JSON=$SCRATCH/chain.json

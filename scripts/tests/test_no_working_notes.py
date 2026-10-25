@@ -83,14 +83,33 @@ def findings(line: str) -> list[str]:
     return out
 
 
-def scan(repo) -> list[str]:
-    """file:line: text, for every line of the repo's tracked text files that holds history."""
-    r = subprocess.run(["git", "-C", str(repo), "grep", "-n", "-I", "-E", GREP, "--", "."] + EXCLUDE,
+def _grep(repo, pattern: str) -> list[tuple[str, str, str]]:
+    """(path, line number, text) of every line of the repo's tracked text files matching the pattern,
+    except files stored in Git LFS: those are data (their filter attribute says so, whether the working
+    copy holds the data or only a pointer)."""
+    r = subprocess.run(["git", "-C", str(repo), "grep", "-n", "-I", "-E", pattern, "--", "."] + EXCLUDE,
                        capture_output=True, text=True)
     assert r.returncode in (0, 1), r.stderr
+    rows = [tuple(row.split(":", 2)) for row in r.stdout.splitlines()]
+    lfs = _stored_in_lfs(repo, {path for path, _, _ in rows})
+    return [row for row in rows if row[0] not in lfs]
+
+
+def _stored_in_lfs(repo, paths: set[str]) -> set[str]:
+    """The paths whose filter attribute is lfs."""
+    if not paths:
+        return set()
+    r = subprocess.run(["git", "-C", str(repo), "check-attr", "-z", "--stdin", "filter"],
+                       input="\0".join(sorted(paths)) + "\0", capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    fields = r.stdout.split("\0")
+    return {fields[i] for i in range(0, len(fields) - 2, 3) if fields[i + 2] == "lfs"}
+
+
+def scan(repo) -> list[str]:
+    """file:line: text, for every line of the repo's tracked text files that holds history."""
     hits = []
-    for row in r.stdout.splitlines():
-        path, num, text = row.split(":", 2)
+    for path, num, text in _grep(repo, GREP):
         if findings(text):
             hits.append(f"{path}:{num}: {text.strip()[:160]}")
     return hits
@@ -98,12 +117,8 @@ def scan(repo) -> list[str]:
 
 def plan_names(repo) -> list[str]:
     """file:line: text, for every test of the repo's tracked files named after a plan item."""
-    r = subprocess.run(["git", "-C", str(repo), "grep", "-n", "-I", "-E", PLAN_GREP, "--", "."] + EXCLUDE,
-                       capture_output=True, text=True)
-    assert r.returncode in (0, 1), r.stderr
     hits = []
-    for row in r.stdout.splitlines():
-        path, num, text = row.split(":", 2)
+    for path, num, text in _grep(repo, PLAN_GREP):
         if PLAN_TEST.search(text) or PLAN_SPEC.search(text):
             hits.append(f"{path}:{num}: {text.strip()[:160]}")
     return hits
@@ -172,3 +187,43 @@ def test_a_submodule_explains_without_history(path):
         pytest.skip(f"{path} is not checked out")
     hits = scan(repo)
     assert hits == [], f"history in {path}:\n" + "\n".join(hits)
+
+
+def _repo(path, files: dict[str, str]):
+    """A scratch git repo with these files committed (no global or system git config)."""
+    env = {**__import__("os").environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+    path.mkdir()
+    for cmd in (["init", "-q"], ["config", "user.name", "t"], ["config", "user.email", "t@example.invalid"]):
+        subprocess.run(["git", "-C", str(path), *cmd], check=True, env=env, capture_output=True)
+    for name, text in files.items():
+        (path / name).write_text(text)
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True, env=env, capture_output=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-q", "-m", "files"], check=True, env=env, capture_output=True)
+    return path
+
+
+LFS_ATTRIBUTES = "*.csv filter=lfs diff=lfs merge=lfs -text\n"
+LFS_DATA = "4000.0,36,9.76,128.62,5,10,2,90000.0,2,2012-03-01,3,0.87,3\n"
+DATED_NOTE = "Fixed on 2026-10-01 after review\n"
+
+
+def test_a_file_stored_in_lfs_is_data_and_is_not_scanned(tmp_path):
+    repo = _repo(tmp_path / "r", {".gitattributes": LFS_ATTRIBUTES, "data.csv": LFS_DATA, "notes.txt": DATED_NOTE})
+    hits = scan(repo)
+    assert [h for h in hits if h.startswith("notes.txt:1: ")], hits
+    assert not [h for h in hits if h.startswith("data.csv")], hits
+
+
+def test_a_csv_not_in_lfs_is_still_scanned(tmp_path):
+    repo = _repo(tmp_path / "r", {"data.csv": LFS_DATA, "notes.txt": DATED_NOTE})
+    hits = scan(repo)
+    assert [h for h in hits if h.startswith("notes.txt:1: ")], hits
+    assert [h for h in hits if h.startswith("data.csv:1: ")], hits
+
+
+def test_a_file_stored_in_lfs_is_not_read_for_test_names(tmp_path):
+    repo = _repo(tmp_path / "r", {".gitattributes": LFS_ATTRIBUTES, "data.csv": LFS_DATA, "notes.txt": DATED_NOTE,
+                                  "test_plan.csv": "def test_t12_x():\n", "test_other.py": "def test_t12_x():\n"})
+    hits = plan_names(repo)
+    assert not [h for h in hits if h.startswith("test_plan.csv")], hits
+    assert [h for h in hits if h.startswith("test_other.py:1: ")], hits

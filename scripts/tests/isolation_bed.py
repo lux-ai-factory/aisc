@@ -19,6 +19,8 @@ Steps, in the stack's order:
     qualification `node scripts/migrate-projects.mjs`, control-objectives
     `python -m aisc_control_objectives.migrate_projects`, engine `manage.py migrate_projects`, composer
     `python -m report_composer.migrate`, controls `node scripts/migrate-projects.mjs`.
+    Before that, `scripts/prepare-tests.sh --check` names every module environment that is missing; that
+    module's command is not run, and its problem is the check's line (which names the fix).
 
 Passwords stay in memory: never printed, never in an assertion message.
 """
@@ -37,8 +39,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
 from throwaway import SU, Throwaway, platform_migration  # noqa: E402
-
-INSTALL = Path.home() / "aisc-install"
 
 A = "a0000000-0000-4000-8000-00000000000a"
 B = "b0000000-0000-4000-8000-00000000000b"
@@ -88,14 +88,47 @@ def project_db(pid: str) -> str:
     return "project_" + pid.replace("-", "")
 
 
-def _python(module_dir: str) -> str:
-    """The module's virtualenv python: this worktree's when it has one, else the install's (used
-    read-only; the code imported is this worktree's, through cwd/PYTHONPATH)."""
-    for base in (ROOT, INSTALL):
-        p = base / module_dir / ".venv/bin/python"
-        if p.exists():
-            return str(p)
-    return ""
+def _python(module_dir: str, root: Path = ROOT) -> str:
+    """The module's own virtualenv python in this checkout, else "" (never another checkout's)."""
+    p = root / module_dir / ".venv/bin/python"
+    return str(p) if p.exists() else ""
+
+
+#: module folder -> its key in bed.problems
+ENVIRONMENT_KEYS = {
+    "apps/qualification": "qualification",
+    "apps/controls": "controls",
+    "apps/control-objectives": "control_objectives",
+    "apps/backend": "engine",
+    "apps/report-composer": "report_composer",
+}
+
+
+def environment_problems(root: Path = ROOT) -> dict[str, str]:
+    """`scripts/prepare-tests.sh --check` as bed problems: each line under its module's key, unchanged."""
+    script = root / "scripts/prepare-tests.sh"
+    if not script.exists():
+        return {"environment": "scripts/prepare-tests.sh missing"}
+    r = subprocess.run(["bash", str(script), "--check"], capture_output=True, text=True, timeout=60)
+    if r.returncode == 0:
+        return {}
+    problems: dict[str, str] = {}
+    for line in r.stdout.splitlines():
+        if not line.strip():
+            continue
+        path = line.split(" ", 1)[0]
+        problems[ENVIRONMENT_KEYS.get(path, path)] = line
+    if not problems:
+        problems["environment"] = "scripts/prepare-tests.sh --check failed: " + error_line(r.stdout + r.stderr)
+    return problems
+
+
+def error_line(output: str) -> str:
+    """The line that says what went wrong: the last one containing "Error" (Node ends every uncaught error
+    with its version line, Python with the exception), else the last non-empty one, else "?"."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    errors = [line for line in lines if "Error" in line]
+    return (errors or lines or ["?"])[-1]
 
 
 @dataclass
@@ -158,11 +191,10 @@ def _run(bed: IsoBed, key: str, cmd: list[str], cwd: Path, env: dict[str, str], 
     except FileNotFoundError as e:
         bed.problems[key] = f"{why}: {e}"
         return
-    out = _redact(bed, (r.stdout + r.stderr)[-1500:])
-    bed.logs[key] = out
+    out = _redact(bed, r.stdout + r.stderr)
+    bed.logs[key] = out[-1500:]
     if r.returncode != 0:
-        last = [line for line in out.strip().splitlines() if line.strip()][-1:] or ["?"]
-        bed.problems[key] = f"{why} (exit {r.returncode}): {last[0][:300]}"
+        bed.problems[key] = f"{why} (exit {r.returncode}): {error_line(out)[:300]}"
 
 
 def provision(bed: IsoBed, pids: list[str]) -> None:
@@ -189,25 +221,31 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
 
 
 def migrate_modules(bed: IsoBed) -> None:
-    """Each module's own command for every project database (the -migrate one-shots of the stack)."""
+    """Each module's own command for every project database (the -migrate one-shots of the stack), except
+    for a module whose environment is missing: its problem is then the line naming the fix."""
     port = bed.port
+    bed.problems.update(environment_problems())
+    if "environment" in bed.problems:
+        for key in ENVIRONMENT_KEYS.values():
+            bed.problems.setdefault(key, bed.problems["environment"])
     # controls
-    _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
-         {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls")},
-         "controls migrate-projects.mjs")
+    if "controls" not in bed.problems:
+        _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
+             {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls")},
+             "controls migrate-projects.mjs")
     # qualification: every project database (no form library: forms are per project)
     q = ROOT / "apps/qualification/scripts/migrate-projects.mjs"
-    if not q.exists():
+    if "qualification" in bed.problems:
+        pass
+    elif not q.exists():
         bed.problems["qualification"] = "apps/qualification/scripts/migrate-projects.mjs missing"
     else:
         _run(bed, "qualification", ["node", str(q)], ROOT / "apps/qualification",
              {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2")},
              "qualification migrate-projects.mjs")
     # control objectives
-    py = _python("apps/control-objectives")
-    if not py:
-        bed.problems["control_objectives"] = "no python environment for apps/control-objectives"
-    else:
+    if "control_objectives" not in bed.problems:
+        py = _python("apps/control-objectives")
         _run(bed, "control_objectives", [py, "-m", "aisc_control_objectives.migrate_projects"],
              ROOT / "apps/control-objectives",
              {"PYTHONPATH": str(ROOT / "apps/control-objectives/src"),
@@ -216,10 +254,8 @@ def migrate_modules(bed: IsoBed) -> None:
                                       f"{port}/{{database}}"},
              "python -m aisc_control_objectives.migrate_projects")
     # engine
-    py = _python("apps/backend")
-    if not py:
-        bed.problems["engine"] = "no python environment for apps/backend"
-    else:
+    if "engine" not in bed.problems:
+        py = _python("apps/backend")
         _run(bed, "engine", [py, "manage.py", "migrate_projects"], ROOT / "apps/backend",
              # migrate_projects (aisc_backend/deployment.py) only migrates a database per
              # project in configurator mode, which is what this bed's engine runs as.
@@ -230,10 +266,8 @@ def migrate_modules(bed: IsoBed) -> None:
               "PYTHONPATH": f"{ROOT}/shared/plugin-interface/src:{ROOT}/shared/plugin-manager/src:{ROOT}/shared/identity"},
              "manage.py migrate_projects")
     # report composer
-    py = _python("apps/report-composer")
-    if not py:
-        bed.problems["report_composer"] = "no python environment for apps/report-composer"
-    else:
+    if "report_composer" not in bed.problems:
+        py = _python("apps/report-composer")
         _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], ROOT / "apps/report-composer",
              {"PYTHONPATH": str(ROOT / "apps/report-composer"),
               "REPORT_COMPOSER_DATABASE_URL": bed.dsn("report_composer_rw", "platform"),

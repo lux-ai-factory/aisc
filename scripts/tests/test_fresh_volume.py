@@ -12,11 +12,15 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 import pytest
 
 import isolation_bed as ib
 from conftest import ROOT
+
+sys.path.insert(0, str(ROOT / "scripts"))
+from db_consistency import checks  # noqa: E402
 
 PLATFORM_DB_SQL = ROOT / "init/platform-db.sql"
 PROJECT_DATABASES_SQL = ROOT / "init/project-databases.sql"
@@ -123,6 +127,16 @@ def test_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
          WHERE n.nspname = 'core' AND c.relkind = 'r'""")}
     assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}, f"core has {sorted(core)}"
 
+
+
+def test_the_consistency_check_knows_every_core_table_the_migrations_make(fresh):
+    """scripts/db_consistency lists exactly the core tables a fresh platform database has, so a new core
+    table fails here instead of warning on every healthy install."""
+    fresh.require("init", "platform-migrations")
+    core = {r["relname"] for r in fresh.rows("platform", """
+        SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'core' AND c.relkind IN ('r', 'p')""")}
+    assert core == checks.CORE_TABLES, f"core has {sorted(core)}, the check lists {sorted(checks.CORE_TABLES)}"
 
 @pytest.mark.parametrize("schema,owner", [("report_library", "report_composer_rw")])
 def test_library_schemas_are_owned_by_their_module(fresh, schema, owner):
