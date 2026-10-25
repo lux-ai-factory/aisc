@@ -418,6 +418,93 @@ def test_a_name_ending_in_model_is_an_accepted_over_match_and_the_rules_say_so()
     assert "threat_model" in LIB.read_text()
 
 
+# the last name round: a model server's address with words between, deployments, repos, checkpoints and
+# weights, the system under test by another name; what stays clean; every real field name
+
+#: a model server's address: a model or server word first, any words, then the address word
+SERVER_ADDRESS_FIELDS = ("inference_server_url", "llm_server_url", "litellm_proxy_url", "model_server_host",
+                         "sut_url", "ollama_server_url", "vllm_server_url", "openai_proxy_base",
+                         "target_service_endpoint", "model_serving_uri", "sut_endpoint", "sut_host", "sut_base",
+                         "sut_uri", "llm_gateway_api_base", "inferenceServerUrl", "llmServerUrl", "api_url",
+                         "api_host")
+#: a model's deployment, repository, checkpoint, weights, folder or version, and the target named outright
+MODEL_ARTEFACT_FIELDS = ("azure_deployment", "deployment_name", "endpoint_name", "model_repo", "hf_repo_id",
+                         "model_checkpoint", "onnx_path", "weights_path", "model_dir", "model_version",
+                         "target_name", "target_system", "azureDeployment", "deploymentName", "modelRepo",
+                         "hfRepoId", "targetSystem")
+LAST_ROUND_MODEL_FIELDS = SERVER_ADDRESS_FIELDS + MODEL_ARTEFACT_FIELDS
+#: an address word after api in the middle of a name: a data or results service, not a model
+SERVICE_API_FIELDS = ("dataset_api_url", "data_api_url", "webhook_api_url", "results_api_base")
+#: tokens, addresses and names too generic to read as a model, left to the integrator's code review
+GENERIC_LAST_ROUND_FIELDS = ("token", "api_token", "access_token", "hf_access_token", "url", "host",
+                             "deployment", "engine")
+#: helper words the integrator's helper rule catches: AISC's model rule leaves them alone
+HELPER_WORDS_ALONE = ("evaluator_llm", "attacker", "generator", "embedder")
+#: every real field name of the catalogue plugins and reference examples, with the verdicts of both rules
+REAL_FIELD_NAMES = tuple(tuple(line.split()) for line in
+                         (ROOT / "scripts/tests/real_field_names.txt").read_text().splitlines()
+                         if line.strip() and not line.startswith("#"))
+
+
+@pytest.mark.parametrize("field", LAST_ROUND_MODEL_FIELDS)
+def test_a_model_servers_address_deployment_or_file_fails_in_an_adopted_test(field):
+    assert check(declared(config_fields=["rounds", field])) == [("FAIL", m1(field))]
+
+
+@pytest.mark.parametrize("field", ("inference_server_url", "litellm_proxy_url", "sut_url", "azure_deployment",
+                                   "deployment_name", "endpoint_name", "hf_repo_id", "model_checkpoint",
+                                   "onnx_path", "weights_path", "model_dir", "model_version", "target_name",
+                                   "target_system"))
+def test_a_model_servers_address_deployment_or_file_warns_in_a_test_that_has_not_adopted(field):
+    assert check(unadopted(config_fields=["rounds", field])) == [NOTHING, ("WARN", m1(field))]
+
+
+@pytest.mark.parametrize("field", ("llm_server_url", "model_server_host", "azure_deployment", "model_repo",
+                                   "weights_path", "target_name"))
+def test_a_model_servers_address_deployment_or_file_hidden_with_a_default_of_its_own_fails(field):
+    assert check(declared(hidden_config_fields={field: False})) == [("FAIL", m2(field))]
+
+
+@pytest.mark.parametrize("field", ("llm_server_url", "model_server_host", "azure_deployment", "model_repo",
+                                   "weights_path", "target_name"))
+def test_a_model_servers_address_deployment_or_file_hidden_with_an_empty_default_passes(field):
+    assert check(declared(hidden_config_fields={field: True})) == []
+
+
+@pytest.mark.parametrize("field", SERVICE_API_FIELDS)
+def test_a_services_api_address_is_not_a_model_field(field):
+    assert check(declared(config_fields=["rounds", field])) == []
+
+
+@pytest.mark.parametrize("field", GENERIC_LAST_ROUND_FIELDS)
+def test_a_generic_token_address_or_name_is_not_a_model_field(field):
+    assert check(declared(config_fields=["rounds", field])) == []
+
+
+@pytest.mark.parametrize("field", HELPER_WORDS_ALONE)
+def test_a_helper_word_alone_is_left_to_the_integrators_helper_rule(field):
+    assert check(declared(config_fields=["rounds", field])) == []
+
+
+def test_the_false_positive_table_holds_every_real_field_name_once():
+    names = [name for _, name in REAL_FIELD_NAMES]
+    assert len(names) == 396 and len(set(names)) == 396
+    assert {flags for flags, _ in REAL_FIELD_NAMES} <= {"--", "M-", "MH"}
+
+
+@pytest.mark.parametrize("flags, field", REAL_FIELD_NAMES, ids=[name for _, name in REAL_FIELD_NAMES])
+def test_a_real_field_name_is_a_model_field_only_when_it_selects_or_keys_a_model(flags, field):
+    expected = [("FAIL", m1(field))] if flags[0] == "M" else []
+    assert check(declared(config_fields=["rounds", field])) == expected
+
+
+@pytest.mark.parametrize("name", ("api_token", "access_token", "hf_access_token", "deployment", "engine"))
+def test_the_rules_name_the_gaps_they_leave_to_the_integrators_code_review(name):
+    text = LIB.read_text()
+    assert re.search(rf"\b{name}\b", text)
+    assert "code review" in text
+
+
 # the shell wiring: the check's Python, its functions only, with a stubbed engine route
 
 def _load(monkeypatch):
