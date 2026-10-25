@@ -127,9 +127,9 @@ def record_test(pid, name: str, ok: bool, detail: str, result: str | None = None
                      " last_test_detail = %s WHERE name = %s", (ok, detail[:500], name))
 
 
-def descriptor(pid, name: str) -> dict | None:
+def descriptor(pid, name: str, conn=None) -> dict | None:
     """Everything, the key still encrypted (`secret_ciphertext`), plus `deleted_at`; or None."""
-    with connect(pid) as conn:
+    with _on(pid, conn) as conn:
         return conn.execute(f"SELECT {', '.join(PUBLIC)}, secret_ciphertext, deleted_at"
                             " FROM connection.endpoint WHERE name = %s", (name,)).fetchone()
 
@@ -169,15 +169,21 @@ def issue_run_key(pid, name: str, key_hash: str, fingerprint: str, ttl_s: int, p
                             (key_hash, name, fingerprint, ttl_s, not_after, pass_hash)).fetchone()["expires_at"]
 
 
-def live_run_key(pid, name: str, key_hash: str) -> dict | None:
+def _on(pid, conn):
+    """`conn` when the caller holds one open on the project's database (and closes it), else a new one."""
+    from contextlib import nullcontext
+    return nullcontext(conn) if conn is not None else connect(pid)
+
+
+def live_run_key(pid, name: str, key_hash: str, conn=None) -> dict | None:
     """{key_hash, pass_hash} of an unexpired key of this connection, or None; the use is not counted."""
-    with connect(pid) as conn:
+    with _on(pid, conn) as conn:
         return conn.execute("SELECT key_hash, pass_hash FROM connection.run_key"
                             " WHERE key_hash = %s AND name = %s AND expires_at > now()", (key_hash, name)).fetchone()
 
 
-def count_run_key_use(pid, name: str, key_hash: str) -> None:
-    with connect(pid) as conn:
+def count_run_key_use(pid, name: str, key_hash: str, conn=None) -> None:
+    with _on(pid, conn) as conn:
         conn.execute("UPDATE connection.run_key SET uses = uses + 1, last_used_at = now()"
                      " WHERE key_hash = %s AND name = %s", (key_hash, name))
 

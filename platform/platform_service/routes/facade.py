@@ -42,14 +42,15 @@ def _facade_open(pid: str, name: str, request: Request):
     scheme, _, key = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not key.startswith(RUN_KEY_PREFIX) or db.get_project(pid) is None:
         return None, (401, "a run key is needed")
-    run_key = connection_store.live_run_key(pid, name, _key_hash(key.strip()))
-    if run_key is None:
-        return None, (401, "a run key is needed")
-    # a key issued under a run's pass ends with it: revoked (its row deleted then), expired, or gone
-    if run_key["pass_hash"] is not None and not run_passes.is_live(run_key["pass_hash"]):
-        return None, (401, "the run's pass has ended")
-    connection_store.count_run_key_use(pid, name, run_key["key_hash"])
-    row = connection_store.descriptor(pid, name)
+    with connection_store.connect(pid) as conn:          # one connection to the project's database
+        run_key = connection_store.live_run_key(pid, name, _key_hash(key.strip()), conn=conn)
+        if run_key is None:
+            return None, (401, "a run key is needed")
+        # a key issued under a run's pass ends with it: revoked (its row deleted then), expired, or gone
+        if run_key["pass_hash"] is not None and not run_passes.is_live(run_key["pass_hash"]):
+            return None, (401, "the run's pass has ended")
+        connection_store.count_run_key_use(pid, name, run_key["key_hash"], conn=conn)
+        row = connection_store.descriptor(pid, name, conn=conn)
     if row is None or row["deleted_at"] is not None:
         return None, (410, f"connection {name!r} was deleted")
     try:
@@ -78,9 +79,30 @@ def _facade_call(pid, opened: Opened, input, history=None, params=None):
 
 #: the facade calls' own threads: a call blocks up to 3 x its timeout + 4 s on the system under
 #: test, and in the pool every sync route shares (anyio's default, 40 threads) enough of them stalled every
-#: other request, Caddy's forward_auth to /authz/witness among them. A call over the cap waits for a slot.
-FACADE_THREADS_DEFAULT = 16
+#: other request, Caddy's forward_auth to /authz/witness among them. Two caps: PLATFORM_FACADE_THREADS calls
+#: at once across the platform, PLATFORM_FACADE_RUN_CAP at once per run (its pass, or a key issued without
+#: one), so one run's dataset cannot take every thread from another run. A call over a cap waits (its
+#: wait counts against the client's facade timeout); nothing is refused for capacity.
+FACADE_THREADS_DEFAULT = 32
+FACADE_RUN_CAP_DEFAULT = 8
 _FACADE_LIMITER = None
+_RUN_LIMITERS: dict[str, list] = {}      # run id -> [its anyio.CapacityLimiter, calls using it]
+
+
+def _setting(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name) or default)
+    except ValueError:
+        return default
+    return value if value >= 1 else default
+
+
+def facade_threads() -> int:
+    return _setting("PLATFORM_FACADE_THREADS", FACADE_THREADS_DEFAULT)
+
+
+def facade_run_cap() -> int:
+    return min(_setting("PLATFORM_FACADE_RUN_CAP", FACADE_RUN_CAP_DEFAULT), facade_threads())
 
 
 def _facade_limiter():
@@ -88,20 +110,30 @@ def _facade_limiter():
     if _FACADE_LIMITER is None:
         import anyio
 
-        try:
-            size = int(os.environ.get("PLATFORM_FACADE_THREADS") or FACADE_THREADS_DEFAULT)
-        except ValueError:
-            size = FACADE_THREADS_DEFAULT
-        _FACADE_LIMITER = anyio.CapacityLimiter(max(1, size))
+        _FACADE_LIMITER = anyio.CapacityLimiter(facade_threads())
     return _FACADE_LIMITER
 
 
-async def _in_facade_threads(func, *args):
+async def _in_facade_threads(run_id: str, func, *args, **kwargs):
+    """func(*args, **kwargs) in the facade's threads: first a slot of the run (waited for without holding a
+    thread), then one of the pool. The run's limiter goes when its last call ends."""
     import functools
 
+    import anyio
     import anyio.to_thread
 
-    return await anyio.to_thread.run_sync(functools.partial(func, *args), limiter=_facade_limiter())
+    entry = _RUN_LIMITERS.get(run_id)
+    if entry is None:
+        entry = _RUN_LIMITERS[run_id] = [anyio.CapacityLimiter(facade_run_cap()), 0]
+    entry[1] += 1
+    try:
+        async with entry[0]:
+            return await anyio.to_thread.run_sync(functools.partial(func, *args, **kwargs),
+                                                  limiter=_facade_limiter())
+    finally:
+        entry[1] -= 1
+        if entry[1] == 0 and _RUN_LIMITERS.get(run_id) is entry:
+            del _RUN_LIMITERS[run_id]
 
 
 async def _json_body(request: Request):
@@ -144,7 +176,7 @@ async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse
         input, history, params = connection_facade.ask_request(body, opened.descriptor.kind, opened.supports_tools)
     except connection_facade.BadRequest as exc:
         return _internal(400, {"detail": str(exc)})
-    answer, failed = await _in_facade_threads(_facade_call, pid, opened, input, history or None, params)
+    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history or None, params)
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         return _internal(status, out)
@@ -162,7 +194,7 @@ async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONRespo
         input, history = connection_facade.openai_to_core(body or {})
     except connection_facade.BadRequest as exc:
         return _internal(400, connection_facade.openai_error(str(exc)))
-    answer, failed = await _in_facade_threads(_facade_call, pid, opened, input, history or None)
+    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history or None)
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         if status == 400:
@@ -204,7 +236,7 @@ async def facade_a2a_rpc(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32601, f"method not found: {body.get('method')}"))
     except connection_facade.BadRequest as exc:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32602, str(exc)))
-    answer, failed = await _in_facade_threads(_facade_call, pid, opened, input)
+    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input)
     if failed:
         return _internal(200, connection_facade.jsonrpc_error(
             rid, -32603, f"the system under test failed: {connection_facade.error_code(failed)}"))
@@ -257,7 +289,7 @@ async def facade_oip_infer(pid: str, name: str, model: str, request: Request) ->
         return _internal(400, {"error": str(exc)})
     answers = []
     for item in inputs:
-        answer, failed = await _in_facade_threads(_facade_call, pid, opened, item)
+        answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, item)
         if failed:
             return _internal(502, {"error": f"the system under test failed: {connection_facade.error_code(failed)}"})
         answers.append(answer)
