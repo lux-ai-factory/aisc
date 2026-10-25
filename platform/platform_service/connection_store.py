@@ -158,17 +158,31 @@ def rotate(conn: psycopg.Connection, multi) -> tuple[int, int, int]:
 
 
 # run keys
-def issue_run_key(pid, name: str, key_hash: str, fingerprint: str, ttl_s: int):
-    """Store a run key's hash; returns its expiry."""
+def issue_run_key(pid, name: str, key_hash: str, fingerprint: str, ttl_s: int, pass_hash: str | None = None,
+                  not_after=None):
+    """Store a run key's hash, and the hash of the pass it was issued under (None: the connections token);
+    returns its expiry, `ttl_s` from now or `not_after` (the pass's expiry) when that is sooner."""
     with connect(pid) as conn:
-        return conn.execute("INSERT INTO connection.run_key (key_hash, name, fingerprint, expires_at)"
-                            " VALUES (%s, %s, %s, now() + make_interval(secs => %s)) RETURNING expires_at",
-                            (key_hash, name, fingerprint, ttl_s)).fetchone()["expires_at"]
+        return conn.execute("INSERT INTO connection.run_key (key_hash, name, fingerprint, expires_at, pass_hash)"
+                            " VALUES (%s, %s, %s, least(now() + make_interval(secs => %s), %s::timestamptz), %s)"
+                            " RETURNING expires_at",
+                            (key_hash, name, fingerprint, ttl_s, not_after, pass_hash)).fetchone()["expires_at"]
 
 
-def use_run_key(pid, name: str, key_hash: str) -> bool:
-    """Count one use of a live key of this connection; False when it is not one."""
+def live_run_key(pid, name: str, key_hash: str) -> dict | None:
+    """{key_hash, pass_hash} of an unexpired key of this connection, or None; the use is not counted."""
     with connect(pid) as conn:
-        return conn.execute("UPDATE connection.run_key SET uses = uses + 1, last_used_at = now()"
-                            " WHERE key_hash = %s AND name = %s AND expires_at > now() RETURNING key_hash",
-                            (key_hash, name)).fetchone() is not None
+        return conn.execute("SELECT key_hash, pass_hash FROM connection.run_key"
+                            " WHERE key_hash = %s AND name = %s AND expires_at > now()", (key_hash, name)).fetchone()
+
+
+def count_run_key_use(pid, name: str, key_hash: str) -> None:
+    with connect(pid) as conn:
+        conn.execute("UPDATE connection.run_key SET uses = uses + 1, last_used_at = now()"
+                     " WHERE key_hash = %s AND name = %s", (key_hash, name))
+
+
+def revoke_run_keys(pid, pass_hash: str) -> int:
+    """Delete the run keys issued under a pass; how many there were."""
+    with connect(pid) as conn:
+        return conn.execute("DELETE FROM connection.run_key WHERE pass_hash = %s", (pass_hash,)).rowcount

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from platform_service import connection_allowlist, connection_facade, connection_store, db, llm_store
+from platform_service import connection_allowlist, connection_facade, connection_store, db, llm_store, run_passes
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
 from platform_service.routes.connections import (CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, call_descriptor_of,
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 class Opened(NamedTuple):
     """A door opened with a live run key: what to call the system with, and what to scrub from errors."""
     descriptor: object            # aisc_plugin_interface.connections.Descriptor, the key decrypted
+    run_id: str                   # "pass:<pass_hash>", or "key:<key_hash>" for a key issued without a pass
     supports_tools: bool          # the connection carries tools (an OpenAI-compatible one only)
     secrets: list                 # the values never to answer back (secret_values)
 
@@ -41,8 +42,13 @@ def _facade_open(pid: str, name: str, request: Request):
     scheme, _, key = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not key.startswith(RUN_KEY_PREFIX) or db.get_project(pid) is None:
         return None, (401, "a run key is needed")
-    if not connection_store.use_run_key(pid, name, _key_hash(key.strip())):
+    run_key = connection_store.live_run_key(pid, name, _key_hash(key.strip()))
+    if run_key is None:
         return None, (401, "a run key is needed")
+    # a key issued under a run's pass ends with it: revoked (its row deleted then), expired, or gone
+    if run_key["pass_hash"] is not None and not run_passes.is_live(run_key["pass_hash"]):
+        return None, (401, "the run's pass has ended")
+    connection_store.count_run_key_use(pid, name, run_key["key_hash"])
     row = connection_store.descriptor(pid, name)
     if row is None or row["deleted_at"] is not None:
         return None, (410, f"connection {name!r} was deleted")
@@ -50,7 +56,8 @@ def _facade_open(pid: str, name: str, request: Request):
         descriptor = call_descriptor_of(row, pid)
     except (llm_store.SecretsKeyError, llm_store.KeyUnreadable) as exc:
         return None, (503, str(exc))
-    return Opened(descriptor, bool(row.get("supports_tools")), secret_values(descriptor)), None
+    run_id = f"pass:{run_key['pass_hash']}" if run_key["pass_hash"] else f"key:{run_key['key_hash']}"
+    return Opened(descriptor, run_id, bool(row.get("supports_tools")), secret_values(descriptor)), None
 
 
 def _facade_call(pid, opened: Opened, input, history=None, params=None):

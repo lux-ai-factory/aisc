@@ -15,6 +15,7 @@ from aisc_identity.headers import token_from_headers
 from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, ServiceRefused, identify
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+import psycopg
 from psycopg import errors
 from pydantic import BaseModel, ConfigDict, StrictStr
 
@@ -372,10 +373,17 @@ def mint_run_pass(body: dict, request: Request) -> JSONResponse:
 
 @router.delete("/internal/run-passes")
 def revoke_run_pass(request: Request) -> Response:
-    """The worker ends a run's pass when the run ends; an unknown or already ended pass is no error."""
+    """The worker ends a run's pass when the run ends, and with it the run keys issued under it in every
+    project it named; an unknown or already ended pass is no error."""
     if _behind_gateway(request):
         return _internal(404, {"detail": "not here"})
-    run_passes.revoke(request.headers.get(run_passes.HEADER) or "")
+    run_pass = request.headers.get(run_passes.HEADER) or ""
+    for pid in run_passes.revoke(run_pass):
+        # the keys issued under it; one left by a database that fails here is refused at use anyway
+        try:
+            connection_store.revoke_run_keys(pid, run_passes.hash_of(run_pass))
+        except psycopg.Error as exc:
+            logger.warning("run keys of project %s for an ended pass not deleted: %s", pid, exc)
     return Response(status_code=204)
 
 
@@ -606,7 +614,8 @@ def _key_hash(key: str) -> str:
 @router.post("/internal/projects/{pid}/connections/{name}/run-keys")
 def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
     """A key for one evaluation run to reach one connection through the protocol endpoints; only its
-    hash is stored. Guarded like the resolve route. Valid CONNECTIONS_RUN_KEY_TTL_S (12 h)."""
+    hash is stored. Guarded like the resolve route. Valid CONNECTIONS_RUN_KEY_TTL_S (12 h); under a run pass,
+    no longer than the pass, and deleted when the pass is revoked."""
     return _internal_gate(pid, request, "connection", name) or _issue_run_key(
         pid, name, request.headers.get(run_passes.HEADER))
 
@@ -619,7 +628,10 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     fingerprint = _fingerprint_of(descriptor_of(row, pid))
     key = RUN_KEY_PREFIX + secrets.token_hex(32)
     ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
-    expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
+    # under a pass, the key ends with it: never after it, and deleted when the worker revokes it
+    pass_hash = run_passes.hash_of(run_pass) if run_pass is not None else None
+    not_after = run_passes.expires_at(run_pass) if run_pass is not None else None
+    expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl, pass_hash, not_after)
     _record_use(run_pass, pid, row, fingerprint)
     root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
     logger.info("run key issued for connection %s of project %s", name, pid)
