@@ -230,6 +230,13 @@
           <div class="grid">
             <label for="f-headers">Headers (JSON, optional)</label>
             <textarea id="f-headers" placeholder='{"X-Client": "aisc"}'></textarea>
+            <label for="f-secret-header-add-name">Secret headers</label>
+            <div>
+              <div id="f-secret-headers-stored"></div>
+              <div class="fields"><input id="f-secret-header-add-name" type="text" placeholder="X-Token"/>
+                <input id="f-secret-header-add-value" autocomplete="new-password" placeholder="its value"/></div>
+              <p class="help">Sent with every call and stored encrypted, like the key; never shown again.</p>
+            </div>
             <label for="f-secret-header">Key header</label>
             <input id="f-secret-header" type="text" placeholder="Authorization: Bearer {{secret}}"/>
             <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible, A2A and OIP: leave empty for Authorization: Bearer.</p>
@@ -496,7 +503,11 @@
     $('f-refusal').value = c ? jsonText(c.refusal) : '';
     $('f-headers').value = c && c.headers && Object.keys(c.headers).length ? jsonText(c.headers) : '';
     $('f-secret-header').value = c && c.secret_header ? c.secret_header : '';
-    $('advanced').open = !!($('f-headers').value || $('f-secret-header').value);
+    storedSecretHeaders(c && c.secret_headers);
+    $('f-secret-header-add-name').value = '';
+    $('f-secret-header-add-value').type = 'password';
+    $('f-secret-header-add-value').value = '';
+    $('advanced').open = !!($('f-headers').value || $('f-secret-header').value || (c && c.secret_headers && c.secret_headers.length));
     var secretField = $('f-secret');
     secretField.type = 'password';
     secretField.value = '';
@@ -507,6 +518,22 @@
     kindShown();
     placeEditor(tr);
     $('f-base').focus();
+  }
+
+  /** The stored secret headers, by name only (their values never come back), each with a remove box. */
+  function storedSecretHeaders(names) {
+    var box = $('f-secret-headers-stored');
+    while (box.firstChild) box.removeChild(box.firstChild);
+    (names || []).forEach(function (name) {
+      var line = el('label', 'check');
+      var remove = el('input', 'secret-header-remove');
+      remove.type = 'checkbox';
+      remove.dataset.name = name;
+      line.appendChild(document.createTextNode(name + ': stored '));
+      line.appendChild(remove);
+      line.appendChild(document.createTextNode(' remove'));
+      box.appendChild(line);
+    });
   }
 
   /** A connection's name from its label: lower-case letters, digits and hyphens, as the platform takes it. */
@@ -581,6 +608,16 @@
     if ($('f-secret-remove').checked) body.secret = '';
     else if (typed) body.secret = typed;
     secretField.value = '';
+    // secret headers: '' removes a stored one, a name and a value add or replace one; names left out are kept
+    var secretHeaders = {};
+    [].forEach.call(document.querySelectorAll('#editor .secret-header-remove'), function (box) {
+      if (box.checked) secretHeaders[box.dataset.name] = '';
+    });
+    var addName = $('f-secret-header-add-name').value.trim();
+    var addValue = $('f-secret-header-add-value').value;
+    if (addName && addValue) secretHeaders[addName] = addValue;
+    $('f-secret-header-add-value').value = '';
+    if (Object.keys(secretHeaders).length) body.secret_headers = secretHeaders;
     write('PUT', base() + '/' + enc(name), body, msg).then(function (ok) {
       if (ok) closeEditor();
     });

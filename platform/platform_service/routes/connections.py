@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 CONNECTION_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 _SECRET_HEADERS = {"authorization", "proxy-authorization", "cookie", "x-api-key"}
+#: a plain header with a name like these is refused: its value would be stored and shown in the clear
+_CREDENTIAL_LIKE = re.compile(r"(?i)(token|secret|passw|api[-_]?key|auth|session|cookie|signature|credential)")
+MAX_SECRET_HEADERS = 20
+MASK = "***"
 
 
 class ConnectionIn(BaseModel):
@@ -54,6 +58,9 @@ class ConnectionIn(BaseModel):
     timeout_s: int = 60
     protocol_version: StrictStr | None = None
     secret: StrictStr | None = None
+    #: credentials in headers of the connection's own choosing, write-only like `secret`: absent keeps the
+    #: stored set, {name: value} sets that header, {name: ""} removes it, names not mentioned are kept
+    secret_headers: dict[str, StrictStr] | None = None
     #: the assessment target this is the endpoint of ('system' or 'component:<key>'); set once
     target: StrictStr | None = None
 
@@ -86,10 +93,23 @@ def connection_fields(body: ConnectionIn) -> dict:
             raise _invalid_connection(f"headers: {name!r} is not a header name")
         if name.lower() in _SECRET_HEADERS:
             raise _invalid_connection(f"headers: {name} carries a credential; put it in secret_header")
+        if _CREDENTIAL_LIKE.search(name):
+            raise _invalid_connection(f"headers: {name} looks like a credential; mark it secret (secret_headers)")
     if body.secret_header is not None:
         name, sep, value = body.secret_header.partition(":")
         if not sep or not _HEADER_NAME.match(name.strip()) or "{{secret}}" not in value:
             raise _invalid_connection("secret_header: 'Name: ...{{secret}}...'")
+    plain = {h.lower() for h in body.headers}
+    key_header = body.secret_header.partition(":")[0].strip().lower() if body.secret_header else None
+    for name, value in (body.secret_headers or {}).items():
+        if not _HEADER_NAME.match(name):
+            raise _invalid_connection(f"secret_headers: {name!r} is not a header name")
+        if "\r" in value or "\n" in value or len(value) > 4096:
+            raise _invalid_connection(f"secret_headers: {name}: a header value on one line, up to 4096 characters")
+        if name.lower() in plain:
+            raise _invalid_connection(f"secret_headers: {name} is also a plain header")
+        if name.lower() == key_header:
+            raise _invalid_connection(f"secret_headers: {name} is where the key goes (secret_header)")
     if not 1 <= body.timeout_s <= 600:
         raise _invalid_connection("timeout_s: 1 to 600")
     if body.refusal is not None:
@@ -122,6 +142,7 @@ def connection_view(row: dict) -> dict:
         out[k] = row[k].isoformat() if row.get(k) else None
     out["engine_component"] = str(row["engine_component"]) if row.get("engine_component") else None
     out["has_secret"] = bool(row.get("has_secret"))
+    out["secret_headers"] = list(out.pop("secret_header_names", None) or [])
     target = target_store.get(row["pid"], row["target_key"]) if row.get("target_key") and row.get("pid") else None
     out["target"] = {"key": target["key"], "kind": target["kind"], "label": target["label"]} if target else None
     out.pop("target_key", None)
@@ -182,6 +203,11 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
             ciphertext = llm_store.encrypt(body.secret) if body.secret else None
         except llm_store.SecretsKeyError as exc:
             raise secrets_unavailable(exc) from None
+    header_ciphertext = connection_store.KEEP
+    if body.secret_headers:
+        names, header_ciphertext = _merged_secret_headers(pid, name, body.secret_headers)
+        if header_ciphertext is not connection_store.KEEP:
+            fields["secret_header_names"] = names
     before = connection_store.get(pid, name, with_deleted=True)
     if "target" in body.model_fields_set and body.target is not None:
         if not targets.is_key(body.target) or target_store.get(pid, body.target) is None:
@@ -193,7 +219,8 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
             raise HTTPException(status_code=409, detail=f"target: {body.target} already has a connection, {holder}")
         fields["target_key"] = body.target
     try:
-        row = connection_store.save(pid, name, fields, ciphertext=ciphertext, subject=caller.username or caller.subject)
+        row = connection_store.save(pid, name, fields, ciphertext=ciphertext, header_ciphertext=header_ciphertext,
+                                    subject=caller.username or caller.subject)
     except errors.UniqueViolation:
         # A revive keeps its old target_key, which another connection may hold now
         key = fields.get("target_key") or (before or {}).get("target_key")
@@ -206,6 +233,35 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
     if row.get("target_key"):
         _rename_targets(pid, request)
     return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
+
+
+def _stored_secret_headers(row: dict | None) -> dict[str, str]:
+    """The decrypted secret headers of a stored connection; {} without any."""
+    token = (row or {}).get("secret_headers_ciphertext")
+    return json.loads(llm_store.decrypt((row or {}).get("name") or "", token)) if token else {}
+
+
+def _merged_secret_headers(pid: str, name: str, change: dict[str, str]):
+    """(names, ciphertext) of the stored set with `change` applied ("" removes a name), or (names, KEEP)
+    when nothing changes. 503 without the secrets key, 409 for a stored set no key decrypts, 422 over
+    MAX_SECRET_HEADERS."""
+    try:
+        values = _stored_secret_headers(connection_store.descriptor(pid, name))
+        merged = dict(values)
+        for header, value in change.items():
+            if value:
+                merged[header] = value
+            else:
+                merged.pop(header, None)
+        if len(merged) > MAX_SECRET_HEADERS:
+            raise _invalid_connection(f"secret_headers: up to {MAX_SECRET_HEADERS}")
+        if merged == values:
+            return sorted(values), connection_store.KEEP
+        return sorted(merged), (llm_store.encrypt(json.dumps(merged, sort_keys=True)) if merged else None)
+    except llm_store.SecretsKeyError as exc:
+        raise secrets_unavailable(exc) from None
+    except llm_store.KeyUnreadable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
 
 
 def _rename_targets(pid, request: Request) -> None:
@@ -251,6 +307,8 @@ def descriptor_of(row: dict, pid: str | None = None) -> dict:
                                                                        "last_test_ok", "last_test_detail",
                                                                        "target_key")}
     out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
+    # the secret headers by name, their values masked: the fingerprint and the client's copy hold none
+    out["headers"] = {**(out.get("headers") or {}), **{h: MASK for h in out.pop("secret_header_names", None) or []}}
     out["has_secret"] = row.get("secret_ciphertext") is not None
     out["target"] = _target_of(pid, row) if pid else None
     return out
@@ -264,12 +322,19 @@ def call_descriptor_of(row: dict, pid: str | None = None):
 
     out = descriptor_of(row, pid)
     out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
-    return client.Descriptor.from_dict(out)
+    secret_headers = _stored_secret_headers(row)
+    out["headers"] = {**out["headers"], **secret_headers}
+    descriptor = client.Descriptor.from_dict(out)
+    descriptor.secret_header_names = sorted(secret_headers)       # for secret_values
+    return descriptor
 
 
 def secret_values(descriptor) -> list[str]:
-    """The values to scrub from any error text of a call with this descriptor: its key."""
-    return [v for v in (descriptor.secret,) if v]
+    """The values to scrub from any error text of a call with this descriptor: its key and the values of
+    its secret headers."""
+    headers = descriptor.headers or {}
+    values = [descriptor.secret] + [headers.get(h) for h in getattr(descriptor, "secret_header_names", [])]
+    return [v for v in values if v]
 
 
 _PROBE_ERRORS = connection_facade.ERROR_CODES
@@ -310,7 +375,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
             connection_store.record_test(pid, name, True, detail, result="reachable")
             return {"ok": True, "refused": False, "reachable_only": True, "status": exc.status, "detail": detail}
         error = next((code for cls, code in _PROBE_ERRORS if type(exc).__name__ == cls), "error")
-        message = str(exc).replace(descriptor.secret, "***") if descriptor.secret else str(exc)
+        message = connection_facade.scrub(str(exc), secret_values(descriptor))
         connection_store.record_test(pid, name, False, message, result=error)
         return {"ok": False, "error": error, "detail": message}
     if answer.refused:

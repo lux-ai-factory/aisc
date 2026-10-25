@@ -1,9 +1,11 @@
 """Each project's connections to the systems it assesses, in the project's own database (schema
-`connection`). Keys are Fernet tokens made with the same key list as the LLM keys
+`connection`). Two columns hold ciphertext: `secret_ciphertext` (the key) and `secret_headers_ciphertext`
+(the secret headers, one token of a JSON object {name: value}; their names are public, in
+`secret_header_names`). Both are Fernet tokens made with the same key list as the LLM keys
 (llm_store.fernet), and rotated with them (`python -m platform_service.llm_store rotate`).
 
-Only `descriptor` selects the ciphertext, and only the internal resolve route and the Test route
-call it; nothing else ever reads it.
+Only `descriptor` selects the ciphertext. Only routes/connections.call_descriptor_of decrypts it, for the
+protocol doors and the Test button, to call the system; the resolve route answers without it.
 """
 from __future__ import annotations
 
@@ -13,12 +15,12 @@ from psycopg.types.json import Jsonb
 from platform_service import llm_store
 
 KEEP = llm_store.KEEP
-#: every column a response may carry (never secret_ciphertext)
+#: every column a response may carry (never secret_ciphertext nor secret_headers_ciphertext)
 PUBLIC = ("name", "label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
           "response_path", "refusal", "model", "timeout_s", "protocol_version", "engine_component", "updated_at",
-          "updated_by", "last_test_at", "last_test_ok", "last_test_detail", "target_key")
+          "updated_by", "last_test_at", "last_test_ok", "last_test_detail", "target_key", "secret_header_names")
 _SELECT = ", ".join(PUBLIC) + ", secret_ciphertext IS NOT NULL AS has_secret"
-_JSON = ("headers", "body_template", "refusal")
+_JSON = ("headers", "body_template", "refusal", "secret_header_names")
 
 
 def connect(pid) -> psycopg.Connection:
@@ -41,8 +43,9 @@ class TargetSetOnce(ValueError):
     """The connection is already the endpoint of another target: nothing was written."""
 
 
-def save(pid, name: str, fields: dict, *, ciphertext=KEEP, subject: str | None) -> dict:
-    """Insert, update or revive a connection; the key column follows KEEP / None / token.
+def save(pid, name: str, fields: dict, *, ciphertext=KEEP, header_ciphertext=KEEP, subject: str | None) -> dict:
+    """Insert, update or revive a connection; the key column follows KEEP / None / token, and so does
+    the secret headers' column (`header_ciphertext`, with their names in fields["secret_header_names"]).
 
     A connection's target is set once: an update naming another target writes nothing and raises
     TargetSetOnce. The rule is in the upsert itself, so a save that read "no target yet" before
@@ -50,17 +53,23 @@ def save(pid, name: str, fields: dict, *, ciphertext=KEEP, subject: str | None) 
     values = {k: (Jsonb(v) if k in _JSON and v is not None else v) for k, v in fields.items()}
     cols = list(values)
     params = {**values, "name": name, "ciphertext": None if ciphertext is KEEP else ciphertext,
-              "set_key": ciphertext is not KEEP, "subject": subject}
-    insert_cols = ", ".join(["name", *cols, "secret_ciphertext", "updated_by"])
-    insert_vals = ", ".join(["%(name)s", *[f"%({c})s" for c in cols], "%(ciphertext)s", "%(subject)s"])
+              "set_key": ciphertext is not KEEP, "subject": subject,
+              "header_ciphertext": None if header_ciphertext is KEEP else header_ciphertext,
+              "set_headers": header_ciphertext is not KEEP}
+    insert_cols = ", ".join(["name", *cols, "secret_ciphertext", "secret_headers_ciphertext", "updated_by"])
+    insert_vals = ", ".join(["%(name)s", *[f"%({c})s" for c in cols], "%(ciphertext)s", "%(header_ciphertext)s",
+                             "%(subject)s"])
     updates = ", ".join([f"{c} = EXCLUDED.{c}" for c in cols])
     from platform_service.ledger import outbox
 
     with connect(pid) as conn, conn.transaction():
         before = conn.execute(f"SELECT {_SELECT}, deleted_at FROM connection.endpoint WHERE name = %s",
                               (name,)).fetchone()
-        changed = sorted(c for c in fields if before is None or before.get(c) != fields[c]
+        changed = sorted("secret_headers" if c == "secret_header_names" else c
+                         for c in fields if before is None or before.get(c) != fields[c]
                          or before.get("deleted_at") is not None)
+        if header_ciphertext is not KEEP and "secret_headers" not in changed:
+            changed = sorted([*changed, "secret_headers"])           # a value changed, the names did not
         outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
                             details={"changed": changed,
                                      "secret": "kept" if ciphertext is KEEP else ("removed" if ciphertext is None else "set")})
@@ -72,6 +81,8 @@ def save(pid, name: str, fields: dict, *, ciphertext=KEEP, subject: str | None) 
             f" ON CONFLICT (name) DO UPDATE SET {updates},"
             "  secret_ciphertext = CASE WHEN %(set_key)s THEN EXCLUDED.secret_ciphertext"
             "                      ELSE connection.endpoint.secret_ciphertext END,"
+            "  secret_headers_ciphertext = CASE WHEN %(set_headers)s THEN EXCLUDED.secret_headers_ciphertext"
+            "                              ELSE connection.endpoint.secret_headers_ciphertext END,"
             "  updated_at = now(), updated_by = EXCLUDED.updated_by, deleted_at = NULL"
             f"{once} RETURNING {_SELECT}", params).fetchone()
         if row is None:                                   # rolls back the event emitted above
@@ -128,32 +139,39 @@ def record_test(pid, name: str, ok: bool, detail: str, result: str | None = None
 
 
 def descriptor(pid, name: str, conn=None) -> dict | None:
-    """Everything, the key still encrypted (`secret_ciphertext`), plus `deleted_at`; or None."""
+    """Everything, the key and the secret headers still encrypted (`secret_ciphertext`,
+    `secret_headers_ciphertext`), plus `deleted_at`; or None."""
     with _on(pid, conn) as conn:
-        return conn.execute(f"SELECT {', '.join(PUBLIC)}, secret_ciphertext, deleted_at"
+        return conn.execute(f"SELECT {', '.join(PUBLIC)}, secret_ciphertext, secret_headers_ciphertext, deleted_at"
                             " FROM connection.endpoint WHERE name = %s", (name,)).fetchone()
 
 
 def rotate(conn: psycopg.Connection, multi) -> tuple[int, int, int]:
-    """(rotated, unreadable, changed_meanwhile) for one project's connection keys, on an open connection.
+    """(rotated, unreadable, changed_meanwhile) for one project's connection keys and secret header sets,
+    on an open connection; each column of each connection counts once.
 
-    A key saved after the read is written only if it is still the one read: a key saved meanwhile was
+    A token saved after the read is written only if it is still the one read: one saved meanwhile was
     made under the newest key already and is left as it is (counted as changed meanwhile)."""
     if conn.execute("SELECT to_regclass('connection.endpoint')").fetchone()[0] is None:
         return 0, 0, 0
+    columns = ["secret_ciphertext"]
+    if conn.execute("SELECT 1 FROM information_schema.columns WHERE table_schema = 'connection'"
+                    " AND table_name = 'endpoint' AND column_name = 'secret_headers_ciphertext'").fetchone():
+        columns.append("secret_headers_ciphertext")
     rotated = unreadable = meanwhile = 0
-    for name, token in conn.execute("SELECT name, secret_ciphertext FROM connection.endpoint"
-                                    " WHERE secret_ciphertext IS NOT NULL").fetchall():
-        try:
-            fresh = multi.rotate(token.encode()).decode()
-        except llm_store.InvalidToken:
-            unreadable += 1
-            continue
-        if conn.execute("UPDATE connection.endpoint SET secret_ciphertext = %s"
-                        " WHERE name = %s AND secret_ciphertext = %s", (fresh, name, token)).rowcount:
-            rotated += 1
-        else:
-            meanwhile += 1
+    for column in columns:
+        for name, token in conn.execute(f"SELECT name, {column} FROM connection.endpoint"
+                                        f" WHERE {column} IS NOT NULL").fetchall():
+            try:
+                fresh = multi.rotate(token.encode()).decode()
+            except llm_store.InvalidToken:
+                unreadable += 1
+                continue
+            if conn.execute(f"UPDATE connection.endpoint SET {column} = %s"
+                            f" WHERE name = %s AND {column} = %s", (fresh, name, token)).rowcount:
+                rotated += 1
+            else:
+                meanwhile += 1
     return rotated, unreadable, meanwhile
 
 
