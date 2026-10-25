@@ -18,7 +18,8 @@ from fastapi.responses import JSONResponse, Response
 from psycopg import errors
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from platform_service import connection_allowlist, connection_store, db, llm_store, run_passes, target_store, targets
+from platform_service import (connection_allowlist, connection_facade, connection_store, db, llm_store, run_passes,
+                              target_store, targets)
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, admin_project, no_project, role_or_404, secrets_unavailable
 
@@ -270,8 +271,7 @@ def secret_values(descriptor) -> list[str]:
     return [v for v in (descriptor.secret,) if v]
 
 
-_PROBE_ERRORS = (("BlockedAddress", "blocked"), ("EndpointAuthError", "auth"), ("EndpointNotFound", "not_found"),
-                 ("EndpointTimeout", "timeout"), ("EndpointBadResponse", "bad_response"))
+_PROBE_ERRORS = connection_facade.ERROR_CODES
 
 
 def _reached_by_ping(descriptor, sent, exc) -> bool:
