@@ -409,3 +409,90 @@ def test_an_editor_open_on_a_connection_since_removed_closes():
     named = re.search(r"function connectionNamed\(name\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S)
     assert named, "no connectionNamed()"
     assert "connectionsByTarget" in named.group(0) and "unlinked" in named.group(0)
+
+
+# credentials in headers of the connection's own choosing
+
+def advanced_of(html):
+    form = re.search(r'<form id="editor".*?</form>', markup_of(html), re.S).group(0)
+    return re.search(r'<details id="advanced"[^>]*>.*?</details>', form, re.S).group(0)
+
+
+def saved_fields(script):
+    return re.search(r"var SAVED = \[(.*?)\];", script, re.S).group(1)
+
+
+def test_a_header_is_marked_secret_with_a_write_only_value():
+    html = read(PAGE)
+    script, advanced = script_of(html), advanced_of(html)
+    for field in ('id="f-secret-header-add-name"', 'id="f-secret-header-add-value"'):
+        assert advanced.count(field) == 1 and html.count(field) == 1, field
+    assert re.search(r"""\$\('f-secret-header-add-value'\)\.type\s*=\s*'password'""", script)
+    tag = re.search(r'<input\b[^>]*id="f-secret-header-add-value"[^>]*>', advanced).group(0)
+    assert "new-password" in tag, tag
+    assert "secret_headers" in script
+    assert "'secret_headers'" not in saved_fields(script)
+
+
+def test_stored_secret_headers_are_listed_by_name_with_a_remove_box():
+    script = script_of(read(PAGE))
+    assert "c.secret_headers" in script
+    assert "secret-header-remove" in script and "checkbox" in script
+    submit = re.search(r"function submit\(.*?\n  \}\n", script, re.S)
+    assert submit, "no submit()"
+    assert "secret-header-remove" in submit.group(0) and re.search(r"\]\s*=\s*''", submit.group(0)), \
+        "submit does not send '' for a ticked remove box"
+
+
+# tools and log probabilities, for an OpenAI-compatible connection
+
+def classes_around(markup, element_id):
+    """The classes of the element with this id and of every element it is inside."""
+    from html.parser import HTMLParser
+
+    void = {"input", "br", "img", "meta", "link", "hr", "source", "option"}
+
+    class Ancestors(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack, self.found = [], None
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            classes = set((attrs.get("class") or "").split())
+            if attrs.get("id") == element_id and self.found is None:
+                self.found = classes.union(*[c for _, c in self.stack])
+            if tag not in void:
+                self.stack.append((tag, classes))
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    break
+
+    parser = Ancestors()
+    parser.feed(markup)
+    return parser.found or set()
+
+
+def test_tools_and_logprobs_are_openai_only_checkboxes():
+    html = read(PAGE)
+    markup, script = markup_of(html), script_of(html)
+    for field in ("f-tools", "f-logprobs"):
+        tag = re.search(r'<input\b[^>]*id="' + field + r'"[^>]*>', markup)
+        assert tag and 'type="checkbox"' in tag.group(0), field
+        assert "openai" in classes_around(markup, field), f"{field} is not inside an element of class openai"
+    shown = re.search(r"function kindShown\(.*?\n  \}\n", script, re.S).group(0)
+    assert "'#editor .openai'" in shown
+    for flag, box in (("supports_tools", "f-tools"), ("supports_logprobs", "f-logprobs")):
+        assert re.search(r"body\." + flag + r"\s*=\s*kind === 'openai' && \$\('" + box + r"'\)\.checked", script), flag
+        assert f"'{flag}'" in saved_fields(script), flag
+
+
+def test_a_connection_with_tools_says_so():
+    script = script_of(read(PAGE))
+    describe = re.search(r"function describe\(.*?\n  \}\n", script, re.S).group(0)
+    assert "supports_tools" in describe and "', with tools'" in describe
+    try_it = re.search(r"function tryIt\(.*?\n  \}\n", script, re.S).group(0)
+    assert "d.capabilities" in try_it
