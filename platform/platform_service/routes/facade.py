@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from platform_service import connection_allowlist, connection_facade, connection_store, db, llm_store
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
-from platform_service.routes.connections import _PROBE_ERRORS, CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, descriptor_of
+from platform_service.routes.connections import _PROBE_ERRORS, CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, call_descriptor_of
 
 router = APIRouter()
 
@@ -37,9 +37,8 @@ def _facade_open(pid: str, name: str, request: Request):
     row = connection_store.descriptor(pid, name)
     if row is None or row["deleted_at"] is not None:
         return None, (410, f"connection {name!r} was deleted")
-    from aisc_plugin_interface import connections as client
     try:
-        return client.Descriptor.from_dict(descriptor_of(row, pid)), None
+        return call_descriptor_of(row, pid), None
     except (llm_store.SecretsKeyError, llm_store.KeyUnreadable) as exc:
         return None, (503, str(exc))
 

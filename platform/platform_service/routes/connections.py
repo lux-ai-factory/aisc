@@ -242,15 +242,32 @@ def delete_connection(slug: str, name: str, request: Request, caller: Caller = D
 
 
 def descriptor_of(row: dict, pid: str | None = None) -> dict:
-    """What the plugin-side client needs, the key decrypted, and the target it is the endpoint of
-    (part of what the connection is, so of its fingerprint)."""
+    """What anyone the internal routes let in may see of a connection: every setting, whether it has a key
+    (`has_secret`), never the key itself, and the target it is the endpoint of (part of what the
+    connection is, so of its fingerprint). Nothing is decrypted here."""
     out = {k: row.get(k) for k in connection_store.PUBLIC if k not in ("engine_component", "last_test_at",
                                                                        "last_test_ok", "last_test_detail",
                                                                        "target_key")}
     out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
-    out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
+    out["has_secret"] = row.get("secret_ciphertext") is not None
     out["target"] = _target_of(pid, row) if pid else None
     return out
+
+
+def call_descriptor_of(row: dict, pid: str | None = None):
+    """The plugin-interface Descriptor to call the system with, the key decrypted: the one place a key is
+    read back, for the protocol doors and the Test button. Raises llm_store.SecretsKeyError or
+    llm_store.KeyUnreadable."""
+    from aisc_plugin_interface import connections as client
+
+    out = descriptor_of(row, pid)
+    out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
+    return client.Descriptor.from_dict(out)
+
+
+def secret_values(descriptor) -> list[str]:
+    """The values to scrub from any error text of a call with this descriptor: its key."""
+    return [v for v in (descriptor.secret,) if v]
 
 
 _PROBE_ERRORS = (("BlockedAddress", "blocked"), ("EndpointAuthError", "auth"), ("EndpointNotFound", "not_found"),
@@ -278,7 +295,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     if row is None or row["deleted_at"] is not None:
         raise HTTPException(status_code=404, detail=f"no connection {name!r}")
     try:
-        descriptor = client.Descriptor.from_dict(descriptor_of(row, pid))
+        descriptor = call_descriptor_of(row, pid)
     except llm_store.SecretsKeyError as exc:
         raise secrets_unavailable(exc) from None
     except llm_store.KeyUnreadable as exc:
@@ -405,11 +422,12 @@ def issue_target_run_key(pid: str, key: str, request: Request) -> JSONResponse:
 
 @router.get("/internal/projects/{pid}/connections/{name}")
 def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
-    """A connection with its decrypted key, for the plugin-side client of an evaluation run.
+    """A connection's descriptor without its key (`has_secret` says whether it has one), for the
+    plugin-side client of an evaluation run: only the protocol doors decrypt the key, to call the system.
 
     Same guards as the LLM resolve route: not through the gateway (404), closed without
     PLATFORM_CONNECTIONS_TOKEN (503), the token in X-AISC-Service-Token compared in constant time
-    (401). A deleted connection is 410. The key is never logged."""
+    (401). A deleted connection is 410."""
     return _internal_gate(pid, request, "connection", name) or _resolve_connection(
         pid, name, request.headers.get(run_passes.HEADER))
 
@@ -436,12 +454,7 @@ def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSO
         return _internal(404, {"detail": f"no connection {name!r}"})
     if row["deleted_at"] is not None:
         return _internal(410, {"detail": f"connection {name!r} was deleted"})
-    try:
-        out = descriptor_of(row, pid)
-    except llm_store.SecretsKeyError as exc:
-        return _internal(503, {"detail": str(exc)})
-    except llm_store.KeyUnreadable as exc:
-        return _internal(409, {"detail": str(exc)})
+    out = descriptor_of(row, pid)
     fingerprint = _fingerprint_of(out) if run_pass is not None else None
     # the network rule of the project, now: the run's own environment opens nothing
     out.update(connection_allowlist.rule(pid))
@@ -603,12 +616,7 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     row = connection_store.descriptor(pid, name) if CONNECTION_NAME.match(name) else None
     if row is None or row["deleted_at"] is not None:
         return _internal(404, {"detail": f"no connection {name!r}"})
-    try:
-        fingerprint = _fingerprint_of(descriptor_of(row, pid))
-    except llm_store.SecretsKeyError as exc:
-        return _internal(503, {"detail": str(exc)})
-    except llm_store.KeyUnreadable as exc:
-        return _internal(409, {"detail": str(exc)})
+    fingerprint = _fingerprint_of(descriptor_of(row, pid))
     key = RUN_KEY_PREFIX + secrets.token_hex(32)
     ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
     expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl)
