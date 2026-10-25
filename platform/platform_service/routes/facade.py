@@ -1,4 +1,13 @@
-"""The protocol endpoints in front of a connection, and the run keys that open them."""
+"""The protocol endpoints in front of a connection, and the run keys that open them.
+
+Four doors (AISC's own aisc/ask, OpenAI Chat Completions, A2A, the Open Inference Protocol) translate with
+connection_facade and call the system with the plugins' own client. aisc/ask takes an input, a full
+OpenAI-style history and params (template values, or an OpenAI-compatible model's settings, tools among
+them when the connection carries tools) and answers the output, a refusal or the tool calls; a request
+the platform will not send is a 400 with the reason, a failed call a 502 {error, status, detail} with
+every key scrubbed. The OpenAI door carries tools and tool results the same way. A run key is accepted
+only while live and, when issued under a run's pass, while that pass is. Calls run in the facade's own
+threads, capped across the platform and per run (_in_facade_threads)."""
 from __future__ import annotations
 
 import logging
@@ -191,10 +200,12 @@ async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONRespo
         return _internal(err[0], connection_facade.openai_error(err[1], kind))
     body = await _json_body(request)
     try:
-        input, history = connection_facade.openai_to_core(body or {})
+        input, history, params = connection_facade.openai_to_core(body or {}, opened.descriptor.kind,
+                                                                  opened.supports_tools)
     except connection_facade.BadRequest as exc:
         return _internal(400, connection_facade.openai_error(str(exc)))
-    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history or None)
+    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history or None,
+                                              params)
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         if status == 400:

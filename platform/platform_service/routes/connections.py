@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 import psycopg
 from psycopg import errors
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 
 from platform_service import (connection_allowlist, connection_facade, connection_store, db, llm_store, run_passes,
                               target_store, targets)
@@ -61,6 +61,9 @@ class ConnectionIn(BaseModel):
     #: credentials in headers of the connection's own choosing, write-only like `secret`: absent keeps the
     #: stored set, {name: value} sets that header, {name: ""} removes it, names not mentioned are kept
     secret_headers: dict[str, StrictStr] | None = None
+    #: an OpenAI-compatible connection's function calling and log probabilities (a PUT without them: false)
+    supports_tools: StrictBool = False
+    supports_logprobs: StrictBool = False
     #: the assessment target this is the endpoint of ('system' or 'component:<key>'); set once
     target: StrictStr | None = None
 
@@ -129,11 +132,16 @@ def connection_fields(body: ConnectionIn) -> dict:
         raise _invalid_connection("model: the model the endpoint serves")
     if body.protocol_version is not None and (body.kind != "a2a" or body.protocol_version not in ("1.0", "0.3")):
         raise _invalid_connection("protocol_version: 1.0 or 0.3, for an a2a connection")
+    if body.supports_tools and body.kind != "openai":
+        raise _invalid_connection("supports_tools: only an OpenAI-compatible connection carries tools")
+    if body.supports_logprobs and body.kind != "openai":
+        raise _invalid_connection("supports_logprobs: only an OpenAI-compatible connection carries log probabilities")
     return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": method,
             "path": body.path.strip(), "headers": dict(body.headers), "secret_header": body.secret_header,
             "body_template": body.body_template, "response_path": body.response_path,
             "refusal": body.refusal, "model": body.model, "timeout_s": body.timeout_s,
-            "protocol_version": body.protocol_version}
+            "protocol_version": body.protocol_version, "supports_tools": body.supports_tools,
+            "supports_logprobs": body.supports_logprobs}
 
 
 def connection_view(row: dict) -> dict:
@@ -353,7 +361,9 @@ def _reached_by_ping(descriptor, sent, exc) -> bool:
 
 @router.post("/projects/{slug}/connections/{name}/test")
 def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depends(caller_dependency)) -> dict:
-    """One probe, without retries, through the same client the plugins use; the result is stored."""
+    """One probe, without retries, through the same client the plugins use; the result is stored. A
+    connection that says it carries tools or log probabilities gets one more probe for each, and fails as
+    `capability_missing` when one fails."""
     from aisc_plugin_interface import connections as client
 
     pid = admin_connection(slug, caller, name)
@@ -383,13 +393,60 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
         return {"ok": True, "refused": True, "refusal_reason": answer.refusal_reason, "status": answer.status,
                 "latency_ms": answer.latency_ms}
     if isinstance(answer.text, (dict, list)):
-        connection_store.record_test(pid, name, True, json.dumps(answer.text)[:2000])
-        return {"ok": True, "refused": False, "answer": answer.text, "status": answer.status,
-                "latency_ms": answer.latency_ms}
-    text = str(answer.text)
-    connection_store.record_test(pid, name, True, text)
-    return {"ok": True, "refused": False, "answer": text[:500], "status": answer.status,
-            "latency_ms": answer.latency_ms}
+        recorded = json.dumps(answer.text)[:2000]
+        out = {"ok": True, "refused": False, "answer": answer.text, "status": answer.status,
+               "latency_ms": answer.latency_ms}
+    else:
+        recorded = str(answer.text)
+        out = {"ok": True, "refused": False, "answer": recorded[:500], "status": answer.status,
+               "latency_ms": answer.latency_ms}
+    checks = _capability_checks(pid, row, descriptor)
+    if checks:
+        out["capabilities"] = checks
+        failing = next((c for c in checks.values() if not c["ok"]), None)
+        if failing:
+            connection_store.record_test(pid, name, False, failing["detail"], result="capability_missing")
+            return {"ok": False, "error": "capability_missing", "detail": failing["detail"], "capabilities": checks}
+    connection_store.record_test(pid, name, True, recorded)
+    return out
+
+
+#: the function the Test button asks a connection that carries tools to call
+PROBE_TOOL = {"type": "function", "function": {"name": "aisc_probe", "description": "Answers that the endpoint calls tools.",
+                                               "parameters": {"type": "object", "properties": {}}}}
+
+
+def _capability_checks(pid: str, row: dict, descriptor) -> dict:
+    """One more probe per capability the connection says it has, tools before logprobs: {name: {ok, detail}};
+    {} without any."""
+    from aisc_plugin_interface import connections as client
+
+    checks = {}
+    secrets = secret_values(descriptor)
+    if row.get("supports_tools"):
+        try:
+            answer = client.call(descriptor, "Call the function aisc_probe.", None, params={
+                "tools": [PROBE_TOOL], "tool_choice": {"type": "function", "function": {"name": "aisc_probe"}}},
+                waits=(), **connection_allowlist.rule(pid))
+            called = any(isinstance(c, dict) and (c.get("function") or {}).get("name") == "aisc_probe"
+                         for c in answer.tool_calls or [])
+            checks["tools"] = {"ok": True, "detail": "called aisc_probe"} if called else {
+                "ok": False, "detail": "tools: the endpoint answered without calling the function it was asked to call"}
+        except client.EndpointError as exc:
+            checks["tools"] = {"ok": False, "detail": f"tools: {connection_facade.error_code(exc)}: "
+                                                      f"{connection_facade.scrub(str(exc), secrets)}"}
+    if row.get("supports_logprobs"):
+        try:
+            client.call(descriptor, "ping", None, params={"logprobs": True, "top_logprobs": 1}, waits=(),
+                        **connection_allowlist.rule(pid))
+            checks["logprobs"] = {"ok": True,
+                                  "detail": "the endpoint accepted logprobs: true; the log probabilities are not read"}
+        except client.EndpointError as exc:
+            status = getattr(exc, "status", None)
+            checks["logprobs"] = {"ok": False, "detail": (
+                f"logprobs: the endpoint refused logprobs: true ({status})" if status is not None else
+                f"logprobs: {connection_facade.error_code(exc)}: {connection_facade.scrub(str(exc), secrets)}")}
+    return checks
 
 
 def _behind_gateway(request: Request) -> bool:
@@ -700,10 +757,10 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     _record_use(run_pass, pid, row, fingerprint)
     root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
     logger.info("run key issued for connection %s of project %s", name, pid)
-    # What the platform's endpoints carry (connection_facade translates to text and a history): a
-    # plugin that needs more, tool calls or logprobs, refuses the run before it starts.
+    # What the platform's endpoints carry: text and a history, and tools on an OpenAI-compatible connection
+    # that carries them; a plugin that needs more refuses the run before it starts.
     return _internal(201, {"key": key, "expires_at": expires.isoformat(), "connection": name,
-                           "capabilities": ["text", "history"],
+                           "capabilities": connection_facade.capabilities(row["kind"], bool(row.get("supports_tools"))),
                            "target": _target_of(pid, row), "endpoints": {
         "aisc": {"ask_url": f"{root}/aisc/ask"},
         "openai": {"base_url": f"{root}/openai/v1", "model": name},

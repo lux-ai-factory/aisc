@@ -206,6 +206,10 @@
         <input id="f-base" type="url" placeholder="https://system.example.com"/>
         <label class="model" for="f-model">Model</label>
         <input class="model" id="f-model" type="text" placeholder="e.g. gpt-4o-mini, or the served model's name"/>
+        <label class="openai">Carries</label>
+        <div class="openai fields"><label class="check"><input id="f-tools" type="checkbox"/> calls tools (function calling)</label>
+          <label class="check"><input id="f-logprobs" type="checkbox"/> returns log probabilities</label></div>
+        <p class="help openai">Checked by Try with one more call each. A test that needs tools runs only on a connection that calls them.</p>
         <label class="a2a" for="f-version">A2A version and path</label>
         <div class="a2a fields"><select id="f-version"><option value="1.0">1.0</option><option value="0.3">0.3</option></select>
           <input id="f-a2a-path" type="text" placeholder="the agent's JSON-RPC path, e.g. /a2a"/></div>
@@ -411,7 +415,8 @@
 
   // what a connection is, as the platform saves it (its key is not among them: left out, it is kept)
   var SAVED = ['label', 'kind', 'base_url', 'method', 'path', 'headers', 'secret_header', 'body_template',
-               'response_path', 'refusal', 'model', 'timeout_s', 'protocol_version'];
+               'response_path', 'refusal', 'model', 'timeout_s', 'protocol_version', 'supports_tools',
+               'supports_logprobs'];
 
   function savedFields(c) {
     var body = {};
@@ -441,7 +446,12 @@
           if (!d.ok) { say(result, 'Failed (' + d.error + '): ' + (d.detail || ''), true); }
           else if (d.reachable_only) { say(result, 'OK, ' + d.detail); }
           else if (d.refused) { say(result, 'The system refused: ' + (d.refusal_reason || '(no reason given)') + ' (' + d.latency_ms + ' ms)'); }
-          else { say(result, 'What a test gets: ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer)) + ' (' + d.latency_ms + ' ms)'); }
+          else {
+            var checked = '';
+            if (d.capabilities && d.capabilities.tools) checked += '; tools: OK';
+            if (d.capabilities && d.capabilities.logprobs) checked += '; log probabilities: accepted';
+            say(result, 'What a test gets: ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer)) + ' (' + d.latency_ms + ' ms)' + checked);
+          }
           lastTry.textContent = (d.ok ? 'last try OK ' : 'last try failed ') + 'just now';
           lastTry.className = d.ok ? 'ok' : 'bad';
         });
@@ -468,7 +478,7 @@
   function protocolName(kind) { return PROTOCOLS[kind] || kind; }
 
   function describe(c) {
-    if (c.kind === 'openai') return 'OpenAI-compatible, ' + c.model;
+    if (c.kind === 'openai') return 'OpenAI-compatible, ' + c.model + (c.supports_tools ? ', with tools' : '');
     if (c.kind === 'oip') return 'Open Inference Protocol, ' + c.model;
     if (c.kind === 'a2a') return 'A2A agent ' + (c.protocol_version || '1.0') + (c.path ? ', ' + c.path : '');
     return c.method + ' ' + c.path;
@@ -481,6 +491,7 @@
     [].forEach.call(document.querySelectorAll('#editor .rest'), function (n) { n.hidden = kind !== 'rest'; });
     [].forEach.call(document.querySelectorAll('#editor .model'), function (n) { n.hidden = !(kind === 'openai' || kind === 'oip'); });
     [].forEach.call(document.querySelectorAll('#editor .a2a'), function (n) { n.hidden = kind !== 'a2a'; });
+    [].forEach.call(document.querySelectorAll('#editor .openai'), function (n) { n.hidden = kind !== 'openai'; });
   }
 
   /** The editor of target t's connection c (null: a new one), opened under the target's row. */
@@ -494,6 +505,8 @@
     $('f-kind').value = c ? c.kind : 'openai';
     $('f-base').value = c ? c.base_url : '';
     $('f-model').value = c && c.model ? c.model : '';
+    $('f-tools').checked = !!(c && c.supports_tools);
+    $('f-logprobs').checked = !!(c && c.supports_logprobs);
     $('f-version').value = c && c.protocol_version ? c.protocol_version : '1.0';
     $('f-a2a-path').value = c && c.kind === 'a2a' ? c.path : '';
     $('f-method').value = c ? c.method : 'POST';
@@ -587,6 +600,8 @@
     body.headers = headers.value || {};
     var sh = $('f-secret-header').value.trim();
     body.secret_header = sh || null;
+    body.supports_tools = kind === 'openai' && $('f-tools').checked;
+    body.supports_logprobs = kind === 'openai' && $('f-logprobs').checked;
     if (kind === 'openai' || kind === 'oip') {
       body.model = $('f-model').value.trim();
     } else if (kind === 'a2a') {
@@ -641,6 +656,8 @@
       $('f-kind').value = c.kind;
       $('f-base').value = c.base_url || '';
       $('f-model').value = c.model || '';
+      $('f-tools').checked = !!c.supports_tools;
+      $('f-logprobs').checked = !!c.supports_logprobs;
       $('f-version').value = c.protocol_version || '1.0';
       $('f-a2a-path').value = c.kind === 'a2a' ? (c.path || '') : '';
       $('f-method').value = c.method || 'POST';

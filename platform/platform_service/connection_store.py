@@ -18,7 +18,8 @@ KEEP = llm_store.KEEP
 #: every column a response may carry (never secret_ciphertext nor secret_headers_ciphertext)
 PUBLIC = ("name", "label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
           "response_path", "refusal", "model", "timeout_s", "protocol_version", "engine_component", "updated_at",
-          "updated_by", "last_test_at", "last_test_ok", "last_test_detail", "target_key", "secret_header_names")
+          "updated_by", "last_test_at", "last_test_ok", "last_test_detail", "target_key", "secret_header_names",
+          "supports_tools", "supports_logprobs")
 _SELECT = ", ".join(PUBLIC) + ", secret_ciphertext IS NOT NULL AS has_secret"
 _JSON = ("headers", "body_template", "refusal", "secret_header_names")
 
