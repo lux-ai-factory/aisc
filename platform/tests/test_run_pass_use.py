@@ -136,7 +136,11 @@ def test_the_evaluation_plugin_must_be_a_uuid(client, project):
 def test_neither_the_key_nor_the_run_key_is_stored(client, project):
     plugin = str(uuid.uuid4())
     run_pass = mint(client, [f"target:{project['pid']}/system"], plugin).json()["pass"]
-    secret = with_pass(client, run_pass, project, "targets/system/connection").json()["secret"]
+    from platform_service import llm_store
+
+    secret = llm_store.decrypt("system-chat",
+                               connection_store.descriptor(project["pid"], "system-chat")["secret_ciphertext"])
+    assert "secret" not in with_pass(client, run_pass, project, "targets/system/connection").json()
     run_key = with_pass(client, run_pass, project, "targets/system/run-keys", "POST").json()["key"]
     with db.pool().connection() as conn:
         rows = conn.execute("SELECT * FROM core.run_pass_use WHERE evaluation_plugin = %s", (plugin,)).fetchall()

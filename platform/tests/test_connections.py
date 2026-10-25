@@ -249,14 +249,15 @@ def test_the_test_refuses_internal_addresses(client, admin, project, stub, monke
 
 # The internal route the plugin-side client uses
 
-def test_resolve_returns_the_descriptor_with_the_key(client, admin, project, stub):
+def test_resolve_returns_the_descriptor_without_the_key(client, admin, project, stub):
     engine_component(stub, project["pid"])
     key = new_secret()
     put(client, project, "mcas-chat", admin, rest_body(stub, secret=key))
     r = resolve(client, project, "mcas-chat")
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["name"] == "mcas-chat" and d["secret"] == key and d["kind"] == "rest"
+    assert "secret" not in d and d["has_secret"] is True and key not in r.text
+    assert d["name"] == "mcas-chat" and d["kind"] == "rest"
     assert d["body_template"] == {"question": "{{input}}", "history": "{{history}}"} and d["updated_at"]
 
 
