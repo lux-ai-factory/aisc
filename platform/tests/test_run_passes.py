@@ -50,9 +50,28 @@ def project(make_project, client, admin, stub):
     return made_with_endpoints(make_project, client, admin, stub)
 
 
-def mint(client, refs, token=CONNECTIONS_TOKEN, **headers):
-    return client.post("/internal/run-passes", json={"refs": refs},
+def mint(client, refs, project, token=CONNECTIONS_TOKEN, **headers):
+    """A pass for `refs`, asked for the run of `project` (a project dict or a platform pid)."""
+    pid = project["pid"] if isinstance(project, dict) else project
+    return client.post("/internal/run-passes", json={"refs": refs, "project": pid},
                        headers={"X-AISC-Service-Token": token, **headers})
+
+
+def stored_pass(refs, evaluation_plugin=None) -> str:
+    """A pass naming references of several projects, written as one was stored before a pass could name
+    only its run's project: what revoking and recording uses still meet in an upgraded install."""
+    import json
+    import secrets
+
+    from platform_service import run_passes
+
+    grants = sorted({run_passes._grant(ref) for ref in refs})
+    run_pass = run_passes.PREFIX + secrets.token_hex(32)
+    with db.pool().connection() as conn:
+        conn.execute("INSERT INTO core.run_pass (pass_hash, refs, evaluation_plugin, expires_at)"
+                     " VALUES (%s, %s::jsonb, %s, clock_timestamp() + interval '1 hour')",
+                     (run_passes.hash_of(run_pass), json.dumps([list(g) for g in grants]), evaluation_plugin))
+    return run_pass
 
 
 def with_pass(client, run_pass, project, path, method="GET"):
@@ -61,27 +80,28 @@ def with_pass(client, run_pass, project, path, method="GET"):
 
 
 def test_the_worker_mints_a_pass_for_its_runs_references(client, project):
-    r = mint(client, [f"target:{project['pid']}/system"])
+    r = mint(client, [f"target:{project['pid']}/system"], project)
     assert r.status_code == 201, r.text
     assert r.json()["pass"] and r.json()["expires_at"]
 
 
 def test_minting_needs_the_token_and_is_not_behind_the_gateway(client, project):
-    assert mint(client, [f"target:{project['pid']}/system"], token="wrong").status_code == 401
-    assert mint(client, [f"target:{project['pid']}/system"], **{"X-Forwarded-For": "1.2.3.4"}).status_code == 404
+    assert mint(client, [f"target:{project['pid']}/system"], project, token="wrong").status_code == 401
+    assert mint(client, [f"target:{project['pid']}/system"], project, **{"X-Forwarded-For": "1.2.3.4"}).status_code == 404
 
 
 @pytest.mark.parametrize("refs", [[], ["file:x"], ["target:not-a-pid/system"], "target:x/system"])
 def test_a_pass_names_at_least_one_well_formed_reference(client, project, refs):
-    assert mint(client, refs).status_code == 422
+    assert mint(client, refs, project).status_code == 422
 
 
 def test_a_pass_is_not_minted_for_a_project_that_does_not_exist(client, project):
-    assert mint(client, ["target:00000000-0000-4000-8000-0000000000aa/system"]).status_code == 404
+    assert mint(client, ["target:00000000-0000-4000-8000-0000000000aa/system"],
+                "00000000-0000-4000-8000-0000000000aa").status_code == 404
 
 
 def test_the_pass_opens_its_own_target_and_nothing_else_in_the_project(client, project):
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     r = with_pass(client, run_pass, project, "targets/system/connection")
     assert r.status_code == 200 and r.json()["name"] == "system-chat"
     assert with_pass(client, run_pass, project, "targets/system/run-keys", "POST").status_code == 201
@@ -92,7 +112,7 @@ def test_the_pass_opens_its_own_target_and_nothing_else_in_the_project(client, p
 
 
 def test_a_connection_reference_opens_that_connection_by_name(client, project):
-    run_pass = mint(client, [f"connection:{project['pid']}/spare"]).json()["pass"]
+    run_pass = mint(client, [f"connection:{project['pid']}/spare"], project).json()["pass"]
     assert with_pass(client, run_pass, project, "connections/spare").status_code == 200
     assert with_pass(client, run_pass, project, "connections/spare/run-keys", "POST").status_code == 201
     assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 403
@@ -100,21 +120,21 @@ def test_a_connection_reference_opens_that_connection_by_name(client, project):
 
 def test_the_pass_opens_nothing_in_another_project(client, project, make_project, admin, stub):
     other = made_with_endpoints(make_project, client, admin, stub)
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     assert with_pass(client, run_pass, other, "targets/system/connection").status_code == 403
     assert with_pass(client, run_pass, other, "connections/system-chat").status_code == 403
 
 
 def test_an_unknown_or_expired_pass_is_refused(client, project):
     assert with_pass(client, "aisc-rp-nothing", project, "targets/system/connection").status_code == 401
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     with db.pool().connection() as conn:
         conn.execute("UPDATE core.run_pass SET expires_at = now() - interval '1 second'")
     assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 401
 
 
 def test_the_worker_revokes_the_pass_when_the_run_ends(client, project):
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     r = client.delete("/internal/run-passes", headers={"X-AISC-Run-Pass": run_pass})
     assert r.status_code == 204
     assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 401
@@ -122,15 +142,16 @@ def test_the_worker_revokes_the_pass_when_the_run_ends(client, project):
 
 
 def test_only_the_pass_hash_is_kept(client, project):
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     with db.pool().connection() as conn:
         rows = conn.execute("SELECT * FROM core.run_pass").fetchall()
     assert rows and run_pass not in repr(rows)
 
 
 def test_a_pass_cannot_mint_another_pass(client, project):
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
-    r = client.post("/internal/run-passes", json={"refs": [f"target:{project['pid']}/component:{K1}"]},
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
+    r = client.post("/internal/run-passes", json={"refs": [f"target:{project['pid']}/component:{K1}"],
+                                                         "project": project["pid"]},
                     headers={"X-AISC-Run-Pass": run_pass})
     assert r.status_code == 401
 

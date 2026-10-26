@@ -58,12 +58,18 @@ def github(tmp_path, monkeypatch):
 
 
 class FakeIndex:
-    """The index as the publisher sees it: versions per package, and every upload recorded."""
+    """The index as the publisher sees it: versions per package, the wheel it holds for each version
+    (`files`, {(dist, version): bytes}), and every upload recorded."""
 
     def __init__(self):
         self.versions = {}
+        self.files = {}
         self.uploads = []
         self.lock = threading.Lock()
+
+    def wheel_on_index(self, package, version):
+        with self.lock:
+            return self.files.get((_dist(package), version))
 
     def versions_on_index(self, package):
         with self.lock:
@@ -77,6 +83,10 @@ class FakeIndex:
                 if name.endswith(".whl"):
                     dist, version = name.split("-")[:2]
                     self.versions.setdefault(_dist(dist), set()).add(version)
+            for path in paths:
+                if Path(path).name.endswith(".whl"):
+                    dist, version = Path(path).name.split("-")[:2]
+                    self.files[(_dist(dist), version)] = Path(path).read_bytes()
 
 
 def _dist(name):
@@ -86,10 +96,12 @@ def _dist(name):
 
 class FakeBuild:
     """Writes the wheel a real build would name from pyproject.toml (underscores, as wheels do).
-    built_name overrides the name, to stand in for a repo whose build makes another package."""
+    built_name overrides the name, to stand in for a repo whose build makes another package; content
+    is what the wheel holds."""
 
     def __init__(self):
         self.calls = 0
+        self.content = b"wheel"
         self.delay = 0.0
         self.built_name = None
         self.fail = False
@@ -107,7 +119,7 @@ class FakeBuild:
         name = (self.built_name or project["name"]).replace("-", "_")
         with self.lock:
             self.events.append(("build", project["name"]))
-        (Path(outdir) / f"{name}-{project['version']}-py3-none-any.whl").write_bytes(b"wheel")
+        (Path(outdir) / f"{name}-{project['version']}-py3-none-any.whl").write_bytes(self.content)
         if self.link_to:
             # a hostile build: an sdist that is a link to a file it could not read itself
             (Path(outdir) / f"{name}-{project['version']}.tar.gz").symlink_to(self.link_to)
@@ -208,7 +220,7 @@ def start(index, build, workdir):
     def run(publisher=None):
         publisher = publisher or Publisher(
             upload=index.upload, versions_on_index=index.versions_on_index,
-            build=build, workdir=workdir,
+            wheel_on_index=index.wheel_on_index, build=build, workdir=workdir,
         )
         server = make_server(publisher, "127.0.0.1", 0)
         threading.Thread(target=server.serve_forever, daemon=True).start()
