@@ -57,7 +57,9 @@ jobs:
             run: cd apps/report-generator && env -u DATABASE_URL -u PLATFORM_TEST_DATABASE_URL uv run --locked --extra dev pytest -q -p no:cacheprovider tests
     steps:
       - uses: actions/checkout@v4
-      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
       - run: ${{ matrix.run }}
 
@@ -69,7 +71,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: git submodule update --init $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init $PUBLIC_SUBMODULES
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -92,7 +96,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - shell: bash
-        run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+        run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
       # as on Linux, a port test that cannot run fails; but the one that holds port 80 with a Linux container
       - env:
@@ -116,7 +122,9 @@ jobs:
             database: scripts/lib/controls-tests.sh
     steps:
       - uses: actions/checkout@v4
-      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -143,11 +151,14 @@ jobs:
           - apps/controls/services/pdf_renderer
     steps:
       - uses: actions/checkout@v4
-      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
       - working-directory: ${{ matrix.service }}
         run: |
           dev=""
           [ -f requirements-dev.txt ] && dev="--with-requirements requirements-dev.txt"
+          # shellcheck disable=SC2086
           uv run --no-project --python 3.12 --with-requirements requirements.txt $dev \
             --with pytest --with httpx python -m pytest -q -p no:cacheprovider -p no:warnings
