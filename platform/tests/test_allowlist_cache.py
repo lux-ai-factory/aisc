@@ -93,3 +93,21 @@ def test_with_the_cache_off_a_service_address_is_refused_at_once(lookups, monkey
     lookups.table["postgres"] = ["10.9.8.6"]
     denied = connection_allowlist.denied_addresses()
     assert "10.9.8.6" in denied and "10.9.8.7" not in denied
+
+
+CACHE_NAMES = 1024
+
+
+def test_the_cache_holds_at_most_1024_names_dropping_the_oldest_first(lookups):
+    """One name more than the cache holds: the newest 1024 are still kept, the oldest is looked up again."""
+    hosts = [unique_host() for _ in range(CACHE_NAMES + 76)]
+    for host in hosts:
+        lookups.table[host] = ["203.0.113.7"]
+        assert connection_allowlist.resolve(host) == {"203.0.113.7"}
+    lookups.asked.clear()
+    for host in reversed(hosts[-CACHE_NAMES:]):
+        connection_allowlist.resolve(host)
+    assert lookups.asked == [], f"{len(lookups.asked)} of the newest {CACHE_NAMES} names looked up again"
+    connection_allowlist.resolve(hosts[0])
+    assert lookups.count(hosts[0]) == 1, "the oldest name is still kept: the cache grows without a bound"
+
