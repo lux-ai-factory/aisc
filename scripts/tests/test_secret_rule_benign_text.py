@@ -78,6 +78,20 @@ def test_the_ledger_copy_masks_fewer_than_one_line_in_a_hundred(copies, name):
     assert len(held) < LIMIT * len(LINES), (len(held), held[:20])
 
 
+@pytest.mark.parametrize("name", sorted(FILES))
+def test_no_copy_changes_a_single_line_of_the_corpus(copies, name):
+    """The corpus holds no secret, so every rule leaves every line as it is (a bare `Token` or `Basic` rule
+    included)."""
+    module = copies[name]
+    if hasattr(module, "scrub_text"):
+        changed = _changed(lambda line: module.scrub_text(line) != line)
+        assert changed == [], [(line, module.scrub_text(line)) for line in changed[:20]]
+    if hasattr(module, "masked_for_ledger"):
+        assert _changed(lambda line: module.masked_for_ledger({"text": line}) != {"text": line}) == []
+        assert _changed(lambda line: module.holds_plaintext_secret({"text": line})) == []
+    assert _changed(module.SECRET_SHAPE.search) == []
+
+
 @pytest.mark.parametrize("name", ["backend", "eval"])
 def test_the_lines_once_redacted_by_mistake_stay_as_they_are_in_text(copies, name):
     scrub = copies[name].scrub_text

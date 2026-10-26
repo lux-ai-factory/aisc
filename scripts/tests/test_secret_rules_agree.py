@@ -2,7 +2,7 @@
 (aisc_backend/config_secrets.py), the platform (platform_service/ledger/config_secrets.py) and the worker
 (aisc_eval/scrub.py). Each is loaded here by its file path, with no package import, and the three are held equal:
 the same patterns, the same answers on shared inputs, and a shape rule that finds whatever the platform
-registry refuses."""
+registry refuses, a bare `Token` or `Basic` credential included."""
 
 import importlib.util
 import json
@@ -98,12 +98,70 @@ def test_the_backend_and_the_worker_scrub_text_alike(copies, text, known):
 def test_the_shape_rule_finds_whatever_the_registry_refuses(copies):
     registry = load("registry", REGISTRY)
     for module in copies.values():
-        # a Bearer, Basic or Token value counts only when it looks like a credential (16 characters or more);
-        # the text rule finds Basic and Token in an Authorization header
+        # a Bearer, Basic or Token value counts only when it looks like a credential (16 characters or more),
+        # in an Authorization header or on its own
         for value in ["Bearer " + "a" * 16, "sk-" + "a" * 16, "eyJa.b.c", "Authorization: Basic " + "a" * 16,
-                      "Authorization: Token " + "a" * 16]:
+                      "Authorization: Token " + "a" * 16, "Basic " + "a" * 16, "Token " + "a" * 16,
+                      "basic " + "a" * 16, "token " + "a" * 16, "send Token " + "a" * 16 + " now"]:
             assert registry._SECRET.search(value), value
             assert module.SECRET_SHAPE.search(value), value
+
+
+# A bare Token or Basic credential, with no Authorization header in front
+
+#: (text, credential): plain, lowercase and mid-sentence forms, each with a credential-shaped value of 16+ characters
+BARE_CREDENTIALS = [
+    ("Token abcdef0123456789", "abcdef0123456789"),
+    ("Basic dXNlcjpwYXNzd29yZDEyMzQ=", "dXNlcjpwYXNzd29yZDEyMzQ="),
+    ("token abcdef0123456789abcd", "abcdef0123456789abcd"),
+    ("basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==", "QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
+    ("call it with Token abcDEF0123456789xyz and wait", "abcDEF0123456789xyz"),
+    ("send basic QWxhZGRpbjpvcGVuIHNlc2FtZQ== here", "QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
+]
+BARE_IDS = ["token", "basic", "lowercase_token", "lowercase_basic", "token_mid_sentence", "basic_mid_sentence"]
+#: Token and Basic in prose, or before a value too short to be a credential (15 characters)
+BARE_BENIGN = ["Please accept a token of thanks.", "Token abc", "Basic abc", "Basic training starts on Monday.",
+               "Token abcdef012345678"]
+BENIGN_IDS = ["token_in_prose", "short_token", "short_basic", "basic_in_prose", "fifteen_characters"]
+
+
+@pytest.mark.parametrize("name", sorted(FILES))
+@pytest.mark.parametrize("text, credential", BARE_CREDENTIALS, ids=BARE_IDS)
+def test_every_copy_finds_a_bare_token_or_basic_credential(copies, name, text, credential):
+    assert copies[name].SECRET_SHAPE.search(text), (name, text)
+
+
+@pytest.mark.parametrize("name", ["backend", "eval"])
+@pytest.mark.parametrize("text, credential", BARE_CREDENTIALS, ids=BARE_IDS)
+def test_the_text_rule_redacts_a_bare_token_or_basic_credential(copies, name, text, credential):
+    module = copies[name]
+    scrubbed = module.scrub_text(text)
+    assert credential not in scrubbed, (name, scrubbed)
+    assert module.REDACTED in scrubbed, (name, scrubbed)
+    if text.startswith("call it with "):
+        assert scrubbed.startswith("call it with ") and scrubbed.endswith(" and wait"), scrubbed
+    if text.startswith("send "):
+        assert scrubbed.startswith("send ") and scrubbed.endswith(" here"), scrubbed
+
+
+@pytest.mark.parametrize("name", ["backend", "platform"])
+@pytest.mark.parametrize("text, credential", BARE_CREDENTIALS, ids=BARE_IDS)
+def test_the_ledger_copy_hides_a_bare_token_or_basic_credential(copies, name, text, credential):
+    module = copies[name]
+    assert module.masked_for_ledger({"text": text}) == {"text": module.SECRET_SET}
+    assert module.plaintext_secret_paths({"text": text}) == ["text"]
+
+
+@pytest.mark.parametrize("name", sorted(FILES))
+@pytest.mark.parametrize("text", BARE_BENIGN, ids=BENIGN_IDS)
+def test_token_or_basic_in_prose_or_before_a_short_value_is_left_alone(copies, name, text):
+    module = copies[name]
+    assert not module.SECRET_SHAPE.search(text), (name, text)
+    if hasattr(module, "scrub_text"):
+        assert module.scrub_text(text) == text
+    if hasattr(module, "masked_for_ledger"):
+        assert module.masked_for_ledger({"text": text}) == {"text": text}
+        assert module.plaintext_secret_paths({"text": text}) == []
 
 
 def test_the_backend_and_the_worker_have_the_same_assignment_rule(copies):
