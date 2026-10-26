@@ -98,8 +98,10 @@ def test_the_backend_and_the_worker_scrub_text_alike(copies, text, known):
 def test_the_shape_rule_finds_whatever_the_registry_refuses(copies):
     registry = load("registry", REGISTRY)
     for module in copies.values():
-        # a Bearer value counts only when it looks like a credential (16 characters or more)
-        for value in ["Bearer " + "a" * 16, "sk-" + "a" * 16, "eyJa.b.c"]:
+        # a Bearer, Basic or Token value counts only when it looks like a credential (16 characters or more);
+        # the text rule finds Basic and Token in an Authorization header
+        for value in ["Bearer " + "a" * 16, "sk-" + "a" * 16, "eyJa.b.c", "Authorization: Basic " + "a" * 16,
+                      "Authorization: Token " + "a" * 16]:
             assert registry._SECRET.search(value), value
             assert module.SECRET_SHAPE.search(value), value
 
