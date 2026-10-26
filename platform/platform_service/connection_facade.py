@@ -59,7 +59,7 @@ def _check_tools(params: dict) -> None:
         for i, tool in enumerate(tools):
             function = tool.get("function") if isinstance(tool, dict) else None
             if (not isinstance(tool, dict) or tool.get("type") != "function" or not isinstance(function, dict)
-                    or not isinstance(function.get("name"), str) or not _TOOL_NAME.match(function["name"])):
+                    or not isinstance(function.get("name"), str) or not _TOOL_NAME.fullmatch(function["name"])):
                 raise BadRequest(f"params: tools[{i}] needs type 'function' and a function with a name (letters,"
                                  " digits, _ and -, up to 64)")
             if "parameters" in function and not isinstance(function["parameters"], dict):
@@ -87,7 +87,7 @@ def check_params(kind: str, supports_tools: bool, params: dict) -> dict:
     if len(params) > MAX_PARAMS:
         raise BadRequest(f"params: {len(params)} parameters, more than {MAX_PARAMS}")
     for key in params:
-        if not isinstance(key, str) or not PARAM_NAME.match(key):
+        if not isinstance(key, str) or not PARAM_NAME.fullmatch(key):
             raise BadRequest(f"params: {key!r} is not a parameter name")
     if any(k in params for k in TOOL_PARAMS):
         if kind != "openai":

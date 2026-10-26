@@ -46,7 +46,7 @@ def _facade_open(pid: str, name: str, request: Request):
     """(Opened, None) for a live key of this connection, or (None, (status, message))."""
     if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
         return None, (404, "not here")
-    if not looks_like_pid(pid) or not CONNECTION_NAME.match(name):
+    if not looks_like_pid(pid) or not CONNECTION_NAME.fullmatch(name):
         return None, (404, "no such connection")
     scheme, _, key = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not key.startswith(RUN_KEY_PREFIX) or db.get_project(pid) is None:

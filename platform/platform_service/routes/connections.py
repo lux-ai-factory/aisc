@@ -92,7 +92,7 @@ def connection_fields(body: ConnectionIn) -> dict:
     if method not in ("GET", "POST", "PUT"):
         raise _invalid_connection("method: GET, POST or PUT")
     for name in body.headers:
-        if not _HEADER_NAME.match(name):
+        if not _HEADER_NAME.fullmatch(name):
             raise _invalid_connection(f"headers: {name!r} is not a header name")
         if name.lower() in _SECRET_HEADERS:
             raise _invalid_connection(f"headers: {name} carries a credential; put it in secret_header")
@@ -100,12 +100,12 @@ def connection_fields(body: ConnectionIn) -> dict:
             raise _invalid_connection(f"headers: {name} looks like a credential; mark it secret (secret_headers)")
     if body.secret_header is not None:
         name, sep, value = body.secret_header.partition(":")
-        if not sep or not _HEADER_NAME.match(name.strip()) or "{{secret}}" not in value:
+        if not sep or not _HEADER_NAME.fullmatch(name.strip()) or "{{secret}}" not in value:
             raise _invalid_connection("secret_header: 'Name: ...{{secret}}...'")
     plain = {h.lower() for h in body.headers}
     key_header = body.secret_header.partition(":")[0].strip().lower() if body.secret_header else None
     for name, value in (body.secret_headers or {}).items():
-        if not _HEADER_NAME.match(name):
+        if not _HEADER_NAME.fullmatch(name):
             raise _invalid_connection(f"secret_headers: {name!r} is not a header name")
         if "\r" in value or "\n" in value or len(value) > 4096:
             raise _invalid_connection(f"secret_headers: {name}: a header value on one line, up to 4096 characters")
@@ -159,7 +159,7 @@ def connection_view(row: dict) -> dict:
 
 def admin_connection(slug: str, caller: Caller, name: str) -> str:
     pid = admin_project(slug, caller)["pid"]
-    if not CONNECTION_NAME.match(name):
+    if not CONNECTION_NAME.fullmatch(name):
         raise HTTPException(status_code=422, detail="name: lower-case letters, digits and hyphens, up to 63")
     return pid
 
@@ -577,7 +577,7 @@ def _record_use(run_pass: str | None, pid: str, row: dict, fingerprint: str) -> 
 
 def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
     """resolve_connection past the gate, for a caller that has run it; a use is recorded under `run_pass`."""
-    if not CONNECTION_NAME.match(name):
+    if not CONNECTION_NAME.fullmatch(name):
         return _internal(404, {"detail": f"no connection {name!r}"})
     row = connection_store.descriptor(pid, name)
     if row is None:
@@ -744,7 +744,7 @@ def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
 
 def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
     """issue_run_key past the gate, for a caller that has run it; a use is recorded under `run_pass`."""
-    row = connection_store.descriptor(pid, name) if CONNECTION_NAME.match(name) else None
+    row = connection_store.descriptor(pid, name) if CONNECTION_NAME.fullmatch(name) else None
     if row is None or row["deleted_at"] is not None:
         return _internal(404, {"detail": f"no connection {name!r}"})
     fingerprint = _fingerprint_of(descriptor_of(row, pid))
