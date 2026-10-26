@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Old plaintext plugin secrets out of the engine's stores and the platform's ledger copies.
 #
-#   scripts/clean-old-secrets.sh [--project PID]...                     dry run (the default): counts only
-#   scripts/clean-old-secrets.sh --apply --backup-dir DIR [--keep-backup] [--project PID]... [--reason TEXT]
+#   scripts/clean-old-secrets.sh [--scrub-config-text] [--project PID]...   dry run (the default): counts only
+#   scripts/clean-old-secrets.sh --apply --backup-dir DIR [--keep-backup] [--scrub-config-text] [--project PID]... [--reason TEXT]
 #   scripts/clean-old-secrets.sh --backup-only --backup-dir DIR [--project PID]...
 #   scripts/clean-old-secrets.sh --delete-backup FOLDER
 #
 # The dry run prints what each side would change and the keys to rotate (by plugin and field, never a value).
+# Free text in a stored plugin configuration (a prompt) that may hold a key is not changed: its fields are listed
+# under "Review these fields", apart from the keys to rotate. --scrub-config-text has the engine scrub them too
+# (they are then counted, changed and listed with the keys to rotate).
 # --apply: refuses without a backup folder outside the repository and a passphrase; stops with "nothing to
 # clean" when the counts are zero; checks the free disk; writes an encrypted backup of the tables it changes
 # (one file per database, AES-256-CBC, PBKDF2 600000 iterations); cleans the engine (manage.py
@@ -43,12 +46,14 @@ KEEP=0
 DELETE_FOLDER=""
 REASON=""
 PROJECT_ARGS=()
+ENGINE_FLAGS=()
 PIDS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) MODE=apply ;;
     --backup-only) MODE=backup ;;
     --keep-backup) KEEP=1 ;;
+    --scrub-config-text) ENGINE_FLAGS+=(--scrub-config-text) ;;
     --backup-dir) [ $# -ge 2 ] || usage; BACKUP_DIR=$2; shift ;;
     --project) [ $# -ge 2 ] || usage; PROJECT_ARGS+=(--project "$2"); PIDS+=("$2"); shift ;;
     --reason) [ $# -ge 2 ] || usage; REASON=$2; shift ;;
@@ -83,7 +88,7 @@ PROJECT_TABLES="engine.aisc_backend_ledgeroutbox engine.aisc_backend_pluginconfi
 PLATFORM_TABLES="core.outbox ledger.content"
 
 engine() { # count|apply
-  "${ENGINE_CMD[@]}" "$1" ${PROJECT_ARGS[@]+"${PROJECT_ARGS[@]}"}
+  "${ENGINE_CMD[@]}" "$1" ${ENGINE_FLAGS[@]+"${ENGINE_FLAGS[@]}"} ${PROJECT_ARGS[@]+"${PROJECT_ARGS[@]}"}
 }
 
 platform() { # count|apply
@@ -120,6 +125,11 @@ print_rotate() { # text...
   lines=$(printf '%s\n' "$@" | grep ': rotate ' || true)
   if [ -n "$lines" ]; then
     echo "Rotate these keys, they were stored in clear:"
+    printf '%s\n' "$lines"
+  fi
+  lines=$(printf '%s\n' "$@" | grep ': review ' || true)
+  if [ -n "$lines" ]; then
+    echo "Review these fields (text that may contain a key; not changed):"
     printf '%s\n' "$lines"
   fi
 }
