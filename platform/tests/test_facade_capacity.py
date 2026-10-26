@@ -64,7 +64,8 @@ def rest(client, admin, project, stub, name, path):  # noqa: F811
 
 def run_key(client, project, name):
     """A run: its own pass naming the connection, and a run key issued under it."""
-    run_pass = client.post("/internal/run-passes", json={"refs": [f"connection:{project['pid']}/{name}"]},
+    run_pass = client.post("/internal/run-passes", json={"refs": [f"connection:{project['pid']}/{name}"],
+                                                             "project": project["pid"]},
                            headers={"X-AISC-Service-Token": CONNECTIONS_TOKEN}).json()["pass"]
     r = client.post(f"/internal/projects/{project['pid']}/connections/{name}/run-keys",
                     headers={"X-AISC-Run-Pass": run_pass})

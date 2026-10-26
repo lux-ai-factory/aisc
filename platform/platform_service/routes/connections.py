@@ -483,8 +483,9 @@ def _internal_gate(pid: str, request: Request, kind: str = "", name: str = "") -
 
 @router.post("/internal/run-passes")
 def mint_run_pass(body: dict, request: Request) -> JSONResponse:
-    """A pass for one plugin run, naming the run's target and connection references; the worker asks for
-    it with the stack's connections token and hands it to the plugin in place of that token."""
+    """A pass for one plugin run, naming the run's target and connection references, all of the run's own
+    project (``project``, its platform pid); the worker asks for it with the stack's connections token and
+    hands it to the plugin in place of that token."""
     if _behind_gateway(request):
         return _internal(404, {"detail": "not here"})
     try:
@@ -493,7 +494,8 @@ def mint_run_pass(body: dict, request: Request) -> JSONResponse:
         return _internal(refused.status, {"detail": refused.detail})
     try:
         body = body if isinstance(body, dict) else {}
-        run_pass, expires = run_passes.mint(body.get("refs"), evaluation_plugin=body.get("evaluation_plugin"))
+        run_pass, expires = run_passes.mint(body.get("refs"), evaluation_plugin=body.get("evaluation_plugin"),
+                                            project=body.get("project"))
     except run_passes.Refused as refused:
         return _internal(refused.status, {"detail": refused.detail})
     return _internal(201, {"pass": run_pass, "expires_at": expires.isoformat()})

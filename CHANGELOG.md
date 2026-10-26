@@ -2,6 +2,31 @@
 
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass
 
+### Upgrading an existing install
+- Plugins on a plugin interface below 0.4.0 that call a connected target directly no longer reach it: the resolve
+  route answers without the key. Every plugin must take interface 0.4.0.
+- New secret `PLATFORM_ENGINE_TOKEN`: `uv run scripts/aisc.py start` adds it; a bare `docker compose up` fails
+  until `uv run scripts/aisc.py secrets` is run.
+- Migrations applied at the next start: platform `0013_run_pass_use` and `0014_ledger_content_redaction`; every
+  project database `0022_run_key_pass`, `0023_connection_secret_headers` and `0024_connection_capabilities`; the
+  engine `0024_drop_stored_langbite_judge_keys`, which now changes nothing: the LangBiTe judge fields are removed
+  by the cleanup (below). An install that already ran the earlier 0024 has lost those fields with no backup:
+  rotate its LangBiTe judge keys.
+- Plugin configuration keys: a save keeps each key as a project secret; a stored configuration with a key in
+  clear cannot be restored (409); saving it again moves its key into a project secret; an adopted plugin refuses
+  a key field (422).
+- Run the cleanup dry run `scripts/clean-old-secrets.sh` (see `docs/runbooks/clean-old-secrets.md`), then rotate
+  every key it lists, then run it with `--apply`. It also retires the LangBiTe `judge_api_key` and `judge_model`
+  fields (the judge is a helper model now), listed as `retired` lines.
+- Engine component names change from "Target · ..." to "AI card · ..." (renamed in place).
+- The eval worker no longer passes `AISC_TARGET_API_KEY`, `OPENAI_API_KEY` or `API_KEY_OPENAI` from its own
+  environment to plugins.
+- A run pass names only the evaluation's own project; a component naming another project's target or connection
+  is refused (400).
+- The plugin publisher replaces a published version whose content changed; the vendored plugin-manager is
+  `0.3.0+aisc.1`.
+- The eval image carries Node 22.22.0 and promptfoo 0.125.1.
+
 ### Changes
 - The internal resolve routes answer a connection's descriptor without its key (`has_secret` says whether it has
   one), under a run pass and under the connections token alike; only the protocol doors and the Test button
@@ -35,6 +60,39 @@
 - The allowlist keeps each name's lookup for `PLATFORM_ALLOWLIST_CACHE_S` seconds (default 30, 0 turns it off),
   so a door call no longer resolves every service name of the stack. Check:
   `scripts/test-platform.sh tests/test_allowlist_cache.py`.
+
+- A run pass names only the evaluation's own project: the worker sends the run's platform project with every
+  mint, and the platform refuses a reference of another project (403) or a mint without a project (422). The
+  engine refuses a component whose value names another project's target or connection, or a malformed one (400).
+  Check: `scripts/test-platform.sh tests/test_run_pass_own_project.py` and
+  `scripts/lib/engine-tests.sh aisc_backend.tests.test_component_reference_project`.
+- StrongREJECT and LangBiTe never record a failed or empty run as a score: a failed call, an empty answer, a
+  missing attack or score fails the run with its reason (step, exception type and HTTP status only) when more than
+  a tenth of the prompts or cases is unanswered, or none is answered; otherwise the answered ones are scored and an
+  `Unanswered prompts` measure counts the rest. LangBiTe refuses a configuration that matches no prompt. No
+  placeholder 0.0 measure is written any more. Check: each plugin's `tests/` (`test_failed_runs.py`).
+- The plugin publisher builds on every publish and uploads when the version is missing from the index or its wheel
+  content (members by hash) changed, for plugins and the interface alike; the answer says `replaced`. The vendored
+  plugin-manager is `0.3.0+aisc.1`, upstream's 0.3.0 plus this checkout's commits. Check:
+  `cd infra/plugin-publisher && uv run --with pytest pytest -q` and `scripts/tests/test_plugin_interface_pins.py`.
+- The eval worker hands plugins none of its own model keys (`AISC_TARGET_API_KEY`, `OPENAI_API_KEY`,
+  `API_KEY_OPENAI`); the model addresses still pass. Check: `apps/eval` `tests/test_plugin_environment.py`.
+- The public evaluation routes (`GET /api/v1/evaluations/{pid}`, `GET /api/v1/projects/{pid}/evaluations`) answer
+  each plugin's configuration masked; the worker's internal route keeps the stored one. Check:
+  `scripts/lib/engine-tests.sh aisc_backend.tests.test_evaluation_config_masked`.
+- Installing or refreshing a package whose plugin is configured answers 200 with the configuration masked (it
+  failed with 500). Check: `scripts/lib/engine-tests.sh aisc_backend.tests.test_plugin_install_refresh_configured`.
+- Saving over a stored configuration whose key is still in clear, with the key field left empty, keeps that key
+  as a project secret instead of losing it. Check:
+  `scripts/lib/engine-tests.sh aisc_backend.tests.test_old_key_kept_on_save`.
+- The worker uploads a plugin's files without the values it handed the plugin (project secrets, the run pass,
+  secret-named configuration values), replaced byte for byte in each file and its name. A compressed file keeps
+  what its compression hides. Check: `apps/eval` `tests/test_scrubbed_artifacts.py`.
+- The eval worker image carries Node 22.22.0 and promptfoo 0.125.1 for plugins. Check:
+  `scripts/tests/test_eval_image_promptfoo.py` (`AISC_CHECK_EVAL_IMAGE=1` builds the image).
+- Engine migration 0024 changes nothing; `manage.py clean_old_secrets` retires LangBiTe's `judge_api_key` and
+  `judge_model` behind the cleanup's backup and dry run, printing `retired` lines after the keys to rotate.
+  Check: `scripts/lib/engine-tests.sh aisc_backend.tests.test_langbite_judge_keys`.
 
 ## 2026-10-23: plugins are fetched on install
 
