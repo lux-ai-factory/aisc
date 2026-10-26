@@ -90,7 +90,7 @@ QUAL_REF=e112001            # qualification before the card-versions migration
 PI_REF=0c24b52              # plugin-interface 0.4.0: upstream 0.3.0 merged, optional card access, value output, rejected rows counted, asks through the platform facade (hardened), tool calls; 408 and 429 stop the run; an unreadable ask URL is refused; every secret header value and its encoded forms scrubbed before the cut
 # G4 checks this checkout of plugin-interface; overridable only so a test can point it at a moved or dirty copy
 PI_DIR=${GUARD_PI_DIR:-$ROOT/shared/plugin-interface}
-PM_REF=315e98a              # plugin-manager: the configured plugin folder wins and local plugins in worktrees are followed, on its maintainers' feat/dev-catalogue-staging line, pinning the plugin interface 0.4.0, with its CI workflow
+PM_REF=0bfb29b              # plugin-manager: the configured plugin folder wins and local plugins in worktrees are followed, on its maintainers' feat/dev-catalogue-staging line, pinning the plugin interface 0.4.0, with its CI workflow
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679
