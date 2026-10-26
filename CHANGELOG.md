@@ -64,17 +64,17 @@
 - The allowlist keeps each name's lookup for `PLATFORM_ALLOWLIST_CACHE_S` seconds (default 30, 0 turns it off),
   so a door call no longer resolves every service name of the stack. Check:
   `scripts/test-platform.sh tests/test_allowlist_cache.py`.
-
 - A run pass names only the evaluation's own project: the worker sends the run's platform project with every
   mint, and the platform refuses a reference of another project (403) or a mint without a project (422). The
   engine refuses a component whose value names another project's target or connection, or a malformed one (400).
   Check: `scripts/test-platform.sh tests/test_run_pass_own_project.py` and
   `scripts/lib/engine-tests.sh aisc_backend.tests.test_component_reference_project`.
-- StrongREJECT and LangBiTe never record a failed or empty run as a score: a failed call, an empty answer, a
-  missing attack or score fails the run with its reason (step, exception type and HTTP status only) when more than
-  a tenth of the prompts or cases is unanswered, or none is answered; otherwise the answered ones are scored and an
-  `Unanswered prompts` measure counts the rest. LangBiTe refuses a configuration that matches no prompt. No
-  placeholder 0.0 measure is written any more. Check: each plugin's `tests/` (`test_failed_runs.py`).
+- StrongREJECT and LangBiTe never record a failed or empty run as a score: the run fails with its reason (step,
+  exception type and HTTP status only). StrongREJECT fails on any missing attack, whatever the share, and when the
+  evaluator returns no score at all. Both fail when more than a tenth of the prompts or cases is unanswered (a
+  failed call or an empty answer) or, for StrongREJECT, unanswered or unscored, and when none is answered;
+  otherwise the answered ones are scored and an `Unanswered prompts` measure counts the rest. LangBiTe refuses a
+  configuration that matches no prompt. No placeholder 0.0 measure is written any more. Check: each plugin's `tests/` (`test_failed_runs.py`).
 - The plugin publisher builds on every publish and uploads when the version is missing from the index or its wheel
   content (members by hash) changed, for plugins and the interface alike; the answer says `replaced`. The vendored
   plugin-manager is `0.3.0+aisc.1`, upstream's 0.3.0 plus this checkout's commits. Check:
