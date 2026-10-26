@@ -5,10 +5,16 @@ Before plugin configuration secrets were masked at save, they were stored in cle
 | Where | Database | What the cleanup does |
 |---|---|---|
 | `engine.aisc_backend_ledgeroutbox` (configuration events) | each project database | masks the config as a ledger copy |
-| `engine.aisc_backend_pluginconfig` (stored configurations) | each project database | drops the secret fields (the form shows them empty) |
+| `engine.aisc_backend_pluginconfig` (stored configurations) | each project database | drops the secret fields (the form shows them empty); a key inside longer text, such as a prompt, is redacted in place |
 | `engine.aisc_backend_evaluationplugin.error_message` (failure text) | each project database | redacts key shapes and `password=...` values |
 | `core.outbox` (the platform's copy of the events) | `platform` | masks the config as a ledger copy |
 | `ledger.content` (frozen contents) | `platform` | removes the content, marks the row redacted, and appends a `ledger.content.redacted` entry naming it to the project's log |
+
+A secret is found by its field name and by its shape: provider key prefixes, `Authorization:` headers, the
+`user:password` of a URL, PEM private keys, `password=...` style assignments (URL-encoded too). A dict or list
+under a secret name (`api_keys: {openai: ...}`) counts as one secret. A secret field of a stored configuration
+is dropped, never replaced by a placeholder the plugin would run with. Not caught: base64-encoded keys and
+keys split across lines.
 
 No migration rewrites these rows: the cleanup changes stored data, so it runs only on an operator's word,
 through `scripts/clean-old-secrets.sh`. New events are masked when they are saved, and an older undelivered
@@ -28,10 +34,31 @@ Removing the copies does not make an exposed key safe. Every key the dry run lis
 2. **Dry run.** `scripts/clean-old-secrets.sh` (add `--project PID` to narrow it). It prints, per project
    database and per project, what would change, and the keys to rotate by plugin and field
    (`rotate plugin=... field=...`, `rotate item=... field=...`), never a value. Note the rotation list.
-   Read the fields the engine would drop from stored configurations: a field that is not a secret (a long
-   column name under a name ending in `key`, say) would be dropped too. If one is listed, stop and decide
-   before going on.
-3. **Backup, apply, verify.** In a shell where the passphrase is set (16 characters or more, kept outside
+   Read the fields the engine lists for stored configurations (`configs=` lines): each is either dropped or,
+   for a field whose name is not a secret's (a prompt), redacted in place. A field that is not a secret (a
+   long column name under a name ending in `key`, say) would be dropped too. If one is listed, stop and
+   decide before going on.
+3. **First live run only: check what the tests could not.** The tests ran the script with stand-in commands
+   and the platform's in-memory ledger. On the live stack, check before any `--apply`:
+   - the default commands work: the dry run of step 2 used them as they are
+     (`docker exec <stack>-aisc-backend-ledger uv run manage.py clean_old_secrets`,
+     `docker exec <stack>-platform python -m platform_service.ledger.secret_cleanup`, names from
+     `scripts/lib/stack-name.sh`). Both sections printed their lines and the script exited 0; a
+     `failed project_...` line or a missing section means a command does not work: stop and report.
+   - the immudb export checks: pick one project the dry run lists with `rows_to_redact` above 0, export its
+     log into a private file outside the repository, check it, and shred the file (it holds the project's
+     content keys):
+
+     ```
+     umask 077; mkdir -p ~/aisc-secret-backups; f=~/aisc-secret-backups/check-$PID.jsonl
+     docker exec <stack>-platform python -m platform_service.ledger.secret_cleanup export $PID > "$f"
+     python3 scripts/verify-ledger-export.py --public-key immudb-signing.pub --project $PID "$f"
+     shred -u "$f"
+     ```
+
+     The ok line must say `format immudb, signed; frozen contents checked`. Anything else: stop and report;
+     the script's own verification (step 4) relies on this check.
+4. **Backup, apply, verify.** In a shell where the passphrase is set (16 characters or more, kept outside
    the repository and never pasted into a chat or a ticket):
 
    ```
@@ -48,15 +75,19 @@ Removing the copies does not make an exposed key safe. Every key the dry run lis
 
    Exit codes: 0 done; 1 verification failed (backup kept); 2 refused (no folder, folder inside the
    repository, passphrase missing or short); 3 not enough disk; 4 backup failed (nothing changed); 5 a
-   clean step failed (backup kept). Anything but 0: stop and report with the printed lines.
-4. **Run it again.** `scripts/clean-old-secrets.sh --apply --backup-dir ~/aisc-secret-backups` must print
+   clean step failed (backup kept). Anything but 0: stop and report with the printed lines. If the platform
+   step printed `the ledger raised an integrity alarm`, the log does not verify: do not run the cleanup again
+   before the log is checked. A line `shred is not available` means the export and backup files were removed
+   with `rm` only; say so in the report.
+5. **Run it again.** `scripts/clean-old-secrets.sh --apply --backup-dir ~/aisc-secret-backups` must print
    `nothing to clean` and make no backup.
-5. **Delete the backup** once the runs and the report are checked (the backup holds the very secrets that
+6. **Delete the backup** once the runs and the report are checked (the backup holds the very secrets that
    were removed): `scripts/clean-old-secrets.sh --delete-backup ~/aisc-secret-backups/aisc-secrets-backup-<time>`.
-   Without `--keep-backup` in step 3, the script deletes its backup itself once verification passed.
-6. **Rotate** every key of the step 2 list at its provider, plus the LangBiTe judge keys, and record which
+   Without `--keep-backup` in step 4, the script deletes its backup itself once verification passed.
+7. **Rotate** every key of the step 2 list at its provider, plus the LangBiTe judge keys, and record which
    were rotated.
-7. **Report**: the counts per store, the verifier lines, and the keys rotated by plugin and field.
+8. **Report**: the counts per store, the verifier lines (step 3 and step 4), and the keys rotated by plugin and
+   field.
 
 ## Restoring from the backup
 

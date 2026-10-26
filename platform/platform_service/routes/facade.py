@@ -46,7 +46,7 @@ def _facade_open(pid: str, name: str, request: Request):
     """(Opened, None) for a live key of this connection, or (None, (status, message))."""
     if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
         return None, (404, "not here")
-    if not looks_like_pid(pid) or not CONNECTION_NAME.match(name):
+    if not looks_like_pid(pid) or not CONNECTION_NAME.fullmatch(name):
         return None, (404, "no such connection")
     scheme, _, key = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not key.startswith(RUN_KEY_PREFIX) or db.get_project(pid) is None:
@@ -71,12 +71,14 @@ def _facade_open(pid: str, name: str, request: Request):
 
 
 def _facade_call(pid, opened: Opened, input, history=None, params=None):
-    """(answer, None), or (None, the client's error) when the call failed. The key is never in it.
+    """(answer, None), or (None, the client's error) when the call failed. The key and the secret header
+    values are never in either: the answer is scrubbed of every form of them (scrub_answer).
     It blocks on the system under test: the async facade routes run it in its own threads
     (_in_facade_threads) and _facade_open in the shared pool, so a slow system never stalls other requests."""
     from aisc_plugin_interface import connections as client
     try:
-        return client.call(opened.descriptor, input, history, params=params, **connection_allowlist.rule(pid)), None
+        answer = client.call(opened.descriptor, input, history, params=params, **connection_allowlist.rule(pid))
+        return connection_facade.scrub_answer(answer, opened.secrets), None
     except client.EndpointError as exc:
         # a warning: the plugin sees only the answer's detail, and INFO lines don't reach the stack's log;
         # a system can echo the key, so the text is scrubbed like the answer's

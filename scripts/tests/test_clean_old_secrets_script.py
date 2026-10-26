@@ -358,3 +358,56 @@ def test_the_script_runs_on_bash_3_2():
     r = subprocess.run(["docker", "run", "--rm", "-v", f"{SCRIPT}:/w/clean-old-secrets.sh:ro", "bash:3.2",
                         "bash", "-n", "/w/clean-old-secrets.sh"], capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
+
+
+# Deleting what holds secrets: shred where it exists, rm (and say so) where it does not
+
+SHRED = """\
+#!/bin/sh
+for f in "$@"; do
+  case "$f" in -*) continue ;; esac
+  echo "$f" >> "$STANDIN_DIR/shredded.txt"
+  rm -f "$f"
+done
+"""
+
+
+def test_every_backup_and_export_file_is_shredded(bed, tmp_path):
+    tools = tmp_path / "shred-bin"
+    tools.mkdir()
+    (tools / "shred").write_text(SHRED)
+    (tools / "shred").chmod(0o755)
+    r = bed["run"]("--apply", "--backup-dir", str(bed["backups"]),
+                   PATH=f"{tools}{os.pathsep}{os.environ['PATH']}")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "backup deleted" in r.stdout
+    log = bed["standins"] / "shredded.txt"
+    shredded = log.read_text().splitlines() if log.exists() else []
+    names = sorted(os.path.basename(path) for path in shredded)
+    assert names == sorted([f"{PID}.jsonl", "platform.dump.enc", f"{PROJECT_DB}.dump.enc"]), names
+    assert bed["folders"]() == []
+
+
+def _path_without_shred(tmp_path):
+    """A PATH folder linking every command on PATH but shred."""
+    tools = tmp_path / "no-shred-bin"
+    tools.mkdir()
+    for folder in os.environ["PATH"].split(os.pathsep):
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            target = os.path.join(folder, name)
+            if name == "shred" or (tools / name).exists() or not os.access(target, os.X_OK):
+                continue
+            (tools / name).symlink_to(target)
+    return str(tools)
+
+
+def test_without_shred_the_files_are_removed_and_the_output_says_so(bed, tmp_path):
+    path = _path_without_shred(tmp_path)
+    r = bed["run"]("--apply", "--backup-dir", str(bed["backups"]), PATH=path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "backup deleted" in r.stdout
+    assert bed["folders"]() == []
+    said = (r.stdout + r.stderr).replace(str(tmp_path), "")         # the test's own folder names hold "shred"
+    assert "shred" in said.lower(), "the output must say shred was not available"

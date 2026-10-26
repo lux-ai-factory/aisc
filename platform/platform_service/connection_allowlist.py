@@ -9,7 +9,8 @@ loopback (the platform itself) and cloud metadata. They are refused when an entr
 again at every call, on the resolved address, so re-pointing an allowed name reaches none of
 them. The floor may still allow them: that is the operator's explicit choice.
 
-The rule of a project is computed at every call, so a change applies with no restart; the
+The rule of a project is computed at every call (its name lookups kept up to
+PLATFORM_ALLOWLIST_CACHE_S seconds), so a change applies with no restart; the
 platform hands it to the run in the resolve response, so the eval worker needs no copy.
 """
 from __future__ import annotations
@@ -18,6 +19,8 @@ import ipaddress
 import os
 import re
 import socket
+import threading
+import time
 
 from platform_service import connection_store
 
@@ -57,13 +60,43 @@ class DeniedEntry(ValueError):
     """A service of the stack, loopback or a metadata address: never allowed from the UI."""
 
 
+#: a name's lookup is kept this many seconds (PLATFORM_ALLOWLIST_CACHE_S; 0 turns the cache off), so a
+#: facade call does not resolve every service name of the stack each time. Past it the name is looked up
+#: again: a name re-pointed to a refused address is refused at the latest one window later.
+CACHE_S_DEFAULT = 30
+_LOOKUPS: dict[str, tuple[float, frozenset]] = {}      # name -> (when it expires, its addresses)
+_LOOKUPS_LOCK = threading.Lock()
+
+
+def cache_seconds() -> float:
+    try:
+        return max(0.0, float(os.environ.get("PLATFORM_ALLOWLIST_CACHE_S", CACHE_S_DEFAULT)))
+    except ValueError:
+        return float(CACHE_S_DEFAULT)
+
+
+def _lookup(host: str) -> frozenset:
+    try:
+        return frozenset(info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP))
+    except (socket.gaierror, UnicodeError):
+        return frozenset()
+
+
 def resolve(host: str) -> set[str]:
     """The addresses a name resolves to from the platform (inside the stack's networks); empty when
-    it does not resolve. Replaced in the tests."""
-    try:
-        return {info[4][0] for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)}
-    except (socket.gaierror, UnicodeError):
-        return set()
+    it does not resolve. Kept for cache_seconds() per name. Replaced in the tests."""
+    seconds = cache_seconds()
+    if not seconds:
+        return set(_lookup(host))
+    now = time.monotonic()
+    with _LOOKUPS_LOCK:
+        kept = _LOOKUPS.get(host)
+    if kept and kept[0] > now:
+        return set(kept[1])
+    addresses = _lookup(host)
+    with _LOOKUPS_LOCK:
+        _LOOKUPS[host] = (now + seconds, addresses)
+    return set(addresses)
 
 
 def split(entry: str) -> tuple[str, int | None]:

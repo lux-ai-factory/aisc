@@ -17,7 +17,10 @@ SECRET_SET = "set"
 
 #: A key holding one of these words is a secret in a ledger copy.
 LEDGER_SECRET_NAME = re.compile(r"key|token|secret|password|credential", re.IGNORECASE)
-#: Strings shaped like a known kind of key, wherever they are.
+#: Strings shaped like a known kind of key, wherever they are: provider key prefixes, JWTs, the credential of an
+#: `Authorization:` header (Bearer, Basic, Token; group 1 keeps the header name), the `user:password` of a URL
+#: and a whole PEM private-key block. Not caught: a base64-encoded key (other than a Basic header's), a key
+#: split across lines, a key with no known prefix outside an assignment.
 SECRET_SHAPE = re.compile(
     r"(?i)\bbearer\s+\S+"
     r"|\bsk-[A-Za-z0-9_-]{16,}"
@@ -26,7 +29,10 @@ SECRET_SHAPE = re.compile(
     r"|\bgh[pousr]_[A-Za-z0-9]{20,}"
     r"|\bAKIA[0-9A-Z]{16}\b"
     r"|\bxox[abpr]-[A-Za-z0-9-]{10,}"
-    r"|\bAIza[0-9A-Za-z_-]{35}")
+    r"|\bAIza[0-9A-Za-z_-]{35}"
+    r"|(\bauthorization\s*:\s*)(?:basic|token)\s+\S+"
+    r"|(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"
+    r"|-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 
 _EMPTY = (None, "", [], {})
 
@@ -54,18 +60,26 @@ def masked_for_ledger(value):
 
 
 def _plaintext(value) -> bool:
-    return isinstance(value, str) and value != "" and value != SECRET_SET
+    """A plain string other than SECRET_SET, or a dict or list holding one at any depth (the whole value is then
+    the secret: `api_keys: {openai: ...}`). A number is not: `max_tokens: 512` has the same form."""
+    if isinstance(value, str):
+        return value != "" and value != SECRET_SET
+    if isinstance(value, dict):
+        return any(_plaintext(inner) for inner in value.values())
+    if isinstance(value, list):
+        return any(_plaintext(item) for item in value)
+    return False
 
 
 def plaintext_secret_paths(value, _prefix: str = "") -> list[str]:
     """The paths (`a.b`, `items[0].token`) of the values a ledger copy must not hold: a secret-named key with a
-    plain string (or a list holding one), and any string with a key shape. A listed key is not descended into."""
+    plain string, or with a dict or list holding one, and any string with a key shape. A listed key is not
+    descended into."""
     found: list[str] = []
     if isinstance(value, dict):
         for name, inner in value.items():
             path = _path(_prefix, name)
-            if LEDGER_SECRET_NAME.search(str(name)) and (
-                    _plaintext(inner) or (isinstance(inner, list) and any(_plaintext(item) for item in inner))):
+            if LEDGER_SECRET_NAME.search(str(name)) and _plaintext(inner):
                 found.append(path)
             else:
                 found.extend(plaintext_secret_paths(inner, path))
