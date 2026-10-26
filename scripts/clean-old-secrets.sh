@@ -124,11 +124,22 @@ print_rotate() { # text...
   fi
 }
 
+# Files that held secrets (backups, exports) are overwritten before they are removed. Without shred they are only
+# removed, and the output says so once.
+NO_SHRED_SAID=0
 shred_files() { # files...
   local f
   for f in "$@"; do
     [ -e "$f" ] || continue
-    if command -v shred >/dev/null 2>&1; then shred -u "$f"; else rm -f "$f"; fi
+    if command -v shred >/dev/null 2>&1; then
+      shred -u "$f"
+    else
+      if [ "$NO_SHRED_SAID" = 0 ]; then
+        echo "shred is not available: files are removed with rm, not overwritten first"
+        NO_SHRED_SAID=1
+      fi
+      rm -f "$f"
+    fi
   done
 }
 
@@ -241,7 +252,7 @@ for db in $DATABASES; do
   done
 done
 NEED=$((2 * SIZE + EXTRA_FREE))
-mkdir -p "$BACKUP_DIR"
+(umask 077 && mkdir -p "$BACKUP_DIR")
 FREE_ROOT=$(df -Pk / | awk 'NR == 2 { print $4 }')
 FREE_DIR=$(df -Pk "$BACKUP_DIR" | awk 'NR == 2 { print $4 }')
 FREE_ROOT=$((FREE_ROOT * 1024))
@@ -315,7 +326,7 @@ for pid in $REDACTED_PIDS; do
   file="$FOLDER/verify/$pid.jsonl"
   if ! "${PLATFORM_CMD[@]}" export "$pid" > "$file"; then
     echo "verify: project $pid could not be exported"
-    rm -f "$file"
+    shred_files "$file"
     VERIFIED=0
     continue
   fi
@@ -326,7 +337,7 @@ for pid in $REDACTED_PIDS; do
     echo "verify: project $pid export does not check"
     VERIFIED=0
   fi
-  rm -f "$file"
+  shred_files "$file"
 done
 [ -d "$FOLDER/verify" ] && rmdir "$FOLDER/verify"
 
