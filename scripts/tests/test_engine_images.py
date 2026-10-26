@@ -38,7 +38,10 @@ LOCAL_SOURCES = {
 #: run inside the image: the version of the interface and the sha256 of every file of each local package
 PROBE = """
 import hashlib, importlib, importlib.metadata as m, inspect, json, pathlib
-import aisc_plugin_interface.assesses as a, aisc_plugin_interface.helpers
+# the package re-exports the decorator ``assesses``, which shadows the submodule of the same name,
+# so ``import aisc_plugin_interface.assesses as a`` would bind the function: take the module itself
+a = importlib.import_module("aisc_plugin_interface.assesses")
+import aisc_plugin_interface.helpers
 out = {"version": m.version("aisc-plugin-interface"),
        "strict": "strict" in inspect.signature(a.model_session).parameters,
        "required": "required" in inspect.signature(a.dataset_through_target_access).parameters,
