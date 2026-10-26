@@ -556,6 +556,30 @@ def test_a_header_field_and_a_key_in_text_are_counted_redacted_and_named_to_rota
     assert outbox_content(prose["event_id"])["config"] == prose["content"]["config"]
 
 
+def rejections(store, pid):
+    return [e.details["reason"] for e in entries(store, log_of(pid)) if e.action == "ledger.rejected"]
+
+
+def test_prose_saying_bearer_is_accepted_and_frozen(project, client, witnessed, memory_ledger):
+    """The registry refuses only `Bearer` followed by a credential-shaped value, not the word in a sentence."""
+    pid = project["pid"]
+    config = {"prompt": "She was the bearer of bad news.", "temperature": 0.2}
+    sent = configure(client, witnessed, pid, config)
+    relay_all(pid)
+    row = frozen(log_of(pid), sent["event_id"])
+    assert row is not None and row["content"] == content_of(config)
+    assert rejections(memory_ledger, pid) == []
+
+
+def test_bearer_with_a_credential_shaped_token_is_refused_and_not_frozen(project, client, witnessed,
+                                                                         memory_ledger):
+    pid = project["pid"]
+    sent = configure(client, witnessed, pid, {"prompt": "use Bearer abcDEF0123456789xyz now"})
+    relay_all(pid)
+    assert frozen(log_of(pid), sent["event_id"]) is None
+    assert rejections(memory_ledger, pid) == ["secret_in:content"]
+
+
 def test_the_engines_copy_with_a_key_in_text_masked_is_a_replay(project, client, witnessed, memory_ledger):
     """The engine masks a key assigned in a prompt before it re-sends the event: still the same event."""
     pid = project["pid"]
