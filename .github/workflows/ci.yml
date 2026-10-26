@@ -15,11 +15,16 @@ env:
     apps/backend apps/eval apps/webapp apps/controls apps/qualification apps/control-objectives
     apps/results-dashboard shared/plugin-interface shared/plugin-manager apps/catalogue apps/report-generator
     shared/report-plugin-interface
+  # no job reads Git LFS content: the submodules' LFS files (eval's test data) stay pointers
+  GIT_LFS_SKIP_SMUDGE: "1"
 
 jobs:
   python:
     name: ${{ matrix.suite }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      UV_PYTHON: "3.12"
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +37,24 @@ jobs:
             run: scripts/lib/co-tests.sh -p no:warnings
           - suite: report-composer
             run: cd apps/report-composer && uv run --extra dev pytest -q -p no:warnings
+          # the engine without upstream's integration package (it needs a live stack), then its project database
+          # tests on a throwaway Postgres in configurator mode
+          - suite: engine
+            run: scripts/lib/engine-tests.sh
+          - suite: engine on postgres
+            run: scripts/lib/engine-tests.sh --postgres
+          # a few eval tests run only in one deployment mode: both modes
+          - suite: eval
+            run: cd apps/eval && uv run --locked --no-dev --group test pytest -q -p no:cacheprovider && AISC_DEPLOYMENT=configurator uv run --locked --no-dev --group test pytest -q -p no:cacheprovider
+          - suite: eval lint
+            run: cd apps/eval && uv run --locked --only-group dev ruff check . && uv run --locked --only-group dev ruff format --check .
+          - suite: plugin-manager
+            run: cd shared/plugin-manager && uv run --locked --with pytest python -m pytest -q -p no:cacheprovider
+          - suite: plugin-interface
+            run: cd shared/plugin-interface && uv run --locked --with pytest --with pandas python -m pytest -q -p no:cacheprovider
+          # its db tests start throwaway Postgres containers; the caller's database addresses must not reach them
+          - suite: report-generator
+            run: cd apps/report-generator && env -u DATABASE_URL -u PLATFORM_TEST_DATABASE_URL uv run --locked --extra dev pytest -q -p no:cacheprovider tests
     steps:
       - uses: actions/checkout@v4
       - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
