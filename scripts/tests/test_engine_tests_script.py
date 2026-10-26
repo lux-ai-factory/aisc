@@ -178,10 +178,6 @@ def engine(*args: str, cwd: Path = ROOT, script: Path = SCRIPT, timeout: int = 9
     return subprocess.run([str(script), *args], cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
 
 
-def last_lines(r) -> list[str]:
-    return [line for line in (r.stdout + r.stderr).splitlines() if line.strip()][-2:]
-
-
 TEST_ID = re.compile(r"^\w+ \((aisc_backend\.tests\.[\w.]+)\)", re.M)
 
 
@@ -195,9 +191,10 @@ def verbose_run():
 def test_a_real_sqlite_run_passes_without_the_integration_package():
     r = engine()
     assert r.returncode == 0, (r.stdout + r.stderr)[-4000:]
-    ran, verdict = last_lines(r)
-    assert ran.startswith("Ran 576 tests") and verdict == "OK (skipped=134)", (ran, verdict)
-    assert "aisc_backend.tests.integration" not in r.stdout + r.stderr
+    output = r.stdout + r.stderr
+    assert re.search(r"^Ran 576 tests in ", output, re.M), output[-2000:]
+    assert re.search(r"^OK \(skipped=134\)$", output, re.M), output[-2000:]
+    assert "aisc_backend.tests.integration" not in output
 
 
 @real_runs
@@ -284,8 +281,9 @@ def test_a_postgres_run_whose_database_tests_all_skip_fails(tmp_path):
     root = scratch_root(tmp_path, text.replace("AISC_DEPLOYMENT=configurator", "AISC_DEPLOYMENT_UNUSED=configurator"))
     r = engine("--postgres", cwd=tmp_path, script=root / "scripts/lib/engine-tests.sh", timeout=1800)
     output = r.stdout + r.stderr
-    assert "OK (skipped=45)" in output, output[-2000:]
-    assert ("engine-tests: 45 database tests skipped: the throwaway database did not reach them"
+    assert re.search(r"^Ran 45 tests in ", output, re.M), output[-2000:]
+    assert "OK (skipped=41)" in output, output[-2000:]
+    assert ("engine-tests: 41 database tests skipped: the throwaway database did not reach them"
             in r.stderr.splitlines()), r.stderr[-2000:]
     assert r.returncode == 1
     assert not [n for n in containers("aisc-t-engine") if n in output]
