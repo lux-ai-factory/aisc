@@ -527,18 +527,33 @@ def test_the_checker_refuses_a_redaction_older_than_its_entry(project, client, w
 # Header fields and keys assigned inside text are secrets in the ledger copies; ordinary prose is not
 
 
+def leaked_before_the_guard(event: dict, config: dict) -> dict:
+    """Write `config` into both platform copies of an accepted event, as they stand for an event relayed before
+    the registry refused a credential in content: the registry now refuses such a value on its way in, so an old
+    leak exists only as rows written back then."""
+    content = json.dumps(content_of(config))
+    from platform_service import db
+
+    with db.pool().connection() as conn:
+        conn.execute("UPDATE core.outbox SET content = %s::jsonb WHERE event_id = %s", (content, event["event_id"]))
+        assert conn.execute("UPDATE ledger.content SET content = %s::jsonb WHERE event_id = %s",
+                            (content, event["event_id"])).rowcount == 1
+    return {**event, "content": content_of(config)}
+
+
 def test_a_header_field_and_a_key_in_text_are_counted_redacted_and_named_to_rotate(
         project, client, witnessed, memory_ledger):
     module = cleanup()
     pid = project["pid"]
-    header = configure(client, witnessed, pid, {"headers": {"Authorization": "Token abcdef0123456789",
-                                                            "Accept": "application/json"}})
+    header = configure(client, witnessed, pid, {"headers": {"Authorization": "set", "Accept": "application/json"}})
     text = configure(client, witnessed, pid, {"prompt": f"call the judge with api_key={KEY} please",
                                               "temperature": 0.2})
     prose = configure(client, witnessed, pid, {"prompt": "She was the bearer of bad news. Enter your password: "
                                                          "it must contain a digit.", "temperature": 0.2})
     relay_all(pid)
     log = log_of(pid)
+    header = leaked_before_the_guard(header, {"headers": {"Authorization": "Token abcdef0123456789",
+                                                          "Accept": "application/json"}})
     assert frozen(log, header["event_id"])["content"]["config"]["headers"]["Authorization"] == "Token abcdef0123456789"
     assert sorted(module.leaked_contents(log)) == sorted([header["event_id"], text["event_id"]])
     expected = module.ProjectCounts(pid, outbox_rows=2, contents=2, events=1, scan_rows=0,
