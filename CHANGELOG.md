@@ -26,6 +26,10 @@
 - The plugin publisher replaces a published version whose content changed; the vendored plugin-manager is
   `0.3.0+aisc.1`.
 - The eval image carries Node 22.22.0 and promptfoo 0.125.1.
+- StrongREJECT is released as `aisc-plugin-strongreject` 0.1.2 and LangBiTe as `aisc-plugin-langbite` 0.2.11:
+  the versions where a failing target fails the run instead of scoring as safe. The engine and worker install a
+  plugin by exact version, so an install that holds 0.1.1 or 0.2.10 keeps the old code: once the branch each
+  catalogue entry names carries the new version, install StrongREJECT and LangBiTe again from the catalogue.
 
 ### Changes
 - The internal resolve routes answer a connection's descriptor without its key (`has_secret` says whether it has
