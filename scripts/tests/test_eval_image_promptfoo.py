@@ -87,8 +87,11 @@ def test_the_built_image_runs_the_pinned_node_and_promptfoo_as_the_plugin_user()
         subprocess.run(["docker", "build", "-t", IMAGE, "."], cwd=ROOT / "apps/eval", check=True)
 
         def version(entrypoint):
-            return subprocess.run(["docker", "run", "--rm", "--user", "aisc-plugin", "--entrypoint", entrypoint,
-                                   IMAGE, "--version"], capture_output=True, text=True, check=True).stdout.strip()
+            # from a directory the plugin user can use, as a plugin runs in its own workspace: the image's
+            # WORKDIR /app is closed to plugins, and promptfoo looks for a config in its working directory
+            return subprocess.run(["docker", "run", "--rm", "--user", "aisc-plugin", "-w", "/tmp",
+                                   "--entrypoint", entrypoint, IMAGE, "--version"],
+                                  capture_output=True, text=True, check=True).stdout.strip()
 
         assert version("promptfoo") == promptfoo
         assert version("node") == f"v{node}"
