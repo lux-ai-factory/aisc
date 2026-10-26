@@ -64,7 +64,10 @@ class DeniedEntry(ValueError):
 #: facade call does not resolve every service name of the stack each time. Past it the name is looked up
 #: again: a name re-pointed to a refused address is refused at the latest one window later.
 CACHE_S_DEFAULT = 30
-_LOOKUPS: dict[str, tuple[float, frozenset]] = {}      # name -> (when it expires, its addresses)
+#: at most this many names are kept; past it the oldest lookup is dropped first, so names that change
+#: with every call (a user's entries, a scan of hosts) cannot grow the cache without a bound
+CACHE_NAMES = 1024
+_LOOKUPS: dict[str, tuple[float, frozenset]] = {}      # name -> (when it expires, its addresses), oldest first
 _LOOKUPS_LOCK = threading.Lock()
 
 
@@ -95,7 +98,10 @@ def resolve(host: str) -> set[str]:
         return set(kept[1])
     addresses = _lookup(host)
     with _LOOKUPS_LOCK:
+        _LOOKUPS.pop(host, None)                         # a fresh lookup is the newest
         _LOOKUPS[host] = (now + seconds, addresses)
+        while len(_LOOKUPS) > CACHE_NAMES:
+            del _LOOKUPS[next(iter(_LOOKUPS))]
     return set(addresses)
 
 
