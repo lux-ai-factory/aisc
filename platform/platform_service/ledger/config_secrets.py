@@ -24,9 +24,10 @@ LEDGER_SECRET_NAME = re.compile(r"key|token|secret|password|credential|authoriza
 #: of the base64, hex and URL-safe alphabets, no space (`the bearer of bad news`, `token=EOF` are not secrets).
 CREDENTIAL = r"[A-Za-z0-9+/=_.~-]{16,}"
 #: Strings shaped like a known kind of key, wherever they are: provider key prefixes, JWTs, a credential-shaped
-#: `Bearer` value, the credential of an `Authorization:` header (Basic, Token; group 1 keeps the header name), the
-#: `user:password` of a URL and a whole PEM private-key block. Not caught: a base64-encoded key (other than a Basic
-#: header's), a key split across lines, a key with no known prefix outside an assignment.
+#: `Bearer` value, a credential-shaped `Basic` or `Token` value, bare or in an `Authorization:` header (group 1
+#: keeps the header name), the `user:password` of a URL and a whole PEM private-key block. Not caught: a
+#: base64-encoded key (other than a Basic value), a key split across lines, a key with no known prefix outside an
+#: assignment.
 SECRET_SHAPE = re.compile(
     r"(?i)\bbearer\s+" + CREDENTIAL +
     r"|\bsk-[A-Za-z0-9_-]{16,}"
@@ -36,7 +37,7 @@ SECRET_SHAPE = re.compile(
     r"|\bAKIA[0-9A-Z]{16}\b"
     r"|\bxox[abpr]-[A-Za-z0-9-]{10,}"
     r"|\bAIza[0-9A-Za-z_-]{35}"
-    r"|(\bauthorization\s*:\s*)(?:basic|token)\s+" + CREDENTIAL +
+    r"|(\bauthorization\s*:\s*)?\b(?:basic|token)\s+" + CREDENTIAL +
     r"|(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"
     r"|-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 #: `password=...`, `api_key: "..."`, `api_key%3D...` and the like in text. Group 1 is the name, which may carry
