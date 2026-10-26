@@ -46,3 +46,15 @@ def test_the_section_names_what_an_operator_acts_on(name):
 
 def test_the_section_holds_no_em_dash():
     assert "—" not in _unreleased()
+
+
+def _upgrade_notes() -> str:
+    section = _unreleased()
+    return section[section.index(HEADING):section.index("### Changes")]
+
+
+@pytest.mark.parametrize("release", ("aisc-plugin-strongreject` 0.1.2", "aisc-plugin-langbite` 0.2.11"))
+def test_the_upgrade_notes_name_the_plugin_releases_that_carry_the_failed_run_fix(release):
+    # The engine and worker install a plugin by exact version from the stack's index, so an install upgrades
+    # to the fixed StrongREJECT and LangBiTe only through these new versions.
+    assert release in _upgrade_notes()
