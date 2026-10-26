@@ -318,3 +318,21 @@ def test_a_malformed_event_is_a_problem_never_a_crash(bad):
     event = {**_event(), **bad}
     problems = check(event, emitter=_emitter())
     assert problems
+
+
+SETTINGS_ONLY_SECRET_DELETE = ("engine", "DELETE", r"^/api/v1/project/settings/[^/]+/(?P<item>[^/]+)$")
+PLUGIN_CONFIG_SAVE = ("engine", "POST", r"^/api/v1/plugins/[^/]+/config$")
+
+
+@pytest.mark.parametrize("name", ["engine.secret.created", "engine.secret.updated"])
+def test_saving_a_plugin_configuration_may_keep_up_to_sixteen_keys_as_secrets(name):
+    """A key typed into a plugin's form is kept as a project secret by the save itself, one event per key."""
+    action = REGISTRY[name]
+    assert PLUGIN_CONFIG_SAVE in action.caused_by
+    assert action.per_request == 16
+
+
+def test_only_the_settings_route_deletes_a_secret():
+    action = REGISTRY["engine.secret.deleted"]
+    assert action.caused_by == (SETTINGS_ONLY_SECRET_DELETE,)
+    assert action.per_request == 1
