@@ -142,6 +142,48 @@ def scrub(text: str, secrets: list) -> str:
     return text
 
 
+def secret_forms(secrets: list) -> list[str]:
+    """Each secret value as a system may echo it: as it is, base64 (standard and URL-safe), URL-encoded
+    (with and without "/" kept, and with "+" for spaces) and JSON-escaped; the longest first."""
+    import base64
+    import urllib.parse
+
+    forms = set()
+    for value in (v for v in secrets or [] if v):
+        raw = value.encode()
+        forms.update((value, base64.b64encode(raw).decode(), base64.urlsafe_b64encode(raw).decode(),
+                      urllib.parse.quote(value, safe=""), urllib.parse.quote(value),
+                      urllib.parse.quote_plus(value), json.dumps(value)[1:-1]))
+    return sorted(forms, key=len, reverse=True)
+
+
+def _scrubbed(value, forms: list):
+    if isinstance(value, str):
+        for form in forms:
+            value = value.replace(form, "***")
+        return value
+    if isinstance(value, dict):
+        return {_scrubbed(k, forms): _scrubbed(v, forms) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_scrubbed(v, forms) for v in value]
+    return value
+
+
+def scrub_answer(answer, secrets: list):
+    """A copy of a successful answer (the interface's Answer) with every form of each secret value
+    (secret_forms) replaced by *** in its output, its refusal reason and its tool calls: a system that
+    echoes its key or a secret header never hands it to the caller. An answer without them is unchanged."""
+    import dataclasses
+
+    forms = secret_forms(secrets)
+    if not forms:
+        return answer
+    changes = {"text": _scrubbed(answer.text, forms), "refusal_reason": _scrubbed(answer.refusal_reason, forms)}
+    if getattr(answer, "tool_calls", None) is not None:
+        changes["tool_calls"] = _scrubbed(answer.tool_calls, forms)
+    return dataclasses.replace(answer, **changes)
+
+
 def ask_failure(exc, secrets: list) -> tuple[int, dict]:
     """(status, body) of a failed call: 400 for a request the interface will not send, else 502 with the
     error's code, the system's status and the message, scrubbed then cut to 300 characters."""
