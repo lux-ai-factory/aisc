@@ -199,3 +199,17 @@ def test_the_vendored_plugin_manager_asks_for_interface_0_4_0():
     assert wheel.is_file(), f"apps/backend/vendor/{wheel.name} is missing"
     requires = re.findall(r"^Requires-Dist: (.+)$", _wheel_metadata(wheel), re.M)
     assert [r for r in requires if _name(r) == INTERFACE] == ["aisc-plugin-interface>=0.4.0"]
+
+
+def test_the_plugin_manager_has_a_version_of_its_own():
+    """Upstream's 0.3.0 plus this checkout's commits: a PEP 440 local version, never upstream's own file."""
+    folder, _ = LOCAL_PACKAGES["aisc-plugin-manager"]
+    assert _toml(folder / "pyproject.toml")["project"]["version"] == "0.3.0+aisc.1"
+    for app in ENGINE_APPS:
+        vendor = ROOT / app / "vendor"
+        assert (vendor / "aisc_plugin_manager-0.3.0+aisc.1-py3-none-any.whl").is_file(), \
+            f"{app}/vendor holds no aisc_plugin_manager-0.3.0+aisc.1-py3-none-any.whl"
+        assert not (vendor / "aisc_plugin_manager-0.3.0-py3-none-any.whl").exists(), \
+            f"{app}/vendor still holds aisc_plugin_manager-0.3.0-py3-none-any.whl"
+    wheel = ROOT / "apps/backend/vendor/aisc_plugin_manager-0.3.0+aisc.1-py3-none-any.whl"
+    assert re.findall(r"^Version: (.+)$", _wheel_metadata(wheel), re.M) == ["0.3.0+aisc.1"]

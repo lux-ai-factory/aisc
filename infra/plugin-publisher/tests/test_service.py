@@ -66,23 +66,51 @@ def test_publish_builds_checks_and_uploads_one_repo(client, github, index, build
     status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
 
     assert status == 200
-    assert body == {"package": PACKAGE, "version": "1.2.0", "published": True}
+    assert body == {"package": PACKAGE, "version": "1.2.0", "published": True, "replaced": False}
     assert build.calls == 1
     assert index.uploads == [["aisc_plugin_demo-1.2.0-py3-none-any.whl"]]
     # the clone and the build lived in a temporary folder that is gone
     assert list(workdir.iterdir()) == []
 
 
-def test_a_version_already_on_the_index_is_not_rebuilt(client, github, index, build):
+def test_a_version_on_the_index_with_the_same_content_is_not_uploaded(client, github, index, build):
+    github(REPO, {"main": (PACKAGE, "1.1.0")})
+    index.versions[PACKAGE] = {"1.1.0"}
+    index.files[(PACKAGE, "1.1.0")] = b"wheel"
+
+    status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
+
+    assert status == 200
+    assert body == {"package": PACKAGE, "version": "1.1.0", "published": False, "replaced": False}
+    assert build.calls == 1
+    assert index.uploads == []
+
+
+def test_a_version_on_the_index_whose_content_changed_is_replaced(client, github, index, build, caplog):
+    github(REPO, {"main": (PACKAGE, "1.1.0")})
+    index.versions[PACKAGE] = {"1.1.0"}
+    index.files[(PACKAGE, "1.1.0")] = b"wheel"
+    build.content = b"wheel v2"
+
+    with caplog.at_level(logging.INFO):
+        status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
+
+    assert status == 200
+    assert body == {"package": PACKAGE, "version": "1.1.0", "published": True, "replaced": True}
+    assert index.uploads == [["aisc_plugin_demo-1.1.0-py3-none-any.whl"]]
+    assert index.files[(PACKAGE, "1.1.0")] == b"wheel v2"
+    assert f"replaced {PACKAGE} 1.1.0 on the index: its content changed" in caplog.text
+
+
+def test_a_version_listed_on_the_index_whose_wheel_cannot_be_read_is_uploaded(client, github, index, build):
     github(REPO, {"main": (PACKAGE, "1.1.0")})
     index.versions[PACKAGE] = {"1.1.0"}
 
     status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
 
     assert status == 200
-    assert body == {"package": PACKAGE, "version": "1.1.0", "published": False}
-    assert build.calls == 0
-    assert index.uploads == []
+    assert body == {"package": PACKAGE, "version": "1.1.0", "published": True, "replaced": True}
+    assert index.uploads == [["aisc_plugin_demo-1.1.0-py3-none-any.whl"]]
 
 
 def test_a_build_of_another_package_is_refused_before_upload(client, github, index):
@@ -107,7 +135,7 @@ def test_a_wheel_of_another_name_than_its_pyproject_is_refused_before_upload(
     assert index.uploads == []
 
 
-def test_two_publishes_of_one_repo_build_once(client, github, index, build):
+def test_two_publishes_of_one_repo_upload_once(client, github, index, build):
     github(REPO, {"main": (PACKAGE, "1.0.0")})
     build.delay = 0.5
     results = []
@@ -123,7 +151,7 @@ def test_two_publishes_of_one_repo_build_once(client, github, index, build):
 
     assert [status for status, _ in results] == [200, 200]
     assert sorted(body["published"] for _, body in results) == [False, True]
-    assert build.calls == 1
+    assert build.calls == 2
     assert len(index.uploads) == 1
 
 
@@ -230,20 +258,21 @@ def test_a_build_failure_is_502_naming_the_step(client, github, build, index):
     assert index.uploads == []
 
 
-def test_the_interface_is_published_at_start_unless_on_the_index(
+def test_the_interface_is_published_at_start_unless_on_the_index_with_the_same_content(
         start, interface, index, build, workdir):
     def publisher():
         return Publisher(upload=index.upload, versions_on_index=index.versions_on_index,
-                         build=build, workdir=workdir)
+                         wheel_on_index=index.wheel_on_index, build=build, workdir=workdir)
 
     first = publisher()
     first.publish_interface()
     assert index.uploads == [["aisc_plugin_interface-0.2.8-py3-none-any.whl"]]
     assert start(first).get("/health", token=None) == (200, {"interface_published": True})
 
+    # the same content on the index: built again, nothing uploaded
     again = publisher()
     again.publish_interface()
-    assert len(index.uploads) == 1 and build.calls == 1
+    assert len(index.uploads) == 1 and build.calls == 2
     assert start(again).get("/health", token=None) == (200, {"interface_published": True})
 
     index.versions.clear()
@@ -253,6 +282,85 @@ def test_the_interface_is_published_at_start_unless_on_the_index(
                         build=build, workdir=workdir, sleep=clock.sleep, clock=clock)
     failing.publish_interface()  # logged, never raised
     assert start(failing).get("/health", token=None) == (200, {"interface_published": False})
+
+
+def test_an_interface_whose_content_changed_is_replaced_at_start(interface, index, build, workdir, caplog):
+    index.versions["aisc-plugin-interface"] = {"0.2.8"}
+    index.files[("aisc-plugin-interface", "0.2.8")] = b"wheel"
+    build.content = b"wheel v2"
+
+    def publisher():
+        return Publisher(upload=index.upload, versions_on_index=index.versions_on_index,
+                         wheel_on_index=index.wheel_on_index, build=build, workdir=workdir)
+
+    with caplog.at_level(logging.INFO):
+        publisher().publish_interface()
+    assert index.uploads == [["aisc_plugin_interface-0.2.8-py3-none-any.whl"]]
+    assert "plugin interface aisc-plugin-interface 0.2.8 replaced on the index: its content changed" in caplog.text
+
+    again = publisher()
+    again.publish_interface()
+    assert len(index.uploads) == 1
+    assert again.interface_published is True
+
+
+def test_wheel_content_ignores_timestamps_and_member_order():
+    import hashlib
+    import io
+    import zipfile
+
+    def wheel(members, date):
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            for name, content in members:
+                archive.writestr(zipfile.ZipInfo(name, date_time=date), content)
+        return data.getvalue()
+
+    one = wheel([("a.py", b"a"), ("pkg/b.py", b"b")], (2020, 1, 1, 0, 0, 0))
+    two = wheel([("pkg/b.py", b"b"), ("a.py", b"a")], (2026, 6, 1, 12, 30, 0))
+    changed = wheel([("a.py", b"a"), ("pkg/b.py", b"b2")], (2020, 1, 1, 0, 0, 0))
+    assert one != two
+    assert service.wheel_content(one) == service.wheel_content(two)
+    assert service.wheel_content(one) != service.wheel_content(changed)
+    assert service.wheel_content(b"wheel") == {"": hashlib.sha256(b"wheel").hexdigest()}
+
+
+@pytest.fixture
+def simple_index(tmp_path, monkeypatch):
+    """A local index serving a simple page for aisc-plugin-demo that links two wheels by relative hrefs."""
+    import functools
+    import http.server
+
+    root = tmp_path / "index"
+    page = root / "root" / "public" / "+simple" / "aisc-plugin-demo"
+    files = root / "root" / "public" / "+f"
+    page.mkdir(parents=True)
+    files.mkdir(parents=True)
+    wheels = {"1.0.0": b"demo one", "1.1.0": b"demo one point one"}
+    links = []
+    for version, content in wheels.items():
+        name = f"aisc_plugin_demo-{version}-py3-none-any.whl"
+        (files / name).write_bytes(content)
+        links.append(f'<a href="../../+f/{name}#sha256=0123abcd">{name}</a><br/>')
+    (page / "index.html").write_text("<html><body>" + "".join(links) + "</body></html>")
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("TWINE_REPOSITORY_URL", f"http://127.0.0.1:{server.server_address[1]}/root/public/")
+    yield server, wheels
+    server.shutdown()
+    server.server_close()
+
+
+def test_index_wheel_downloads_the_listed_wheel_of_a_version(simple_index):
+    server, wheels = simple_index
+    assert service.index_wheel("aisc-plugin-demo", "1.1.0") == wheels["1.1.0"]
+    assert service.index_wheel("aisc-plugin-demo", "1.0.0") == wheels["1.0.0"]
+    assert service.index_wheel("aisc-plugin-demo", "2.0.0") is None
+    server.shutdown()
+    server.server_close()
+    assert service.index_wheel("aisc-plugin-demo", "1.1.0") is None
 
 
 class Clock:

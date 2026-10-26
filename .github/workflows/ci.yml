@@ -15,11 +15,16 @@ env:
     apps/backend apps/eval apps/webapp apps/controls apps/qualification apps/control-objectives
     apps/results-dashboard shared/plugin-interface shared/plugin-manager apps/catalogue apps/report-generator
     shared/report-plugin-interface
+  # no job reads Git LFS content: the submodules' LFS files (eval's test data) stay pointers
+  GIT_LFS_SKIP_SMUDGE: "1"
 
 jobs:
   python:
     name: ${{ matrix.suite }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      UV_PYTHON: "3.12"
     strategy:
       fail-fast: false
       matrix:
@@ -32,10 +37,42 @@ jobs:
             run: scripts/lib/co-tests.sh -p no:warnings
           - suite: report-composer
             run: cd apps/report-composer && uv run --extra dev pytest -q -p no:warnings
+          # the engine without upstream's integration package (it needs a live stack), then its project database
+          # tests on a throwaway Postgres in configurator mode
+          - suite: engine
+            run: scripts/lib/engine-tests.sh
+          - suite: engine on postgres
+            run: scripts/lib/engine-tests.sh --postgres
+          # a few eval tests run only in one deployment mode: both modes
+          - suite: eval
+            run: cd apps/eval && uv run --locked --no-dev --group test pytest -q -p no:cacheprovider && AISC_DEPLOYMENT=configurator uv run --locked --no-dev --group test pytest -q -p no:cacheprovider
+          - suite: eval lint
+            run: cd apps/eval && uv run --locked --only-group dev ruff check . && uv run --locked --only-group dev ruff format --check .
+          - suite: plugin-manager
+            run: cd shared/plugin-manager && uv run --locked --with pytest python -m pytest -q -p no:cacheprovider
+          - suite: plugin-interface
+            run: cd shared/plugin-interface && uv run --locked --with pytest --with pandas python -m pytest -q -p no:cacheprovider
+          # its db tests start throwaway Postgres containers; the caller's database addresses must not reach them
+          - suite: report-generator
+            run: cd apps/report-generator && env -u DATABASE_URL -u PLATFORM_TEST_DATABASE_URL uv run --locked --extra dev pytest -q -p no:cacheprovider tests
     steps:
       - uses: actions/checkout@v4
-      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
+      # the fonts the golden PDFs were rendered with (Arial is Liberation Sans there); a runner without them falls back
+      # to another sans-serif and the PDF text differs
+      - name: the report fonts
+        if: matrix.suite == 'report-generator'
+        run: |
+          missing=()
+          for package in fonts-liberation fonts-dejavu-core; do
+            dpkg -s "$package" >/dev/null 2>&1 || missing+=("$package")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            sudo apt-get update -q && sudo apt-get install -y -q "${missing[@]}"
+          fi
       - run: ${{ matrix.run }}
 
   repository-checks:
@@ -46,7 +83,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: git submodule update --init $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init $PUBLIC_SUBMODULES
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -69,7 +108,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - shell: bash
-        run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+        run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
       # as on Linux, a port test that cannot run fails; but the one that holds port 80 with a Linux container
       - env:
@@ -93,7 +134,9 @@ jobs:
             database: scripts/lib/controls-tests.sh
     steps:
       - uses: actions/checkout@v4
-      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -120,11 +163,14 @@ jobs:
           - apps/controls/services/pdf_renderer
     steps:
       - uses: actions/checkout@v4
-      - run: git submodule update --init --depth 50 $PUBLIC_SUBMODULES
+      - run: |
+          # shellcheck disable=SC2086
+          git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
       - working-directory: ${{ matrix.service }}
         run: |
           dev=""
           [ -f requirements-dev.txt ] && dev="--with-requirements requirements-dev.txt"
+          # shellcheck disable=SC2086
           uv run --no-project --python 3.12 --with-requirements requirements.txt $dev \
             --with pytest --with httpx python -m pytest -q -p no:cacheprovider -p no:warnings

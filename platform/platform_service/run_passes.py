@@ -53,20 +53,29 @@ def _grant(ref) -> tuple[str, str, str]:
         raise Refused(422, f"not a target or connection reference: {ref!r}") from None
 
 
-def mint(refs, ttl_s: int | None = None, evaluation_plugin=None) -> tuple[str, datetime]:
-    """A new pass for these references, and when it expires. `evaluation_plugin`, the uuid of the
-    evaluation plugin the run is, is optional: a pass without one records no use."""
+def mint(refs, ttl_s: int | None = None, evaluation_plugin=None, *, project) -> tuple[str, datetime]:
+    """A new pass for these references, and when it expires. `project` is the platform pid of the
+    evaluation's project: every reference must be of that project (403 otherwise), so a run never opens
+    another project's targets or connections. `evaluation_plugin`, the uuid of the evaluation plugin the
+    run is, is optional: a pass without one records no use."""
     if not isinstance(refs, list) or not refs:
         raise Refused(422, "refs: name the run's target or connection references")
+    try:
+        project_pid = str(uuid.UUID(project))
+    except (ValueError, TypeError, AttributeError):
+        raise Refused(422, "project: the platform pid of the evaluation's project") from None
     if evaluation_plugin is not None:
         try:
             evaluation_plugin = str(uuid.UUID(evaluation_plugin))
         except (ValueError, TypeError, AttributeError):
             raise Refused(422, "evaluation_plugin: the uuid of the evaluation plugin the run is") from None
-    grants = sorted({_grant(ref) for ref in refs})
-    for pid in {pid for _, pid, _ in grants}:
-        if db.get_project(pid) is None:
-            raise Refused(404, f"no project {pid!r}")
+    parsed = [(ref, _grant(ref)) for ref in refs]
+    for ref, (_, pid, _) in parsed:
+        if pid != project_pid:
+            raise Refused(403, f"{ref!r} is not of the run's project {project_pid}")
+    grants = sorted({grant for _, grant in parsed})
+    if db.get_project(project_pid) is None:
+        raise Refused(404, f"no project {project_pid!r}")
     ttl = ttl_s if ttl_s is not None else int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
     run_pass = PREFIX + secrets.token_hex(32)
     with db.pool().connection() as conn:

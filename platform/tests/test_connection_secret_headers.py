@@ -86,7 +86,8 @@ def test_resolve_masks_it(client, admin, project, stub, dsn, T):  # noqa: F811
     from aisc_plugin_interface.connections import Descriptor
 
     saved(client, admin, project, stub, secret_headers={"X-Token": T})
-    run_pass = client.post("/internal/run-passes", json={"refs": [f"connection:{project['pid']}/{NAME}"]},
+    run_pass = client.post("/internal/run-passes", json={"refs": [f"connection:{project['pid']}/{NAME}"],
+                                                             "project": project["pid"]},
                            headers={"X-AISC-Service-Token": CONNECTIONS_TOKEN}).json()["pass"]
     answers = [resolve(client, project, NAME),
                client.get(f"/internal/projects/{project['pid']}/connections/{NAME}",

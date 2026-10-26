@@ -15,7 +15,7 @@ import pytest
 from platform_service import connection_store, db, projectdb, run_passes
 from tests.conftest import ALICE, needs_database, one, project_db
 from tests.connection_support import CONNECTIONS_TOKEN
-from tests.test_run_passes import _env, made_with_endpoints, mint, stub, with_pass  # noqa: F401  (fixtures)
+from tests.test_run_passes import _env, made_with_endpoints, mint, stored_pass, stub, with_pass  # noqa: F401  (fixtures)
 
 pytestmark = needs_database
 
@@ -35,7 +35,11 @@ def sha(run_pass: str) -> str:
 
 
 def pass_for(client, *projects):
-    return mint(client, [f"target:{p['pid']}/system" for p in projects]).json()["pass"]
+    """A run's pass for these projects' systems: minted for one project, stored as an older pass for several."""
+    refs = [f"target:{p['pid']}/system" for p in projects]
+    if len(projects) > 1:
+        return stored_pass(refs)
+    return mint(client, refs, projects[0]).json()["pass"]
 
 
 def key_under(client, run_pass, project):
@@ -133,7 +137,8 @@ def test_another_runs_key_is_unaffected(client, project):
 
 def test_the_key_expires_with_its_pass(client, project, dsn, monkeypatch):
     monkeypatch.delenv("CONNECTIONS_RUN_KEY_TTL_S", raising=False)
-    run_pass, pass_expires = run_passes.mint([f"target:{project['pid']}/system"], ttl_s=60)
+    run_pass, pass_expires = run_passes.mint([f"target:{project['pid']}/system"], ttl_s=60,
+                                                project=project["pid"])
     issued = key_under(client, run_pass, project)
     answered = datetime.fromisoformat(issued["expires_at"])
     assert abs((answered - pass_expires).total_seconds()) <= 1, (answered, pass_expires)

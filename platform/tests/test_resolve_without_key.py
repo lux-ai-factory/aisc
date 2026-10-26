@@ -46,7 +46,7 @@ def resolve_with_token(client, project, name):
 def test_a_resolve_under_a_run_pass_has_no_secret(client, admin, project, stub):  # noqa: F811
     key = new_secret()
     save(client, admin, project, stub, "system-chat", key, target="system")
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     r = with_pass(client, run_pass, project, "targets/system/connection")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -81,7 +81,8 @@ def test_the_fingerprint_is_the_one_the_client_computes(client, admin, project, 
     save(client, admin, project, stub, "system-chat", new_secret(), target="system")
     plugin = str(uuid.uuid4())
     run_pass = client.post("/internal/run-passes",
-                           json={"refs": [f"target:{project['pid']}/system"], "evaluation_plugin": plugin},
+                           json={"refs": [f"target:{project['pid']}/system"], "evaluation_plugin": plugin,
+                                 "project": project["pid"]},
                            headers={"X-AISC-Service-Token": CONNECTIONS_TOKEN}).json()["pass"]
     r = with_pass(client, run_pass, project, "targets/system/connection")
     assert r.status_code == 200, r.text
@@ -96,7 +97,7 @@ def test_the_fingerprint_is_the_one_the_client_computes(client, admin, project, 
 def test_resolve_needs_no_secrets_key(client, admin, project, stub, monkeypatch):  # noqa: F811
     save(client, admin, project, stub, "system-chat", new_secret(), target="system")
     monkeypatch.delenv("PLATFORM_SECRETS_KEY")
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     r = with_pass(client, run_pass, project, "targets/system/connection")
     assert r.status_code == 200, r.text
     assert r.json()["has_secret"] is True
@@ -109,7 +110,7 @@ def test_the_facade_still_calls_with_the_key(client, admin, project, stub):  # n
     save(client, admin, project, stub, "system-chat", key, target="system",
          secret_header="Authorization: Bearer {{secret}}")
     stub.route("POST", "/chat", (200, {"answer": "ok"}))
-    run_pass = mint(client, [f"target:{project['pid']}/system"]).json()["pass"]
+    run_pass = mint(client, [f"target:{project['pid']}/system"], project).json()["pass"]
     run_key = with_pass(client, run_pass, project, "targets/system/run-keys", "POST").json()["key"]
     r = client.post(f"/internal/facade/{project['pid']}/system-chat/aisc/ask", json={"input": "q"},
                     headers={"Authorization": f"Bearer {run_key}"})

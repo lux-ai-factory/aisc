@@ -12,7 +12,7 @@ from platform_service import connection_store, db, run_passes
 from platform_service.routes.connections import descriptor_of
 from tests.conftest import needs_database
 from tests.connection_support import CONNECTIONS_TOKEN
-from tests.test_run_passes import _env, made_with_endpoints, stub, with_pass  # noqa: F401  (fixtures)
+from tests.test_run_passes import _env, made_with_endpoints, stored_pass, stub, with_pass  # noqa: F401  (fixtures)
 
 pytestmark = needs_database
 
@@ -23,7 +23,8 @@ def project(make_project, client, admin, stub):  # noqa: F811
 
 
 def mint(client, refs, evaluation_plugin=None):
-    body = {"refs": refs}
+    """A pass for `refs`, asked for the run of the project the first reference names."""
+    body = {"refs": refs, "project": refs[0].split(":", 1)[1].split("/", 1)[0]}
     if evaluation_plugin is not None:
         body["evaluation_plugin"] = evaluation_plugin
     return client.post("/internal/run-passes", json=body, headers={"X-AISC-Service-Token": CONNECTIONS_TOKEN})
@@ -74,8 +75,8 @@ def test_a_retried_resolve_is_one_use_from_its_first_time(client, project):
 def test_the_uses_of_one_project_are_not_another_projects(client, project, make_project, admin, stub):  # noqa: F811
     other = made_with_endpoints(make_project, client, admin, stub)
     plugin = str(uuid.uuid4())
-    run_pass = mint(client, [f"target:{project['pid']}/system", f"target:{other['pid']}/system"],
-                    plugin).json()["pass"]
+    # a pass names one project now; one stored before that rule still records each project's uses apart
+    run_pass = stored_pass([f"target:{project['pid']}/system", f"target:{other['pid']}/system"], plugin)
     assert with_pass(client, run_pass, project, "targets/system/connection").status_code == 200
     assert [u["pid"] for u in run_passes.uses_of(plugin, pid=project["pid"])] == [project["pid"]]
     assert run_passes.uses_of(plugin, pid=other["pid"]) == []
