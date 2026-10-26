@@ -392,6 +392,10 @@ cd platform && uv run --extra dev pytest -q -p no:cacheprovider tests --ignore t
 # the identity library
 scripts/lib/identity-tests.sh            # with a throwaway Postgres for the access tests
 
+# the engine (apps/backend) without upstream's integration package, which needs a live stack;
+# --postgres: its project database tests on a throwaway Postgres, in configurator mode
+scripts/lib/engine-tests.sh
+
 # the report composer (starts throwaway Postgres containers)
 cd apps/report-composer && uv run --extra dev pytest -q
 
