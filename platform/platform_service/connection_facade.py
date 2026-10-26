@@ -59,7 +59,7 @@ def _check_tools(params: dict) -> None:
         for i, tool in enumerate(tools):
             function = tool.get("function") if isinstance(tool, dict) else None
             if (not isinstance(tool, dict) or tool.get("type") != "function" or not isinstance(function, dict)
-                    or not isinstance(function.get("name"), str) or not _TOOL_NAME.match(function["name"])):
+                    or not isinstance(function.get("name"), str) or not _TOOL_NAME.fullmatch(function["name"])):
                 raise BadRequest(f"params: tools[{i}] needs type 'function' and a function with a name (letters,"
                                  " digits, _ and -, up to 64)")
             if "parameters" in function and not isinstance(function["parameters"], dict):
@@ -87,7 +87,7 @@ def check_params(kind: str, supports_tools: bool, params: dict) -> dict:
     if len(params) > MAX_PARAMS:
         raise BadRequest(f"params: {len(params)} parameters, more than {MAX_PARAMS}")
     for key in params:
-        if not isinstance(key, str) or not PARAM_NAME.match(key):
+        if not isinstance(key, str) or not PARAM_NAME.fullmatch(key):
             raise BadRequest(f"params: {key!r} is not a parameter name")
     if any(k in params for k in TOOL_PARAMS):
         if kind != "openai":
@@ -135,11 +135,63 @@ def error_code(exc) -> str:
     return next((code for cls, code in ERROR_CODES if type(exc).__name__ == cls), "error")
 
 
+# The scrub's limits. It takes out the forms secret_forms lists and no other: hex, unpadded base64, double
+# encodings, case changes and a secret split across output items or calls are not taken out. The target must
+# not echo credentials; the platform's answer and error scrub is a safety net, not a guarantee.
 def scrub(text: str, secrets: list) -> str:
-    """`text` with each secret value replaced by ***, the longest first; empty values skipped."""
-    for value in sorted((v for v in secrets or [] if v), key=len, reverse=True):
-        text = text.replace(value, "***")
+    """`text` (an error text: a door's 502 detail, a warning log, the Test button's failure) with every form
+    of each secret value (secret_forms) replaced by ***, the longest first; empty values skipped. Not taken
+    out: hex, unpadded base64, double encodings, case changes, a secret split across output items or calls;
+    the target must not echo credentials, and this scrub is a safety net, not a guarantee."""
+    for form in secret_forms(secrets):
+        text = text.replace(form, "***")
     return text
+
+
+def secret_forms(secrets: list) -> list[str]:
+    """Each secret value as a system may echo it: as it is, base64 (standard and URL-safe), URL-encoded
+    (with and without "/" kept, and with "+" for spaces) and JSON-escaped; the longest first. No other form:
+    not hex, unpadded base64, double encodings or case changes, and a secret split across output items or
+    calls is missed; the target must not echo credentials, the scrub is a safety net, not a guarantee."""
+    import base64
+    import urllib.parse
+
+    forms = set()
+    for value in (v for v in secrets or [] if v):
+        raw = value.encode()
+        forms.update((value, base64.b64encode(raw).decode(), base64.urlsafe_b64encode(raw).decode(),
+                      urllib.parse.quote(value, safe=""), urllib.parse.quote(value),
+                      urllib.parse.quote_plus(value), json.dumps(value)[1:-1]))
+    return sorted(forms, key=len, reverse=True)
+
+
+def _scrubbed(value, forms: list):
+    if isinstance(value, str):
+        for form in forms:
+            value = value.replace(form, "***")
+        return value
+    if isinstance(value, dict):
+        return {_scrubbed(k, forms): _scrubbed(v, forms) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_scrubbed(v, forms) for v in value]
+    return value
+
+
+def scrub_answer(answer, secrets: list):
+    """A copy of a successful answer (the interface's Answer) with every form of each secret value
+    (secret_forms) replaced by *** in its output, its refusal reason and its tool calls: a system that
+    echoes its key or a secret header never hands it to the caller. An answer without them is unchanged.
+    A safety net, not a guarantee: the target must not echo credentials, and hex, unpadded base64, double
+    encodings, case changes and a secret split across output items or calls get through."""
+    import dataclasses
+
+    forms = secret_forms(secrets)
+    if not forms:
+        return answer
+    changes = {"text": _scrubbed(answer.text, forms), "refusal_reason": _scrubbed(answer.refusal_reason, forms)}
+    if getattr(answer, "tool_calls", None) is not None:
+        changes["tool_calls"] = _scrubbed(answer.tool_calls, forms)
+    return dataclasses.replace(answer, **changes)
 
 
 def ask_failure(exc, secrets: list) -> tuple[int, dict]:

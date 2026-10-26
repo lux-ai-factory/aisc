@@ -9,6 +9,7 @@ import time
 
 import pytest
 
+from platform_service import connection_allowlist
 from platform_service.routes import facade
 from tests.conftest import needs_database
 from tests.connection_support import CONNECTIONS_TOKEN, new_secret
@@ -17,6 +18,9 @@ from tests.test_connection_facades import _env, stub  # noqa: F401  (fixtures)
 
 @pytest.fixture(autouse=True)
 def _fresh_limiters(monkeypatch):
+    # the timings measure the caps, not the allowlist's name lookups (a facade call resolves the stack's
+    # service names, seconds on a busy host)
+    monkeypatch.setattr(connection_allowlist, "resolve", lambda host: set())
     monkeypatch.setattr(facade, "_FACADE_LIMITER", None, raising=False)
     monkeypatch.setattr(facade, "_RUN_LIMITERS", {})
     monkeypatch.delenv("PLATFORM_FACADE_THREADS", raising=False)

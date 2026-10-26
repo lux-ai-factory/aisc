@@ -15,6 +15,10 @@ request), under the log's relay lock. Its id is derived from (log, reason, event
 the append and the update finishes on the next run with the same entry. The project databases' own
 `ledger.outbox` rows are only scanned for secret shapes and counted, never changed.
 
+A project the ledger cannot take now (unavailable, or refusing an entry) is reported and the next one goes on
+(exit 5). An integrity alarm stops the whole run at once, with its own message and exit code 6: nothing more is
+appended or redacted in any project until the log is checked.
+
 `count` reports what `apply` would do and writes nothing. Output names projects, items, fields and counts only,
 never a value. Run by scripts/clean-old-secrets.sh, which backs the tables up first:
 
@@ -44,6 +48,10 @@ CONFIGURED = "engine.plugin.configured"
 CHUNK = 500
 NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "aisc:ledger.content.redacted")
 LEDGER_DOWN = "the ledger is unavailable; nothing redacted in this project"
+LEDGER_ALARM = ("the ledger raised an integrity alarm; the cleanup stopped here and redacts nothing more until the "
+                "log is checked")
+#: The exit code of a run stopped by an integrity alarm (5 is a project the ledger could not take).
+ALARM_EXIT = 6
 
 
 class SecretCleanupError(Exception):
@@ -187,7 +195,7 @@ def count(pids: list[str] | None = None) -> list[ProjectCounts]:
 def apply(pids: list[str] | None = None, reason: str = REASON) -> list[ProjectCounts]:
     """Mask the outbox rows, redact the leaked contents and log each redaction, per project."""
     from platform_service.ledger import provision, relay
-    from platform_service.ledger.store import LedgerError
+    from platform_service.ledger.store import LedgerError, LedgerUnavailable, TamperAlarm
 
     out = []
     for pid in _projects(pids):
@@ -207,8 +215,14 @@ def apply(pids: list[str] | None = None, reason: str = REASON) -> list[ProjectCo
                 for chunk in _chunks([r["event_id"] for r in leaked]):
                     counts.contents += _redact(log, pid, reason, chunk)
                     counts.events += 1
-        except LedgerError:
+        except TamperAlarm:                       # the log does not verify: stop, write nothing more anywhere
+            counts.error = LEDGER_ALARM
+            out.append(counts)
+            break
+        except LedgerUnavailable:
             counts.error = LEDGER_DOWN
+        except LedgerError as exc:
+            counts.error = f"the ledger refused the redaction ({type(exc).__name__}); nothing redacted in this project"
         out.append(counts)
     return out
 
@@ -260,7 +274,7 @@ def _print(results: list[ProjectCounts], applied: bool) -> int:
     words = (("rows_masked", "rows_redacted", "events_appended") if applied
              else ("rows_to_mask", "rows_to_redact", "events_to_append"))
     totals = [0, 0, 0, 0]
-    failed = False
+    failed = alarm = False
     for c in results:
         print(f"project {c.pid}: core.outbox {words[0]}={c.outbox_rows}")
         print(f"project {c.pid}: ledger.content {words[1]}={c.contents} {words[2]}={c.events}")
@@ -270,11 +284,12 @@ def _print(results: list[ProjectCounts], applied: bool) -> int:
         if c.error:
             print(f"project {c.pid}: {c.error}", file=sys.stderr)
             failed = True
+            alarm = alarm or c.error == LEDGER_ALARM
         for i, n in enumerate((c.outbox_rows, c.contents, c.events, c.scan_rows)):
             totals[i] += n
     print(f"total: {words[0]}={totals[0]} {words[1]}={totals[1]} {words[2]}={totals[2]}"
           f" rows_with_secret_shape={totals[3]}")
-    return 5 if failed else 0
+    return ALARM_EXIT if alarm else 5 if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:

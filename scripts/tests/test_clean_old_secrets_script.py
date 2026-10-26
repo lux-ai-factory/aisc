@@ -81,6 +81,10 @@ with open(os.path.join(d, "calls.jsonl"), "a") as f:
     f.write(json.dumps(["engine", args]) + "\\n")
 db = "{db}"
 applying = bool(args) and args[0] == "apply"
+scrub_text = "--scrub-config-text" in args
+# a kept text field that may hold a key: named for review, or (on request) scrubbed and named to rotate
+text_line = (f"{{db}}: rotate plugin=aisc-plugin-b field=prompt configs=1" if scrub_text
+             else f"{{db}}: review plugin=aisc-plugin-b field=prompt configs=1")
 if applying and os.environ.get("STANDIN_ENGINE_APPLY_EXIT"):
     sys.exit(int(os.environ["STANDIN_ENGINE_APPLY_EXIT"]))
 cleaned = os.path.exists(os.path.join(d, "engine-applied")) or os.environ.get("STANDIN_ZEROS")
@@ -90,6 +94,7 @@ if applying:
     print(f"{{db}}: aisc_backend_pluginconfig rows_changed=1 fields_dropped=1")
     print(f"{{db}}: aisc_backend_evaluationplugin rows_scrubbed=0")
     print(f"{{db}}: rotate plugin=aisc-plugin-a field=api_key configs=1")
+    print(text_line)
     print("total: rows_masked=1 rows_changed=1 fields_dropped=1 rows_scrubbed=0")
 elif cleaned:
     print(f"{{db}}: aisc_backend_ledgeroutbox rows_to_mask=0")
@@ -101,6 +106,7 @@ else:
     print(f"{{db}}: aisc_backend_pluginconfig rows_to_change=1 fields_to_drop=1")
     print(f"{{db}}: aisc_backend_evaluationplugin rows_to_scrub=0")
     print(f"{{db}}: rotate plugin=aisc-plugin-a field=api_key configs=1")
+    print(text_line)
     print("total: rows_to_mask=1 rows_to_change=1 fields_to_drop=1 rows_to_scrub=0")
 """
 
@@ -358,3 +364,121 @@ def test_the_script_runs_on_bash_3_2():
     r = subprocess.run(["docker", "run", "--rm", "-v", f"{SCRIPT}:/w/clean-old-secrets.sh:ro", "bash:3.2",
                         "bash", "-n", "/w/clean-old-secrets.sh"], capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
+
+
+# Deleting what holds secrets: shred where it exists, rm (and say so) where it does not
+
+SHRED = """\
+#!/bin/sh
+for f in "$@"; do
+  case "$f" in -*) continue ;; esac
+  echo "$f" >> "$STANDIN_DIR/shredded.txt"
+  rm -f "$f"
+done
+"""
+
+
+def test_every_backup_and_export_file_is_shredded(bed, tmp_path):
+    tools = tmp_path / "shred-bin"
+    tools.mkdir()
+    (tools / "shred").write_text(SHRED)
+    (tools / "shred").chmod(0o755)
+    r = bed["run"]("--apply", "--backup-dir", str(bed["backups"]),
+                   PATH=f"{tools}{os.pathsep}{os.environ['PATH']}")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "backup deleted" in r.stdout
+    log = bed["standins"] / "shredded.txt"
+    shredded = log.read_text().splitlines() if log.exists() else []
+    names = sorted(os.path.basename(path) for path in shredded)
+    assert names == sorted([f"{PID}.jsonl", "platform.dump.enc", f"{PROJECT_DB}.dump.enc"]), names
+    assert bed["folders"]() == []
+
+
+def _path_without_shred(tmp_path):
+    """A PATH folder linking every command on PATH but shred."""
+    tools = tmp_path / "no-shred-bin"
+    tools.mkdir()
+    for folder in os.environ["PATH"].split(os.pathsep):
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            target = os.path.join(folder, name)
+            if name == "shred" or (tools / name).exists() or not os.access(target, os.X_OK):
+                continue
+            (tools / name).symlink_to(target)
+    return str(tools)
+
+
+def test_without_shred_the_files_are_removed_and_the_output_says_so(bed, tmp_path):
+    path = _path_without_shred(tmp_path)
+    r = bed["run"]("--apply", "--backup-dir", str(bed["backups"]), PATH=path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "backup deleted" in r.stdout
+    assert bed["folders"]() == []
+    said = (r.stdout + r.stderr).replace(str(tmp_path), "")         # the test's own folder names hold "shred"
+    assert "shred" in said.lower(), "the output must say shred was not available"
+
+
+
+# Kept text fields that may hold a key: named under their own heading, never under the keys to rotate; changed
+# only with --scrub-config-text
+
+ROTATE_HEADING = "Rotate these keys, they were stored in clear:"
+REVIEW_HEADING = "Review these fields (text that may contain a key; not changed):"
+REVIEW_LINE = f"{PROJECT_DB}: review plugin=aisc-plugin-b field=prompt configs=1"
+TEXT_ROTATE_LINE = f"{PROJECT_DB}: rotate plugin=aisc-plugin-b field=prompt configs=1"
+
+
+def _under(out, heading):
+    """The rotate or review lines printed right under `heading` (empty when the heading is absent)."""
+    lines = out.splitlines()
+    if heading not in lines:
+        return []
+    found = []
+    for line in lines[lines.index(heading) + 1:]:
+        if not re.search(r": (rotate|review) ", line):
+            break
+        found.append(line)
+    return found
+
+
+def _engine_args(calls):
+    return [c[1] for c in calls if c[0] == "engine"]
+
+
+def test_the_dry_run_names_text_fields_for_review_apart_from_the_keys_to_rotate(bed):
+    r = bed["run"]()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _under(r.stdout, REVIEW_HEADING) == [REVIEW_LINE]
+    rotate = _under(r.stdout, ROTATE_HEADING)
+    assert rotate and not [line for line in rotate if ": review " in line]
+    assert TEXT_ROTATE_LINE not in r.stdout
+    assert all("--scrub-config-text" not in args for args in _engine_args(bed["calls"]()))
+
+
+def test_apply_leaves_text_fields_and_names_them_for_review(bed):
+    r = bed["run"]("--apply", "--backup-dir", str(bed["backups"]))
+    assert r.returncode == 0, r.stdout + r.stderr
+    tail = r.stdout[r.stdout.rindex("backup deleted"):]
+    assert _under(tail, REVIEW_HEADING) == [REVIEW_LINE]
+    assert not [line for line in _under(tail, ROTATE_HEADING) if ": review " in line]
+    assert all("--scrub-config-text" not in args for args in _engine_args(bed["calls"]()))
+
+
+def test_on_request_text_fields_are_scrubbed_and_named_to_rotate(bed):
+    r = bed["run"]("--scrub-config-text")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert [args for args in _engine_args(bed["calls"]())] == [["count", "--scrub-config-text"]]
+    assert REVIEW_HEADING not in r.stdout
+    assert TEXT_ROTATE_LINE in _under(r.stdout, ROTATE_HEADING)
+    applied_run = bed["run"]("--apply", "--scrub-config-text", "--backup-dir", str(bed["backups"]))
+    assert applied_run.returncode == 0, applied_run.stdout + applied_run.stderr
+    engine = _engine_args(bed["calls"]())[1:]
+    assert [args[0] for args in engine] == ["count", "apply", "count"]
+    assert all("--scrub-config-text" in args for args in engine), engine
+
+
+def test_the_runbook_says_when_to_scrub_config_text():
+    text = (ROOT / "docs/runbooks/clean-old-secrets.md").read_text()
+    assert "--scrub-config-text" in text
+    assert "Review these fields" in text

@@ -307,7 +307,7 @@ def test_a_project_outbox_row_with_a_secret_shape_is_counted_and_never_changed(l
 
     module = cleanup()
     pid = leaked["pid"]
-    event_id = emit(pid, "controls_rw", event(content={"note": "Bearer abc"}))
+    event_id = emit(pid, "controls_rw", event(content={"note": "Bearer abcDEF0123456789ghi"}))
     before = as_superuser(pid, "SELECT * FROM ledger.outbox WHERE event_id = %s", (event_id,))
     [counts] = module.count([pid])
     assert counts.scan_rows == 1
@@ -333,13 +333,26 @@ def test_the_count_command_prints_counts_and_names_never_a_value(leaked):
     assert KEY not in r.stdout + r.stderr
 
 
+def _unsigned(lines):
+    """The lines with the head's signature left out: each export signs its head afresh (ECDSA draws a new
+    random value every time), so two exports of the same log differ only there."""
+    out = json.loads(json.dumps(lines))
+    for line in out:
+        if "head" in line:
+            line["head"].pop("signature", None)
+    return out
+
+
 def test_the_export_command_prints_the_export(leaked, capsys):
     from platform_service.ledger import export
 
     pid = leaked["pid"]
     assert cleanup().main(["export", pid]) == 0
     printed = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
-    assert printed == json.loads(json.dumps(export.lines(pid)))
+    assert printed[-1]["head"]["signature"]
+    assert _unsigned(printed) == _unsigned(export.lines(pid))
+    pem = leaked["store"].public_key_pem()
+    assert checker().check(printed, pem.encode() if isinstance(pem, str) else pem) == []
 
 
 def test_an_unknown_command_is_a_usage_error():
@@ -377,3 +390,218 @@ def test_the_redaction_is_the_platforms_own_action():
     assert (action.origin, tuple(action.emitters), tuple(action.actor_kinds)) == ("platform", (), ("system",))
     assert "emitter" in check({"event_id": str(uuid.uuid4()), "action": "ledger.content.redacted",
                                "item_type": "ledger", "item_id": "x"}, emitter="engine")
+
+
+# A dict or a list under a secret name is one secret
+
+
+def test_a_nested_secret_is_counted_redacted_and_named_to_rotate(project, client, witnessed, memory_ledger):
+    module = cleanup()
+    pid = project["pid"]
+    nested = configure(client, witnessed, pid, {"api_keys": {"openai": KEY}, "languages": ["en"]})
+    listed = configure(client, witnessed, pid, {"credentials": [{"user": "u", "pass": "pw-0123456789"}]})
+    relay_all(pid)
+    log = log_of(pid)
+    assert frozen(log, nested["event_id"])["content"]["config"]["api_keys"] == {"openai": KEY}
+    assert sorted(module.leaked_contents(log)) == sorted([nested["event_id"], listed["event_id"]])
+    expected = module.ProjectCounts(pid, outbox_rows=2, contents=2, events=1, scan_rows=0,
+                                    rotate=[(PL, "api_keys", 1), (PL, "credentials", 1)])
+    assert module.count([pid]) == [expected]
+    assert module.apply([pid]) == [expected]
+    for event in (nested, listed):
+        row = frozen(log, event["event_id"])
+        assert row["content"] is None and row["redaction"] == module.REASON
+    assert outbox_content(nested["event_id"])["config"] == {"api_keys": "set", "languages": ["en"]}
+    assert outbox_content(listed["event_id"])["config"] == {"credentials": "set"}
+
+
+# A ledger integrity alarm is not "the ledger is unavailable"
+
+
+def test_an_integrity_alarm_stops_the_cleanup_with_its_own_code_and_message(
+        project, make_project, client, witnessed, memory_ledger, monkeypatch, capsys):
+    from tests.ledger.conftest import OWNER, MEMBER as member
+    from platform_service.ledger.store import TamperAlarm
+
+    module = cleanup()
+    first = project["pid"]
+    second = make_project(OWNER, editors=(member,))["pid"]
+    events = {pid: configure(client, witnessed, pid, {"judge_api_key": KEY}) for pid in (first, second)}
+    for pid in (first, second):
+        relay_all(pid)
+    real_append = memory_ledger.append
+    calls = []
+
+    def alarm_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TamperAlarm("the log's state does not match its signed head")
+        return real_append(*args, **kwargs)
+
+    monkeypatch.setattr(memory_ledger, "append", alarm_once)
+    capsys.readouterr()
+    code = module.main(["apply"] + [arg for pid in (first, second) for arg in ("--project", pid)])
+    err = capsys.readouterr().err
+    assert code not in (0, 2, 5), code
+    assert module.LEDGER_DOWN not in err
+    assert "unavailable" not in err
+    assert any(word in err.lower() for word in ("alarm", "integrity", "tamper")), err
+    for pid in (first, second):                       # nothing applied after the alarm, in either project
+        log = log_of(pid)
+        assert frozen(log, events[pid]["event_id"])["content"] is not None
+        assert redactions(memory_ledger, log) == []
+    later = max(first, second)                         # projects run in pid order: the later one is never touched
+    assert outbox_content(events[later]["event_id"])["config"] == {"judge_api_key": KEY}
+
+
+def test_with_the_ledger_unavailable_the_message_is_still_unavailable(leaked, monkeypatch, capsys):
+    from platform_service.ledger.store import LedgerUnavailable
+
+    module = cleanup()
+
+    def down(*args, **kwargs):
+        raise LedgerUnavailable("immudb did not answer")
+
+    monkeypatch.setattr(leaked["store"], "append", down)
+    capsys.readouterr()
+    assert module.main(["apply", "--project", leaked["pid"]]) == 5
+    err = capsys.readouterr().err
+    assert module.LEDGER_DOWN in err
+    assert "alarm" not in err.lower()
+
+
+# The checker's two other refusals of a mark
+
+
+def test_the_checker_refuses_a_mark_on_an_entry_with_no_content_digest(leaked, tmp_path, capsys):
+    module = cleanup()
+    lines, pem = _exported(leaked)
+    at = next(i for i, line in enumerate(lines)
+              if (line.get("entry") or {}).get("action") == "ledger.content.redacted")
+    assert not lines[at]["entry"].get("content_sha256")
+    lines[at]["content_redacted"] = module.REASON
+    expected = f"line {at + 1}: marked redacted but the entry has no content digest"
+    assert expected in checker().check(lines, pem)
+    code, out = _main(tmp_path, lines, pem, capsys)
+    assert code == 1 and expected in out
+
+
+def test_the_checker_refuses_a_redaction_older_than_its_entry(project, client, witnessed, memory_ledger, tmp_path,
+                                                               capsys):
+    """A redaction entry naming an event id the log records only later: the mark is refused."""
+    from datetime import datetime, timezone
+
+    from platform_service.ledger import export, registry, relay
+
+    module = cleanup()
+    pid = project["pid"]
+    configure(client, witnessed, pid, {"judge_api_key": "set"})
+    relay_all(pid)
+    log = log_of(pid)
+    later_id = str(uuid.uuid4())
+    entry = {"event_id": module.redaction_event_id(log, module.REASON, [later_id]),
+             "occurred_at": relay._iso(datetime.now(timezone.utc)),
+             "project_pid": pid, "step": 0, "source_app": "platform", "action": module.ACTION,
+             "actor_kind": "system", "actor_ref": None, "program": module.PROGRAM, "request_id": None,
+             "item_type": "ledger", "item_id": log, "outcome": "ok",
+             "details": {"event_ids": [later_id], "reason": module.REASON, "count": 1},
+             "registry_version": registry.VERSION}
+    with relay._log_lock(log, wait=30.0):
+        seq = memory_ledger.append(log, entry)
+        relay._index(log, seq, entry, pid)
+    configure(client, witnessed, pid, {"judge_api_key": "set", "languages": ["en"]}, event_id=later_id)
+    relay_all(pid)
+    lines = export.lines(pid)
+    at = _at(lines, later_id)
+    assert lines[at]["entry"]["seq"] > seq and lines[at]["entry"].get("content_sha256")
+    del lines[at]["content"]
+    lines[at]["content_redacted"] = module.REASON
+    pem = memory_ledger.public_key_pem()
+    pem = pem.encode() if isinstance(pem, str) else pem
+    expected = f"line {at + 1}: redacted before it was logged"
+    assert expected in checker().check(lines, pem)
+    code, out = _main(tmp_path, lines, pem, capsys)
+    assert code == 1 and expected in out
+
+
+# Header fields and keys assigned inside text are secrets in the ledger copies; ordinary prose is not
+
+
+def leaked_before_the_guard(event: dict, config: dict) -> dict:
+    """Write `config` into both platform copies of an accepted event, as they stand for an event relayed before
+    the registry refused a credential in content: the registry now refuses such a value on its way in, so an old
+    leak exists only as rows written back then."""
+    content = json.dumps(content_of(config))
+    from platform_service import db
+
+    with db.pool().connection() as conn:
+        conn.execute("UPDATE core.outbox SET content = %s::jsonb WHERE event_id = %s", (content, event["event_id"]))
+        assert conn.execute("UPDATE ledger.content SET content = %s::jsonb WHERE event_id = %s",
+                            (content, event["event_id"])).rowcount == 1
+    return {**event, "content": content_of(config)}
+
+
+def test_a_header_field_and_a_key_in_text_are_counted_redacted_and_named_to_rotate(
+        project, client, witnessed, memory_ledger):
+    module = cleanup()
+    pid = project["pid"]
+    header = configure(client, witnessed, pid, {"headers": {"Authorization": "set", "Accept": "application/json"}})
+    text = configure(client, witnessed, pid, {"prompt": f"call the judge with api_key={KEY} please",
+                                              "temperature": 0.2})
+    prose = configure(client, witnessed, pid, {"prompt": "She was the bearer of bad news. Enter your password: "
+                                                         "it must contain a digit.", "temperature": 0.2})
+    relay_all(pid)
+    log = log_of(pid)
+    header = leaked_before_the_guard(header, {"headers": {"Authorization": "Token abcdef0123456789",
+                                                          "Accept": "application/json"}})
+    assert frozen(log, header["event_id"])["content"]["config"]["headers"]["Authorization"] == "Token abcdef0123456789"
+    assert sorted(module.leaked_contents(log)) == sorted([header["event_id"], text["event_id"]])
+    expected = module.ProjectCounts(pid, outbox_rows=2, contents=2, events=1, scan_rows=0,
+                                    rotate=[(PL, "headers.Authorization", 1), (PL, "prompt", 1)])
+    assert module.count([pid]) == [expected]
+    assert module.apply([pid]) == [expected]
+    for event in (header, text):
+        row = frozen(log, event["event_id"])
+        assert row["content"] is None and row["redaction"] == module.REASON
+    assert frozen(log, prose["event_id"])["content"] == content_of(prose["content"]["config"])
+    assert outbox_content(header["event_id"])["config"] == {"headers": {"Authorization": "set",
+                                                                        "Accept": "application/json"}}
+    masked = outbox_content(text["event_id"])["config"]
+    assert KEY not in json.dumps(masked) and masked["temperature"] == 0.2
+    assert outbox_content(prose["event_id"])["config"] == prose["content"]["config"]
+
+
+def rejections(store, pid):
+    return [e.details["reason"] for e in entries(store, log_of(pid)) if e.action == "ledger.rejected"]
+
+
+def test_prose_saying_bearer_is_accepted_and_frozen(project, client, witnessed, memory_ledger):
+    """The registry refuses only `Bearer` followed by a credential-shaped value, not the word in a sentence."""
+    pid = project["pid"]
+    config = {"prompt": "She was the bearer of bad news.", "temperature": 0.2}
+    sent = configure(client, witnessed, pid, config)
+    relay_all(pid)
+    row = frozen(log_of(pid), sent["event_id"])
+    assert row is not None and row["content"] == content_of(config)
+    assert rejections(memory_ledger, pid) == []
+
+
+def test_bearer_with_a_credential_shaped_token_is_refused_and_not_frozen(project, client, witnessed,
+                                                                         memory_ledger):
+    pid = project["pid"]
+    sent = configure(client, witnessed, pid, {"prompt": "use Bearer abcDEF0123456789xyz now"})
+    relay_all(pid)
+    assert frozen(log_of(pid), sent["event_id"]) is None
+    assert rejections(memory_ledger, pid) == ["secret_in:content"]
+
+
+def test_the_engines_copy_with_a_key_in_text_masked_is_a_replay(project, client, witnessed, memory_ledger):
+    """The engine masks a key assigned in a prompt before it re-sends the event: still the same event."""
+    pid = project["pid"]
+    sent = configure(client, witnessed, pid, {"prompt": f"call the judge with api_key={KEY} please"})
+    config_module = importlib.import_module("platform_service.ledger.config_secrets")
+    masked = {**sent, "content": content_of(config_module.masked_for_ledger(sent["content"]["config"]))}
+    assert masked != sent
+    r = post(client, pid, masked)
+    assert r.status_code == 202, r.text
+    assert r.json().get("replay") is True

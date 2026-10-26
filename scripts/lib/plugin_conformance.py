@@ -21,8 +21,17 @@ model_under_test and the like, not followed by a column, feature or field word),
 a model word (model, llm, provider, judge, attacker, grader, embedder, embedding(s), generator) and an
 identifier (name, id, url, key, path); a dataset's column roles and run settings end in another word. It is
 also a model field when it is the model called an LLM (llm, target_llm), a provider's key or token (openai_key,
-hf_token, anthropic_api_key), a model's or model server's address (ollama_url, litellm_url, api_base,
-model_uri, target_host), a model file (model_file, model_path) or the system under test.
+hf_token, anthropic_api_key), a model's or model server's address (a name that starts with a model or
+server word and ends in an address word, with any words between: ollama_url, inference_server_url,
+litellm_proxy_url, sut_url, api_base), a deployment, repo, checkpoint, weights, folder or version of a model
+(azure_deployment, deployment_name, endpoint_name, hf_repo_id, model_checkpoint, onnx_path, weights_path,
+model_dir, model_version), a model file (model_file, model_path), the target by name (target_name,
+target_system) or the system under test.
+
+Name rules are never complete. These gaps are left to the integrator's code review of the plugin's form: a
+bare or generic token (token, api_token, access_token, hf_access_token), a bare address (url, host), a bare
+deployment or engine, a service's api address (dataset_api_url, webhook_api_url), and a helper word alone
+(attacker, generator, embedder, evaluator_llm), which the integrator's helper rule catches.
 
 Field names only: the route never sends a value, and nothing here prints one.
 """
@@ -40,10 +49,16 @@ HELPER_ROLES = ("judge", "attacker", "grader", "embedder", "generator")
 #: names that pick a model: llm alone or target_llm (a helper's llm, judge_llm, is the integrator's helper
 #: rule; use_llm is a setting), a provider's key or token with the provider word right before it (openai_key,
 #: hf_token, groq_api_key; anthropic_max_tokens is a setting), a model's or model server's address
-#: (ollama_url, litellm_url, api_base, model_uri, target_host, openai_api_base), a model file and the system
-#: under test. Bare url, host, deployment and engine are too generic and do not match. Accepted over-matches,
-#: renamed when they occur: a name ending in model that is not a model (threat_model), and one ending in
-#: provider, endpoint, credential(s), api_key or base_url that keys no model (data_provider)
+#: (ollama_url, litellm_url, model_uri, target_host, and with words between: inference_server_url,
+#: llm_server_url, model_server_host, sut_url; api counts only as the first word, api_base, api_server_url,
+#: so a service's dataset_api_url or results_api_base does not match), a model's deployment, repo,
+#: checkpoint, weights, folder or version (azure_deployment, deployment_name, endpoint_name, model_repo,
+#: hf_repo_id, model_checkpoint, onnx_path, weights_path, model_dir, model_version), a model file, the target
+#: by name (target_name, target_system) and the system under test. Gaps left to the integrator's code review:
+#: token, api_token, access_token, hf_access_token, url, host, deployment and engine are too generic and do
+#: not match. Accepted over-matches, renamed when they occur: a name ending in model that is not a model
+#: (threat_model), one ending in provider, endpoint, credential(s), api_key or base_url that keys no model
+#: (data_provider), and an address under a model or server word that is not a model's
 TARGET_FIELD = re.compile(r"(^|_)(target_(model|model_id|api_key|key|base_url|url|endpoint|credentials?|provider)"
                           r"(?![a-z0-9_]*_(column|feature|field)s?(_|$))"
                           r"|model_under_test|model_credentials?|system_under_test)(_|$)"
@@ -54,8 +69,12 @@ TARGET_FIELD = re.compile(r"(^|_)(target_(model|model_id|api_key|key|base_url|ur
                           r"|^llms?$|(^|_)target_llms?$"
                           r"|(^|_)(openai|anthropic|azure|hf|huggingface|mistral|cohere|google|gemini|groq|together"
                           r"|ollama|litellm|vllm)_(api_)?(key|token)s?$"
-                          r"|(^|_)(model|llm|api|ollama|litellm|vllm|openai|inference|target)"
-                          r"_(url|uri|base|host|endpoint)s?$")
+                          r"|(^(model|llm|api|ollama|litellm|vllm|openai|inference|target|sut)(_[a-z0-9]+)*"
+                          r"|(^|_)(model|llm|ollama|litellm|vllm|openai|inference|target|sut))"
+                          r"_(url|uri|base|host|endpoint)s?$"
+                          r"|(^|_)(azure_deployment|deployment_name|endpoint_name|model_repo|hf_repo_id"
+                          r"|model_checkpoint|onnx_path|weights_path|model_dir|model_version|target_name"
+                          r"|target_system)s?$")
 #: what the engine adds to each declaration for this check
 CHECKED_KEYS = ("adopted", "helper_roles", "config_fields", "hidden_config_fields", "config_fields_unreadable")
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Old plaintext plugin secrets out of the engine's stores and the platform's ledger copies.
 #
-#   scripts/clean-old-secrets.sh [--project PID]...                     dry run (the default): counts only
-#   scripts/clean-old-secrets.sh --apply --backup-dir DIR [--keep-backup] [--project PID]... [--reason TEXT]
+#   scripts/clean-old-secrets.sh [--scrub-config-text] [--project PID]...   dry run (the default): counts only
+#   scripts/clean-old-secrets.sh --apply --backup-dir DIR [--keep-backup] [--scrub-config-text] [--project PID]... [--reason TEXT]
 #   scripts/clean-old-secrets.sh --backup-only --backup-dir DIR [--project PID]...
 #   scripts/clean-old-secrets.sh --delete-backup FOLDER
 #
 # The dry run prints what each side would change and the keys to rotate (by plugin and field, never a value).
+# Free text in a stored plugin configuration (a prompt) that may hold a key is not changed: its fields are listed
+# under "Review these fields", apart from the keys to rotate. --scrub-config-text has the engine scrub them too
+# (they are then counted, changed and listed with the keys to rotate).
 # --apply: refuses without a backup folder outside the repository and a passphrase; stops with "nothing to
 # clean" when the counts are zero; checks the free disk; writes an encrypted backup of the tables it changes
 # (one file per database, AES-256-CBC, PBKDF2 600000 iterations); cleans the engine (manage.py
@@ -43,12 +46,14 @@ KEEP=0
 DELETE_FOLDER=""
 REASON=""
 PROJECT_ARGS=()
+ENGINE_FLAGS=()
 PIDS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) MODE=apply ;;
     --backup-only) MODE=backup ;;
     --keep-backup) KEEP=1 ;;
+    --scrub-config-text) ENGINE_FLAGS+=(--scrub-config-text) ;;
     --backup-dir) [ $# -ge 2 ] || usage; BACKUP_DIR=$2; shift ;;
     --project) [ $# -ge 2 ] || usage; PROJECT_ARGS+=(--project "$2"); PIDS+=("$2"); shift ;;
     --reason) [ $# -ge 2 ] || usage; REASON=$2; shift ;;
@@ -83,7 +88,7 @@ PROJECT_TABLES="engine.aisc_backend_ledgeroutbox engine.aisc_backend_pluginconfi
 PLATFORM_TABLES="core.outbox ledger.content"
 
 engine() { # count|apply
-  "${ENGINE_CMD[@]}" "$1" ${PROJECT_ARGS[@]+"${PROJECT_ARGS[@]}"}
+  "${ENGINE_CMD[@]}" "$1" ${ENGINE_FLAGS[@]+"${ENGINE_FLAGS[@]}"} ${PROJECT_ARGS[@]+"${PROJECT_ARGS[@]}"}
 }
 
 platform() { # count|apply
@@ -122,13 +127,29 @@ print_rotate() { # text...
     echo "Rotate these keys, they were stored in clear:"
     printf '%s\n' "$lines"
   fi
+  lines=$(printf '%s\n' "$@" | grep ': review ' || true)
+  if [ -n "$lines" ]; then
+    echo "Review these fields (text that may contain a key; not changed):"
+    printf '%s\n' "$lines"
+  fi
 }
 
+# Files that held secrets (backups, exports) are overwritten before they are removed. Without shred they are only
+# removed, and the output says so once.
+NO_SHRED_SAID=0
 shred_files() { # files...
   local f
   for f in "$@"; do
     [ -e "$f" ] || continue
-    if command -v shred >/dev/null 2>&1; then shred -u "$f"; else rm -f "$f"; fi
+    if command -v shred >/dev/null 2>&1; then
+      shred -u "$f"
+    else
+      if [ "$NO_SHRED_SAID" = 0 ]; then
+        echo "shred is not available: files are removed with rm, not overwritten first"
+        NO_SHRED_SAID=1
+      fi
+      rm -f "$f"
+    fi
   done
 }
 
@@ -241,7 +262,7 @@ for db in $DATABASES; do
   done
 done
 NEED=$((2 * SIZE + EXTRA_FREE))
-mkdir -p "$BACKUP_DIR"
+(umask 077 && mkdir -p "$BACKUP_DIR")
 FREE_ROOT=$(df -Pk / | awk 'NR == 2 { print $4 }')
 FREE_DIR=$(df -Pk "$BACKUP_DIR" | awk 'NR == 2 { print $4 }')
 FREE_ROOT=$((FREE_ROOT * 1024))
@@ -315,7 +336,7 @@ for pid in $REDACTED_PIDS; do
   file="$FOLDER/verify/$pid.jsonl"
   if ! "${PLATFORM_CMD[@]}" export "$pid" > "$file"; then
     echo "verify: project $pid could not be exported"
-    rm -f "$file"
+    shred_files "$file"
     VERIFIED=0
     continue
   fi
@@ -326,7 +347,7 @@ for pid in $REDACTED_PIDS; do
     echo "verify: project $pid export does not check"
     VERIFIED=0
   fi
-  rm -f "$file"
+  shred_files "$file"
 done
 [ -d "$FOLDER/verify" ] && rmdir "$FOLDER/verify"
 
