@@ -390,3 +390,135 @@ def test_the_redaction_is_the_platforms_own_action():
     assert (action.origin, tuple(action.emitters), tuple(action.actor_kinds)) == ("platform", (), ("system",))
     assert "emitter" in check({"event_id": str(uuid.uuid4()), "action": "ledger.content.redacted",
                                "item_type": "ledger", "item_id": "x"}, emitter="engine")
+
+
+# A dict or a list under a secret name is one secret
+
+
+def test_a_nested_secret_is_counted_redacted_and_named_to_rotate(project, client, witnessed, memory_ledger):
+    module = cleanup()
+    pid = project["pid"]
+    nested = configure(client, witnessed, pid, {"api_keys": {"openai": KEY}, "languages": ["en"]})
+    listed = configure(client, witnessed, pid, {"credentials": [{"user": "u", "pass": "pw-0123456789"}]})
+    relay_all(pid)
+    log = log_of(pid)
+    assert frozen(log, nested["event_id"])["content"]["config"]["api_keys"] == {"openai": KEY}
+    assert sorted(module.leaked_contents(log)) == sorted([nested["event_id"], listed["event_id"]])
+    expected = module.ProjectCounts(pid, outbox_rows=2, contents=2, events=1, scan_rows=0,
+                                    rotate=[(PL, "api_keys", 1), (PL, "credentials", 1)])
+    assert module.count([pid]) == [expected]
+    assert module.apply([pid]) == [expected]
+    for event in (nested, listed):
+        row = frozen(log, event["event_id"])
+        assert row["content"] is None and row["redaction"] == module.REASON
+    assert outbox_content(nested["event_id"])["config"] == {"api_keys": "set", "languages": ["en"]}
+    assert outbox_content(listed["event_id"])["config"] == {"credentials": "set"}
+
+
+# A ledger integrity alarm is not "the ledger is unavailable"
+
+
+def test_an_integrity_alarm_stops_the_cleanup_with_its_own_code_and_message(
+        project, make_project, client, witnessed, memory_ledger, monkeypatch, capsys):
+    from tests.ledger.conftest import OWNER, MEMBER as member
+    from platform_service.ledger.store import TamperAlarm
+
+    module = cleanup()
+    first = project["pid"]
+    second = make_project(OWNER, editors=(member,))["pid"]
+    events = {pid: configure(client, witnessed, pid, {"judge_api_key": KEY}) for pid in (first, second)}
+    for pid in (first, second):
+        relay_all(pid)
+    real_append = memory_ledger.append
+    calls = []
+
+    def alarm_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TamperAlarm("the log's state does not match its signed head")
+        return real_append(*args, **kwargs)
+
+    monkeypatch.setattr(memory_ledger, "append", alarm_once)
+    capsys.readouterr()
+    code = module.main(["apply"] + [arg for pid in (first, second) for arg in ("--project", pid)])
+    err = capsys.readouterr().err
+    assert code not in (0, 2, 5), code
+    assert module.LEDGER_DOWN not in err
+    assert "unavailable" not in err
+    assert any(word in err.lower() for word in ("alarm", "integrity", "tamper")), err
+    for pid in (first, second):                       # nothing applied after the alarm, in either project
+        log = log_of(pid)
+        assert frozen(log, events[pid]["event_id"])["content"] is not None
+        assert redactions(memory_ledger, log) == []
+    later = max(first, second)                         # projects run in pid order: the later one is never touched
+    assert outbox_content(events[later]["event_id"])["config"] == {"judge_api_key": KEY}
+
+
+def test_with_the_ledger_unavailable_the_message_is_still_unavailable(leaked, monkeypatch, capsys):
+    from platform_service.ledger.store import LedgerUnavailable
+
+    module = cleanup()
+
+    def down(*args, **kwargs):
+        raise LedgerUnavailable("immudb did not answer")
+
+    monkeypatch.setattr(leaked["store"], "append", down)
+    capsys.readouterr()
+    assert module.main(["apply", "--project", leaked["pid"]]) == 5
+    err = capsys.readouterr().err
+    assert module.LEDGER_DOWN in err
+    assert "alarm" not in err.lower()
+
+
+# The checker's two other refusals of a mark
+
+
+def test_the_checker_refuses_a_mark_on_an_entry_with_no_content_digest(leaked, tmp_path, capsys):
+    module = cleanup()
+    lines, pem = _exported(leaked)
+    at = next(i for i, line in enumerate(lines)
+              if (line.get("entry") or {}).get("action") == "ledger.content.redacted")
+    assert not lines[at]["entry"].get("content_sha256")
+    lines[at]["content_redacted"] = module.REASON
+    expected = f"line {at + 1}: marked redacted but the entry has no content digest"
+    assert expected in checker().check(lines, pem)
+    code, out = _main(tmp_path, lines, pem, capsys)
+    assert code == 1 and expected in out
+
+
+def test_the_checker_refuses_a_redaction_older_than_its_entry(project, client, witnessed, memory_ledger, tmp_path,
+                                                               capsys):
+    """A redaction entry naming an event id the log records only later: the mark is refused."""
+    from datetime import datetime, timezone
+
+    from platform_service.ledger import export, registry, relay
+
+    module = cleanup()
+    pid = project["pid"]
+    configure(client, witnessed, pid, {"judge_api_key": "set"})
+    relay_all(pid)
+    log = log_of(pid)
+    later_id = str(uuid.uuid4())
+    entry = {"event_id": module.redaction_event_id(log, module.REASON, [later_id]),
+             "occurred_at": relay._iso(datetime.now(timezone.utc)),
+             "project_pid": pid, "step": 0, "source_app": "platform", "action": module.ACTION,
+             "actor_kind": "system", "actor_ref": None, "program": module.PROGRAM, "request_id": None,
+             "item_type": "ledger", "item_id": log, "outcome": "ok",
+             "details": {"event_ids": [later_id], "reason": module.REASON, "count": 1},
+             "registry_version": registry.VERSION}
+    with relay._log_lock(log, wait=30.0):
+        seq = memory_ledger.append(log, entry)
+        relay._index(log, seq, entry, pid)
+    configure(client, witnessed, pid, {"judge_api_key": "set", "languages": ["en"]}, event_id=later_id)
+    relay_all(pid)
+    lines = export.lines(pid)
+    at = _at(lines, later_id)
+    assert lines[at]["entry"]["seq"] > seq and lines[at]["entry"].get("content_sha256")
+    del lines[at]["content"]
+    lines[at]["content_redacted"] = module.REASON
+    pem = memory_ledger.public_key_pem()
+    pem = pem.encode() if isinstance(pem, str) else pem
+    expected = f"line {at + 1}: redacted before it was logged"
+    assert expected in checker().check(lines, pem)
+    code, out = _main(tmp_path, lines, pem, capsys)
+    assert code == 1 and expected in out

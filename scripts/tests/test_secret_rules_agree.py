@@ -5,6 +5,7 @@ the same patterns, the same answers on shared inputs, and a shape rule that find
 registry refuses."""
 
 import importlib.util
+import re
 import sys
 
 import pytest
@@ -18,11 +19,17 @@ FILES = {
 }
 REGISTRY = ROOT / "platform/platform_service/ledger/registry.py"
 
+PEM = ("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAx1abcDEF0123456789\nabcDEF0123456789+/ghiJKL\n"
+       "-----END RSA PRIVATE KEY-----")
 LEDGER_INPUTS = [
     {"api_key": "abc123", "max_tokens": 512, "nested": {"auth_token": "", "items": [{"password": None}]},
      "prompt": "use sk-abcdefghijklmnopqrst1234 ok", "note": "x"},
     {"api_key": "set", "judge_api_key": "lb-judge-0123456789abcdef", "max_tokens": 512, "list": [{"token": "abcdef"}],
      "keys": ["a"], "note": "Bearer abc"},
+    {"api_keys": {"openai": "lb-judge-0123456789abcdef"}, "credentials": [{"user": "u", "pass": "pw-0123456789"}],
+     "languages": ["en"]},
+    {"base_url": "https://user:pw-0123456789@llm.example/v1", "auth": {"header": "Authorization: Token abcdef0123456789"},
+     "cert": PEM, "endpoint": "https://llm.example/v1"},
 ]
 TEXT_INPUTS = [
     ("connect failed: Authorization: Bearer abc.def.ghi api_key=sk-abcdefghijklmnopqrstuvwx password: 'hunter22' "
@@ -31,6 +38,12 @@ TEXT_INPUTS = [
      + "A" * 35, []),
     ("", []),
     ("plain error: unexpected token: }", []),
+    ("connect to postgresql://admin:s3cret-Pass_99@db.example:5432/app failed", []),
+    ("sent Authorization: Basic dXNlcjpwYXNzd29yZA== and authorization: Token abcdef0123456789", []),
+    ("GET /v1/models?api_key%3Dabcd1234efgh5678 body: password%3dhunter22xyz", []),
+    ("token=abcd1234efgh pwd=hunter22x aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", []),
+    ("password = 'correct horse battery' next", []),
+    ("key:\n" + PEM + "\ndone", []),
 ]
 
 
@@ -56,14 +69,16 @@ def test_the_three_copies_have_the_same_patterns(copies):
     assert len(names) == 1, names
 
 
-@pytest.mark.parametrize("value", LEDGER_INPUTS, ids=["masked", "paths"])
+@pytest.mark.parametrize("value", LEDGER_INPUTS, ids=["masked", "paths", "nested", "new_shapes"])
 def test_the_backend_and_the_platform_mask_ledger_copies_alike(copies, value):
     backend, platform = copies["backend"], copies["platform"]
     assert backend.masked_for_ledger(value) == platform.masked_for_ledger(value)
     assert backend.plaintext_secret_paths(value) == platform.plaintext_secret_paths(value)
 
 
-@pytest.mark.parametrize("text, known", TEXT_INPUTS, ids=["failure", "shapes", "empty", "plain"])
+@pytest.mark.parametrize("text, known", TEXT_INPUTS, ids=["failure", "shapes", "empty", "plain", "url_credentials",
+                                                         "authorization", "url_encoded", "bare_names", "quoted",
+                                                         "private_key"])
 def test_the_backend_and_the_worker_scrub_text_alike(copies, text, known):
     assert copies["backend"].scrub_text(text, known) == copies["eval"].scrub_text(text, known)
 
@@ -74,3 +89,15 @@ def test_the_shape_rule_finds_whatever_the_registry_refuses(copies):
         for value in ["Bearer x", "sk-" + "a" * 16, "eyJa.b.c"]:
             assert registry._SECRET.search(value), value
             assert module.SECRET_SHAPE.search(value), value
+
+
+def test_the_backend_and_the_worker_have_the_same_assignment_rule(copies):
+    assert (copies["backend"].SECRET_ASSIGNMENT.pattern, copies["backend"].SECRET_ASSIGNMENT.flags) == (
+        copies["eval"].SECRET_ASSIGNMENT.pattern, copies["eval"].SECRET_ASSIGNMENT.flags)
+
+
+@pytest.mark.parametrize("name", sorted(FILES))
+def test_each_copy_says_what_the_rule_does_not_catch(name):
+    source = FILES[name].read_text()
+    assert "base64" in source
+    assert re.search(r"(split|broken) across lines", source)
