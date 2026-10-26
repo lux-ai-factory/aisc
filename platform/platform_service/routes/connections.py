@@ -388,6 +388,8 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
         message = connection_facade.scrub(str(exc), secret_values(descriptor))
         connection_store.record_test(pid, name, False, message, result=error)
         return {"ok": False, "error": error, "detail": message}
+    # a system that echoes its credentials: the answer and the refusal lose them before they are shown or stored
+    answer = connection_facade.scrub_answer(answer, secret_values(descriptor))
     if answer.refused:
         connection_store.record_test(pid, name, True, f"refused: {answer.refusal_reason}", result="refused")
         return {"ok": True, "refused": True, "refusal_reason": answer.refusal_reason, "status": answer.status,
