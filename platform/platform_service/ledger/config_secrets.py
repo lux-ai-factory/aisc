@@ -15,8 +15,8 @@ import re
 #: What a secret field's value is in a ledger copy: whether it is set, never what it is.
 SECRET_SET = "set"
 
-#: A key holding one of these words is a secret in a ledger copy.
-LEDGER_SECRET_NAME = re.compile(r"key|token|secret|password|credential", re.IGNORECASE)
+#: A key holding one of these words is a secret in a ledger copy (`Authorization` and `Cookie` as header fields).
+LEDGER_SECRET_NAME = re.compile(r"key|token|secret|password|credential|authorization|cookie", re.IGNORECASE)
 #: A value that looks like a credential after `Bearer`, `Basic`, `Token` or a bare `token=`: 16 characters or more
 #: of the base64, hex and URL-safe alphabets, no space (`the bearer of bad news`, `token=EOF` are not secrets).
 CREDENTIAL = r"[A-Za-z0-9+/=_.~-]{16,}"
