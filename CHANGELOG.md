@@ -22,6 +22,15 @@
   then, `aisc/ask` and the OpenAI door carry tools and tool results to it and its tool calls back, and the Test
   button checks each flag with one more call (`capability_missing` when one fails).
   Check: `scripts/test-platform.sh tests/test_facade_tools.py`.
+- A system that echoes its credentials never hands them back: every protocol door scrubs the key and each secret
+  header value (as they are, base64 or URL-encoded) from a 200 answer's output, refusal reason and tool calls,
+  and a secret header value is taken out of an error before the 300-character cut. The integrator's trial
+  gateway uses the same `scrub_answer`. Check: `scripts/test-platform.sh tests/test_answer_scrubbing.py`.
+- Connection, header, parameter and tool names are checked whole: one with a trailing newline is refused (422 at
+  save, 400 at the doors), never stored or a 500. Check: `scripts/test-platform.sh tests/test_exact_names.py`.
+- The allowlist keeps each name's lookup for `PLATFORM_ALLOWLIST_CACHE_S` seconds (default 30, 0 turns it off),
+  so a door call no longer resolves every service name of the stack. Check:
+  `scripts/test-platform.sh tests/test_allowlist_cache.py`.
 
 ## 2026-10-23: plugins are fetched on install
 
