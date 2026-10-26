@@ -16,6 +16,7 @@
 #   errors        failed runs and refused actions shown with their reason
 #   dependencies  shipped dependencies above their vulnerable ranges
 #   docs          the README
+#   secrets       a plugin form's key kept as a project secret: a test only, the form is upstream's
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -36,6 +37,7 @@ webapp src/api/projectHeader.ts modes: projectFetch and the axios interceptor: t
 webapp src/components/LeftBar.tsx modes: Tasks link standalone only
 webapp src/components/PluginInstallDialog.modes.test.tsx modes: the install dialog in both modes
 webapp src/components/PluginInstallDialog.tsx modes, project: install into the project you came from (configurator), upstream's list standalone; installs into the tab's project, named, never the one last opened in another tab
+webapp src/components/plugin/PluginConfigForm.secretFields.test.tsx secrets: upstream's form shows a field the backend kept as a project secret as an empty password input with its help text
 webapp src/components/TopBar.tsx modes: launcher's project in configurator, upstream's wizard standalone; Back goes one level up, to the AI Assessment Sandbox
 webapp src/context/AuthContext.tsx modes: the gateway's session in configurator, upstream's Keycloak login standalone
 webapp src/deployment.components.test.tsx modes: components by mode; Back goes one level up, to the AI Assessment Sandbox
