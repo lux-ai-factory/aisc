@@ -54,18 +54,26 @@ def masked_for_ledger(value):
 
 
 def _plaintext(value) -> bool:
-    return isinstance(value, str) and value != "" and value != SECRET_SET
+    """A plain string other than SECRET_SET, or a dict or list holding one at any depth (the whole value is then
+    the secret: `api_keys: {openai: ...}`). A number is not: `max_tokens: 512` has the same form."""
+    if isinstance(value, str):
+        return value != "" and value != SECRET_SET
+    if isinstance(value, dict):
+        return any(_plaintext(inner) for inner in value.values())
+    if isinstance(value, list):
+        return any(_plaintext(item) for item in value)
+    return False
 
 
 def plaintext_secret_paths(value, _prefix: str = "") -> list[str]:
     """The paths (`a.b`, `items[0].token`) of the values a ledger copy must not hold: a secret-named key with a
-    plain string (or a list holding one), and any string with a key shape. A listed key is not descended into."""
+    plain string, or with a dict or list holding one, and any string with a key shape. A listed key is not
+    descended into."""
     found: list[str] = []
     if isinstance(value, dict):
         for name, inner in value.items():
             path = _path(_prefix, name)
-            if LEDGER_SECRET_NAME.search(str(name)) and (
-                    _plaintext(inner) or (isinstance(inner, list) and any(_plaintext(item) for item in inner))):
+            if LEDGER_SECRET_NAME.search(str(name)) and _plaintext(inner):
                 found.append(path)
             else:
                 found.extend(plaintext_secret_paths(inner, path))
