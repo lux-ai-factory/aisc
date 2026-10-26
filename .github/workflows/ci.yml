@@ -61,6 +61,18 @@ jobs:
           # shellcheck disable=SC2086
           git submodule update --init --depth 50 $PUBLIC_SUBMODULES
       - uses: astral-sh/setup-uv@v5
+      # the fonts the golden PDFs were rendered with (Arial is Liberation Sans there); a runner without them falls back
+      # to another sans-serif and the PDF text differs
+      - name: the report fonts
+        if: matrix.suite == 'report-generator'
+        run: |
+          missing=()
+          for package in fonts-liberation fonts-dejavu-core; do
+            dpkg -s "$package" >/dev/null 2>&1 || missing+=("$package")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            sudo apt-get update -q && sudo apt-get install -y -q "${missing[@]}"
+          fi
       - run: ${{ matrix.run }}
 
   repository-checks:
