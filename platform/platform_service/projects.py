@@ -77,4 +77,4 @@ PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 
 
 def looks_like_pid(value: str) -> bool:
-    return bool(PID.match(value or ""))
+    return bool(PID.fullmatch(value or ""))

@@ -25,7 +25,11 @@
 - A system that echoes its credentials never hands them back: every protocol door scrubs the key and each secret
   header value (as they are, base64 or URL-encoded) from a 200 answer's output, refusal reason and tool calls,
   and a secret header value is taken out of an error before the 300-character cut. The integrator's trial
-  gateway uses the same `scrub_answer`. Check: `scripts/test-platform.sh tests/test_answer_scrubbing.py`.
+  gateway uses the same `scrub_answer`. Error texts take the same forms (`secret_forms`): the doors' 502
+  detail, warning logs, the Test button and its capability checks, `last_test_detail`, and the interface's
+  scrub before the cut. Limits: hex, unpadded base64, double encodings, case changes and a secret split across
+  output items or calls are not scrubbed; the target must not echo credentials, and the scrub is a safety net,
+  not a guarantee. Check: `scripts/test-platform.sh tests/test_answer_scrubbing.py tests/test_encoded_secrets.py`.
 - Connection, header, parameter and tool names are checked whole: one with a trailing newline is refused (422 at
   save, 400 at the doors), never stored or a 500. Check: `scripts/test-platform.sh tests/test_exact_names.py`.
 - The allowlist keeps each name's lookup for `PLATFORM_ALLOWLIST_CACHE_S` seconds (default 30, 0 turns it off),

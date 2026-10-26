@@ -223,6 +223,54 @@ def test_a_secret_in_the_details_or_the_content_is_a_problem(value, where):
     assert any(p.startswith("secret_in:") for p in check(event, emitter=_emitter(name)))
 
 
+@pytest.mark.parametrize("where", ["details", "content"])
+def test_the_word_bearer_in_prose_is_not_a_secret(where):
+    """Only a credential-shaped value after `Bearer` counts: "the bearer of bad news" is ordinary text."""
+    value = "She was the bearer of bad news."
+    name = next(n for n, a in REGISTRY.items() if a.details_keys and a.content_required)
+    key = next(iter(REGISTRY[name].details_keys))
+    event = _event(name, details={key: value} if where == "details" else {},
+                   content={"note": value} if where == "content" else {"note": "fine"})
+    assert not [p for p in check(event, emitter=_emitter(name)) if p.startswith("secret_in:")]
+
+
+@pytest.mark.parametrize("value", ["Bearer abcDEF0123456789xyz", "use Bearer abcdef0123456789 now",
+                                   "bearer 0123456789abcdef0123"])
+@pytest.mark.parametrize("where", ["details", "content"])
+def test_bearer_with_a_credential_shaped_token_is_still_a_secret(value, where):
+    name = next(n for n, a in REGISTRY.items() if a.details_keys and a.content_required)
+    key = next(iter(REGISTRY[name].details_keys))
+    event = _event(name, details={key: value} if where == "details" else {},
+                   content={"note": value} if where == "content" else {"note": "fine"})
+    assert (f"secret_in:{key}" if where == "details" else "secret_in:content") in check(event, emitter=_emitter(name))
+
+
+@pytest.mark.parametrize("value", ["Basic dXNlcjpwYXNzd29yZDEyMzQ=", "Token abcdef0123456789",
+                                   "use token 0123456789abcdef0123 now", "send basic QWxhZGRpbjpvcGVuIHNlc2FtZQ== here",
+                                   "Authorization: Token abcDEF0123456789xyz"])
+@pytest.mark.parametrize("where", ["details", "content"])
+def test_basic_or_token_with_a_credential_shaped_value_is_a_secret(value, where):
+    """`Basic` and `Token` count like `Bearer`: followed by 16 characters or more of the base64, hex and URL-safe
+    alphabets."""
+    name = next(n for n, a in REGISTRY.items() if a.details_keys and a.content_required)
+    key = next(iter(REGISTRY[name].details_keys))
+    event = _event(name, details={key: value} if where == "details" else {},
+                   content={"note": value} if where == "content" else {"note": "fine"})
+    assert (f"secret_in:{key}" if where == "details" else "secret_in:content") in check(event, emitter=_emitter(name))
+
+
+@pytest.mark.parametrize("value", ["Please accept a token of thanks.", "Token abc", "Basic abc",
+                                   "Basic training starts on Monday.", "Token abcdef012345678"])
+@pytest.mark.parametrize("where", ["details", "content"])
+def test_basic_or_token_in_prose_or_with_a_short_value_is_not_a_secret(value, where):
+    """A word after `Token` or `Basic`, or a value under 16 characters, is ordinary text."""
+    name = next(n for n, a in REGISTRY.items() if a.details_keys and a.content_required)
+    key = next(iter(REGISTRY[name].details_keys))
+    event = _event(name, details={key: value} if where == "details" else {},
+                   content={"note": value} if where == "content" else {"note": "fine"})
+    assert not [p for p in check(event, emitter=_emitter(name)) if p.startswith("secret_in:")]
+
+
 def test_an_action_that_freezes_content_needs_it():
     name = next(n for n, a in REGISTRY.items() if a.content_required)
     assert "content_required" in check(_event(name), emitter=_emitter(name))

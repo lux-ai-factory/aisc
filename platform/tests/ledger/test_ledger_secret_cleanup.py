@@ -307,7 +307,7 @@ def test_a_project_outbox_row_with_a_secret_shape_is_counted_and_never_changed(l
 
     module = cleanup()
     pid = leaked["pid"]
-    event_id = emit(pid, "controls_rw", event(content={"note": "Bearer abc"}))
+    event_id = emit(pid, "controls_rw", event(content={"note": "Bearer abcDEF0123456789ghi"}))
     before = as_superuser(pid, "SELECT * FROM ledger.outbox WHERE event_id = %s", (event_id,))
     [counts] = module.count([pid])
     assert counts.scan_rows == 1
@@ -522,3 +522,86 @@ def test_the_checker_refuses_a_redaction_older_than_its_entry(project, client, w
     assert expected in checker().check(lines, pem)
     code, out = _main(tmp_path, lines, pem, capsys)
     assert code == 1 and expected in out
+
+
+# Header fields and keys assigned inside text are secrets in the ledger copies; ordinary prose is not
+
+
+def leaked_before_the_guard(event: dict, config: dict) -> dict:
+    """Write `config` into both platform copies of an accepted event, as they stand for an event relayed before
+    the registry refused a credential in content: the registry now refuses such a value on its way in, so an old
+    leak exists only as rows written back then."""
+    content = json.dumps(content_of(config))
+    from platform_service import db
+
+    with db.pool().connection() as conn:
+        conn.execute("UPDATE core.outbox SET content = %s::jsonb WHERE event_id = %s", (content, event["event_id"]))
+        assert conn.execute("UPDATE ledger.content SET content = %s::jsonb WHERE event_id = %s",
+                            (content, event["event_id"])).rowcount == 1
+    return {**event, "content": content_of(config)}
+
+
+def test_a_header_field_and_a_key_in_text_are_counted_redacted_and_named_to_rotate(
+        project, client, witnessed, memory_ledger):
+    module = cleanup()
+    pid = project["pid"]
+    header = configure(client, witnessed, pid, {"headers": {"Authorization": "set", "Accept": "application/json"}})
+    text = configure(client, witnessed, pid, {"prompt": f"call the judge with api_key={KEY} please",
+                                              "temperature": 0.2})
+    prose = configure(client, witnessed, pid, {"prompt": "She was the bearer of bad news. Enter your password: "
+                                                         "it must contain a digit.", "temperature": 0.2})
+    relay_all(pid)
+    log = log_of(pid)
+    header = leaked_before_the_guard(header, {"headers": {"Authorization": "Token abcdef0123456789",
+                                                          "Accept": "application/json"}})
+    assert frozen(log, header["event_id"])["content"]["config"]["headers"]["Authorization"] == "Token abcdef0123456789"
+    assert sorted(module.leaked_contents(log)) == sorted([header["event_id"], text["event_id"]])
+    expected = module.ProjectCounts(pid, outbox_rows=2, contents=2, events=1, scan_rows=0,
+                                    rotate=[(PL, "headers.Authorization", 1), (PL, "prompt", 1)])
+    assert module.count([pid]) == [expected]
+    assert module.apply([pid]) == [expected]
+    for event in (header, text):
+        row = frozen(log, event["event_id"])
+        assert row["content"] is None and row["redaction"] == module.REASON
+    assert frozen(log, prose["event_id"])["content"] == content_of(prose["content"]["config"])
+    assert outbox_content(header["event_id"])["config"] == {"headers": {"Authorization": "set",
+                                                                        "Accept": "application/json"}}
+    masked = outbox_content(text["event_id"])["config"]
+    assert KEY not in json.dumps(masked) and masked["temperature"] == 0.2
+    assert outbox_content(prose["event_id"])["config"] == prose["content"]["config"]
+
+
+def rejections(store, pid):
+    return [e.details["reason"] for e in entries(store, log_of(pid)) if e.action == "ledger.rejected"]
+
+
+def test_prose_saying_bearer_is_accepted_and_frozen(project, client, witnessed, memory_ledger):
+    """The registry refuses only `Bearer` followed by a credential-shaped value, not the word in a sentence."""
+    pid = project["pid"]
+    config = {"prompt": "She was the bearer of bad news.", "temperature": 0.2}
+    sent = configure(client, witnessed, pid, config)
+    relay_all(pid)
+    row = frozen(log_of(pid), sent["event_id"])
+    assert row is not None and row["content"] == content_of(config)
+    assert rejections(memory_ledger, pid) == []
+
+
+def test_bearer_with_a_credential_shaped_token_is_refused_and_not_frozen(project, client, witnessed,
+                                                                         memory_ledger):
+    pid = project["pid"]
+    sent = configure(client, witnessed, pid, {"prompt": "use Bearer abcDEF0123456789xyz now"})
+    relay_all(pid)
+    assert frozen(log_of(pid), sent["event_id"]) is None
+    assert rejections(memory_ledger, pid) == ["secret_in:content"]
+
+
+def test_the_engines_copy_with_a_key_in_text_masked_is_a_replay(project, client, witnessed, memory_ledger):
+    """The engine masks a key assigned in a prompt before it re-sends the event: still the same event."""
+    pid = project["pid"]
+    sent = configure(client, witnessed, pid, {"prompt": f"call the judge with api_key={KEY} please"})
+    config_module = importlib.import_module("platform_service.ledger.config_secrets")
+    masked = {**sent, "content": content_of(config_module.masked_for_ledger(sent["content"]["config"]))}
+    assert masked != sent
+    r = post(client, pid, masked)
+    assert r.status_code == 202, r.text
+    assert r.json().get("replay") is True
