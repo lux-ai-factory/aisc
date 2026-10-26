@@ -529,7 +529,10 @@ _ACTOR_KEYS = frozenset({"actor_sub", "actor_name", "actor_kind", "actor_ref", "
 _PLATFORM_ACTOR_FIELDS = ("actor_sub", "actor_name", "actor_kind", "actor_ref", "on_behalf_of_ref",
                           "on_behalf_of_sub", "source_app", "verified")
 _PLATFORM_FIELDS = ("content_sha256", "before_sha256", "after_sha256", "recorded_at", "seq")
-_SECRET = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_-]{16,}|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*")
+# A secret an event must not carry. A `Bearer` value counts only when it looks like a credential: 16 characters
+# or more of the base64, hex and URL-safe alphabets, the same rule as `config_secrets.CREDENTIAL` ("the bearer
+# of bad news" is prose, not a secret).
+_SECRET = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9+/=_.~-]{16,}|\bsk-[A-Za-z0-9_-]{16,}|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*")
 
 
 def check(event: dict, emitter: str | None = None) -> list[str]:
