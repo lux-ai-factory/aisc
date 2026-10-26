@@ -17,7 +17,10 @@ SECRET_SET = "set"
 
 #: A key holding one of these words is a secret in a ledger copy.
 LEDGER_SECRET_NAME = re.compile(r"key|token|secret|password|credential", re.IGNORECASE)
-#: Strings shaped like a known kind of key, wherever they are.
+#: Strings shaped like a known kind of key, wherever they are: provider key prefixes, JWTs, the credential of an
+#: `Authorization:` header (Bearer, Basic, Token; group 1 keeps the header name), the `user:password` of a URL
+#: and a whole PEM private-key block. Not caught: a base64-encoded key (other than a Basic header's), a key
+#: split across lines, a key with no known prefix outside an assignment.
 SECRET_SHAPE = re.compile(
     r"(?i)\bbearer\s+\S+"
     r"|\bsk-[A-Za-z0-9_-]{16,}"
@@ -26,7 +29,10 @@ SECRET_SHAPE = re.compile(
     r"|\bgh[pousr]_[A-Za-z0-9]{20,}"
     r"|\bAKIA[0-9A-Z]{16}\b"
     r"|\bxox[abpr]-[A-Za-z0-9-]{10,}"
-    r"|\bAIza[0-9A-Za-z_-]{35}")
+    r"|\bAIza[0-9A-Za-z_-]{35}"
+    r"|(\bauthorization\s*:\s*)(?:basic|token)\s+\S+"
+    r"|(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"
+    r"|-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 
 _EMPTY = (None, "", [], {})
 
