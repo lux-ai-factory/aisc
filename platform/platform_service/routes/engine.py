@@ -74,8 +74,7 @@ MOVED_BY = "engine"
 @router.post("/internal/projects/{pid}/helpers")
 def create_helper(pid: str, body: MovedHelperIn, request: Request) -> JSONResponse:
     """A new helper model from the engine: an `llm` component older runs used as a helper, with its key.
-    200 with the live helper that has the same label and endpoint, left as it is (the same component,
-    moved before); 409 when a live helper has the name already (the engine then tries another). The answer is the
+    409 when a live helper has the name already (the engine then tries another). The answer is the
     helper as a page sees it, plus its reference; never the key."""
     if _behind_gateway(request):
         return _internal(404, {"detail": "not here"})
@@ -98,11 +97,6 @@ def create_helper(pid: str, body: MovedHelperIn, request: Request) -> JSONRespon
         key = clean_key(body.api_key) if body.api_key and body.api_key.strip() else None
     except HTTPException as refused:
         return _internal(refused.status_code, {"detail": refused.detail})
-    # a move whose answer was lost: this component's helper is there already, under whatever name it got
-    already = next((h for h in helper_store.list_models(pid)
-                    if h["label"] == label and h["endpoint_url"] == endpoint), None)
-    if already is not None:
-        return _internal(200, {**helper_view(already), "ref": f"helper:{pid}/{already['name']}"})
     if helper_store.get(pid, body.name) is not None:
         return _internal(409, {"detail": f"a helper is named {body.name!r} already"})
     try:

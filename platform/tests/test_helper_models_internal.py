@@ -127,22 +127,10 @@ def test_engine_create_route_needs_engine_token_and_refuses_taken_name(client, p
     assert resolving(client, pid, name="old-judge").json() == {
         "label": "Old judge", "endpoint_url": ENDPOINT, "roles": ["judge"], "api_key": "sk-moved-456"}
 
-    taken = creating(client, pid, {**body, "name": "judge", "label": "Another judge", "api_key": "sk-other"})
+    taken = creating(client, pid, {**body, "name": "judge", "api_key": "sk-other"})
     assert taken.status_code == 409
     assert "sk-other" not in taken.text
     assert resolving(client, pid).json()["api_key"] == KEY      # the live helper is left as it was
 
     assert creating(client, pid, {**body, "name": "Not A Name"}).status_code == 422
     assert creating(client, pid, {**body, "name": "no-roles", "roles": []}).status_code == 422
-
-
-def test_engine_create_answers_the_helper_already_made_from_the_same_component(client, project):
-    """A move whose answer was lost: the same label and endpoint again is that helper, not a `-2`."""
-    pid = project["pid"]
-    body = {"name": "old-judge", "label": "Old judge", "endpoint_url": ENDPOINT, "roles": ["judge"],
-            "api_key": "sk-moved-456"}
-    assert creating(client, pid, body).status_code == 201
-    again = creating(client, pid, {**body, "name": "old-judge-2"})
-    assert again.status_code == 200, again.text
-    assert again.json()["ref"] == f"helper:{pid}/old-judge"
-    assert [h["name"] for h in listing(client, pid).json()["helpers"]] == ["judge", "old-judge"]
