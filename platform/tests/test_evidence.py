@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluation (
     id serial PRIMARY KEY, status text NOT NULL, system_id uuid, created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_aicomponent (id serial PRIMARY KEY, pid uuid NOT NULL, name text);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationinput (
-    id serial PRIMARY KEY, evaluation_plugin_id int NOT NULL, name text NOT NULL, component_id int,
+    id serial PRIMARY KEY, evaluation_plugin_id int NOT NULL, name text NOT NULL, component_id int, helper_ref text,
     value jsonb NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_evaluationplugin (
     id serial PRIMARY KEY, pid uuid NOT NULL DEFAULT gen_random_uuid(), evaluation_id int NOT NULL,
@@ -972,6 +972,21 @@ def test_a_tool_lists_each_connection_its_runs_reached_once(client, as_user, tar
     tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
     assert [(c["name"], c["protocol_name"]) for c in tool["connections"]] == [
         ("assistant-api", "OpenAI-compatible"), ("assistant-a2a", "A2A agent")]
+
+
+def test_removed_helper_still_labels_old_runs(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    runs = [_runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1)[0] for _ in range(2)]
+    for run, value in zip(runs, ({"model": "gpt-4o-mini", "label": "Judge A"}, {"model": "", "label": "Judge A"})):
+        ep = sql(dsn, pid, "SELECT id FROM engine.aisc_backend_evaluationplugin WHERE pid = %s", (run,))[0][0]
+        sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, helper_ref,"
+                      " value) VALUES (%s, 'helper:judge', 'helper:gone/judge-a', %s::jsonb)",
+            (ep, json.dumps(value)))
+    tool, = {t["key"]: t for t in _body(client, as_user, targets)["targets"]}[COMP]["tools"]
+    assert [r["helpers"] for r in tool["runs"]] == [                    # newest first
+        [{"role": "judge", "model": "Judge A"}],                        # no model: the helper's label
+        [{"role": "judge", "model": "gpt-4o-mini"}],
+    ]
 
 
 def test_each_run_lists_its_helper_models_and_the_tool_each_one_once(client, as_user, targets, dsn):
