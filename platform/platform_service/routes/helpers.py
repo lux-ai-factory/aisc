@@ -142,12 +142,15 @@ def test_helper(slug: str, name: str, body: HelperTestIn, caller: Caller = Depen
         answer = client.call(descriptor, "Reply with OK.", params={"max_tokens": 5}, waits=(),
                              **connection_allowlist.rule(pid))
     except client.BlockedAddress as exc:
+        helper_store.record_test(pid, name, False, None)
         return {"ok": False, "detail": str(exc)}
     except client.EndpointError as exc:
+        helper_store.record_test(pid, name, False, exc.status)
         # the status, or that nothing answered: the exception's own text can quote the endpoint's body
         if exc.status is not None:
             return {"ok": False, "detail": f"the endpoint answered {exc.status}"}
         return {"ok": False, "detail": "the endpoint did not answer"}
+    helper_store.record_test(pid, name, True, answer.status or 200)
     return {"ok": True, "detail": f"the endpoint answered {answer.status or 200}"}
 
 

@@ -6,6 +6,7 @@ Runs against the throwaway database like test_api_llm.py; the endpoint a Test ca
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 
 import psycopg
@@ -233,3 +234,47 @@ def test_helper_test_needs_a_manager_and_a_saved_helper(client, as_user, project
     assert client.post(url(project, "judge") + "/test", json={"model": "m"}, headers=as_user(BOB)).status_code == 403
     assert client.post(url(project, "nobody") + "/test", json={"model": "m"},
                        headers=as_user(ALICE)).status_code == 404
+
+
+def _outbox(project, action):
+    superuser = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
+    if not superuser:
+        pytest.skip("PLATFORM_TEST_SUPERUSER_URL is not set: ledger.outbox is read as the superuser")
+    with psycopg.connect(make_conninfo(superuser, dbname=projectdb.database_name(project["pid"]))) as conn:
+        return conn.execute("select details, row_to_json(o)::text from ledger.outbox o where action = %s"
+                            " order by occurred_at", (action,)).fetchall()
+
+
+@pytest.mark.parametrize("reply, ok, status", [((200, {"choices": [{"message": {"content": "OK"}}]}), True, 200),
+                                               ((401, "secret detail"), False, 401)])
+def test_helper_test_is_recorded_without_the_key_or_the_answer(client, as_user, project, stub, monkeypatch,
+                                                              reply, ok, status):
+    monkeypatch.setenv("LEDGER_MODE", "record")
+    monkeypatch.setenv("PLATFORM_LEDGER_KEYS", "v1:" + "a1" * 32)
+    stub.route("POST", "/v1/chat/completions", reply)
+    put(client, project, as_user(ALICE), endpoint_url=f"{stub.base}/v1")
+    assert client.post(url(project, "judge") + "/test", json={"model": "gpt-x"},
+                       headers=as_user(ALICE)).status_code == 200
+    [(details, text)] = _outbox(project, "helper.model.tested")
+    assert details == {"ok": ok, "status": status}
+    assert KEY not in text and "secret detail" not in text
+
+
+def test_removing_a_helper_clears_its_key(client, as_user, project):
+    put(client, project, as_user(ALICE))
+    client.delete(url(project, "judge"), headers=as_user(ALICE))
+    body_without_key = body()
+    body_without_key.pop("api_key", None)
+    r = client.put(url(project, "judge"), json=body_without_key, headers=as_user(ALICE))
+    assert r.status_code == 200 and r.json()["has_key"] is False
+    assert helper_store.resolve(project["pid"], "judge")["api_key"] is None
+
+
+def test_the_key_never_reaches_the_logs(client, as_user, project, stub, caplog):
+    stub.route("POST", "/v1/chat/completions", (200, {"choices": [{"message": {"content": "OK"}}]}))
+    with caplog.at_level(logging.DEBUG):
+        put(client, project, as_user(ALICE), endpoint_url=f"{stub.base}/v1")
+        client.post(url(project, "judge") + "/test", json={"model": "gpt-x"}, headers=as_user(ALICE))
+        assert helper_store.resolve(project["pid"], "judge")["api_key"] == KEY
+    assert caplog.records
+    assert all(KEY not in record.getMessage() for record in caplog.records)
