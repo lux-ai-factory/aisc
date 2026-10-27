@@ -268,7 +268,7 @@ def test_it_says_which_local_controls_every_catalogue_gets(scratch):
     (scratch / "local-controls").write_text("altai-x\nfraia-y\n")
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
-    asked = [c for c in calls(scratch) if " exec " in c]
+    asked = [c for c in calls(scratch) if " exec -T platform " in c]
     assert len(asked) == 1 and "exec -T platform python -m platform_service.catalogue" in asked[0]
     assert "2 local controls" in r.stdout and "altai-x" in r.stdout and "fraia-y" in r.stdout
 

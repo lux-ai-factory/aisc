@@ -1728,6 +1728,18 @@ def start_steps() -> None:
         say("Warning: the local controls could not be read; catalogues get the public entries only.",
             f"See why with: docker compose -p {PROJECT} logs platform")
 
+    # 7. On an older install a judge (an attacker...) was an LLM component of the engine's AI System: those a run
+    # used as helpers become the platform's helper models, keys included; the others are named, for the user
+    moved = captured([*COMPOSE, "exec", "-T", "aisc-backend", "python", "manage.py", "move_helper_models"])
+    told = [line for line in (moved.stdout + moved.stderr).splitlines() if line.strip()]
+    if moved.returncode == 0:
+        say("Helper models: AI System components older runs used as helpers go to Manage > Helper models.",
+            *("  " + line for line in told))
+    else:
+        say("Warning: the AI System's old helper models could not be moved; they stay as they were.",
+            *("  " + line for line in told),
+            f"See why with: docker compose -p {PROJECT} logs aisc-backend")
+
     # the sign-in that works on this install: admin / admin only while the password still is admin (a new local
     # install); generated (https) or changed (rotate-infra-password) ones are this install's own
     if value_in("AISC_ADMIN_PASSWORD", OUT).strip("'\"") == "admin":
