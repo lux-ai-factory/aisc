@@ -297,13 +297,18 @@
         var edit = el('button', 'ghost', 'Edit');
         edit.type = 'button';
         edit.addEventListener('click', function () { fill(h); });
+        var model = el('input');
+        model.type = 'text';
+        model.placeholder = 'model name to test';
+        model.setAttribute('aria-label', 'Model name to test ' + h.name);
         var test = el('button', 'ghost', 'Test');
         test.type = 'button';
-        test.addEventListener('click', function () { testHelper(h, msg); });
+        test.addEventListener('click', function () { testHelper(h, model, msg); });
         var remove = el('button', 'ghost', 'Remove');
         remove.type = 'button';
         remove.addEventListener('click', function () { removeHelper(h, msg); });
         fields.appendChild(edit);
+        fields.appendChild(model);
         fields.appendChild(test);
         fields.appendChild(remove);
         cell.appendChild(fields);
@@ -390,11 +395,11 @@
   }
 
   // One small call to the helper with its stored key; the platform answers with the status only.
-  function testHelper(h, msg) {
-    var model = window.prompt('Model name to call at ' + h.endpoint_url + ':');
-    if (!model || !model.trim()) return;
+  function testHelper(h, input, msg) {
+    var model = input.value.trim();
+    if (!model) { say(msg, 'Type the model name to call first.', true); return; }
     say(msg, 'Testing...');
-    api(helpersPath(h.name) + '/test', {method: 'POST', body: {model: model.trim()}})
+    api(helpersPath(h.name) + '/test', {method: 'POST', body: {model: model}})
       .then(function (res) {
         return bodyOf(res).then(function (d) {
           if (!res.ok) { say(msg, refusal(res, d), true); return; }
