@@ -231,9 +231,13 @@ def rotate_all(base_dsn: str) -> dict[str, int]:
             counts["unreachable"] += 1
             continue
         with conn:
-            # the connection keys (Manage, Connections) are made with the same key list
-            from platform_service import connection_store
+            # the connection and helper keys are made with the same key list
+            from platform_service import connection_store, helper_store
             rotated_here, unreadable, meanwhile = connection_store.rotate(conn, multi)
+            counts["unreadable"] += unreadable
+            counts["changed_meanwhile"] += meanwhile
+            helped, unreadable, meanwhile = helper_store.rotate(conn, multi)
+            rotated_here += helped
             counts["unreadable"] += unreadable
             counts["changed_meanwhile"] += meanwhile
             if conn.execute("SELECT to_regclass('llm.provider')").fetchone()[0] is None:
