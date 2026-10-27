@@ -55,15 +55,25 @@ def save(pid, name: str, *, label: str, endpoint_url: str, roles: list[str], cip
 
 
 def remove(pid, name: str) -> bool:
-    """Mark a live helper removed; its row stays. False when there is none."""
+    """Mark a live helper removed and drop its key; the row stays. False when there is none."""
     from platform_service.ledger import outbox
 
     with llm_store.connect(pid) as conn, conn.transaction():
-        gone = conn.execute("UPDATE helper.model SET deleted_at = now() WHERE name = %s AND deleted_at IS NULL"
-                            " RETURNING name", (name,)).fetchone() is not None
+        gone = conn.execute("UPDATE helper.model SET deleted_at = now(), ciphertext = NULL"
+                            " WHERE name = %s AND deleted_at IS NULL RETURNING name", (name,)).fetchone() is not None
         if gone:
             outbox.emit_project(conn, "helper.model.removed", item_type="helper_model", item_id=name)
         return gone
+
+
+def record_test(pid, name: str, ok: bool, status: int | None) -> None:
+    """The Test button's outcome for the ledger: whether it worked and the status, never the endpoint's
+    answer or the key."""
+    from platform_service.ledger import outbox
+
+    with llm_store.connect(pid) as conn, conn.transaction():
+        outbox.emit_project(conn, "helper.model.tested", item_type="helper_model", item_id=name,
+                            details={"ok": ok, "status": status})
 
 
 def resolve(pid, name: str) -> dict | None:
