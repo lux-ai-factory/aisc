@@ -7,12 +7,15 @@ from typing import Literal
 
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, ServiceRefused, identify
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from platform_service import connection_allowlist, db, helper_store, llm_store
-from platform_service.routes.admission import role_or_404, secrets_unavailable
+from platform_service.projects import looks_like_pid
+from platform_service.routes.admission import _internal, role_or_404, secrets_unavailable
+from platform_service.routes.connections import _behind_gateway
 from platform_service.routes.llm import clean_base_url, clean_key, clean_model
 
 router = APIRouter()
@@ -146,3 +149,26 @@ def test_helper(slug: str, name: str, body: HelperTestIn, caller: Caller = Depen
             return {"ok": False, "detail": f"the endpoint answered {exc.status}"}
         return {"ok": False, "detail": "the endpoint did not answer"}
     return {"ok": True, "detail": f"the endpoint answered {answer.status or 200}"}
+
+
+@router.get("/internal/projects/{pid}/helpers/{name}/resolve")
+def resolve_helper(pid: str, name: str, request: Request) -> JSONResponse:
+    """The helper with its decrypted key, for the eval worker (PLATFORM_CONNECTIONS_TOKEN). Reached on the
+    backend network only: a request that came through Caddy is 404."""
+    if _behind_gateway(request):
+        return _internal(404, {"detail": "not here"})
+    try:
+        identify(request.headers.get(SERVICE_TOKEN_HEADER), {"worker": "PLATFORM_CONNECTIONS_TOKEN"})
+    except ServiceRefused as refused:
+        return _internal(refused.status, {"detail": refused.detail})
+    if not looks_like_pid(pid) or db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    try:
+        stored = helper_store.resolve(pid, name)
+    except llm_store.SecretsKeyError as exc:
+        return _internal(503, {"detail": str(exc)})
+    except llm_store.KeyUnreadable:
+        return _internal(409, {"detail": f"the stored key for helper {name} cannot be decrypted; enter it again"})
+    if stored is None:
+        return _internal(404, {"detail": f"no helper {name!r}"})
+    return _internal(200, stored)
