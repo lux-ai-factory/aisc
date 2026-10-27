@@ -150,8 +150,8 @@ _TARGET_RUNS = (
 )
 #: The same runs one by one, newest first, with what each was on: its target (as above) or, for a local
 #: run, the marker of its model input (the first by name when several are marked); and its helper models,
-#: the inputs named helper:<role>, each with the model picked for the run (the endpoint's name when the
-#: run's value names none, "unnamed endpoint" when it has none either). The evaluation plugin's pid is
+#: the inputs named helper:<role>, each with the model picked for the run (when the
+#: run's value names none: the helper's label, then the component's name, then "unnamed endpoint"). The evaluation plugin's pid is
 #: what the platform recorded its connection uses by.
 _RUN_COLUMNS = (
     "SELECT ep.pid::text AS run, ep.status, e.created_at, pl.package_name,"
@@ -161,7 +161,7 @@ _RUN_COLUMNS = (
     "   WHERE li.evaluation_plugin_id = ep.id AND " + _IS_LOCAL_INPUT + " ORDER BY li.name LIMIT 1) AS local_model,"
     " (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', substr(hi.name, 8),"
     "                                               'model', COALESCE(NULLIF(hi.value->>'model', ''),"
-    "                                                               hi.value->>'label', hc.name,"
+    "                                                               NULLIF(hi.value->>'label', ''), hc.name,"
     "                                                               'unnamed endpoint'))"
     "                            ORDER BY hi.name), '[]'::jsonb)"
     "   FROM engine.aisc_backend_evaluationinput hi"
