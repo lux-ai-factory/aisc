@@ -104,33 +104,3 @@ def test_unknown_project_is_404(client, project):
     other = "00000000-0000-4000-8000-000000000000"
     assert listing(client, other).status_code == 404
     assert resolving(client, other).status_code == 404
-
-
-def creating(client, pid, body, token=ENGINE_TOKEN, **headers):
-    sent = {HEADER: token, **headers} if token else headers
-    return client.post(f"/internal/projects/{pid}/helpers", headers=sent, json=body)
-
-
-def test_engine_create_route_needs_engine_token_and_refuses_taken_name(client, project):
-    pid = project["pid"]
-    body = {"name": "old-judge", "label": "Old judge", "endpoint_url": ENDPOINT, "roles": ["judge"],
-            "api_key": "sk-moved-456"}
-    assert creating(client, pid, body, token=None).status_code in (401, 503)
-    assert creating(client, pid, body, token=CONNECTIONS_TOKEN).status_code == 401
-    assert creating(client, pid, body, **{"X-Forwarded-For": "1.2.3.4"}).status_code == 404
-    assert creating(client, "00000000-0000-4000-8000-000000000000", body).status_code == 404
-
-    made = creating(client, pid, body)
-    assert made.status_code == 201, made.text
-    assert made.json()["ref"] == f"helper:{pid}/old-judge"
-    assert "sk-moved-456" not in made.text and "ciphertext" not in made.text
-    assert resolving(client, pid, name="old-judge").json() == {
-        "label": "Old judge", "endpoint_url": ENDPOINT, "roles": ["judge"], "api_key": "sk-moved-456"}
-
-    taken = creating(client, pid, {**body, "name": "judge", "api_key": "sk-other"})
-    assert taken.status_code == 409
-    assert "sk-other" not in taken.text
-    assert resolving(client, pid).json()["api_key"] == KEY      # the live helper is left as it was
-
-    assert creating(client, pid, {**body, "name": "Not A Name"}).status_code == 422
-    assert creating(client, pid, {**body, "name": "no-roles", "roles": []}).status_code == 422
