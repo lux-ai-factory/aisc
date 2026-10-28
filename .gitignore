@@ -12,3 +12,7 @@ __pycache__/
 # immudb's signing key and its public half (scripts/secrets.sh)
 immudb-signing.key
 immudb-signing.pub
+
+# adapter plugins are the operator's own (adapters/README.md): only the README is AISC's
+adapters/*
+!adapters/README.md

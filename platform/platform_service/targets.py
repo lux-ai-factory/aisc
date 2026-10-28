@@ -33,6 +33,16 @@ PROTOCOL_NAMES = {"openai": "OpenAI-compatible", "rest": "REST API", "a2a": "A2A
                   "oip": "Open Inference Protocol"}
 
 
+def protocol_name(kind: str) -> str:
+    """How a connection kind reads: a built-in protocol's name, else the installed adapter's label, else the kind."""
+    if kind in PROTOCOL_NAMES:
+        return PROTOCOL_NAMES[kind]
+    from platform_service import adapters
+
+    adapter = adapters.get(kind)
+    return adapter.label if adapter is not None else kind
+
+
 def mirror_name(row: dict, connection: dict | None = None, latest_card: int | None = None) -> str:
     """What the evaluation form shows for this target: that it comes from the AI card and how it is
     reached. The form lists every target, so the name says whether it is connected: a plugin that
@@ -42,7 +52,7 @@ def mirror_name(row: dict, connection: dict | None = None, latest_card: int | No
     else:
         name = f"AI card · Component: {row['label']} ({KIND_LABELS.get(row['component_kind'], 'component')})"
     if connection:
-        protocol = PROTOCOL_NAMES.get(connection.get("kind"), connection.get("kind") or "unknown protocol")
+        protocol = protocol_name(connection.get("kind")) if connection.get("kind") else "unknown protocol"
         name += f" · reached through {protocol}"
     else:
         name += " · not connected"

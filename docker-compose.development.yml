@@ -926,11 +926,14 @@ services:
       - ./platform/project-template:/app/project-template:ro,z
       # checklists every private catalogue gets next to the public ones (local_controls/README.md)
       - ./local_controls:/app/local_controls:ro,z
+      # protocols the operator adds with adapter plugins (adapters/README.md); read at startup
+      - ./adapters:/app/adapters:ro,z
     environment:
       # The ledger, on (record) unless LEDGER_MODE=off: the witness's gateway secret, immudb
       # as aisc_ledger (never the superuser), the public key of immudb's signed states, the
       # versioned master keys, and the tokens of the callers that post events.
       LEDGER_MODE: ${LEDGER_MODE:-record}
+      PLATFORM_ADAPTERS_DIR: /app/adapters
       AISC_WITNESS_GATEWAY_SECRET: ${AISC_WITNESS_GATEWAY_SECRET:?run scripts/secrets.sh first}
       AISC_GATEWAY_CLIENT_ID: aisc-gateway
       LEDGER_IMMUDB_URL: immudb:3322
