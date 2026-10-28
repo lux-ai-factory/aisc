@@ -9,7 +9,8 @@ import pytest
 from conftest import ROOT
 
 PAGES = sorted((ROOT / "homepage").glob("*.html"))
-DOCS = [ROOT / "README.md", ROOT / "docs/guide.md"]
+DOCS = [ROOT / "README.md", ROOT / "docs/guide.md", ROOT / "docs/architecture.md"] + \
+    sorted((ROOT / "docs/appendices").glob("*.md"))
 
 
 class _Text(HTMLParser):

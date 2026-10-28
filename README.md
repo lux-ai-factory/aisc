@@ -13,7 +13,7 @@ your own computer or server, and keeps every project, answer, test result and re
 
 Each project assesses one AI system, in four steps:
 
-1. **Qualify the AI system.** Describe the system and its components in an AI card, and find its AI Act risk class.
+1. **Qualify the AI system.** Describe the system, its components and its risks in a versioned AI card.
 2. **Set control objectives.** Rate the system's risks and link them to the control objectives it must meet.
 3. **Choose tests and checklists.** Pick them from the catalogue and install them in one click.
 4. **Collect evidence.** Answer the checklists, run the tests, look at the results and compose the report.
@@ -207,11 +207,13 @@ flowchart LR
 ```
 
 Each step is its own application, most of them in a submodule of this repository. This repository ties them
-together and runs them with Docker Compose behind one sign-in. [docs/guide.md](docs/guide.md) describes every
-component.
+together and runs them with Docker Compose behind one sign-in. [docs/architecture.md](docs/architecture.md) explains
+the architecture and the steps; [docs/guide.md](docs/guide.md) describes every component.
 
 ## Documentation
 
+- [docs/architecture.md](docs/architecture.md): how AISC works, its architecture and what each step is for, with one
+  appendix per step.
 - [docs/guide.md](docs/guide.md): components, how it works, configuration, passwords and keys, tests.
 - [Your own plugins](docs/guide.md#your-own-plugins) and [your own checklists](docs/guide.md#your-own-controls).
 - [lux-ai-factory/rfc](https://github.com/lux-ai-factory/rfc): architecture, mission and user guide.

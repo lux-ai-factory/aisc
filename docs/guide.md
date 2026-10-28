@@ -1,6 +1,7 @@
 # AISC in detail
 
-The [README](../README.md) says what AISC is and how to install it. This guide covers the rest: the
+The [README](../README.md) says what AISC is and how to install it, and [How AISC works](architecture.md) explains
+its architecture and what each step is for, with one appendix per step. This guide covers the rest: the
 components, how the stack works, the details of installing and running it, configuration and tests.
 
 ## Components
@@ -16,8 +17,8 @@ Submodules (each has its own README):
 | [`apps/eval`](../apps/eval) | step 4: the engine's Celery worker that installs and runs plugins |
 | [`apps/webapp`](../apps/webapp) | step 4: the engine's React frontend |
 | [`apps/controls`](../apps/controls) | step 4: the compliance checklists (controls) a project answers |
-| [`apps/results-dashboard`](../apps/results-dashboard) | step 5: Apache Superset configured for AISC results |
-| [`apps/report-generator`](../apps/report-generator) | step 6: the report renderer (HTML, PDF, DOCX), service `report-renderer` |
+| [`apps/results-dashboard`](../apps/results-dashboard) | step 4: Apache Superset configured for AISC results |
+| [`apps/report-generator`](../apps/report-generator) | step 4: the report renderer (HTML, PDF, DOCX), service `report-renderer` |
 | [`shared/plugin-interface`](../shared/plugin-interface) | the Python library every evaluation plugin implements |
 | [`shared/plugin-manager`](../shared/plugin-manager) | the library that discovers, installs and loads plugins |
 | [`shared/report-plugin-interface`](../shared/report-plugin-interface) | the interface of the report renderer's plugins |
@@ -27,7 +28,7 @@ Part of this repository:
 | path | what it is |
 |---|---|
 | `platform/` | the platform service (FastAPI, service `platform`): projects, members and roles, one database per project, the AI system and its card versions, connections to systems under test, per-project LLM keys, evidence links, the ledger |
-| `apps/report-composer/` | step 6: assembles a report from modules and asks the renderer for the document ([README](../apps/report-composer/README.md)) |
+| `apps/report-composer/` | step 4: assembles a report from modules and asks the renderer for the document ([README](../apps/report-composer/README.md)) |
 | `shared/identity/` | `aisc_identity`, shared by every Python service: who is calling (gateway headers, Keycloak tokens), what they may do in a project (`access`, held to `access-cases.json`), which service is calling (`service_tokens`), and the ledger event a change writes (`ledger_events`) |
 | `shared/access-ts/` | The TypeScript client of the platform's `/authz/projects/{ref}`, vendored into qualification and controls |
 | `shared/ledger-ts/` | How the Next.js apps write a ledger event, vendored into qualification and controls |
@@ -42,7 +43,7 @@ Part of this repository:
 | `def_plugins/`, `local_plugins/` | `def_plugins/` is no longer used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
 | `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
 | `adapters/` | your adapter plugins: protocols a connection can use besides the built-in ones (mounted into the platform; only its README is in git) |
-| `docs/` | design history; not needed to run anything |
+| `docs/` | this guide, [How AISC works](architecture.md) and its appendices, runbooks |
 
 ## How it works
 
