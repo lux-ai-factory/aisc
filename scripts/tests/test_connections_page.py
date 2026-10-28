@@ -154,7 +154,7 @@ def test_a_hidden_row_is_hidden_even_when_its_class_sets_display():
 def test_the_key_row_is_the_field_and_its_remove_box_side_by_side():
     html = read(PAGE)
     css = style_of(html)
-    row = re.search(r'<label for="f-secret">Key</label>\s*<div class="([^"]*)">(.*?)</div>', html, re.S)
+    row = re.search(r'<label(?: class="[^"]*")? for="f-secret">Key</label>\s*<div class="([^"]*)">(.*?)</div>', html, re.S)
     assert row and "fields" in row.group(1).split()
     assert re.search(r'<label class="check">\s*<input id="f-secret-remove" type="checkbox"', row.group(2))
     assert re.search(r'input\[type="?checkbox"?\]\s*\{[^}]*min-width:\s*0', css)
@@ -496,3 +496,40 @@ def test_a_connection_with_tools_says_so():
     assert "supports_tools" in describe and "', with tools'" in describe
     try_it = re.search(r"function tryIt\(.*?\n  \}\n", script, re.S).group(0)
     assert "d.capabilities" in try_it
+
+
+# protocols added by adapters (platform_service/adapters.py)
+
+def test_the_protocol_menu_adds_the_installed_adapters():
+    script = script_of(read(PAGE))
+    assert re.search(r"base\(\)\s*\+\s*'/protocols'", script), "the page does not read the protocols list"
+    adding = re.search(r"function loadProtocols\(\)(.*?)\n  \}\n", script, re.S)
+    assert adding, "no loadProtocols()"
+    body = adding.group(1)
+    assert "createElement('option')" in body or "el('option'" in body
+    assert ".adapter" in body and "textContent" in body or "el('option', '', " in body
+
+
+def test_an_adapter_protocol_shows_its_own_fields_and_hides_the_built_in_ones():
+    html = read(PAGE)
+    assert re.search(r'<div id="adapter-fields"[^>]*hidden', markup_of(html))
+    script = script_of(html)
+    fields = re.search(r"function adapterFieldsShown\((.*?)\n  \}\n", script, re.S)
+    assert fields, "no adapterFieldsShown()"
+    assert re.search(r"\.secret\s*\?\s*'password'\s*:\s*'text'", fields.group(1)), "a secret field is not a password input"
+    shown = re.search(r"function kindShown\(\)(.*?)\n  \}\n", script, re.S).group(1)
+    assert "#editor .builtin" in shown and "adapterFieldsShown(" in shown
+    # the key, the advanced settings and the built-in fields are marked builtin, so an adapter hides them
+    markup = markup_of(html)
+    assert re.search(r'<label class="builtin" for="f-secret">', markup)
+    assert re.search(r'<details id="advanced" class="builtin"', markup)
+
+
+def test_an_adapter_connection_sends_settings_and_secret_settings():
+    script = script_of(read(PAGE))
+    submit = re.search(r"function submit\(ev\)(.*?)\n  \}\n", script, re.S).group(1)
+    assert "body.settings" in submit and "body.secret_settings" in submit
+    # an empty secret input keeps the stored value: only typed ones are sent
+    assert re.search(r"if \(input\.value\) secretSettings\[", submit)
+    fields = re.search(r"function adapterFieldsShown\((.*?)\n  \}\n", script, re.S).group(1)
+    assert "secret_settings" in fields and "stored" in fields

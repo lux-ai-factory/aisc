@@ -131,6 +131,8 @@
   /* .fields and .help set display, which would win over the hidden attribute: a hidden kind's row
      would stay in the grid and shift every later label and field by one cell */
   form#editor [hidden]{display:none !important}
+  /* an adapter's own fields take the form's two columns like the built-in ones */
+  form#editor #adapter-fields{display:contents}
   form#editor .fields input[type="text"], form#editor .fields input[type="password"], form#editor .fields input:not([type]){flex:1}
   input[type="checkbox"]{min-width:0; width:auto; margin:0}
   form#editor label.check{display:inline-flex; align-items:center; gap:6px; padding-top:0;
@@ -204,6 +206,7 @@
         <p class="help">Made from the label; lower-case letters, digits and hyphens. It identifies the connection and cannot change.</p>
         <label for="f-base">Base URL</label>
         <input id="f-base" type="url" placeholder="https://system.example.com"/>
+        <div id="adapter-fields" hidden></div>
         <label class="model" for="f-model">Model</label>
         <input class="model" id="f-model" type="text" placeholder="e.g. gpt-4o-mini, or the served model's name"/>
         <label class="openai">Carries</label>
@@ -225,11 +228,11 @@
         <label class="rest" for="f-refusal">Refusal (JSON, optional)</label>
         <textarea class="rest" id="f-refusal" placeholder='{"status": [502], "path": "detail.reason", "match": {"detail.error": "answer_not_grounded"}}'></textarea>
         <p class="help rest">A response that matches is the system refusing, recorded as its answer, not as an error.</p>
-        <label for="f-secret">Key</label>
-        <div class="fields"><input id="f-secret" autocomplete="new-password"/>
+        <label class="builtin" for="f-secret">Key</label>
+        <div class="fields builtin"><input id="f-secret" autocomplete="new-password"/>
           <label class="check"><input id="f-secret-remove" type="checkbox"/> remove the stored key</label></div>
-        <p class="help">Stored encrypted for this project only, and never shown again.</p>
-        <details id="advanced">
+        <p class="help builtin">Stored encrypted for this project only, and never shown again.</p>
+        <details id="advanced" class="builtin">
           <summary>Advanced</summary>
           <div class="grid">
             <label for="f-headers">Headers (JSON, optional)</label>
@@ -349,7 +352,7 @@
           isAdmin = true;
           $('who').textContent = 'admin';
           show('settings');
-          reload();                                     // reads the targets too
+          loadProtocols().then(reload);                 // the adapters' protocols first; reload reads the targets too
         } else {
           reloadTargets(false);
           $('who').textContent = 'owner';
@@ -476,8 +479,56 @@
 
   var PROTOCOLS = {openai: 'OpenAI-compatible', rest: 'REST API', a2a: 'A2A agent', oip: 'Open Inference Protocol'};
   function protocolName(kind) { return PROTOCOLS[kind] || kind; }
+  // the protocols adapters add (the platform's adapters folder), by name: their label and their fields
+  var ADAPTERS = {};
+  var editingConnection = null;
+
+  /** The installed adapters, added to the Protocol menu after the built-in protocols. */
+  function loadProtocols() {
+    return api(base() + '/protocols')
+      .then(function (res) { return res.ok ? res.json() : {protocols: []}; })
+      .then(function (d) {
+        (d.protocols || []).forEach(function (p) {
+          if (!p.adapter || ADAPTERS[p.name]) return;
+          ADAPTERS[p.name] = p;
+          PROTOCOLS[p.name] = p.label;
+          var option = document.createElement('option');
+          option.value = p.name;
+          option.textContent = p.label;
+          $('f-kind').appendChild(option);
+        });
+      })
+      .catch(function () { /* the built-in protocols stay offered */ });
+  }
+
+  /** The fields of adapter a for connection c (null: a new one): plain ones filled, secret ones never. */
+  function adapterFieldsShown(a, c) {
+    var box = $('adapter-fields');
+    while (box.firstChild) box.removeChild(box.firstChild);
+    box.hidden = !a;
+    if (!a) return;
+    var settings = (c && c.kind === a.name && c.settings) || {};
+    var stored = (c && c.kind === a.name && c.secret_settings) || [];
+    a.fields.forEach(function (field) {
+      var label = el('label', '', field.label + (field.required ? '' : ' (optional)'));
+      label.htmlFor = 'af-' + field.name;
+      var input = document.createElement('input');
+      input.id = 'af-' + field.name;
+      input.className = 'adapter-field';
+      input.dataset.name = field.name;
+      input.dataset.secret = field.secret ? '1' : '';
+      input.type = field.secret ? 'password' : 'text';
+      input.autocomplete = field.secret ? 'new-password' : 'off';
+      if (field.secret) input.placeholder = stored.indexOf(field.name) >= 0 ? 'stored: enter a new one to replace it' : 'not stored yet';
+      else input.value = settings[field.name] || '';
+      box.appendChild(label);
+      box.appendChild(input);
+      if (field.help) box.appendChild(el('p', 'help', field.help));
+    });
+  }
 
   function describe(c) {
+    if (ADAPTERS[c.kind] || !PROTOCOLS[c.kind]) return protocolName(c.kind);
     if (c.kind === 'openai') return 'OpenAI-compatible, ' + c.model + (c.supports_tools ? ', with tools' : '');
     if (c.kind === 'oip') return 'Open Inference Protocol, ' + c.model;
     if (c.kind === 'a2a') return 'A2A agent ' + (c.protocol_version || '1.0') + (c.path ? ', ' + c.path : '');
@@ -488,6 +539,11 @@
 
   function kindShown() {
     var kind = $('f-kind').value;
+    var adapter = ADAPTERS[kind] || null;
+    var unknown = !adapter && !(kind in {openai: 1, rest: 1, a2a: 1, oip: 1});
+    [].forEach.call(document.querySelectorAll('#editor .builtin'), function (n) { n.hidden = !!adapter || unknown; });
+    adapterFieldsShown(adapter, editingConnection);
+    if (adapter && adapter.base_url && !$('f-base').value) $('f-base').value = adapter.base_url;
     [].forEach.call(document.querySelectorAll('#editor .rest'), function (n) { n.hidden = kind !== 'rest'; });
     [].forEach.call(document.querySelectorAll('#editor .model'), function (n) { n.hidden = !(kind === 'openai' || kind === 'oip'); });
     [].forEach.call(document.querySelectorAll('#editor .a2a'), function (n) { n.hidden = kind !== 'a2a'; });
@@ -497,6 +553,14 @@
   /** The editor of target t's connection c (null: a new one), opened under the target's row. */
   function openEditor(c, t, tr) {
     editing = c ? c.name : null;
+    editingConnection = c;
+    if (c && !$('f-kind').querySelector('option[value="' + c.kind + '"]')) {
+      // a connection whose adapter is no longer installed stays editable (and removable)
+      var option = document.createElement('option');
+      option.value = c.kind;
+      option.textContent = c.kind + ' (adapter not installed)';
+      $('f-kind').appendChild(option);
+    }
     editTarget = t;
     nameTyped = !!c;
     $('edit-title').textContent = c ? 'Edit the connection of ' + targetName(t) : 'Connect ' + targetName(t);
@@ -595,6 +659,23 @@
                 timeout_s: parseInt($('f-timeout').value, 10) || 60};
     if (!name) { say(msg, 'Give the connection a name.', true); return; }
     if (!editing && editTarget) body.target = editTarget.key;
+    if (ADAPTERS[kind]) {
+      // an adapter's connection: its own fields; a secret one left empty keeps the stored value
+      var settings = {};
+      var secretSettings = {};
+      [].forEach.call(document.querySelectorAll('#adapter-fields .adapter-field'), function (input) {
+        if (input.dataset.secret) {
+          if (input.value) secretSettings[input.dataset.name] = input.value;
+          input.value = '';
+        } else if (input.value.trim()) {
+          settings[input.dataset.name] = input.value.trim();
+        }
+      });
+      body.settings = settings;
+      if (Object.keys(secretSettings).length) body.secret_settings = secretSettings;
+      write('PUT', base() + '/' + enc(name), body, msg).then(function (ok) { if (ok) closeEditor(); });
+      return;
+    }
     var headers = parsed('f-headers', 'Headers');
     if (headers.error) { say(msg, headers.error, true); return; }
     body.headers = headers.value || {};

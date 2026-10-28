@@ -528,6 +528,15 @@ def test_the_platform_reads_the_local_controls_read_only(compose):
     assert any(src.endswith("/local_controls") and tgt == "/app/local_controls" and ro for src, tgt, ro in mounts), mounts
 
 
+def test_the_platform_reads_the_adapters_read_only(compose):
+    """The protocols adapters add (adapters/README.md): the folder mounted read-only where the platform looks."""
+    q, cfg = compose
+    platform = cfg["services"]["platform"]
+    mounts = [(v.get("source", ""), v.get("target"), v.get("read_only")) for v in platform["volumes"]]
+    assert any(src.endswith("/adapters") and tgt == "/app/adapters" and ro for src, tgt, ro in mounts), mounts
+    assert platform["environment"]["PLATFORM_ADAPTERS_DIR"] == "/app/adapters"
+
+
 def test_report_grants_waits_for_the_superset_tables(compose):
     """report-ro-grants.sql skips a Superset table that does not exist yet, and
     dashboard-migrate (superset db upgrade) makes them. On a fresh volume report-grants ran first and

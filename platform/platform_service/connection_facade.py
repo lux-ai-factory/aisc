@@ -43,9 +43,11 @@ ASK_SHAPE = "{input, history?: [messages], params?: {}}"
 MAX_ASK_BYTES = 2_097_152
 
 
-def capabilities(kind: str, supports_tools: bool) -> list[str]:
-    """What a run key advertises: text and a history always, tools for an OpenAI-compatible connection
-    that carries them."""
+def capabilities(kind: str, supports_tools: bool, adapter=None) -> list[str]:
+    """What a run key advertises: an adapter's own capabilities for a connection of its kind; otherwise text and
+    a history always, tools for an OpenAI-compatible connection that carries them."""
+    if adapter is not None:
+        return list(adapter.capabilities)
     return ["text", "history", "tools"] if kind == "openai" and supports_tools else ["text", "history"]
 
 

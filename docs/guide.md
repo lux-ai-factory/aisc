@@ -41,6 +41,7 @@ Part of this repository:
 | `infra/minio/` | builds MinIO from source |
 | `def_plugins/`, `local_plugins/` | `def_plugins/` is no longer used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
 | `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
+| `adapters/` | your adapter plugins: protocols a connection can use besides the built-in ones (mounted into the platform; only its README is in git) |
 | `docs/` | design history; not needed to run anything |
 
 ## How it works
@@ -266,6 +267,14 @@ every project catalogue: a public one reads them live, a private one copies them
 and each time an admin presses Update; they
 show under Source = Local and install like any control. `scripts/start.sh` lists them at the end of a
 start. A public entry with the same slug wins. See [`local_controls/README.md`](../local_controls/README.md).
+
+### Your own protocols
+
+A system that speaks none of the built-in protocols (REST, OpenAI-compatible, A2A, Open Inference Protocol) is
+reached through an adapter: a folder in `adapters/` whose `adapter.py` declares a protocol and translates one call.
+After a platform restart the protocol is offered when you connect a component, and tests reach the system
+through it unchanged. Only `adapters/README.md` is part of AISC; your adapters stay out of git. See
+[`adapters/README.md`](../adapters/README.md).
 
 ### The engine on its own
 
