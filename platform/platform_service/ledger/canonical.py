@@ -10,7 +10,6 @@ them), lone surrogates, NaN and infinities, and every type JSON has no form for 
 """
 from __future__ import annotations
 
-import hashlib
 import math
 
 _MAX_SAFE = 2 ** 53
@@ -22,11 +21,6 @@ def canonical(value) -> bytes:
     out: list[str] = []
     _write(value, out)
     return "".join(out).encode("utf-8")
-
-
-def sha256_hex(value) -> str:
-    """The plain SHA-256 of the canonical bytes (integrity, not secrecy: see `secrets`)."""
-    return hashlib.sha256(canonical(value)).hexdigest()
 
 
 def _write(value, out: list[str]) -> None:
