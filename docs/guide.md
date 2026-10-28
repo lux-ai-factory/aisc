@@ -255,10 +255,11 @@ aisc-eval-flower`); without it the page says so. Its link is in a project's Mana
 
 ### Your own plugins
 
-`PLUGIN_PATH` (`./local_plugins/` in `env.plugin_downloader`) is mounted into the engine and the
-eval worker as `/app/plugins`, where they discover plugin source trees. See
-[`local_plugins/README.md`](../local_plugins/README.md) and the plugin developer guide in
-`shared/plugin-interface`.
+A plugin folder in `local_plugins/` (with its `pyproject.toml`) is listed in a **private** catalogue as a Local
+entry, and **Install** has the plugin publisher build it from that folder and put it on the stack's package
+index before the engine installs it, as it does for a public test. Only `local_plugins/README.md` is part of
+AISC; your plugins stay out of git. See [`local_plugins/README.md`](../local_plugins/README.md) and the plugin
+developer guide in `shared/plugin-interface`.
 
 ### Your own controls
 

@@ -879,7 +879,11 @@ services:
       # published too: a plugin's run installs its dependencies from PyPI and this index, and takes
       # the plugin interface from here (the first index that has it), not PyPI's release of that name
       - ./shared/plugin-interface:/interface:ro
+      # plugins of the install's own (local_plugins/README.md): a catalogue install builds one from here
+      # under /srv/private, which only root (the service) can enter: the builds, as another user, never read it
+      - ${PLUGIN_PATH}:/srv/private/local-plugins:ro,z
     environment:
+      LOCAL_PLUGINS_DIR: /srv/private/local-plugins
       # the stack's devpi, the same index PACKAGE_REGISTRY_URL points the engine at
       TWINE_USERNAME: root
       TWINE_PASSWORD: ${DEVPI_ROOT_PASSWORD:?run scripts/secrets.sh first}
