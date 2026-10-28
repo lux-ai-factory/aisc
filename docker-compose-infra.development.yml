@@ -121,7 +121,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
-      # Creates the platform's own `platform` DB (projects, members, the report library).
+      # Creates the platform's own `platform` DB (projects and their members).
       # First, so it exists before any app migrates.
       - ./init/platform-db.sql:/docker-entrypoint-initdb.d/05-platform-db.sql:ro,Z
       # Lets the platform make one database per project. After the platform DB,
