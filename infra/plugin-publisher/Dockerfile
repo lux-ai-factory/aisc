@@ -7,7 +7,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir build==1.6.1 twine==7.0.0 \
-    && useradd --system --create-home --shell /usr/sbin/nologin builder
+    && useradd --system --create-home --shell /usr/sbin/nologin builder \
+    # local_plugins/ is mounted under this: only root, the service, enters it; the builds (as builder) never read it
+    && install -d -m 700 /srv/private
 # A plugin's build runs that repo's own code (build backend, setup.py, build requirements), so it
 # runs as builder through setpriv: with no secret in its environment, unable to read the service's
 # in /proc/1, and unable to change /app. The service itself stays root to hand folders over and

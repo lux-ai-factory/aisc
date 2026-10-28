@@ -331,17 +331,26 @@ def _local_tag(tags: list[dict]) -> dict:
 
 
 def _local_packages(pid, token: str, public_packages: set) -> list[dict]:
-    """The engine's available packages in no public entry, one per package (its latest listed version)."""
+    """The engine's available packages in no public entry, one per package (its latest listed version), each
+    with in_local_plugins: whether the engine found it in the install's local_plugins/ folder."""
     try:
         listed = engine_components.available_plugins(pid, token)
     except engine_components.EngineUnavailable as exc:
         logger.warning("local plugins of project %s not listed: %s", pid, exc)
         return []
+    # one entry per package as the index compares names: the folder's my_probe comes back from the index as
+    # my-probe; the folder's own listing names the entry when there is one
     out: dict[str, dict] = {}
+    in_folder = {_dist(p.get("package_name") or "") for p in listed if p.get("source") == "local"}
+    public = {_dist(n) for n in public_packages if n}
     for p in listed:
         name = p.get("package_name")
-        if name and name not in public_packages:
-            out[name] = p
+        if not name or _dist(name) in public:
+            continue
+        key = _dist(name)
+        if key in out and out[key].get("source") == "local" and p.get("source") != "local":
+            continue
+        out[key] = {**p, "in_local_plugins": key in in_folder}
     return [out[k] for k in sorted(out)]
 
 
@@ -354,8 +363,9 @@ def _local_dimensions(pid) -> dict[str, list[str]]:
     return {k: sorted(v, key=lambda rid: int(rid[3:])) for k, v in found.items()}
 
 
-def tools(pid, token: str, detailed: bool) -> list[dict]:
-    """The copy's entries then the local ones, each with aisc_local and aisc_installed;
+def tools(pid, token: str, detailed: bool, internal: bool = False) -> list[dict]:
+    """The copy's entries then the local ones, each with aisc_local and aisc_installed (and, `internal`, a local
+    entry's aisc_in_local_plugins, for install_info; the catalogue's reads keep the public shape);
     a public project's entries are the public catalogue's, live, with no local plugins but with the
     local controls (local_controls/)."""
     private = _chosen(pid) == "private"
@@ -396,7 +406,8 @@ def tools(pid, token: str, detailed: bool) -> list[dict]:
                      status="approved", completion_status="full", storage_path=f"local/{name}",
                      available_on_devpi=p.get("source") == "registry",
                      metadata=None, metrics=[], questions=[], tags=entry_tags)
-        out.append({**entry, "aisc_local": True, "aisc_installed": name in packages})
+        out.append({**entry, "aisc_local": True, "aisc_installed": name in packages,
+                    **({"aisc_in_local_plugins": bool(p.get("in_local_plugins"))} if internal else {})})
     if not detailed:
         out = [{**plain_tool(t)} for t in out]
     return out
@@ -506,6 +517,19 @@ def newest(versions: list[str]) -> str | None:
     return max(finals or parsed)[1]
 
 
+#: install_info's source for a plugin of the install's local_plugins/ folder
+LOCAL_PLUGINS_SOURCE = "local_plugins"
+
+
+def _public_version(version: str) -> str:
+    """A version without its local label: the engine lists a local_plugins/ folder as 0.2.0+local, the index
+    holds it as 0.2.0."""
+    try:
+        return Version(version).public
+    except InvalidVersion:
+        return version.split("+", 1)[0]
+
+
 def _same_version(a: str, b: str) -> bool:
     try:
         return Version(a) == Version(b)
@@ -534,10 +558,16 @@ def install_info(pid, slug: str, token: str) -> dict:
     head of the entry's lux-ai-factory repo, read by the plugin publisher, else the newest on this
     stack's index. fetched_on_install says the install will have the publisher fetch, build and
     publish it first, because the index lacks that version."""
-    entry = next((t for t in tools(pid, token, detailed=True) if t["slug"] == slug), None)
+    entry = next((t for t in tools(pid, token, detailed=True, internal=True) if t["slug"] == slug), None)
     if entry is None:
         raise NoEntry(f"no entry {slug!r}")
     package = package_of(entry)
+    if entry.get("aisc_in_local_plugins"):
+        # a plugin of the install's local_plugins/: the publisher builds it from there and puts it on the index
+        # on every install (unchanged content is not uploaded again), so the index always has the folder's code
+        return {"slug": slug, "package_name": package, "version": _public_version(entry.get("version") or ""),
+                "index_url": index_url(), "installable": True, "reason": None, "fetched_on_install": True,
+                "source": LOCAL_PLUGINS_SOURCE}
     # a local entry is this stack's own build: never replaced by a fetch from GitHub
     repo = None if entry.get("aisc_local") else plugin_sources.repo_of(package)
     on_index = versions_on_index(package)

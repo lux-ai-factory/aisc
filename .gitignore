@@ -16,3 +16,7 @@ immudb-signing.pub
 # adapter plugins are the operator's own (adapters/README.md): only the README is AISC's
 adapters/*
 !adapters/README.md
+
+# plugins of the operator's own (local_plugins/README.md): only the README is AISC's
+local_plugins/*
+!local_plugins/README.md

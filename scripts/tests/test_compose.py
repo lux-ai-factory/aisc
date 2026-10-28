@@ -528,6 +528,20 @@ def test_the_platform_reads_the_local_controls_read_only(compose):
     assert any(src.endswith("/local_controls") and tgt == "/app/local_controls" and ro for src, tgt, ro in mounts), mounts
 
 
+def test_the_publisher_reads_local_plugins_read_only(compose):
+    """A catalogue install of a plugin of local_plugins/ has the publisher build it from there
+    (local_plugins/README.md)."""
+    q, cfg = compose
+    publisher = cfg["services"]["plugin-publisher"]
+    mounts = [(v.get("source", ""), v.get("target"), v.get("read_only")) for v in publisher["volumes"]]
+    # under a folder only root (the service) can enter: the builds run as another user and must not read it
+    assert any(src.rstrip("/").endswith("/local_plugins") and tgt == "/srv/private/local-plugins" and ro
+               for src, tgt, ro in mounts), mounts
+    assert publisher["environment"]["LOCAL_PLUGINS_DIR"] == "/srv/private/local-plugins"
+    dockerfile = (ROOT / "infra/plugin-publisher/Dockerfile").read_text()
+    assert "install -d -m 700 /srv/private" in dockerfile
+
+
 def test_the_platform_reads_the_adapters_read_only(compose):
     """The protocols adapters add (adapters/README.md): the folder mounted read-only where the platform looks."""
     q, cfg = compose
