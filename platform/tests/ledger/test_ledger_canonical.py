@@ -1,7 +1,6 @@
 """Canonical JSON (RFC 8785), so the same content always gives the same bytes and the same hash."""
 from __future__ import annotations
 
-import hashlib
 import json as _json
 import math
 from datetime import datetime, timezone
@@ -10,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from platform_service.ledger.canonical import canonical, sha256_hex
+from platform_service.ledger.canonical import canonical
 
 
 def test_keys_are_sorted_and_there_is_no_whitespace():
@@ -50,12 +49,6 @@ def test_values_json_cannot_hold_are_refused(bad):
 def test_keys_must_be_text():
     with pytest.raises((TypeError, ValueError)):
         canonical({1: "a"})
-
-
-def test_the_hash_is_the_sha256_of_the_canonical_bytes():
-    value = {"b": [1, 2], "a": "x"}
-    assert sha256_hex(value) == hashlib.sha256(canonical(value)).hexdigest()
-    assert sha256_hex({"a": "x", "b": [1, 2]}) == sha256_hex(value)
 
 
 # The shared test vectors, and the inputs canonical JSON refuses

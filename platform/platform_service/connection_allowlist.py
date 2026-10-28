@@ -25,7 +25,8 @@ import time
 from platform_service import connection_store
 
 #: Every name the stack's services answer to on its networks, in every compose file of the repo
-#: (service, container and alias names), and localhost. scripts/tests/test_connections_stack.py
+#: (service, container and alias names), and localhost; also two names no compose file has any more
+#: (qualification-llm, isolate), still refused. scripts/tests/test_connections_stack.py
 #: checks it against the compose files.
 STACK_SERVICES = frozenset({
     "aisc-backend", "aisc-backend-ledger", "aisc-backend-migrate", "aisc-backend-standalone", "aisc-eval", "aisc-eval-flower",

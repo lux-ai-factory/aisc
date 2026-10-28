@@ -273,7 +273,6 @@
     return node;
   }
   function show(id, text) { var node = $(id); if (text !== undefined) node.textContent = text; node.hidden = false; }
-  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function day(iso) {
     var d = new Date(iso);

@@ -6,8 +6,8 @@
 -- (project_<pid without hyphens>, made by the platform service from platform/project-template/):
 -- the card versions (project.system), qualification and its forms, control objectives, controls,
 -- the engine and the report composer. What stays here is only what belongs to no project: the
--- projects and who is in them (core), the catalogue of tests and controls, and the install-wide
--- library of report presets (report_library).
+-- projects and who is in them (core). The schemas catalogue and report_library made below are
+-- no longer used by any service.
 --
 -- Each module reads the projects and their members and nothing else here. The grants below are
 -- that contract, and scripts/verify-project-databases.sh checks it role by role

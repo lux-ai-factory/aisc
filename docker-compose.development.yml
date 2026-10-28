@@ -323,7 +323,7 @@ services:
       PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
       # The ledger: each change records its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}
-      # The gateway's token, verified here (src/lib/access/gatewayToken.ts): the request id the
+      # The gateway's token, verified here (src/vendor/aisc-ledger/gatewayToken.ts): the request id the
       # gateway witnessed (X-AISC-Request-Id) is cited in a ledger event only with a valid one.
       AUTH_ENABLED: "true"
       KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
@@ -369,7 +369,7 @@ services:
       - backend
 
   # Qualification (apps/qualification): qualifies an AI system against the EU AI Act.
-  # The card agent: drafts the prose-fed nodes of an AI card (techniques, components) with the
+  # The card agent: drafts the prose-fed nodes of an AI card (its techniques) with the
   # project's model (through BAF), and publishes the draft to qualification-web.
   qualification-agents:
     build:
@@ -480,7 +480,7 @@ services:
       AGENT_SERVICE_URL: http://qualification-agents:8012
       # The ledger: each change writes its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}
-      # The gateway's token, verified here (src/server/access/gatewayToken.ts): the request id the
+      # The gateway's token, verified here (src/vendor/aisc-ledger/gatewayToken.ts): the request id the
       # gateway witnessed (X-AISC-Request-Id) is cited in a ledger event only with a valid one.
       AUTH_ENABLED: "true"
       KEYCLOAK_ISSUER: ${KEYCLOAK_URL_EXTERNAL}/realms/aisc
@@ -669,7 +669,7 @@ services:
 
   report-renderer:
     build:
-      # both are submodules of this repository; no evaluation tool's report plugin is built in
+      # both are submodules of this repository; the bundled report plugins (plugins/) are built in
       context: ${REPORT_GENERATOR_DIR:-./apps/report-generator}
       additional_contexts:
         interface: ${REPORT_INTERFACE_DIR:-./shared/report-plugin-interface}

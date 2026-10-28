@@ -1,6 +1,6 @@
 """Generated reports: the snapshot sent to the renderer, the document's filename and the generation itself.
 
-Snapshots are version 2 (document settings, coverage links from step 4; no language, reports are English), a
+Snapshots are version 3 (document settings, coverage links from step 4; no language, reports are English), a
 report is a PDF or a Word document (DOCX), and the renderer's fingerprint is stored with it.
 """
 from __future__ import annotations
