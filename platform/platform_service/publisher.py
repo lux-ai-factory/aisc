@@ -88,6 +88,15 @@ def source(repo: str) -> dict | None:
     return _answer(r)
 
 
+def publish_local(package: str) -> dict:
+    """Has the folder of local_plugins/ that builds `package` built and published, as publish does for a repo:
+    {"package", "version", "published"}."""
+    r = _call("POST", "/publish", PUBLISH_TIMEOUT_S, {"local": True, "package": package})
+    if r.status_code != 200:
+        raise PublisherError(_detail(r))
+    return _answer(r)
+
+
 def publish(repo: str, package: str) -> dict:
     """Has that repo fetched, built and published unless the index holds its version already:
     {"package", "version", "published"}."""

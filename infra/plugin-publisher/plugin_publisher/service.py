@@ -3,7 +3,9 @@
 - GET /health: {"interface_published": bool}, without a token;
 - GET /sources/{repo}: the branch, package and version at the head of that repo;
 - POST /publish {"repo", "package"}: fetch, build and check that one plugin, and upload it unless the index
-  already holds that version with the same content.
+  already holds that version with the same content;
+- POST /publish {"local": true, "package"}: the same for the folder of local_plugins/ (LOCAL_PLUGINS_DIR) that
+  builds that package.
 
 Every route but /health needs X-AISC-Service-Token equal to PLUGIN_PUBLISHER_TOKEN."""
 
@@ -32,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from plugin_publisher.git import StepFailed, scrub, tail
+from plugin_publisher.local import LocalRefused, copy_local, local_folder
 from plugin_publisher.sources import (
     NotAllowed, SourceError, artefact_name, check_allowed, clone, dist, read_project, read_source,
 )
@@ -272,6 +275,26 @@ class Publisher:
             logger.info("replaced %s %s on the index: its content changed", package, version)
         return {"package": package, "version": version, "published": published, "replaced": replaced}
 
+    def publish_local(self, package: str) -> dict:
+        """publish, from the folder of local_plugins/ that builds `package` instead of a repo."""
+        try:
+            folder = local_folder(package)
+        except LocalRefused as exc:
+            raise Refused(exc.status, exc.detail) from None
+        label = f"local_plugins/{folder.name}"
+        with tempfile.TemporaryDirectory(dir=self.workdir, prefix="publish-") as tmp:
+            src = Path(tmp) / "src"
+            try:
+                copy_local(folder, src)
+            except LocalRefused as exc:
+                raise Refused(exc.status, exc.detail) from None
+            name, version = read_project(src, label)
+            with self._lock(f"local:{dist(package)}"):
+                published, replaced = self._build_and_publish(src, Path(tmp) / "dist", package, version, label)
+        if replaced:
+            logger.info("replaced %s %s on the index: its content changed", package, version)
+        return {"package": package, "version": version, "published": published, "replaced": replaced}
+
     def _build_and_publish(self, src: Path, out: Path, package: str, version: str,
                            label: str) -> tuple[bool, bool]:
         """Builds, checks, then uploads unless the index holds this version with the same wheel content:
@@ -441,6 +464,12 @@ class Handler(BaseHTTPRequestHandler):
         repo, package = (body.get("repo"), body.get("package")) if isinstance(body, dict) else (None, None)
         if not isinstance(package, str) or not package:
             self._send(400, {"detail": "package is required"})
+            return
+        if isinstance(body, dict) and "local" in body:
+            if body["local"] is not True or repo is not None:
+                self._send(400, {"detail": "local is true, for a folder of local_plugins, without a repo"})
+                return
+            self._answer(lambda p: p.publish_local(package))
             return
         self._answer(lambda p: p.publish(repo, package))
 

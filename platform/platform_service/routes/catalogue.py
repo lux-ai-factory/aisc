@@ -140,13 +140,17 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
     if not info["installable"]:
         raise HTTPException(status_code=409, detail=info["reason"])
     version = info["version"]
+    from_folder = info["source"] == catalogue.LOCAL_PLUGINS_SOURCE
+    repo = None if from_folder or not info["source"] else info["source"].removeprefix("lux-ai-factory/")
+    fetching = f"publish {info['package_name']} from local_plugins" if from_folder else f"fetch {repo}"
     if info["fetched_on_install"]:
-        repo = info["source"].removeprefix("lux-ai-factory/")
         # published before it is installed, never the other way round; published but not installed is reusable
         try:
-            version = publisher.publish(repo, info["package_name"])["version"]
+            published = (publisher.publish_local(info["package_name"]) if from_folder
+                         else publisher.publish(repo, info["package_name"]))
+            version = published["version"]
         except publisher.PublisherError as exc:
-            raise HTTPException(status_code=502, detail=f"could not fetch {repo}: {exc}; nothing was installed")
+            raise HTTPException(status_code=502, detail=f"could not {fetching}: {exc}; nothing was installed")
     try:
         if info["fetched_on_install"]:
             # The engine installs only what it has listed since the package reached the index: its
@@ -157,13 +161,16 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
             listed = engine_components.available_plugins(pid, token)
             seen = next((p for p in listed
                          if catalogue._dist(p.get("package_name") or "") == catalogue._dist(info["package_name"])
-                         and catalogue._same_version(str(p.get("version") or ""), version)), None)
+                         and catalogue._same_version(str(p.get("version") or ""), version)
+                         and (not from_folder or p.get("source") == "registry")), None)
             if seen is None:
                 raise HTTPException(status_code=502, detail=(
-                    f"could not fetch {repo}: the engine does not see {info['package_name']} {version} "
+                    f"could not {fetching}: the engine does not see {info['package_name']} {version} "
                     "after publishing; nothing was installed"))
             version = seen["version"]
-        engine_components.install_plugin(pid, token, info["package_name"], version, entry)
+        # the name the engine lists the index build by: the index normalises it (my_probe is my-probe there)
+        package = seen["package_name"] if from_folder else info["package_name"]
+        engine_components.install_plugin(pid, token, package, version, entry)
     except engine_components.EngineUnavailable as exc:
         if exc.status == 403:
             raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)

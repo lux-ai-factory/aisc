@@ -258,9 +258,10 @@ def test_install_info_is_answered_from_the_stacks_own_index(client, as_user, evi
     assert r.json() == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.1",
                         "index_url": f"{index.base}/root/public/+simple/", "installable": True, "reason": None,
                         "fetched_on_install": False, "source": "lux-ai-factory/aisc-plugin-langbite"}
-    local = info("local-my-probe").json()                    # an engine package the index doesn't serve
-    assert local["package_name"] == "my-probe" and local["installable"] is False
-    assert local["reason"] == "my-probe is not in this installation's package index"
+    local = info("local-my-probe").json()                    # an engine package from local_plugins/
+    assert local == {"slug": "local-my-probe", "package_name": "my-probe", "version": "0.2.0",
+                     "index_url": f"{index.base}/root/public/+simple/", "installable": True, "reason": None,
+                     "fetched_on_install": True, "source": "local_plugins"}
 
 
 def test_an_entry_without_package_name_uses_its_storage_path_like_the_public_catalogue(
@@ -476,15 +477,65 @@ def test_installing_a_test_from_the_catalogue_takes_the_admin_role(client, as_us
     assert engine.requests("POST", "/api/v1/plugins") == []
 
 
-def test_a_test_the_index_does_not_hold_is_not_installed(client, as_user, evidence_project, public, engine, index,
-                                                         publisher):
-    """my-probe is not on the index and no lux-ai-factory repo builds it: nothing to fetch."""
+def local_publish(publisher, version="0.2.0", status=200):
+    """The publisher's answer to publishing my-probe from local_plugins/."""
+    publisher.route("POST", "/publish", (status, {"package": "my-probe", "version": version, "published": True}
+                                         if status == 200 else {"detail": "no folder in local_plugins builds the package my-probe"}))
+
+
+def test_a_plugin_of_local_plugins_is_published_from_its_folder_then_installed(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    """my-probe is in local_plugins/ only: Install has the publisher build it from there and put it on the
+    index, then the engine installs that version from the index (never the +local listing)."""
+    local_publish(publisher)
     assert choose(client, as_user, evidence_project, "private").status_code == 200
-    engine_takes_installs(engine, evidence_project)
+    order = engine_like_the_real_one(engine, publisher, evidence_project)
     r = client.post(url(evidence_project, "/api/tool/local-my-probe/install"), headers=admin(as_user))
-    assert r.status_code == 409 and "not in this installation's package index" in r.json()["detail"]
-    assert engine.requests("POST", "/api/v1/plugins") == []
-    assert publisher.seen == []
+    assert r.status_code == 200, r.text
+    assert r.json() == {"slug": "local-my-probe", "package_name": "my-probe", "version": "0.2.0"}
+    assert order[-3:] == ["publish", "list", "install"]
+    assert publisher.requests("POST", "/publish")[-1].json == {"local": True, "package": "my-probe"}
+    assert engine.requests("POST", "/api/v1/plugins")[-1]["json"]["version"] == "0.2.0"
+
+
+def test_a_plugin_of_local_plugins_the_publisher_cannot_build_is_not_installed(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    local_publish(publisher, status=404)
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_like_the_real_one(engine, publisher, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/local-my-probe/install"), headers=admin(as_user))
+    assert r.status_code == 502, r.text
+    assert "local_plugins" in r.json()["detail"] and "nothing was installed" in r.json()["detail"]
+    assert all(req["json"].get("package_name") != "my-probe" for req in engine.requests("POST", "/api/v1/plugins"))
+
+
+def test_a_local_plugin_whose_name_is_not_normalised_is_one_entry_and_installs_the_index_build(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    """The index stores names normalised: the folder's my_probe (0.2.0+local) comes back from it as my-probe
+    (0.2.0). One Local entry, and the engine is asked for the index build under the name it lists it by."""
+    on_index = []
+    publisher.route("POST", "/publish", lambda seen: (on_index.append(1), (200, {"package": "my_probe", "version": "0.2.0",
+                                                                                "published": True}))[1])
+    engine.route("GET", "/api/v1/plugins", lambda seen: (200, [{"package_name": "my_probe", "version": "0.2.0+local", "source": "local"}]
+                                                         + ([{"package_name": "my-probe", "version": "0.2.0", "source": "registry"}] if on_index else [])))
+    engine_takes_installs(engine, evidence_project)
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    r = client.post(url(evidence_project, "/api/tool/local-my_probe/install"), headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    sent = engine.requests("POST", "/api/v1/plugins")[-1]["json"]
+    assert (sent["package_name"], sent["version"]) == ("my-probe", "0.2.0")
+    tools = client.get(url(evidence_project, "/api/tool/?detailed=true"), headers=as_user(VERA)).json()
+    assert [t["slug"] for t in tools if t.get("aisc_local") and "probe" in t["slug"]] == ["local-my_probe"]
+
+
+def test_a_local_entry_only_on_the_index_installs_from_the_index_without_publishing(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    """A package someone put on the index by hand (no folder in local_plugins/) installs as before."""
+    index.route("GET", "/root/public/+simple/my-probe/", (200, b'<html><body><a href="x">my_probe-0.2.0-py3-none-any.whl</a></body></html>'))
+    engine.route("GET", "/api/v1/plugins", (200, [{"package_name": "my-probe", "version": "0.2.0", "source": "registry"}]))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    info = install_info_of(client, as_user, evidence_project, "local-my-probe")
+    assert (info["installable"], info["fetched_on_install"], info["version"], info["source"]) == (True, False, "0.2.0", None)
 
 
 # ── a test whose package the index lacks is fetched from its source when it is installed ─────────────
@@ -694,12 +745,13 @@ def test_a_local_entry_is_never_replaced_by_a_github_source(client, as_user, evi
     ]))
     assert choose(client, as_user, evidence_project, "private").status_code == 200
     got = install_info_of(client, as_user, evidence_project, "local-aisc-plugin-homegrown")
-    assert got["source"] is None and got["fetched_on_install"] is False and got["installable"] is False
-    assert got["reason"] == "aisc-plugin-homegrown is not in this installation's package index"
+    assert got["source"] == "local_plugins" and got["fetched_on_install"] is True and got["installable"] is True
+    publisher.route("POST", "/publish", (200, {"package": "aisc-plugin-homegrown", "version": "0.1.0", "published": True}))
     engine_takes_installs(engine, evidence_project)
-    r = client.post(url(evidence_project, "/api/tool/local-aisc-plugin-homegrown/install"), headers=admin(as_user))
-    assert r.status_code == 409
-    assert publisher.seen == [] and engine.requests("POST", "/api/v1/plugins") == []
+    client.post(url(evidence_project, "/api/tool/local-aisc-plugin-homegrown/install"), headers=admin(as_user))
+    # published from its folder, never fetched from a lux-ai-factory repo of the same name
+    assert [r.json for r in publisher.requests("POST", "/publish")] == [{"local": True, "package": "aisc-plugin-homegrown"}]
+    assert publisher.requests("GET", "/sources/aisc-plugin-homegrown") == []
 
 
 def test_a_package_without_a_source_and_not_on_the_index_is_still_409(client, as_user, evidence_project, public,

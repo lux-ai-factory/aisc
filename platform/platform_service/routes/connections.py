@@ -19,8 +19,8 @@ import psycopg
 from psycopg import errors
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 
-from platform_service import (connection_allowlist, connection_facade, connection_store, db, llm_store, run_passes,
-                              target_store, targets)
+from platform_service import (adapters, connection_allowlist, connection_facade, connection_store, db, llm_store,
+                              run_passes, target_store, targets)
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, admin_project, no_project, role_or_404, secrets_unavailable
 
@@ -66,6 +66,11 @@ class ConnectionIn(BaseModel):
     supports_logprobs: StrictBool = False
     #: the assessment target this is the endpoint of ('system' or 'component:<key>'); set once
     target: StrictStr | None = None
+    #: an adapter connection's plain fields, {name: value}, as its adapter declares them (stored in body_template)
+    settings: dict[str, StrictStr] | None = None
+    #: an adapter connection's secret fields, write-only like secret_headers (and stored with them): absent
+    #: keeps the stored set, {name: value} sets one, {name: ""} removes it
+    secret_settings: dict[str, StrictStr] | None = None
 
 
 class ProbeIn(BaseModel):
@@ -83,8 +88,9 @@ def connection_fields(body: ConnectionIn) -> dict:
     label = body.label.strip()
     if not 1 <= len(label) <= 120:
         raise _invalid_connection("label: 1 to 120 characters")
-    if body.kind not in ("openai", "rest", "a2a", "oip"):
-        raise _invalid_connection("kind: openai, rest, a2a or oip")
+    if body.kind not in adapters.BUILT_IN_KINDS and adapters.get(body.kind) is None:
+        raise _invalid_connection(f"kind: {', '.join(adapters.BUILT_IN_KINDS)} or an installed adapter"
+                                  f" ({', '.join(adapters.registry()) or 'none installed'})")
     parts = urlsplit(body.base_url.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise _invalid_connection("base_url: an http(s) URL with a host")
@@ -119,6 +125,11 @@ def connection_fields(body: ConnectionIn) -> dict:
             raise _invalid_connection(f"secret_headers: {name} is where the key goes (secret_header)")
     if not 1 <= body.timeout_s <= 600:
         raise _invalid_connection("timeout_s: 1 to 600")
+    adapter = adapters.get(body.kind) if body.kind not in adapters.BUILT_IN_KINDS else None
+    if adapter is not None:
+        return _adapter_connection_fields(body, adapter, label)
+    if body.settings is not None or body.secret_settings is not None:
+        raise _invalid_connection("settings and secret_settings: only for a connection of an adapter's kind")
     if body.refusal is not None:
         status = body.refusal.get("status")
         if (not isinstance(status, list) or not status
@@ -148,6 +159,47 @@ def connection_fields(body: ConnectionIn) -> dict:
             "supports_logprobs": body.supports_logprobs}
 
 
+#: what a connection of an adapter's kind leaves at its default: the adapter, not the platform, builds the request
+_BUILT_IN_ONLY = {"method": "POST", "path": "", "headers": {}, "secret_header": None, "body_template": None,
+                  "response_path": None, "refusal": None, "model": None, "protocol_version": None,
+                  "secret": None, "secret_headers": None, "supports_tools": False, "supports_logprobs": False}
+MAX_SETTING_CHARS = 4096
+
+
+def _setting_values(what: str, values: dict, allowed: dict, allow_empty: bool) -> None:
+    for name, value in values.items():
+        if name not in allowed:
+            raise _invalid_connection(f"{what}: {name!r} is not one of the adapter's"
+                                      f" {'secret ' if what == 'secret_settings' else ''}fields"
+                                      f" ({', '.join(allowed) or 'none'})")
+        if "\r" in value or "\n" in value or len(value) > MAX_SETTING_CHARS:
+            raise _invalid_connection(f"{what}: {name}: a value on one line, up to {MAX_SETTING_CHARS} characters")
+        if not value and not allow_empty:
+            raise _invalid_connection(f"{what}: {name}: empty")
+
+
+def _adapter_connection_fields(body: ConnectionIn, adapter, label: str) -> dict:
+    """The columns of a connection of an adapter's kind: the common ones, and the plain fields in body_template
+    (part of the fingerprint). Built-in-only settings are refused; the secret fields are checked here and
+    stored by save_connection."""
+    for key, default in _BUILT_IN_ONLY.items():
+        if key in body.model_fields_set and getattr(body, key) not in (default, None):
+            raise _invalid_connection(f"{key}: not a setting of a {adapter.name} connection (its adapter builds"
+                                      " the request)")
+    plain = {f.name: f for f in adapter.fields if not f.secret}
+    secret = {f.name: f for f in adapter.fields if f.secret}
+    settings = dict(body.settings or {})
+    _setting_values("settings", settings, plain, allow_empty=False)
+    _setting_values("secret_settings", body.secret_settings or {}, secret, allow_empty=True)
+    missing = [f.name for f in plain.values() if f.required and f.name not in settings]
+    if missing:
+        raise _invalid_connection(f"settings: {', '.join(missing)} required")
+    return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": "POST",
+            "path": "", "headers": {}, "secret_header": None, "body_template": settings, "response_path": None,
+            "refusal": None, "model": None, "timeout_s": body.timeout_s, "protocol_version": None,
+            "supports_tools": False, "supports_logprobs": False}
+
+
 def connection_view(row: dict) -> dict:
     out = {k: row.get(k) for k in connection_store.PUBLIC}
     for k in ("updated_at", "last_test_at"):
@@ -158,6 +210,10 @@ def connection_view(row: dict) -> dict:
     target = target_store.get(row["pid"], row["target_key"]) if row.get("target_key") and row.get("pid") else None
     out["target"] = {"key": target["key"], "kind": target["kind"], "label": target["label"]} if target else None
     out.pop("target_key", None)
+    if row.get("kind") not in adapters.BUILT_IN_KINDS:
+        # an adapter's connection: its plain fields, and its secret fields by name only
+        out["settings"] = out.pop("body_template", None) or {}
+        out["secret_settings"], out["secret_headers"] = out["secret_headers"], []
     return out
 
 
@@ -201,6 +257,16 @@ def target_set_once() -> HTTPException:
                                                  "connection to reach another one")
 
 
+@router.get("/projects/{slug}/connections/protocols")
+def list_protocols(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
+    """The protocols a connection can use: the built-in ones, then each installed adapter with the fields its
+    connection editor asks for (never a value)."""
+    role_or_404(slug, caller)
+    built_in = [{"name": kind, "label": targets.PROTOCOL_NAMES[kind], "adapter": False}
+                for kind in adapters.BUILT_IN_KINDS]
+    return {"protocols": built_in + [a.public() for _, a in sorted(adapters.registry().items())]}
+
+
 @router.put("/projects/{slug}/connections/{name}")
 def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
                     caller: Caller = Depends(caller_dependency)) -> JSONResponse:
@@ -216,11 +282,26 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
         except llm_store.SecretsKeyError as exc:
             raise secrets_unavailable(exc) from None
     header_ciphertext = connection_store.KEEP
-    if body.secret_headers:
-        names, header_ciphertext = _merged_secret_headers(pid, name, body.secret_headers)
+    before = connection_store.get(pid, name, with_deleted=True)
+    adapter = adapters.get(body.kind) if body.kind not in adapters.BUILT_IN_KINDS else None
+    # secret headers, and an adapter's secret fields (stored where secret headers are): encrypted, names public.
+    # One protocol's secrets are never another's: a change of kind removes every stored one, and a change to
+    # an adapter the key too (an adapter connection has none).
+    stored = list((before or {}).get("secret_header_names") or [])
+    change = dict((body.secret_settings if adapter is not None else body.secret_headers) or {})
+    if before is not None and before.get("kind") != body.kind:
+        change = {**{n: "" for n in stored}, **change}
+        if adapter is not None:
+            ciphertext = None
+    names = stored
+    if change:
+        names, header_ciphertext = _merged_secret_headers(pid, name, change)
         if header_ciphertext is not connection_store.KEEP:
             fields["secret_header_names"] = names
-    before = connection_store.get(pid, name, with_deleted=True)
+    if adapter is not None:
+        missing = [f.name for f in adapter.fields if f.secret and f.required and f.name not in names]
+        if missing:
+            raise _invalid_connection(f"secret_settings: {', '.join(missing)} required")
     if "target" in body.model_fields_set and body.target is not None:
         if not targets.is_key(body.target) or target_store.get(pid, body.target) is None:
             raise HTTPException(status_code=422, detail=f"target: {body.target!r} is not the system or a component of this project")
@@ -341,6 +422,15 @@ def call_descriptor_of(row: dict, pid: str | None = None):
     return descriptor
 
 
+def adapter_connection_of(descriptor) -> dict:
+    """What an adapter is given of its connection: the common settings, its plain fields and its secret ones
+    (decrypted: call_descriptor_of put them among the headers)."""
+    headers = descriptor.headers or {}
+    return {"name": descriptor.name, "label": descriptor.label, "base_url": descriptor.base_url,
+            "timeout_s": descriptor.timeout_s, "settings": dict(descriptor.body_template or {}),
+            "secrets": {n: headers[n] for n in getattr(descriptor, "secret_header_names", []) if n in headers}}
+
+
 def secret_values(descriptor) -> list[str]:
     """The values to scrub from any error text of a call with this descriptor: its key and the values of
     its secret headers."""
@@ -381,7 +471,11 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     except llm_store.KeyUnreadable as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     try:
-        answer = client.call(descriptor, body.input, waits=(), **connection_allowlist.rule(pid))
+        if descriptor.kind in adapters.BUILT_IN_KINDS:
+            answer = client.call(descriptor, body.input, waits=(), **connection_allowlist.rule(pid))
+        else:
+            from platform_service.routes.facade import call_adapter
+            answer = call_adapter(pid, descriptor, adapters.get(descriptor.kind), body.input)
     except client.EndpointError as exc:
         if _reached_by_ping(descriptor, body.input, exc):
             detail = (f"reached, key accepted: it answered {exc.status} to 'ping', since it takes a JSON request."
@@ -406,7 +500,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
         recorded = str(answer.text)
         out = {"ok": True, "refused": False, "answer": recorded[:500], "status": answer.status,
                "latency_ms": answer.latency_ms}
-    checks = _capability_checks(pid, row, descriptor)
+    checks = _capability_checks(pid, row, descriptor) if descriptor.kind in adapters.BUILT_IN_KINDS else {}
     if checks:
         out["capabilities"] = checks
         failing = next((c for c in checks.values() if not c["ok"]), None)
@@ -768,7 +862,9 @@ def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResp
     # What the platform's endpoints carry: text and a history, and tools on an OpenAI-compatible connection
     # that carries them; a plugin that needs more refuses the run before it starts.
     return _internal(201, {"key": key, "expires_at": expires.isoformat(), "connection": name,
-                           "capabilities": connection_facade.capabilities(row["kind"], bool(row.get("supports_tools"))),
+                           "capabilities": connection_facade.capabilities(
+                               row["kind"], bool(row.get("supports_tools")),
+                               adapters.get(row["kind"]) if row["kind"] not in adapters.BUILT_IN_KINDS else None),
                            "target": _target_of(pid, row), "endpoints": {
         "aisc": {"ask_url": f"{root}/aisc/ask"},
         "openai": {"base_url": f"{root}/openai/v1", "model": name},

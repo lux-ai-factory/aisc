@@ -18,11 +18,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from platform_service import connection_allowlist, connection_facade, connection_store, db, llm_store, run_passes
+from platform_service import (adapters, connection_allowlist, connection_facade, connection_store, db, llm_store,
+                              run_passes)
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
-from platform_service.routes.connections import (CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, call_descriptor_of,
-                                                 secret_values)
+from platform_service.routes.connections import (CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, adapter_connection_of,
+                                                 call_descriptor_of, secret_values)
 
 router = APIRouter()
 
@@ -40,6 +41,7 @@ class Opened(NamedTuple):
     run_id: str                   # "pass:<pass_hash>", or "key:<key_hash>" for a key issued without a pass
     supports_tools: bool          # the connection carries tools (an OpenAI-compatible one only)
     secrets: list                 # the values never to answer back (secret_values)
+    adapter: object = None        # the adapter of a connection of an adapter's kind (None: built-in, or not installed)
 
 
 def _facade_open(pid: str, name: str, request: Request):
@@ -67,17 +69,21 @@ def _facade_open(pid: str, name: str, request: Request):
     except (llm_store.SecretsKeyError, llm_store.KeyUnreadable) as exc:
         return None, (503, str(exc))
     run_id = f"pass:{run_key['pass_hash']}" if run_key["pass_hash"] else f"key:{run_key['key_hash']}"
-    return Opened(descriptor, run_id, bool(row.get("supports_tools")), secret_values(descriptor)), None
+    adapter = adapters.get(row["kind"]) if row["kind"] not in adapters.BUILT_IN_KINDS else None
+    return Opened(descriptor, run_id, bool(row.get("supports_tools")), secret_values(descriptor), adapter), None
 
 
-def _facade_call(pid, opened: Opened, input, history=None, params=None):
+def _facade_call(pid, opened: Opened, input, history=None, params=None, deadline=None):
     """(answer, None), or (None, the client's error) when the call failed. The key and the secret header
     values are never in either: the answer is scrubbed of every form of them (scrub_answer).
     It blocks on the system under test: the async facade routes run it in its own threads
     (_in_facade_threads) and _facade_open in the shared pool, so a slow system never stalls other requests."""
     from aisc_plugin_interface import connections as client
     try:
-        answer = client.call(opened.descriptor, input, history, params=params, **connection_allowlist.rule(pid))
+        if opened.descriptor.kind in adapters.BUILT_IN_KINDS:
+            answer = client.call(opened.descriptor, input, history, params=params, **connection_allowlist.rule(pid))
+        else:
+            answer = call_adapter(pid, opened.descriptor, opened.adapter, input, history, params, deadline)
         return connection_facade.scrub_answer(answer, opened.secrets), None
     except client.EndpointError as exc:
         # a warning: the plugin sees only the answer's detail, and INFO lines don't reach the stack's log;
@@ -86,6 +92,27 @@ def _facade_call(pid, opened: Opened, input, history=None, params=None):
                        opened.descriptor.name, pid, connection_facade.error_code(exc),
                        connection_facade.scrub(str(exc), opened.secrets)[:300])
         return None, exc
+
+
+def call_adapter(pid, descriptor, adapter, input, history=None, params=None, deadline=None):
+    """A call to a connection of an adapter's kind, through its adapter, its network reach ending at `deadline`
+    (time.monotonic(); default: the connection's own timeout from now)."""
+    import time
+
+    from aisc_plugin_interface import connections as client
+
+    if adapter is None:
+        raise client.EndpointError(f"{descriptor.label}: the {descriptor.kind} adapter is not installed")
+    return adapters.call(adapter, adapter_connection_of(descriptor), input, history or [], params or {},
+                         deadline=deadline if deadline is not None else time.monotonic() + descriptor.timeout_s,
+                         **connection_allowlist.rule(pid))
+
+
+def _history_refused(opened: Opened, history) -> JSONResponse | None:
+    """A 400 when the connection's adapter takes no history and one was sent."""
+    if history and opened.adapter is not None and "history" not in opened.adapter.capabilities:
+        return _internal(400, {"detail": "this connection does not take a history (its adapter carries text only)"})
+    return None
 
 
 #: the facade calls' own threads: a call blocks up to 3 x its timeout + 4 s on the system under
@@ -125,9 +152,10 @@ def _facade_limiter():
     return _FACADE_LIMITER
 
 
-async def _in_facade_threads(run_id: str, func, *args, **kwargs):
+async def _in_facade_threads(run_id: str, func, *args, abandon_on_cancel: bool = False, **kwargs):
     """func(*args, **kwargs) in the facade's threads: first a slot of the run (waited for without holding a
-    thread), then one of the pool. The run's limiter goes when its last call ends."""
+    thread), then one of the pool. The run's limiter goes when its last call ends. `abandon_on_cancel`: a
+    cancelled wait returns at once and leaves the thread to finish on its own."""
     import functools
 
     import anyio
@@ -140,11 +168,38 @@ async def _in_facade_threads(run_id: str, func, *args, **kwargs):
     try:
         async with entry[0]:
             return await anyio.to_thread.run_sync(functools.partial(func, *args, **kwargs),
-                                                  limiter=_facade_limiter())
+                                                  limiter=_facade_limiter(), abandon_on_cancel=abandon_on_cancel)
     finally:
         entry[1] -= 1
         if entry[1] == 0 and _RUN_LIMITERS.get(run_id) is entry:
             del _RUN_LIMITERS[run_id]
+
+
+async def _ask(pid, opened: Opened, input, history=None, params=None):
+    """(answer, None) or (None, error) of one call, the way every door makes it. A connection of an adapter's
+    kind waits for one of the adapter's slots without holding a thread, and gets its answer within the
+    caller's own wait (facade_timeout_s) or a timeout: an adapter that hangs never keeps a door open."""
+    if opened.descriptor.kind in adapters.BUILT_IN_KINDS:
+        return await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history, params)
+    import contextlib
+    import time
+
+    import anyio
+    from aisc_plugin_interface import connections as client
+
+    seconds = client.facade_timeout_s(opened.descriptor)
+    deadline = time.monotonic() + seconds
+    slots = adapters.limiter(opened.adapter) if opened.adapter is not None else None
+    try:
+        with anyio.fail_after(seconds):
+            async with slots if slots is not None else contextlib.nullcontext():
+                return await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history, params,
+                                                deadline=deadline, abandon_on_cancel=True)
+    except TimeoutError:
+        exc = client.EndpointTimeout(f"{opened.descriptor.label}: no answer within {seconds}s")
+        logger.warning("connection %s of project %s failed behind a protocol endpoint (timeout): %s",
+                       opened.descriptor.name, pid, exc)
+        return None, exc
 
 
 async def _json_body(request: Request):
@@ -187,7 +242,10 @@ async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse
         input, history, params = connection_facade.ask_request(body, opened.descriptor.kind, opened.supports_tools)
     except connection_facade.BadRequest as exc:
         return _internal(400, {"detail": str(exc)})
-    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history or None, params)
+    refused = _history_refused(opened, history)
+    if refused:
+        return refused
+    answer, failed = await _ask(pid, opened, input, history or None, params)
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         return _internal(status, out)
@@ -206,8 +264,9 @@ async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONRespo
                                                                   opened.supports_tools)
     except connection_facade.BadRequest as exc:
         return _internal(400, connection_facade.openai_error(str(exc)))
-    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history or None,
-                                              params)
+    if _history_refused(opened, history):
+        return _internal(400, connection_facade.openai_error("this connection does not take a history"))
+    answer, failed = await _ask(pid, opened, input, history or None, params)
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         if status == 400:
@@ -249,7 +308,7 @@ async def facade_a2a_rpc(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32601, f"method not found: {body.get('method')}"))
     except connection_facade.BadRequest as exc:
         return _internal(200, connection_facade.jsonrpc_error(rid, -32602, str(exc)))
-    answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input)
+    answer, failed = await _ask(pid, opened, input)
     if failed:
         return _internal(200, connection_facade.jsonrpc_error(
             rid, -32603, f"the system under test failed: {connection_facade.error_code(failed)}"))
@@ -302,7 +361,7 @@ async def facade_oip_infer(pid: str, name: str, model: str, request: Request) ->
         return _internal(400, {"error": str(exc)})
     answers = []
     for item in inputs:
-        answer, failed = await _in_facade_threads(opened.run_id, _facade_call, pid, opened, item)
+        answer, failed = await _ask(pid, opened, item)
         if failed:
             return _internal(502, {"error": f"the system under test failed: {connection_facade.error_code(failed)}"})
         answers.append(answer)
