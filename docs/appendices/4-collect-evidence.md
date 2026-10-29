@@ -10,11 +10,13 @@ results are shown, and the report puts it all together for one version of the AI
 ## Where
 
 Project page, **4. Collect evidence**. The page (`homepage/evidence.html`, on the launcher's port) has an **AI card
-version** selector and four columns: Answer checklists, Run tests, Results, Report. Each column's heading opens its
+version** selector, an **Evidence map** button with the version's coverage in one line ("4 of 6 objectives linked ·
+2 gaps"), and four columns: Answer checklists, Run tests, Results, Report. Each column's heading opens its
 application; under it are tiles.
 
-The version selector decides what the test tiles count, which results are shown and which reports are listed. The
-checklist tiles always show the latest answers, and the runs on a local model file are listed whatever the version.
+The version selector decides what the test tiles count, which results are shown, which map the Evidence map opens
+and which reports are listed. The checklist tiles always show the latest answers, and the runs on a local model file
+are listed whatever the version.
 
 ## Answer checklists
 
@@ -64,30 +66,57 @@ checklist tiles always show the latest answers, and the runs on a local model fi
 - A tile opens the Results page: per test, its counts, last run, how the system was reached (protocol and
   connection), the helper models used, and **Open charts** for its dashboard.
 - Each test gets a Superset dashboard (`dashboard`, on its own port, 8188 by default) with the charts the plugin
-  declares. Its data covers all the project's runs, of every AI card version, including local ones (marked as
-  local); its Run filter starts on the test's latest run.
+  declares. It opens on the AI card version the link came from and that version's latest run (its Version and Run
+  filters); runs on a local model file are left out unless its Local filter is on.
 - **Local, not part of the assessment record**: under the Results tiles, the runs on a local model file. They are
-  never counted with the AI card's results in the tiles, nor in the report's run and result blocks. A report's
-  dashboard chart block shows the chart as Superset draws it, so local runs can appear there.
+  never counted with the AI card's results, and never put in a report: the report's run, result and dashboard chart
+  blocks leave them out.
 
-## Evidence links
+## Evidence map
 
-An evidence link says that a test or a checklist is evidence for one of the objectives selected in step 2. Links are
-kept per AI card version (table `evidence.link` of the project's database):
+**Purpose:** say which test or checklist is the evidence for each control objective selected in step 2, and see
+what is not covered yet. It is the step's risk and control matrix carried through to the evidence, as finance teams
+keep it: every risk to its objective, every objective to the checks that prove it, and the gaps in plain sight.
 
-- Only the latest version's links can change.
-- A new link must name an objective of that version's matrix and an installed test (enabled) or checklist.
-- The objective's dimension must also be among the item's dimensions, read from the hosted public catalogue, even
-  for a project with a private one. A local test that the public catalogue does not list therefore has no dimensions
-  and cannot be linked (the dimensions an admin gives a local test are not used here). The rule is skipped when
-  either catalogue does not answer.
+**Where:** the **Evidence map** button on Collect evidence opens its own page (`homepage/evidence-map.html`) for the
+selected AI card version.
+
+**The grid:**
+
+- One row per objective of the version's matrix, priority objectives first, each with the step 2 risks it comes from
+  and their ratings, and whether it expects a test, a control or both.
+- One column per installed test and checklist, with its dimensions.
+- A cell is a link (✓), a link you can make (☐), or empty (·) when the item does not carry the objective's dimension:
+  a fairness test is never evidence for a cybersecurity objective.
+- Two columns on the right: **Linked** (does any item cover it: the design question) and **Evidence (vN)** (did the
+  linked items give data for this version: not covered, no evidence yet, evidence, or evidence with attention when a
+  linked test failed or a linked checklist's mean score is below 3).
+- **Gaps only** and **Priority only** narrow the rows. An objective nothing covers is a gap, shown as one; AISC does
+  not suggest links to fill it.
+
+**What you do:**
+
+- Click a ☐ to link. Click a ✓ to open the link: an optional note on **why it is evidence** (what result counts as a
+  pass), who linked it and when, the runs or answers of this version that count, and **Unlink**.
+- One test may be evidence for several objectives.
+- When the map is complete, someone other than the person who made its links presses **Mark reviewed**. A later
+  change to the map clears the review. Links, notes and reviews are all in the project's activity log.
+- A new AI card version starts with an empty map and offers **Copy the vN map**: the links of the nearest earlier
+  version that has some, those that still apply.
+
+**Rules:**
+
+- Only the latest version's map can change; older ones are read-only.
+- A link names an objective of that version's matrix and an installed test (enabled) or checklist.
+- Dimensions are read from the project's own catalogue: the private copy, including the dimensions an admin gives a
+  local test (step 3), or the public catalogue live. When the catalogue does not answer, no link is refused for its
+  dimensions.
 - A link whose objective leaves the matrix, or whose item is disabled, uninstalled or deleted, is kept and marked
-  stale.
-- A latest version with no links of its own is offered the still-valid links of the nearest earlier version that has
-  any.
+  stale with the reason.
+- Editors and owners link and review; viewers read.
 
-Links are set through the platform's API (`PUT /api/projects/{slug}/evidence/links`). No page sets them yet, so the
-report's coverage stays empty until something calls that API.
+**Kept in:** `evidence.link` (one row per link, with its note) and `evidence.review` of the project's database. The
+platform serves the page's data (`/api/projects/{slug}/evidence`, `/evidence/links`, `/evidence/review`).
 
 ## Report
 
@@ -99,7 +128,8 @@ report's coverage stays empty until something calls that API.
   built in and read-only (Summary, Management overview, Assessment report, EU AI Act conformity, Technical dossier);
   duplicate one to change it. Layouts move between projects by export and import.
 - **Blocks** come in groups: AI card (including Risk classification, where you state the AI Act risk class);
-  control objectives and checklists (including Summary and coverage); tests run; results (each bundled test, such as
+  control objectives and checklists (including Summary and coverage, which lists each objective with its linked
+  tests and checklists, its coverage and who reviewed the map); tests run; results (each bundled test, such as
   LangBiTe or StrongREJECT, has its own renderer, others get a table; dashboard charts; charts); summary; document
   (cover, chapter, free text, appendix); and Other, for blocks a report plugin adds.
 - **Your own words:** every block has a commentary, before or after it, and the Free text block takes light
@@ -107,5 +137,6 @@ report's coverage stays empty until something calls that API.
 - When generating you choose the AI card version, the format (**PDF or Word**), and optionally a period, other
   versions to include and a version to compare with. `report-renderer` draws it. A Word report also gets a PDF copy
   when the renderer can make one.
-- Reports are kept in schema `report_composer` of the project's database, with a snapshot of the data they were made
-  from and its checksum.
+- Generating sends the renderer a request (the layout, the version and selection, the evidence map's links), and the
+  renderer reads the data itself, read-only. The composer keeps the document, its checksum and that request in
+  schema `report_composer` of the project's database.

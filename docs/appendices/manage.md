@@ -64,6 +64,17 @@ connection.
 Each entry is checked before it is shown. Owners and admins can export it and check the file offline with
 `scripts/verify-ledger-export.py`. See the guide's [How it works](../guide.md#how-it-works) for what is recorded.
 
+The ledger holds no names: each entry names a random reference per person and project, and the link to the person
+is kept apart, in the `ledger_identity` database. To honour a request to be forgotten, an operator removes that link
+for one person in one project:
+
+```bash
+docker exec aisc-<id>-platform python -m platform_service.ledger.actors erase <project pid> <person's Keycloak id>
+```
+
+The person's entries stay, so the log can still be verified, but nothing links them to that person any more. It
+cannot be undone.
+
 ## Admin tools
 
 The entries are always in the menu; their services run only when the stack is started with the `inspect` profile

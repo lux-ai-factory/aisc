@@ -28,8 +28,9 @@ The first time, an owner or editor chooses the project's catalogue. **The choice
 
   An admin can **Update from public**: it adds, updates and removes the public entries, replaces the tags, metrics
   and metadata, and writes the local checklists again from `local_controls/` (a public entry with the same slug
-  wins). Local tests are not stored in the copy, so an update does not touch them. Through the platform's API an
-  admin can also give a local test its dimensions (no page offers this yet).
+  wins). Local tests are not stored in the copy, so an update does not touch them. An admin gives a local test its
+  dimensions in its entry (**Dimensions**, REQ1 to REQ11): they put it under "For this project" and let the Evidence
+  map link it.
 
 **For this project** (on by default) shows only the entries tagged with the dimensions of the objectives selected in
 step 2; a project with none yet sees everything. The sidebar also filters by trustworthiness dimension, by "Plugin

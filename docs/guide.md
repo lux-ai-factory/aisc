@@ -27,12 +27,12 @@ Part of this repository:
 
 | path | what it is |
 |---|---|
-| `platform/` | the platform service (FastAPI, service `platform`): projects, members and roles, one database per project, the AI system and its card versions, connections to systems under test, per-project LLM keys, evidence links, the ledger |
+| `platform/` | the platform service (FastAPI, service `platform`): projects, members and roles, one database per project, the AI system and its card versions, connections to systems under test, per-project LLM keys, the evidence map, the ledger |
 | `apps/report-composer/` | step 4: assembles a report from modules and asks the renderer for the document ([README](../apps/report-composer/README.md)) |
 | `shared/identity/` | `aisc_identity`, shared by every Python service: who is calling (gateway headers, Keycloak tokens), what they may do in a project (`access`, held to `access-cases.json`), which service is calling (`service_tokens`), and the ledger event a change writes (`ledger_events`) |
 | `shared/access-ts/` | The TypeScript client of the platform's `/authz/projects/{ref}`, vendored into qualification and controls |
 | `shared/ledger-ts/` | How the Next.js apps write a ledger event, vendored into qualification and controls |
-| `homepage/` | the launcher pages served by Caddy on port 8100: the project list, a project's page (Plan the assessment, then Collect evidence), the Collect evidence page, Manage pages |
+| `homepage/` | the launcher pages served by Caddy on port 8100: the project list, a project's page (Plan the assessment, then Collect evidence), the Collect evidence page, the Evidence map, Manage pages |
 | `dashboard-gateway/` | the Superset config overlay that takes the user from the gateway's token |
 | `Caddyfile` | the gateway's routes |
 | `init/` | SQL run once by `postgres-setup`: databases, roles and grants |
@@ -40,7 +40,7 @@ Part of this repository:
 | `keycloak/` | the realm export (template) and the login theme |
 | `inspector/` | pgAdmin and SchemaSpy, for admins, at `:8100/inspect/` |
 | `infra/minio/` | builds MinIO from source |
-| `def_plugins/`, `local_plugins/` | `def_plugins/` is no longer used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
+| `def_plugins/`, `local_plugins/` | `def_plugins/` is the standalone engine's default plugin folder, not used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
 | `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
 | `adapters/` | your adapter plugins: protocols a connection can use besides the built-in ones (mounted into the platform; only its README is in git) |
 | `docs/` | this guide, [How AISC works](architecture.md) and its appendices, runbooks |
@@ -54,7 +54,7 @@ browser ──> Caddy :80   (engine, /qualification, /control-objectives, /contr
               │ forward_auth on every request
               ├──> oauth2-proxy ──> Keycloak :8081 (realm aisc)
               └──> the module's container
-modules ──> PostgreSQL: database `platform` (projects, members, report presets) + one `project_<pid>` per project
+modules ──> PostgreSQL: database `platform` (projects, members, the ledger's state) + one `project_<pid>` per project
 platform ──> immudb (ledger), the dashboard's bridge, the engine
 engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
 ```
@@ -71,8 +71,8 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
 - **One database per project.** Creating a project creates `project_<pid without hyphens>` from
   `platform/project-template/`. Qualification, control objectives, controls, the engine, the report
   composer and the dashboard keep that project's records there. The shared `platform` database
-  holds only projects, members, AI systems and card versions (`core`), the report presets
-  (`report_library`) and the ledger's state.
+  holds only projects and members (`core`) and the ledger's state; the AI card versions are in each
+  project's database (`project.system`).
 - **Installing tests and controls.** Step 3 is a catalogue, chosen once per project, shown in the
   catalogue's own pages served by this stack under `/project-catalogue/` on the launcher (service
   `catalogue-private`), which read it through the platform. A public project reads the hosted
@@ -160,7 +160,7 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
 
 ## Install and run, in detail
 
-The steps themselves are in the [README](../README.md#install-and-run). What they do:
+The steps themselves are in the [README](../README.md#before-you-install). What they do:
 
 - **Submodules.** `git submodule update --init --recursive` also restores the pinned submodule commits
   after a checkout. `git submodule update --remote` moves each submodule to the tip of the branch it
@@ -211,7 +211,8 @@ The steps themselves are in the [README](../README.md#install-and-run). What the
   the volumes by hand.
 - **A project's page** shows two blocks: **Plan the assessment** (1 Qualify the AI system, 2 Set control
   objectives, 3 Choose tests and checklists) and below it **4 Collect evidence**, where checklists are
-  answered, tests run, results are looked at and the report is composed.
+  answered, tests run, results are looked at, each objective is linked to its evidence on the Evidence map and
+  the report is composed.
 - **Serving over HTTPS.** Caddy serves HTTPS when `CADDY_DOMAIN` starts with `https://`
   (`CADDY_ENVIRONMENT=development`: a certificate from Caddy's own local authority; `staging`: the
   certificate files the Caddyfile names). Set `GATEWAY_COOKIE_SECURE=true` with it, so the gateway's

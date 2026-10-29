@@ -53,12 +53,13 @@ and the report work with. The score is computed on every read, never stored.
 
 - **Step 3** filters the catalogue, by default, to tests and checklists tagged with the dimensions of the selected
   objectives.
-- **Step 4**: evidence links may only name a selected objective whose dimension the test or checklist carries.
+- **Step 4**: the Evidence map has one row per selected objective, and links it only to tests and checklists that
+  carry its dimension.
 - **The report** (Control objectives block) shows the links between risks and objectives, optionally with each
-  risk's rating. The priority objectives and the scores are not in the report.
+  risk's rating, and marks the priority objectives with their priority score.
 
-The report rates a half-rated risk differently: where step 2 counts a risk with only one of impact and likelihood as
-0, the report counts the missing value as 3.
+Step 2 and the report rate a risk the same way: until both its impact and its likelihood are set it is "Not rated",
+counts 0 towards any score, and is never given a value it was not given.
 
 ## What it needs
 
