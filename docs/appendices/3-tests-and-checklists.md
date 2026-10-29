@@ -41,7 +41,7 @@ Installing a test takes the realm role `admin`. "Install into this project" open
 **Install**:
 
 1. The platform works out what to install. For a public test it reads the version at the head of its repository on
-   github.com/lux-ai-factory (branch `feat/unified-modules` where it has one, else the default branch). If `devpi`
+   github.com/lux-ai-factory (branch `pilot` where it has one, else `feat/unified-modules`, else the default branch). If `devpi`
    already has that version, that is what is installed; if not, it will be fetched and built first. A test from
    `local_plugins/` is always built again from its folder.
 2. When a build is needed, `plugin-publisher` clones the repository (or copies the folder, leaving out git, virtual

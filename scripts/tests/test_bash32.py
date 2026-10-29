@@ -108,8 +108,8 @@ def test_start_sh_runs_under_bash_3_2(tmp_path, tools_image):
         (shims / name).write_text(body)
         (shims / name).chmod(0o755)
     add_fake_kcadm(shims)
-    (tmp_path / "branch").write_text("feat/unified-modules\n")
-    (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/feat/unified-modules)\n")
+    (tmp_path / "branch").write_text("pilot\n")
+    (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/pilot)\n")
     (tmp_path / "compose-version").write_text("5.5.1\n")
     (tmp_path / "build-failures").write_text("1")
     r = bash32(tmp_path, "scripts/start.sh", tools_image,

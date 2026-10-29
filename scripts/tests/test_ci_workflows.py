@@ -113,5 +113,5 @@ def test_the_python_job_pins_python_and_a_timeout():
 def test_the_triggers_are_unchanged():
     on = triggers(workflow())
     assert set(on) == {"push", "pull_request"}
-    assert on["push"]["branches"] == ["feat/unified-modules", "main", "master"]
+    assert on["push"]["branches"] == ["pilot", "main", "master"]
     assert not on["pull_request"], "pull_request takes every base branch"

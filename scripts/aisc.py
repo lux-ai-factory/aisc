@@ -1084,7 +1084,7 @@ def rotate_infra_password(args: list[str]) -> None:
 
 # --------------------------------------------------------------------------------------------------- start
 
-BRANCH = "feat/unified-modules"
+BRANCH = "pilot"
 
 
 def captured(argv: list[str]) -> subprocess.CompletedProcess:
@@ -1511,7 +1511,7 @@ def start(_args: list[str]) -> None:
     """Install and start AISC in one command.
 
     1. Refuses a checkout that cannot work, before anything runs: Docker not running, Compose older than 2.17, a
-       branch other than feat/unified-modules (master's files are older), submodules not checked out. Warns when
+       branch other than pilot (master's files are older), submodules not checked out. Warns when
        the disk is nearly full.
     2. Makes the secrets (once, then it keeps them; run again after a pull).
     3. Checks every port the stack publishes. On an install not served over https, a taken browser port (the
