@@ -46,6 +46,15 @@ def test_the_source_version_is_read_from_the_branch_head(client, github):
                     "package": PACKAGE, "version": "1.2.0"}
 
 
+def test_the_pilot_branch_is_read_before_feat_unified_modules(client, github):
+    github(REPO, {"main": (PACKAGE, "1.1.0"), "feat/unified-modules": (PACKAGE, "1.2.0"), "pilot": (PACKAGE, "1.3.0")})
+
+    status, body = client.get(f"/sources/{REPO}")
+
+    assert status == 200
+    assert body == {"repo": REPO, "branch": "pilot", "package": PACKAGE, "version": "1.3.0"}
+
+
 def test_without_feat_unified_modules_the_default_branch_is_used(client, github):
     github(REPO, {"trunk": ("data-monitor", "0.4.1")}, default="trunk")
 

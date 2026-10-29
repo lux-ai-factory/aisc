@@ -13,9 +13,9 @@ DEFAULT_GITHUB_BASE = "https://github.com/lux-ai-factory"
 # Only the organisation's plugin repos can be fetched on a request, never an arbitrary URL.
 ALLOWED_REPO = re.compile(r"aisc-plugin-[a-z0-9][a-z0-9-]{0,60}")
 
-# Every AISC change is made on feat/unified-modules: a repo that has that branch is built from it,
-# one that doesn't (yet) from its default branch.
-BRANCH = "feat/unified-modules"
+# AISC's work is on the branch pilot (feat/unified-modules before it): a repo is built from the first of these
+# branches it has, else from its default branch.
+BRANCHES = ("pilot", "feat/unified-modules")
 
 
 class NotAllowed(ValueError):
@@ -59,8 +59,11 @@ def clone(repo: str, dest: Path, checkout: bool = True) -> str:
     checkout only the history is fetched, no file content, and no working tree is written."""
     url = repo_url(repo)
     try:
-        found = git("ls-remote", "--exit-code", "--heads", url, BRANCH, url=url)
-        branch = BRANCH if found.returncode == 0 else None
+        branch = None
+        for candidate in BRANCHES:
+            if git("ls-remote", "--exit-code", "--heads", url, candidate, url=url).returncode == 0:
+                branch = candidate
+                break
         light = [] if checkout else ["--filter=blob:none", "--no-checkout"]
         cloned = git("clone", "-q", "--depth", "1", *light,
                      *(["--branch", branch] if branch else []), "--", url, str(dest), url=url)

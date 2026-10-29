@@ -1,8 +1,13 @@
 # AI Assessment Sandbox Configurator (AISC)
 
-[![CI](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml/badge.svg?branch=feat/unified-modules)](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml)
+[![CI](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml/badge.svg?branch=pilot)](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.md)
 [![arXiv](https://img.shields.io/badge/arXiv-2509.25256-b31b1b.svg)](https://arxiv.org/abs/2509.25256)
+
+This is the `pilot` branch: the beta version of AISC, which we use to run the pilots that validate the Sandbox
+Configurator. It has every function and is still evolving, so your feedback is very welcome. The stable version,
+first released in June 2026, is on `master`. Want to take part in a pilot? See the
+[call for pilots](https://aifactory.lu/open-call-for-pilots).
 
 AISC helps a team plan and carry out the technical assessment of an AI system against the EU AI Act. It runs on
 your own computer or server, and keeps every project, answer, test result and report in one place.
@@ -32,7 +37,7 @@ AISC is built for regulatory sandboxes, supervisory authorities and the AI provi
 If you already have Docker and uv:
 
 ```
-git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+git -c core.autocrlf=false clone --recursive --branch pilot https://github.com/lux-ai-factory/aisc.git
 cd aisc
 uv run scripts/aisc.py start
 ```
@@ -112,7 +117,7 @@ The same on every system. Open a terminal (PowerShell on Windows) and run:
 
 ```
 cd ~
-git -c core.autocrlf=false clone --recursive --branch feat/unified-modules https://github.com/lux-ai-factory/aisc.git
+git -c core.autocrlf=false clone --recursive --branch pilot https://github.com/lux-ai-factory/aisc.git
 cd aisc
 uv run scripts/aisc.py start
 ```

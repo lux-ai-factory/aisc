@@ -23,11 +23,11 @@ def gitmodules():
 
 
 @pytest.mark.parametrize("path", sorted(SUBMODULES))
-def test_the_report_repos_are_submodules_on_the_unified_branch(path):
+def test_the_report_repos_are_submodules_on_the_pilot_branch(path):
     mods = gitmodules()
     assert path in mods, sorted(mods)
     assert mods[path]["url"] == SUBMODULES[path]
-    assert mods[path].get("branch") == "feat/unified-modules"
+    assert mods[path].get("branch") == "pilot"
 
 
 def _renderer_build():

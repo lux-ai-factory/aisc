@@ -4,7 +4,7 @@ name: ci
 
 on:
   push:
-    branches: [feat/unified-modules, main, master]
+    branches: [pilot, main, master]
   pull_request:
 
 permissions:

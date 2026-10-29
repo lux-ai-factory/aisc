@@ -201,6 +201,6 @@ uv run --extra dev pytest -q
 
 ## Contributing
 
-Work on the branch `feat/unified-modules` of the aisc repository (the only branch). A change to the
+Work on the branch `pilot` of the aisc repository (the only branch). A change to the
 tables goes in a new file of `migrations/project/` (or `migrations/library/`): applied files are
 recorded by name and never run again.

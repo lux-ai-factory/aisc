@@ -86,7 +86,7 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   `devpi_data` volume, so it survives restarts. At start `plugin-publisher` puts only the shared plugin
   interface on it. A test's plugin is fetched when an admin installs it from the catalogue: the platform
   asks `plugin-publisher` to clone the plugin's repo from github.com/lux-ai-factory (its
-  `feat/unified-modules` branch where it has one, its default branch otherwise), build it and upload it,
+  `pilot` branch where it has one, else `feat/unified-modules`, else its default branch), build it and upload it,
   and then installs it. So installs need GitHub reachable from the stack, and the first install of a test
   takes about a minute (later installs of the same version reuse what is on the index). Builds run one
   at a time, as an unprivileged user with no secrets. The public plugin repos need nothing more; the

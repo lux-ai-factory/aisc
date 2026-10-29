@@ -157,8 +157,8 @@ def scratch(tmp_path):
         (shims / name).write_text(body)
         (shims / name).chmod(0o755)
     add_fake_kcadm(shims)
-    (tmp_path / "branch").write_text("feat/unified-modules\n")
-    (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/feat/unified-modules)\n")
+    (tmp_path / "branch").write_text("pilot\n")
+    (tmp_path / "submodules").write_text(" 1a2b3c apps/backend (heads/pilot)\n")
     (tmp_path / "compose-version").write_text("5.5.1\n")
     server = sign_in_page(tmp_path)
     (tmp_path / "url").write_text(f"http://127.0.0.1:{server.server_address[1]}/")
@@ -250,7 +250,7 @@ def test_a_realm_that_never_answers_gives_a_warning_naming_keycloak_and_no_aisc_
 
 
 @pytest.mark.parametrize("setup, says", [
-    (lambda d: (d / "branch").write_text("master\n"), "feat/unified-modules"),
+    (lambda d: (d / "branch").write_text("master\n"), "pilot"),
     (lambda d: (d / "submodules").write_text("-1a2b3c apps/backend\n"), "git submodule update --init --recursive"),
     (lambda d: (d / "compose-version").write_text("2.12.0\n"), "2.17"),
     (lambda d: (d / "no-daemon").write_text(""), "Docker is not running"),
