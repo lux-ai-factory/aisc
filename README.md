@@ -21,12 +21,14 @@ Each project assesses one AI system, in four steps:
 1. **Qualify the AI system.** Describe the system, its components and its risks in a versioned AI card.
 2. **Set control objectives.** Rate the system's risks and link them to the control objectives it must meet.
 3. **Choose tests and checklists.** Pick them from the catalogue and install them in one click.
-4. **Collect evidence.** Answer the checklists, run the tests, look at the results and compose the report.
+4. **Collect evidence.** Answer the checklists, run the tests, look at the results, link each control objective
+   to its evidence on the Evidence map and compose the report.
 
 Along the way, AISC:
 
 - runs technical tests on the system (for example fairness, robustness, performance and jailbreak tests) through plugins;
 - shows the results in a dashboard and produces the report as PDF or Word;
+- shows which control objectives have evidence and which do not, on an Evidence map a second person reviews;
 - gives each project its own members and roles, and its own database;
 - records who changed what in a tamper-evident log.
 
@@ -45,7 +47,8 @@ uv run scripts/aisc.py start
 Then open the address the last message of `start` gives (<http://localhost:8100> unless it moved) and sign in
 with the account that message names (`admin` / `admin` on a new install).
 
-The first start builds every image (27 of them) on your computer, so it takes a while. Later starts are quick.
+The first start builds AISC's images on your computer and downloads the others (27 in all), so it takes a while.
+Later starts are quick.
 New to these tools? Follow the three steps below.
 
 ## Before you install
@@ -154,11 +157,12 @@ your passwords.
 3. Click **Create project** and give the project a name.
 4. Work through the four steps on the project page. Each card has an **Open** link.
 
-The **Manage** menu, top right, holds the settings: components and connections to the systems you test, the
-models and keys used by the AI assistant, the activity log and background tasks.
+The **Manage** menu, top right, holds the project's settings: the components of the AI system and the
+connections AISC reaches them through, the helper models tests use as tools, the AI assistants' models and keys,
+the activity log and, for administrators, the background tasks.
 
-Some AI assistants, such as the one that fills in the AI card, use a language model. They need a model and an
-API key, which an administrator adds under **Manage > AI assistant models and keys**.
+The AI assistants of steps 1 and 2 (the card agent and the risk mapper) use a language model. They need a model
+and an API key, which an administrator adds under **Manage > AI assistant models and keys**.
 
 ## Everyday use
 
@@ -205,7 +209,7 @@ flowchart LR
     G --> Q[1 Qualification]
     G --> CO[2 Control objectives]
     G --> C[3 Catalogue]
-    G --> E[4 Evidence:<br/>checklists, test engine,<br/>dashboard, reports]
+    G --> E[4 Evidence:<br/>checklists, test engine,<br/>Evidence map, dashboard, reports]
     L & Q & CO & C & E --> P[Platform:<br/>projects, roles, ledger]
     P --> D[(PostgreSQL<br/>one database per project)]
     P --> I[(immudb<br/>tamper-evident log)]
@@ -220,7 +224,8 @@ the architecture and the steps; [docs/guide.md](docs/guide.md) describes every c
 - [docs/architecture.md](docs/architecture.md): how AISC works, its architecture and what each step is for, with one
   appendix per step.
 - [docs/guide.md](docs/guide.md): components, how it works, configuration, passwords and keys, tests.
-- [Your own plugins](docs/guide.md#your-own-plugins) and [your own checklists](docs/guide.md#your-own-controls).
+- [Your own plugins](docs/guide.md#your-own-plugins), [your own checklists](docs/guide.md#your-own-controls) and
+  [your own protocols](docs/guide.md#your-own-protocols) (adapter plugins).
 - [lux-ai-factory/rfc](https://github.com/lux-ai-factory/rfc): architecture, mission and user guide.
 
 ## Contributing

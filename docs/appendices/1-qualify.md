@@ -60,6 +60,8 @@ you can:
   project's database. The card graph is built from them every time it is read.
 - Each component keeps a stable key from one version to the next, so tests on a component can be followed across
   versions.
+- Every save also records which of the engine's components (datasets, models) the card's components are, with a
+  snapshot of each, so the system page can flag a component that changed in the engine since.
 
 ## What later steps take from it
 
