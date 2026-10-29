@@ -1,5 +1,13 @@
 # AI Assessment Sandbox Configurator (AISC)
 
+> This branch holds the stable version of AISC, first released in June 2026.
+>
+> The beta version lives on the [`pilot`](https://github.com/lux-ai-factory/aisc/tree/pilot) branch. It is the
+> version we use to run the pilots that validate the Sandbox Configurator, and the one to choose if you want to try
+> every function it offers. It is still evolving, so your feedback is very welcome.
+>
+> Want to take part in a pilot? See the [call for pilots](https://aifactory.lu/open-call-for-pilots).
+
 The **AI Assessment Sandbox Configurator** is a platform for evaluating and
 assessing risks in AI systems. It lets you upload models and datasets, configure
 and run evaluation plugins, and collect the results.
