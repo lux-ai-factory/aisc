@@ -66,7 +66,16 @@ def _route(bridge, pid):
 
 
 def sync(client, as_user, project, who=VERA):
-    return client.post(f"/projects/{project['slug']}/dashboards/sync", headers=as_user(who))
+    """The sync "Open charts" runs before it redirects, called on its own through a test-only route (the platform
+    publishes none: the sync is only ever part of opening the dashboards). `client` sets up sign-in."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from platform_service.routes.evidence import sync_dashboards
+
+    app = FastAPI()
+    app.post("/sync/{slug}")(sync_dashboards)
+    return TestClient(app).post(f"/sync/{project['slug']}", headers=as_user(who))
 
 
 def test_each_plugin_is_synced_with_the_default_charts_of_its_latest_run(client, as_user, runs, engine_api, bridge):

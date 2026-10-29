@@ -386,31 +386,6 @@ def test_two_saves_at_once_get_n_and_n_plus_1_in_the_project_database(client, as
     assert sorted(r[1] for r in project_system_rows(dsn, project["pid"])) == [1, 2]
 
 
-# GET /systems/{pid} scans only the caller's projects.
-
-
-@needs_database
-def test_a_non_uuid_is_404(client, as_user):
-    for bad in ("not-a-uuid", "1", PID + "x"):
-        assert client.get(f"/systems/{bad}", headers=as_user(ALICE)).status_code == 404, bad
-
-
-@needs_database
-def test_a_version_is_found_in_the_callers_project_database(client, as_user, project, other, dsn):
-    require_project_system(dsn, project["pid"], "finding a version")
-    mine = insert_version(dsn, project["pid"], 1)
-    theirs = insert_version(dsn, other["pid"], 1)
-    got = client.get(f"/systems/{mine}", headers=as_user(ALICE))
-    assert got.status_code == 200, "found in the caller's project database"
-    assert got.json()["project_id"] == project["pid"] and got.json()["number"] == 1
-    assert client.get(f"/systems/{theirs}", headers=as_user(ALICE)).status_code == 404, \
-        "a version of a project the caller is not in is 404"
-    assert client.get(f"/systems/{mine}", headers=as_user(MALLORY)).status_code == 404
-    admin = {"Authorization": as_user("root", roles=("admin",))["Authorization"]}
-    assert client.get(f"/systems/{theirs}", headers=admin).status_code == 200, "an admin sees every project"
-    assert client.get(f"/systems/{uuid.uuid4()}", headers=admin).status_code == 404
-
-
 # Deleting a project: the order of the steps, and a dropped database answers 404.
 
 

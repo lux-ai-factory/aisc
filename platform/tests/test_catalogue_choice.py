@@ -155,8 +155,7 @@ def test_the_reads_have_the_public_shapes(client, as_user, evidence_project, pub
     assert all(set(t) == public_plain | EXTRA for t in plain), "plain tool shape"
     assert all(set(t) == set(SAMPLE["tags"][0]) for t in get("tags/"))
     assert all(set(m) == set(SAMPLE["metric"][0]) for m in get("metric/"))
-    assert all(set(m) == set(SAMPLE["metadata"][0]) for m in get("metadata/"))
-    assert len(get("metric/")) == len(SAMPLE["metric"]) and len(get("metadata/")) >= len(SAMPLE["metadata"])
+    assert len(get("metric/")) == len(SAMPLE["metric"])
 
 
 def test_the_reads_refuse_writes(client, as_user, evidence_project, public):
@@ -184,16 +183,6 @@ def test_the_projects_dimensions_as_catalogue_tags(client, as_user, evidence_pro
     assert choose(client, as_user, evidence_project, "private").status_code == 200
     got = client.get(url(evidence_project, "/api/project-dimensions"), headers=as_user(VERA)).json()
     assert got == ["human-agency-oversight", "societal-environmental-wellbeing"]
-
-
-def test_an_entrys_tags_by_its_id(client, as_user, evidence_project, public, engine):
-    """The detail pop-up asks for an entry's tags by id when the entry came without them."""
-    assert choose(client, as_user, evidence_project, "private").status_code == 200
-    tools = client.get(url(evidence_project, "/api/tool/?detailed=true"), headers=as_user(VERA)).json()
-    for t in (tools[0], next(t for t in tools if t["aisc_local"])):
-        r = client.get(url(evidence_project, f"/api/tool/{t['id']}/tags/"), headers=as_user(VERA))
-        assert r.status_code == 200 and r.json() == t["tags"], t["slug"]
-    assert client.get(url(evidence_project, "/api/tool/987654321/tags/"), headers=as_user(VERA)).status_code == 404
 
 
 INDEX_PAGE = (b'<html><body><a href="../../+f/1/aisc_plugin_langbite-0.1.0.tar.gz">aisc_plugin_langbite-0.1.0.tar.gz</a>'
@@ -360,7 +349,7 @@ def test_with_the_index_down_the_public_values_stay(client, as_user, evidence_pr
 def test_refused_for_a_project_that_has_not_chosen(client, as_user, evidence_project, public):
     """A public project answers them live (test_catalogue_controls.py); a project with no catalogue yet
     has nothing to answer from."""
-    assert client.get(url(evidence_project, "/api/tool/1/tags/"), headers=as_user(VERA)).status_code == 409
+    assert client.get(url(evidence_project, "/api/tags/"), headers=as_user(VERA)).status_code == 409
     assert client.get(url(evidence_project, "/api/tool/langbite/install-info"),
                       headers=as_user(VERA)).status_code == 409
 

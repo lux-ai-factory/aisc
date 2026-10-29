@@ -119,15 +119,6 @@ def test_a_stranger_cannot_read_the_systems(client, as_user, project):
     assert client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(BOB)).status_code == 404
 
 
-def test_a_stranger_cannot_read_a_system_by_its_own_id(client, as_user, project):
-    """The system's id is a back door into the project if nobody checks."""
-    system = client.post(
-        f"/projects/{project['slug']}/system-versions", json={"name": "MCAS"}, headers=as_user(ALICE)
-    ).json()
-    assert client.get(f"/systems/{system['pid']}", headers=as_user(BOB)).status_code == 404
-    assert client.get(f"/systems/{system['pid']}", headers=as_user(ALICE)).status_code == 200
-
-
 def test_the_last_owner_cannot_be_removed(client, as_user, project):
     """A project with nobody in it is a project nobody can fix."""
     refused = client.delete(f"/projects/{project['slug']}/members/{ALICE}", headers=as_user(ALICE))

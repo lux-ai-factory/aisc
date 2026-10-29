@@ -388,25 +388,6 @@ def latest_version(project: str) -> tuple[bool, dict | None]:
     return True, _as_version(row, pid)
 
 
-def get_system(version_pid: str, project_pids: list[str]) -> dict | None:
-    """One saved card version by its own id, looked for only in these projects'
-    databases (the caller's, or every one for an admin). A project whose
-    database is gone, or has no project.system yet, is skipped."""
-    for pid in project_pids:
-        try:
-            conn = project_connection(pid)
-        except ProjectDatabaseGone:
-            continue
-        with conn:
-            if conn.execute("select to_regclass('project.system') as t").fetchone()["t"] is None:
-                continue
-            row = conn.execute(f"select {_STORED}, updated_at from project.system where pid = %s",
-                               (version_pid,)).fetchone()
-        if row is not None:
-            return _as_version(row, pid)
-    return None
-
-
 # membership
 # A project belongs to the people in it. Every query that returns a project, or
 # anything inside one, passes through here: filtering in one place is what makes

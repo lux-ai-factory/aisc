@@ -64,11 +64,6 @@ def database_for(pid: str) -> str | None:
     return row["db"] if row else None
 
 
-def assign_pending(pid: str) -> bool:
-    """After the operator refilled the pool: give a waiting project its database."""
-    return assign(pid) is not None
-
-
 def assigned() -> dict[str, str]:
     """Every assignment: pid -> database (the list of databases expected to exist)."""
     with db.pool().connection() as conn:

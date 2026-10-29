@@ -75,11 +75,6 @@ def ensure(url: str, *, admin_password: str, password: str) -> str:
     return "made" if "made" in done else ", ".join(done) or "unchanged"
 
 
-def ensure_engine_account(url: str, *, admin_password: str, password: str) -> bool:
-    """True when it changed something."""
-    return ensure(url, admin_password=admin_password, password=password) != "unchanged"
-
-
 def check_engine_account(url: str, *, password: str) -> list[str]:
     """What is wrong with the account, probed as aisc_engine itself (it may not run SHOW GRANTS); [] when
     it is as designed. Changes nothing: every probe names a table or database that is refused before it is

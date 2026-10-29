@@ -118,15 +118,6 @@ def delete(pid, name: str) -> bool:
         return gone
 
 
-def record_link(pid, name: str, retired: bool) -> None:
-    """The link route changes the engine's side only; its event says whether a component was retired."""
-    from platform_service.ledger import outbox
-
-    with connect(pid) as conn, conn.transaction():
-        outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
-                            details={"changed": ["engine_component"] if retired else [], "secret": "kept"})
-
-
 def record_test(pid, name: str, ok: bool, detail: str, result: str | None = None) -> None:
     """The probe's outcome; the ledger keeps only `result` (ok, refused, or the error's code), never the
     answer or the error text, which can quote the system under test."""

@@ -214,11 +214,6 @@ def ledger_events(slug: str, request: Request, caller: Caller = Depends(caller_d
     return {"events": events, "next": rows[-1]["seq"] if len(rows) == page else None}
 
 
-@router.get("/projects/{slug}/ledger/events/{seq}")
-def ledger_event(slug: str, seq: int, caller: Caller = Depends(caller_dependency)) -> dict:
-    found, _, log = _ledger_project(slug, caller)
-    return _shown(str(found["pid"]), _verified_entry(log, seq))
-
 
 @router.get("/projects/{slug}/ledger/head")
 def ledger_head(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:

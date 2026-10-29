@@ -5,8 +5,7 @@ own database, as platform_rw, holding the mode; a private choice also creates th
 fills them from the public catalogue, all in one transaction, so a failure leaves nothing. The
 choice is final.
 
-The copy holds the public catalogue's own JSON (its `GET /tool/?detailed=true`, `/tags/`, `/metric/`,
-`/metadata/`), so the catalogue frontend reads it unchanged. Local entries are not stored: they
+The copy holds the public catalogue's own JSON (its `GET /tool/?detailed=true`, `/tags/`, `/metric/`), so the catalogue frontend reads it unchanged. Local entries are not stored: they
 are the packages the engine offers (`GET /api/v1/plugins`) whose package is in no public entry,
 read on every request; only the dimensions an admin gives them are kept. Local controls are stored: the
 checklists in LOCAL_CONTROLS_DIR (the repo's local_controls/), in the public catalogue's seed format, are written into the copy, as origin 'local', each time it is made or updated; a public entry with the same slug
@@ -73,7 +72,6 @@ CREATE TABLE catalogue.entry (
 );
 CREATE TABLE catalogue.tag (slug text PRIMARY KEY, data jsonb NOT NULL);
 CREATE TABLE catalogue.metric (id bigint PRIMARY KEY, data jsonb NOT NULL);
-CREATE TABLE catalogue.metadata (id bigint PRIMARY KEY, data jsonb NOT NULL);
 CREATE TABLE catalogue.local_dimension (
     package_name text NOT NULL,
     dimension    text NOT NULL CHECK (dimension ~ '^REQ([1-9]|1[01])$'),
@@ -163,11 +161,11 @@ def _public_base() -> str:
 
 
 def fetch_public() -> dict:
-    """The public catalogue's four reads: {"tools" (detailed), "tags", "metric", "metadata"}."""
+    """The public catalogue's three reads: {"tools" (detailed), "tags", "metric"}."""
     base = _public_base()
     try:
         out = {"tools": _get(base, "/tool/?detailed=true"), "tags": _get(base, "/tags/"),
-               "metric": _get(base, "/metric/"), "metadata": _get(base, "/metadata/")}
+               "metric": _get(base, "/metric/")}
     except (OSError, ValueError) as exc:
         raise PublicUnavailable(f"the public catalogue did not answer: {exc}") from None
     if not all(isinstance(v, list) for v in out.values()):
@@ -177,7 +175,8 @@ def fetch_public() -> dict:
 
 def _store(conn, public: dict) -> dict:
     """Make the copy match `public`: public entries replaced, added or removed; local ones kept;
-    tags, metrics and metadata replaced. Returns the counts."""
+    tags and metrics replaced. Returns the counts."""
+    conn.execute("DROP TABLE IF EXISTS catalogue.metadata")      # held by copies made before; nothing reads it
     # local controls first, so a public entry that took a local one's slug is inserted as public
     conn.execute("DELETE FROM catalogue.entry WHERE origin = 'local'")
     current = {r["slug"]: r["data"] for r in conn.execute(
@@ -204,8 +203,7 @@ def _store(conn, public: dict) -> dict:
         conn.execute("INSERT INTO catalogue.entry (slug, origin, data) VALUES (%s, 'local', %s)",
                      (c["slug"], Jsonb(local_control_entry(c, public["tags"], n))))
     counts["local_controls"] = len(local)
-    for table, rows, key in (("tag", public["tags"], "slug"), ("metric", public["metric"], "id"),
-                             ("metadata", public["metadata"], "id")):
+    for table, rows, key in (("tag", public["tags"], "slug"), ("metric", public["metric"], "id")):
         conn.execute(f"DELETE FROM catalogue.{table}")
         for row in rows:
             conn.execute(f"INSERT INTO catalogue.{table} ({key}, data) VALUES (%s, %s)", (row[key], Jsonb(row)))
@@ -413,14 +411,6 @@ def tools(pid, token: str, detailed: bool, internal: bool = False) -> list[dict]
     return out
 
 
-def tool_tags(pid, tool_id: int, token: str) -> list[dict]:
-    """The tags of one entry, public or local, by its id (the public catalogue's `GET /tool/{id}/tags/`)."""
-    for t in tools(pid, token, detailed=True):
-        if t["id"] == tool_id:
-            return t["tags"] or []
-    raise NoEntry(f"no entry {tool_id}")
-
-
 # ── install-info, from this stack's own package index ───────────────────────
 # The public catalogue answers `GET /tool/{slug}/install-info` against its own index; a private copy
 # answers it for this stack: the version at the head of the entry's lux-ai-factory repo (plugin_sources,
@@ -603,10 +593,6 @@ def tags(pid) -> list[dict]:
 
 def metrics(pid) -> list[dict]:
     return _read(pid, "metric", "id", "/metric/")
-
-
-def metadata(pid) -> list[dict]:
-    return _read(pid, "metadata", "id", "/metadata/")
 
 
 # ── a control as the checklist package the controls app installs ────────────

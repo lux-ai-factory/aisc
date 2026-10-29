@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from platform_service import dashboard_bridge, db, projectdb, targets
 from platform_service.membership import validate_role
-from platform_service.projects import looks_like_pid, normalise_name, slug_for, validate_slug
+from platform_service.projects import normalise_name, slug_for, validate_slug
 from platform_service.routes.admission import ADMIN_ROLE, last_owner, no_project, owner_or_403, role_or_404
 from platform_service.systems import system_key
 
@@ -331,27 +331,4 @@ def latest_system_version(project: str, caller: Caller = Depends(caller_dependen
         raise no_project(project) from None
     if not exists:
         raise no_project(project)
-    return found
-
-
-@router.get("/systems/{pid}")
-def system(pid: str, caller: Caller = Depends(caller_dependency)) -> dict:
-    """A card version by its own id.
-
-    It is looked for only in the databases of the caller's projects (every
-    project for an admin): the id alone names no database, and one the caller
-    is not in is never opened. The project is checked again on the one
-    found: an id that skips the project is exactly how a stranger would read one.
-    """
-    missing = HTTPException(status_code=404, detail=f"no system {pid}")
-    if not looks_like_pid(pid):
-        raise missing
-    if caller.has_role(ADMIN_ROLE):
-        project_pids = [str(p["pid"]) for p in db.list_projects()]
-    else:
-        project_pids = [str(p["pid"]) for p in db.projects_for(caller.subject)]
-    found = db.get_system(pid, project_pids)
-    if found is None:
-        raise missing
-    role_or_404(str(found["project_id"]), caller)
     return found

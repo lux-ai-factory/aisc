@@ -305,7 +305,6 @@ def test_saving_a_connection_makes_no_engine_component(client, admin, project, s
 def test_an_engine_that_does_not_answer_does_not_matter_to_saving(client, admin, project, stub):
     stub.route("POST", f"/api/v1/projects/for-platform/{project['pid']}", (503, {"detail": "down"}))
     assert put(client, project, "mcas-chat", admin, rest_body(stub)).status_code == 200
-    assert client.post(f"{base(project)}/mcas-chat/link", headers=admin).status_code == 200
 
 
 def test_deleting_keeps_the_engine_component(client, admin, project, stub):

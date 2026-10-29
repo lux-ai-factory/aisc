@@ -93,17 +93,6 @@ def catalogue_tools(slug: str, request: Request, detailed: bool = False,
     return jsonable_encoder(_private_reads(pid, lambda: catalogue.tools(pid, token, detailed)))
 
 
-@router.get("/projects/{slug}/catalogue/api/tool/{tool_id}/tags/")
-def catalogue_tool_tags(slug: str, tool_id: int, request: Request,
-                        caller: Caller = Depends(caller_dependency)) -> list:
-    """One entry's tags, for the detail pop-up when an entry came without them."""
-    pid = _catalogue_project(slug, caller)["pid"]
-    token = token_from_headers(request.headers) or ""
-    try:
-        return jsonable_encoder(_private_reads(pid, lambda: catalogue.tool_tags(pid, tool_id, token)))
-    except catalogue.NoEntry as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
 
 @router.get("/projects/{slug}/catalogue/api/tool/{entry}/install-info")
 def catalogue_install_info(slug: str, entry: str, request: Request,
@@ -190,12 +179,6 @@ def catalogue_tags(slug: str, caller: Caller = Depends(caller_dependency)) -> li
 def catalogue_metrics(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
     pid = _catalogue_project(slug, caller)["pid"]
     return _private_reads(pid, lambda: catalogue.metrics(pid))
-
-
-@router.get("/projects/{slug}/catalogue/api/metadata/")
-def catalogue_metadata(slug: str, caller: Caller = Depends(caller_dependency)) -> list:
-    pid = _catalogue_project(slug, caller)["pid"]
-    return _private_reads(pid, lambda: catalogue.metadata(pid))
 
 
 @router.get("/projects/{slug}/catalogue/api/project-dimensions")

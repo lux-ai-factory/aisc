@@ -367,19 +367,6 @@ def _rename_targets(pid, request: Request) -> None:
         logger.warning("target names of project %s not refreshed: %s", pid, reason)
 
 
-@router.post("/projects/{slug}/connections/{name}/link")
-def link_connection(slug: str, name: str, request: Request, caller: Caller = Depends(caller_dependency)) -> JSONResponse:
-    """Connections are no engine components any more (targets plan v2, O1): an older one's is
-    renamed legacy, kept for the evaluations that used it; evaluations pick the target."""
-    pid = admin_connection(slug, caller, name)
-    row = connection_store.get(pid, name)
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"no connection {name!r}")
-    retire_engine_component(pid, row, request)
-    connection_store.record_link(pid, name, retired=row.get("engine_component") is not None)
-    return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
-
-
 @router.delete("/projects/{slug}/connections/{name}", status_code=204)
 def delete_connection(slug: str, name: str, request: Request, caller: Caller = Depends(caller_dependency)) -> Response:
     """Mark it deleted. The engine's component stays, so past evaluations keep what they used."""

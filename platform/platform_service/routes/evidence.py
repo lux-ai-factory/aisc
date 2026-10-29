@@ -47,7 +47,6 @@ def _evidence_answer(pid, role: str, version: str | None = None) -> dict:
     return answer
 
 
-@router.post("/projects/{slug}/dashboards/sync")
 def sync_dashboards(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
     """Every plugin's tile in the results dashboard, made or updated from its latest run's default charts.
     Any member: it changes no assessment data."""

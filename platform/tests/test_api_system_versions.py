@@ -85,9 +85,9 @@ def test_the_list_is_highest_number_first(client, as_user, project):
     assert [v["number"] for v in response.json()] == [3, 2, 1]
 
 
-def test_systems_pid_answers_with_number_and_created_by(client, as_user, project):
-    made = save(client, as_user, project).json()
-    response = client.get(f"/systems/{made['pid']}", headers=as_user(ALICE))
+def test_the_latest_version_answers_with_number_and_created_by(client, as_user, project):
+    save(client, as_user, project)
+    response = client.get(f"/projects/{project['slug']}/system-versions/latest", headers=as_user(ALICE))
     assert response.status_code == 200, response.text
     assert response.json()["number"] == 1
     assert response.json()["created_by"] == ALICE
@@ -103,11 +103,10 @@ def test_a_viewer_may_read_but_not_save(client, as_user, project, viewer, dsn):
 
 
 def test_a_stranger_gets_404_everywhere(client, as_user, project, dsn):
-    made = save(client, as_user, project).json()
+    save(client, as_user, project)
     assert save(client, as_user, project, who=MALLORY).status_code == 404
     for path in (f"/projects/{project['slug']}/system-versions",
-                 f"/projects/{project['slug']}/system-versions/latest",
-                 f"/systems/{made['pid']}"):
+                 f"/projects/{project['slug']}/system-versions/latest"):
         assert client.get(path, headers=as_user(MALLORY)).status_code == 404, path
     assert len(rows(dsn, project)) == 1
 

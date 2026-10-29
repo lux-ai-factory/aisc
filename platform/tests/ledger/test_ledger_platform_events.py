@@ -173,7 +173,7 @@ def test_a_project_without_a_ledger_yet_is_not_deleted_until_it_has_one(make_pro
     r = _delete(call, project)
     assert r.status_code == 409 and "no ledger yet" in r.text, r.text
     support.fill_pool(store, n=1)
-    assert provision.assign_pending(project["pid"])
+    assert provision.assign(project["pid"]) is not None
     assert _delete(call, project).status_code == 204
 
 
@@ -348,12 +348,10 @@ def test_connection_changes_are_recorded(project, call, memory_ledger, monkeypat
             "body_template": {"question": "{{input}}"}, "response_path": "answer",
             "secret_header": "Authorization: Bearer {{secret}}", "secret": "sk-test-0123456789abcdefghijklmnop"}
     assert call(ADMIN, "PUT", f"/projects/{slug}/connections/chat", roles=ADMIN_ROLES, json=body).status_code == 200
-    assert call(ADMIN, "POST", f"/projects/{slug}/connections/chat/link", roles=ADMIN_ROLES).status_code == 200
     assert call(ADMIN, "DELETE", f"/projects/{slug}/connections/chat", roles=ADMIN_ROLES).status_code == 204
     relay_all(project["pid"])
     got = _events(memory_ledger, project["pid"], "connection.")
-    assert [(a, i) for a, i, _ in got] == [("connection.saved", "chat"), ("connection.saved", "chat"),
-                                          ("connection.deleted", "chat")]
+    assert [(a, i) for a, i, _ in got] == [("connection.saved", "chat"), ("connection.deleted", "chat")]
     assert got[0][2]["secret"] == "set" and "base_url" in got[0][2]["changed"]
     assert rejected_reasons(memory_ledger, project["pid"]) == []
     for x in entries(memory_ledger, log_of(project["pid"])):

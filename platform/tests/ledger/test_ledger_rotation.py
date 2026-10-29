@@ -140,7 +140,7 @@ def test_the_engine_accounts_rights_survive_a_password_change(box):
     from platform_service.ledger import engine_account, pool
 
     old, new = password(), password()
-    engine_account.ensure_engine_account(box.url, admin_password=box.admin_password, password=old)
+    engine_account.ensure(box.url, admin_password=box.admin_password, password=old)
     before = (permissions(box.admin(), "aisc_engine"), sql_grants(box.admin(), "aisc_engine"))
     assert pool.ensure_password(box.url, admin_password=box.admin_password, user="aisc_engine", password=new) is True
     assert logs_in(box.url, "aisc_engine", new) and not logs_in(box.url, "aisc_engine", old)
@@ -160,10 +160,10 @@ def test_an_engine_account_with_another_password_gets_the_new_one(box, capsys):
     from platform_service.ledger import engine_account
 
     old, new = password(), password()
-    engine_account.ensure_engine_account(box.url, admin_password=box.admin_password, password=old)
+    engine_account.ensure(box.url, admin_password=box.admin_password, password=old)
     c = clerk_connect(box.url, old)
     clerk_write(c, "under the old password")
-    assert engine_account.ensure_engine_account(box.url, admin_password=box.admin_password, password=new) is True
+    assert engine_account.ensure(box.url, admin_password=box.admin_password, password=new) != "unchanged"
     assert logs_in(box.url, "aisc_engine", new) and not logs_in(box.url, "aisc_engine", old)
     assert permissions(box.admin(), "aisc_engine") == {"defaultdb": 1, "auditdb": 2}
     assert sql_grants(box.admin(), "aisc_engine") == {"SELECT", "CREATE", "INSERT"}
