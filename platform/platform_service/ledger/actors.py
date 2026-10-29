@@ -10,12 +10,16 @@ can't see it.
   once make one) and keeps the name current.
 - `resolve` checks the row's MAC (reference, subject and name) and raises `MappingAlarm` on an edited
   row.
-- `erase` deletes the rows: references are random, so the link is then gone for good.
+- `erase` deletes the rows: references are random, so the link is then gone for good. An operator runs it for
+  a request to be forgotten:
+
+      python -m platform_service.ledger.actors erase <project pid> <person's Keycloak id>
 """
 from __future__ import annotations
 
 import os
 import secrets as _random
+import sys
 import threading
 
 from psycopg.conninfo import make_conninfo
@@ -126,3 +130,17 @@ def erase(pid, sub: str) -> int:
     """Delete a person's mapping in this scope; their entries stay, and can no longer be linked to them."""
     with _connect() as conn:
         return conn.execute("DELETE FROM identity.actor WHERE scope = %s AND sub = %s", (_scope(pid), sub)).rowcount
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3 or argv[0] != "erase":
+        print("usage: python -m platform_service.ledger.actors erase <project pid> <person's Keycloak id>",
+              file=sys.stderr)
+        return 2
+    erased = erase(argv[1], argv[2])
+    print(f"erased {erased} link(s) of that person in that project; their entries stay")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

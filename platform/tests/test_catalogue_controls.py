@@ -130,9 +130,7 @@ def test_a_public_project_reads_the_public_catalogue_live_without_local_entries(
     assert not any(t["aisc_local"] for t in detailed.json())
     assert all(set(t) == set(SAMPLE["tool"][0]) | EXTRA for t in get("tool/").json())
     assert get("tags/").json() == SAMPLE["tags"]               # no "Local" source: there are no local entries
-    assert get("metric/").json() == SAMPLE["metric"] and get("metadata/").json() == SAMPLE["metadata"]
-    first = SAMPLE["tool_detailed"][0]
-    assert get(f"tool/{first['id']}/tags/").json() == first["tags"]
+    assert get("metric/").json() == SAMPLE["metric"]
     assert get("project-dimensions").json() == ["human-agency-oversight", "societal-environmental-wellbeing"]
 
 

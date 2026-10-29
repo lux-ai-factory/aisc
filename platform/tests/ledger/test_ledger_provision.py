@@ -62,7 +62,7 @@ def test_with_the_pool_empty_a_project_waits_and_gets_one_after_a_refill(own_sto
     p = pid()
     assert provision.assign(p) is None and provision.database_for(p) is None
     support.fill_pool(store, n=1)
-    assert provision.assign_pending(p) is True
+    assert provision.assign(p) is not None
     assert provision.database_for(p) in store.databases()
 
 

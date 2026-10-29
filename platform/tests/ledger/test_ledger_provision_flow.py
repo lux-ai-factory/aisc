@@ -35,7 +35,7 @@ def test_with_the_pool_empty_a_projects_events_wait(own_store, make_project, wit
     rating(p, witnessed, 1)
     assert relay_all(p["pid"]).pending >= 1
     support.fill_pool(store, n=1)
-    assert provision.assign_pending(p["pid"]) is True
+    assert provision.assign(p["pid"]) is not None
     relay_all(p["pid"])
     assert [e.item_id for e in entries(store, log_of(p["pid"])) if e.action == "risk.rated"] == ["r1"]
 

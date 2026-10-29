@@ -135,6 +135,20 @@ def test_erasure_is_real(project, rate):
     assert rate(n=2).actor_ref != e.actor_ref                        # a new link, unrelated to the old one
 
 
+def test_the_erase_command_removes_one_persons_link_in_one_project(project, rate, capsys):
+    e = rate()
+    assert actors.main(["erase", project["pid"], MEMBER]) == 0
+    assert "1" in capsys.readouterr().out
+    assert person(project["pid"], e.actor_ref) is None
+    assert actors.main(["erase", project["pid"], MEMBER]) == 0          # nothing left: still fine, says 0
+    assert "0" in capsys.readouterr().out
+
+
+def test_the_erase_command_names_its_arguments_when_given_others(capsys):
+    assert actors.main(["erase", "only-one"]) == 2
+    assert "usage: python -m platform_service.ledger.actors erase" in capsys.readouterr().err
+
+
 # Digests are the platform's
 
 def test_the_platform_computes_the_content_digest(project, rate):

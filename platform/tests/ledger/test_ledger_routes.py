@@ -75,15 +75,16 @@ def test_another_projects_entries_never_appear(client, as_user, make_project, pr
 
 def test_an_entry_is_shown_verified(client, as_user, project, memory_ledger):
     [seq] = seed(project["pid"], n=1)
-    r = client.get(f"/projects/{project['slug']}/ledger/events/{seq}", headers=as_user(MEMBER))
-    assert r.status_code == 200 and r.json()["verified"] is True
+    r = client.get(f"/projects/{project['slug']}/ledger/events", headers=as_user(MEMBER))
+    [shown] = [e for e in r.json()["events"] if e["seq"] == seq]
+    assert r.status_code == 200 and shown["verified"] is True
 
 
 def test_a_tampered_entry_is_an_alarm_not_a_page(client, as_user, project, memory_ledger):
 
     [seq] = seed(project["pid"], n=1)
     memory_ledger.tamper(log_of(project["pid"]), seq, "item_id", "risk9")
-    r = client.get(f"/projects/{project['slug']}/ledger/events/{seq}", headers=as_user(MEMBER))
+    r = client.get(f"/projects/{project['slug']}/ledger/events", headers=as_user(MEMBER))
     assert r.status_code == 409 and "tamper" in r.text.lower()
 
 
