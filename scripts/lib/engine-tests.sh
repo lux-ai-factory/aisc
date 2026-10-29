@@ -45,7 +45,9 @@ else
     fi
   done
 fi
-mapfile -t labels < <(printf '%s\n' "${labels[@]}" | LC_ALL=C sort)
+sorted=()   # sorted with a read loop, which bash 3.2 (macOS) also has
+while IFS= read -r label; do sorted+=("$label"); done < <(printf '%s\n' "${labels[@]}" | LC_ALL=C sort)
+labels=("${sorted[@]}")
 
 if [ $postgres = 0 ]; then
   db_folder=$(mktemp -d)

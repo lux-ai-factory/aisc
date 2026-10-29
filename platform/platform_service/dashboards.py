@@ -111,16 +111,25 @@ def _rison(value: str) -> str:
     return "'" + value.replace("!", "!!").replace("'", "!'") + "'"
 
 
-def target_mask(label: str) -> str:
-    """The Target filter set to one target, in the URL form Superset reads (native_filters)."""
-    v = _rison(label)
-    return ("(NATIVE_FILTER-target:(id:NATIVE_FILTER-target,extraFormData:(filters:!((col:target_label,op:IN,"
-            f"val:!({v})))),filterState:(value:!({v})),ownState:()))")
+def _filter(name: str, column: str, value: str) -> str:
+    """One native filter set to one value, in the rison form Superset reads."""
+    return (f"NATIVE_FILTER-{name}:(id:NATIVE_FILTER-{name},extraFormData:(filters:!((col:{column},op:IN,"
+            f"val:!({value})))),filterState:(value:!({value})),ownState:())")
 
 
-def open_url(dashboards: list[dict], plugin_label: str | None, target: str | None, pid: str) -> str | None:
-    """Where to send the person: the plugin's tile (with the target set), or every tile of theirs when no
-    plugin is named; None for a plugin the project does not have. The link names the project
+def target_mask(label: str, version: int | None = None) -> str:
+    """The Target filter set to one target, and the Version filter to one AI card version when given, in the URL
+    form Superset reads (native_filters)."""
+    parts = [_filter("target", "target_label", _rison(label))] if label else []
+    if version is not None:
+        parts.append(_filter("version", "system_version", str(int(version))))
+    return "(" + ",".join(parts) + ")"
+
+
+def open_url(dashboards: list[dict], plugin_label: str | None, target: str | None, pid: str,
+             version: int | None = None) -> str | None:
+    """Where to send the person: the plugin's tile (with the target and the AI card version set), or every tile
+    of theirs when no plugin is named; None for a plugin the project does not have. The link names the project
     (aisc_project), so the dashboard's "← Back" returns to its AI Assessment Sandbox."""
     back = f"aisc_project={quote(str(pid), safe='')}"
     if not plugin_label:
@@ -128,4 +137,6 @@ def open_url(dashboards: list[dict], plugin_label: str | None, target: str | Non
     found = next((d for d in dashboards if d["label"] == plugin_label or d["plugin"] == plugin_label), None)
     if found is None:
         return None
-    return found["url"] + (f"?native_filters={quote(target_mask(target), safe='')}&{back}" if target else f"?{back}")
+    if not target and version is None:
+        return f"{found['url']}?{back}"
+    return f"{found['url']}?native_filters={quote(target_mask(target, version), safe='')}&{back}"

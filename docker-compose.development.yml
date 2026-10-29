@@ -26,7 +26,7 @@ x-backend-env: &backend-env
   ENABLE_SSL_PROXY: true
   CELERY_BROKER_URL: ${CELERY_BROKER_URL}
   REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
-  PLUGIN_PATH: ${PLUGIN_PATH}
+  PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
   PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
   PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
   PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
@@ -214,7 +214,7 @@ services:
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
-      PLUGIN_PATH: ${PLUGIN_PATH}
+      PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
       PACKAGE_REGISTRY_PASSWORD: ${PACKAGE_REGISTRY_PASSWORD}
@@ -389,6 +389,15 @@ services:
       PLATFORM_URL: http://platform:8000
       # its own system's token only: it can resolve card_agent and nothing else
       PLATFORM_INTERNAL_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
+      # The model when the project chose none: by default the same keyless local Ollama model as control
+      # objectives; set QUALIFICATION_AGENTS_LLM_PROVIDER, _MODEL and _BASE_URL (and the provider's key)
+      # in env.local for another one. Never commit a key.
+      BAF_LLM_PROVIDER: ${QUALIFICATION_AGENTS_LLM_PROVIDER:-ollama}
+      BAF_LLM_MODEL: ${QUALIFICATION_AGENTS_LLM_MODEL:-mistral:latest}
+      BAF_LLM_BASE_URL: ${QUALIFICATION_AGENTS_LLM_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       # the token qualification-web sends to start and read a run
       QUALIFICATION_WEB_TO_AGENTS_TOKEN: ${QUALIFICATION_WEB_TO_AGENTS_TOKEN:?run scripts/secrets.sh first}
       # its own tokens for the two services it calls: the app's /extracted and the ontology
@@ -476,7 +485,7 @@ services:
       PLATFORM_URL: http://platform:8000
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       AISC_BACKEND_URL: http://aisc-backend:8000
-      # The card agent, which the save starts and the card page polls.
+      # The card agent, which "Let AI suggest additions" starts and the card page polls.
       AGENT_SERVICE_URL: http://qualification-agents:8012
       # The ledger: each change writes its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}

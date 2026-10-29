@@ -755,3 +755,26 @@ def test_every_container_name_carries_the_install_prefix():
             name = (spec or {}).get("container_name")
             if name:
                 assert name.startswith("${CONTAINER_PREFIX:-}"), (f.name, svc)
+
+
+def test_the_card_agent_gets_a_model_when_the_project_chose_none(compose):
+    """As for control objectives: a local Ollama model by default (no key), overridable from the install's
+    settings (QUALIFICATION_AGENTS_LLM_*), and the provider keys passed through; the project's own choice
+    under Manage > AI assistants wins over all of these."""
+    _, cfg = compose
+    env = cfg["services"]["qualification-agents"]["environment"]
+    assert env["BAF_LLM_PROVIDER"] == "ollama"
+    assert env["BAF_LLM_MODEL"] == "mistral:latest"
+    assert env["BAF_LLM_BASE_URL"] == "http://host.docker.internal:11434"
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY"):
+        assert key in env, key
+
+
+def test_the_stack_tells_the_engine_where_it_mounts_the_plugins(compose):
+    """PLUGIN_PATH in the install's settings is the host folder; inside the engine's containers the folder is
+    mounted at /app/plugins, and that is the path they are told, as in the standalone compose."""
+    _, cfg = compose
+    for name in ("aisc-backend", "aisc-eval-worker"):
+        svc = cfg["services"][name]
+        targets = [v["target"] if isinstance(v, dict) else str(v).split(":")[1] for v in svc.get("volumes") or []]
+        assert svc["environment"]["PLUGIN_PATH"] == "/app/plugins" and "/app/plugins" in targets, name

@@ -70,7 +70,12 @@ PY
 }
 
 # Check every target before writing to any.
-declare -A LOCAL_WANTED=()   # "<target>|<dist>" -> 1 when the target takes that local package from vendor/
+# Which target takes which local package from vendor/: lines "<target>|<dist>" (bash 3.2, as on macOS, has no
+# associative arrays).
+LOCAL_WANTED=""
+wanted() { case "$LOCAL_WANTED" in *"
+$1|$2
+"*) return 0 ;; esac; return 1; }
 for target in "${TARGETS[@]}"; do
   if [ "$(source_path "$target/pyproject.toml" aisc-plugin-interface)" != "vendor/$WHEEL" ]; then
     fail "$target/pyproject.toml must point aisc-plugin-interface at vendor/$WHEEL under [tool.uv.sources]"
@@ -86,7 +91,9 @@ for target in "${TARGETS[@]}"; do
         if [ -n "$(git -C "$folder" status --porcelain --untracked-files=no -- "$(local_package "$dist")")" ]; then
           fail "$folder/$(local_package "$dist") has uncommitted changes; the vendored wheel must be its code as committed"
         fi
-        LOCAL_WANTED["$target|$dist"]=1
+        LOCAL_WANTED="$LOCAL_WANTED
+$target|$dist
+"
         ;;
     esac
   done
@@ -101,10 +108,11 @@ SOURCE_DATE_EPOCH=$(git -C "$INTERFACE" log -1 --format=%ct) \
 
 # Build each local package a target asks for, once, from a copy of its folder (setuptools writes build/ and
 # egg-info next to the sources it builds).
-declare -A LOCAL_WHEEL=()   # dist -> path of the built wheel
+# the built wheel of each local package: its path is kept in $TMP/<dist>.wheel
+local_wheel() { cat "$TMP/$1.wheel"; }
 for dist in "${LOCAL_NAMES[@]}"; do
   needed=""
-  for target in "${TARGETS[@]}"; do [ -n "${LOCAL_WANTED["$target|$dist"]:-}" ] && needed=1; done
+  for target in "${TARGETS[@]}"; do if wanted "$target" "$dist"; then needed=1; fi; done
   [ -n "$needed" ] || continue
   folder=$(local_folder "$dist")
   package=$(local_package "$dist")
@@ -119,7 +127,7 @@ for dist in "${LOCAL_NAMES[@]}"; do
   SOURCE_DATE_EPOCH=$(git -C "$folder" log -1 --format=%ct -- .) \
     uv build --quiet --wheel --out-dir "$TMP/$dist" "$copy" >&2
   [ -f "$TMP/$dist/$built" ] || fail "uv build did not produce $built"
-  LOCAL_WHEEL[$dist]="$TMP/$dist/$built"
+  printf '%s' "$TMP/$dist/$built" > "$TMP/$dist.wheel"
 done
 
 check_lock() {  # check_lock TARGET DIST VERSION WHEEL: the lock takes DIST VERSION from vendor/WHEEL
@@ -147,14 +155,14 @@ for target in "${TARGETS[@]}"; do
   rm -f "$target"/vendor/aisc_plugin_interface-*.whl
   cp "$TMP/interface/$WHEEL" "$target/vendor/$WHEEL"
   for dist in "${LOCAL_NAMES[@]}"; do
-    [ -n "${LOCAL_WANTED["$target|$dist"]:-}" ] || continue
+    wanted "$target" "$dist" || continue
     rm -f "$target"/vendor/"${dist//-/_}"-*.whl
-    cp "${LOCAL_WHEEL[$dist]}" "$target/vendor/"
+    cp "$(local_wheel "$dist")" "$target/vendor/"
   done
   # --refresh-package: a rebuilt wheel keeps its file name, and uv would otherwise reuse the hash it cached
   refresh=(--refresh-package aisc-plugin-interface)
   for dist in "${LOCAL_NAMES[@]}"; do
-    [ -n "${LOCAL_WANTED["$target|$dist"]:-}" ] && refresh+=(--refresh-package "$dist")
+    if wanted "$target" "$dist"; then refresh+=(--refresh-package "$dist"); fi
   done
   if ! out=$(cd "$target" && uv lock "${refresh[@]}" 2>&1); then
     say "$target: uv lock failed"
@@ -165,8 +173,8 @@ for target in "${TARGETS[@]}"; do
     || fail "$target: $reason"
   echo "vendored $WHEEL into $target; its lock names $VERSION from vendor/"
   for dist in "${LOCAL_NAMES[@]}"; do
-    [ -n "${LOCAL_WANTED["$target|$dist"]:-}" ] || continue
-    built=$(basename "${LOCAL_WHEEL[$dist]}")
+    wanted "$target" "$dist" || continue
+    built=$(basename "$(local_wheel "$dist")")
     version=$(toml_get "$(local_folder "$dist")/pyproject.toml" project.version)
     reason=$(check_lock "$target" "$dist" "$version" "$built" 2>&1) || fail "$target: $reason"
     echo "vendored $built into $target; its lock names $version from vendor/"

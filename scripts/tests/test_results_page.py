@@ -80,11 +80,13 @@ def test_an_unknown_target_says_so():
 
 
 def test_links_go_through_the_platform_to_the_tools_tile():
-    """A tool's link opens its own tile, synced first, with the Target
-    filter set by the platform (dashboards/open); "All tools" opens the project's tiles."""
+    """A tool's link opens its own tile, synced first, with the Target and Version filters set by the platform
+    (dashboards/open) to what this page shows; "All tools" opens the project's tiles."""
     script = script_of(read(PAGE))
     assert ("return '/api/projects/' + enc(slug) + '/dashboards/open' + (tool ? '?plugin=' + enc(tool.label) + "
-            "'&target=' + enc(target.key === null ? 'unassigned' : target.label) : '');") in script
+            "'&target=' + enc(target.key === null ? 'unassigned' : target.label) + "
+            "(versionNumber ? '&version=' + versionNumber : '') : '');") in script
+    assert "dashboard(pid, target, it, data.version ? data.version.number : null)" in script
     assert "aisc-' + pid" not in script and "native_filters=" not in script   # the platform builds those now
 
 

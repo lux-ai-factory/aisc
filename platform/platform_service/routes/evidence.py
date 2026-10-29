@@ -85,11 +85,11 @@ def reports_of_version(slug: str, version: str, request: Request, caller: Caller
 
 @router.get("/projects/{slug}/dashboards/open")
 def open_dashboards(slug: str, request: Request, plugin: str | None = None, target: str | None = None,
-                    caller: Caller = Depends(caller_dependency)):
-    """Sync, then go to the plugin's tile (with the Target filter set), or to the person's tiles when no plugin
-    is named: what the sandbox's Visualisation button and the results page's links open."""
+                    version: int | None = None, caller: Caller = Depends(caller_dependency)):
+    """Sync, then go to the plugin's tile (with the Target and Version filters set), or to the person's tiles when
+    no plugin is named: what the sandbox's Visualisation button and the results page's links open."""
     synced = sync_dashboards(slug, request, caller)
-    url = dashboards.open_url(synced["dashboards"], plugin, target, db.get_project(slug)["pid"])
+    url = dashboards.open_url(synced["dashboards"], plugin, target, db.get_project(slug)["pid"], version)
     if url is None:
         raise HTTPException(status_code=404, detail=f"no test {plugin!r} in this project")
     return RedirectResponse(url, status_code=303)

@@ -280,10 +280,10 @@
   }
 
   // a tool's own tile in the results dashboard, synced by the platform before it opens, with the Target
-  // filter on the target's label as the dashboard's data has it; no tool: the project's tiles
-  // (platform GET /projects/{slug}/dashboards/open)
-  function dashboard(pid, target, tool) {
-    return '/api/projects/' + enc(slug) + '/dashboards/open' + (tool ? '?plugin=' + enc(tool.label) + '&target=' + enc(target.key === null ? 'unassigned' : target.label) : '');
+  // filter on the target's label as the dashboard's data has it and the Version filter on the AI card version
+  // this page shows; no tool: the project's tiles (platform GET /projects/{slug}/dashboards/open)
+  function dashboard(pid, target, tool, versionNumber) {
+    return '/api/projects/' + enc(slug) + '/dashboards/open' + (tool ? '?plugin=' + enc(tool.label) + '&target=' + enc(target.key === null ? 'unassigned' : target.label) + (versionNumber ? '&version=' + versionNumber : '') : '');
   }
 
   function kindOf(t) {
@@ -338,7 +338,7 @@
     var box = $('tools');
     target.tools.forEach(function (it) {
       var a = el('a', 'tool');
-      a.href = dashboard(pid, target, it);
+      a.href = dashboard(pid, target, it, data.version ? data.version.number : null);
       a.appendChild(el('span', 'tool-name', it.label));
       a.appendChild(el('span', 'tool-runs', it.executed + ' completed · ' + it.failed + ' failed · ' +
         it.running + ' running' + (it.last_run ? ' · last run ' + day(it.last_run) : '')));

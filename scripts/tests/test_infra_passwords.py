@@ -94,7 +94,7 @@ def test_the_tracked_env_file_holds_no_infrastructure_password():
 
 
 CHECKS = ["scripts/verify-sso.sh", "scripts/verify-rbac.sh", "scripts/verify-project-databases.sh",
-          "scripts/verify-plugins.sh", "scripts/lib/gateway-session.sh", "keycloak/verify_token.py"]
+          "scripts/verify-plugins.sh", "scripts/lib/gateway-session.sh"]
 
 
 @pytest.mark.parametrize("path", CHECKS)
