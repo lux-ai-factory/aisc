@@ -68,7 +68,7 @@ def test_a_model_used_as_a_tool_is_called_a_helper_model(name, text):
 @pytest.mark.parametrize("name,text", WRITTEN, ids=[n for n, _ in WRITTEN])
 def test_helper_names_only_a_helper_model(name, text):
     """"helper" alone would blur the AI assistants of steps 1 and 2 with the models a test uses."""
-    for m in re.finditer(r"(?<![\w-])helpers?(?![\w-])", text, re.I):
+    for m in re.finditer(r"(?<![\w/-])helpers?(?![\w-])", text, re.I):     # /helpers.html is a page, not a word
         assert re.match(r"\s+models?\b", text[m.end():], re.I), (name, text[max(0, m.start() - 60):m.end() + 40])
 
 

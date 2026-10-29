@@ -160,6 +160,25 @@ def test_open_syncs_then_goes_to_the_plugins_dashboard_with_the_target_set(clien
     assert bridge.requests("PUT")                                       # synced first
 
 
+def test_open_with_a_version_sets_the_version_filter_beside_the_target(client, as_user, runs, engine_api, bridge):
+    """The dashboard opens on the AI card version the Results page showed (its Version filter)."""
+    from urllib.parse import unquote, urlsplit
+    _route(bridge, runs["pid"])
+    r = client.get(f"/projects/{runs['slug']}/dashboards/open?plugin=LangBiTe&target=Explanation%20assistant&version=2",
+                   headers=as_user(VERA), follow_redirects=False)
+    masks = unquote(urlsplit(r.headers["location"]).query)
+    assert "NATIVE_FILTER-target:(" in masks
+    assert ("NATIVE_FILTER-version:(id:NATIVE_FILTER-version,extraFormData:(filters:!((col:system_version,op:IN,"
+            "val:!(2)))),filterState:(value:!(2)),ownState:())") in masks
+
+
+def test_a_version_that_is_not_a_number_is_422(client, as_user, runs, engine_api, bridge):
+    _route(bridge, runs["pid"])
+    r = client.get(f"/projects/{runs['slug']}/dashboards/open?plugin=LangBiTe&version=two", headers=as_user(VERA),
+                   follow_redirects=False)
+    assert r.status_code == 422
+
+
 def test_with_no_target_there_is_no_mask(client, as_user, runs, engine_api, bridge):
     _route(bridge, runs["pid"])
     r = client.get(f"/projects/{runs['slug']}/dashboards/open?plugin=LangBiTe", headers=as_user(VERA),

@@ -111,7 +111,7 @@ def test_the_postgres_mode_uses_the_throwaway_database_helper():
 @needs_backend
 def test_the_labels_are_the_test_packages_and_modules_without_integration():
     labels = expected_labels()
-    assert len(labels) == 36, labels
+    assert len(labels) == 44, labels
     assert "aisc_backend.tests.integration" not in labels
 
 

@@ -72,7 +72,7 @@ def test_the_four_cards_carry_the_one_numbering_and_its_names():
     body = markup()
     for card, title, text in (
             ("qualification-card", "1. Qualify the AI system",
-             "Describe the system and its components in its AI card, and find its AI Act risk class."),
+             "Describe the system, its components and its risks in a versioned AI card."),
             ("control-objectives-card", "2. Set control objectives",
              "Rate the system's risks and link them to the control objectives it must meet."),
             ("catalogue-card", "3. Choose tests and checklists", "Pick tests and checklists, and install them in one click.")):
