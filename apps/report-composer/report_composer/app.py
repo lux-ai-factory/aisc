@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from . import api, db, errors, ledger, migrate, pages
+from . import api, errors, ledger, migrate, pages
 from .projectdb import ProjectDatabases
 from .renderer_client import HttpRendererClient
 
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(*, database_url=None, project_database_url=None, renderer=None, clock=None) -> FastAPI:
-    """database_url: REPORT_COMPOSER_DATABASE_URL, `platform` (core.project, core.project_member and the
-    library report_library). project_database_url: REPORT_COMPOSER_PROJECT_DATABASE_URL, the same kind of
+    """database_url: REPORT_COMPOSER_DATABASE_URL, `platform` (core.project and core.project_member).
+    project_database_url: REPORT_COMPOSER_PROJECT_DATABASE_URL, the same kind of
     DSN with `{database}` in place of the name, for everything of a project. Nothing connects here."""
     database_url = database_url or os.environ.get("REPORT_COMPOSER_DATABASE_URL", "")
     project_database_url = project_database_url or os.environ.get("REPORT_COMPOSER_PROJECT_DATABASE_URL", "")
@@ -35,11 +35,8 @@ def create_app(*, database_url=None, project_database_url=None, renderer=None, c
 
     @asynccontextmanager
     async def lifespan(app):
-        # the library first: a failure here is fatal
-        with db.connect(database_url) as conn:
-            migrate.migrate_library(conn)
-        # then every project database; one that fails is logged and migrated again on its first open
-        for name, result in migrate.migrate_everything(database_url, project_database_url, library=False).items():
+        # every project database; one that fails is logged and migrated again on its first open
+        for name, result in migrate.migrate_everything(database_url, project_database_url).items():
             if result == "ok":
                 projects.mark_migrated(name)
             else:

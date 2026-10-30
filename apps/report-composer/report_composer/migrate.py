@@ -1,20 +1,18 @@
-"""The composer's own migrations: two histories.
+"""The composer's own migrations: one history.
 
     migrations/project/   each project's database, schema report_composer, tracked in
                           report_composer.schema_migration of that database
-    migrations/library/   the install-wide library in `platform`, schema report_library, tracked in
-                          report_library.schema_migration
 
 The same runner as platform/platform_service/migrate.py: ordered .sql files, applied once, recorded in a
 table, under advisory lock 8_190_233_707 taken in the database being migrated. The schemas are made by
-the platform (template 0010 in a project database, the init files for report_library); the start loop
-never makes one, so the composer never creates its schema in `platform`.
+the platform (template 0010 in a project database); the start loop never makes one, and the composer keeps
+nothing in `platform`.
 
-    python -m report_composer.migrate    the library, then every project database
+    python -m report_composer.migrate    every project database
 
 Exit status, the convention of every migrate one-shot (the compose loop retries 1 and stops on 2):
-0 when the library and every project database are at their head; 1 when the platform database
-cannot be reached yet; 2 for a missing setting, or when the library or any project database failed
+0 when every project database is at its head; 1 when the platform database
+cannot be reached yet; 2 for a missing setting, or when any project database failed
 (permanent: report-composer does not start on a half-migrated set).
 
 This file stays loadable on its own (a test loads it with spec_from_file_location): at the top level it
@@ -38,9 +36,6 @@ logger = logging.getLogger(__name__)
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 PROJECT = MIGRATIONS / "project"
 PROJECT_TABLE = "report_composer.schema_migration"
-LIBRARY = MIGRATIONS / "library"
-LIBRARY_TABLE = "report_library.schema_migration"
-LIBRARY_NAME = "report_library"
 _LOCK = 8_190_233_707
 
 
@@ -76,11 +71,6 @@ def migrate(conn, directory: Path = PROJECT, table: str = PROJECT_TABLE, *, crea
         return ran
 
 
-def migrate_library(conn) -> list[str]:
-    """The library history, on a connection to `platform`."""
-    return migrate(conn, LIBRARY, LIBRARY_TABLE, create_schema=False)
-
-
 def migrate_project(conn) -> list[str]:
     """The project history, on a connection to one project's database."""
     return migrate(conn, PROJECT, PROJECT_TABLE, create_schema=False)
@@ -104,20 +94,12 @@ def project_databases(database_url: str) -> list[tuple[str, str]]:
     return out
 
 
-def migrate_everything(database_url: str, project_database_url: str, *, library: bool = True) -> dict[str, str]:
-    """Optionally the library, then every project database: {name: "ok" | "failed: <ExceptionClass>"}.
-    A failed database is logged by name and exception class only, and the loop goes on."""
+def migrate_everything(database_url: str, project_database_url: str) -> dict[str, str]:
+    """Every project database: {name: "ok" | "failed: <ExceptionClass>"}. A failed database is logged by
+    name and exception class only (its text may hold a DSN), and the loop goes on."""
     from report_composer.projectdb import dsn_for
 
     results: dict[str, str] = {}
-    if library:
-        try:
-            with psycopg.connect(database_url, connect_timeout=CONNECT_TIMEOUT_S) as conn:
-                migrate_library(conn)
-            results[LIBRARY_NAME] = "ok"
-        except Exception as exc:  # noqa: BLE001 - reported by class, never by text (it may hold a DSN)
-            results[LIBRARY_NAME] = f"failed: {type(exc).__name__}"
-            logger.error("migration of %s failed: %s", LIBRARY_NAME, type(exc).__name__)
     for _pid, name in project_databases(database_url):
         try:
             with psycopg.connect(dsn_for(project_database_url, name), connect_timeout=CONNECT_TIMEOUT_S) as conn:

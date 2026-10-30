@@ -73,6 +73,23 @@ def test_project_databases_sql_runs_after_core_system_and_module_schemas_are_dro
         again.stderr.strip()[-300:]
 
 
+def test_an_older_volume_loses_the_unused_platform_schemas_and_the_catalogue_login(old_volume):
+    """An install made before keeps the schemas catalogue and report_library and a catalogue_rw that logs in;
+    the next start of postgres-setup drops both schemas and the login."""
+    b = old_volume
+    r = b.psql("platform", "CREATE SCHEMA IF NOT EXISTS catalogue AUTHORIZATION catalogue_rw;"
+                           "CREATE SCHEMA IF NOT EXISTS report_library AUTHORIZATION report_composer_rw;"
+                           "CREATE TABLE IF NOT EXISTS report_library.preset (id int);"
+                           "ALTER ROLE catalogue_rw LOGIN PASSWORD 'catalogue_rw';")
+    assert r.returncode == 0, r.stderr
+    again = b.psql("platform", PROJECT_DATABASES_SQL.read_text())
+    assert again.returncode == 0, again.stderr.strip()[-300:]
+    left = b.rows("platform", "SELECT nspname FROM pg_namespace WHERE nspname IN ('catalogue', 'report_library')")
+    assert left == []
+    assert b.rows("platform", "SELECT rolcanlogin, rolpassword IS NULL AS no_password FROM pg_authid"
+                              " WHERE rolname = 'catalogue_rw'") == [{"rolcanlogin": False, "no_password": True}]
+
+
 # fresh volume: init files, migrations, POST /projects
 
 
@@ -115,13 +132,13 @@ def test_init_files_and_migrations_apply_on_a_fresh_volume(fresh):
 
 
 def test_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
-    """`platform` holds core, catalogue, report_library, the ledger's own schema and an empty public (forms
-    are per project, so there is no form library); core holds the projects, their members, the migration
+    """`platform` holds core, the ledger's own schema and an empty public (forms are per project, so there is
+    no form library; the catalogue is per project too, and there is no report library); core holds the projects, their members, the migration
     history, the platform's ledger outbox, the run passes it issued and the connections those runs reached."""
     fresh.require("init")
     schemas = {r["nspname"] for r in fresh.rows("platform", """
         SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'""")}
-    assert schemas == {"core", "catalogue", "report_library", "ledger", "public"}, f"platform schemas: {sorted(schemas)}"
+    assert schemas == {"core", "ledger", "public"}, f"platform schemas: {sorted(schemas)}"
     core = {r["relname"] for r in fresh.rows("platform", """
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'core' AND c.relkind = 'r'""")}
@@ -138,11 +155,11 @@ def test_the_consistency_check_knows_every_core_table_the_migrations_make(fresh)
          WHERE n.nspname = 'core' AND c.relkind IN ('r', 'p')""")}
     assert core == checks.CORE_TABLES, f"core has {sorted(core)}, the check lists {sorted(checks.CORE_TABLES)}"
 
-@pytest.mark.parametrize("schema,owner", [("report_library", "report_composer_rw")])
-def test_library_schemas_are_owned_by_their_module(fresh, schema, owner):
+def test_the_catalogue_role_cannot_log_in_on_a_fresh_volume(fresh):
+    """catalogue_rw is kept only because the first platform migrations grant to it; nothing logs in as it."""
     fresh.require("init")
-    got = fresh.scalar("platform", f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '{schema}'")
-    assert got == owner, f"platform schema {schema} owner {got!r}"
+    assert fresh.rows("platform", "SELECT rolcanlogin FROM pg_roles WHERE rolname = 'catalogue_rw'") == \
+        [{"rolcanlogin": False}]
 
 
 def _table_privs(bed, role):

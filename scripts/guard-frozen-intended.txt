@@ -17,6 +17,8 @@
 #   dependencies  shipped dependencies above their vulnerable ranges
 #   docs          the README
 #   secrets       a plugin form's key kept as a project secret: a test only, the form is upstream's
+#   helpers       models a test uses as tools (judge, attacker...) are the project's helper models, picked in
+#                 the run form; the AI System offers no LLM components
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -70,3 +72,8 @@ webapp package-lock.json dependencies: npm audit high fixes within majors (axios
 webapp src/patchedDependencies.test.ts dependencies: each shipped dependency above its vulnerable range
 webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin
 webapp src/pages/pluginToggle.test.ts errors: its test
+webapp src/api/projectHelpers.ts helpers: the project's helper models, read from the platform for the run form (configurator)
+webapp src/components/AISystemSettings.tsx helpers: the AI System offers no LLM components; models a test uses as tools are the project's helper models
+webapp src/components/AISystemSettings.test.tsx helpers: its tests
+webapp src/components/plugin/PluginEvaluationForm.tsx helpers: the run form picks a helper model for each role a test asks for
+webapp src/components/plugin/PluginEvaluationForm.test.tsx helpers: its tests

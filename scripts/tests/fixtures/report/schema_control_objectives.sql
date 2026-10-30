@@ -46,7 +46,6 @@ CREATE TABLE control_objectives.graph (
     project_id character varying(32) NOT NULL,
     jsonld text NOT NULL,
     digest character varying(64) NOT NULL,
-    risks integer NOT NULL,
     uploaded_at timestamp with time zone NOT NULL
 );
 

@@ -46,8 +46,6 @@ PROJECT_SCHEMAS = {
 }
 PLATFORM_SCHEMAS = {
     "core": ("Projects and their members", "Every project, and who may work in it with which role."),
-    "catalogue": ("Catalogue", "The public catalogue of tests and controls."),
-    "report_library": ("Report presets", "Shared report presets, which hold no project data."),
 }
 SCHEMAS = "^(?!pg_|information_schema).*"
 SCHEMASPY_JAR = "/usr/local/lib/schemaspy/schemaspy-app.jar"

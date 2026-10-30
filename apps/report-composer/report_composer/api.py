@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from . import builtin_layouts, builtin_reports, db, declared_charts, evidence_links, layouts, ledger, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on, refuse_lone_surrogate
-from .guards import Guarded, project_guard, signed_in
+from .guards import Guarded, project_guard
 from .records import NO_LAYOUT, NO_TEMPLATE, chosen_template, layout_or_404, template_of, template_or_404
 from .renderer_calls import block_types, choices_for, fonts, outline_block_types, renderer_call
 from .settings import document_settings
@@ -82,17 +82,12 @@ def _blocks(body: dict) -> list:
              "options": b.get("options") if b.get("options") is not None else {}} for b in blocks]
 
 
-# Versions, block types, choices
+# Versions, choices
 
 @router.get("/p/{ref}/systems")
 def get_systems(request: Request, g: Guarded = Depends(project_guard("viewer"))):
     with _project_db(request, g) as conn:
         return db.systems(conn)
-
-
-@router.get("/block-types")
-def get_block_types(request: Request, caller=Depends(signed_in)):
-    return block_types(request)
 
 
 @router.get("/p/{ref}/choices")
@@ -369,22 +364,11 @@ def _preset_file_response(p: presets.Preset) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="report-preset-{slug}.json"'})
 
 
-@router.get("/p/{ref}/builtin-layouts")
-def get_builtin_layouts(request: Request, g: Guarded = Depends(project_guard("viewer"))):
-    """The five built-in layouts, read-only."""
-    return builtin_layouts.all_layouts(block_types(request))
-
-
 def _builtin_or_404(request: Request, layout_id: str) -> dict:
     found = builtin_layouts.get(layout_id, block_types(request))
     if found is None:
         raise ApiError(404, "not_found", NO_LAYOUT)
     return found
-
-
-@router.get("/p/{ref}/builtin-layouts/{layout_id}")
-def get_builtin_layout(request: Request, layout_id: str, g: Guarded = Depends(project_guard("viewer"))):
-    return _builtin_or_404(request, layout_id)
 
 
 @router.get("/p/{ref}/builtin-layouts/{layout_id}/preview")
@@ -522,11 +506,6 @@ def _save_template(request: Request, g: Guarded, body, template_id=None, rename_
             return looks.view(template_or_404(conn, template_id))
     except psycopg.errors.UniqueViolation:
         raise ApiError(422, "name_taken", "A look of this project already has this name.") from None
-
-
-@router.get("/fonts")
-def get_fonts(request: Request, caller=Depends(signed_in)):
-    return fonts(request)
 
 
 @router.get("/p/{ref}/templates")

@@ -3,8 +3,7 @@
 A file is an ordered list of {block_type, options} plus the document settings show_index (version 1:
 toc) and numbering (reports are English only; a `language` in a file is ignored). It carries a structure
 to another project or platform; a layout made from it keeps no link to it. The built-in layouts are the
-files of report_composer/presets/ (builtin_layouts.py). The table of the retired install-wide saved-preset
-library (report_library.preset) is still migrated; no code reads or writes it.
+files of report_composer/presets/ (builtin_layouts.py).
 """
 from __future__ import annotations
 

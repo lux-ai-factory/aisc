@@ -59,9 +59,9 @@ def test_nobody_but_the_listed_roles_may_connect(client, as_user, unique, dsn):
     # The template lists every module role
     # (0007..0010 let qualification_rw, control_objectives_rw, engine_rw and
     # report_composer_rw connect), so the role that must be refused is one it never
-    # lists: the catalogue's, which holds no project's data.
+    # lists: the catalogue's, which holds no project's data (and cannot log in at all).
     created = client.post("/projects", json={"name": unique()}, headers=as_user("alice")).json()
-    with pytest.raises(psycopg.OperationalError, match="permission denied"):
+    with pytest.raises(psycopg.OperationalError, match="permission denied|not permitted to log in|password authentication failed"):
         _as(dsn, "catalogue_rw", projectdb.database_name(created["pid"]))
 
 
