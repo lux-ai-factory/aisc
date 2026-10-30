@@ -19,6 +19,8 @@
 #   secrets       a plugin form's key kept as a project secret: a test only, the form is upstream's
 #   helpers       models a test uses as tools (judge, attacker...) are the project's helper models, picked in
 #                 the run form; the AI System offers no LLM components
+#   identity      a plugin is told apart by its package and its name: two packages may ship a plugin of the
+#                 same name (a copy of a test), and selecting or running one never takes the other
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -54,9 +56,10 @@ webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and
 webapp src/pages/evaluationOutcome.test.ts errors: its tests
 webapp src/models/models.tsx errors: a run's plugin entry carries error_message
 webapp src/pages/PluginEvaluations.noReport.test.ts reports: no source of the app links to /report any more
-webapp src/pages/PluginStartEvaluation.tsx wording, project: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project
+webapp src/pages/PluginStartEvaluation.tsx wording, project, identity: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name
 webapp src/pages/PluginStartEvaluation.launch.test.ts wording: the start button says Launch Evaluation
-webapp src/pages/PluginStartEvaluation.test.tsx project: the saved selections are per project (start-eval-state:<projectUUID>), so switching projects in one tab never restores another's
+webapp src/pages/PluginStartEvaluation.test.tsx project, identity: the saved selections are per project (start-eval-selections:<projectUUID>, keyed by package and name), so switching projects in one tab never restores another's
+webapp src/pages/PluginStartEvaluation.identity.test.tsx identity: two plugins of the same name are selected and run apart
 webapp src/platform/currentProject.test.ts modes: the tab's platform project; Back goes one level up, to the AI Assessment Sandbox
 webapp src/platform/currentProject.ts modes: the tab's platform project (pid only); Back goes one level up, to the AI Assessment Sandbox
 webapp src/platform/gatewaySession.test.ts modes: the gateway's session
