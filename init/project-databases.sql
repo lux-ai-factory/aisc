@@ -55,15 +55,19 @@ REVOKE ALL ON DATABASE ledger_identity FROM PUBLIC;
 GRANT CONNECT ON DATABASE ledger_identity TO platform_rw;
 
 \connect platform
--- The install-wide library of report presets, for a volume whose init/platform-db.sql did not
--- make it. A missing role is skipped. (Forms are per project: there is no form library.)
-DO $libraries$
+-- Two schemas no service uses any more, on a volume made before: the report presets library and the old
+-- shared catalogue (each project has its own). catalogue_rw stays, because platform migrations 0001 and 0002
+-- grant to it, but it cannot log in.
+DROP SCHEMA IF EXISTS report_library CASCADE;
+DROP SCHEMA IF EXISTS catalogue CASCADE;
+DO $catalogue_role$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'report_composer_rw') THEN
-    CREATE SCHEMA IF NOT EXISTS report_library AUTHORIZATION report_composer_rw;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'catalogue_rw') THEN
+    ALTER ROLE catalogue_rw NOLOGIN PASSWORD NULL;
+    ALTER ROLE catalogue_rw IN DATABASE platform RESET ALL;
   END IF;
 END
-$libraries$;
+$catalogue_role$;
 
 -- The ledger's Postgres side: the platform service owns it and its migrations (0006 onwards)
 -- make its tables. No module role gets USAGE, so none can read the witness records, the person

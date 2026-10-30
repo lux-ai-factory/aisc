@@ -7,14 +7,14 @@ pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
 
 def test_migrations_run_at_start(client, bed):
-    client.get("/api/block-types")
+    client.get("/api/p/alpha/layouts")
     # The migration history is in each project's database. There the schema belongs to the platform
-    # and the tables to the composer; the library schema in `platform` belongs to the composer.
+    # and the tables to the composer; the composer owns nothing in `platform`.
     assert bed.scalar(pdb_of("A"), "SELECT count(*) FROM report_composer.schema_migration") not in ("", "0")
     owner = bed.scalar(pdb_of("A"), "SELECT relowner::regrole FROM pg_class WHERE oid = 'report_composer.layout'::regclass")
     assert owner == "report_composer_rw"
-    owner = bed.scalar("platform", "SELECT nspowner::regrole FROM pg_namespace WHERE nspname = 'report_library'")
-    assert owner == "report_composer_rw"
+    assert bed.scalar("platform", "SELECT count(*) FROM pg_namespace WHERE nspowner = 'report_composer_rw'::regrole") \
+        == "0"
 
 
 # systems
@@ -23,11 +23,6 @@ def test_systems_newest_first(client, auth):
     assert r.status_code == 200
     assert [s["number"] for s in r.json()] == [3, 2, 1]
     assert r.json()[0] == {"pid": IDS["A_V3"], "number": 3, "name": "Alpha scorer", "release": "1.1"}
-
-
-def test_block_types_come_from_the_renderer(client, auth):
-    r = client.get("/api/block-types", headers=auth("bob"))
-    assert r.status_code == 200 and "free_text" in [t["type_id"] for t in r.json()]
 
 
 def test_choices_come_from_the_renderer_for_the_project(client, auth, fake_renderer):

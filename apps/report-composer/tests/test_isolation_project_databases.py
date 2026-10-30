@@ -21,7 +21,6 @@ APP = Path(__file__).resolve().parents[1]
 SRC = APP / "report_composer"
 MIGRATIONS = APP / "migrations"
 PROJECT_BASELINE = MIGRATIONS / "project" / "0001_project_database.sql"
-LIBRARY_BASELINE = MIGRATIONS / "library" / "0001_presets.sql"
 A, B, E = IDS["A"], IDS["B"], IDS["E"]
 
 
@@ -54,15 +53,6 @@ def test_the_project_baseline_makes_the_four_tables_without_core_or_project_id()
     assert "preset" not in sql.lower(), "presets are the library's, not a project's"
 
 
-def test_the_library_migration_makes_report_library_preset_without_a_key():
-    """report_library.preset with source_project_id uuid NULL and no foreign key."""
-    sql = _sql_only(_read(LIBRARY_BASELINE))
-    assert re.search(r"CREATE TABLE\s+(IF NOT EXISTS\s+)?report_library\.preset\b", sql, re.I)
-    assert re.search(r"source_project_id\s+uuid\b(?![^,\n]*NOT NULL)", sql, re.I), "source_project_id uuid NULL"
-    assert "REFERENCES" not in sql.upper(), "the library holds no key into a project"
-    assert "core." not in sql and "report_composer." not in sql
-
-
 def test_the_project_baseline_is_schema_only():
     """The baseline writes no rows: existing rows arrive by the platform's data move, so no data step
     is repeated here."""
@@ -72,26 +62,23 @@ def test_the_project_baseline_is_schema_only():
 
 
 def test_no_old_migration_is_left_for_the_platform_database():
-    """migrations/ holds only migrations/project/ and migrations/library/: no file migrates the
-    shared `platform` schema."""
+    """migrations/ holds only migrations/project/: no file migrates the shared `platform` database."""
     left = sorted(p.name for p in MIGRATIONS.glob("*.sql"))
     assert not left, f"old-layout migrations still at the top of migrations/: {left}"
-    assert (MIGRATIONS / "project").is_dir() and (MIGRATIONS / "library").is_dir()
+    assert sorted(p.name for p in MIGRATIONS.iterdir() if p.is_dir()) == ["project"]
 
 
 def test_the_runner_keeps_its_lock_number():
-    """Lock 8_190_233_707 in each database (library and every project)."""
+    """Lock 8_190_233_707 in each project database."""
     source = (SRC / "migrate.py").read_text(encoding="utf-8")
     assert "8_190_233_707" in source or "8190233707" in source
-    assert "library" in source and "project" in source, "migrate.py knows both histories"
 
 
 # never another module's schema
 
 
 def test_the_composer_names_no_other_modules_schema():
-    """In its source the composer names only report_composer, report_library,
-    project.system and, for the access SQL, core.project and core.project_member."""
+    """In its source the composer names only report_composer, project.system and, for the access SQL, core.project and core.project_member."""
     hits = []
     for p in SRC.rglob("*.py"):
         text = p.read_text(encoding="utf-8")
@@ -122,13 +109,9 @@ def _names(bed, db, sql):
 
 
 @pytest.mark.db
-def test_start_migrates_the_library_and_every_project_database(iso_client, iso_bed):
-    """At start the library (platform) and every project database are at their heads; `platform`
-    gets no report_composer schema."""
-    iso_client.get("/api/block-types")
-    assert _names(iso_bed, "platform", "SELECT string_agg(name, ',') FROM report_library.schema_migration") \
-        == ["0001_presets.sql", "0002_presets_numbered.sql"]
-    assert iso_bed.scalar("platform", "SELECT to_regclass('report_library.preset') IS NOT NULL") == "t"
+def test_start_migrates_every_project_database(iso_client, iso_bed):
+    """At start every project database is at its head; `platform` gets no report_composer schema."""
+    iso_client.get("/api/p/alpha/layouts")
     assert iso_bed.scalar("platform", "SELECT count(*) FROM pg_namespace WHERE nspname = 'report_composer'") == "0"
     for key in ("A", "B", "E"):
         db = pdb(IDS[key])
@@ -145,7 +128,7 @@ def test_the_project_tables_have_no_project_id_and_keys_on_project_system(iso_cl
     """No project_id in layout, template, generated_report; the report's version keys
     (system_id, compare_to) reference project.system(pid) with NO ACTION, and a layout has none;
     layout_block and generated_report follow their layout."""
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     db = pdb(A)
     cols = _names(iso_bed, db, "SELECT string_agg(table_name || '.' || column_name, ',') FROM"
                                " information_schema.columns WHERE table_schema = 'report_composer'"
@@ -161,7 +144,7 @@ def test_the_project_tables_have_no_project_id_and_keys_on_project_system(iso_cl
 @pytest.mark.db
 def test_no_reader_reads_the_composers_tables(iso_client, iso_bed):
     """report_composer is on the reader list with `none` for report_ro and dashboard_ro."""
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     for reader in ("report_ro", "dashboard_ro"):
         for t in MODULE_TABLES:
             got = iso_bed.scalar(pdb(A), f"SELECT has_table_privilege('{reader}', 'report_composer.{t}', 'SELECT')")
@@ -183,8 +166,8 @@ def test_a_projects_layouts_live_in_its_own_database(iso_client, iso_bed, auth):
 
 @pytest.mark.db
 @pytest.mark.usefixtures("iso_clean")
-def test_the_platform_connection_reads_only_core_and_the_library(iso_client, auth, spy):
-    """Over REPORT_COMPOSER_DATABASE_URL only core.project, core.project_member and report_library.*;
+def test_the_platform_connection_reads_only_core(iso_client, auth, spy):
+    """Over REPORT_COMPOSER_DATABASE_URL only core.project and core.project_member;
     everything of the project (its versions, layouts, templates, reports) over its own database."""
     spy["reset"]()
     t = new_template(iso_client, auth, slug="alpha", name=unique("Look"))
@@ -196,7 +179,7 @@ def test_the_platform_connection_reads_only_core_and_the_library(iso_client, aut
     on_platform, on_alpha = set(), set()
     for db, sql in spy["sql"]:
         (on_platform if db == "platform" else on_alpha if db == pdb(A) else set()).update(tables_named(sql))
-    allowed = {"core.project", "core.project_member", "report_library.preset", "report_library.schema_migration"}
+    allowed = {"core.project", "core.project_member"}
     assert on_platform <= allowed, on_platform - allowed
     assert {"project.system", "report_composer.layout", "report_composer.template",
             "report_composer.generated_report"} <= on_alpha, on_alpha
@@ -212,7 +195,7 @@ def test_the_platform_connection_reads_only_core_and_the_library(iso_client, aut
 def test_the_guard_decides_before_a_project_database_is_opened(iso_client, auth, spy, who, method, path,
                                                                     status):
     """A project database is opened only after guards.guard has decided membership for that pid."""
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     spy["reset"]()
     kw = {"json": {"name": "x"}} if method == "post" else {}
     r = getattr(iso_client, method)(path, headers=auth(who), **kw)
@@ -263,7 +246,7 @@ def test_a_generated_report_names_a_version_of_its_database(iso_client, iso_bed,
 @pytest.mark.db
 def test_a_project_made_after_start_is_migrated_on_first_open(iso_client, iso_bed, auth):
     """The first open of a database the start did not see migrates it."""
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     db = new_project(iso_bed, "9b000000-0000-4000-8000-000000000001", "first-open")
     r = iso_client.get("/api/p/first-open/layouts", headers=auth("alice"))
     assert r.status_code == 200 and r.json() == [], r.text[:300]
@@ -277,7 +260,7 @@ def test_the_first_open_waits_for_the_lock_of_that_database(iso_client, iso_bed,
     """The migration of a project database takes lock 8_190_233_707 in THAT database."""
     import psycopg
 
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     db = new_project(iso_bed, "9c000000-0000-4000-8000-000000000001", "locked-open")
     holder = psycopg.connect(iso_bed.su_dsn(db), autocommit=True)
     holder.execute("SELECT pg_advisory_lock(%s)", (LOCK,))
@@ -301,7 +284,7 @@ def test_the_first_open_waits_for_the_lock_of_that_database(iso_client, iso_bed,
 @pytest.mark.db
 def test_concurrent_first_opens_migrate_once(iso_client, iso_bed, auth):
     """Two first requests at once: both answer, the history has each file once."""
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     db = new_project(iso_bed, "9d000000-0000-4000-8000-000000000001", "twice-open")
     results = []
     threads = [threading.Thread(target=lambda: results.append(
@@ -332,7 +315,7 @@ def test_one_connection_per_call_closed_after(iso_client, iso_bed, auth, spy):
 def test_a_dropped_project_database_is_404_not_500(iso_client, iso_bed, auth):
     """The platform drops the database before it deletes the core.project row; in between the composer
     answers 404 for that project (never 500), also on the next call."""
-    iso_client.get("/api/block-types")
+    iso_client.get("/api/p/alpha/layouts")
     db = new_project(iso_bed, "9e000000-0000-4000-8000-000000000001", "to-be-dropped")
     lay = new_layout(iso_client, auth, slug="to-be-dropped", who="alice")
     iso_bed.psql("postgres", f'DROP DATABASE "{db}" WITH (FORCE)')

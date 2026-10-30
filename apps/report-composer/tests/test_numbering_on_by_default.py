@@ -13,7 +13,6 @@ from v2_fakes import FakeRendererV2
 
 APP = Path(__file__).resolve().parents[1]
 PROJECT_MIGRATION = APP / "migrations/project/0003_numbering_on.sql"
-LIBRARY_MIGRATION = APP / "migrations/library/0002_presets_numbered.sql"
 
 
 def test_a_layout_without_settings_numbers():
@@ -43,8 +42,6 @@ def test_a_preset_file_without_numbering_exports_and_applies_numbered():
 def test_the_migrations_switch_numbering_on_for_what_is_stored():
     project = PROJECT_MIGRATION.read_text(encoding="utf-8")
     assert "SET DEFAULT true" in project and "UPDATE report_composer.layout SET numbering = true" in project
-    library = LIBRARY_MIGRATION.read_text(encoding="utf-8")
-    assert "UPDATE report_library.preset SET numbering = true" in library
 
 
 @pytest.mark.db
@@ -55,7 +52,7 @@ def test_a_layout_saved_with_numbering_off_is_numbered_after_the_migration(iso_b
     import psycopg
 
     client = iso_make_client(FakeRendererV2())
-    client.get("/api/block-types")
+    client.get("/api/p/alpha/layouts")
     db = new_project(iso_bed, "9b000000-0000-4000-8000-0000000000aa", "numbered-later")
     assert client.get("/api/p/numbered-later/layouts", headers=auth("alice")).status_code == 200  # migrates it
     iso_bed.psql(db, "DELETE FROM report_composer.schema_migration WHERE name = '0003_numbering_on.sql';"

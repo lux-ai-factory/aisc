@@ -158,7 +158,6 @@ services:
       CONTROL_OBJECTIVES_RW_PASSWORD: ${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}
       DASHBOARD_RO_PASSWORD: ${DASHBOARD_RO_PASSWORD:?run scripts/secrets.sh first}
       CONTROLS_RW_PASSWORD: ${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}
-      CATALOGUE_RW_PASSWORD: ${CATALOGUE_RW_PASSWORD:?run scripts/secrets.sh first}
       ENGINE_RW_PASSWORD: ${ENGINE_RW_PASSWORD:?run scripts/secrets.sh first}
       REPORT_COMPOSER_PASSWORD: ${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}
       # the database inspector's password
@@ -175,7 +174,6 @@ services:
       - ./init/control-objectives-role.sql:/setup/control-objectives-role.sql:ro,Z
       - ./init/dashboard-role.sql:/setup/dashboard-role.sql:ro,Z
       - ./init/controls-role.sql:/setup/controls-role.sql:ro,Z
-      - ./init/catalogue-role.sql:/setup/catalogue-role.sql:ro,Z
       - ./init/engine-role.sql:/setup/engine-role.sql:ro,Z
       - ./init/keycloak-role.sql:/setup/keycloak-role.sql:ro,Z
       - ./init/superset-role.sql:/setup/superset-role.sql:ro,Z
@@ -190,7 +188,6 @@ services:
       && psql -v ON_ERROR_STOP=1 -v control_objectives_rw_password=\"$$CONTROL_OBJECTIVES_RW_PASSWORD\" -f /setup/control-objectives-role.sql
       && psql -v ON_ERROR_STOP=1 -v dashboard_ro_password=\"$$DASHBOARD_RO_PASSWORD\" -f /setup/dashboard-role.sql
       && psql -v ON_ERROR_STOP=1 -v controls_rw_password=\"$$CONTROLS_RW_PASSWORD\" -f /setup/controls-role.sql
-      && psql -v ON_ERROR_STOP=1 -v catalogue_rw_password=\"$$CATALOGUE_RW_PASSWORD\" -f /setup/catalogue-role.sql
       && psql -v ON_ERROR_STOP=1 -v engine_rw_password=\"$$ENGINE_RW_PASSWORD\" -f /setup/engine-role.sql
       && psql -v ON_ERROR_STOP=1 -v app_password=\"$$KEYCLOAK_DB_PASSWORD\" -f /setup/keycloak-role.sql
       && psql -v ON_ERROR_STOP=1 -v app_password=\"$$SUPERSET_DB_PASSWORD\" -f /setup/superset-role.sql"

@@ -8,7 +8,7 @@ in the state the move tool and the drop of the old shared schemas leave behind. 
   `platform`; in `platform` it reads core.project only, and core.system is gone.
 - a project database made later is readable after the next scripts/report-grants.sh run, never
   through a default privilege in template1 (default privileges to readers are forbidden).
-- the composer: in `platform` it owns report_library and reads core.project and core.project_member;
+- the composer: in `platform` it owns nothing and reads core.project and core.project_member;
   in each project database it may connect and has USAGE, CREATE on report_composer, USAGE on project
   and SELECT, REFERENCES on project.system, and nothing of the other modules.
 
@@ -146,15 +146,6 @@ def test_d6b_engine_tables_outside_the_list_are_refused(bed, table):
     assert not ok(r)
 
 
-def test_report_ro_never_reads_the_catalogue(bed):
-    """No privilege on the catalogue schema."""
-    rows = bed.rows("platform", "SELECT has_schema_privilege('report_ro', 'catalogue', 'USAGE') AS u"
-                    " FROM pg_roles WHERE rolname = 'report_ro'")
-    assert rows, "missing feature: role report_ro"
-    assert rows[0]["u"] is False
-    assert not ok(as_ro(bed, "platform", "SELECT 1 FROM catalogue.tool LIMIT 1"))
-
-
 @pytest.mark.parametrize("table", SUPERSET)
 def test_d6b_report_ro_reads_the_superset_tables(bed, table):
     """In superset, SELECT on the seven tables of chart ownership and comments."""
@@ -272,13 +263,10 @@ def test_d6b_grants_sql_skips_tables_that_do_not_exist_yet():
 # report_composer_rw
 
 
-def test_composer_role_owns_its_library_and_its_project_schema(bed):
-    """In platform the composer owns report_library; in a project database its schema
+def test_composer_role_owns_nothing_in_platform_and_uses_its_project_schema(bed):
+    """In platform the composer owns no schema; in a project database its schema
     report_composer is the template's (owner platform_rw) with USAGE, CREATE for the composer."""
-    rows = bed.rows("platform", "SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace"
-                    " WHERE nspname = 'report_library'")
-    assert rows, "missing feature: schema report_library"
-    assert rows[0]["owner"] == "report_composer_rw"
+    assert bed.rows("platform", "SELECT nspname FROM pg_namespace WHERE pg_get_userbyid(nspowner) = 'report_composer_rw'") == []
     assert bed.scalar("platform", "SELECT to_regnamespace('report_composer') IS NULL") == "t"
     for key in PROJECTS:
         db = db_of(key)
@@ -287,7 +275,7 @@ def test_composer_role_owns_its_library_and_its_project_schema(bed):
 
 
 def test_composer_role_search_path(bed):
-    """report_composer_rw's search_path is report_library, core in platform, and
+    """report_composer_rw's search_path is core in platform, and
     report_composer alone in a project database."""
     r = bed.psql("platform", "SHOW search_path", role="report_composer_rw", check=False)
     assert ok(r), f"missing feature: report_composer_rw cannot connect: {r.stderr}"
@@ -296,7 +284,7 @@ def test_composer_role_search_path(bed):
         return [x["c"].replace(" ", "") for x in bed.rows(db, "SELECT unnest(s.setconfig) AS c FROM pg_db_role_setting s"
                 " JOIN pg_roles r ON r.oid = s.setrole JOIN pg_database d ON d.oid = s.setdatabase"
                 f" WHERE r.rolname = 'report_composer_rw' AND d.datname = '{db}'")]
-    assert "search_path=report_library,core" in settings("platform"), settings("platform")
+    assert "search_path=core" in settings("platform"), settings("platform")
     assert "search_path=report_composer" in settings(db_of("A")), settings(db_of("A"))
 
 

@@ -43,8 +43,8 @@ def test_an_unreachable_platform_is_retried(monkeypatch, env):
 
 
 @pytest.mark.parametrize("results", [
-    {"report_library": "failed: SchemaMissing", "project_a": "ok"},
-    {"report_library": "ok", "project_a": "ok", "project_b": "failed: UndefinedTable"},
+    {"project_a": "failed: SchemaMissing", "project_b": "ok"},
+    {"project_a": "ok", "project_b": "failed: UndefinedTable"},
 ])
 def test_a_failed_database_is_permanent(monkeypatch, env, results):
     monkeypatch.setattr(migrate, "project_databases", lambda url: [])
@@ -54,5 +54,5 @@ def test_a_failed_database_is_permanent(monkeypatch, env, results):
 
 def test_everything_at_its_head_is_0(monkeypatch, env):
     monkeypatch.setattr(migrate, "project_databases", lambda url: [])
-    monkeypatch.setattr(migrate, "migrate_everything", lambda *a, **k: {"report_library": "ok", "project_a": "ok"})
+    monkeypatch.setattr(migrate, "migrate_everything", lambda *a, **k: {"project_a": "ok", "project_b": "ok"})
     assert migrate.main([]) == 0

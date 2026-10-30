@@ -168,6 +168,5 @@ def test_the_service_token_never_reaches_a_response(client, auth, fake_renderer)
     lay = layout(client, auth)
     texts = [client.get(f"/api/p/alpha/layouts/{lay['id']}/preview", headers=auth("alice")).text,
              client.post(f"/api/p/alpha/layouts/{lay['id']}/reports", json={"system_id": IDS["A_V2"]}, headers=auth("alice")).text,
-             client.get("/api/block-types", headers=auth("alice")).text,
              client.get("/p/alpha/", headers=auth("alice")).text]
     assert not any("composer-test-token-0123456789" in t for t in texts)

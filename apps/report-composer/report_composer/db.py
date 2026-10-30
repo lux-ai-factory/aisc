@@ -3,8 +3,7 @@
 Every helper takes a connection first. The version, layout, template and report helpers take a
 connection to ONE project's database (projectdb.ProjectDatabases.connect): the database is the project,
 so no row carries or filters by a project column; they read project.system and write only the schema
-report_composer. The preset helpers take a connection to `platform` and use the install-wide library
-report_library. A malformed uuid argument finds nothing.
+report_composer. A malformed uuid argument finds nothing.
 """
 from __future__ import annotations
 

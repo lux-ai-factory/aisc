@@ -21,7 +21,6 @@ from .findings import Finding, fail, warn
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT_TEMPLATE = heads.PROJECT_TEMPLATE
 CONTROLS_MIGRATIONS = heads.CONTROLS_MIGRATIONS
-LIBRARY_MIGRATIONS = ROOT / "apps/report-composer/migrations/library"
 PROJECT_DB = re.compile(r"^project_[0-9a-f]{32}$")
 
 
@@ -59,7 +58,7 @@ KNOWN_DATABASES = {"platform", "keycloak", "superset", "postgres", "control_obje
 #: someone decides to drop them.
 LEFTOVER_DATABASES = {"aisc", "controls", "qualification", "control_objectives"}
 #: What stays in `platform`.
-KNOWN_PLATFORM_SCHEMAS = {"core", "catalogue", "report_library", "ledger", "public"}
+KNOWN_PLATFORM_SCHEMAS = {"core", "ledger", "public"}
 #: The module schemas that moved into the project databases and are dropped by the cutover's final
 #: drop.
 RETIRED_PLATFORM_SCHEMAS = {"engine", "qualification", "control_objectives", "report_composer"}
@@ -314,34 +313,21 @@ def _behind(cl: Cluster, db: str, tracker: heads.Tracker) -> list[Finding]:
     return out
 
 
-def _library_trackers() -> list[heads.Tracker]:
-    out = []
-    if LIBRARY_MIGRATIONS.is_dir():
-        out.append(heads.Tracker("report_library", "report_library.schema_migration",
-                                 "SELECT name FROM report_library.schema_migration",
-                                 tuple(sorted(p.name for p in LIBRARY_MIGRATIONS.glob("*.sql")))))
-    return out
-
-
 def c7_migrations(cl: Cluster) -> list[Finding]:
     """Every project database is at the head of every history it has (a module that has not opened the
     project yet has none, and is a warning): the platform template
     (provision.template_migration), qualification and controls (Prisma, finished and not rolled
-    back), control objectives (alembic), the engine (Django) and the report composer; and in
-    `platform`, the report library when this tree has its migrations."""
+    back), control objectives (alembic), the engine (Django) and the report composer."""
     out = []
     trackers = heads.trackers()
     for db in project_databases(cl):
         for tracker in trackers:
             out += _behind(cl, db, tracker)
-    for tracker in _library_trackers():
-        if cl.rows(cl.platform_db, "SELECT to_regnamespace(%s) IS NOT NULL", (tracker.table.split(".")[0],))[0][0]:
-            out += _behind(cl, cl.platform_db, tracker)
     return out
 
 
 #: Schemas of the platform database that follow the convention (the catalogue is out of scope).
-LINTED_PLATFORM_SCHEMAS = ("core", "report_library")
+LINTED_PLATFORM_SCHEMAS = ("core",)
 #: Schemas of a project database that follow it. engine is frozen, so it is not here.
 LINTED_PROJECT_SCHEMAS = ("project", "qualification", "control_objectives", "report_composer", "controls")
 #: The migration tools' own tables: their columns are the tool's, not ours.

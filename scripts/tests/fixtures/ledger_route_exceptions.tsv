@@ -47,11 +47,13 @@ platform	platform/platform_service/routes/llm.py	remove_llm_provider	its event i
 platform	platform/platform_service/routes/llm.py	save_llm_choice	its event is written one layer down, in the change's own transaction: llm.choice.saved (llm_store.save_choice)
 platform	platform/platform_service/routes/llm.py	remove_llm_choice	its event is written one layer down, in the change's own transaction: llm.choice.removed (llm_store.delete_choice)
 platform	platform/platform_service/routes/connections.py	save_connection	its event is written one layer down, in the change's own transaction: connection.saved (connection_store.save)
-platform	platform/platform_service/routes/connections.py	link_connection	its event is written one layer down, in the change's own transaction: connection.saved (connection_store.record_link)
 platform	platform/platform_service/routes/connections.py	delete_connection	its event is written one layer down, in the change's own transaction: connection.deleted (connection_store.delete)
 platform	platform/platform_service/routes/connections.py	test_connection	its event is written one layer down, in the change's own transaction: connection.tested (connection_store.record_test)
 platform	platform/platform_service/routes/connections.py	put_allowed_host	its event is written one layer down, in the change's own transaction: allowlist.host.allowed (connection_allowlist.put)
 platform	platform/platform_service/routes/connections.py	delete_allowed_host	its event is written one layer down, in the change's own transaction: allowlist.host.removed (connection_allowlist.remove)
+platform	platform/platform_service/routes/helpers.py	save_helper	its event is written one layer down, in the change's own transaction: helper.model.saved (helper_store.save)
+platform	platform/platform_service/routes/helpers.py	remove_helper	its event is written one layer down, in the change's own transaction: helper.model.removed (helper_store.remove)
+platform	platform/platform_service/routes/helpers.py	test_helper	its event is written one layer down, in the change's own transaction: helper.model.tested (helper_store.record_test)
 platform	platform/platform_service/routes/evidence.py	put_evidence_links	its event is written one layer down, in the change's own transaction: evidence.links.saved (evidence.replace)
 platform	platform/platform_service/routes/ledger.py	ledger_internal_event	the ledger's own intake: queues the event a caller without an outbox sends, which is then recorded as itself
 platform	platform/platform_service/routes/ledger.py	ledger_reanchor	writes ledger.reanchored straight to the platform log before it moves the trusted state (no outbox: the log is the record)
@@ -60,7 +62,6 @@ platform	platform/platform_service/routes/facade.py	facade_aisc_ask	forwards a p
 platform	platform/platform_service/routes/facade.py	facade_openai_chat	forwards a plugin's call to the system under test with a run key; changes nothing on the platform
 platform	platform/platform_service/routes/facade.py	facade_a2a_rpc	forwards a plugin's call to the system under test with a run key; changes nothing on the platform
 platform	platform/platform_service/routes/facade.py	facade_oip_infer	forwards a plugin's call to the system under test with a run key; changes nothing on the platform
-platform	platform/platform_service/routes/evidence.py	sync_dashboards	rebuilds each plugin's dashboard tile from the engine's results: a derived view, nothing an assessment holds
 platform	platform/platform_service/routes/catalogue.py	catalogue_install_test	installs the plugin through the engine, whose own event is plugin.installed
 platform	platform/platform_service/routes/connections.py	issue_run_key	not recorded yet: a short-lived key for one evaluation run to reach one connection
 platform	platform/platform_service/routes/connections.py	issue_target_run_key	not recorded yet: a short-lived key for one evaluation run to reach one target's connection

@@ -4,19 +4,17 @@ The bed is `scripts/lib/report_bed_isolated.build_isolated(modules=False)`:
 the composer bed's core seed (alpha, beta, gamma, echo, their versions and members), then the isolated shape:
 alpha, beta and echo each have `project_<hex>` with `project.system` (their own versions) and an empty
 `report_composer` schema; gamma has no database; `platform` keeps core.project and core.project_member only,
-has no report_composer schema and no core.system, and has an empty `report_library` schema (owner
-report_composer_rw). Alice is made an editor of beta as well, so a 404 across projects is the database's
+has no report_composer schema and no core.system. Alice is made an editor of beta as well, so a 404 across projects is the database's
 answer, not the membership's.
 
 The API the tests assume of `report_composer`:
 
     report_composer.app.create_app(*, database_url, project_database_url, renderer, clock=None) -> FastAPI
         database_url          REPORT_COMPOSER_DATABASE_URL, `platform` as report_composer_rw: core.project,
-                              core.project_member and report_library only
+                              core.project and core.project_member only
         project_database_url  REPORT_COMPOSER_PROJECT_DATABASE_URL, the same DSN with `{database}` in place of
                               the name; everything of a project (report_composer.*, project.system)
     migrations/project/0001_project_database.sql, tracked in report_composer.schema_migration of each project
-    migrations/library/0001_presets.sql, tracked in report_library.schema_migration of `platform`
 
 Never the host's 5432.
 """
@@ -137,13 +135,11 @@ def iso_make_client(iso_bed, key, monkeypatch):
 
 @pytest.fixture
 def iso_clean(iso_bed):
-    """Every test starts with no layouts, templates, reports or saved presets (the tables may not exist yet)."""
+    """Every test starts with no layouts, templates or reports (the tables may not exist yet)."""
     for key in ("A", "B", "E"):
         iso_bed.psql(pdb(IDS[key]), "DO $$ BEGIN IF to_regclass('report_composer.layout') IS NOT NULL THEN "
                                     "TRUNCATE report_composer.layout, report_composer.template CASCADE; END IF; END $$;",
                      check=False)
-    iso_bed.psql("platform", "DO $$ BEGIN IF to_regclass('report_library.preset') IS NOT NULL THEN "
-                             "DELETE FROM report_library.preset; END IF; END $$;", check=False)
     yield
 
 

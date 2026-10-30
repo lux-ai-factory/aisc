@@ -12,7 +12,7 @@ PROJECT_ROUTES = [
 ]
 
 
-@pytest.mark.parametrize("method,path", PROJECT_ROUTES + [("get", "/api/block-types"), ("get", "/api/p/alpha/templates")])
+@pytest.mark.parametrize("method,path", PROJECT_ROUTES + [("get", "/api/p/alpha/templates")])
 def test_no_sign_in_is_401(client, method, path):
     r = getattr(client, method)(path, headers={"Origin": "http://localhost"})
     assert r.status_code == 401

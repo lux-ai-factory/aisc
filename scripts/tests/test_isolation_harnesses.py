@@ -49,7 +49,7 @@ def test_project_schemas_name_every_module():
 def test_platform_schemas_are_the_shared_ones_only():
     labels = _server().PLATFORM_SCHEMAS
     # forms are per project, so there is no form library in platform
-    assert set(labels) == {"core", "catalogue", "report_library"}, f"{sorted(labels)}"
+    assert set(labels) == {"core"}, f"{sorted(labels)}"
     assert labels["core"][0] == "Projects and their members", f"core label {labels['core'][0]!r}"
 
 
@@ -234,8 +234,8 @@ def test_stale_graph_is_reported_in_its_project_database(bed, cluster):
       VALUES ('iso-c6-kg', 'iso-c6-card', 'd', '', '{{"now": 2}}', 1, 1);
       INSERT INTO control_objectives.project (id, name, objectives_digest, created_at, updated_at, system_id)
       VALUES ('isoc6assessment', 'Alpha 1', 'x', now(), now(), '{SYS}');
-      INSERT INTO control_objectives.graph (project_id, jsonld, digest, risks, uploaded_at)
-      VALUES ('isoc6assessment', '{{"then": 1}}', 'x', 0, now());"""
+      INSERT INTO control_objectives.graph (project_id, jsonld, digest, uploaded_at)
+      VALUES ('isoc6assessment', '{{"then": 1}}', 'x', now());"""
     undo = f"""SET session_replication_role = replica;
       DELETE FROM control_objectives.graph WHERE project_id = 'isoc6assessment';
       DELETE FROM control_objectives.project WHERE id = 'isoc6assessment';

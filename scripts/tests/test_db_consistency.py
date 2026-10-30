@@ -77,8 +77,8 @@ INSERT INTO qualification.knowledge_graph (id, "qualificationId", digest, turtle
   ('kg-a2', 'q-a2', 'not-a-sha256-of-anything', '# turtle', '{JSONLD}', 1, 1);
 INSERT INTO control_objectives.project (id, name, objectives_digest, created_at, updated_at, system_id) VALUES
   ('coa2', 'Alpha scorer 1.0', 'd', now(), now(), '{A_V2}');
-INSERT INTO control_objectives.graph (project_id, jsonld, digest, risks, uploaded_at) VALUES
-  ('coa2', '{JSONLD}', encode(sha256(convert_to('{JSONLD}', 'UTF8')), 'hex'), 0, now());
+INSERT INTO control_objectives.graph (project_id, jsonld, digest, uploaded_at) VALUES
+  ('coa2', '{JSONLD}', encode(sha256(convert_to('{JSONLD}', 'UTF8')), 'hex'), now());
 INSERT INTO engine.aisc_backend_project (id, pid, name, description, status, created_at, project_id) VALUES
   (1, '{ENGINE_PROJECT}', 'Alpha project', '', 'active', now(), '{A}');
 INSERT INTO engine.aisc_backend_evaluation (id, pid, status, project_id, system_id, created_at) VALUES
@@ -506,12 +506,6 @@ def test_migrations_control_objectives_not_at_its_head(bed, cluster):
     only(found, "FAIL", DB_B, "control_objectives.alembic_version", "older", "not at the head")
 
 
-def test_migrations_the_report_library_behind(bed, cluster):
-    with planted(bed, "platform", "UPDATE report_library.schema_migration SET name = 'x' WHERE name = '0001_presets.sql'",
-                 "UPDATE report_library.schema_migration SET name = '0001_presets.sql' WHERE name = 'x'"):
-        only(checks.c7_migrations(cluster), "FAIL", "platform", "report_library.schema_migration", "0001_presets.sql")
-
-
 def test_migrations_a_project_database_never_provisioned(bed, cluster):
     db = f"project_{ORPHAN_HEX}"
     with planted(bed, "postgres", f'CREATE DATABASE "{db}"', f'DROP DATABASE "{db}"'):
@@ -524,10 +518,9 @@ def test_migrations_a_project_database_never_provisioned(bed, cluster):
 
 LINT_PROJECT_DB = f"project_{ORPHAN_HEX}"
 LINT_PLATFORM = """
-CREATE SCHEMA core; CREATE SCHEMA report_library; CREATE SCHEMA catalogue;
+CREATE SCHEMA core; CREATE SCHEMA catalogue;
 CREATE TABLE core.project (pid uuid, created_at timestamptz);
 CREATE TABLE core.schema_migration (name text, "appliedAt" timestamp);
-CREATE TABLE report_library.preset (id uuid, created_by text);
 CREATE TABLE catalogue.tool ("toolName" text, created_at timestamp);
 CREATE TABLE public.whatever ("camelCase" text);
 """
@@ -589,10 +582,10 @@ C8_CASES = {
         LINT_PROJECT_DB, 'ALTER TABLE project.system ADD COLUMN "createdBy" text',
         'ALTER TABLE project.system DROP COLUMN "createdBy"',
         (LINT_PROJECT_DB, "project.system", "createdBy", "snake_case")),
-    "no time zone in the platform's report library": (
-        "platform", "ALTER TABLE report_library.preset ADD COLUMN made timestamp",
-        "ALTER TABLE report_library.preset DROP COLUMN made",
-        ("platform", "report_library.preset", "made", "timestamp without time zone")),
+    "no time zone in the platform's core": (
+        "platform", "ALTER TABLE core.project ADD COLUMN made timestamp",
+        "ALTER TABLE core.project DROP COLUMN made",
+        ("platform", "core.project", "made", "timestamp without time zone")),
     "no time zone in superset's aisc tables": (
         "superset", "ALTER TABLE aisc_comment ALTER created_at TYPE timestamp",
         "ALTER TABLE aisc_comment ALTER created_at TYPE timestamptz",

@@ -231,7 +231,6 @@ SECRETS = [
     # control_objectives_rw, the control objectives service's database role: postgres-setup applies it
     ("CONTROL_OBJECTIVES_RW_PASSWORD", "rand"),
     ("CONTROLS_RW_PASSWORD", "rand"),
-    ("CATALOGUE_RW_PASSWORD", "rand"),
     ("DEVPI_ROOT_PASSWORD", "rand"),
     ("ENGINE_RW_PASSWORD", "rand"),
     # keys the engine's run tickets; the backend only (the eval worker runs plugin code)

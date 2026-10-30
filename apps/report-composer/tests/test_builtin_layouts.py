@@ -11,9 +11,11 @@ LEVELS = ["Summary", "Management overview", "Assessment report", "EU AI Act conf
 
 
 def _builtins(client, auth):
-    r = client.get("/api/p/alpha/builtin-layouts", headers=auth("victor"))
-    assert r.status_code == 200, r.text
-    return r.json()
+    """The built-in layouts as the layouts page lists them, from the renderer's block types."""
+    from report_composer import builtin_layouts
+    from v2_fakes import FakeRendererV2
+
+    return builtin_layouts.all_layouts(FakeRendererV2().block_types())
 
 
 def test_five_levels_in_order(client_v2, auth):
@@ -51,10 +53,13 @@ def test_the_technical_dossier_shows_every_tool_run(client_v2, auth):
     assert runs and runs[0]["options"]["detail"] == "full"
 
 
-def test_one_built_in_is_read_by_its_id(client_v2, auth):
-    r = client_v2.get("/api/p/alpha/builtin-layouts/builtin-eu-ai-act", headers=auth("victor"))
-    assert r.status_code == 200 and r.json()["name"] == "EU AI Act conformity"
-    assert client_v2.get("/api/p/alpha/builtin-layouts/builtin-nope", headers=auth("victor")).status_code == 404
+def test_one_built_in_is_read_by_its_id():
+    from report_composer import builtin_layouts
+    from v2_fakes import FakeRendererV2
+
+    block_types = FakeRendererV2().block_types()
+    assert builtin_layouts.get("builtin-eu-ai-act", block_types)["name"] == "EU AI Act conformity"
+    assert builtin_layouts.get("builtin-nope", block_types) is None
 
 
 def test_duplicate_makes_an_editable_project_layout(client_v2, auth):

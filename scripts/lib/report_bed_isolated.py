@@ -24,8 +24,7 @@ What it does, in order:
     (READERS) for report_ro and dashboard_ro. When the platform's template files 0006..0010 exist they
     are applied by step 2 and this step only adds what the modules' migrations would add; when they
     do not, the bed stands in for them and records it in `bed.applied["templates 0006..0010"] = False`.
- 5. In `platform`: the moving schemas and core.system are dropped (the cutover's final drop); schema
-    report_library is made (owner report_composer_rw) when init/platform-db.sql did not make it.
+ 5. In `platform`: the moving schemas and core.system are dropped (the cutover's final drop).
 
 Never the host's 5432 (the bed's own port). Never prints a password or a row.
 """
@@ -270,10 +269,6 @@ def build_isolated(label: str = "iso-rep", *, modules: bool = True, no_database=
                 conn.execute(f"DROP SCHEMA {s} CASCADE")
             conn.execute("DROP TABLE IF EXISTS core.system CASCADE")
             conn.execute("DROP FUNCTION IF EXISTS core.system_only_latest_changes()")
-            bed.applied["report_library by init"] = conn.execute(
-                "SELECT 1 FROM pg_namespace WHERE nspname = 'report_library'").fetchone() is not None
-            if not bed.applied["report_library by init"] and "report_composer_rw" in _roles(conn):
-                conn.execute("CREATE SCHEMA report_library AUTHORIZATION report_composer_rw")
         return bed
     except Exception:
         bed.stop()

@@ -26,9 +26,6 @@ ROLES = [
       for var in ("DATABASE_URL", "PROJECT_DATABASE_URL")]),
     ("controls_rw", "CONTROLS_RW_PASSWORD", "controls-role.sql",
      [("controls-web", "PROJECT_DATABASE_URL"), ("controls-migrate", "PROJECT_DATABASE_URL")]),
-    # no service of this stack logs in as catalogue_rw (catalogue-private is the frontend only; the
-    # catalogue backend is the hosted one), but the role can log in, so it gets a password all the same
-    ("catalogue_rw", "CATALOGUE_RW_PASSWORD", "catalogue-role.sql", []),
     # the dashboard gets the password itself too, for the project connections its bridge registers
     ("dashboard_ro", "DASHBOARD_RO_PASSWORD", "dashboard-role.sql",
      [("dashboard", "AISC_MEMBERSHIP_DB_URI"), ("dashboard", "DASHBOARD_RO_PASSWORD")]),

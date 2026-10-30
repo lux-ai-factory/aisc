@@ -6,8 +6,7 @@
 -- (project_<pid without hyphens>, made by the platform service from platform/project-template/):
 -- the card versions (project.system), qualification and its forms, control objectives, controls,
 -- the engine and the report composer. What stays here is only what belongs to no project: the
--- projects and who is in them (core). The schemas catalogue and report_library made below are
--- no longer used by any service.
+-- projects and who is in them (core).
 --
 -- Each module reads the projects and their members and nothing else here. The grants below are
 -- that contract, and scripts/verify-project-databases.sh checks it role by role
@@ -48,12 +47,6 @@ CREATE INDEX project_created_at_idx ON core.project (created_at DESC);
 COMMENT ON TABLE core.project IS 'An assessment, defined once for the whole platform.';
 
 -- ---------------------------------------------------------------------------
--- the catalogue: reference data, the same for every project
--- ---------------------------------------------------------------------------
-CREATE SCHEMA catalogue;
-COMMENT ON SCHEMA catalogue IS 'Step 3: the registry of tests and controls. Reference data: the same for every project, so nothing in it belongs to one.';
-
--- ---------------------------------------------------------------------------
 -- roles: a module may connect here, read the projects and their members, and
 -- nothing else; everything it writes is in a project database.
 --
@@ -73,7 +66,7 @@ BEGIN
         ('control_objectives_rw'),
         ('controls_rw'),
         ('engine_rw'),
-        -- the catalogue: the registry of tests and controls
+        -- kept only because platform migrations 0001 and 0002 grant to it; it cannot log in (below)
         ('catalogue_rw'),
         -- the report composer (init/report-roles.sql sets its real password on every start)
         ('report_composer_rw'),
@@ -89,6 +82,7 @@ BEGIN
     END LOOP;
 END
 $roles$;
+ALTER ROLE catalogue_rw NOLOGIN PASSWORD NULL;
 
 -- everyone may connect, and see the core
 GRANT CONNECT ON DATABASE platform TO
@@ -110,15 +104,6 @@ GRANT ALL ON ALL TABLES IN SCHEMA core TO platform_rw;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA core TO platform_rw;
 ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON TABLES TO platform_rw;
 ALTER DEFAULT PRIVILEGES IN SCHEMA core GRANT ALL ON SEQUENCES TO platform_rw;
-
--- the catalogue belongs to its module
-GRANT USAGE, CREATE ON SCHEMA catalogue TO catalogue_rw;
-ALTER ROLE catalogue_rw IN DATABASE platform SET search_path = catalogue, core;
-
--- The install-wide library of report presets: it holds no project's data. It is owned by the
--- module that migrates it; a project copies what it uses into its own database.
-CREATE SCHEMA report_library AUTHORIZATION report_composer_rw;
-COMMENT ON SCHEMA report_library IS 'The install-wide library of report presets (D4): no project data.';
 
 -- The ledger's Postgres side: the platform service owns it and its migrations (0006 onwards)
 -- make its tables. No module role gets USAGE, so none can read the witness records, the person

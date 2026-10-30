@@ -188,18 +188,14 @@ def _outline_unwritten(client, auth, lay, blocks):
 
 @pytest.mark.db
 @pytest.mark.usefixtures("clean_layouts")
-@pytest.mark.parametrize("call", ["palette", "validate"])
-def test_after_a_restart_the_next_block_types_call_refreshes_the_outline(make_client, auth, call):
+def test_after_a_restart_the_next_block_types_call_refreshes_the_outline(make_client, auth):
     fake = Restartable()
     client = make_client(fake)
     lay = new_layout(client, auth, name=unique("Restart"), system_id=IDS["A_V2"], blocks=[v2blk("cover")])
     notes = [v2blk("auditor_notes", notes=PLACEHOLDER)]
     assert _outline_unwritten(client, auth, lay, notes) == [[]]      # unknown type: the fixed list
     fake.restarted = True
-    if call == "palette":
-        r = client.get("/api/block-types", headers=auth("alice"))
-    else:
-        r = client.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice"))
+    r = client.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice"))
     assert r.status_code == 200, r.text[:300]
     assert _outline_unwritten(client, auth, lay, notes) == [["notes"]]
 

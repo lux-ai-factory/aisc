@@ -124,9 +124,9 @@ PLATFORM_TABLES = {r: {("core.project", "SELECT"), ("core.project_member", "SELE
 PLATFORM_TABLES["dashboard_ro"] = {("core.project_member", "SELECT")}
 PLATFORM_TABLES["report_ro"] = {("core.project", "SELECT")}
 #: the platform schema each of these roles holds by design (its owner, or made for it)
-HOLDS = {"report_composer_rw": "report_library", "catalogue_rw": "catalogue"}
+HOLDS: dict[str, str] = {}
 #: the schemas of platform in the final layout
-PLATFORM_SCHEMAS = {"core", "catalogue", "report_library", "ledger", "public"}   # ledger: the platform's own (pool, witness, index)
+PLATFORM_SCHEMAS = {"core", "ledger", "public"}   # ledger: the platform's own (pool, witness, index)
 CORE_TABLES = {"project", "project_member", "schema_migration", "outbox"}   # outbox: the platform's ledger events (0008)
 #: module schema of a project database -> its role
 MODULES = {"qualification": "qualification_rw", "control_objectives": "control_objectives_rw",

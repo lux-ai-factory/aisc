@@ -40,9 +40,6 @@ GRANT SELECT ON core.project TO report_ro, report_composer_rw;
 SELECT 'GRANT SELECT ON core.project_member TO report_composer_rw'
  WHERE to_regclass('core.project_member') IS NOT NULL \gexec
 
--- The composer's schemas: report_composer lives in each project database (template
--- 0010_report_composer.sql); here only the install-wide library of presets, which
--- init/platform-db.sql makes on a fresh volume. Nothing here touches the retired shared
--- report_composer schema.
-CREATE SCHEMA IF NOT EXISTS report_library AUTHORIZATION report_composer_rw;
-ALTER ROLE report_composer_rw IN DATABASE platform SET search_path = report_library, core;
+-- The composer's schema, report_composer, lives in each project database (template
+-- 0010_report_composer.sql); here it only reads core.
+ALTER ROLE report_composer_rw IN DATABASE platform SET search_path = core;
