@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Evidence map - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=MuseoModerno:wght@500;600;700&family=Raleway:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  /* The launcher's look (homepage/project.html): same tokens, header and session line.
+     Everything this page decides is decided by the platform; the page only shows it. */
+  :root{
+    --bg:#f2f3fd; --panel:#ffffff; --panel-2:#f2f3fd;
+    --text:#0b0b2e; --muted:#4a4f6a; --faint:#6b7090;
+    --primary:#000fdf; --primary-hover:#000079; --heading:#000079;
+    --accent:#ff007e; --accent-hover:#cc0066;
+    --border:#cccff9; --border-strong:#999ff2;
+    --radius:0px;
+    --gutter:40px;
+    --col-centre:calc((100% - 2 * var(--gutter)) / 6);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --error:#e30613;
+    --ok:#0a7a45;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    position:relative; min-height:100vh;
+    background:var(--bg); color:var(--text);
+    font-family:"Raleway",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{font-family:"MuseoModerno",ui-sans-serif,system-ui,sans-serif; color:var(--heading)}
+  .shell{position:relative; z-index:1}
+
+  /* ---- header ---- */
+  .topbar{
+    display:flex; align-items:center; gap:22px;
+    padding:20px 40px; border-bottom:1px solid var(--border);
+    background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
+    position:sticky; top:0; z-index:10;
+  }
+  .topbar img{height:48px; width:auto; display:block}
+  .topbar .back{
+    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--primary); text-decoration:none; border:1px solid var(--border-strong);
+    padding:7px 11px; white-space:nowrap;
+  }
+  .topbar .back:hover{background:var(--primary); color:#fff; border-color:var(--primary)}
+  .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
+  .topbar h1{
+    margin:0; font-size:19px; font-weight:700; color:var(--heading);
+  }
+  .session{
+    margin-left:auto;
+    display:flex; align-items:center; gap:14px;
+    font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
+  }
+  .session b{color:var(--text); font-weight:500}
+  .session a{color:var(--primary); text-decoration:none; border-bottom:1px solid transparent}
+  .session a:hover{border-bottom-color:var(--primary)}
+
+  main{max-width:1180px; margin:0 auto; padding:40px 32px 64px}
+  .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
+  .subtitle{margin:0 0 30px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .note{
+    margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);
+    color:var(--muted); font-size:13px; background:rgba(0,15,223,.02);
+  }
+  section{margin-top:34px}
+  section h2{
+    margin:0 0 6px; font-size:13px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--heading);
+  }
+  section > p{margin:0 0 16px; color:var(--muted); font-size:13.5px; max-width:80ch}
+
+
+  /* the hidden attribute wins over any display rule (Save on a read-only version, for a viewer) */
+  [hidden]{display:none !important}
+  .crumb{font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .crumb a{color:var(--primary); text-decoration:none}
+  .bar{display:flex; flex-wrap:wrap; align-items:center; gap:14px 22px; margin:18px 0 0}
+  .bar label{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+             display:inline-flex; align-items:center; gap:6px}
+  select.version{font:inherit; font-size:14px; font-weight:700; color:var(--text); background:var(--panel);
+                 border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer}
+  .coverage{font-family:var(--mono); font-size:12.5px; color:var(--text)}
+  .review{font-size:13px; color:var(--muted)}
+  .review b{color:var(--ok); font-weight:600}
+  button{
+    display:inline-flex; align-items:center; gap:8px; padding:8px 14px; cursor:pointer;
+    border:1px solid var(--primary); background:var(--primary); color:#fff;
+    font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+  }
+  button:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
+  button:disabled{opacity:.5; cursor:default}
+  button.quiet{background:var(--panel); color:var(--primary)}
+  button.quiet:hover{background:var(--panel-2)}
+  .msg{font-size:12.5px; color:var(--muted); white-space:pre-wrap}
+  .msg.err{color:var(--error)} .msg.ok{color:var(--ok)}
+
+  /* the grid: objectives frozen on the left, the header frozen on top, the items scroll under them */
+  .grid-wrap{--obj-w:340px; overflow:auto; max-height:72vh; max-width:100%; margin-top:20px;
+             border:1px solid var(--border); background:var(--panel)}
+  table{border-collapse:separate; border-spacing:0}
+  th, td{padding:8px 10px; border-bottom:1px solid var(--border); border-right:1px solid var(--border);
+         text-align:left; vertical-align:middle; background:var(--panel)}
+  thead th{position:sticky; top:0; z-index:2; font-family:var(--mono); font-size:10.5px; font-weight:500;
+           letter-spacing:.04em; color:var(--muted); background:var(--panel-2); vertical-align:bottom}
+  thead th.item{width:120px; min-width:120px; max-width:120px; white-space:normal; line-height:1.35}
+  th.item .kind{display:block; color:var(--primary); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase}
+  th.item .dims{display:block; color:var(--faint); font-size:9.5px; margin-top:3px}
+  .frozen{position:sticky; left:0; z-index:1; width:var(--obj-w); min-width:var(--obj-w); max-width:var(--obj-w)}
+  thead th.frozen{z-index:3}
+  th.objective{font-weight:400; font-size:13px}
+  th.objective b{font-family:var(--mono); font-size:12px; margin-right:6px}
+  th.objective .meta{display:block; font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:3px}
+  .prio{display:inline-block; margin-left:6px; padding:0 6px; font-family:var(--mono); font-size:10px;
+        color:#fff; background:var(--accent); letter-spacing:.06em}
+  .stale{display:inline-block; margin-left:6px; padding:0 6px; font-family:var(--mono); font-size:10px;
+         text-transform:uppercase; color:var(--error); border:1px solid var(--error)}
+  tr.is-stale th.objective{opacity:.6}
+  td.cell{text-align:center; font-size:16px}
+  td.cell button{padding:2px 8px; font-size:15px; letter-spacing:0; background:var(--panel); color:var(--primary)}
+  td.cell button.on{background:var(--primary); color:#fff}
+  td.cell .off{color:var(--faint)}
+  td.status{font-family:var(--mono); font-size:11.5px; white-space:nowrap}
+  .s-not-covered{color:var(--error); font-weight:600}
+  .s-no-evidence{color:var(--muted)}
+  .s-evidence{color:var(--ok); font-weight:600}
+  .s-attention{color:#b06000; font-weight:600}
+
+  /* one link, opened from its cell */
+  .panel{margin-top:20px; padding:16px 18px; border:1px solid var(--border-strong); background:var(--panel); max-width:720px}
+  .panel h3{margin:0 0 8px; font-size:15px}
+  .panel p{margin:0 0 8px; font-size:13px; color:var(--muted)}
+  .panel textarea{width:100%; min-height:70px; font:inherit; font-size:13.5px; padding:8px; border:1px solid var(--border)}
+  .panel .row{display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap}
+
+  @media (max-width:820px){
+    .topbar{padding:12px 18px; gap:14px}
+    main{padding:28px 18px 40px}
+    .grid-wrap{--obj-w:200px}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to Collect evidence">&larr; Collect evidence</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="crumb" id="crumb"></p>
+  <p class="note" id="page-message" hidden></p>
+
+  <div class="bar" id="bar" hidden>
+    <label for="version">AI card version <select class="version" id="version"></select></label>
+    <span class="coverage" id="coverage"></span>
+    <label><input type="checkbox" id="gaps-only"/> Gaps only</label>
+    <label><input type="checkbox" id="priority-only"/> Priority only</label>
+  </div>
+  <div class="bar">
+    <span class="review" id="review"></span>
+    <button type="button" id="mark-reviewed" hidden></button>
+    <button type="button" class="quiet" id="copy" hidden></button>
+    <span class="msg" id="msg"></span>
+  </div>
+
+  <div class="grid-wrap" id="grid-wrap" hidden>
+    <table id="grid"></table>
+  </div>
+  <div class="panel" id="panel" hidden></div>
+</main>
+</div>
+
+<script>
+  // Everything here is decided by the platform (platform_service/evidence.py): what may be linked, each
+  // objective's coverage, who may review. The page shows it and sends the links back.
+  var params = new URLSearchParams(location.search);
+  var slug = params.get('project') || '';
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var version = params.get('version');
+  var enc = encodeURIComponent;
+  var NOT_ANSWERING = 'The platform is not answering.';
+  var data = null;
+  var STATUS = {'not covered': 'Not covered', 'no evidence': 'No evidence yet', 'evidence': 'Evidence',
+                'attention': 'Evidence, attention'};
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text) node.textContent = text;
+    return node;
+  }
+  function show(id, text) { var node = $(id); if (text !== undefined) node.textContent = text; node.hidden = false; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function day(iso) {
+    var d = new Date(iso);
+    return [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join('.');
+  }
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(path, {
+      method: opts.method || 'GET', credentials: 'same-origin',
+      headers: opts.body ? {'Content-Type': 'application/json'} : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (d) { return {res: res, d: d}; });
+    });
+  }
+  function refusal(r) {
+    if (r.d && typeof r.d.detail === 'string') return r.d.detail;
+    if (r.d && Array.isArray(r.d.detail)) return r.d.detail.map(function (e) { return (e.loc || []).slice(-1)[0] + ': ' + e.msg; }).join('; ');
+    return 'Refused (HTTP ' + r.res.status + ')';
+  }
+  function say(text, kind) { var m = $('msg'); m.textContent = text || ''; m.className = 'msg' + (kind ? ' ' + kind : ''); }
+
+  // the links this version has saved (carried ones are offered, not saved, until copied)
+  function saved() { return data.carried_from ? [] : data.links; }
+  function linkOf(o, kind, item) {
+    return saved().filter(function (l) { return l.objective_id === o.id && l.kind === kind && l.key === item.key; })[0];
+  }
+  // a link can be made when neither end is stale and the item carries the objective's dimension
+  // (unknown dimensions refuse nothing, as on the platform)
+  function canLink(o, item) {
+    if (o.stale || item.stale) return false;
+    return !o.dimension || !item.dimensions || item.dimensions.indexOf(o.dimension) >= 0;
+  }
+  function items() {
+    var linked = {};
+    saved().forEach(function (l) { linked[l.kind + '|' + l.key] = true; });
+    var shown = function (kind) { return function (item) { return !item.stale || linked[kind + '|' + item.key]; }; };
+    return data.tests.filter(shown('test')).map(function (t) { return {kind: 'test', item: t}; })
+      .concat(data.controls.filter(shown('control')).map(function (c) { return {kind: 'control', item: c}; }));
+  }
+
+  function save(links, done) {
+    say('Saving\u2026');
+    api('/api/projects/' + enc(slug) + '/evidence/links', {method: 'PUT', body: {
+      version: data.version.pid,
+      links: links.map(function (l) { return {objective_id: l.objective_id, kind: l.kind, key: l.key, note: l.note || null}; })
+    }}).then(function (r) {
+      if (!r.res.ok) { say(refusal(r), 'err'); return; }
+      data = r.d; say('Saved.', 'ok'); render(); if (done) done();
+    }).catch(function () { say(NOT_ANSWERING, 'err'); });
+  }
+
+  function header() {
+    var tr = el('tr');
+    tr.appendChild(el('th', 'frozen', 'Control objective'));
+    items().forEach(function (c) {
+      var th = el('th', 'item');
+      th.appendChild(el('span', 'kind', c.kind === 'test' ? 'Test' : 'Checklist'));
+      th.appendChild(el('span', null, c.item.label));
+      th.appendChild(el('span', 'dims', (c.item.dimensions || []).join(' ')));
+      if (c.item.stale) th.appendChild(el('span', 'stale', c.item.stale));
+      tr.appendChild(th);
+    });
+    tr.appendChild(el('th', null, 'Linked'));
+    tr.appendChild(el('th', null, data.version ? 'Evidence (v' + data.version.number + ')' : 'Evidence'));
+    var thead = el('thead');
+    thead.appendChild(tr);
+    return thead;
+  }
+
+  function objectiveCell(o) {
+    var th = el('th', 'objective frozen');
+    th.appendChild(el('b', null, o.id));
+    th.appendChild(document.createTextNode(o.title || ''));
+    if (o.priority) th.appendChild(el('span', 'prio', 'Priority'));
+    if (o.stale) th.appendChild(el('span', 'stale', o.stale));
+    var meta = [o.dimension || '', o.expects ? 'expects ' + o.expects : ''];
+    meta = meta.concat(o.risks.map(function (r) {
+      return r.id + ' ' + r.label + ' (' + (r.impact && r.likelihood ? r.impact + '\u00d7' + r.likelihood : 'not rated') + ')';
+    }));
+    th.appendChild(el('span', 'meta', meta.filter(Boolean).join(' \u00b7 ')));
+    return th;
+  }
+
+  function cell(o, c) {
+    var td = el('td', 'cell'), link = linkOf(o, c.kind, c.item);
+    if (link) {
+      var on = el('button', 'on', '\u2713');
+      on.type = 'button'; on.title = link.note || 'Open the link';
+      on.addEventListener('click', function () { openLink(o, c, link); });
+      td.appendChild(on);
+    } else if (canLink(o, c.item) && data.can_edit) {
+      var add = el('button', null, '\u2610');
+      add.type = 'button'; add.title = 'Link ' + c.item.label + ' to ' + o.id;
+      add.addEventListener('click', function () {
+        save(saved().concat([{objective_id: o.id, kind: c.kind, key: c.item.key, note: null}]));
+      });
+      td.appendChild(add);
+    } else {
+      td.appendChild(el('span', 'off', canLink(o, c.item) ? '\u2610' : '\u00b7'));
+    }
+    return td;
+  }
+
+  function render() {
+    renderBar();
+    var grid = $('grid');
+    grid.textContent = '';
+    grid.appendChild(header());
+    var tbody = el('tbody'), gaps = $('gaps-only').checked, prio = $('priority-only').checked;
+    data.objectives.filter(function (o) {
+      return (!gaps || (!o.linked && !o.stale)) && (!prio || o.priority);
+    }).forEach(function (o) {
+      var tr = el('tr', o.stale ? 'is-stale' : null);
+      tr.appendChild(objectiveCell(o));
+      items().forEach(function (c) { tr.appendChild(cell(o, c)); });
+      tr.appendChild(el('td', 'status', o.linked ? 'Yes' : 'No'));
+      tr.appendChild(el('td', 'status s-' + o.evidence.replace(' ', '-'), STATUS[o.evidence] || o.evidence));
+      tbody.appendChild(tr);
+    });
+    grid.appendChild(tbody);
+    $('grid-wrap').hidden = !data.objectives.length;
+    if (!data.objectives.length) show('page-message', 'No control objectives selected for this version yet: select them in step 2, Control objectives.');
+  }
+
+  function renderBar() {
+    var c = data.coverage;
+    $('coverage').textContent = c.linked + ' of ' + c.objectives + ' objectives linked \u00b7 ' + c.gaps + ' gaps';
+    var r = data.review;
+    $('review').textContent = '';
+    if (r) {
+      $('review').appendChild(el('b', null, 'Reviewed'));
+      $('review').appendChild(document.createTextNode(' by ' + r.reviewed_by_name + ' on ' + day(r.reviewed_at)));
+    } else {
+      $('review').textContent = data.read_only ? 'Not reviewed.' : 'Not reviewed yet. Someone who made none of its links reviews the map.';
+    }
+    $('mark-reviewed').textContent = 'Mark reviewed';
+    $('mark-reviewed').hidden = !data.can_review;
+    var copy = $('copy');
+    copy.hidden = !(data.carried_from && data.can_edit);
+    if (data.carried_from) copy.textContent = 'Copy the v' + data.carried_from + ' map';
+  }
+
+  // one link: why it is evidence, who linked it and when, what this version's runs or answers say, Unlink
+  function openLink(o, c, link) {
+    var panel = $('panel');
+    panel.textContent = '';
+    panel.appendChild(el('h3', null, o.id + ' \u2190 ' + c.item.label));
+    var made = el('p', null, 'Linked on ' + day(link.created_at));
+    made.title = 'By ' + link.created_by;
+    panel.appendChild(made);
+    if (c.kind === 'test' && c.item.runs) {
+      panel.appendChild(el('p', null, 'This version: ' + c.item.runs.executed + ' completed \u00b7 ' + c.item.runs.failed +
+        ' failed \u00b7 ' + c.item.runs.running + ' running'));
+    } else if (c.kind === 'control') {
+      var s = c.item.submission;
+      panel.appendChild(el('p', null, s ? 'Latest answers: ' + s.answered + ' of ' + s.questions + ' answered' +
+        (s.readiness !== null ? ' \u00b7 readiness ' + s.readiness + '%' : '') : 'Not answered yet'));
+    }
+    var note = el('textarea');
+    note.maxLength = 1000;
+    note.placeholder = 'Why it is evidence: what result counts as a pass';
+    note.value = link.note || '';
+    note.disabled = !data.can_edit;
+    panel.appendChild(note);
+    if (data.can_edit) {
+      var row = el('div', 'row');
+      var keep = el('button', null, 'Save note');
+      keep.type = 'button';
+      keep.addEventListener('click', function () {
+        save(saved().map(function (l) { return l === link ? {objective_id: l.objective_id, kind: l.kind, key: l.key, note: note.value.trim()} : l; }),
+             function () { panel.hidden = true; });
+      });
+      var drop = el('button', 'quiet', 'Unlink');
+      drop.type = 'button';
+      drop.addEventListener('click', function () {
+        save(saved().filter(function (l) { return l !== link; }), function () { panel.hidden = true; });
+      });
+      row.appendChild(keep);
+      row.appendChild(drop);
+      panel.appendChild(row);
+    }
+    panel.hidden = false;
+    panel.scrollIntoView({block: 'nearest'});
+  }
+
+  function load() {
+    return api('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
+      .then(function (r) {
+        if (!r.res.ok) { show('page-message', refusal(r)); return; }
+        data = r.d;
+        var select = $('version');
+        select.textContent = '';
+        (data.versions || []).forEach(function (v, i) {
+          var option = el('option', null, 'Version ' + v.number + (i === 0 ? ' (latest)' : ''));
+          option.value = v.pid;
+          if (data.version && v.pid === data.version.pid) option.selected = true;
+          select.appendChild(option);
+        });
+        if (!data.version) { show('page-message', 'This project has no AI card version yet: describe the system in step 1, Qualify.'); return; }
+        if (!data.can_edit) show('page-message', data.read_only ? 'An older version: its map is kept as it was.' : 'You can read this map; editors and owners change it.');
+        $('bar').hidden = false;
+        render();
+      });
+  }
+
+  function boot() {
+    var back = '/evidence.html?project=' + enc(slug) + (version ? '&version=' + enc(version) : '');
+    $('back').href = back;
+    var crumb = $('crumb'), a = el('a', null, 'Collect evidence');
+    a.href = back;
+    crumb.appendChild(a);
+    crumb.appendChild(el('span', null, '\u203a'));
+    crumb.appendChild(el('b', null, 'Evidence map'));
+    $('version').addEventListener('change', function () {
+      var picked = $('version').value, latest = data.versions[0].pid;
+      location.search = '?project=' + enc(slug) + (picked === latest ? '' : '&version=' + enc(picked));
+    });
+    $('gaps-only').addEventListener('change', render);
+    $('priority-only').addEventListener('change', render);
+    $('copy').addEventListener('click', function () { save(data.links.map(function (l) { return l; })); });
+    $('mark-reviewed').addEventListener('click', function () {
+      say('Saving\u2026');
+      api('/api/projects/' + enc(slug) + '/evidence/review', {method: 'POST', body: {version: data.version.pid}})
+        .then(function (r) {
+          if (!r.res.ok) { say(refusal(r), 'err'); return; }
+          data = r.d; say('Reviewed.', 'ok'); render();
+        }).catch(function () { say(NOT_ANSWERING, 'err'); });
+    });
+    api('/api/projects/' + enc(slug))
+      .then(function (r) {
+        if (!r.res.ok) { show('page-message', 'No such project: ' + slug + '.'); return null; }
+        $('project-name').textContent = r.d.name;
+        document.title = r.d.name + ' - Evidence map';
+        return load();
+      })
+      .catch(function () { show('page-message', NOT_ANSWERING); });
+    fetch('/oauth2/userinfo', {credentials: 'same-origin'})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { $('who').textContent = d ? (d.preferredUsername || d.user || d.email || 'user') : 'signed in'; })
+      .catch(function () { $('who').textContent = 'signed in'; });
+  }
+  boot();
+</script>
+</body>
+</html>

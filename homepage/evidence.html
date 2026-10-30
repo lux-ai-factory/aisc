@@ -121,6 +121,13 @@
   details.idle summary:hover{color:var(--primary)}
   details.idle .tiles{margin-top:6px}
   .version-bar{display:flex; align-items:center; gap:10px; margin:8px 0 0}
+  /* the Evidence map of the version shown, with its coverage in one line */
+  .map-bar{display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:14px 0 0}
+  a.map{display:inline-flex; align-items:center; padding:9px 16px; text-decoration:none;
+        border:1px solid var(--primary); color:var(--primary); background:var(--panel);
+        font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase}
+  a.map:hover{background:var(--primary); color:#fff}
+  .map-coverage{font-family:var(--mono); font-size:12.5px; color:var(--muted)}
   .version-bar label{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
   select.version{font:inherit; font-size:14px; font-weight:700; color:var(--text); background:var(--panel);
                  border:1px solid var(--border); border-radius:6px; padding:6px 12px; cursor:pointer}
@@ -158,6 +165,10 @@
   <div class="version-bar" hidden id="version-bar">
     <label for="version">AI card version</label>
     <select class="version" id="version" aria-label="AI card version"></select>
+  </div>
+  <div class="map-bar" id="map-bar" hidden>
+    <a class="map" id="evidence-map" href="#">Evidence map</a>
+    <span class="map-coverage" id="map-coverage"></span>
   </div>
   <p class="note" id="page-message" hidden></p>
 
@@ -402,7 +413,16 @@
       });
   }
 
+  // which objectives of the version's matrix a test or checklist covers: the map is where links are made
+  function renderMap() {
+    $('evidence-map').href = '/evidence-map.html?project=' + enc(slug) + (version ? '&version=' + enc(version) : '');
+    var c = data.coverage;
+    $('map-coverage').textContent = c ? c.linked + ' of ' + c.objectives + ' objectives linked \u00b7 ' + c.gaps + ' gaps' : '';
+    $('map-bar').hidden = !data.version;
+  }
+
   function render() {
+    renderMap();
     renderTiles();
     renderControlTiles();
     renderTargetTiles();

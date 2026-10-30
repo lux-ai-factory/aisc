@@ -345,7 +345,9 @@ _ACTIONS = [
     # step 4: evidence, engine, controls
     _a("evidence.links.saved", 4, ("platform",), "evidence",
        caused_by=(("platform", "PUT", _LAUNCH + "/evidence/links$"),),
-       details_keys=("added", "removed", "carried"), content_required=True, empty_content=True),
+       details_keys=("added", "removed", "carried", "notes_changed"), content_required=True, empty_content=True),
+    _a("evidence.map.reviewed", 4, ("platform",), "evidence",
+       caused_by=(("platform", "POST", _LAUNCH + "/evidence/review$"),), details_keys=("links",)),
     _a("engine.evaluation.run_requested", 4, ("engine",), "evaluation",
        caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),), details_keys=("plugins", "local_models"),
        runs=("engine.evaluation.status_changed", "engine.evaluation.plugin_status_changed", "engine.measures.recorded",

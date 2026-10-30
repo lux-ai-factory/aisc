@@ -34,7 +34,13 @@ READER = os.environ.get("EVIDENCE_TEST_READER_URL")
 MODULE_TABLES = """
 CREATE TABLE IF NOT EXISTS control_objectives.project (id varchar(32) PRIMARY KEY, system_id uuid NOT NULL);
 CREATE TABLE IF NOT EXISTS control_objectives.objective_selection (
-    project_id varchar(32) PRIMARY KEY, objective_ids text[] NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
+    project_id varchar(32) PRIMARY KEY, objective_ids text[] NOT NULL, priority_ids text[] NOT NULL DEFAULT '{}',
+    updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS control_objectives.risk (
+    id serial PRIMARY KEY, project_id varchar(32) NOT NULL, risk_id text NOT NULL, position int NOT NULL DEFAULT 0,
+    text text NOT NULL, short_label text NOT NULL DEFAULT '', rating_impact int, rating_likelihood int);
+CREATE TABLE IF NOT EXISTS control_objectives.mapped_objective (
+    id serial PRIMARY KEY, risk_row_id int NOT NULL, objective_id text NOT NULL);
 CREATE TABLE IF NOT EXISTS engine.aisc_backend_plugin (
     id serial PRIMARY KEY, package_name text NOT NULL, version text NOT NULL, display_name text NOT NULL,
     catalogue_slug text, enabled boolean NOT NULL DEFAULT true, name text);
@@ -62,8 +68,9 @@ CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version (
     id varchar(32) PRIMARY KEY, set_id varchar(32) NOT NULL, number int NOT NULL);
 CREATE TABLE IF NOT EXISTS control_objectives.objective_set_version_item (
     set_version_id varchar(32) NOT NULL, objective_id text NOT NULL, label text NOT NULL, dimension text NOT NULL,
-    PRIMARY KEY (set_version_id, objective_id));
-GRANT SELECT ON control_objectives.project, control_objectives.objective_selection,
+    assessment_mode text NOT NULL DEFAULT 'Control + Test', PRIMARY KEY (set_version_id, objective_id));
+GRANT SELECT ON control_objectives.project, control_objectives.objective_selection, control_objectives.risk,
+    control_objectives.mapped_objective,
     control_objectives.objective_set_version, control_objectives.objective_set_version_item,
     engine.aisc_backend_plugin, controls.checklist, engine.aisc_backend_project,
     engine.aisc_backend_evaluation, engine.aisc_backend_evaluationplugin, controls.checklist_question,
@@ -85,11 +92,13 @@ def catalogue(monkeypatch):
     """The control-objectives service's public catalogue, which names the objectives."""
     stub = Stub()
     stub.route("GET", "/api/control-objectives", (200, [
-        {"id": "O1", "sub_requirement_label": "Risk management system", "macro_id": "REQ1"},
+        {"id": "O1", "sub_requirement_label": "Risk management system", "macro_id": "REQ1",
+         "assessment_mode": "Control + Test"},
         {"id": "O7", "sub_requirement_label": "Security incidents", "macro_id": "REQ2"},
         {"id": "O9", "sub_requirement_label": "Calibration", "macro_id": "REQ2"},
         {"id": "O10", "sub_requirement_label": "Safe state", "macro_id": "REQ2"},
-        {"id": "O24", "sub_requirement_label": "Human oversight", "macro_id": "REQ6"}]))
+        {"id": "O24", "sub_requirement_label": "Human oversight", "macro_id": "REQ6",
+         "assessment_mode": "Control"}]))
     monkeypatch.setenv("CONTROL_OBJECTIVES_URL", stub.base)
     evidence.forget_titles()
     yield stub
@@ -143,7 +152,7 @@ def test_the_evidence_schema_is_made_and_the_readers_read_it(evidence_project, d
     cols = sql(dsn, evidence_project["pid"],
                "SELECT column_name FROM information_schema.columns"
                " WHERE table_schema = 'evidence' AND table_name = 'link' ORDER BY ordinal_position")
-    assert [c[0] for c in cols] == ["objective_id", "kind", "item_key", "created_by", "created_at", "system_id"]
+    assert [c[0] for c in cols] == ["objective_id", "kind", "item_key", "created_by", "created_at", "system_id", "note"]
     rows = sql(dsn, evidence_project["pid"], "SELECT r, has_table_privilege(r, 'evidence.link', 'SELECT'),"
                                              " has_table_privilege(r, 'evidence.link', 'INSERT')"
                                              " FROM unnest(array['report_ro', 'dashboard_ro', 'report_composer_rw']) r"
