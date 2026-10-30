@@ -9,7 +9,7 @@ from aisc_identity.fastapi import caller_dependency
 from aisc_identity.headers import token_from_headers
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from platform_service import dashboard_bridge, dashboards, db, evidence, reports
 from platform_service.routes.admission import no_project, role_or_404
@@ -27,6 +27,8 @@ class EvidenceLinkIn(BaseModel):
     objective_id: StrictStr
     kind: StrictStr
     key: StrictStr
+    #: why the item is evidence (what result counts as a pass); left out, the link keeps its note
+    note: StrictStr | None = Field(None, max_length=1000)
 
 
 class EvidenceLinksIn(BaseModel):
@@ -36,14 +38,22 @@ class EvidenceLinksIn(BaseModel):
     version: str | None = None
 
 
-def _evidence_answer(pid, role: str, version: str | None = None) -> dict:
+class EvidenceReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: The AI card version whose map is reviewed; none is the latest, the only one that may be.
+    version: str | None = None
+
+
+def _evidence_answer(pid, role: str, caller: Caller, token: str, version: str | None = None) -> dict:
     try:
-        answer = evidence.view(pid, version)
+        answer = evidence.view(pid, version, token)
     except evidence.NotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
     except evidence.UnknownVersion as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     answer["can_edit"] = at_least(role, "editor") and not answer["read_only"]
+    answer["can_review"] = answer["can_edit"] and answer["carried_from"] is None and bool(answer["links"]) \
+        and caller.subject not in {link["created_by"] for link in answer["links"]}
     return answer
 
 
@@ -96,26 +106,32 @@ def open_dashboards(slug: str, request: Request, plugin: str | None = None, targ
 
 
 @router.get("/projects/{slug}/evidence")
-def get_evidence(slug: str, version: str | None = None, caller: Caller = Depends(caller_dependency)) -> dict:
-    """Step 4 of one AI card version: `version` is its pid, the latest when left out."""
+def get_evidence(slug: str, request: Request, version: str | None = None,
+                 caller: Caller = Depends(caller_dependency)) -> dict:
+    """Step 4 of one AI card version: `version` is its pid, the latest when left out. The dimensions of tests
+    and checklists are read from the project's own catalogue with the caller's token."""
     role = role_or_404(slug, caller)
     found = db.get_project(slug)
     if found is None:
         raise no_project(slug)
-    return _evidence_answer(found["pid"], role, version)
+    return _evidence_answer(found["pid"], role, caller, token_from_headers(request.headers) or "", version)
 
 
 @router.put("/projects/{slug}/evidence/links")
-def put_evidence_links(slug: str, body: EvidenceLinksIn, caller: Caller = Depends(caller_dependency)) -> dict:
+def put_evidence_links(slug: str, body: EvidenceLinksIn, request: Request,
+                       caller: Caller = Depends(caller_dependency)) -> dict:
     role = role_or_404(slug, caller, "editor")
     found = db.get_project(slug)
     if found is None:
         raise no_project(slug)
     if len(body.links) > 5000:
         raise HTTPException(status_code=422, detail="links: at most 5000")
+    token = token_from_headers(request.headers) or ""
+    notes = {(link.objective_id, link.kind, link.key): link.note
+             for link in body.links if "note" in link.model_fields_set}
     try:
         evidence.replace(found["pid"], [(link.objective_id, link.kind, link.key) for link in body.links],
-                         caller.subject, body.version)
+                         caller.subject, body.version, notes, token)
     except evidence.Refused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except evidence.OlderVersion as exc:
@@ -125,4 +141,26 @@ def put_evidence_links(slug: str, body: EvidenceLinksIn, caller: Caller = Depend
     except evidence.NotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
     logger.info("project %s: %d evidence links saved", found["pid"], len(body.links))
-    return _evidence_answer(found["pid"], role, body.version)
+    return _evidence_answer(found["pid"], role, caller, token, body.version)
+
+
+@router.post("/projects/{slug}/evidence/review")
+def review_evidence_map(slug: str, body: EvidenceReviewIn, request: Request,
+                        caller: Caller = Depends(caller_dependency)) -> dict:
+    """Mark the latest card version's map reviewed: an editor or owner who made none of its links."""
+    role = role_or_404(slug, caller, "editor")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    try:
+        evidence.mark_reviewed(found["pid"], caller.subject, caller.username or caller.subject, body.version)
+    except evidence.Refused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except evidence.OlderVersion as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except evidence.UnknownVersion as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except evidence.NotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    logger.info("project %s: evidence map reviewed", found["pid"])
+    return _evidence_answer(found["pid"], role, caller, token_from_headers(request.headers) or "", body.version)

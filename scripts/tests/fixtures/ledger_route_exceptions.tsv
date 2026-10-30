@@ -55,6 +55,7 @@ platform	platform/platform_service/routes/helpers.py	save_helper	its event is wr
 platform	platform/platform_service/routes/helpers.py	remove_helper	its event is written one layer down, in the change's own transaction: helper.model.removed (helper_store.remove)
 platform	platform/platform_service/routes/helpers.py	test_helper	its event is written one layer down, in the change's own transaction: helper.model.tested (helper_store.record_test)
 platform	platform/platform_service/routes/evidence.py	put_evidence_links	its event is written one layer down, in the change's own transaction: evidence.links.saved (evidence.replace)
+platform	platform/platform_service/routes/evidence.py	review_evidence_map	its event is written one layer down, in the change's own transaction: evidence.map.reviewed (evidence.mark_reviewed)
 platform	platform/platform_service/routes/ledger.py	ledger_internal_event	the ledger's own intake: queues the event a caller without an outbox sends, which is then recorded as itself
 platform	platform/platform_service/routes/ledger.py	ledger_reanchor	writes ledger.reanchored straight to the platform log before it moves the trusted state (no outbox: the log is the record)
 platform	platform/platform_service/routes/ledger.py	ledger_beacon	a browser's page.opened or page.left, kept in ledger.page_view for 90 days and deliberately never in the ledger

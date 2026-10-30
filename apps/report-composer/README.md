@@ -125,6 +125,12 @@ The passwords come from `env.secrets` (`REPORT_COMPOSER_PASSWORD`, `REPORT_SERVI
 
 | route | right |
 |---|---|
+| `GET /p/{ref}/systems` (the project's AI card versions) | viewer |
+| `GET /p/{ref}/choices?block_type=&system_id=` (what a block may pick from on one version) | viewer |
+| `GET /p/{ref}/layouts` (the project's layouts and the built-in ones), `GET /p/{ref}/deleted-layouts` | viewer |
+| `POST /p/{ref}/layouts/{id}/validate` (the layout's problems, checked by the renderer) | viewer |
+| `POST, GET /p/{ref}/layouts/{id}/reports` (generate a report; the layout's reports) | editor, viewer |
+| `GET /p/{ref}/templates` | viewer |
 | `POST /p/{ref}/layouts` (`{name, blocks?, template_id?, show_index?, numbering?, file?}`) | editor |
 | `GET, PUT, DELETE /p/{ref}/layouts/{id}` | viewer, editor, editor |
 | `POST /p/{ref}/layouts/{id}/outline` (numbers and hints for the editor's current order) | editor |

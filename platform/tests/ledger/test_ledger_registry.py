@@ -53,7 +53,7 @@ REQUIRED = [
     # so its tool and ingest events belong in its own log.
     "plugin.installed", "control.installed",
     # step 4
-    "evidence.links.saved", "engine.evaluation.run_requested", "engine.evaluation.status_changed",
+    "evidence.links.saved", "evidence.map.reviewed", "engine.evaluation.run_requested", "engine.evaluation.status_changed",
     "engine.measures.recorded", "engine.artifact.uploaded", "engine.evaluation.input_marked_local",
     "engine.plugin.configured",
     "controls.submission.created", "controls.submission.draft_saved", "controls.submission.closed",

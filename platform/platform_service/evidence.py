@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 KINDS = ("test", "control")
 DEFAULT_CATALOGUE = "http://control-objectives:8090"
 TITLES_TTL_S = 600
-_titles: dict = {"at": 0.0, "by_id": {}, "macros": {}, "dims": {}}
+_titles: dict = {"at": 0.0, "by_id": {}, "macros": {}, "dims": {}, "modes": {}}
 _tools: dict = {"at": 0.0, "by_slug": {}, "by_package": {}}
 
 #: The eleven macro-requirements of the control-objectives paper, each a dimension of the catalogue.
@@ -68,9 +68,17 @@ _TITLE = {rid: title for rid, title, _ in DIMENSIONS}
 _VERSIONS = "SELECT pid::text AS pid, number FROM project.system ORDER BY number DESC"
 #: What one card version's assessment takes forward: its step 2 matrix.
 _SELECTED = (
-    "SELECT sel.objective_ids FROM control_objectives.objective_selection sel"
+    "SELECT sel.objective_ids, sel.priority_ids FROM control_objectives.objective_selection sel"
     " JOIN control_objectives.project a ON a.id = sel.project_id"
     " WHERE a.system_id::text = %s"
+)
+#: The step 2 risks of one card version, each with the objectives it maps to, in the register's order.
+_RISKS = (
+    "SELECT m.objective_id, r.risk_id, r.short_label, r.text, r.rating_impact, r.rating_likelihood"
+    " FROM control_objectives.risk r"
+    " JOIN control_objectives.mapped_objective m ON m.risk_row_id = r.id"
+    " JOIN control_objectives.project a ON a.id = r.project_id"
+    " WHERE a.system_id::text = %s ORDER BY r.position, r.risk_id"
 )
 _PLUGINS = ("SELECT id, package_name, display_name, enabled, catalogue_slug, name FROM engine.aisc_backend_plugin"
             " ORDER BY display_name, package_name")
@@ -184,7 +192,7 @@ _LOCAL_RUNS = (_RUN_COLUMNS + " WHERE e.status <> 'Archived' AND " + _LOCAL +
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
 #: The project's own objectives (objective sets), each as its latest published version words it.
 _OWN_OBJECTIVES = (
-    "SELECT DISTINCT ON (i.objective_id) i.objective_id, i.label, i.dimension"
+    "SELECT DISTINCT ON (i.objective_id) i.objective_id, i.label, i.dimension, i.assessment_mode"
     " FROM control_objectives.objective_set_version_item i"
     " JOIN control_objectives.objective_set_version v ON v.id = i.set_version_id"
     " ORDER BY i.objective_id, v.number DESC"
@@ -222,6 +230,12 @@ class Choices:
     checklist_slugs: dict[str, str | None]
     #: the project's own objectives: id -> (label, dimension)
     own: dict[str, tuple[str, str]] = field(default_factory=dict)
+    #: the project's own objectives: id -> what it expects ("Control", "Test" or "Control + Test")
+    own_modes: dict[str, str] = field(default_factory=dict)
+    #: the selected objectives step 2 marks as priority
+    priority: list[str] = field(default_factory=list)
+    #: objective id -> the step 2 risks mapped to it: {"id", "label", "impact", "likelihood"}, in register order
+    risks: dict[str, list[dict]] = field(default_factory=dict)
     #: package_name -> the engine's name of the plugin (its configuration page is named by it)
     plugin_names: dict[str, str | None] = field(default_factory=dict)
     #: package_name -> {"executed", "failed", "running"} on the card version asked for
@@ -293,6 +307,7 @@ def choices(pid, version_pid: str | None) -> Choices:
         plugins = _rows(conn, _PLUGINS)
         checklists = _rows(conn, _CHECKLISTS)
         own = _rows(conn, _OWN_OBJECTIVES)
+        risks = _rows(conn, _RISKS, (version_pid,)) if version_pid else []
         runs = _rows(conn, _RUNS, (version_pid,)) if version_pid else []
         plugin_runs = _rows(conn, _PLUGIN_RUNS, (version_pid,)) if version_pid else []
         workspace = _rows(conn, _WORKSPACE)
@@ -303,6 +318,11 @@ def choices(pid, version_pid: str | None) -> Choices:
         run_details = _rows(conn, _RUN_DETAILS, (version_pid,)) if version_pid else []
         local = _rows(conn, _LOCAL_RUNS)
     per_checklist = {r["checklist_id"]: r["n"] for r in questions}
+    by_objective: dict[str, list[dict]] = {}
+    for r in risks:
+        by_objective.setdefault(r["objective_id"], []).append({
+            "id": r["risk_id"], "label": r["short_label"] or r["text"],
+            "impact": r["rating_impact"], "likelihood": r["rating_likelihood"]})
     return Choices(
         selected=sorted(selected[0]["objective_ids"], key=_objective_order) if selected else [],
         plugins=_per_package(plugins),
@@ -310,6 +330,9 @@ def choices(pid, version_pid: str | None) -> Choices:
         plugin_slugs={r["package_name"]: r["catalogue_slug"] for r in plugins},
         checklist_slugs={r["id"]: r["catalogueId"] for r in checklists},
         own={r["objective_id"]: (r["label"], r["dimension"]) for r in own},
+        own_modes={r["objective_id"]: r["assessment_mode"] for r in own},
+        priority=list(selected[0]["priority_ids"] or []) if selected else [],
+        risks=by_objective,
         plugin_names={r["package_name"]: r.get("name") for r in plugins},
         runs={r["package_name"]: {k: r[k] for k in ("executed", "failed", "running")} for r in runs},
         engine_plugins=plugins,
@@ -417,7 +440,7 @@ def _objective_order(objective_id: str) -> tuple:
 
 
 def forget_titles() -> None:
-    _titles.update(at=0.0, by_id={}, macros={}, dims={})
+    _titles.update(at=0.0, by_id={}, macros={}, dims={}, modes={})
 
 
 def titles() -> dict[str, str]:
@@ -431,16 +454,23 @@ def titles() -> dict[str, str]:
         by_id = {o["id"]: o.get("sub_requirement_label") or "" for o in listed}
         macros = {o["macro_id"]: o["macro_title"] for o in listed if o.get("macro_id") and o.get("macro_title")}
         dims = {o["id"]: o["macro_id"] for o in listed if o.get("macro_id")}
+        modes = {o["id"]: o["assessment_mode"] for o in listed if o.get("assessment_mode")}
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("the control objectives catalogue did not answer: %s", exc)
         return {}
-    _titles.update(at=time.monotonic(), by_id=by_id, macros=macros, dims=dims)
+    _titles.update(at=time.monotonic(), by_id=by_id, macros=macros, dims=dims, modes=modes)
     return by_id
 
 
 def objective_dimensions() -> dict[str, str]:
     """objective id -> its dimension (REQ1 ... REQ11); {} when the catalogue does not answer."""
     return _titles["dims"] if titles() else {}
+
+
+def objective_modes() -> dict[str, str]:
+    """objective id -> what it expects: "Control", "Test" or "Control + Test"; {} when the catalogue does not
+    answer."""
+    return _titles["modes"] if titles() else {}
 
 
 def dimension_titles() -> dict[str, str]:
@@ -465,9 +495,31 @@ def _dimensions_of(tags: list[dict]) -> list[str]:
     return sorted(found, key=lambda rid: int(rid[3:]))
 
 
-def tool_dimensions() -> tuple[dict, dict] | None:
-    """(slug -> dimensions, package name -> dimensions) from the tools catalogue, plus the local controls';
-    None when it does not answer or is not configured."""
+def _by_tags(listed: list[dict]) -> tuple[dict, dict]:
+    by_slug, by_package = {}, {}
+    for tool in listed:
+        dims = _dimensions_of(tool.get("tags"))
+        by_slug[tool["slug"]] = dims
+        if tool.get("package_name"):
+            by_package[tool["package_name"]] = dims
+    return by_slug, by_package
+
+
+def tool_dimensions(pid=None, token: str = "") -> tuple[dict, dict] | None:
+    """(slug -> dimensions, package name -> dimensions). Asked for a project with the caller's token, from the
+    project's own catalogue: its private copy with the dimensions an admin gave its local tests, or the public
+    one live. Otherwise (no token, or a project that has not chosen its catalogue yet) from the public tools
+    catalogue, plus the local controls'. None when the catalogue does not answer or is not configured."""
+    if pid is not None and token:
+        from platform_service import catalogue
+
+        try:
+            return _by_tags(catalogue.tools(pid, token, detailed=True, internal=True))
+        except catalogue.NotChosen:
+            pass
+        except (catalogue.PublicUnavailable, OSError, ValueError, KeyError, TypeError) as exc:
+            logger.warning("the catalogue of project %s did not answer: %s", pid, exc)
+            return None
     if _tools["by_slug"] and time.monotonic() - _tools["at"] < TITLES_TTL_S:
         return _tools["by_slug"], _tools["by_package"]
     base = (os.environ.get("CATALOGUE_URL") or "").rstrip("/")
@@ -476,13 +528,7 @@ def tool_dimensions() -> tuple[dict, dict] | None:
         return None
     try:
         with urllib.request.urlopen(f"{base}/tool/?detailed=true", timeout=5) as res:
-            listed = json.loads(res.read())
-        by_slug, by_package = {}, {}
-        for tool in listed:
-            dims = _dimensions_of(tool.get("tags"))
-            by_slug[tool["slug"]] = dims
-            if tool.get("package_name"):
-                by_package[tool["package_name"]] = dims
+            by_slug, by_package = _by_tags(json.loads(res.read()))
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("the tools catalogue did not answer: %s", exc)
         return None
@@ -512,7 +558,7 @@ def item_dimensions(found: Choices, catalogue, kind: str, key: str) -> list[str]
 def links(pid, version_pid: str) -> list[dict]:
     """One card version's links."""
     with connection_store.connect(pid) as conn:
-        return conn.execute("SELECT objective_id, kind, item_key, created_by, created_at FROM evidence.link"
+        return conn.execute("SELECT objective_id, kind, item_key, note, created_by, created_at FROM evidence.link"
                             " WHERE system_id::text = %s ORDER BY objective_id, kind, item_key",
                             (version_pid,)).fetchall()
 
@@ -533,6 +579,37 @@ def link_stale(found: Choices, objective_id: str, kind: str, key: str) -> str | 
     return item_stale(found, kind, key)
 
 
+def item_evidence(found: Choices, kind: str, key: str) -> str | None:
+    """What a test or control gave on the version shown: "attention" (a failed run, or answers whose mean score
+    is below 3, readiness under 50%), "evidence" (a finished run, or answers), None (nothing yet)."""
+    if kind == "test":
+        runs = found.runs.get(key) or {}
+        if runs.get("failed"):
+            return "attention"
+        return "evidence" if runs.get("executed") else None
+    answers = found.submissions.get(key)
+    if not answers or not answers["answered"]:
+        return None
+    return "attention" if answers["readiness"] is not None and answers["readiness"] < 50 else "evidence"
+
+
+def objective_evidence(found: Choices, live: list[tuple[str, str]]) -> str:
+    """An objective's coverage from its links that still count ((kind, key), ...): "not covered" when it has
+    none, else "attention" when any of them asks for it, "evidence" when any gave some, "no evidence"."""
+    if not live:
+        return "not covered"
+    given = {item_evidence(found, kind, key) for kind, key in live}
+    return next((s for s in ("attention", "evidence") if s in given), "no evidence")
+
+
+def review_of(pid, version_pid: str) -> dict | None:
+    """Who marked one card version's map reviewed, and when; None when nobody has since its last change."""
+    with connection_store.connect(pid) as conn:
+        row = conn.execute("SELECT reviewed_by, reviewed_by_name, reviewed_at FROM evidence.review"
+                           " WHERE system_id::text = %s", (version_pid,)).fetchone()
+    return None if row is None else {**row, "reviewed_at": row["reviewed_at"].isoformat()}
+
+
 def _carried(pid, found, all_versions) -> tuple[int | None, list]:
     """The links the latest version, having none of its own, is offered: those of the nearest earlier
     version that has some, where they still apply; with that version's number (None, [] if none)."""
@@ -545,7 +622,7 @@ def _carried(pid, found, all_versions) -> tuple[int | None, list]:
     return None, []
 
 
-def view(pid, version: str | None = None) -> dict:
+def view(pid, version: str | None = None, token: str = "") -> dict:
     """The page of one card version (the latest when none is asked for): its matrix's objectives, the
     tests and the controls (each flagged stale when it is only there because a link names it), and
     its links. An older version is read-only. The latest version with no links of its own is offered
@@ -559,8 +636,15 @@ def view(pid, version: str | None = None) -> dict:
     carried_from = None
     if current is not None and not stored and not read_only:
         carried_from, stored = _carried(pid, found, all_versions)
-    objectives = list(found.selected) + sorted(
+    # priority objectives first, then the rest of the matrix, then those only a stale link names
+    priority = [o for o in found.selected if o in found.priority]
+    objectives = priority + [o for o in found.selected if o not in priority] + sorted(
         {r["objective_id"] for r in stored} - set(found.selected), key=_objective_order)
+    live: dict[str, list[tuple[str, str]]] = {}
+    if carried_from is None:
+        for r in stored:
+            if link_stale(found, r["objective_id"], r["kind"], r["item_key"]) is None:
+                live.setdefault(r["objective_id"], []).append((r["kind"], r["item_key"]))
     no_runs = {"executed": 0, "failed": 0, "running": 0}
     tests = [{"key": k, "label": label, "stale": None if enabled else "disabled",
               "engine_name": found.plugin_names.get(k), "runs": found.runs.get(k, no_runs)}
@@ -585,13 +669,14 @@ def view(pid, version: str | None = None) -> dict:
                  "submission": found.submissions.get(k)} for k, title in found.checklists.items()]
     controls += [{"key": k, "label": k, "stale": "deleted", "questions": None, "submission": None}
                  for k in sorted({r["item_key"] for r in stored if r["kind"] == "control"} - set(found.checklists))]
-    catalogue = tool_dimensions()
+    catalogue = tool_dimensions(pid, token)
     for item in tests:
         item["dimensions"] = item_dimensions(found, catalogue, "test", item["key"])
     for item in controls:
         item["dimensions"] = item_dimensions(found, catalogue, "control", item["key"])
     names = {**titles(), **{oid: label for oid, (label, _) in found.own.items()}}
     dims = {**objective_dimensions(), **{oid: dim for oid, (_, dim) in found.own.items()}}
+    modes = {**objective_modes(), **found.own_modes}
     dim_titles = dimension_titles()
     return {
         "version": current,
@@ -605,12 +690,17 @@ def view(pid, version: str | None = None) -> dict:
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
         "dimensions_known": catalogue is not None and bool(dims),
         "objectives": [{"id": o, "title": names.get(o, ""), "dimension": dims.get(o),
-                        "stale": None if o in found.selected else "not selected"}
+                        "stale": None if o in found.selected else "not selected",
+                        "priority": o in found.priority, "expects": modes.get(o), "risks": found.risks.get(o, []),
+                        "linked": o in live, "evidence": objective_evidence(found, live.get(o, []))}
                        for o in objectives],
+        "coverage": {"objectives": len(found.selected), "linked": len(set(found.selected) & set(live)),
+                     "gaps": len(set(found.selected) - set(live))},
+        "review": review_of(pid, current["pid"]) if current else None,
         "tests": tests,
         "plugins": sorted(plugins, key=lambda p: p["label"].lower()),
         "controls": controls,
-        "links": [{"objective_id": r["objective_id"], "kind": r["kind"], "key": r["item_key"],
+        "links": [{"objective_id": r["objective_id"], "kind": r["kind"], "key": r["item_key"], "note": r["note"],
                    "created_by": r["created_by"], "created_at": r["created_at"].isoformat(),
                    "stale": link_stale(found, r["objective_id"], r["kind"], r["item_key"]),
                    "carried": carried_from is not None}
@@ -618,12 +708,15 @@ def view(pid, version: str | None = None) -> dict:
     }
 
 
-def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | None = None) -> None:
-    """Make the latest card version's links exactly `wanted` ((objective_id, kind, key), ...). A link
+def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | None = None,
+            notes: dict[tuple[str, str, str], str | None] | None = None, token: str = "") -> None:
+    """Make the latest card version's links exactly `wanted` ((objective_id, kind, key), ...), with the
+    `notes` given (a link: its note, None to remove it; a link not in `notes` keeps its own). A link
     already there is kept as it is, stale or not, with who made it; a new one must be to an objective
     in that version's matrix and to a test or control that can take it (Refused otherwise, and nothing
     is changed). An older version is OlderVersion: it is kept as it was. Removing every link is a save
-    like any other: its `evidence.links.saved` event has an empty list as content."""
+    like any other: its `evidence.links.saved` event has an empty list as content. A save that changes
+    a link or a note clears the map's review."""
     all_versions = versions(pid)
     current = _version(all_versions, version)
     if current is None:
@@ -635,14 +728,16 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | No
 
     system_id = current["pid"]
     found = choices(pid, system_id)
-    catalogue = tool_dimensions()
+    catalogue = tool_dimensions(pid, token)
     dims = {**objective_dimensions(), **{oid: dim for oid, (_, dim) in found.own.items()}}
     wanted_set = set(wanted)
+    notes = {link: (note or None) for link, note in (notes or {}).items() if link in wanted_set}
     with connection_store.connect(pid) as conn:
         with conn.transaction():
-            have = {(r["objective_id"], r["kind"], r["item_key"]) for r in conn.execute(
-                "SELECT objective_id, kind, item_key FROM evidence.link WHERE system_id::text = %s FOR UPDATE",
+            had = {(r["objective_id"], r["kind"], r["item_key"]): r["note"] for r in conn.execute(
+                "SELECT objective_id, kind, item_key, note FROM evidence.link WHERE system_id::text = %s FOR UPDATE",
                 (system_id,)).fetchall()}
+            have = set(had)
             problems = []
             for objective_id, kind, key in sorted(wanted_set - have):
                 if kind not in KINDS:
@@ -662,11 +757,50 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | No
                 conn.execute("DELETE FROM evidence.link WHERE system_id::text = %s AND objective_id = %s"
                              " AND kind = %s AND item_key = %s", (system_id, *gone))
             for objective_id, kind, key in sorted(wanted_set - have):
-                conn.execute("INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by)"
-                             " VALUES (%s, %s, %s, %s, %s)", (system_id, objective_id, kind, key, who))
+                conn.execute("INSERT INTO evidence.link (system_id, objective_id, kind, item_key, created_by, note)"
+                             " VALUES (%s, %s, %s, %s, %s, %s)",
+                             (system_id, objective_id, kind, key, who, notes.get((objective_id, kind, key))))
+            renoted = sorted(link for link in wanted_set & have if link in notes and notes[link] != had[link])
+            for link in renoted:
+                conn.execute("UPDATE evidence.link SET note = %s WHERE system_id::text = %s AND objective_id = %s"
+                             " AND kind = %s AND item_key = %s", (notes[link], system_id, *link))
+            if wanted_set != have or renoted:
+                conn.execute("DELETE FROM evidence.review WHERE system_id::text = %s", (system_id,))
+            kept_notes = {**had, **notes}
             # carried: the page offered the links of an earlier version (this one had none of its own)
             outbox.emit_project(conn, "evidence.links.saved", item_type="evidence", item_id=system_id,
                                 card_version=system_id,
                                 details={"added": len(wanted_set - have), "removed": len(have - wanted_set),
-                                         "carried": not have and _carried(pid, found, all_versions)[0] is not None},
-                                content=[list(link) for link in sorted(wanted_set)])
+                                         "carried": not have and _carried(pid, found, all_versions)[0] is not None,
+                                         **({"notes_changed": len(renoted)} if renoted else {})},
+                                content=[list(link) + ([kept_notes[link]] if kept_notes.get(link) else [])
+                                         for link in sorted(wanted_set)])
+
+
+def mark_reviewed(pid, who: str, name: str, version: str | None = None) -> None:
+    """Record that `who` (shown as `name`) reviewed the latest card version's map. Refused when the map has no
+    links or when `who` made one of them; an older version is OlderVersion. A later change clears it."""
+    all_versions = versions(pid)
+    current = _version(all_versions, version)
+    if current is None:
+        raise Refused("this project has no AI card version yet")
+    if current["pid"] != all_versions[0]["pid"]:
+        raise OlderVersion(f"version {current['number']} is kept as it was: only the latest AI card version's map,"
+                           f" {all_versions[0]['number']}, is reviewed")
+    from platform_service.ledger import outbox
+
+    system_id = current["pid"]
+    with connection_store.connect(pid) as conn:
+        with conn.transaction():
+            makers = [r["created_by"] for r in conn.execute(
+                "SELECT created_by FROM evidence.link WHERE system_id::text = %s FOR UPDATE", (system_id,)).fetchall()]
+            if not makers:
+                raise Refused("the map has no links to review")
+            if who in makers:
+                raise Refused("the map is reviewed by someone who made none of its links")
+            conn.execute("INSERT INTO evidence.review (system_id, reviewed_by, reviewed_by_name, reviewed_at)"
+                         " VALUES (%s, %s, %s, now()) ON CONFLICT (system_id) DO UPDATE SET"
+                         " reviewed_by = EXCLUDED.reviewed_by, reviewed_by_name = EXCLUDED.reviewed_by_name,"
+                         " reviewed_at = EXCLUDED.reviewed_at", (system_id, who, name))
+            outbox.emit_project(conn, "evidence.map.reviewed", item_type="evidence", item_id=system_id,
+                                card_version=system_id, details={"links": len(makers)})
