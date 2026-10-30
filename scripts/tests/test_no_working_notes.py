@@ -5,7 +5,8 @@ A test, likewise, is named for what it checks, not for the plan item it came fro
 
 Scanned: every tracked text file of the root repo and of the submodules below that are ours (when checked
 out). Left out: changelogs, lock files, SQL seeds,
-fixtures and the report tests' golden files, which hold data. A date that is data is not history: a
+fixtures and the report tests' golden files, which hold data, and Prisma's migrations, which a deployed database
+pins by checksum once applied, so their text never changes. A date that is data is not history: a
 timestamp (a date followed by a time), a date inside a one-line string literal of a code line, a date
 given as a value (`=2026-09-10`). Each finding is named as file:line.
 """
@@ -51,7 +52,7 @@ PLAN_GREP = r"def test_[a-z]{1,3}[0-9]|(it|test|describe)(\.[a-z]+)*\( *[\"'`][A
 #: git pathspecs of what holds data or history by design
 EXCLUDE = [":!:**/CHANGELOG.md", ":!:CHANGELOG.md", ":!:*.lock", ":!:**/package-lock.json",
            ":!:**/pnpm-lock.yaml", ":!:**/yarn.lock", ":!:**/seed/**", ":!:**/seed*.sql", ":!:**/fixtures/**",
-           ":!:fixtures/**", ":!:**/golden/**",
+           ":!:fixtures/**", ":!:**/golden/**", ":!:**/prisma/migrations/**/migration.sql", ":!:prisma/migrations/*/migration.sql",
            ":!:scripts/tests/test_no_working_notes.py"]
 
 

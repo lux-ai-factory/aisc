@@ -52,7 +52,8 @@ are listed whatever the version.
   and sends the measurements and the files the test writes back to `aisc-backend`, which keeps them in schema
   `engine` and in `minio` (bucket `artifacts`).
 - When a test fails while it runs, the run is marked Failed: the run's other tests still running are stopped, and
-  those not yet started do not start. A package that fails to install fails only its own tests.
+  those not yet started do not start. A package that fails to install, or whose measurements cannot be sent back,
+  stops the run the same way.
 - There is no resume. If the worker stops in the middle, the message broker hands each unfinished task (an install,
   or one test) to the worker again, and that task starts over from the beginning.
 
