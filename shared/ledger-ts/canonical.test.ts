@@ -66,3 +66,59 @@ describe("ledgerSafe and U+0000", () => {
     expect(() => ledgerSafe({ ["k\u0000"]: 1 })).toThrow(NotCanonical);
   });
 });
+
+// What the ledger refuses, from the vectors aisc_identity.ledger_events and the platform also read
+// (platform/tests/ledger/fixtures/canonical_refusals.json, copied unchanged).
+const refusals = read("canonical_refusals.json") as {
+  not_ledger_safe: { name: string; json: string }[];
+  values: string[];
+};
+
+function cycleArray(): unknown[] {
+  const items: unknown[] = [];
+  items.push(items);
+  return items;
+}
+
+function cycleObject(): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  record.self = record;
+  return record;
+}
+
+/** Each name in the vectors' `values`, built in TypeScript. Object keys are always text here. */
+export const VALUES: Record<string, unknown[]> = {
+  not_finite: [NaN, Infinity, -Infinity],
+  key_not_text: [],
+  date: [new Date("2026-01-01T00:00:00Z")],
+  bigint: [BigInt(1), BigInt(2) ** BigInt(60)],
+  cycle: [cycleArray(), cycleObject()],
+};
+const named = Object.entries(VALUES).flatMap(([name, values]) =>
+  values.map((value, i) => [`${name} ${i}`, value] as const),
+);
+
+describe("the shared refusal vectors", () => {
+  it("names only values built here", () => {
+    expect(Object.keys(VALUES).sort()).toEqual([...refusals.values].sort());
+  });
+
+  it.each(refusals.not_ledger_safe.map((v) => [v.name, v.json] as const))(
+    "ledgerSafe refuses %s",
+    (_name, text) => {
+      expect(() => ledgerSafe(JSON.parse(text))).toThrow(NotCanonical);
+    },
+  );
+
+  it.each(named)("canonical and ledgerSafe refuse %s", (_name, value) => {
+    expect(() => canonical({ v: value })).toThrow(NotCanonical);
+    expect(() => ledgerSafe({ v: value })).toThrow(NotCanonical);
+  });
+
+  it("does not take a value seen twice for a cycle", () => {
+    const shared = { a: 1 };
+    expect(canonical({ one: shared, two: [shared, shared] })).toBe(
+      '{"one":{"a":1},"two":[{"a":1},{"a":1}]}',
+    );
+  });
+});

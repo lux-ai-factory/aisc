@@ -178,9 +178,9 @@ def test_the_projects_page_links_no_flower():
 
 def test_a_member_sees_the_menu_and_a_stranger_does_not():
     _, script = menu_and_script()
-    assert "if (!a || !(a.role || a.admin)) return;" in script
+    assert "if (!authz.ok || !a || !(a.role || a.admin)) return;" in script
     # the member-only items of the Manage menu are revealed after the check
-    assert script.index("if (!a || !(a.role || a.admin)) return;") < script.index("#manage .member-only")
+    assert script.index("if (!authz.ok || !a || !(a.role || a.admin)) return;") < script.index("#manage .member-only")
 
 
 def test_hidden_menu_items_really_are_hidden():

@@ -7,7 +7,6 @@ import re
 from conftest import ROOT
 
 PAGE = ROOT / "homepage/evidence.html"
-PROJECT_PAGE = ROOT / "homepage/project.html"
 
 
 def read(path):
@@ -26,9 +25,8 @@ def markup_of(html):
 # ── the page ────────────────────────────────────────────────────────────────
 
 def test_the_page_has_the_launchers_look_and_one_inline_script():
-    html, reference = read(PAGE), read(PROJECT_PAGE)
-    for var in re.findall(r"(--[a-z0-9-]+)\s*:", re.search(r":root\s*\{(.*?)\}", reference, re.S).group(1)):
-        assert re.search(re.escape(var) + r"\s*:", html), var
+    html = read(PAGE)
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
     # one inline script, and the shared origins helper (no link names localhost)

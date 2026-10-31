@@ -31,7 +31,10 @@ from flask_appbuilder.security.manager import AUTH_REMOTE_USER  # noqa: E402
 
 from aisc_ext.security import VIEWER_ROLE, apply_sign_in  # noqa: E402
 from aisc_ext.sso import KeycloakSecurityManager  # noqa: E402
-from gateway_identity import CLAIMS_KEY, GatewayIdentity, what_to_do  # noqa: E402
+from gateway_identity import CLAIMS_KEY, GatewayIdentity, resync_due, what_to_do  # noqa: E402
+
+#: The issue time of the token the session's last role sync read, kept in Superset's session.
+SYNCED_IAT_KEY = "aisc_gateway_synced_iat"
 
 AUTH_TYPE = AUTH_REMOTE_USER
 AUTH_USER_REGISTRATION = True
@@ -76,7 +79,11 @@ class GatewaySecurityManager(KeycloakSecurityManager):
 
     def _sync_from_claims(self, user, claims: dict) -> None:
         """Roles, profile and the plugin dashboards an owner or editor owns, from the verified token, on every
-        sign-in: the same sign-in as the OAuth path's (aisc_ext.security.apply_sign_in)."""
+        sign-in and on each newer token for a kept session: the same sign-in as the OAuth path's
+        (aisc_ext.security.apply_sign_in)."""
+        from flask import session
+
+        session[SYNCED_IAT_KEY] = claims.get("iat")
         user.email = claims.get("email") or user.email
         user.first_name = claims.get("given_name") or user.first_name
         user.last_name = claims.get("family_name") or user.last_name
@@ -93,7 +100,7 @@ def FLASK_APP_MUTATOR(app):  # noqa: N802 (Superset hook name)
     if _original_mutator:
         _original_mutator(app)
 
-    from flask import redirect, request
+    from flask import redirect, request, session
     from flask_login import current_user, login_user, logout_user
 
     @app.before_request
@@ -111,4 +118,8 @@ def FLASK_APP_MUTATOR(app):  # noqa: N802 (Superset hook name)
             user = app.appbuilder.sm.auth_user_remote_user(request.environ["REMOTE_USER"])
             if user:
                 login_user(user)
+        elif action == "keep" and signed_in_as is not None:
+            claims = request.environ.get(CLAIMS_KEY)
+            if resync_due(session.get(SYNCED_IAT_KEY), claims):
+                app.appbuilder.sm._sync_from_claims(current_user._get_current_object(), claims)
         return None

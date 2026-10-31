@@ -96,6 +96,8 @@ def test_the_backend_and_the_worker_scrub_text_alike(copies, text, known):
 
 
 def test_the_shape_rule_finds_whatever_the_registry_refuses(copies):
+    # the registry takes its rule from the platform's own config_secrets, so it loads with its package
+    sys.path.insert(0, str(ROOT / "platform"))
     registry = load("registry", REGISTRY)
     for module in copies.values():
         # a Bearer, Basic or Token value counts only when it looks like a credential (16 characters or more),

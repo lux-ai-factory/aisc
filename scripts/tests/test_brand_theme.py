@@ -5,10 +5,13 @@ headings, Raleway for text, IBM Plex Mono for ids, labels and code). Each app ke
 and sets in its :root only the variables it uses; this test holds each of those to brand.json:
 - every variable an app's :root sets that brand.json names has brand.json's value;
 - no Inter is left in the app's font stacks, Google Fonts links or font imports;
-- no launcher page draws the blueprint grid (the body::before hairline grid).
-The root's own pages (the launcher and the report composer) are also held to load the new fonts
-and to colour their headings with --heading.
+- no launcher page draws the blueprint grid (the body::before hairline grid);
+- no app loads its fonts from Google: each serves the three brand fonts itself.
+The launcher's pages share one stylesheet, homepage/assets/launcher.css (the tokens, the fonts, the
+header and the session line); the root's own pages (the launcher and the report composer) are also
+held to colour their headings with --heading.
 """
+import hashlib
 import json
 import re
 
@@ -20,12 +23,14 @@ BRAND = json.loads((ROOT / "shared/theme/brand.json").read_text())
 VARIABLES = BRAND["variables"]
 
 LAUNCHER = sorted((ROOT / "homepage").glob("*.html"))
+LAUNCHER_CSS = ROOT / "homepage/assets/launcher.css"
+FONTS = ROOT / "homepage/assets/fonts"
 COMPOSER = ROOT / "apps/report-composer/report_composer"
 
 # Each app's stylesheet (the file whose :root carries its palette), and the files where the
 # same app links or imports its fonts.
 APPS = {
-    **{f"homepage/{p.name}": (p, [p]) for p in LAUNCHER},
+    "homepage": (LAUNCHER_CSS, [LAUNCHER_CSS, *LAUNCHER]),
     "qualification": (
         ROOT / "apps/qualification/src/app/globals.css",
         [ROOT / "apps/qualification/src/app/globals.css",
@@ -98,25 +103,70 @@ def test_no_launcher_page_draws_the_blueprint_grid(page):
     assert not grids, f"{page.name} still draws the blueprint grid: {grids}"
 
 
-# ---- the root's own pages: the new fonts are loaded and used, headings take --heading ----
+# ---- the fonts are the apps' own, never Google's ----
 
-GOOGLE_FONTS = re.compile(r"https://fonts\.googleapis\.com/css2\?[^\"']+")
-
-
-def font_link(text: str) -> str:
-    links = GOOGLE_FONTS.findall(text)
-    assert len(links) == 1, f"expected one Google Fonts link, found {links}"
-    return links[0]
-
-
-@pytest.mark.parametrize("page", LAUNCHER + [COMPOSER / "templates/base.html.j2"], ids=lambda p: p.name)
-def test_the_page_loads_the_brand_fonts(page):
-    link = font_link(page.read_text())
-    for family in ("family=MuseoModerno:", "family=Raleway:", "family=IBM+Plex+Mono:"):
-        assert family in link, f"{page.name}: {family} missing from {link}"
+GOOGLE = re.compile(r"fonts\.(googleapis|gstatic)\.com")
+#: the submodules that still link Google Fonts, until their own change lands (controls.1-7 and
+#: control-objectives.3-10 in their repos); the webapp is upstream's and frozen, so it is not listed at all
+STILL_ON_GOOGLE = {"controls", "control-objectives"}
+#: the brand fonts' files, each in the weights in use: (family, weight range, file)
+BRAND_FONTS = [
+    ("MuseoModerno", "100 900", "museomoderno-latin-wght-normal.woff2"),
+    ("Raleway", "100 900", "raleway-latin-wght-normal.woff2"),
+    ("IBM Plex Mono", "400", "ibm-plex-mono-latin-400-normal.woff2"),
+    ("IBM Plex Mono", "500", "ibm-plex-mono-latin-500-normal.woff2"),
+    ("IBM Plex Mono", "600", "ibm-plex-mono-latin-600-normal.woff2"),
+]
 
 
-@pytest.mark.parametrize("sheet", LAUNCHER + [COMPOSER / "static/composer.css"], ids=lambda p: p.name)
+@pytest.mark.parametrize("app", sorted(APPS))
+def test_no_app_loads_its_fonts_from_google(app):
+    if app in STILL_ON_GOOGLE:
+        pytest.xfail(f"{app} self-hosts its fonts in its own repo's change")
+    _, files = APPS[app]
+    named = [str(f.relative_to(ROOT)) for f in files if f.exists() and GOOGLE.search(f.read_text())]
+    assert not named, f"{app}: these files load Google Fonts: {named}"
+
+
+def font_faces(css: str) -> list[tuple[str, str, str]]:
+    """(family, weight, url) of each @font-face in a stylesheet."""
+    faces = []
+    for body in re.findall(r"@font-face\s*\{([^}]*)\}", css):
+        family = re.search(r"font-family\s*:\s*[\"']([^\"']+)[\"']", body)
+        weight = re.search(r"font-weight\s*:\s*([^;]+);", body)
+        url = re.search(r"url\(([^)]+)\)", body)
+        faces.append((family and family.group(1), weight and " ".join(weight.group(1).split()),
+                      url and url.group(1).strip("\"'")))
+    return faces
+
+
+@pytest.mark.parametrize("sheet, folder", [(LAUNCHER_CSS, FONTS), (COMPOSER / "static/composer.css", COMPOSER / "static/fonts")],
+                         ids=["launcher", "report-composer"])
+def test_the_brand_fonts_are_served_from_the_apps_own_folder(sheet, folder):
+    faces = font_faces(sheet.read_text())
+    assert sorted(faces) == sorted((family, weight, f"fonts/{file}") for family, weight, file in BRAND_FONTS), faces
+    for _, _, file in BRAND_FONTS:
+        assert (folder / file).is_file(), f"{folder.relative_to(ROOT)}/{file} is missing"
+    assert (folder / "OFL.txt").is_file(), "the fonts' licence travels with them"
+
+
+def test_every_copy_of_the_fonts_is_the_same():
+    def digest(folder):
+        return {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(folder.iterdir())}
+    assert digest(COMPOSER / "static/fonts") == digest(FONTS)
+
+
+@pytest.mark.parametrize("page", LAUNCHER, ids=lambda p: p.name)
+def test_each_launcher_page_wears_the_launcher_stylesheet(page):
+    """The tokens, fonts, header and session line are in launcher.css once; a page keeps only its own rules."""
+    text = page.read_text()
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in text, page.name
+    css = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S))
+    assert not re.search(r":root\s*\{", css), f"{page.name} sets its own :root"
+    assert not rules(css, "@font-face") and "@font-face" not in css, page.name
+
+
+@pytest.mark.parametrize("sheet", [LAUNCHER_CSS, COMPOSER / "static/composer.css"], ids=lambda p: p.name)
 def test_text_is_raleway_and_headings_are_museomoderno_in_the_heading_colour(sheet):
     text = sheet.read_text()
     assert root_variables(text).get("--heading") == VARIABLES["--heading"]
@@ -146,11 +196,13 @@ HEADERS = {
 
 
 def stylesheet(path) -> str:
-    """The CSS of a file: a page's or template's <style> blocks, or the whole of a .css file."""
+    """The CSS of a file: a page's or template's <style> blocks, or the whole of a .css file. A launcher
+    page's starts with launcher.css, which it links before its own rules."""
     text = path.read_text()
     if path.suffix == ".css":
         return text
-    return "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S))
+    own = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", text, re.S))
+    return (LAUNCHER_CSS.read_text() + "\n" + own) if path in LAUNCHER else own
 
 
 def top_level_rules(css: str) -> list[tuple[list[str], str]]:

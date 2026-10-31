@@ -1,9 +1,10 @@
 // What the emitter writes, and that it writes nothing while the ledger is off.
 // The database half is test/db/ledger.db.test.ts.
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NotCanonical } from "@/vendor/aisc-ledger/canonical";
-import { emitEvent, eventBody } from "@/vendor/aisc-ledger/emit";
+import { emitEvent, eventBody, withoutAuthors } from "@/vendor/aisc-ledger/emit";
 
 function recorder() {
   const calls: { sql: string; values: unknown[] }[] = [];
@@ -65,5 +66,44 @@ describe("emitEvent", () => {
         null,
       ),
     ).toThrow(NotCanonical);
+  });
+});
+
+describe("eventBody and the shared refusal vectors", () => {
+  const read = (name: string) =>
+    JSON.parse(
+      readFileSync(new URL(`../../fixtures/ledger/${name}`, import.meta.url), "utf8"),
+    );
+  const refusals = read("canonical_refusals.json") as {
+    not_ledger_safe: { name: string; json: string }[];
+  };
+  const base = { action: "a", itemType: "t", itemId: "1" };
+
+  it.each(refusals.not_ledger_safe.map((v) => [v.name, v.json] as const))(
+    "refuses %s wherever the event holds it",
+    (_name, text) => {
+      for (const field of ["content", "before", "after", "details"])
+        expect(() => eventBody({ ...base, [field]: { v: JSON.parse(text) } }, null)).toThrow(NotCanonical);
+    },
+  );
+
+  it("refuses, rather than converts, a date, a BigInt or a value that contains itself", () => {
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    for (const value of [new Date("2026-01-01T00:00:00Z"), BigInt(1), cycle, NaN])
+      for (const field of ["content", "details"])
+        expect(() => eventBody({ ...base, [field]: { v: value } }, null)).toThrow(NotCanonical);
+  });
+
+  it("drops author fields from details too", () => {
+    const sent = JSON.parse(
+      eventBody({ ...base, details: { createdBy: "ada@x", savedBy: "ada@x", n: 1 } }, null),
+    );
+    expect(sent.details).toEqual({ n: 1 });
+  });
+
+  it("leaves what is not a plain object or array to the refusal, not to an empty object", () => {
+    const at = new Date("2026-01-01T00:00:00Z");
+    expect(withoutAuthors({ at })).toEqual({ at });
   });
 });

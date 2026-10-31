@@ -135,6 +135,11 @@ class HttpRendererClient:
     def fonts(self) -> list:
         return self._call("GET", "/v1/fonts")
 
+    def style_check_quick(self, style: dict) -> str | None:
+        """Why the renderer cannot use this style's logo, or None (POST /v1/style/check), within the short
+        deadline: a template save asks it while the person waits."""
+        return self._call_within(self.quick_timeout, "POST", "/v1/style/check", style).get("problem")
+
     def choices(self, project_id, system_id, block_type) -> dict:
         return self._call("POST", "/v1/choices", {"project_id": str(project_id), "system_id": str(system_id),
                                                   "block_type": block_type})

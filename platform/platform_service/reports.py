@@ -29,4 +29,7 @@ def of_version(slug: str, version_pid: str, token: str) -> dict:
         raise ComposerUnavailable(f"could not be reached ({type(exc).__name__})") from None
     if r.status_code != 200:
         raise ComposerUnavailable(f"answered {r.status_code}")
-    return r.json()
+    try:
+        return r.json()
+    except ValueError:
+        raise ComposerUnavailable("answered with something that is not JSON") from None

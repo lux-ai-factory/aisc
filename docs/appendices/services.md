@@ -74,6 +74,24 @@ platform.
 | `report-renderer` | Draws a report as PDF or Word. Reads the data itself, read-only. | `postgres` as `report_ro` (`platform`, the project databases, `superset`) |
 | `report-grants` | *One-shot.* Grants `report_ro` what the report reads. | `postgres` |
 
+### How a per-project one-shot ends
+
+Each module's migrate one-shot, and `report-grants`, goes over the project databases at every start. They
+share one contract for their exit status, which compose reads (`service_completed_successfully`): **0** once every
+project database is at head, **1** while the platform's Postgres cannot be reached or read yet (try again), **2**
+for a configuration error or a database that failed for good. The databases a sweep goes over are the projects of
+`core.project` whose database exists in `pg_database` and that its role may connect to; any other `project_<hex>`
+database is an orphan, reported, not migrated. Where a one-shot does not keep the contract yet:
+
+| One-shot | Databases it goes over | Exit status today |
+|---|---|---|
+| `qualification-migrate` | `pg_database` it may connect to, named `project_<hex>` | as the contract |
+| `control-objectives-migrate` | `core.project`; a missing database or one it may not connect to is skipped | as the contract |
+| `report-composer-migrate` | `core.project` whose database is in `pg_database` | as the contract |
+| `controls-migrate` | `pg_database` named `project_<hex>`, without the connect check | 0 even when a database failed (logged): one broken project must not keep `controls-web` from starting |
+| `aisc-backend-migrate` | `pg_database` it may connect to | 1 when a database failed, so compose waits for it as for a Postgres not ready yet |
+| `report-grants` | `pg_database` named `project_<hex>` | 1 when the list cannot be read; at the first database that fails, psql's own status (3) and the rest are not repaired |
+
 ## Storage and admin tools
 
 | Service | What it does |

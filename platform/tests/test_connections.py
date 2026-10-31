@@ -317,7 +317,7 @@ def test_deleting_keeps_the_engine_component(client, admin, project, stub):
 # Rotation keeps a key saved meanwhile (the rotate run itself: test_llm_store.py s2_13)
 
 def test_rotation_keeps_a_connection_key_saved_while_it_runs(client, admin, project, stub, dsn, monkeypatch):
-    from platform_service import llm_store
+    from platform_service import llm_store, secret_box
     from tests.test_llm_store import SaveDuringRotation
 
     engine_component(stub, project["pid"])
@@ -332,7 +332,7 @@ def test_rotation_keeps_a_connection_key_saved_while_it_runs(client, admin, proj
         assert put(client, project, "mcas-chat", admin, rest_body(stub, secret=new)).status_code == 200
 
     racing = SaveDuringRotation(real, token, save)
-    monkeypatch.setattr(llm_store, "fernet", lambda: racing)
+    monkeypatch.setattr(secret_box, "fernet", lambda: racing)
     counts = llm_store.rotate_all(dsn)
     assert racing.saved
     stored = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'mcas-chat'")[0]

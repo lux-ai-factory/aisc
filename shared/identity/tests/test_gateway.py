@@ -70,3 +70,15 @@ def test_a_token_not_yet_valid_is_refused(token, key_for):
 
 def test_header_names_are_case_insensitive(token, key_for):
     assert ask({"x-auth-request-access-token": token(azp=GATEWAY)}, key_for).subject
+
+
+def test_without_a_gateway_client_any_client_of_the_realm_is_accepted_and_the_bearer_must_still_agree(
+        token, key_for):
+    """What an access decision asks: a token from any client, the same person in both headers."""
+    who = gateway_identity({"X-Auth-Request-Access-Token": token(azp="webapp")}, issuer=ISSUER, key_for=key_for,
+                           gateway_client=None)
+    assert who.subject.endswith("01")
+    with pytest.raises(GatewayRefused, match="token_mismatch"):
+        gateway_identity({"X-Auth-Request-Access-Token": token(azp="webapp"),
+                          "Authorization": f"Bearer {token(sub='00000000-0000-0000-0000-000000000002')}"},
+                         issuer=ISSUER, key_for=key_for, gateway_client=None)

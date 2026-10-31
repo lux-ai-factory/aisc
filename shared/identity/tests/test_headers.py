@@ -25,3 +25,11 @@ def test_no_token_at_all():
     assert token_from_headers({}) is None
     assert token_from_headers({"Authorization": "Basic abc"}) is None
     assert token_from_headers({"Authorization": "Bearer "}) is None
+
+
+def test_the_gateway_token_alone():
+    from aisc_identity.headers import gateway_token
+
+    assert gateway_token({"x-auth-request-access-token": " abc "}) == "abc"
+    assert gateway_token({"Authorization": "Bearer abc"}) is None
+    assert gateway_token({GATEWAY_TOKEN_HEADER: " "}) is None

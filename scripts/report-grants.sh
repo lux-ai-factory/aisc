@@ -32,7 +32,14 @@ END
 $undo$;
 SQL
 
-for db in $(psql -d postgres -tAc "SELECT datname FROM pg_database WHERE datname ~ '^project_[0-9a-f]{32}$' ORDER BY 1"); do
+# Listed first, into a variable: `set -e` does not see a command substitution in a `for` list, so a
+# listing that failed would repair nothing and still end "done". Exit 1, as when Postgres is not ready.
+if ! dbs=$(psql -v ON_ERROR_STOP=1 -d postgres -tAc "SELECT datname FROM pg_database WHERE datname ~ '^project_[0-9a-f]{32}$' ORDER BY 1"); then
+  echo "[report-grants] the project databases cannot be listed; no grant was repaired" >&2
+  exit 1
+fi
+
+for db in $dbs; do
   psql -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
 DO $grants$
 DECLARE

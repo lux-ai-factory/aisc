@@ -137,7 +137,7 @@ def test_every_ai_or_worker_action_belongs_to_a_run_some_user_action_starts():
     for name, action in REGISTRY.items():
         assert set(action.runs) <= set(REGISTRY), name
         if action.runs:
-            assert action.run_window.total_seconds() > 0, name
+            assert action.window().total_seconds() > 0, name
 
 
 def test_routes_name_a_file_and_a_function():

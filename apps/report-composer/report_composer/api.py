@@ -17,7 +17,7 @@ from . import templates as looks
 from .errors import ApiError, fail_on, refuse_lone_surrogate
 from .guards import Guarded, project_guard
 from .records import NO_LAYOUT, NO_TEMPLATE, chosen_template, layout_or_404, template_of, template_or_404
-from .renderer_calls import block_types, choices_for, fonts, outline_block_types, renderer_call
+from .renderer_calls import block_types, choices_for, fonts, logo_check, outline_block_types, renderer_call
 from .settings import document_settings
 
 router = APIRouter(prefix="/api")
@@ -484,7 +484,7 @@ def download(request: Request, report_id: str, g: Guarded = Depends(project_guar
 
 def _save_template(request: Request, g: Guarded, body, template_id=None, rename_if_taken=False, record=None):
     """`record(conn, template_id, before, after)`: the caller's ledger event, in the save's transaction."""
-    look, logo = looks.checked(body, fonts(request))
+    look, logo = looks.checked(body, fonts(request), logo_check(request))
     now = request.app.state.clock()
     try:
         with _project_db(request, g) as conn:

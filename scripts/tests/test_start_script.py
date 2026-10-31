@@ -282,15 +282,24 @@ def test_local_controls_it_cannot_read_do_not_stop_the_start(scratch):
 def test_a_one_shot_that_failed_is_named_after_the_sign_in_answers(scratch):
     """make_buckets exits 1 when it cannot make the buckets, but nothing waits on it, so `up -d`
     returns 0 and the script said "AISC is up" with nothing to store results in."""
-    (scratch / "ps-answer").write_text("make_buckets\tExited (1) 5 seconds ago\n"
-                                       "report-grants\tExited (0) 9 seconds ago\n"
-                                       "platform\tUp 2 minutes (healthy)\n")
+    (scratch / "ps-answer").write_text("make_buckets\tExited (1) 5 seconds ago\tc-mb\n"
+                                       "report-grants\tExited (0) 9 seconds ago\tc-rg\n"
+                                       "platform\tUp 2 minutes (healthy)\tc-pl\n")
+    (scratch / "inspect-c-mb").write_text(FAR_FUTURE + "\n")
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     warnings = [line for line in r.stdout.splitlines() if "Warning" in line]
     assert any("make_buckets" in w for w in warnings), r.stdout
     assert not any("report-grants" in w or "platform" in w for w in warnings), r.stdout
     assert f"docker compose -p {stack_of(scratch)} logs make_buckets" in r.stdout
+
+
+def test_a_one_shot_that_failed_in_an_earlier_run_is_not_named(scratch):
+    """The project keeps an earlier run's exited container: not this start's failure."""
+    (scratch / "ps-answer").write_text("make_buckets\tExited (1) 2 days ago\tc-mb\nplatform\tUp 2 minutes\tc-pl\n")
+    (scratch / "inspect-c-mb").write_text(LONG_AGO + "\n")
+    r = run(scratch)
+    assert r.returncode == 0 and "did not finish" not in r.stdout, r.stdout + r.stderr
 
 
 def test_no_failed_one_shot_no_warning(scratch):
@@ -939,6 +948,19 @@ def test_each_client_is_sent_its_own_moved_addresses(scratch):
                                        "http://localhost:8198/oauth2/callback"]
     assert gateway["attributes"]["post.logout.redirect.uris"] == "http://localhost:8110/*##http://localhost/*"
     assert webapp["baseUrl"] == "http://localhost" and "8110" not in json.dumps(webapp)
+
+
+def test_the_gateway_client_is_given_the_secret_env_secrets_holds(scratch):
+    """The realm import gave Keycloak the first GATEWAY_CLIENT_SECRET only; after `secrets --rotate`
+    oauth2-proxy signs in with the new one, so every start hands it to the client, through stdin."""
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    sent = dict(updates(scratch))
+    secret = next(line.split("=", 1)[1] for line in (scratch / "env.secrets").read_text().splitlines()
+                  if line.startswith("GATEWAY_CLIENT_SECRET="))
+    given = sent["id-of-aisc-gateway"].get("secret") == secret          # booleans only: a failure prints no value
+    assert given, "the gateway client was not given env.secrets' GATEWAY_CLIENT_SECRET"
+    assert "secret" not in sent["id-of-aisc-webapp"]
 
 
 def test_a_second_client_that_cannot_be_updated_stops_start(scratch):

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
-from platform_service import connection_allowlist, db, helper_store, llm_store
+from platform_service import connection_allowlist, db, helper_store, llm_store, secret_box
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, role_or_404, secrets_unavailable
 from platform_service.routes.connections import _behind_gateway
@@ -94,6 +94,10 @@ def save_helper(slug: str, name: str, body: HelperIn, caller: Caller = Depends(c
     if endpoint is None:
         raise HTTPException(status_code=422, detail=NOT_VALID_ENDPOINT)
     reachable(pid, endpoint)
+    if body.api_key is None:
+        # a stored key goes only where it was entered for: another origin needs it typed again
+        stored = helper_store.get(pid, name, with_deleted=True)
+        secret_box.kept_key(stored["endpoint_url"] if stored else None, endpoint, bool(stored and stored["has_key"]))
     ciphertext = llm_store.KEEP
     key = None
     if body.api_key is not None:

@@ -5,33 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>AI Assessment Sandbox Configurator</title>
 <link rel="icon" href="/assets/laif-logo.svg"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=MuseoModerno:wght@500;600;700&family=Raleway:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
 <style>
-  /* Tokens from apps/controls and apps/qualification globals.css: electric blue,
-     hot pink, no rounded corners, hairlines and monospace labels. */
-  :root{
-    --bg:#f2f3fd; --panel:#ffffff; --panel-2:#f2f3fd;
-    --text:#0b0b2e; --muted:#4a4f6a; --faint:#6b7090;
-    --primary:#000fdf; --primary-hover:#000079; --heading:#000079;
-    --accent:#ff007e;
-    --error:#e30613;
-    --border:#cccff9; --border-strong:#999ff2;
-    --radius:0px;
-    --gutter:40px;
-    --col-centre:calc((100% - 2 * var(--gutter)) / 6);
-    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
-  body{
-    position:relative; min-height:100vh;
-    background:var(--bg); color:var(--text);
-    font-family:"Raleway",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
-  }
-  h1,h2,h3,h4{font-family:"MuseoModerno",ui-sans-serif,system-ui,sans-serif; color:var(--heading)}
+  /* The tokens, fonts, header and session line are /assets/launcher.css (electric blue, hot pink, no
+     rounded corners, hairlines and monospace labels); this page sets its header a size larger. */
   /* one cold wash of brand blue, one warm of accent: depth without noise */
   body::after{
     content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
@@ -39,30 +16,11 @@
       radial-gradient(900px 420px at 8% -8%, rgba(0,15,223,.07), transparent 70%),
       radial-gradient(700px 360px at 104% 108%, rgba(255,0,126,.06), transparent 70%);
   }
-  .shell{position:relative; z-index:1}
 
   /* ---- header: hairline, logo, product name, session ---- */
-  .topbar{
-    display:flex; align-items:center; gap:26.4px;
-    padding:20px 40px; border-bottom:1px solid var(--border);
-    background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
-    position:sticky; top:0; z-index:10;
-  }
-  .topbar img{height:48px; width:auto; display:block}
-  .topbar .rule{width:1px; height:33.6px; background:var(--border-strong)}
-  .topbar h1{
-    margin:0; font-size:19px; font-weight:700; color:var(--heading);
-  }
-  .session{
-    margin-left:24px;
-    display:flex; align-items:center; gap:16.8px;
-    font-family:var(--mono); font-size:13.8px; color:var(--muted); white-space:nowrap;
-  }
-  .session b{color:var(--text); font-weight:500}
-  .session a{
-    color:var(--primary); text-decoration:none; border-bottom:1px solid transparent;
-  }
-  .session a:hover{border-bottom-color:var(--primary)}
+  .topbar{gap:26.4px}
+  .topbar .rule{height:33.6px}
+  .session{margin-left:24px; gap:16.8px; font-size:13.8px}
 
   main{
     max-width:1360px; margin:0 auto; padding:40px 32px 32px;

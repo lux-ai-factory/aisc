@@ -9,20 +9,22 @@ HOMEPAGE = Path(__file__).resolve().parents[2] / "homepage"
 
 
 def css(page: str) -> str:
+    """The page's own style after the shared assets/launcher.css, which it links first."""
     style = re.search(r"<style>(.*?)</style>", (HOMEPAGE / page).read_text(), re.S).group(1)
-    return re.sub(r"/\*.*?\*/", "", style, flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", (HOMEPAGE / "assets/launcher.css").read_text() + "\n" + style, flags=re.S)
 
 
 def rule(selector: str, page: str = "index.html") -> str:
-    m = re.search(r"(?:^|\})\s*" + re.escape(selector) + r"\s*\{([^}]*)\}", css(page))
-    assert m, selector
-    return m.group(1)
+    """Every declaration the top-level rules for exactly `selector` set, in order (a later one wins)."""
+    found = re.findall(r"(?:^|\})\s*" + re.escape(selector) + r"\s*\{([^}]*)\}", css(page))
+    assert found, selector
+    return ";".join(found)
 
 
 def px(selector: str, prop: str, page: str = "index.html") -> str:
-    m = re.search(r"(?:^|;|\s)" + re.escape(prop) + r"\s*:\s*([^;]+)", rule(selector, page))
-    assert m, (selector, prop)
-    return m.group(1).strip()
+    found = re.findall(r"(?:^|;|\s)" + re.escape(prop) + r"\s*:\s*([^;]+)", rule(selector, page))
+    assert found, (selector, prop)
+    return found[-1].strip()
 
 
 def test_the_top_bar_matches_the_project_page():

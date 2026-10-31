@@ -715,7 +715,7 @@ def test_a_log_docker_does_not_answer_still_ends_in_the_refusal(tmp_path, monkey
     copy_install_scripts(tmp_path)
     module = aisc_py(tmp_path)
     monkeypatch.setattr(module, "docker_in_time", lambda argv, wait_s: None)
-    module.show_failing_logs()   # returns, prints nothing it cannot get
+    module.show_failing_logs(module.Stack(module.COMPOSE))   # returns, prints nothing it cannot get
 
 
 def test_the_failing_services_last_lines_are_shown(tmp_path, monkeypatch, capsys):
@@ -730,7 +730,7 @@ def test_the_failing_services_last_lines_are_shown(tmp_path, monkeypatch, capsys
         return subprocess.CompletedProcess(argv, 0, f"found invalid keys ({argv[-1]})\n", "")
 
     monkeypatch.setattr(module, "docker_in_time", answer)
-    module.show_failing_logs()
+    module.show_failing_logs(module.Stack(module.COMPOSE))
     err = capsys.readouterr().err
     assert "minio" in err and "found invalid keys (minio)" in err and "found invalid keys (postgres-setup)" in err
     assert [*module.COMPOSE, "logs", "--no-color", "--tail", "20", "minio"] in asked
@@ -904,3 +904,114 @@ def test_stop_and_remove_refuse_when_docker_cannot_list_the_stack(tmp_path, verb
     r = run(d, verb, path=fake_path(tmp_path), stdin=d.name + "\n")
     assert r.returncode != 0
     assert not compose_calls(log)
+
+
+# ---------------------------------------------------------------------------------- the stack, in-process
+
+class FakeStack:
+    """A Stack whose docker calls are answered from `answers` (a word of the call -> its stdout), in-process."""
+
+    @staticmethod
+    def of(module, answers, logs=""):
+        class Fake(module.Stack):
+            def call(self, argv, wait_s):
+                self.asked.append(argv)
+                if "logs" in argv:
+                    return subprocess.CompletedProcess(argv, 0, logs, "")
+                for word, out in answers.items():
+                    if word in argv:
+                        return subprocess.CompletedProcess(argv, 0, out(argv) if callable(out) else out, "")
+                return subprocess.CompletedProcess(argv, 1, "", "")
+
+        stack = Fake(module.COMPOSE)
+        stack.asked = []
+        return stack
+
+
+def secret_install(tmp_path):
+    """A scratch install whose env.secrets holds a known value, and aisc.py loaded from it, run from there."""
+    copy_install_scripts(tmp_path)
+    module = aisc_py(tmp_path)
+    (tmp_path / "env.secrets").write_text("AISC_INSTALL=abc123\nPLATFORM_RW_PASSWORD=x7q9zplainvalue42\n")
+    return module
+
+
+def test_the_failing_services_log_lines_are_shown_with_their_secrets_hidden(tmp_path, monkeypatch, capsys):
+    module = secret_install(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    stack = FakeStack.of(module, {"ps": "\n".join(json.dumps(o) for o in PS_OBJECTS)},
+                         logs="connecting with x7q9zplainvalue42 failed\nDB_PASSWORD=whatever\nplain line\n")
+    module.show_failing_logs(stack)
+    err = capsys.readouterr().err
+    assert "x7q9zplainvalue42" not in err and "DB_PASSWORD=whatever" not in err
+    assert "connecting with *** failed" in err and "plain line" in err
+
+
+def test_only_this_starts_failures_are_reported(tmp_path, monkeypatch):
+    """The project also holds an earlier run's container and a service this start does not have."""
+    module = secret_install(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    began = module.parse_docker_time("2026-01-01T00:00:00Z")
+    finished = {"c-now": "2026-01-01T00:05:00.1Z", "c-old": "2025-12-31T00:00:00Z", "c-gone": "2026-01-01T00:06:00Z"}
+    stack = FakeStack.of(module, {
+        "ps": ("make_buckets\tExited (1) 3 seconds ago\tc-now\nreport-grants\tExited (2) 2 days ago\tc-old\n"
+               "inspect-tool\tExited (1) 1 second ago\tc-gone\nplatform\tUp 2 minutes\tc-pl\n"
+               "postgres-setup\tExited (0) 9 seconds ago\tc-ok\n"),
+        "inspect": lambda argv: finished.get(argv[-1], "") + "\n",
+    })
+    this_start = {"make_buckets", "report-grants", "platform", "postgres-setup"}
+    assert stack.failing(this_start, began) == [("make_buckets", "Exited (1) 3 seconds ago")]
+    # compose would not list this start's services: every service counts, still only what stopped after began
+    assert [s for s, _ in stack.failing(None, began)] == ["make_buckets", "inspect-tool"]
+
+
+def test_the_end_of_start_warning_names_this_starts_failures_only(tmp_path, monkeypatch, capsys):
+    module = secret_install(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    class Failing(module.Stack):
+        def failing(self, this_start, began_at):
+            assert this_start == {"make_buckets"} and began_at == "began"
+            return [("make_buckets", "Exited (1) 3 seconds ago")]
+
+    module.warn_unfinished(Failing(module.COMPOSE), {"make_buckets"}, "began")
+    out = capsys.readouterr().out
+    assert "Warning: make_buckets did not finish (Exited (1) 3 seconds ago)" in out
+
+
+# ------------------------------------------------------------------------------- what --rotate does to each
+
+def test_every_secret_is_either_kept_or_made_fresh_by_rotate():
+    """A secret added to SECRETS needs a decision: kept (stored data needs it) or fresh on --rotate."""
+    module = aisc_py()
+    names = [name for name, _ in module.SECRETS]
+    for name in names:
+        assert (name in module.KEPT_ON_ROTATE) + (name in module.FRESH_ON_ROTATE) == 1, name
+    assert set(module.KEPT_ON_ROTATE) | set(module.FRESH_ON_ROTATE) == set(names)
+
+
+def test_rotate_keeps_the_engines_secret_key():
+    """The engine encrypts the credentials it stores with it: a new one makes them unreadable."""
+    assert "DJANGO_SECRET_KEY" in aisc_py().KEPT_ON_ROTATE
+
+
+def test_an_unknown_secrets_option_is_refused(tmp_path):
+    d = install(tmp_path)
+    r = run(d, "secrets", "--rotat")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "--rotat" in r.stderr and "--rotate" in r.stderr
+    assert not (d / "env.secrets").exists()
+
+
+def test_an_empty_infrastructure_password_takes_the_value_the_install_runs_on(tmp_path):
+    d = install(tmp_path)
+    assert run(d, "secrets").returncode == 0
+    secrets_file, runtime = d / "env.secrets", d / "env.runtime"
+    secrets_file.write_text(re.sub(r"^POSTGRES_PASSWORD=.*$", "POSTGRES_PASSWORD=", secrets_file.read_text(),
+                                   flags=re.M))
+    runtime.write_text(re.sub(r"^POSTGRES_PASSWORD=.*$", "POSTGRES_PASSWORD=thevolumesvalue", runtime.read_text(),
+                              flags=re.M))
+    r = run(d, "secrets")
+    assert r.returncode == 0, r.stderr
+    kept = values(secrets_file)["POSTGRES_PASSWORD"] == "thevolumesvalue"   # a boolean: a failure prints no value
+    assert kept, "a new POSTGRES_PASSWORD was generated, not the one the volume holds"

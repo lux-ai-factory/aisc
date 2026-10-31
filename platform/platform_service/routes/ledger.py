@@ -409,6 +409,12 @@ def _malformed(event) -> str | None:
             uuid.UUID(str(event.get(field)))
         except ValueError:
             return f"{field}: a UUID is needed"
+    for field in ("run_id", "card_version"):                          # uuid columns of core.outbox, whoever acts
+        if event.get(field) is not None:
+            try:
+                uuid.UUID(str(event[field]))
+            except ValueError:
+                return f"{field}: a UUID is needed"
     if not isinstance(event.get("action"), str) or not event["action"]:
         return "action: needed"
     if not isinstance(event.get("details", {}), dict):

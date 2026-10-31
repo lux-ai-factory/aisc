@@ -236,11 +236,7 @@ def _engine_left(conn) -> int:
 
 
 def projectdb_connection(pid):
-    import psycopg
-    from psycopg.conninfo import make_conninfo
-    from psycopg.rows import dict_row
-
-    return psycopg.connect(make_conninfo(db.dsn(), dbname=projectdb.database_name(pid)), row_factory=dict_row)
+    return projectdb.connect(pid)
 
 
 @router.get("/projects/{slug}/members")

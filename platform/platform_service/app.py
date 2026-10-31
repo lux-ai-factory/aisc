@@ -44,15 +44,16 @@ _LEDGER_EXEMPT = ("/internal/", "/authz/", "/docs", "/openapi.json")
 @app.middleware("http")
 async def ledger_request(request: Request, call_next):
     """The witnessed request this one is (X-AISC-Request-Id), for the platform's own events; in `enforce`,
-    a write without a matching one is refused."""
+    a write without a matching one is refused. An exempt path is never checked, so it serves no request id:
+    an internal caller's event cites the request named in its own body, or none."""
     from starlette.concurrency import run_in_threadpool
 
     from platform_service.ledger import outbox, witness as ledger_witness
 
-    request_id = request.headers.get("x-aisc-request-id") or None
+    exempt = request.url.path.startswith(_LEDGER_EXEMPT)
+    request_id = None if exempt else request.headers.get("x-aisc-request-id") or None
     mode = ledger_witness.mode()
-    if (request.method in _LEDGER_WRITES and not request.url.path.startswith(_LEDGER_EXEMPT)
-            and mode != "off"):
+    if request.method in _LEDGER_WRITES and not exempt and mode != "off":
         problem = await run_in_threadpool(_ledger_presented, request, request_id)
         if problem and mode == "enforce":
             return JSONResponse({"detail": problem}, status_code=401)

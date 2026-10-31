@@ -1,0 +1,150 @@
+{
+  "about": "How a project's database is named and reached, shared by aisc_identity.projectdb and its JavaScript twin shared/access-ts/projectDb.mjs, so the copies in each service cannot drift. A pid names a database only in its canonical form (any case); a template is a URL with {database} as its path, its credentials percent-encoded; dsn() drops only Prisma's own options (schema, connection_limit, pool_timeout) and keeps every libpq option.",
+  "names": [
+    {
+      "pid": "abcdef01-2345-4678-9abc-def012345678",
+      "name": "project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "pid": "ABCDEF01-2345-4678-9ABC-DEF012345678",
+      "name": "project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "pid": "abcdef01234546789abcdef012345678",
+      "refused": true
+    },
+    {
+      "pid": "{abcdef01-2345-4678-9abc-def012345678}",
+      "refused": true
+    },
+    {
+      "pid": "urn:uuid:abcdef01-2345-4678-9abc-def012345678",
+      "refused": true
+    },
+    {
+      "pid": " abcdef01-2345-4678-9abc-def012345678",
+      "refused": true
+    },
+    {
+      "pid": "abcdef01-2345-4678-9abc-def012345678\n",
+      "refused": true
+    },
+    {
+      "pid": "",
+      "refused": true
+    },
+    {
+      "pid": "../platform",
+      "refused": true
+    }
+  ],
+  "pids": [
+    {
+      "name": "project_abcdef01234546789abcdef012345678",
+      "pid": "abcdef01-2345-4678-9abc-def012345678"
+    },
+    {
+      "name": "project_ABCDEF01234546789ABCDEF012345678",
+      "pid": null
+    },
+    {
+      "name": "project_abcdef01234546789abcdef01234567",
+      "pid": null
+    },
+    {
+      "name": "platform",
+      "pid": null
+    },
+    {
+      "name": "project_abcdef01234546789abcdef012345678x",
+      "pid": null
+    }
+  ],
+  "dsns": [
+    {
+      "name": "plain",
+      "template": "postgresql://reader:secret@postgres:5432/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://reader:secret@postgres:5432/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "libpq options kept, Prisma's dropped",
+      "template": "postgresql://reader:secret@postgres:5432/{database}?sslmode=require&schema=qualification&connection_limit=2&pool_timeout=10&application_name=aisc",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://reader:secret@postgres:5432/project_abcdef01234546789abcdef012345678?sslmode=require&application_name=aisc"
+    },
+    {
+      "name": "only Prisma's options",
+      "template": "postgresql://reader:secret@postgres/{database}?schema=public",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://reader:secret@postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "a driver for SQLAlchemy",
+      "template": "postgres://reader:secret@postgres/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "driver": "psycopg",
+      "dsn": "postgresql+psycopg://reader:secret@postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "a driver in the template, none asked for",
+      "template": "postgresql+psycopg://reader:secret@postgres/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://reader:secret@postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "braces in the password",
+      "template": "postgresql://reader:p{a}ss@postgres/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://reader:p%7Ba%7Dss@postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "a percent sign in the password",
+      "template": "postgresql://reader:50%off@postgres/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://reader:50%25off@postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "an encoded password stays as it is",
+      "template": "postgresql://re%40der:p%40ss%2F1@postgres/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://re%40der:p%40ss%2F1@postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "no credentials",
+      "template": "postgresql://postgres/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "dsn": "postgresql://postgres/project_abcdef01234546789abcdef012345678"
+    },
+    {
+      "name": "the maintenance database",
+      "template": "postgresql://reader:secret@postgres/{database}?sslmode=require",
+      "database": "postgres",
+      "dsn": "postgresql://reader:secret@postgres/postgres?sslmode=require"
+    },
+    {
+      "name": "no placeholder",
+      "template": "postgresql://reader:secret@postgres/platform",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "refused": true
+    },
+    {
+      "name": "the placeholder outside the path",
+      "template": "postgresql://reader:secret@postgres/platform?db={database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "refused": true
+    },
+    {
+      "name": "not a postgres URL",
+      "template": "mysql://reader:secret@db/{database}",
+      "database": "project_abcdef01234546789abcdef012345678",
+      "refused": true
+    },
+    {
+      "name": "a database name that is not an identifier",
+      "template": "postgresql://reader:secret@postgres/{database}",
+      "database": "project_x?sslmode=disable",
+      "refused": true
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+import sys
 
 import yaml
 
@@ -98,9 +99,10 @@ def test_test_only_packages_stay_out_of_the_sidecar_images():
                            for line in (d / f).read_text().splitlines() if line.strip() and not line.startswith(("#", "-"))}
         assert not names("requirements.txt") & {"pytest", "httpx"}, svc
         assert {"pytest", "httpx"} <= names("requirements-dev.txt"), svc
-    verify = (ROOT / "scripts/verify.sh").read_text()
+    rows = subprocess.run([sys.executable, str(ROOT / "scripts/suites.py"), "rows"], capture_output=True, text=True,
+                          check=True).stdout
     for module in ("qualification prefill|", "qualification ontology|", "qualification pdf|"):
-        line = next(line for line in verify.splitlines() if line.startswith(module))
+        line = next(line for line in rows.splitlines() if line.startswith(module))
         assert "-r requirements-dev.txt" in line, module
 
 

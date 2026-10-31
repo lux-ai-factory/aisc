@@ -2,7 +2,7 @@
 
 Superset and the dashboard's own package are not imported: Flask-AppBuilder's two names and aisc_ext's
 security manager are stand-ins that record what the config asks of them, so this runs with Flask and
-Flask-Login alone, at the versions the dashboard image has (scripts/verify.sh pins them).
+Flask-Login alone, at the versions the dashboard image has (scripts/suites.py pins them).
 
 Run with: python -m unittest test_superset_gateway_config
 """
@@ -101,8 +101,8 @@ def load_config():
 CONFIG = load_config()
 
 
-def claims(sub="sub-alice", roles=("viewer",), **more):
-    return {"sub": sub, "realm_access": {"roles": list(roles)}, **more}
+def claims(sub="sub-alice", roles=("viewer",), iat=1000, **more):
+    return {"sub": sub, "iat": iat, "realm_access": {"roles": list(roles)}, **more}
 
 
 class FollowTheGatewayInFlask(unittest.TestCase):
@@ -169,6 +169,21 @@ class FollowTheGatewayInFlask(unittest.TestCase):
         alice = self.sm.users["alice"]
         self.assertEqual((alice.email, alice.first_name, alice.last_name),
                          ("alice@example.org", "Alice", "Liddell"))
+
+    def test_a_newer_token_for_the_same_person_syncs_again(self):
+        """Roles changed in Keycloak or a project reach a running session with the next token the gateway
+        holds, not only at the next sign-in."""
+        self.get(user="alice", token_claims=claims(roles=["viewer"], iat=1000))
+        self.get(user="alice", token_claims=claims(roles=["viewer"], iat=1000))
+        self.assertEqual(len(SIGN_INS), 1)
+        self.assertEqual(self.get(user="alice", token_claims=claims(roles=["admin"], iat=1300)).text, "alice")
+        self.assertEqual([s["roles"] for s in SIGN_INS], [["viewer"], ["admin"]])
+        self.assertEqual(self.sm.asked_for, ["alice"])
+
+    def test_an_older_token_does_not_sync_again(self):
+        self.get(user="alice", token_claims=claims(iat=1300))
+        self.get(user="alice", token_claims=claims(iat=1000))
+        self.assertEqual(len(SIGN_INS), 1)
 
     def test_without_verified_claims_nothing_is_synced(self):
         self.assertEqual(self.get(user="alice").text, "alice")

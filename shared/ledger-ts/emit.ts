@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import { throughGateway } from "./gatewayToken";
 
-import { ledgerSafe } from "./canonical";
+import { isPlainObject, ledgerSafe, NotCanonical } from "./canonical";
 
 export type LedgerEvent = {
   action: string;
@@ -104,17 +104,22 @@ const WHO_FIELDS = new Set([
   "savedBy",
 ]);
 
-/** `value` without any field that names a person, at any depth. */
-export function withoutAuthors(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutAuthors);
-  if (value && typeof value === "object") {
+/** `value` without any field that names a person, at any depth. Only arrays and plain records are entered:
+ * anything else (a Date) is left as it is, for eventBody to refuse. */
+export function withoutAuthors(value: unknown, inside: Set<object> = new Set()): unknown {
+  if (!Array.isArray(value) && !isPlainObject(value)) return value;
+  if (inside.has(value)) throw new NotCanonical("a value that contains itself has no JSON form");
+  inside.add(value);
+  try {
+    if (Array.isArray(value)) return value.map((item) => withoutAuthors(item, inside));
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
+      Object.entries(value)
         .filter(([k]) => !WHO_FIELDS.has(k))
-        .map(([k, v]) => [k, withoutAuthors(v)]),
+        .map(([k, v]) => [k, withoutAuthors(v, inside)]),
     );
+  } finally {
+    inside.delete(value);
   }
-  return value;
 }
 
 /** The JSON the emitter writes; exported for the tests. Throws NotCanonical for a value the ledger can't keep. */
@@ -128,7 +133,7 @@ export function eventBody(
     action: event.action,
     item_type: event.itemType,
     item_id: event.itemId,
-    details: event.details ?? {},
+    details: withoutAuthors(event.details ?? {}),
   };
   if (event.content !== undefined) body.content = withoutAuthors(event.content);
   if (event.before !== undefined) body.before = withoutAuthors(event.before);
@@ -137,9 +142,25 @@ export function eventBody(
     body.item_version = String(event.itemVersion);
   if (event.runId) body.run_id = event.runId;
   if (event.model) body.model = event.model;
-  const sent = JSON.stringify(body);
+  let sent: string;
+  try {
+    sent = JSON.stringify(body, refuseConversions);
+  } catch (err) {
+    if (err instanceof NotCanonical) throw err;
+    throw new NotCanonical(`JSON has no form for this event: ${(err as Error).message}`); // a BigInt, a cycle
+  }
   ledgerSafe(JSON.parse(sent)); // what is sent (undefined fields dropped), refused now if the ledger would later
   return sent;
+}
+
+/** JSON.stringify would write a Date as text and NaN as null: refuse instead, so nothing changes on the way. */
+function refuseConversions(this: Record<string, unknown>, key: string, value: unknown): unknown {
+  const raw = this[key];
+  if (typeof raw === "number" && !Number.isFinite(raw))
+    throw new NotCanonical("NaN and infinities have no JSON form");
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw) && !isPlainObject(raw))
+    throw new NotCanonical(`JSON has no form for ${raw.constructor?.name ?? "object"}`);
+  return value;
 }
 
 /** Queue one event on `tx`, inside the caller's transaction. Returns its event id, or null while the ledger is off. */

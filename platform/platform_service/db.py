@@ -11,7 +11,6 @@ import threading
 import time
 
 import psycopg
-from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -296,28 +295,12 @@ _VERSION_COLUMNS = "pid, project_id, number, name, version, provider, descriptio
 _STORED = "pid, number, name, version, provider, description, created_at, created_by"
 
 
-def _is_missing_database(exc: Exception) -> bool:
-    return "does not exist" in str(exc) and "database" in str(exc)
-
-
 def project_connection(pid) -> psycopg.Connection:
-    """A new connection to this project's database, as the platform's own role.
-
-    Raises ProjectDatabaseGone when the database is not there: looked up first,
-    and also when it is dropped between that look and the connect."""
+    """A new connection to this project's database, as the platform's own role; ProjectDatabaseGone when the
+    database is not there (projectdb.connect)."""
     from platform_service import projectdb
 
-    name = projectdb.database_name(pid)
-    with pool().connection() as conn:
-        exists = conn.execute("select 1 from pg_database where datname = %s", (name,)).fetchone()
-    if exists is None:
-        raise ProjectDatabaseGone(str(pid))
-    try:
-        return psycopg.connect(make_conninfo(dsn(), dbname=name), row_factory=dict_row)
-    except psycopg.OperationalError as exc:
-        if _is_missing_database(exc):
-            raise ProjectDatabaseGone(str(pid)) from None
-        raise
+    return projectdb.connect(pid)
 
 
 def _project_ref(conn, identifier: str) -> dict | None:

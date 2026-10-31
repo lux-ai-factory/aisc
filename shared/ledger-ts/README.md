@@ -20,7 +20,7 @@ the project's own immudb database. The ledger's place in AISC is in
 | --- | --- |
 | `emit.ts` | `emitEvent(tx, event)` writes one event with `ledger.emit(jsonb)` on the caller's transaction and returns its event id. It cites the request the gateway witnessed and never names who acted. Nothing is written while `LEDGER_MODE` is off. |
 | `gatewayToken.ts` | `throughGateway(headers)`: whether the request carries a gateway token that verifies (RS256, issuer, expiry, `azp` = the gateway's client), the witness's own rule. Only then is the request id cited. |
-| `canonical.ts` | RFC 8785 canonical JSON, the twin of the platform's `ledger/canonical.py`, and `ledgerSafe`, which refuses before writing what the relay would refuse later. |
+| `canonical.ts` | RFC 8785 canonical JSON, the twin of the platform's `ledger/canonical.py`, and `ledgerSafe`, which refuses before writing what the relay would refuse later. Both refuse, rather than convert, a BigInt, a Date or any object that is not a plain record, and a value that contains itself; `eventBody` does the same for every field of an event, `details` included. The refusals are pinned to `aisc_identity.ledger_events` and the platform by `platform/tests/ledger/fixtures/canonical_refusals.json`. |
 
 ## Settings
 
@@ -41,6 +41,7 @@ qualification and controls are separate repositories with their own build contex
 | --- | --- |
 | `*.ts` | `src/vendor/aisc-ledger/` |
 | `*.test.ts` | `test/vendor/ledger/` |
+| `platform/tests/ledger/fixtures/canonical_*.json` | `test/fixtures/ledger/` |
 
 `test/vendor/inSync.test.ts` in each app fails when a copy differs from this folder (it is skipped when the app is
 checked out without the aisc repository around it). To change one of these files, edit it here and copy it into

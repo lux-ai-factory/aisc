@@ -7,7 +7,6 @@ from conftest import ROOT
 
 PROJECT = ROOT / "homepage/project.html"
 PAGE = ROOT / "homepage/catalogue.html"
-EVIDENCE = ROOT / "homepage/evidence.html"
 
 
 def read(path):
@@ -32,7 +31,7 @@ def _card_handler():
 
 def test_the_card_asks_the_platform_for_the_projects_mode():
     handler = _card_handler()
-    assert "'/api/projects/' + encodeURIComponent(slug) + '/catalogue'" in handler
+    assert "aisc.call('/api/projects/' + encodeURIComponent(slug) + '/catalogue')" in handler
     assert "e.preventDefault();" in handler
 
 
@@ -49,9 +48,8 @@ def test_either_catalogue_opens_the_catalogues_own_pages_here_with_the_hand_over
     assert "var pages = '/project-catalogue/catalogue?project=' + encodeURIComponent(slug);" in handler
     assert re.search(r"function open\(address\)", handler)
     assert "address + '#env=' + btoa(JSON.stringify(payload))" in handler
-    assert re.search(r"\.then\(function \(d\) \{\s*if \(d && d\.mode === null\)", handler)
-    assert handler.count("open(pages)") == 2, "a chosen catalogue and no answer both open the pages"
-    assert re.search(r"\.catch\(function \(\) \{\s*open\(pages\);", handler)
+    assert re.search(r"\.then\(function \(answer\) \{\s*var d = answer\.data;\s*if \(d && d\.mode === null\)", handler)
+    assert handler.count("open(pages)") == 1, "a chosen catalogue and no answer both open the pages"
 
 
 def test_the_online_site_is_no_longer_opened_from_a_project():
@@ -62,12 +60,20 @@ def test_the_online_site_is_no_longer_opened_from_a_project():
 
 
 def test_the_page_has_the_launchers_look_and_one_inline_script():
-    html, reference = read(PAGE), read(EVIDENCE)
-    for var in re.findall(r"(--[a-z0-9-]+)\s*:", re.search(r":root\s*\{(.*?)\}", reference, re.S).group(1)):
-        assert re.search(re.escape(var) + r"\s*:", html), var
+    html = read(PAGE)
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
-    assert len(scripts) == 1 and "src" not in scripts[0].lower()
+    assert scripts == [' src="/assets/page.js"', ""], scripts
     assert re.search(r"<title>Catalogue\b", html)
+
+
+def test_every_platform_answer_goes_through_the_one_call():
+    """aisc.call (homepage/assets/page.js) reads every answer, so a refused catalogue read says why instead of
+    leaving the page blank."""
+    script = script_of(read(PAGE))
+    assert "fetch(" not in script and "res.json()" not in script
+    assert "aisc.call('/api/projects/' + enc(slug) + '/catalogue')" in script
+    assert re.search(r"if \(!c\.ok\) \{ show\('page-message', c\.message\); return; \}", script)
 
 
 def test_the_choice_explains_both_and_that_it_is_final():
@@ -85,8 +91,7 @@ def test_the_choice_explains_both_and_that_it_is_final():
 
 def test_choosing_posts_the_mode_and_says_why_it_failed():
     script = script_of(read(PAGE))
-    assert "'/api/projects/' + enc(slug) + '/catalogue'" in script
-    assert "method: 'POST'" in script and "{mode: mode}" in script
+    assert "aisc.call('/api/projects/' + enc(slug) + '/catalogue', {method: 'POST', body: {mode: mode}})" in script
     for status in ("409", "503"):
         assert status in script, status
 

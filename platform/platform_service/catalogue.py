@@ -32,11 +32,9 @@ from packaging.version import InvalidVersion, Version
 
 import psycopg
 from psycopg import errors
-from psycopg.conninfo import make_conninfo
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from platform_service import db, engine_components, evidence, plugin_sources, projectdb, publisher
+from platform_service import engine_components, evidence, plugin_sources, projectdb, publisher
 from platform_service.local_controls import LOCAL_CONTROLS_DIR, local_controls  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -106,7 +104,7 @@ class NoEntry(LookupError):
 
 
 def _connect(pid) -> psycopg.Connection:
-    return psycopg.connect(make_conninfo(db.dsn(), dbname=projectdb.database_name(pid)), row_factory=dict_row)
+    return projectdb.connect(pid)
 
 
 # ── The choice ──────────────────────────────────────────────────────────────

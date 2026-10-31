@@ -44,6 +44,18 @@ def _database_up() -> bool:
 needs_database = pytest.mark.skipif(not _database_up(), reason="no platform database reachable")
 
 
+def pytest_sessionstart(session):
+    """A test database that was given but cannot be used fails the run: skipping every database test would
+    pass it (scripts/test-platform.sh, CI). With none given, the database tests skip."""
+    if not os.environ.get("PLATFORM_TEST_DATABASE_URL"):
+        return
+    if not DSN:
+        raise pytest.UsageError("PLATFORM_TEST_DATABASE_URL is refused: it has no port, or port 5432 (the running"
+                                " stack's PostgreSQL); give a throwaway database on another port")
+    if not _database_up():
+        raise pytest.UsageError("PLATFORM_TEST_DATABASE_URL is set but the database cannot be reached")
+
+
 @pytest.fixture(scope="session")
 def dsn():
     return DSN

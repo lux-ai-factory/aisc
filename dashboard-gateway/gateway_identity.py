@@ -24,6 +24,13 @@ CLAIMS_KEY = "aisc.gateway_claims"
 TOKEN_HEADER = "HTTP_X_AUTH_REQUEST_ACCESS_TOKEN"
 #: Named explicitly, as everywhere else: an open list admits `alg: none`.
 ALGORITHMS = ["RS256"]
+#: Claims a gateway token must carry: without an expiry it would be good forever, and the issue time
+#: tells the role sync a newer token from the one it last synced.
+REQUIRED_CLAIMS = ["exp", "iat", "iss"]
+#: Keycloak signs its ID and refresh tokens with the same keys; only the access token is a Bearer.
+ACCESS_TOKEN_TYPE = "Bearer"
+#: Waiting longer than this for the realm's keys would hold every Superset request.
+JWKS_TIMEOUT_SECONDS = 3
 
 
 class GatewayIdentity:
@@ -40,7 +47,7 @@ class GatewayIdentity:
         if key_for is None:
             if not jwks_url:
                 raise ValueError("jwks_url: the realm's keys address is required")
-            client = jwt.PyJWKClient(jwks_url)
+            client = jwt.PyJWKClient(jwks_url, timeout=JWKS_TIMEOUT_SECONDS)
             key_for = lambda token: client.get_signing_key_from_jwt(token).key  # noqa: E731
         self.key_for = key_for
 
@@ -49,10 +56,13 @@ class GatewayIdentity:
         # ("account"), so the client is checked there, as shared/identity does: a token of the
         # realm issued to another client (the web app's keycloak-js token) is not the gateway's.
         try:
-            claims = jwt.decode(token, self.key_for(token), algorithms=ALGORITHMS,
-                                issuer=self.issuer, options={"verify_aud": False})
+            claims = jwt.decode(token, self.key_for(token), algorithms=ALGORITHMS, issuer=self.issuer,
+                                options={"verify_aud": False, "require": REQUIRED_CLAIMS})
         except Exception as exc:  # a bad token is nobody, never an error page
             log.info("gateway token refused: %s", exc)
+            return None
+        if claims.get("typ") != ACCESS_TOKEN_TYPE:
+            log.info("gateway token refused: a %r token, not an access token", claims.get("typ"))
             return None
         if claims.get("azp") != self.client_id:
             log.info("gateway token refused: issued to %r, not the gateway", claims.get("azp"))
@@ -77,3 +87,12 @@ def what_to_do(signed_in_as: Optional[str], gateway_says: Optional[str]) -> str:
     if gateway_says is None:
         return "logout"
     return "login" if signed_in_as is None else "switch"
+
+
+def resync_due(synced_iat: Optional[int], claims: Optional[dict]) -> bool:
+    """Whether a session kept for the same person syncs roles again: when the gateway now holds a token
+    issued after the one the last sync read, so a role or project change reaches a running session."""
+    iat = (claims or {}).get("iat")
+    if not isinstance(iat, int) or isinstance(iat, bool):
+        return False
+    return synced_iat is None or iat > synced_iat

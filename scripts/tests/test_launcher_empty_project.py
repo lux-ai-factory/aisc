@@ -22,7 +22,7 @@ def script_of(name):
 @pytest.mark.parametrize("name", PAGES)
 def test_a_page_opened_without_a_project_goes_to_the_launcher(name):
     script = script_of(name)
-    m = re.search(r"var slug = [^;]*get\('project'\)[^;]*;", script)
+    m = re.search(r"var slug = (?:aisc\.project\(\)|[^;]*get\('project'\)[^;]*);", script)
     assert m, f"{name}: where it reads ?project="
     rest = script[m.end():m.end() + 300]
     assert re.search(r"if \(!slug\) \{ location\.replace\('/'\); throw new Error\('no project'\); \}", rest), \
@@ -30,8 +30,12 @@ def test_a_page_opened_without_a_project_goes_to_the_launcher(name):
 
 
 def test_the_project_page_without_a_handle_goes_to_the_launcher():
+    """The handle comes from aisc.project() (homepage/assets/page.js), which reads /p/<slug> and gives null, never
+    an exception, for an address that is no handle (a malformed escape once left the page on its dots)."""
+    assert '<script src="/assets/page.js"></script>' in (ROOT / "homepage/project.html").read_text()
     script = script_of("project")
-    m = re.search(r"var slug = decodeURIComponent\(window\.location\.pathname[^;]*;", script)
+    m = re.search(r"var slug = aisc\.project\(\);", script)
+    assert "decodeURIComponent(" not in script
     assert m and re.search(r"if \(!slug\) \{ location\.replace\('/'\); throw new Error\('no project'\); \}",
                            script[m.end():m.end() + 400])
 
@@ -45,4 +49,4 @@ def test_the_step_4_card_is_linked_with_its_project_before_anything_loads():
     assert " href=" not in tag, tag
     script = script_of("project")
     linked = script.index("getElementById('sandbox-card').href = '/evidence.html?project=' + encodeURIComponent(slug)")
-    assert linked < script.index("fetch('/api/projects/' + encodeURIComponent(slug)")
+    assert linked < script.index("aisc.call('/api/projects/' + encodeURIComponent(slug))")

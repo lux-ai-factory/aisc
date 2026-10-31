@@ -15,11 +15,12 @@ import logging
 import os
 from urllib.parse import quote
 
-from platform_service import dashboard_bridge, engine_components, evidence
+from platform_service import dashboard_bridge, engine_components, engine_runs, evidence
 
 logger = logging.getLogger(__name__)
 
-#: each plugin with its latest finished, not archived, run (none when it never ran)
+#: each plugin with its latest finished run of the assessment record (none when it never ran): not archived,
+#: not on a local model file (engine_runs)
 _LATEST_RUNS = (
     "SELECT DISTINCT ON (pl.id) pl.package_name, pl.name, pl.version,"
     " COALESCE(NULLIF(pl.display_name, ''), pl.name, pl.package_name) AS label,"
@@ -27,7 +28,8 @@ _LATEST_RUNS = (
     " FROM engine.aisc_backend_plugin pl"
     " LEFT JOIN engine.aisc_backend_pluginconfig pc ON pc.plugin_id = pl.id"
     " LEFT JOIN engine.aisc_backend_evaluationplugin ep ON ep.plugin_config_id = pc.id AND ep.status = 'Done'"
-    " LEFT JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id AND e.status <> 'Archived'"
+    "  AND " + engine_runs.NOT_LOCAL +
+    " LEFT JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id AND " + engine_runs.NOT_ARCHIVED +
     " ORDER BY pl.id, (e.id IS NULL), e.created_at DESC, e.id DESC"
 )
 
@@ -53,7 +55,7 @@ def visualizations(pid, token: str, run: dict) -> list[dict]:
     return list(answer.get("metric_visualizations") or [])
 
 
-#: each plugin configuration with its latest finished, not archived, run (the report's declared charts)
+#: each plugin configuration with its latest finished run of the assessment record (the report's declared charts)
 _LATEST_RUN_PER_CONFIG = (
     "SELECT DISTINCT ON (pc.id) pc.id AS config_id,"
     " COALESCE(NULLIF(pl.display_name, ''), pl.name, pl.package_name) AS label,"
@@ -61,7 +63,8 @@ _LATEST_RUN_PER_CONFIG = (
     " FROM engine.aisc_backend_pluginconfig pc"
     " JOIN engine.aisc_backend_plugin pl ON pl.id = pc.plugin_id"
     " JOIN engine.aisc_backend_evaluationplugin ep ON ep.plugin_config_id = pc.id AND ep.status = 'Done'"
-    " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id AND e.status <> 'Archived'"
+    "  AND " + engine_runs.NOT_LOCAL +
+    " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id AND " + engine_runs.NOT_ARCHIVED +
     " ORDER BY pc.id, e.created_at DESC, e.id DESC"
 )
 

@@ -106,13 +106,15 @@ def test_an_ai_event_without_a_start_event_is_rejected(client, project, memory_l
     assert trusted(memory_ledger, project["pid"]) == [] and reasons(memory_ledger, project["pid"]) == ["run"]
 
 
-def test_an_ai_event_after_the_run_window_is_rejected(client, project, memory_ledger, run, settings):
-    """The AI event comes RUN_WINDOW + 1 h after its start. (Moving the start back instead would make the
-    start itself early for its request, and reject it as `early_event`.)"""
+def test_an_ai_event_after_the_run_window_is_rejected(client, project, memory_ledger, run, settings, monkeypatch):
+    """The AI event comes RUN_WINDOW + 1 h after its start, with RUN_WINDOW set to 2 h here: the registry's
+    actions take their window from settings, so a change there is the relay's rule. (Moving the start back
+    instead would make the start itself early for its request, and reject it as `early_event`.)"""
     import psycopg
 
     from tests.conftest import DSN
 
+    monkeypatch.setattr(settings, "RUN_WINDOW", timedelta(hours=2))
     relay_all(project["pid"])                                         # the start event, accepted
     event = ai_event(*run)
     assert post(client, project["pid"], event).status_code == 202
@@ -248,3 +250,20 @@ def test_an_internal_event_from_a_newer_registry_is_held(client, project, memory
 
 def test_a_registry_version_must_be_a_number(client, project, run):
     assert post(client, project["pid"], ai_event(*run, registry_version="2")).status_code == 422
+
+
+def test_an_internal_event_takes_its_request_id_from_its_body_never_from_a_header(client, project, memory_ledger,
+                                                                                  witnessed):
+    """The internal routes are outside the witness check, so an X-AISC-Request-Id there is nobody's word: an
+    event whose body cites no request is one without a request, whatever header came with it."""
+    from tests.ledger.test_ledger_step5_dashboard import CASES, _filled, slug_of
+
+    slug = slug_of(project)
+    request_id = witnessed(MEMBER, "POST", "dashboard", f"/api/v1/aisc_comment/?dashboard={slug}")
+    event = {"event_id": str(uuid.uuid4()), "action": "dashboard.comment.created", "item_type": "comment",
+             "item_id": "7", **_filled(CASES[0][5], slug)}
+    r = client.post(f"/internal/projects/{project['pid']}/ledger/events", json=event,
+                    headers={"X-AISC-Service-Token": "test-dashboard-token-0123456789", "X-AISC-Request-Id": request_id})
+    assert r.status_code == 202, r.text
+    relay_all(project["pid"])
+    assert reasons(memory_ledger, project["pid"]) == ["missing_request"]

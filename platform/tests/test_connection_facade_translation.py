@@ -182,3 +182,19 @@ def test_the_module_imports_only_the_standard_library_and_the_interface():
     import sys
     outside = {r for r in roots if r != "aisc_plugin_interface" and r not in sys.stdlib_module_names}
     assert outside <= {"__future__"}, outside
+
+
+# The A2A and OIP doors' requests
+@pytest.mark.parametrize("params", [["message"], "message", 3], ids=["a-list", "a-string", "a-number"])
+def test_a2a_params_that_are_not_an_object_are_a_bad_request(params):
+    with pytest.raises(facade.BadRequest, match="params must be an object"):
+        facade.a2a_to_core({"jsonrpc": "2.0", "id": 1, "method": "SendMessage", "params": params})
+
+
+def test_an_oip_batch_is_at_most_max_oip_inputs_long():
+    def batch(n):
+        return {"inputs": [{"name": "input", "datatype": "BYTES", "shape": [n], "data": ["q"] * n}]}
+
+    assert len(facade.oip_to_core(batch(facade.MAX_OIP_INPUTS))) == facade.MAX_OIP_INPUTS
+    with pytest.raises(facade.BadRequest, match=f"at most {facade.MAX_OIP_INPUTS} inputs"):
+        facade.oip_to_core(batch(facade.MAX_OIP_INPUTS + 1))

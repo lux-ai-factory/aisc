@@ -120,9 +120,33 @@ def _source(file: str, function: str) -> str:
                 # callback that a shared helper calls in its transaction
                 named = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)} & (top.keys() - {function})
                 return "\n".join([ast.get_source_segment(text, node) or ""]
-                                  + [ast.get_source_segment(text, top[n]) or "" for n in sorted(named)])
+                                  + [ast.get_source_segment(text, top[n]) or "" for n in sorted(named)]
+                                  + _sibling_recorders(file, tree, node))
         return ""
     return text                                                     # a TS module: the whole file
+
+
+def test_a_handler_s_source_includes_a_recorder_from_a_sibling_module():
+    """A handler that passes `ledger_events.on_rated()` emits through that module's function."""
+    body = _source("apps/control-objectives/src/aisc_control_objectives/api/app.py", "rate_form")
+    assert 'ledger.emit(session, "risk.rated"' in body
+
+
+def _sibling_recorders(file: str, tree: ast.Module, node: ast.AST) -> list:
+    """The functions a handler names as `module.function` from a module next to its own file, such as
+    the `ledger_events.on_rated()` recorder it passes to the write."""
+    folder = (ROOT / file).parent
+    siblings = {alias.asname or alias.name: folder / f"{alias.name}.py"
+                for imp in tree.body if isinstance(imp, ast.ImportFrom)
+                for alias in imp.names if (folder / f"{alias.name}.py").exists()}
+    out = []
+    for n in ast.walk(node):
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id in siblings:
+            path = siblings[n.value.id]
+            text = path.read_text(errors="replace")
+            out += [ast.get_source_segment(text, f) or "" for f in ast.parse(text).body
+                    if isinstance(f, ast.FunctionDef) and f.name == n.attr]
+    return out
 
 
 @pytest.mark.parametrize("app", sorted(EMITTING_APPS))

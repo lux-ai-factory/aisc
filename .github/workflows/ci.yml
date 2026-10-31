@@ -1,5 +1,6 @@
 # Every module's tests, run from the aisc checkout with its public submodules. The database suites start
-# throwaway Postgres containers with scripts/lib/throwaway-pg.sh, as they do on a workstation.
+# throwaway Postgres containers with scripts/lib/throwaway-pg.sh, as they do on a workstation. The python matrix
+# holds the rows of scripts/suites.py marked ci, with their names and commands (scripts/tests/test_suites.py).
 name: ci
 
 on:
@@ -50,8 +51,9 @@ jobs:
             run: cd apps/eval && uv run --locked --only-group dev ruff check . && uv run --locked --only-group dev ruff format --check .
           - suite: plugin-manager
             run: cd shared/plugin-manager && uv run --locked --with pytest python -m pytest -q -p no:cacheprovider
+          # onnx and onnxruntime, as the submodule's own CI runs it: its model-format tests import them
           - suite: plugin-interface
-            run: cd shared/plugin-interface && uv run --locked --with pytest --with pandas python -m pytest -q -p no:cacheprovider
+            run: cd shared/plugin-interface && uv run --locked --with pytest --with pandas --with onnx --with onnxruntime python -m pytest -q -p no:cacheprovider
           # its db tests start throwaway Postgres containers; the caller's database addresses must not reach them
           - suite: report-generator
             run: cd apps/report-generator && env -u DATABASE_URL -u PLATFORM_TEST_DATABASE_URL uv run --locked --extra dev pytest -q -p no:cacheprovider tests

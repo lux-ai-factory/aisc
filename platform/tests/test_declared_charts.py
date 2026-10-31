@@ -5,7 +5,7 @@ caller's own token. The report composer puts them in the report's snapshot. Engi
 from __future__ import annotations
 
 from tests.http_stub import Stub
-from tests.test_dashboards_sync import DRIFT_VIZ, E2, EP2, engine_api, runs  # noqa: F401
+from tests.test_dashboards_sync import DRIFT_VIZ, E2, EP2, engine_api, newer_local_run, runs  # noqa: F401
 from tests.test_evidence import ALICE, VERA, _reader, catalogue, engine, evidence_project, sql  # noqa: F401
 
 
@@ -24,6 +24,14 @@ def test_each_configuration_gets_the_charts_of_its_latest_finished_run(client, a
     asked = engine_api.requests("GET", "/api/v1/plugins/")
     assert [a["path"] for a in asked] == [f"/api/v1/plugins/{EP2}/evaluations/{E2}/result"]
     assert asked[0]["headers"]["authorization"].startswith("Bearer ")
+
+
+def test_a_newer_run_on_a_local_model_file_is_not_asked(client, as_user, runs, engine_api, dsn):  # noqa: F811
+    newer_local_run(dsn, runs["pid"])
+    r = declared(client, as_user, runs)
+    assert r.status_code == 200 and r.json()["configs"] == {config_id(dsn, runs["pid"]): DRIFT_VIZ}
+    asked = engine_api.requests("GET", "/api/v1/plugins/")
+    assert [a["path"] for a in asked] == [f"/api/v1/plugins/{EP2}/evaluations/{E2}/result"]
 
 
 def test_a_configuration_the_engine_refuses_is_left_out_and_said(client, as_user, runs, monkeypatch):

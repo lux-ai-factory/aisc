@@ -24,9 +24,8 @@ def markup_of(html):
 
 
 def test_it_has_step_4s_look_and_its_own_title():
-    html, reference = read(PAGE), read(EVIDENCE)
-    for var in re.findall(r"(--[a-z0-9-]+)\s*:", re.search(r":root\s*\{(.*?)\}", reference, re.S).group(1)):
-        assert re.search(re.escape(var) + r"\s*:", html), var
+    html = read(PAGE)
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     assert re.search(r"<title>Evidence map\b", html)
     assert "[hidden]{display:none !important}" in html

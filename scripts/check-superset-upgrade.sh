@@ -49,7 +49,7 @@ PID="9e0c1d2a-3b4c-4d5e-8f60-718293a4b5c6"; HEX="${PID//-/}"
 docker network create "$NET" >/dev/null
 docker run -d --rm --name "$PG" --network "$NET" -e POSTGRES_USER=aisc-postgres-user -e POSTGRES_PASSWORD="$PG_PW" \
   -e POSTGRES_DB=platform postgres:15-alpine >/dev/null
-docker run -d --rm --name "$REDIS" --network "$NET" redis:7-alpine >/dev/null
+docker run -d --rm --name "$REDIS" --network "$NET" redis:7.4.11-alpine >/dev/null
 until docker exec "$PG" pg_isready -q -U aisc-postgres-user -d platform; do sleep 1; done; sleep 2
 docker exec "$PG" psql -q -v ON_ERROR_STOP=1 -U aisc-postgres-user -d platform -c "CREATE DATABASE project_$HEX" >/dev/null
 # Superset's own data in Postgres, as on the stack (SUPERSET_DB_URI in docker-compose.development.yml): the

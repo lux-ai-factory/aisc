@@ -127,3 +127,20 @@ def test_the_ledger_is_on_only_in_record_or_enforce(monkeypatch, mode, on):
     else:
         monkeypatch.setenv("LEDGER_MODE", mode)
     assert ledger.on() is on
+
+
+def test_the_gateway_token_is_verified_off_the_event_loop(sign, monkeypatch):
+    """Verifying can read the realm's JWKS over the network: on the loop it would stall every request."""
+    import threading
+
+    loop_thread = threading.get_ident()
+    seen = []
+    real = ledger._through_gateway
+
+    def watched(headers):
+        seen.append(threading.get_ident())
+        return real(headers)
+
+    monkeypatch.setattr(ledger, "_through_gateway", watched)
+    assert cited({"X-AISC-Request-Id": REQUEST, "X-Auth-Request-Access-Token": sign()}) == REQUEST
+    assert seen and seen[0] != loop_thread

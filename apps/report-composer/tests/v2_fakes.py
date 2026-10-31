@@ -240,6 +240,8 @@ class FakeRendererV2:
     """The v2 renderer from the composer's side, so the composer tests need no real renderer."""
 
     def __init__(self):
+        self.style_checks = []
+        self.logo_problem = None
         self.snapshots = []
         self.choice_calls = []
         self.fail = None
@@ -253,6 +255,13 @@ class FakeRendererV2:
 
     def fonts(self):
         return copy.deepcopy(FONTS)
+
+    def style_check_quick(self, style):
+        """POST /v1/style/check: the problem set in logo_problem (None: the logo is usable), or that error raised."""
+        self.style_checks.append(copy.deepcopy(style))
+        if isinstance(self.logo_problem, Exception):
+            raise self.logo_problem
+        return self.logo_problem
 
     def choices(self, project_id, system_id, block_type):
         self.choice_calls.append((str(project_id), str(system_id), block_type))

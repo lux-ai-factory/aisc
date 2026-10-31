@@ -13,10 +13,12 @@ belong in its own log; only the local installs (`plugin.installed`, `control.ins
 """
 from __future__ import annotations
 
-import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
+
+from platform_service.ledger import settings
+from platform_service.ledger.config_secrets import SECRET_SHAPE
 
 #: Raised when the registry changes in a way an older platform can't read.
 VERSION = 1
@@ -37,12 +39,17 @@ class Action:
     #: an empty content is still content (a save that removed every link), not a missing one
     empty_content: bool = False
     runs: tuple = ()
-    run_window: timedelta = timedelta(hours=24)
+    #: how long a run this action starts may go on; None: settings.RUN_WINDOW (see `window`)
+    run_window: timedelta | None = None
     origin: str = "app"
     registry_version: int = VERSION
     #: other actions the SAME server action makes on another branch: an action id bound to
     #: one of them accepts the others too (a save that creates, or saves the next version)
     same_action: tuple = ()
+
+    def window(self) -> timedelta:
+        """How long after this start event its run's events are accepted."""
+        return self.run_window if self.run_window is not None else settings.RUN_WINDOW
 
 
 #: Every app the gateway serves, and every app that serves routes inside the network.
@@ -153,7 +160,8 @@ _ACTIONS = [
        caused_by=(("platform", "POST", _LAUNCH + r"/helpers/(?P<item>[^/]+)/test$"),),
        details_keys=("ok", "status")),
     _a("connection.saved", 0, ("platform",), "connection",
-       caused_by=(("platform", "PUT", _LAUNCH + r"/connections/(?P<item>[^/]+)$"),),
+       caused_by=(("platform", "PUT", _LAUNCH + r"/connections/(?P<item>[^/]+)$"),
+                  ("platform", "POST", _LAUNCH + r"/connections/(?P<item>[^/]+)/target$")),
        details_keys=("changed", "secret")),
     _a("connection.deleted", 0, ("platform",), "connection",
        caused_by=(("platform", "DELETE", _LAUNCH + r"/connections/(?P<item>[^/]+)$"),)),
@@ -540,14 +548,16 @@ REGISTRY: dict[str, Action] = {a.name: a for a in _ACTIONS}
 # What a check looks for.
 _EVENT_FIELDS = ("event_id", "action", "item_type", "item_id")
 _ACTOR_KEYS = frozenset({"actor_sub", "actor_name", "actor_kind", "actor_ref", "user", "subject", "created_by",
-                         "updated_by", "on_behalf_of", "on_behalf_of_ref", "on_behalf_of_sub", "username"})
+                         "updated_by", "on_behalf_of", "on_behalf_of_ref", "on_behalf_of_sub", "username",
+                         # what the TS libraries call a person (shared/ledger-ts emit.ts WHO_FIELDS)
+                         "createdBy", "updatedBy", "savedBy"})
 _PLATFORM_ACTOR_FIELDS = ("actor_sub", "actor_name", "actor_kind", "actor_ref", "on_behalf_of_ref",
                           "on_behalf_of_sub", "source_app", "verified")
 _PLATFORM_FIELDS = ("content_sha256", "before_sha256", "after_sha256", "recorded_at", "seq")
-# A secret an event must not carry. A `Bearer`, `Basic` or `Token` value counts only when it looks like a
-# credential: 16 characters or more of the base64, hex and URL-safe alphabets, the same rule as
-# `config_secrets.CREDENTIAL` ("the bearer of bad news" and "a token of thanks" are prose, not secrets).
-_SECRET = re.compile(r"(?i)\b(?:bearer|basic|token)\s+[A-Za-z0-9+/=_.~-]{16,}|\bsk-[A-Za-z0-9_-]{16,}|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*")
+# A secret an event must not carry: any string shaped like a known kind of key, the rule the ledger masks
+# configurations with (config_secrets.SECRET_SHAPE). A `Bearer`, `Basic` or `Token` value counts only when it
+# looks like a credential ("the bearer of bad news" and "a token of thanks" are prose, not secrets).
+_SECRET = SECRET_SHAPE
 
 
 def check(event: dict, emitter: str | None = None) -> list[str]:

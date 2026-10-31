@@ -41,6 +41,8 @@ ERROR_CODES = (("BlockedAddress", "blocked"), ("EndpointAuthError", "auth"), ("E
                ("EndpointTimeout", "timeout"), ("EndpointBadResponse", "bad_response"))
 ASK_SHAPE = "{input, history?: [messages], params?: {}}"
 MAX_ASK_BYTES = 2_097_152
+#: the inputs one OIP request may ask: each one is its own call to the system under test
+MAX_OIP_INPUTS = 256
 
 
 def capabilities(kind: str, supports_tools: bool, adapter=None) -> list[str]:
@@ -287,7 +289,10 @@ def a2a_to_core(request: dict) -> tuple[str, object]:
     if method not in ("SendMessage", "message/send"):
         raise KeyError(method)
     dialect = "1.0" if method == "SendMessage" else "0.3"
-    message = (request.get("params") or {}).get("message")
+    params = request.get("params") or {}
+    if not isinstance(params, dict):
+        raise BadRequest("params must be an object")
+    message = params.get("message")
     if not isinstance(message, dict) or not isinstance(message.get("parts"), list) or not message["parts"]:
         raise BadRequest("params.message with parts is required")
     texts = [p["text"] for p in message["parts"] if isinstance(p, dict) and isinstance(p.get("text"), str)]
@@ -340,8 +345,8 @@ def oip_model(name: str) -> dict:
 
 
 def oip_to_core(body: dict) -> list:
-    """The inputs to ask one by one: each element of a BYTES tensor named "input"; or, for feature
-    tensors, one structured input {tensor name: data}."""
+    """The inputs to ask one by one: each element of a BYTES tensor named "input" (at most MAX_OIP_INPUTS);
+    or, for feature tensors, one structured input {tensor name: data}."""
     inputs = body.get("inputs")
     if not isinstance(inputs, list) or not inputs:
         raise BadRequest("inputs is required")
@@ -350,6 +355,8 @@ def oip_to_core(body: dict) -> list:
             raise BadRequest("each input needs a name and data")
     text = next((t for t in inputs if t["name"] == "input" and t.get("datatype") == "BYTES"), None)
     if text is not None:
+        if len(text["data"]) > MAX_OIP_INPUTS:
+            raise BadRequest(f"at most {MAX_OIP_INPUTS} inputs in one request")
         return [str(x) for x in text["data"]]
     return [{t["name"]: t["data"] for t in inputs}]
 

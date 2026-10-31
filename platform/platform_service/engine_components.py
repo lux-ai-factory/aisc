@@ -34,7 +34,11 @@ def _call(method: str, path: str, pid, token: str, body: dict | None = None) -> 
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
         raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code)
-    return r.json()
+    try:
+        return r.json()
+    except ValueError:
+        raise EngineUnavailable(f"the engine answered {r.status_code} with something that is not JSON",
+                                r.status_code) from None
 
 
 def available_plugins(pid, token: str) -> list[dict]:

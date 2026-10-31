@@ -35,6 +35,23 @@ def runs(engine, dsn):
     return engine
 
 
+E4, EP4 = "a0000000-0000-4000-8000-000000000004", "b0000000-0000-4000-8000-000000000004"
+
+
+def newer_local_run(dsn, pid):
+    """A finished LangBiTe run on a local model file, newer than every other: not part of the assessment
+    record, so no tile or report takes its charts."""
+    import json
+
+    config = sql(dsn, pid, "SELECT id FROM engine.aisc_backend_pluginconfig WHERE name = 'c'")[0][0]
+    ev = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluation (status, created_at, pid) VALUES ('Done', "
+                       "'2026-10-04 22:00+00', %s) RETURNING id", (E4,))[0][0]
+    ep = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationplugin (evaluation_id, plugin_config_id, status, pid) "
+                       "VALUES (%s, %s, 'Done', %s) RETURNING id", (ev, config, EP4))[0][0]
+    sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationinput (evaluation_plugin_id, name, value)"
+                  " VALUES (%s, 'model', %s::jsonb)", (ep, json.dumps({"local_model": {"file": "m.onnx", "sha256": "0" * 64}})))
+
+
 @pytest.fixture
 def engine_api(monkeypatch):
     stub = Stub()
@@ -198,3 +215,11 @@ def test_an_unknown_plugin_is_404(client, as_user, runs, engine_api, bridge):
     _route(bridge, runs["pid"])
     r = client.get(f"/projects/{runs['slug']}/dashboards/open?plugin=Nope", headers=as_user(VERA), follow_redirects=False)
     assert r.status_code == 404 and r.json()["detail"] == "no test 'Nope' in this project"
+
+
+def test_a_newer_run_on_a_local_model_file_feeds_no_tile(client, as_user, runs, engine_api, bridge, dsn):
+    newer_local_run(dsn, runs["pid"])
+    _route(bridge, runs["pid"])
+    assert sync(client, as_user, runs).status_code == 200
+    asked = engine_api.requests("GET", "/api/v1/plugins/")
+    assert [a["path"] for a in asked] == [f"/api/v1/plugins/{EP2}/evaluations/{E2}/result"]

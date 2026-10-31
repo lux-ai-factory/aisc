@@ -152,12 +152,12 @@ is looked up only as a pid, anything else only as a slug. Errors are `{"error": 
 
 ### Limits and refusals
 
-- A template's logo is PNG, JPEG or SVG, at most 1 MiB, and is checked against the renderer's limits when the
-  template is saved or imported: a PNG or JPEG must have a readable size in its header and at most 16,000,000
-  pixels; an SVG must declare a usable size (width and height, the viewBox's for a side it does not give, as
-  cairosvg reads it) and stay under the same cap drawn at twice that size, as the Word export draws it, and must
-  hold no `<image>`, `<feImage>`, `href` or `xlink:href` (an embedded raster is decoded in full whatever size the
-  SVG declares). Otherwise 422 `invalid_template` on `/logo/data_base64`.
+- A template's logo is PNG, JPEG or SVG, at most 1 MiB. When the template is saved or imported, the composer
+  asks the renderer whether it can use it (`POST /v1/style/check`, its `logo_problem`, within the quick
+  timeout): the rule (the declared type, at most 16,000,000 pixels, an SVG's usable size drawn at twice that,
+  no `<image>`, `<feImage>`, `<foreignObject>` or `href`) is the renderer's alone. A problem it names is 422
+  `invalid_template` on `/logo/data_base64`, in its words. A renderer that does not answer in time does not
+  block the save: the logo is kept and a render that cannot use it says so.
 - Text with a lone surrogate (an unpaired UTF-16 half) in a layout or a template is 422 (`invalid_request` for
   layouts, `invalid_template` for templates) with a pointer to the field.
 - A period cannot end on 9999-12-31: 422 `invalid_request` on `/period_to`.

@@ -110,6 +110,30 @@
 - Check: `cd scripts/tests && uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]' pytest -q`
   and `scripts/guard-frozen.sh`.
 
+### The audit's design changes
+- Before upgrading: look at the rows still queued in the ledger outboxes. The relay now refuses camelCase
+  author fields and more secret shapes (AKIA, hf_, Token, passwords in URLs), and an event the ledger cannot
+  keep (NUL, keys that are not text, cycles, dates or BigInt in TypeScript) is refused when it is built.
+- Upgrade the report generator together with the report composer: the composer asks the generator's new
+  `POST /v1/style/check` whether a template's logo can be drawn, and takes the logo when it gets no answer.
+- Access follows the gateway: when the gateway header is there, a Bearer next to it must name the same person
+  (401 otherwise). Keycloak keys are fetched with a 3 s limit. `admit()` takes viewer, editor and owner.
+- The dashboard gateway takes only an access token that carries exp, iat and iss, and a running Superset
+  session syncs its roles again when oauth2-proxy refreshes the token. A membership database that cannot be
+  read keeps a person's roles instead of removing them; stakeholder-group roles survive a sign-in.
+- A stored key stays only while the address keeps its scheme, host and port (422 otherwise, type the key
+  again). `secrets rotate` exits 1 while an old key is still needed. The protocol doors read at most 2 MiB
+  and count a run key's use only for an accepted request; one OIP request makes at most 256 calls.
+- Runs: a plugin runs in its own process group and anything it starts ends with it; a failure before or
+  during a run fails that test once, stops the run and revokes its pass; the worker resolves only helpers of
+  the run's own project. Each observation names the run that made it (engine migration 0026).
+- Every call between services gives up after a set time and reads a wrong-shaped answer as an error.
+- The launcher pages and the composer serve their own fonts (no Google), from one launcher stylesheet; the
+  platform decides which tools are greyed and where each dashboard tile opens.
+- One table (`scripts/suites.py`) says how every suite runs, for `verify.sh` and CI; image tags are exact and
+  checked; the read-only database checks have a Python harness (`python3 -m stackcheck db-access`).
+- Check: as above, plus `bash scripts/test-platform.sh -q`.
+
 ## 2026-10-23: plugins are fetched on install
 
 ### Changes

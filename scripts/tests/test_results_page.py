@@ -1,11 +1,11 @@
 """The results page: one target's tools, each opening the project dashboard with Target and Tool set.
-Static checks of the page source, like test_evidence_page.py."""
+What it shows is decided by the platform's evidence view (platform/tests/test_evidence.py: each target's
+greyed tools and each tool's dashboard_url); these static checks hold the page to rendering that answer."""
 import re
 
 from conftest import ROOT
 
 PAGE = ROOT / "homepage/results.html"
-EVIDENCE = ROOT / "homepage/evidence.html"
 
 
 def read(path):
@@ -22,20 +22,25 @@ def markup_of(html):
 
 
 def test_it_has_step_4s_look_and_one_inline_script():
-    html, reference = read(PAGE), read(EVIDENCE)
-    for var in re.findall(r"(--[a-z0-9-]+)\s*:", re.search(r":root\s*\{(.*?)\}", reference, re.S).group(1)):
-        assert re.search(re.escape(var) + r"\s*:", html), var
+    html = read(PAGE)
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
-    assert len(scripts) == 1 and "src" not in scripts[0].lower()
+    assert scripts == [' src="/assets/page.js"', ""], scripts
     assert re.search(r"<title>Results\b", html)
 
 
 def test_it_reads_the_project_and_its_evidence_view():
     script = script_of(read(PAGE))
-    assert "'/api/projects/' + enc(slug)" in script
-    assert "'/api/projects/' + enc(slug) + '/evidence'" in script
+    assert "aisc.call('/api/projects/' + enc(slug))" in script
+    assert "aisc.call('/api/projects/' + enc(slug) + '/evidence'" in script
     assert "params.get('target')" in script and "params.get('version')" in script
+    assert "fetch(" not in script and ".json()" not in script
+
+
+def test_a_refused_evidence_read_says_the_platforms_reason():
+    """A 404 for an unknown version or a 503 is the platform's own sentence, not "not answering"."""
+    assert re.search(r"if \(!ev\.ok\) \{ show\('page-message', ev\.message\); return; \}", script_of(read(PAGE)))
 
 
 def test_the_breadcrumb_leads_back_to_step_4():
@@ -60,38 +65,24 @@ def test_dates_are_written_dd_mm_yyyy():
     assert re.search(r"\[pad\(d\.getDate\(\)\), pad\(d\.getMonth\(\) \+ 1\), d\.getFullYear\(\)\]\.join\('\.'\)", script)
 
 
-def test_installed_tools_not_run_on_this_target_are_greyed():
+def test_installed_tools_not_run_on_this_target_are_the_platforms_greyed_list():
+    """Which tools are greyed is the platform's (each target's `greyed`): the page only lists them."""
     script = script_of(read(PAGE))
     assert "'Installed, not run on it yet'" in script
-    assert re.search(r"\(data\.plugins \|\| data\.tests \|\| \[\]\)\.filter\(function \(it\) \{\s*return it\.runs", script)
-
-
-def test_each_engine_plugin_counts_on_its_own_even_when_two_share_a_package():
-    """data-monitor ships Data Drift and Data Anomaly: one that ran on the target must not hide
-    the other, so a tool is matched by its package and its label, as the target's tools are listed."""
-    script = script_of(read(PAGE))
-    assert "function toolId(it) { return it.key + '|' + it.label; }" in script
-    assert "target.tools.forEach(function (it) { ran[toolId(it)] = true; });" in script
-    assert "return it.runs && !ran[toolId(it)];" in script
+    assert "(target.greyed || []).forEach(function (it) {" in script
+    assert "data.plugins" not in script and "data.tests" not in script and "toolId" not in script
 
 
 def test_an_unknown_target_says_so():
     assert "'No such system or component in this project.'" in script_of(read(PAGE))
 
 
-def test_links_go_through_the_platform_to_the_tools_tile():
-    """A tool's link opens its own tile, synced first, with the Target and Version filters set by the platform
-    (dashboards/open) to what this page shows; "All tools" opens the project's tiles."""
+def test_links_are_the_platforms():
+    """A tool's link is its dashboard_url and "All tools" the view's dashboards_url: the platform builds both
+    (dashboards/open syncs the tile and sets the Target and Version filters)."""
     script = script_of(read(PAGE))
-    assert ("return '/api/projects/' + enc(slug) + '/dashboards/open' + (tool ? '?plugin=' + enc(tool.label) + "
-            "'&target=' + enc(target.key === null ? 'unassigned' : target.label) + "
-            "(versionNumber ? '&version=' + versionNumber : '') : '');") in script
-    assert "dashboard(target, it, data.version ? data.version.number : null)" in script
-    assert "pid" not in script and "native_filters=" not in script   # the platform builds those now
-
-
-def test_the_no_target_entry_filters_on_unassigned():
-    assert re.search(r"target\.key === null \? 'unassigned' : target\.label", script_of(read(PAGE)))
+    assert "a.href = it.dashboard_url;" in script and "all.href = data.dashboards_url;" in script
+    assert "dashboards/open" not in script and "native_filters=" not in script and "pid" not in script
 
 
 def test_greyed_tiles_lay_out_like_the_blue_ones():

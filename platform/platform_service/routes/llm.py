@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from platform_service import db, llm_catalogue, llm_store
+from platform_service import db, llm_catalogue, llm_store, secret_box
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, admin_project, secrets_unavailable
 
@@ -149,6 +149,10 @@ def save_llm_provider(slug: str, provider: str, body: ProviderIn,
         raise HTTPException(status_code=422, detail="ollama takes no key")
     key = clean_key(body.api_key) if "api_key" in sent else None
     base_url = clean_base_url(body.base_url) if "base_url" in sent else llm_store.KEEP
+    if key is None and base_url not in (llm_store.KEEP, None):
+        # a stored key goes only where it was entered for: another origin needs it typed again
+        stored = llm_store.providers(pid).get(provider)
+        secret_box.kept_key(stored["base_url"] if stored else None, base_url, bool(stored and stored["has_key"]))
     ciphertext = llm_store.KEEP
     if key is not None:
         try:

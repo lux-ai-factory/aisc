@@ -87,24 +87,3 @@ def resolve(pid, name: str) -> dict | None:
     key = llm_store.decrypt(name, row["ciphertext"]) if row["ciphertext"] else None
     return {"label": row["label"], "endpoint_url": row["endpoint_url"], "roles": row["roles"], "api_key": key}
 
-
-def rotate(conn, multi) -> tuple[int, int, int]:
-    """(rotated, unreadable, changed_meanwhile) for one project's helper keys, on an open connection;
-    the same contract as connection_store.rotate."""
-    if conn.execute("SELECT to_regclass('helper.model')").fetchone()[0] is None:
-        return 0, 0, 0
-    rotated = unreadable = meanwhile = 0
-    for name, token in conn.execute("SELECT name, ciphertext FROM helper.model"
-                                    " WHERE ciphertext IS NOT NULL").fetchall():
-        try:
-            fresh = multi.rotate(token.encode()).decode()
-        except llm_store.InvalidToken:
-            unreadable += 1
-            continue
-        # only if it is still the key read: one saved meanwhile is under the newest key already
-        if conn.execute("UPDATE helper.model SET ciphertext = %s WHERE name = %s AND ciphertext = %s",
-                        (fresh, name, token)).rowcount:
-            rotated += 1
-        else:
-            meanwhile += 1
-    return rotated, unreadable, meanwhile

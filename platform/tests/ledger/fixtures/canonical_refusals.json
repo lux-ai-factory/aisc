@@ -1,0 +1,57 @@
+{
+  "about": "What the ledger refuses before an event is written. `json`: valid JSON text, parsed by each language's own parser; aisc_identity.ledger_events (event, _check) and shared/ledger-ts (ledgerSafe, eventBody) refuse every one. `platform` says what platform_service/ledger/canonical.py does with it: `refuses`, or `keeps` when RFC 8785 has a form for it (U+0000 as \\u0000, 1e21 as a number) and only the emit-side check refuses it, because jsonb cannot hold U+0000 and keeps 1e21 as an integer beyond 2**53. `values`: what JSON text cannot carry, built by each test in its own language under these names; every checker refuses each one a language can build. Copied unchanged into apps/qualification and apps/controls (test/fixtures/ledger).",
+  "not_ledger_safe": [
+    {
+      "name": "integer beyond 2**53",
+      "json": "12345678901234567890",
+      "platform": "refuses"
+    },
+    {
+      "name": "negative integer beyond 2**53",
+      "json": "{\"n\": -9007199254740994}",
+      "platform": "refuses"
+    },
+    {
+      "name": "integer-valued number beyond 2**53",
+      "json": "1e21",
+      "platform": "keeps"
+    },
+    {
+      "name": "largest double",
+      "json": "[1.7976931348623157e308]",
+      "platform": "keeps"
+    },
+    {
+      "name": "lone high surrogate",
+      "json": "\"\\ud800\"",
+      "platform": "refuses"
+    },
+    {
+      "name": "lone low surrogate inside text",
+      "json": "{\"a\": \"x\\udc00\"}",
+      "platform": "refuses"
+    },
+    {
+      "name": "lone surrogate in a key",
+      "json": "{\"\\ud800\": 1}",
+      "platform": "refuses"
+    },
+    {
+      "name": "NUL in text",
+      "json": "{\"a\": \"x\\u0000y\"}",
+      "platform": "keeps"
+    },
+    {
+      "name": "NUL in a key",
+      "json": "{\"k\\u0000\": 1}",
+      "platform": "keeps"
+    }
+  ],
+  "values": [
+    "not_finite",
+    "key_not_text",
+    "date",
+    "bigint",
+    "cycle"
+  ]
+}

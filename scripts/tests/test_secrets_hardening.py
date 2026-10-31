@@ -57,7 +57,7 @@ def test_platform_secrets_key_survives_rotate(scratch):  # noqa: F811
     assert r.returncode == 0, r.stderr[-2000:]
     after = secrets_of(scratch)
     assert _digest(after["PLATFORM_SECRETS_KEY"]) == _digest(before["PLATFORM_SECRETS_KEY"]), "the key was rotated"
-    assert _digest(after["DJANGO_SECRET_KEY"]) != _digest(before["DJANGO_SECRET_KEY"]), "--rotate rotated nothing"
+    assert _digest(after["INTERNAL_API_KEY"]) != _digest(before["INTERNAL_API_KEY"]), "--rotate rotated nothing"
 
 
 def test_the_files_are_private_without_the_later_chmod(scratch):  # noqa: F811

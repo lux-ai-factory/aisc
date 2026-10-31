@@ -1,8 +1,8 @@
 """Shared by every Python service on the platform.
 
 Who is calling (this module, tokens, gateway), what they may do in a project
-(access), which service is calling (service_tokens), and the ledger event a
-change writes (ledger_events). Every service decides these the same way,
+(access), which service is calling (service_tokens), the ledger event a change
+writes (ledger_events), and a project's database name and address (projectdb). Every service decides these the same way,
 through this package, so a decision means the same thing wherever it is made.
 """
 from aisc_identity.caller import Caller, IdentityMissing, caller_from_claims

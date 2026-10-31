@@ -3,34 +3,30 @@ refusals every router answers with, and the ledger's check of a witnessed reques
 from __future__ import annotations
 
 from aisc_identity import Caller
-from aisc_identity.access import MANAGE, Admitted, Refused, admit
+from aisc_identity.access import ADMIN_ROLE, Admitted, Refused, admit
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from platform_service import db, llm_store
 
-#: The realm role that administers the platform. It is not a membership: an
-#: admin is not in the project, it may act on any of them, which is what makes
-#: an orphaned project recoverable.
-ADMIN_ROLE = "admin"
+# ADMIN_ROLE (aisc_identity.access) is the realm role that administers the platform. It is not a
+# membership: an admin is not in the project, it may act on any of them, which is what makes an orphaned
+# project recoverable. The routers import it from here.
 
 
 def no_project(identifier: str) -> HTTPException:
     return HTTPException(status_code=404, detail=f"no project {identifier!r}")
 
 
-_WANT_FOR = {"viewer": "GET", "editor": "POST", "owner": MANAGE}
-
-
 def admitted(project: str, caller: Caller, want: str = "GET") -> Admitted:
-    """aisc_identity.access.admit against the platform's own pool."""
+    """aisc_identity.access.admit against the platform's own pool. `want` is a method, "manage" or a role."""
     return admit(project, caller, want, connect=db.pool().connection)
 
 
 def role_or_404(project: str, caller: Caller, needed: str = "viewer") -> str:
     """The caller's role, or the refusal: 404 for a stranger, 403 for too low a rank."""
     try:
-        return admitted(project, caller, _WANT_FOR[needed]).role
+        return admitted(project, caller, needed).role
     except Refused as refused:
         raise HTTPException(status_code=refused.status, detail=refused.message) from None
 

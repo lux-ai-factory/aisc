@@ -152,7 +152,7 @@ services:
       - engine-standalone
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3.13.7-management
     container_name: ${CONTAINER_PREFIX:-}rabbitmq-standalone
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-rabbit-user}
@@ -163,7 +163,7 @@ services:
       - engine-standalone
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.11-alpine
     container_name: ${CONTAINER_PREFIX:-}redis-standalone
     restart: unless-stopped
     volumes:

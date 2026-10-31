@@ -2,18 +2,23 @@
 eval worker (tests and lint), the plugin-manager, the plugin interface and the report generator, besides the
 suites it ran before.
 
-Read-only checks of .github/workflows/ci.yml. Only the root's workflow is read here; the submodules' and the
-plugin repos' workflows are proven by running them.
+The python matrix is the ci rows of scripts/suites.py (test_suites.py checks they are equal); the commands are
+read from there. Only the root's workflow is read here; the submodules' and the plugin repos' workflows are
+proven by running them.
 """
 
 from __future__ import annotations
 
 import shlex
+import sys
 
 import pytest
 import yaml
 
 from conftest import ROOT
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import suites  # noqa: E402
 
 CI = ROOT / ".github/workflows/ci.yml"
 
@@ -33,8 +38,7 @@ def triggers(doc: dict) -> dict:
 
 
 def matrix_runs() -> dict[str, str]:
-    include = workflow()["jobs"]["python"]["strategy"]["matrix"]["include"]
-    return {entry["suite"]: str(entry["run"]) for entry in include}
+    return {s.name: s.command for s in suites.SUITES if s.ci}
 
 
 def run_of(suite: str) -> str:

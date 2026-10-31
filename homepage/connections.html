@@ -5,62 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Components and connections - AI Assessment Sandbox Configurator</title>
 <link rel="icon" href="/assets/laif-logo.svg"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=MuseoModerno:wght@500;600;700&family=Raleway:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
 <style>
-  /* The launcher's look (homepage/project.html): same tokens, header and session line.
+  /* The launcher's tokens, fonts, header and session line are /assets/launcher.css; these are this page's own.
      Everything this page decides is decided by the platform; the page only shows it. */
-  :root{
-    --bg:#f2f3fd; --panel:#ffffff; --panel-2:#f2f3fd;
-    --text:#0b0b2e; --muted:#4a4f6a; --faint:#6b7090;
-    --primary:#000fdf; --primary-hover:#000079; --heading:#000079;
-    --accent:#ff007e;
-    --border:#cccff9; --border-strong:#999ff2;
-    --radius:0px;
-    --gutter:40px;
-    --col-centre:calc((100% - 2 * var(--gutter)) / 6);
-    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-    --error:#e30613;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
-  body{
-    position:relative; min-height:100vh;
-    background:var(--bg); color:var(--text);
-    font-family:"Raleway",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
-  }
-  h1,h2,h3,h4{font-family:"MuseoModerno",ui-sans-serif,system-ui,sans-serif; color:var(--heading)}
-  .shell{position:relative; z-index:1}
-
-  /* ---- header ---- */
-  .topbar{
-    display:flex; align-items:center; gap:22px;
-    padding:20px 40px; border-bottom:1px solid var(--border);
-    background:rgba(255,255,255,.82); backdrop-filter:blur(8px);
-    position:sticky; top:0; z-index:10;
-  }
-  .topbar img{height:48px; width:auto; display:block}
-  .topbar .back{
-    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
-    color:var(--primary); text-decoration:none; border:1px solid var(--border-strong);
-    padding:7px 11px; white-space:nowrap;
-  }
-  .topbar .back:hover{background:var(--primary); color:#fff; border-color:var(--primary)}
-  .topbar .rule{width:1px; height:28px; background:var(--border-strong)}
-  .topbar h1{
-    margin:0; font-size:19px; font-weight:700; color:var(--heading);
-  }
-  .session{
-    margin-left:auto;
-    display:flex; align-items:center; gap:14px;
-    font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap;
-  }
-  .session b{color:var(--text); font-weight:500}
-  .session a{color:var(--primary); text-decoration:none; border-bottom:1px solid transparent}
-  .session a:hover{border-bottom-color:var(--primary)}
-
   main{max-width:1180px; margin:0 auto; padding:40px 32px 64px}
   .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
   .subtitle{margin:0 0 30px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
@@ -139,7 +87,6 @@
                           font-family:inherit; font-size:12.5px; letter-spacing:0; text-transform:none}
 
   @media (max-width:820px){
-    .topbar{padding:12px 18px; gap:14px}
     main{padding:28px 18px 40px}
     form#editor{grid-template-columns:1fr}
     form#editor .help, form#editor .actions, form#editor .msg{grid-column:1}
@@ -416,23 +363,10 @@
     });
   }
 
-  // what a connection is, as the platform saves it (its key is not among them: left out, it is kept)
-  var SAVED = ['label', 'kind', 'base_url', 'method', 'path', 'headers', 'secret_header', 'body_template',
-               'response_path', 'refusal', 'model', 'timeout_s', 'protocol_version', 'supports_tools',
-               'supports_logprobs'];
-
-  function savedFields(c) {
-    var body = {};
-    SAVED.forEach(function (k) { if (c[k] !== undefined && c[k] !== null) body[k] = c[k]; });
-    return body;
-  }
-
-  /** Link a connection to a target: saved as it is, now naming the target (set once). */
+  /** Link a connection to a target (set once): the platform's own call, nothing else of the connection is sent. */
   function linkTo(c, key, msg) {
     if (!key) { say(msg, 'Pick the system or a component.', true); return; }
-    var body = savedFields(c);
-    body.target = key;
-    write('PUT', base() + '/' + enc(c.name), body, msg);
+    write('POST', base() + '/' + enc(c.name) + '/target', {key: key}, msg);
   }
 
   /** Try: the prompt goes through the client the tests use (the platform's /test), and what comes back is
@@ -641,6 +575,10 @@
     editSection.hidden = true;
     editing = null; editTarget = null;
     $('f-secret').value = '';
+    $('f-secret-header-add-value').value = '';
+    [].forEach.call(document.querySelectorAll('#adapter-fields .adapter-field'), function (input) {
+      if (input.dataset.secret) input.value = '';
+    });
   }
 
   function parsed(id, label) {
@@ -666,7 +604,6 @@
       [].forEach.call(document.querySelectorAll('#adapter-fields .adapter-field'), function (input) {
         if (input.dataset.secret) {
           if (input.value) secretSettings[input.dataset.name] = input.value;
-          input.value = '';
         } else if (input.value.trim()) {
           settings[input.dataset.name] = input.value.trim();
         }
@@ -703,7 +640,6 @@
     var typed = secretField.value;
     if ($('f-secret-remove').checked) body.secret = '';
     else if (typed) body.secret = typed;
-    secretField.value = '';
     // secret headers: '' removes a stored one, a name and a value add or replace one; names left out are kept
     var secretHeaders = {};
     [].forEach.call(document.querySelectorAll('#editor .secret-header-remove'), function (box) {
@@ -712,11 +648,9 @@
     var addName = $('f-secret-header-add-name').value.trim();
     var addValue = $('f-secret-header-add-value').value;
     if (addName && addValue) secretHeaders[addName] = addValue;
-    $('f-secret-header-add-value').value = '';
     if (Object.keys(secretHeaders).length) body.secret_headers = secretHeaders;
-    write('PUT', base() + '/' + enc(name), body, msg).then(function (ok) {
-      if (ok) closeEditor();
-    });
+    // typed secrets stay in their fields until the save succeeds (closeEditor), so a refused save keeps them
+    write('PUT', base() + '/' + enc(name), body, msg).then(function (ok) { if (ok) closeEditor(); });
   }
 
   // An endpoint file (a connection in the shape it is saved in) fills the open row's form; nothing is

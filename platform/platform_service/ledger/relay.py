@@ -110,11 +110,33 @@ def _project_dsn(pid: str) -> str:
     return make_conninfo(_db().dsn(), dbname=projectdb.database_name(pid))
 
 
+class ProjectUnreachable(Exception):
+    """The project's database is there but did not take a connection now (too many connections, a restart):
+    its log waits for the next pass."""
+
+
+#: The connection errors that mean the database is gone (3D000) or closed to the platform (42501), whether
+#: psycopg carries the SQLSTATE or only the server's message (a failed connect has no result to carry it).
+_GONE_STATES = ("3D000", "42501")
+_GONE_TEXT = ("does not exist", "permission denied for database", "does not have connect privilege")
+
+
+def _database_gone(exc: psycopg.OperationalError) -> bool:
+    if getattr(exc, "sqlstate", None) in _GONE_STATES:
+        return True
+    text = str(exc).lower()
+    return "database" in text and any(words in text for words in _GONE_TEXT)
+
+
 def _project_conn(pid: str):
+    """An autocommit connection to the project's database; None when that database is gone or closed to the
+    platform (its log is the platform's events only). Any other failure raises ProjectUnreachable."""
     try:
         return psycopg.connect(_project_dsn(pid), row_factory=dict_row, autocommit=True)
-    except psycopg.OperationalError:
-        return None                                                   # the project database is gone
+    except psycopg.OperationalError as exc:
+        if _database_gone(exc):
+            return None
+        raise ProjectUnreachable(pid) from exc
 
 
 #: How long a read waits for the relay on its log (its append and its index row are a moment apart).
@@ -163,7 +185,14 @@ def _relay_log(pid: str | None, stats: RelayStats, wait: bool | float = False) -
         if not held:                                                  # another relay is on it: next pass
             stats.pending += 1
             return
-        project = _project_conn(pid) if pid is not None else None
+        try:
+            project = _project_conn(pid) if pid is not None else None
+        except ProjectUnreachable as exc:
+            # relayed without the project's own events, the platform's could go ahead of earlier ones of its own
+            logger.warning("ledger relay: the database of project %s did not answer, its log waits: %s",
+                           pid, exc.__cause__)
+            stats.pending += 1
+            return
         try:
             items = _pending(pid, project)
             for n, item in enumerate(items):
@@ -417,7 +446,7 @@ def _judge_run(ev, app, action, log) -> dict:
         raise _Rejected("run")
     if ev.get("item_type") == logged.get("item_type") and ev.get("item_id") != logged.get("item_id"):
         raise _Rejected("run")                                        # the run's own item, never another
-    if ev["occurred_at"] - start["occurred_at"] > starter.run_window:
+    if ev["occurred_at"] - start["occurred_at"] > starter.window():
         raise _Rejected("run_window")
     if ev["occurred_at"] < start["occurred_at"] - settings.CLOCK_SKEW:   # no run event before its start
         raise _Rejected("run")

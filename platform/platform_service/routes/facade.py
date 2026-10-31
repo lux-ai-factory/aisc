@@ -6,10 +6,12 @@ OpenAI-style history and params (template values, or an OpenAI-compatible model'
 them when the connection carries tools) and answers the output, a refusal or the tool calls; a request
 the platform will not send is a 400 with the reason, a failed call a 502 {error, status, detail} with
 every key scrubbed. The OpenAI door carries tools and tool results the same way. A run key is accepted
-only while live and, when issued under a run's pass, while that pass is. Calls run in the facade's own
+only while live and, when issued under a run's pass, while that pass is; it counts a use for each ask whose
+body every door reads the same way (_open_request), never for a probe. Calls run in the facade's own
 threads, capped across the platform and per run (_in_facade_threads)."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import NamedTuple
@@ -42,10 +44,12 @@ class Opened(NamedTuple):
     supports_tools: bool          # the connection carries tools (an OpenAI-compatible one only)
     secrets: list                 # the values never to answer back (secret_values)
     adapter: object = None        # the adapter of a connection of an adapter's kind (None: built-in, or not installed)
+    key_hash: str = ""            # the run key's stored hash, to count its uses on
 
 
 def _facade_open(pid: str, name: str, request: Request):
-    """(Opened, None) for a live key of this connection, or (None, (status, message))."""
+    """(Opened, None) for a live key of this connection, or (None, (status, message)). It counts no use:
+    a probe opens a door with it alone, an ask through _open_request."""
     if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
         return None, (404, "not here")
     if not looks_like_pid(pid) or not CONNECTION_NAME.fullmatch(name):
@@ -60,7 +64,6 @@ def _facade_open(pid: str, name: str, request: Request):
         # a key issued under a run's pass ends with it: revoked (its row deleted then), expired, or gone
         if run_key["pass_hash"] is not None and not run_passes.is_live(run_key["pass_hash"]):
             return None, (401, "the run's pass has ended")
-        connection_store.count_run_key_use(pid, name, run_key["key_hash"], conn=conn)
         row = connection_store.descriptor(pid, name, conn=conn)
     if row is None or row["deleted_at"] is not None:
         return None, (410, f"connection {name!r} was deleted")
@@ -70,7 +73,8 @@ def _facade_open(pid: str, name: str, request: Request):
         return None, (503, str(exc))
     run_id = f"pass:{run_key['pass_hash']}" if run_key["pass_hash"] else f"key:{run_key['key_hash']}"
     adapter = adapters.get(row["kind"]) if row["kind"] not in adapters.BUILT_IN_KINDS else None
-    return Opened(descriptor, run_id, bool(row.get("supports_tools")), secret_values(descriptor), adapter), None
+    return Opened(descriptor, run_id, bool(row.get("supports_tools")), secret_values(descriptor), adapter,
+                  run_key["key_hash"]), None
 
 
 def _facade_call(pid, opened: Opened, input, history=None, params=None, deadline=None):
@@ -205,42 +209,49 @@ async def _ask(pid, opened: Opened, input, history=None, params=None):
         return None, exc
 
 
-async def _json_body(request: Request):
+async def _capped_body(request: Request) -> bytes | None:
+    """The body, or None when it is more than MAX_ASK_BYTES: read no further than that."""
+    cap = connection_facade.MAX_ASK_BYTES
     try:
-        body = await request.json()
-    except ValueError:
-        return None
-    return body if isinstance(body, dict) else None
-
-
-async def _ask_body(request: Request):
-    """The parsed body, or the answer refusing it: 413 over MAX_ASK_BYTES, 400 for no JSON."""
-    too_big = _internal(413, {"detail": f"the request is more than {connection_facade.MAX_ASK_BYTES} bytes"})
-    try:
-        if int(request.headers.get("content-length") or 0) > connection_facade.MAX_ASK_BYTES:
-            return None, too_big
+        if int(request.headers.get("content-length") or 0) > cap:
+            return None
     except ValueError:
         pass
-    raw = await request.body()
-    if len(raw) > connection_facade.MAX_ASK_BYTES:
-        return None, too_big
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > cap:
+            return None
+    return bytes(raw)
+
+
+async def _open_request(pid: str, name: str, request: Request):
+    """What every ask's door does first: (Opened, its body, None), or (None, None, (status, message)) for a
+    key it does not accept or a body over MAX_ASK_BYTES. The body is the JSON object sent, None when it
+    is not one, for the door to refuse in its own words. Only an ask with a JSON object counts a use."""
+    opened, err = await run_in_threadpool(_facade_open, pid, name, request)
+    if err:
+        return None, None, err
+    raw = await _capped_body(request)
+    if raw is None:
+        return None, None, (413, f"the request is more than {connection_facade.MAX_ASK_BYTES} bytes")
     try:
-        import json
-        return json.loads(raw), None
+        body = json.loads(raw)
     except ValueError:
-        return None, _internal(400, {"detail": connection_facade.ASK_SHAPE})
+        body = None
+    if not isinstance(body, dict):
+        return opened, None, None
+    await run_in_threadpool(connection_store.count_run_key_use, pid, name, opened.key_hash)
+    return opened, body, None
 
 
 @router.post("/internal/facade/{pid}/{name}/aisc/ask")
 async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse:
     """AISC's own door: {input, history?, params?} in; the answer, a refusal or tool calls out. A request
     the platform will not send is 400 with the reason; a failed call is 502 {error, status, detail}."""
-    opened, err = await run_in_threadpool(_facade_open, pid, name, request)
+    opened, body, err = await _open_request(pid, name, request)
     if err:
         return _internal(err[0], {"detail": err[1]})
-    body, refused = await _ask_body(request)
-    if refused:
-        return refused
     try:
         input, history, params = connection_facade.ask_request(body, opened.descriptor.kind, opened.supports_tools)
     except connection_facade.BadRequest as exc:
@@ -257,11 +268,10 @@ async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse
 
 @router.post("/internal/facade/{pid}/{name}/openai/v1/chat/completions")
 async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONResponse:
-    opened, err = await run_in_threadpool(_facade_open, pid, name, request)
+    opened, body, err = await _open_request(pid, name, request)
     if err:
         kind = "authentication_error" if err[0] == 401 else "invalid_request_error"
         return _internal(err[0], connection_facade.openai_error(err[1], kind))
-    body = await _json_body(request)
     try:
         input, history, params = connection_facade.openai_to_core(body or {}, opened.descriptor.kind,
                                                                   opened.supports_tools)
@@ -298,10 +308,9 @@ def facade_a2a_card(pid: str, name: str, request: Request) -> JSONResponse:
 
 @router.post("/internal/facade/{pid}/{name}/a2a")
 async def facade_a2a_rpc(pid: str, name: str, request: Request) -> JSONResponse:
-    opened, err = await run_in_threadpool(_facade_open, pid, name, request)
+    opened, body, err = await _open_request(pid, name, request)
     if err:
         return _internal(err[0], {"detail": err[1]})
-    body = await _json_body(request)
     if body is None:
         return _internal(200, connection_facade.jsonrpc_error(None, -32700, "parse error"))
     rid = body.get("id")
@@ -352,12 +361,11 @@ def facade_oip_model_ready(pid: str, name: str, model: str, request: Request) ->
 
 @router.post("/internal/facade/{pid}/{name}/oip/v2/models/{model}/infer")
 async def facade_oip_infer(pid: str, name: str, model: str, request: Request) -> JSONResponse:
-    opened, err = await run_in_threadpool(_facade_open, pid, name, request)
+    if model != name:       # a wrong path, refused before the key is checked like a malformed pid or name
+        return _internal(404, {"error": f"no model {model!r}; this endpoint serves {name!r}"})
+    opened, body, err = await _open_request(pid, name, request)
     if err:
         return _internal(err[0], {"error": err[1]})
-    if model != name:
-        return _internal(404, {"error": f"no model {model!r}; this endpoint serves {name!r}"})
-    body = await _json_body(request)
     try:
         inputs = connection_facade.oip_to_core(body or {})
     except connection_facade.BadRequest as exc:

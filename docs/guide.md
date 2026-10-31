@@ -411,8 +411,8 @@ scripts/lib/engine-tests.sh
 # the report composer (starts throwaway Postgres containers)
 cd apps/report-composer && uv run --extra dev pytest -q
 
-# the dashboard's gateway config, with the dashboard image's PyJWT, cryptography and Flask (the root suite
-# also runs it, in its own uv environment)
+# the dashboard's gateway config, with the dashboard image's PyJWT, cryptography and Flask, at the versions
+# scripts/suites.py pins (the root suite also runs it, in its own uv environment)
 cd dashboard-gateway && uv run --with pyjwt==2.8.0 --with cryptography==50.0.2 --with flask==2.3.3 --with flask-login==0.6.3 --with werkzeug==3.0.6 \
   python -m unittest test_gateway_identity test_superset_gateway_config
 ```

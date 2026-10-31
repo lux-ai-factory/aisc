@@ -94,12 +94,8 @@ def test_the_agents_providers_are_the_platform_catalogue():
 
 
 def test_the_page_has_the_launchers_look_and_one_inline_script():
-    html, reference = read(PAGE), read(PROJECT_PAGE)
-    root_vars = re.findall(r"(--[a-z0-9-]+)\s*:", re.search(r":root\s*\{(.*?)\}", reference, re.S).group(1))
-    for var in root_vars:
-        assert re.search(re.escape(var) + r"\s*:", html), f"CSS variable {var} of project.html missing"
-    fonts = re.search(r'href="(https://fonts\.googleapis\.com/css2[^"]+)"', reference).group(1)
-    assert fonts in html
+    html = read(PAGE)
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
     assert len(scripts) == 1, "exactly one inline <script>"

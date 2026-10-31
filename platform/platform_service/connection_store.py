@@ -2,7 +2,7 @@
 `connection`). Two columns hold ciphertext: `secret_ciphertext` (the key) and `secret_headers_ciphertext`
 (the secret headers, one token of a JSON object {name: value}; their names are public, in
 `secret_header_names`). Both are Fernet tokens made with the same key list as the LLM keys
-(llm_store.fernet), and rotated with them (`python -m platform_service.llm_store rotate`).
+(secret_box.fernet), and rotated with them (`python -m platform_service.llm_store rotate`).
 
 Only `descriptor` selects the ciphertext. Only routes/connections.call_descriptor_of decrypts it, for the
 protocol doors and the Test button, to call the system; the resolve route answers without it.
@@ -12,7 +12,7 @@ from __future__ import annotations
 import psycopg
 from psycopg.types.json import Jsonb
 
-from platform_service import llm_store
+from platform_service import llm_store, secret_box
 
 KEEP = llm_store.KEEP
 #: every column a response may carry (never secret_ciphertext nor secret_headers_ciphertext)
@@ -91,6 +91,29 @@ def save(pid, name: str, fields: dict, *, ciphertext=KEEP, header_ciphertext=KEE
         return row
 
 
+def link_target(pid, name: str, target_key: str, *, subject: str | None) -> dict | None:
+    """Make a live connection the endpoint of `target_key`, nothing else changing; None when there is no such
+    connection. The target is set once, in the UPDATE itself as in save: another target raises
+    TargetSetOnce, and one another connection holds raises the unique index's UniqueViolation."""
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        before = conn.execute("SELECT target_key FROM connection.endpoint WHERE name = %s AND deleted_at IS NULL",
+                              (name,)).fetchone()
+        if before is None:
+            return None
+        outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
+                            details={"changed": [] if before["target_key"] == target_key else ["target_key"],
+                                     "secret": "kept"})
+        row = conn.execute(
+            "UPDATE connection.endpoint SET target_key = %s, updated_at = now(), updated_by = %s"
+            " WHERE name = %s AND deleted_at IS NULL AND (target_key IS NULL OR target_key = %s)"
+            f" RETURNING {_SELECT}", (target_key, subject, name, target_key)).fetchone()
+        if row is None:                                   # rolls back the event emitted above
+            raise TargetSetOnce(name)
+        return row
+
+
 def holder_of(pid, target_key: str) -> str | None:
     """The connection in use that is the endpoint of this target, if any."""
     with connect(pid) as conn:
@@ -139,32 +162,13 @@ def descriptor(pid, name: str, conn=None) -> dict | None:
 
 
 def rotate(conn: psycopg.Connection, multi) -> tuple[int, int, int]:
-    """(rotated, unreadable, changed_meanwhile) for one project's connection keys and secret header sets,
-    on an open connection; each column of each connection counts once.
-
-    A token saved after the read is written only if it is still the one read: one saved meanwhile was
-    made under the newest key already and is left as it is (counted as changed meanwhile)."""
-    if conn.execute("SELECT to_regclass('connection.endpoint')").fetchone()[0] is None:
-        return 0, 0, 0
-    columns = ["secret_ciphertext"]
-    if conn.execute("SELECT 1 FROM information_schema.columns WHERE table_schema = 'connection'"
-                    " AND table_name = 'endpoint' AND column_name = 'secret_headers_ciphertext'").fetchone():
-        columns.append("secret_headers_ciphertext")
-    rotated = unreadable = meanwhile = 0
-    for column in columns:
-        for name, token in conn.execute(f"SELECT name, {column} FROM connection.endpoint"
-                                        f" WHERE {column} IS NOT NULL").fetchall():
-            try:
-                fresh = multi.rotate(token.encode()).decode()
-            except llm_store.InvalidToken:
-                unreadable += 1
-                continue
-            if conn.execute(f"UPDATE connection.endpoint SET {column} = %s"
-                            f" WHERE name = %s AND {column} = %s", (fresh, name, token)).rowcount:
-                rotated += 1
-            else:
-                meanwhile += 1
-    return rotated, unreadable, meanwhile
+    """(rotated, unreadable, changed_meanwhile) for one project's connection keys and secret header sets, on an
+    open connection; each column of each connection counts once (secret_box.rotate_column)."""
+    totals = [0, 0, 0]
+    for table, key_column, column in secret_box.ENCRYPTED_COLUMNS:
+        if table == "connection.endpoint":
+            totals = [a + b for a, b in zip(totals, secret_box.rotate_column(conn, multi, table, key_column, column))]
+    return totals[0], totals[1], totals[2]
 
 
 # run keys

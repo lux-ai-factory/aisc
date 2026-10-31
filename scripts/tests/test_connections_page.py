@@ -43,9 +43,8 @@ def test_the_manage_menu_links_the_page_for_owners_and_admins():
 # what the page does
 
 def test_the_page_has_the_launchers_look_and_one_inline_script():
-    html, reference = read(PAGE), read(PROJECT_PAGE)
-    for var in re.findall(r"(--[a-z0-9-]+)\s*:", re.search(r":root\s*\{(.*?)\}", reference, re.S).group(1)):
-        assert re.search(re.escape(var) + r"\s*:", html), var
+    html = read(PAGE)
+    assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
     assert len(scripts) == 1 and "src" not in scripts[0].lower()
@@ -339,12 +338,11 @@ def test_connections_without_a_target_are_listed_apart_for_admins():
     assert 'id="list"' not in markup and "connects to" not in script
 
 
-def test_linking_saves_the_connection_as_it_is_with_a_target_never_its_key():
+def test_linking_sends_only_the_target_never_the_connection_or_its_key():
     script = script_of(read(PAGE))
     fn = re.search(r"function linkTo\(.*?\n  \}\n", script, re.S)
-    assert fn and "savedFields(c)" in fn.group(0) and "body.target = key" in fn.group(0) and "'PUT'" in fn.group(0)
-    fields = re.search(r"var SAVED = \[(.*?)\];", script, re.S).group(1)
-    assert "'label'" in fields and "'base_url'" in fields and "secret'" not in fields.replace("secret_header", "")
+    assert fn and "write('POST', base() + '/' + enc(c.name) + '/target', {key: key}, msg)" in fn.group(0)
+    assert "'PUT'" not in fn.group(0) and "secret" not in fn.group(0)
     # only a target that has no connection can be linked to
     assert "!connectionsByTarget[t.key]" in script
 
@@ -418,10 +416,6 @@ def advanced_of(html):
     return re.search(r'<details id="advanced"[^>]*>.*?</details>', form, re.S).group(0)
 
 
-def saved_fields(script):
-    return re.search(r"var SAVED = \[(.*?)\];", script, re.S).group(1)
-
-
 def test_a_header_is_marked_secret_with_a_write_only_value():
     html = read(PAGE)
     script, advanced = script_of(html), advanced_of(html)
@@ -431,7 +425,6 @@ def test_a_header_is_marked_secret_with_a_write_only_value():
     tag = re.search(r'<input\b[^>]*id="f-secret-header-add-value"[^>]*>', advanced).group(0)
     assert "new-password" in tag, tag
     assert "secret_headers" in script
-    assert "'secret_headers'" not in saved_fields(script)
 
 
 def test_stored_secret_headers_are_listed_by_name_with_a_remove_box():
@@ -487,7 +480,6 @@ def test_tools_and_logprobs_are_openai_only_checkboxes():
     assert "'#editor .openai'" in shown
     for flag, box in (("supports_tools", "f-tools"), ("supports_logprobs", "f-logprobs")):
         assert re.search(r"body\." + flag + r"\s*=\s*kind === 'openai' && \$\('" + box + r"'\)\.checked", script), flag
-        assert f"'{flag}'" in saved_fields(script), flag
 
 
 def test_a_connection_with_tools_says_so():

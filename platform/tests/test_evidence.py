@@ -925,6 +925,49 @@ def test_runs_with_no_target_are_one_more_entry_last_only_when_there_are_some(cl
     assert [(t["key"], t["executed"]) for t in last["tools"]] == [("aisc-plugin-langbite", 1)]
 
 
+def test_each_target_lists_the_installed_tools_that_did_not_run_on_it(client, as_user, targets, dsn):
+    """The greyed tiles of the results page: every enabled engine plugin with no run on the target, one per
+    plugin even when a package ships several (data-monitor), by label; a disabled plugin is not offered."""
+    pid = targets["pid"]
+    _two_plugin_package(dsn, pid)
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1)
+    _runs(dsn, pid, "DataDriftPlugin", V2, "Done", by="name", component=1)
+    got = {t["key"]: t for t in _targets(client, as_user, targets)}
+    assert [(t["key"], t["engine_name"]) for t in got[COMP]["tools"]] == [
+        ("data-monitor", "DataDriftPlugin"), ("aisc-plugin-langbite", "LangBiTePlugin")]
+    assert got[COMP]["greyed"] == [{"key": "data-monitor", "engine_name": "DataAnomalyPlugin", "label": "Data Anomaly"}]
+    assert [g["label"] for g in got["system"]["greyed"]] == ["Data Anomaly", "Data Drift", "LangBiTe"]
+
+
+def test_an_upgraded_plugin_that_ran_is_not_greyed(client, as_user, targets, dsn):
+    pid = targets["pid"]
+    _upgraded_langbite(dsn, pid)
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1)
+    got = {t["key"]: t for t in _targets(client, as_user, targets)}
+    assert got[COMP]["greyed"] == []
+    assert got["system"]["greyed"] == [{"key": "aisc-plugin-langbite", "engine_name": "LangBiTePlugin",
+                                        "label": "LangBiTe"}]
+
+
+def test_each_tool_opens_its_own_tile_on_the_target_and_version_shown(client, as_user, targets, dsn):
+    """The link goes through the platform (dashboards/open), which syncs the tile and sets the Target and
+    Version filters; the tile is named by its plugin key, so two plugins of one label open their own."""
+    pid = targets["pid"]
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done", component=1)
+    _runs(dsn, pid, "aisc-plugin-langbite", V2, "Done")
+    _runs(dsn, pid, "aisc-plugin-langbite", V1, "Done", component=1)
+    body = _body(client, as_user, targets)
+    got = {t["key"]: t for t in body["targets"]}
+    opens = f"/api/projects/{pid}/dashboards/open"
+    assert body["dashboards_url"] == opens
+    assert got[COMP]["tools"][0]["dashboard_url"] == (
+        opens + "?plugin=aisc-plugin-langbite%3A%3ALangBiTePlugin&target=Explanation%20assistant&version=2")
+    assert got[None]["tools"][0]["dashboard_url"] == (
+        opens + "?plugin=aisc-plugin-langbite%3A%3ALangBiTePlugin&target=unassigned&version=2")
+    older = {t["key"]: t for t in _targets(client, as_user, targets, V1)}
+    assert older[COMP]["tools"][0]["dashboard_url"].endswith("&version=1")
+
+
 def test_no_target_table_reads_as_no_targets(client, as_user, evidence_project, dsn):
     sql(dsn, evidence_project["pid"], "DROP TABLE engine.aisc_backend_evaluationinput")
     sql(dsn, evidence_project["pid"], "ALTER TABLE target.target RENAME TO target_gone")

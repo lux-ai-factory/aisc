@@ -251,7 +251,10 @@ def test_rotate_re_encrypts_every_key_and_prints_counts_only(client, admin, proj
            "PYTHONPATH": os.pathsep.join([str(PLATFORM_DIR), str(PLATFORM_DIR.parent / "shared/identity")])}
     done = subprocess.run([sys.executable, "-m", "platform_service.llm_store", "rotate"], cwd=PLATFORM_DIR,
                           env=env, capture_output=True, text=True, timeout=300)
-    assert done.returncode == 0, done.stderr[-2000:]
+    # 1 when other tests' projects hold keys under another test key list (unreadable here): rotate says to keep
+    # the old key; this project's keys are rotated either way (test_secret_box checks the exit code itself)
+    assert done.returncode in (0, 1), done.stderr[-2000:]
+    assert done.returncode == 0 or "do not remove the old key yet" in done.stderr
     out = done.stdout + done.stderr
     assert re.search(r"\d", done.stdout), "rotate printed no counts"
     for secret in (key, conn_key, newest, SECRETS_KEY):
@@ -285,7 +288,7 @@ class SaveDuringRotation:
 
 
 def test_rotation_keeps_a_key_saved_while_it_runs(client, admin, project, dsn, monkeypatch):
-    from platform_service import llm_store
+    from platform_service import llm_store, secret_box
 
     old, new = new_key(), new_key()
     url = f"/projects/{project['slug']}/llm/providers/openai"
@@ -299,7 +302,7 @@ def test_rotation_keeps_a_key_saved_while_it_runs(client, admin, project, dsn, m
         assert client.put(url, json={"api_key": new}, headers=admin).status_code == 200
 
     racing = SaveDuringRotation(real, token, save)
-    monkeypatch.setattr(llm_store, "fernet", lambda: racing)
+    monkeypatch.setattr(secret_box, "fernet", lambda: racing)
     counts = llm_store.rotate_all(dsn)
     assert racing.saved
     stored = one(dsn, project, "select ciphertext from llm.provider where provider = 'openai'")[0]

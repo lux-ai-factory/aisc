@@ -1,6 +1,7 @@
 """Calls to the renderer on behalf of a request, its failures answered as API errors."""
 from __future__ import annotations
 
+import logging
 import threading
 import time
 
@@ -13,6 +14,8 @@ from .renderer_client import (RendererBusy, RendererError, RendererRejected, Ren
 #: the answers to the renderer's limits on /v1/render, shared with reports.generate
 TOO_LARGE = (413, "report_too_large", "The report is too large for the renderer.")
 BUSY = (503, "renderer_busy", "The report renderer is busy; try again shortly.")
+
+log = logging.getLogger(__name__)
 
 
 def renderer_call(fn, *args):
@@ -43,6 +46,21 @@ def block_types(request: Request) -> list:
 
 def fonts(request: Request) -> list:
     return renderer_call(request.app.state.renderer.fonts)
+
+
+def logo_check(request: Request):
+    """The renderer's verdict on a template's logo (templates.checked). A renderer that does not answer in
+    time does not block the save: the logo is taken, and a render that cannot use it says so."""
+    renderer = request.app.state.renderer
+
+    def check(style: dict) -> str | None:
+        try:
+            return renderer.style_check_quick(style)
+        except RendererError as exc:
+            log.warning("the logo was saved unchecked: the renderer's style check failed (%s)", exc)
+            return None
+
+    return check
 
 
 def choices_for(request: Request, project_pid: str, system_pid: str):

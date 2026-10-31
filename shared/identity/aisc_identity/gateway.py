@@ -8,6 +8,8 @@ uses it.
   Otherwise the request is refused: an app that prefers the Bearer would act as another person than
   the one the gateway signed in.
 - `leeway` covers a token that expires while the request crosses the gateway.
+- `gateway_client` None checks no `azp`: an access decision (caller_from_headers) accepts a token from
+  any client of the realm, as it does from a Bearer alone, and only needs the two tokens to agree.
 """
 from __future__ import annotations
 
@@ -44,7 +46,7 @@ def _header(headers: Mapping[str, str], name: str) -> str:
 
 
 def gateway_identity(headers: Mapping[str, str], *, issuer: str, key_for: Callable[[str], Any],
-                     gateway_client: str, leeway: float = 30) -> GatewayIdentity:
+                     gateway_client: str | None, leeway: float = 30) -> GatewayIdentity:
     token = _header(headers, GATEWAY_TOKEN_HEADER)
     if not token:
         raise GatewayRefused("missing", "no gateway token")
@@ -52,7 +54,7 @@ def gateway_identity(headers: Mapping[str, str], *, issuer: str, key_for: Callab
         claims = verify_token(token, issuer=issuer, key_for=key_for, leeway=leeway)
     except TokenRejected as exc:
         raise GatewayRefused("invalid", str(exc)) from exc
-    if claims.get("azp") != gateway_client:
+    if gateway_client is not None and claims.get("azp") != gateway_client:
         raise GatewayRefused("other_client", f"issued to {claims.get('azp')!r}, not the gateway")
     authorization = _header(headers, "Authorization")
     if authorization:

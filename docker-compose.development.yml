@@ -807,7 +807,7 @@ services:
   # in the dashboard. The shared `redis` is reachable by the eval worker, which runs plugin code.
   # A cache: nothing is kept on disk, nothing is published.
   dashboard-redis:
-    image: redis:7-alpine
+    image: redis:7.4.11-alpine
     container_name: ${CONTAINER_PREFIX:-}dashboard-redis
     restart: unless-stopped
     environment:

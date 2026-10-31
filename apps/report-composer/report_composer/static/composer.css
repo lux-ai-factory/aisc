@@ -1,5 +1,28 @@
 /* Luxembourg AI Factory brand palette, kept identical to the control-objectives and
    qualification apps so the report composer looks like the rest of the platform. */
+
+/* The brand fonts, served from static/fonts (the same files as homepage/assets/fonts). */
+@font-face {
+  font-family: "MuseoModerno"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(fonts/museomoderno-latin-wght-normal.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Raleway"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(fonts/raleway-latin-wght-normal.woff2) format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url(fonts/ibm-plex-mono-latin-600-normal.woff2) format("woff2");
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 :root {
   --bg: #f2f3fd;

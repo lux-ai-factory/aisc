@@ -11,7 +11,7 @@ import psycopg
 import pytest
 from psycopg.conninfo import make_conninfo
 
-from platform_service import projectdb
+from platform_service import connection_facade, projectdb
 from tests.conftest import needs_database, one
 from tests.connection_support import CONNECTIONS_TOKEN, SECRETS_KEY, engine_component, new_secret
 from tests.http_stub import Stub
@@ -122,6 +122,46 @@ def test_every_call_counts_on_its_run_key(client, admin, project, stub, dsn):
         client.post(f"{base(project, name)}/aisc/ask", json={"input": "q"}, headers=keyed(key))
     uses, last = one(dsn, project, "select uses, last_used_at from connection.run_key")
     assert uses == 3 and last is not None
+
+
+def test_a_probe_does_not_count_on_its_run_key(client, admin, project, stub, dsn):
+    name = connection(client, admin, project, stub)
+    key = issue(client, project, name).json()["key"]
+    b = base(project, name)
+    for path in ("/openai/v1/models", "/a2a/.well-known/agent-card.json", "/oip/v2", "/oip/v2/health/ready",
+                 f"/oip/v2/models/{name}", f"/oip/v2/models/{name}/ready"):
+        assert client.get(f"{b}{path}", headers=keyed(key)).status_code == 200, path
+    assert one(dsn, project, "select uses from connection.run_key")[0] == 0
+
+
+DOORS = {
+    "aisc": lambda name: "/aisc/ask",
+    "openai": lambda name: "/openai/v1/chat/completions",
+    "a2a": lambda name: "/a2a",
+    "oip": lambda name: f"/oip/v2/models/{name}/infer",
+}
+
+
+@pytest.mark.parametrize("door", list(DOORS))
+def test_a_body_over_two_mebibytes_is_413_on_every_door_and_does_not_count(client, admin, project, stub, dsn, door):
+    name = connection(client, admin, project, stub)
+    key = issue(client, project, name).json()["key"]
+    r = client.post(f"{base(project, name)}{DOORS[door](name)}", content=b"{" + b" " * 2_097_152 + b"}",
+                    headers={**keyed(key), "Content-Type": "application/json"})
+    assert r.status_code == 413, r.text[:300]
+    assert "2097152 bytes" in r.text
+    assert stub.requests("POST", "/chat") == []
+    assert one(dsn, project, "select uses from connection.run_key")[0] == 0
+
+
+@pytest.mark.parametrize("door", list(DOORS))
+def test_a_body_that_is_not_json_does_not_count(client, admin, project, stub, dsn, door):
+    name = connection(client, admin, project, stub)
+    key = issue(client, project, name).json()["key"]
+    client.post(f"{base(project, name)}{DOORS[door](name)}", content=b"not json",
+                headers={**keyed(key), "Content-Type": "application/json"})
+    assert stub.requests("POST", "/chat") == []
+    assert one(dsn, project, "select uses from connection.run_key")[0] == 0
 
 
 # AISC-native
@@ -247,6 +287,7 @@ def test_a2a_unknown_methods_bad_params_and_upstream_failures_are_jsonrpc_errors
     url = f"{base(project, name)}/a2a"
     assert client.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "CancelTask", "params": {}}, headers=keyed(key)).json()["error"]["code"] == -32601
     assert client.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "SendMessage", "params": {}}, headers=keyed(key)).json()["error"]["code"] == -32602
+    assert client.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "SendMessage", "params": ["q"]}, headers=keyed(key)).json()["error"]["code"] == -32602
     stub.route("POST", "/chat", (401, {"detail": "bad"}))
     req = {"jsonrpc": "2.0", "id": 1, "method": "SendMessage",
            "params": {"message": {"messageId": "m", "role": "ROLE_USER", "parts": [{"text": "q"}]}}}
@@ -290,6 +331,11 @@ def test_oip_a_bad_request_or_an_upstream_failure_is_an_error_object(client, adm
     url = f"{base(project, name)}/oip/v2/models/{name}/infer"
     r = client.post(url, json={"inputs": []}, headers=keyed(key))
     assert r.status_code == 400 and "error" in r.json()
+    too_many = ["q"] * (connection_facade.MAX_OIP_INPUTS + 1)
+    r = client.post(url, json={"inputs": [{"name": "input", "shape": [len(too_many)], "datatype": "BYTES",
+                                           "data": too_many}]}, headers=keyed(key))
+    assert r.status_code == 400 and "at most" in r.json()["error"]
+    assert stub.requests("POST", "/chat") == []
     stub.route("POST", "/chat", (401, {"detail": "bad"}))
     r = client.post(url, json={"inputs": [{"name": "input", "shape": [1], "datatype": "BYTES", "data": ["q"]}]}, headers=keyed(key))
     assert r.status_code == 502 and "auth" in r.json()["error"]

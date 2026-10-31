@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import base64
 import binascii
-import math
 import re
-import struct
+from typing import Callable
 
 from .errors import ApiError, refuse_lone_surrogate
 
@@ -20,8 +19,6 @@ MARKINGS = ("none", "public", "internal", "confidential", "strictly_confidential
 TEXT_MAX = 120
 LOGO_MIMES = ("image/png", "image/jpeg", "image/svg+xml")
 LOGO_MAX_BYTES = 1_048_576
-#: the renderer's cap (report_renderer/style.py LOGO_MAX_PIXELS)
-LOGO_MAX_PIXELS = 16_000_000
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -29,8 +26,11 @@ def _bad(pointer: str, message: str):
     raise ApiError(422, "invalid_template", message, [{"pointer": pointer, "message": message}])
 
 
-def checked(body: dict, fonts: list[dict]) -> tuple[dict, tuple[str, bytes] | None]:
-    """The template's fields and its logo as (mime, bytes), or a 422 naming what is wrong."""
+def checked(body: dict, fonts: list[dict], logo_check: Callable[[dict], str | None]) \
+        -> tuple[dict, tuple[str, bytes] | None]:
+    """The template's fields and its logo as (mime, bytes), or a 422 naming what is wrong. Whether a logo's
+    content can be used is the renderer's rule: `logo_check(style)` asks it (POST /v1/style/check, the style
+    as a snapshot carries it) and answers its problem, or None."""
     if not isinstance(body, dict):
         _bad("", "A look is an object.")
     refuse_lone_surrogate(body, "invalid_template")
@@ -67,10 +67,12 @@ def checked(body: dict, fonts: list[dict]) -> tuple[dict, tuple[str, bytes] | No
     if not isinstance(show_id, bool):
         _bad("/show_document_id", "show_document_id is true or false.")
     look["show_document_id"] = show_id
-    return look, _logo(body.get("logo"))
+    return look, _logo(body.get("logo"), logo_check)
 
 
-def _logo(logo) -> tuple[str, bytes] | None:
+def _logo(logo, logo_check: Callable[[dict], str | None]) -> tuple[str, bytes] | None:
+    """The upload's own limits here (a type named, base64, not empty, at most LOGO_MAX_BYTES); its content
+    (the declared type, the size it is drawn at, no embedded or linked resource) is the renderer's."""
     if logo is None:
         return None
     if not isinstance(logo, dict) or logo.get("mime") not in LOGO_MIMES:
@@ -83,128 +85,10 @@ def _logo(logo) -> tuple[str, bytes] | None:
         _bad("/logo/data_base64", "The logo is empty.")
     if len(raw) > LOGO_MAX_BYTES:
         _bad("/logo/data_base64", "The logo is at most 1 MB.")
-    # The content is the declared type: the renderer's image library reads other formats whatever the
-    # declared one (PSD, EPS, JPEG 2000...), so a file is refused here, and checked in full there.
-    if not _looks_like(logo["mime"], raw):
-        _bad("/logo/data_base64", "The logo's content is not the image type it is saved as.")
-    problem = _size_problem(logo["mime"], raw)
+    problem = logo_check({"logo": {"mime": logo["mime"], "data_base64": logo["data_base64"]}})
     if problem:
-        _bad("/logo/data_base64", problem)
+        _bad("/logo/data_base64", f"The logo {problem}.")
     return logo["mime"], raw
-
-
-def _looks_like(mime: str, raw: bytes) -> bool:
-    if mime == "image/png":
-        return raw.startswith(b"\x89PNG\r\n\x1a\n")
-    if mime == "image/jpeg":
-        return raw.startswith(b"\xff\xd8\xff")
-    head = raw[:4096].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
-    return head.startswith(b"<") and b"<svg" in raw[:65536].lower()
-
-
-def _size_problem(mime: str, raw: bytes) -> str | None:
-    """The renderer's size limits (report_renderer/style.py logo_problem): a raster
-    logo has at most LOGO_MAX_PIXELS and a size in its header; an SVG, which the Word export rasterises
-    at twice its declared size, at most LOGO_MAX_PIXELS once drawn so."""
-    if mime == "image/png":
-        size = _png_size(raw)
-        if size is None:
-            return "The logo is not a readable PNG image."
-    elif mime == "image/jpeg":
-        size = _jpeg_size(raw)
-        if size is None:
-            return "The logo is not a readable JPEG image."
-    else:
-        if _SVG_EMBEDS.search(raw):                           # An embedded raster is decoded in full
-            return "The logo embeds an image or a link (<image>, <feImage>, href), which a logo does not need."
-        size = _svg_size(raw)
-        if size is None:                                      # The renderer refuses it
-            return "The logo declares no usable width and height (nor viewBox)."
-        size = (2 * size[0], 2 * size[1])
-    width, height = size
-    if not (math.isfinite(width) and math.isfinite(height)) or width * height > LOGO_MAX_PIXELS:
-        return f"The logo has more than {LOGO_MAX_PIXELS} pixels."
-    return None
-
-
-def _png_size(raw: bytes) -> tuple[int, int] | None:
-    """Width and height from the IHDR chunk, which a PNG starts with."""
-    if raw[8:16] != b"\x00\x00\x00\rIHDR" or len(raw) < 24:
-        return None
-    width, height = struct.unpack(">II", raw[16:24])
-    return (width, height) if width and height else None
-
-
-#: the JPEG frame headers (SOF0..SOF15 but DHT, JPG and DAC), where the image's size is
-_SOF = frozenset(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
-
-
-def _jpeg_size(raw: bytes) -> tuple[int, int] | None:
-    """Width and height from the first frame header, walking the segments before the scan."""
-    i = 2
-    while i + 4 <= len(raw):
-        if raw[i] != 0xFF:
-            return None
-        marker = raw[i + 1]
-        if marker == 0xFF:                                    # a fill byte
-            i += 1
-            continue
-        if marker == 0x01 or 0xD0 <= marker <= 0xD7:          # standalone markers have no length
-            i += 2
-            continue
-        if marker in (0xD9, 0xDA):                            # end of image or start of scan: no frame
-            return None
-        length = struct.unpack(">H", raw[i + 2:i + 4])[0]
-        if marker in _SOF:
-            if i + 9 > len(raw):
-                return None
-            height, width = struct.unpack(">HH", raw[i + 5:i + 9])
-            return (width, height) if width and height else None
-        i += 2 + length
-    return None
-
-
-#: what lets an SVG draw something it does not hold as vector shapes: an <image> or <feImage> (whose raster,
-#: of any size, the renderer decodes whatever size the SVG declares) or any reference (href, xlink:href)
-_SVG_EMBEDS = re.compile(rb"<(?:[A-Za-z_][\w.-]*:)?(?:image|feimage)\b|href\s*=", re.IGNORECASE)
-_SVG_ROOT = re.compile(rb"<svg\b([^>]*)>", re.IGNORECASE)
-_LENGTH = re.compile(r"^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(px|pt|pc|mm|cm|in|em|ex)?\s*$")
-#: CSS units in px at 96 dpi; em and ex for a 16 px (12 pt) font
-_UNITS = {None: 1.0, "px": 1.0, "pt": 96 / 72, "pc": 16.0, "mm": 96 / 25.4, "cm": 96 / 2.54, "in": 96.0,
-          "em": 16.0, "ex": 8.0}
-
-
-def _svg_attribute(tag: str, name: str) -> str | None:
-    found = re.search(r"(?:^|\s)" + name + r"\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", tag)
-    return None if found is None else (found.group(1) if found.group(1) is not None else found.group(2))
-
-
-def _svg_length(value: str | None) -> float | None:
-    """An absolute length in px, or None (missing, relative or not a length)."""
-    found = _LENGTH.match(value or "")
-    return None if found is None else float(found.group(1)) * _UNITS[found.group(2)]
-
-
-def _svg_size(raw: bytes) -> tuple[float, float] | None:
-    """The size the root element declares, in px, as cairosvg reads it (report_renderer/style.py
-    svg_size): its width and height, the viewBox's width or height for a side that has none (as it is,
-    not in proportion), or None when a side is still missing or not positive. A missing or relative
-    side is 100% of nothing around it, so 0."""
-    root = _SVG_ROOT.search(raw[:65536])
-    if root is None:
-        return None
-    tag = root.group(1).decode("utf-8", "replace")
-    width, height = _svg_length(_svg_attribute(tag, "width")), _svg_length(_svg_attribute(tag, "height"))
-    box = (_svg_attribute(tag, "viewBox") or "").replace(",", " ").split()
-    if len(box) == 4:
-        try:
-            box_width, box_height = float(box[2]), float(box[3])
-        except ValueError:
-            box_width, box_height = None, None
-        width, height = width or box_width, height or box_height
-    if width is None or height is None or not width > 0 or not height > 0:
-        return None
-    return width, height
 
 
 def _number(value: float) -> int | float:

@@ -108,3 +108,52 @@ def test_auth_on_without_an_issuer_refuses_with_500(app, monkeypatch, token):
     client = TestClient(app, raise_server_exceptions=False)
     r = client.get("/who", headers={"Authorization": f"Bearer {token()}"})
     assert r.status_code == 500
+
+
+OTHER = "00000000-0000-0000-0000-000000000002"
+
+
+def test_a_bearer_for_the_same_person_as_the_gateway_token_is_let_through(client, token):
+    """The engine's web app sends its own keycloak-js token next to the gateway's."""
+    from aisc_identity.headers import GATEWAY_TOKEN_HEADER
+
+    r = client.get("/who", headers={GATEWAY_TOKEN_HEADER: token(azp="aisc-gateway"),
+                                    "Authorization": f"Bearer {token(azp='webapp', roles=['admin'])}"})
+    assert r.status_code == 200
+    assert r.json()["roles"] == ["primary-user"]  # the gateway's person, as the gateway signed them in
+
+
+def test_a_bearer_for_someone_else_than_the_gateway_token_is_401(client, token):
+    """Access would otherwise be decided for the Bearer's person while the gateway signed in another."""
+    from aisc_identity.headers import GATEWAY_TOKEN_HEADER
+
+    r = client.get("/who", headers={GATEWAY_TOKEN_HEADER: token(azp="aisc-gateway"),
+                                    "Authorization": f"Bearer {token(sub=OTHER, roles=['admin'])}"})
+    assert r.status_code == 401
+
+
+def test_a_gateway_token_that_does_not_verify_is_401_even_with_a_good_bearer(client, token):
+    from aisc_identity.headers import GATEWAY_TOKEN_HEADER
+
+    r = client.get("/who", headers={GATEWAY_TOKEN_HEADER: "nonsense", "Authorization": f"Bearer {token()}"})
+    assert r.status_code == 401
+
+
+def test_one_token_sent_under_both_headers_is_that_token(client, token):
+    """A service calling as the person (the platform to the report composer) sends the token it was given
+    both ways, whichever client it was issued to."""
+    from aisc_identity.headers import GATEWAY_TOKEN_HEADER
+
+    same = token(azp="webapp")
+    r = client.get("/who", headers={GATEWAY_TOKEN_HEADER: same, "Authorization": f"Bearer {same}"})
+    assert r.status_code == 200
+
+
+@pytest.mark.parametrize("where", ["bearer", "gateway"])
+def test_a_token_that_names_nobody_is_401_not_500(client, token, where):
+    from aisc_identity.headers import GATEWAY_TOKEN_HEADER
+
+    nobody = token(sub="")
+    headers = {"Authorization": f"Bearer {nobody}"} if where == "bearer" else {GATEWAY_TOKEN_HEADER: nobody}
+    r = TestClient(client.app, raise_server_exceptions=False).get("/who", headers=headers)
+    assert r.status_code == 401

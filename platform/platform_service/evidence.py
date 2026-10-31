@@ -30,12 +30,13 @@ import os
 import re
 import time
 import urllib.request
+from urllib.parse import quote, urlencode
 from dataclasses import dataclass, field
 
 import psycopg
 from psycopg.rows import dict_row
 
-from platform_service import connection_store, projectdb, run_passes
+from platform_service import connection_store, engine_runs, projectdb, run_passes
 from platform_service.local_controls import local_controls
 from platform_service.targets import PROTOCOL_NAMES
 
@@ -84,13 +85,9 @@ _PLUGINS = ("SELECT id, package_name, display_name, enabled, catalogue_slug, nam
             " ORDER BY display_name, package_name")
 #: The engine's workspace of this project (its pages are /projects/<name>/...); one row per database.
 _WORKSPACE = "SELECT name FROM engine.aisc_backend_project ORDER BY id LIMIT 1"
-#: A run on a local model file: the engine worker stores {"local_model": {"file", "sha256"}} as the value of
-#: the plugin's model input. It is not part of the assessment record: never counted with the AI card's
-#: runs, whatever else it has, and listed apart (_LOCAL_RUNS, local_runs). A local_model that is not an
-#: object is not that marker, and the run is an ordinary one.
-_IS_LOCAL_INPUT = "jsonb_typeof(li.value->'local_model') = 'object'"
-_LOCAL = ("EXISTS (SELECT 1 FROM engine.aisc_backend_evaluationinput li"
-          " WHERE li.evaluation_plugin_id = ep.id AND " + _IS_LOCAL_INPUT + ")")
+#: The runs of the assessment record: not archived, not on a local model file (engine_runs). A local run is
+#: listed apart (_LOCAL_RUNS, local_runs).
+_ON_RECORD = engine_runs.NOT_ARCHIVED + " AND " + engine_runs.NOT_LOCAL
 #: Step 4's test tiles: each installed test's runs on one card version, as the engine's
 #: per-plugin rows count them; an archived evaluation is hidden in the engine, so it is not counted.
 _RUNS = (
@@ -101,7 +98,7 @@ _RUNS = (
     " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id"
     " JOIN engine.aisc_backend_pluginconfig pc ON pc.id = ep.plugin_config_id"
     " JOIN engine.aisc_backend_plugin pl ON pl.id = pc.plugin_id"
-    " WHERE e.system_id::text = %s AND e.status <> 'Archived' AND NOT " + _LOCAL +
+    " WHERE e.system_id::text = %s AND " + _ON_RECORD +
     " GROUP BY pl.package_name"
 )
 #: The same, per engine plugin: a package can ship several (data-monitor: Data Drift and
@@ -113,7 +110,7 @@ _PLUGIN_RUNS = (
     " FROM engine.aisc_backend_evaluationplugin ep"
     " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id"
     " JOIN engine.aisc_backend_pluginconfig pc ON pc.id = ep.plugin_config_id"
-    " WHERE e.system_id::text = %s AND e.status <> 'Archived' AND NOT " + _LOCAL +
+    " WHERE e.system_id::text = %s AND " + _ON_RECORD +
     " GROUP BY pc.plugin_id"
 )
 #: Step 4's control tiles: each checklist's question count, and its latest answers as the
@@ -141,7 +138,7 @@ _SUBMISSIONS = (
 _TARGETS = "SELECT key, kind, component_kind, label, last_card_number FROM target.target"
 _TARGET_RUNS = (
     "SELECT t.key AS target_key, ti.id IS NULL AS unassigned, pl.package_name,"
-    " COALESCE(pl.display_name, pl.name, pl.package_name) AS label,"
+    " COALESCE(pl.display_name, pl.name, pl.package_name) AS label, pl.name AS engine_name,"
     " count(*) FILTER (WHERE ep.status = 'Done') AS executed,"
     " count(*) FILTER (WHERE ep.status = 'Failed') AS failed,"
     " count(*) FILTER (WHERE ep.status IN ('Pending', 'Running')) AS running,"
@@ -153,8 +150,8 @@ _TARGET_RUNS = (
     " LEFT JOIN engine.aisc_backend_evaluationinput ti ON ti.evaluation_plugin_id = ep.id AND ti.name = 'target'"
     " LEFT JOIN engine.aisc_backend_aicomponent tc ON tc.id = ti.component_id"
     " LEFT JOIN target.target t ON t.engine_component = tc.pid"
-    " WHERE e.system_id::text = %s AND e.status <> 'Archived' AND NOT " + _LOCAL +
-    " GROUP BY 1, 2, 3, 4"
+    " WHERE e.system_id::text = %s AND " + _ON_RECORD +
+    " GROUP BY 1, 2, 3, 4, 5"
 )
 #: The same runs one by one, newest first, with what each was on: its target (as above) or, for a local
 #: run, the marker of its model input (the first by name when several are marked); and its helper models,
@@ -166,7 +163,7 @@ _RUN_COLUMNS = (
     " COALESCE(pl.display_name, pl.name, pl.package_name) AS label,"
     " t.key AS target_key, ti.id IS NULL AS unassigned, t.label AS target_label,"
     " (SELECT li.value->'local_model' FROM engine.aisc_backend_evaluationinput li"
-    "   WHERE li.evaluation_plugin_id = ep.id AND " + _IS_LOCAL_INPUT + " ORDER BY li.name LIMIT 1) AS local_model,"
+    "   WHERE li.evaluation_plugin_id = ep.id AND " + engine_runs.IS_LOCAL_INPUT + " ORDER BY li.name LIMIT 1) AS local_model,"
     " (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', substr(hi.name, 8),"
     "                                               'model', COALESCE(NULLIF(hi.value->>'model', ''),"
     "                                                               NULLIF(hi.value->>'label', ''), hc.name,"
@@ -183,11 +180,11 @@ _RUN_COLUMNS = (
     " LEFT JOIN engine.aisc_backend_aicomponent tc ON tc.id = ti.component_id"
     " LEFT JOIN target.target t ON t.engine_component = tc.pid"
 )
-_RUN_DETAILS = (_RUN_COLUMNS + " WHERE e.system_id::text = %s AND e.status <> 'Archived' AND NOT " + _LOCAL +
+_RUN_DETAILS = (_RUN_COLUMNS + " WHERE e.system_id::text = %s AND " + _ON_RECORD +
                 " ORDER BY e.created_at DESC, ep.id DESC")
 #: The project's local runs, whatever card version they were made on (or none): they are not part of
 #: any version's assessment record.
-_LOCAL_RUNS = (_RUN_COLUMNS + " WHERE e.status <> 'Archived' AND " + _LOCAL +
+_LOCAL_RUNS = (_RUN_COLUMNS + " WHERE " + engine_runs.NOT_ARCHIVED + " AND " + engine_runs.LOCAL +
                " ORDER BY e.created_at DESC, ep.id DESC")
 _CHECKLISTS = 'SELECT id, title, "catalogueId" FROM controls.checklist ORDER BY title, id'
 #: The project's own objectives (objective sets), each as its latest published version words it.
@@ -400,7 +397,8 @@ def target_view(found: Choices, latest_number: int | None, uses: dict[str, list[
                 if _connection(use) not in connections:
                     connections.append(_connection(use))
             helpers += [h for h in d["helpers"] if h not in helpers]
-        return {"key": r["package_name"], "label": r["label"], "executed": r["executed"],
+        return {"key": r["package_name"], "engine_name": r["engine_name"], "label": r["label"],
+                "executed": r["executed"],
                 "failed": r["failed"], "running": r["running"],
                 "last_run": r["last_run"].isoformat() if r["last_run"] else None,
                 "runs": [_run(d, uses) for d in mine], "connections": connections,
@@ -418,6 +416,29 @@ def target_view(found: Choices, latest_number: int | None, uses: dict[str, list[
         out.append({"key": None, "kind": "unassigned", "component_kind": None, "label": "No target",
                     "stale": False, "tools": tools(unassigned)})
     return out
+
+
+def dashboards_url(pid) -> str:
+    """The platform route that syncs a project's tiles in the results dashboard and opens them, on the
+    launcher's origin (routes/evidence.py, open_dashboards)."""
+    return f"/api/projects/{quote(str(pid), safe='')}/dashboards/open"
+
+
+def with_tiles(targets: list[dict], plugins: list[dict], pid, version_number: int | None) -> list[dict]:
+    """The results page's tiles of each target: every tool that ran gets the link to its own tile, named by its
+    plugin key (package::name, as dashboards.sync names a tile) with the target and the card version shown,
+    and `greyed` lists the enabled engine plugins (one entry per plugin, by label) with no run on it."""
+    for t in targets:
+        for tool in t["tools"]:
+            query = {"plugin": f"{tool['key']}::{tool['engine_name']}",
+                     "target": "unassigned" if t["key"] is None else t["label"]}
+            if version_number is not None:
+                query["version"] = version_number
+            tool["dashboard_url"] = dashboards_url(pid) + "?" + urlencode(query, quote_via=quote)
+        ran = {(tool["key"], tool["engine_name"]) for tool in t["tools"]}
+        t["greyed"] = [{"key": p["key"], "engine_name": p["engine_name"], "label": p["label"]}
+                       for p in plugins if p["stale"] is None and (p["key"], p["engine_name"]) not in ran]
+    return targets
 
 
 def readiness(mean_score) -> int | None:
@@ -664,7 +685,7 @@ def view(pid, version: str | None = None, token: str = "") -> dict:
         if p["enabled"]:
             tile["stale"] = None
         tile["runs"] = {k: tile["runs"][k] + runs[k] for k in no_runs}
-    plugins = list(tiles.values())
+    plugins = sorted(tiles.values(), key=lambda p: p["label"].lower())
     controls = [{"key": k, "label": title, "stale": None, "questions": found.questions.get(k, 0),
                  "submission": found.submissions.get(k)} for k, title in found.checklists.items()]
     controls += [{"key": k, "label": k, "stale": "deleted", "questions": None, "submission": None}
@@ -684,8 +705,11 @@ def view(pid, version: str | None = None, token: str = "") -> dict:
         "read_only": read_only,
         "carried_from": carried_from,
         "engine_workspace": found.workspace,
-        "targets": target_view(found, all_versions[0]["number"] if all_versions else None,
-                               run_passes.uses_by_run([d["run"] for d in found.run_details if d["target_key"]], pid)),
+        "targets": with_tiles(target_view(found, all_versions[0]["number"] if all_versions else None,
+                                          run_passes.uses_by_run([d["run"] for d in found.run_details
+                                                                  if d["target_key"]], pid)),
+                              plugins, pid, current["number"] if current else None),
+        "dashboards_url": dashboards_url(pid),
         "local_runs": local_runs(found),
         "dimensions": [{"id": rid, "title": dim_titles[rid]} for rid, _, _ in DIMENSIONS],
         "dimensions_known": catalogue is not None and bool(dims),
@@ -698,7 +722,7 @@ def view(pid, version: str | None = None, token: str = "") -> dict:
                      "gaps": len(set(found.selected) - set(live))},
         "review": review_of(pid, current["pid"]) if current else None,
         "tests": tests,
-        "plugins": sorted(plugins, key=lambda p: p["label"].lower()),
+        "plugins": plugins,
         "controls": controls,
         "links": [{"objective_id": r["objective_id"], "kind": r["kind"], "key": r["item_key"], "note": r["note"],
                    "created_by": r["created_by"], "created_at": r["created_at"].isoformat(),

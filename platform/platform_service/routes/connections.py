@@ -20,7 +20,7 @@ from psycopg import errors
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 
 from platform_service import (adapters, connection_allowlist, connection_facade, connection_store, db, llm_store,
-                              run_passes, target_store, targets)
+                              run_passes, secret_box, target_store, targets)
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, admin_project, no_project, role_or_404, secrets_unavailable
 
@@ -257,6 +257,20 @@ def target_set_once() -> HTTPException:
                                                  "connection to reach another one")
 
 
+def checked_target(pid: str, name: str, key: str, before: dict | None) -> str:
+    """`key`, once it may be the target of connection `name` (`before`: its stored row, or None): 422 unless it
+    is the system or a component of this project, 422 when the connection already reaches another target (set
+    once), 409 when another connection reaches it."""
+    if not targets.is_key(key) or target_store.get(pid, key) is None:
+        raise HTTPException(status_code=422, detail=f"target: {key!r} is not the system or a component of this project")
+    if before and before.get("target_key") and before["target_key"] != key:
+        raise target_set_once()
+    holder = connection_store.holder_of(pid, key)
+    if holder is not None and holder != name:
+        raise HTTPException(status_code=409, detail=f"target: {key} already has a connection, {holder}")
+    return key
+
+
 @router.get("/projects/{slug}/connections/protocols")
 def list_protocols(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
     """The protocols a connection can use: the built-in ones, then each installed adapter with the fields its
@@ -293,6 +307,12 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
         change = {**{n: "" for n in stored}, **change}
         if adapter is not None:
             ciphertext = None
+    # a stored key or secret header goes only where it was entered for: another origin needs them typed again
+    kept_secrets = [n for n in stored if n not in change]
+    if before is not None:                                # a revived one too: delete keeps its key
+        if ciphertext is connection_store.KEEP:
+            secret_box.kept_key(before.get("base_url"), fields["base_url"], bool(before.get("has_secret")))
+        secret_box.kept_key(before.get("base_url"), fields["base_url"], bool(kept_secrets))
     names = stored
     if change:
         names, header_ciphertext = _merged_secret_headers(pid, name, change)
@@ -303,14 +323,7 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
         if missing:
             raise _invalid_connection(f"secret_settings: {', '.join(missing)} required")
     if "target" in body.model_fields_set and body.target is not None:
-        if not targets.is_key(body.target) or target_store.get(pid, body.target) is None:
-            raise HTTPException(status_code=422, detail=f"target: {body.target!r} is not the system or a component of this project")
-        if before and before.get("target_key") and before["target_key"] != body.target:
-            raise target_set_once()
-        holder = connection_store.holder_of(pid, body.target)
-        if holder is not None and holder != name:
-            raise HTTPException(status_code=409, detail=f"target: {body.target} already has a connection, {holder}")
-        fields["target_key"] = body.target
+        fields["target_key"] = checked_target(pid, name, body.target, before)
     try:
         row = connection_store.save(pid, name, fields, ciphertext=ciphertext, header_ciphertext=header_ciphertext,
                                     subject=caller.username or caller.subject)
@@ -325,6 +338,36 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
     retire_engine_component(pid, row, request)
     if row.get("target_key"):
         _rename_targets(pid, request)
+    return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
+
+
+class TargetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: 'system' or 'component:<key>'
+    key: StrictStr
+
+
+@router.post("/projects/{slug}/connections/{name}/target")
+def link_target(slug: str, name: str, body: TargetIn, request: Request,
+                caller: Caller = Depends(caller_dependency)) -> JSONResponse:
+    """Make a connection the endpoint of a target, nothing else of it changing: the checks of a save that
+    names a target (checked_target), without sending the connection again."""
+    pid = admin_connection(slug, caller, name)
+    before = connection_store.get(pid, name)
+    if before is None:
+        raise HTTPException(status_code=404, detail=f"no connection {name!r}")
+    key = checked_target(pid, name, body.key, before)
+    try:
+        row = connection_store.link_target(pid, name, key, subject=caller.username or caller.subject)
+    except errors.UniqueViolation:
+        holder = connection_store.holder_of(pid, key)       # another connection took it since the check
+        raise HTTPException(status_code=409, detail=f"target: {key} already has a connection"
+                                                    + (f", {holder}" if holder else "")) from None
+    except connection_store.TargetSetOnce:
+        raise target_set_once() from None
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no connection {name!r}")
+    _rename_targets(pid, request)
     return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
 
 

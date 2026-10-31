@@ -1,7 +1,7 @@
 """Superset takes who is using it from the gateway, like every other module.
 
 Run with: python -m unittest test_gateway_identity (needs PyJWT and cryptography at the
-versions the dashboard image has, PyJWT 2.8.0 and cryptography 50.0.2, as scripts/verify.sh pins them).
+versions the dashboard image has, PyJWT 2.8.0 and cryptography 50.0.2, as scripts/suites.py pins them).
 """
 import base64
 import hashlib
@@ -13,7 +13,7 @@ import unittest
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from gateway_identity import CLAIMS_KEY, GatewayIdentity, what_to_do
+from gateway_identity import CLAIMS_KEY, GatewayIdentity, resync_due, what_to_do
 
 ISSUER = "http://localhost:8081/realms/aisc"
 #: the gateway's own Keycloak client (oauth2-proxy's): its tokens carry it as `azp`
@@ -23,8 +23,8 @@ OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
 def token(key=KEY, issuer=ISSUER, **claims):
-    body = {"iss": issuer, "sub": "sub-1", "preferred_username": "alice", "azp": GATEWAY,
-            "exp": int(time.time()) + 300, **claims}
+    body = {"iss": issuer, "sub": "sub-1", "preferred_username": "alice", "azp": GATEWAY, "typ": "Bearer",
+            "iat": int(time.time()), "exp": int(time.time()) + 300, **claims}
     body = {k: v for k, v in body.items() if v is not None}
     return jwt.encode(body, key, algorithm="RS256")
 
@@ -107,6 +107,22 @@ class WhoTheGatewaySays(unittest.TestCase):
         self.assertNotIn("REMOTE_USER", env)
         self.assertNotIn(CLAIMS_KEY, env)
 
+    def test_a_token_without_an_expiry_is_nobody(self):
+        self.assertNotIn("REMOTE_USER", run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": token(exp=None)}))
+
+    def test_a_token_without_an_issue_time_is_nobody(self):
+        self.assertNotIn("REMOTE_USER", run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": token(iat=None)}))
+
+    def test_a_token_without_an_issuer_is_nobody(self):
+        self.assertNotIn("REMOTE_USER", run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": token(issuer=None)}))
+
+    def test_a_token_that_is_not_an_access_token_is_nobody(self):
+        """Keycloak signs its ID and refresh tokens with the same keys: only an access token (typ Bearer)
+        names the person at the gateway."""
+        for typ in ("ID", "Refresh", None):
+            with self.subTest(typ=typ):
+                self.assertNotIn("REMOTE_USER", run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": token(typ=typ)}))
+
     def test_the_keys_address_is_required(self):
         with self.assertRaises(ValueError):
             GatewayIdentity(lambda *a: [b""], issuer=ISSUER, client_id=GATEWAY, jwks_url="")
@@ -127,6 +143,23 @@ class FollowTheGateway(unittest.TestCase):
 
     def test_no_one_anywhere_is_left_alone(self):
         self.assertEqual(what_to_do(None, None), "keep")
+
+
+class ResyncOnANewerToken(unittest.TestCase):
+    def test_a_token_issued_after_the_last_sync_syncs_again(self):
+        self.assertTrue(resync_due(100, {"iat": 160}))
+
+    def test_the_token_of_the_last_sync_does_not(self):
+        self.assertFalse(resync_due(160, {"iat": 160}))
+        self.assertFalse(resync_due(160, {"iat": 100}))
+
+    def test_a_session_that_never_synced_syncs(self):
+        self.assertTrue(resync_due(None, {"iat": 160}))
+
+    def test_no_claims_or_no_issue_time_never_syncs(self):
+        self.assertFalse(resync_due(100, None))
+        self.assertFalse(resync_due(100, {}))
+        self.assertFalse(resync_due(None, {"iat": "soon"}))
 
 
 if __name__ == "__main__":

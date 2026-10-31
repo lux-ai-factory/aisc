@@ -221,7 +221,8 @@ def test_an_absent_key_keeps_the_stored_one(client, admin, project, dsn):
     assert put_provider(client, project, "compatible", admin, api_key=key,
                         base_url="http://127.0.0.1:9/v1").status_code == 200
     before = rows(dsn, project)[0]["ciphertext"]
-    r = put_provider(client, project, "compatible", admin, base_url="http://127.0.0.1:10/v1")
+    # the same origin (another port would need the key again: test_secret_box)
+    r = put_provider(client, project, "compatible", admin, base_url="http://127.0.0.1:9/v2")
     assert r.status_code == 200, r.text
     assert r.json()["has_key"] is True
     assert rows(dsn, project)[0]["ciphertext"] == before

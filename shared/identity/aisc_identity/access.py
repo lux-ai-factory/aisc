@@ -66,8 +66,11 @@ def admit(ref: str, caller: Caller, want: str, *, connect: Callable) -> Admitted
 
     `ref` is a pid or a slug. A pid-shaped ref is only ever looked up as a pid,
     so a slug that happens to look like another project's pid cannot reach it.
-    `want` is an HTTP method (GET, HEAD and OPTIONS read, anything else writes)
-    or "manage", which takes an owner. `connect` returns a context manager
+    `want` is what the caller is about to do: an HTTP method (GET, HEAD and
+    OPTIONS take a viewer, POST, PUT, PATCH and DELETE an editor), "manage",
+    which takes an owner, or the role it takes, named as in ROLES ("viewer",
+    "editor", "owner"). Anything else is a programming error (ValueError), so a
+    misspelt want cannot fall through to a read. `connect` returns a context manager
     holding a connection to the platform database (psycopg.connect, a pool's
     connection, or contextlib.closing around a raw DB-API connection); any
     error it or the query raises refuses with 503.
@@ -93,12 +96,14 @@ def admit(ref: str, caller: Caller, want: str, *, connect: Callable) -> Admitted
 def _needed(want: str) -> str:
     if want == MANAGE:
         return "owner"
+    if want in _RANK:
+        return want
     method = want.upper()
     if method in READS:
         return "viewer"
     if method in WRITES:
         return "editor"
-    raise ValueError(f"want is an HTTP method or {MANAGE!r}, not {want!r}")
+    raise ValueError(f"want is an HTTP method, {MANAGE!r} or a role in {ROLES}, not {want!r}")
 
 
 def _lookup(ref: str, subject: str, connect: Callable) -> tuple[str, str, str | None] | None:

@@ -13,9 +13,12 @@ reaching the app directly, with no token or one of its own, could otherwise make
 an event cite any request it names. With AUTH_ENABLED off nothing is verified
 anywhere, and the presented id is kept.
 
-event() refuses, with NotLedgerSafe, any value the relay would reject later:
-integers beyond 2**53, NaN and infinities, lone surrogates, and types JSON has
-no form for. Each app keeps its own emit(), a few lines for its database driver.
+event() refuses, with NotLedgerSafe, any value the relay or the database would
+reject later: integers beyond 2**53, NaN and infinities, lone surrogates, NUL
+(which jsonb cannot hold), keys that are not text, values that contain
+themselves, and types JSON has no form for (a date is converted by its caller).
+The shared vectors in platform/tests/ledger/fixtures/canonical_refusals.json pin
+this to the TypeScript emitter's rule. Each app keeps its own emit(), a few lines for its database driver.
 """
 from __future__ import annotations
 
@@ -57,7 +60,8 @@ def event(action: str, *, item_type: str, item_id: str | None, details: dict | N
     return body
 
 
-def _check(value: Any) -> None:
+def _check(value: Any, inside: frozenset[int] = frozenset()) -> None:
+    """Raise NotLedgerSafe unless the ledger can keep `value` as it is; `inside` holds the containers above it."""
     if isinstance(value, bool) or value is None:
         return
     if isinstance(value, int):
@@ -67,19 +71,31 @@ def _check(value: Any) -> None:
         if not math.isfinite(value) or (value.is_integer() and abs(value) > _MAX_SAFE):
             raise NotLedgerSafe(f"a number the ledger can't keep: {value}")
     elif isinstance(value, str):
-        try:
-            value.encode("utf-8")
-        except UnicodeEncodeError:
-            raise NotLedgerSafe("a lone surrogate has no UTF-8 form") from None
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _check(item)
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            _check(key)
-            _check(item)
+        _check_text(value)
+    elif isinstance(value, (list, tuple, dict)):
+        if id(value) in inside:
+            raise NotLedgerSafe("a value that contains itself has no JSON form")
+        inside = inside | {id(value)}
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise NotLedgerSafe(f"object keys are text, not {type(key).__name__}")
+                _check_text(key)
+                _check(item, inside)
+        else:
+            for item in value:
+                _check(item, inside)
     else:
         raise NotLedgerSafe(f"JSON has no form for {type(value).__name__}")
+
+
+def _check_text(value: str) -> None:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise NotLedgerSafe("a lone surrogate has no UTF-8 form") from None
+    if "\x00" in value:
+        raise NotLedgerSafe("a NUL character (U+0000), which jsonb cannot keep")
 
 
 def _through_gateway(headers: dict[bytes, bytes]) -> bool:
@@ -112,7 +128,10 @@ class RequestId:
         headers = dict(scope.get("headers") or [])
         presented = headers.get(b"x-aisc-request-id")
         value = None
-        if presented and _through_gateway(headers):
+        # Off the event loop: verifying can read the realm's JWKS over the network.
+        from starlette.concurrency import run_in_threadpool
+
+        if presented and await run_in_threadpool(_through_gateway, headers):
             try:
                 value = str(uuid.UUID(presented.decode("latin-1")))
             except ValueError:

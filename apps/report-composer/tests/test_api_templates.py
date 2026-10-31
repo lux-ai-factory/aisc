@@ -52,25 +52,38 @@ def test_two_templates_of_a_project_cannot_share_a_name(client, auth):
     ({"accent_color": "#12345"}, "invalid_template"),
     ({"logo": {"mime": "application/pdf", "data_base64": PNG}}, "invalid_template"),
     ({"logo": {"mime": "image/png", "data_base64": "not base64!"}}, "invalid_template"),
-    # The content is the declared type: a PSD or a JPEG saved as a PNG, a
-    # file saved as an SVG that is none
-    ({"logo": {"mime": "image/png", "data_base64": base64.b64encode(b"8BPS" + b"\x00" * 40).decode()}},
-     "invalid_template"),
-    ({"logo": {"mime": "image/png", "data_base64": base64.b64encode(b"\xff\xd8\xff" + b"\x00" * 40).decode()}},
-     "invalid_template"),
-    ({"logo": {"mime": "image/svg+xml", "data_base64": base64.b64encode(b"not an svg").decode()}},
-     "invalid_template"),
     ({"logo": {"mime": "image/png", "data_base64": base64.b64encode(b"x" * 1_100_000).decode()}}, "invalid_template"),
-    # The renderer's limits: a 24 KB PNG of 25,000,000 pixels, an SVG drawn at 32000 x 32000
-    ({"logo": {"mime": "image/png", "data_base64": b64(png(5000, 5000))}}, "invalid_template"),
-    ({"logo": {"mime": "image/svg+xml", "data_base64": b64(svg('width="16000" height="16000"'))}},
-     "invalid_template"),
 ])
 def test_a_bad_template_is_refused(client, auth, over, code):
     body = {"name": "Bad", "font": "inter", "font_size_pt": 10, "primary_color": "#000000",
             "accent_color": "#ffffff", **over}
     r = client.post("/api/p/alpha/templates", json=body, headers=auth("alice"))
     assert r.status_code == 422 and error_code(r) == code
+
+
+def test_a_logo_the_renderer_refuses_is_not_saved(client, auth, fake_renderer):
+    """Whether the content is usable (its declared type, its size, no embedded or linked resource) is the
+    renderer's rule (POST /v1/style/check): its answer is the save's."""
+    fake_renderer.logo_problem = "has more than 16000000 pixels"
+    logo = {"mime": "image/png", "data_base64": b64(png(5000, 5000))}
+    r = client.post("/api/p/alpha/templates", json={"name": "Huge", "font": "inter", "font_size_pt": 10,
+                                                   "primary_color": "#000000", "accent_color": "#ffffff",
+                                                   "logo": logo}, headers=auth("alice"))
+    assert r.status_code == 422 and error_code(r) == "invalid_template"
+    assert r.json()["error"]["details"] == [{"pointer": "/logo/data_base64",
+                                             "message": "The logo has more than 16000000 pixels."}]
+    assert fake_renderer.style_checks == [{"logo": logo}]
+
+
+def test_a_logo_is_taken_when_the_renderer_does_not_answer_in_time(client, auth, fake_renderer):
+    """A save does not wait on the renderer: past the quick deadline the logo is kept, and the render
+    names it if it is not usable."""
+    from report_composer.renderer_client import RendererTimeout
+
+    fake_renderer.logo_problem = RendererTimeout("no answer within 2 s")
+    t = new_template(client, auth, name="Slow logo", logo={"mime": "image/svg+xml",
+                                                              "data_base64": b64(svg('width="200" height="80"'))})
+    assert t["has_logo"] is True
 
 
 def test_a_viewer_cannot_make_a_template(client, auth):

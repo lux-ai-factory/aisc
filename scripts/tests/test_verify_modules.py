@@ -1,16 +1,23 @@
-"""verify.sh --modules runs each module's suite the way the module expects to be run. Control objectives
-refuses to run its database tests without a throwaway Postgres (it fails rather than skip, so a missing
-database is never a pass): verify.sh gives it one, through scripts/lib/co-tests.sh."""
+"""verify.sh --modules runs each module's suite the way the module expects to be run: the rows of
+scripts/suites.py. Control objectives refuses to run its database tests without a throwaway Postgres (it fails
+rather than skip, so a missing database is never a pass): its row runs scripts/lib/co-tests.sh."""
 import subprocess
+import sys
 
 from conftest import ROOT
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import suites  # noqa: E402
 
 WRAPPER = ROOT / "scripts/lib/co-tests.sh"
 
 
+def row(name: str) -> suites.Suite:
+    return next(s for s in suites.SUITES if s.name == name)
+
+
 def test_control_objectives_is_run_with_a_throwaway_database():
-    line = next(line for line in (ROOT / "scripts/verify.sh").read_text().splitlines() if line.startswith("control objectives|"))
-    assert "co-tests.sh" in line
+    assert "co-tests.sh" in row("control-objectives").command
 
 
 def test_the_wrapper_uses_the_throwaway_helper_and_never_the_live_port():
@@ -22,34 +29,24 @@ def test_the_wrapper_uses_the_throwaway_helper_and_never_the_live_port():
 
 def test_the_engine_suite_runs_on_the_host_never_in_the_running_container():
     """Its tests find the repository from the backend's place in the checkout (apps/backend), and a test
-    run has no business inside the live stack's container: the suite runs from the backend's own
-    environment (uv sync), on SQLite, with the shared plugin libraries on the path."""
-    line = next(line for line in (ROOT / "scripts/verify.sh").read_text().splitlines() if line.startswith("engine backend|"))
-    name, directory, marker, command = line.split("|", 3)
-    assert (directory, marker) == ("apps/backend", ".venv")
-    assert "docker exec" not in command and "sqlite3" in command and "plugin-interface" in command
-    for module in command.split("manage.py test", 1)[1].split():
-        path = ROOT / directory / module.replace(".", "/")
-        assert path.is_dir() or path.with_suffix(".py").exists(), f"no test module {module}"
+    run has no business inside the live stack's container: both engine rows run scripts/lib/engine-tests.sh,
+    from the engine's lock with the vendored wheels, on SQLite or on a throwaway Postgres."""
+    for name in ("engine", "engine on postgres"):
+        s = row(name)
+        assert s.dir == "apps/backend" and "docker exec" not in s.command
+        assert s.command.split()[0] == "scripts/lib/engine-tests.sh"
 
 
 def test_the_platform_suite_runs_with_a_throwaway_database():
     """Without PLATFORM_TEST_DATABASE_URL the platform's database tests skip, and a skip is not a pass."""
-    line = next(line for line in (ROOT / "scripts/verify.sh").read_text().splitlines() if line.startswith("platform|"))
-    assert "test-platform.sh" in line
+    assert "test-platform.sh" in row("platform").command
 
 
 def test_verify_runs_the_renderers_and_the_agents():
-    text = (ROOT / "scripts/verify.sh").read_text()
-    for name in ("qualification pdf|", "qualification agents|", "controls pdf|"):
-        assert name in text, name
+    names = {s.name for s in suites.SUITES}
+    assert {"qualification pdf", "qualification agents", "controls pdf"} <= names
 
 
-def test_the_engine_suites_scratch_folder_is_made_once_and_removed():
-    """The engine suite's SQLite name points into a folder verify.sh makes once and removes on exit, rather
-    than a mktemp -d inside the row that nothing removes."""
-    text = (ROOT / "scripts/verify.sh").read_text()
-    line = next(line for line in text.splitlines() if line.startswith("engine backend|"))
-    assert "mktemp" not in line and 'DB_NAME="$ENGINE_DB_DIR/engine-verify.db"' in line
-    assert "ENGINE_DB_DIR=$(mktemp -d); export ENGINE_DB_DIR" in text
-    assert "trap 'rm -rf \"$ENGINE_DB_DIR\"' EXIT" in text
+def test_a_row_reads_no_more_stdin_than_its_own():
+    """The rows reach the loop on its stdin: a command that read stdin would swallow the rows after it."""
+    assert 'run "$name" bash -c "$cmd" </dev/null' in (ROOT / "scripts/verify.sh").read_text()

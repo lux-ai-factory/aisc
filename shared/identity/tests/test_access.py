@@ -88,14 +88,17 @@ def test_refusals_say_the_same_thing_everywhere(membership_db):
         "forbidden", "You can read this project but not change it.")
 
 
-def test_want_outside_methods_and_manage_is_a_programming_error(membership_db):
+@pytest.mark.parametrize("want", ["own", "Owner", "viewr", "admin", ""])
+def test_want_outside_methods_roles_and_manage_is_a_programming_error(membership_db, want):
+    """A misspelt role must not fall through to a read."""
     with pytest.raises(ValueError):
-        admit("alpha", caller("owner-1"), "own", connect=lambda: psycopg.connect(membership_db))
+        admit("alpha", caller("owner-1"), want, connect=lambda: psycopg.connect(membership_db))
 
 
-def test_an_owner_only_refusal_names_the_owner(membership_db):
+@pytest.mark.parametrize("want", ["manage", "owner"])
+def test_an_owner_only_refusal_names_the_owner(membership_db, want):
     with pytest.raises(Refused) as editor:
-        admit("alpha", caller("editor-1"), "manage", connect=lambda: psycopg.connect(membership_db))
+        admit("alpha", caller("editor-1"), want, connect=lambda: psycopg.connect(membership_db))
     assert (editor.value.status, editor.value.message) == (403, "Only an owner can do this.")
 
 

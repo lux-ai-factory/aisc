@@ -136,7 +136,10 @@ def _scan(pid: str) -> int:
     """The project database's own ledger.outbox rows holding a secret-shaped string (never changed)."""
     from platform_service.ledger import relay
 
-    project = relay._project_conn(pid)
+    try:
+        project = relay._project_conn(pid)
+    except relay.ProjectUnreachable:
+        project = None                                                # as before: counted as nothing found
     if project is None:
         return 0
     try:

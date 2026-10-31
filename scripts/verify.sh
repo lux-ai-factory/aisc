@@ -48,39 +48,32 @@ if [ "$ONLY" != "--modules" ]; then
   for s in verify-db-access.sh verify-project-databases.sh verify-sso.sh verify-rbac.sh verify-plugins.sh; do
     if [ -x "scripts/$s" ]; then run "$s" "scripts/$s"; else skipped "$s" "not executable"; fi
   done
+  # the checks ported to scripts/stackcheck, beside their bash scripts until each group is proven on a live stack
+  run "stackcheck db-access" bash -c "cd scripts && python3 -m stackcheck db-access"
 fi
 
 if [ "$ONLY" != "--stack" ]; then
   line "the modules"
-  # the engine suite's SQLite file goes in a folder made once here and removed on exit
-  ENGINE_DB_DIR=$(mktemp -d); export ENGINE_DB_DIR
-  trap 'rm -rf "$ENGINE_DB_DIR"' EXIT
-  # module | directory | what tells you its dependencies are there | command
-  while IFS='|' read -r name dir marker cmd; do
+  # every row of scripts/suites.py, the list the root CI's python matrix is checked against
+  if ! rows=$(python3 scripts/suites.py rows); then
+    no "the list of suites (python3 scripts/suites.py rows)"
+    rows=""
+  fi
+  # module | directory | what tells you its dependencies are there | the programs it needs | command
+  while IFS='|' read -r name dir marker needs cmd; do
     [ -n "$name" ] || continue
     if [ ! -d "$dir" ]; then skipped "$name" "no $dir"; continue; fi
     if [ -n "$marker" ] && [ ! -e "$dir/$marker" ]; then
       skipped "$name" "dependencies not installed"
       continue
     fi
-    run "$name" bash -c "cd '$dir' && $cmd"
-  done <<'MODULES'
-identity|shared/identity|.venv|.venv/bin/python -m pytest -q
-platform|platform|.venv|bash ../scripts/test-platform.sh -q
-control objectives|apps/control-objectives|.venv|bash ../../scripts/lib/co-tests.sh
-catalogue frontend|apps/catalogue/frontend|node_modules|npx vitest run
-qualification|apps/qualification|node_modules|npx vitest run
-qualification prefill|apps/qualification|node_modules|docker run --rm -v "$PWD:/w" -w /w/services/prefill python:3.12-slim sh -lc 'pip install -q -r requirements.txt -r requirements-dev.txt && PREFILL_FIELDS_PATH=/w/src/data/prefillFields.json python -m pytest -q'
-qualification ontology|apps/qualification|node_modules|docker run --rm -v "$PWD:/w" -w /w/services/ontology python:3.12-slim sh -lc 'pip install -q -r requirements.txt -r requirements-dev.txt && python -m pytest -q'
-qualification pdf|apps/qualification|node_modules|docker build -q -t aisc-t-qpdf services/system_card_renderer >/dev/null && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD:/w:ro" -w /w/services/system_card_renderer aisc-t-qpdf sh -lc 'pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider'
-qualification agents|apps/qualification|node_modules|docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD:/w:ro" python:3.12-slim sh -lc 'mkdir -p /tmp/q && cp -r /w/services /w/src /tmp/q/ && cd /tmp/q/services/agents && pip install -q -r requirements.txt pytest && python -m pytest -q -p no:cacheprovider'
-controls pdf|apps/controls/services/pdf_renderer||docker build -q -t aisc-t-cpdf . >/dev/null && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD:/w:ro" -w /w aisc-t-cpdf sh -lc 'pip install -q pytest httpx && python -m pytest -q -p no:cacheprovider'
-controls|apps/controls|node_modules|npx vitest run
-engine webapp|apps/webapp|node_modules|npx vitest run
-dashboard gateway|dashboard-gateway||PYTHONDONTWRITEBYTECODE=1 uv run --no-project --quiet --with pyjwt==2.8.0 --with cryptography==50.0.2 --with flask==2.3.3 --with flask-login==0.6.3 --with werkzeug==3.0.6 python -m unittest -q test_gateway_identity test_superset_gateway_config
-results dashboard|apps/results-dashboard|.venv|PYTHONPATH=. .venv/bin/python -m pytest -q --ignore=tests/test_sso_login.py
-engine backend|apps/backend|.venv|PYTHONPATH=../../shared/plugin-interface/src:../../shared/plugin-manager/src:../../shared/identity DB_ENGINE=django.db.backends.sqlite3 DB_NAME="$ENGINE_DB_DIR/engine-verify.db" .venv/bin/python manage.py test aisc_backend.tests.routers aisc_backend.tests.repositories aisc_backend.tests.immudb aisc_backend.tests.keycloak aisc_backend.tests.test_sample
-MODULES
+    missing=""
+    for tool in ${needs//,/ }; do
+      command -v "$tool" >/dev/null 2>&1 || missing="$tool"
+    done
+    if [ -n "$missing" ]; then skipped "$name" "$missing is not installed"; continue; fi
+    run "$name" bash -c "$cmd" </dev/null
+  done <<< "$rows"
 fi
 
 printf '\n\033[1m%d ok, %d failed, %d skipped\033[0m\n' "$pass" "$fail" "$skip"

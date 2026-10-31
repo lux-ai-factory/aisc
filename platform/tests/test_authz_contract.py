@@ -57,3 +57,13 @@ def test_without_want_it_answers_for_a_read(client, as_user, truth_table_project
 def test_an_unknown_want_is_a_client_error(client, as_user, truth_table_projects):
     assert client.get("/authz/projects/alpha", params={"want": "own"},
                       headers=as_user("owner-1")).status_code == 422
+
+
+def test_the_platforms_admin_role_is_the_shared_rules_own():
+    """The realm role that counts as owner of every project is named once, in aisc_identity.access."""
+    from aisc_identity import access
+
+    from platform_service.routes import admission
+
+    assert admission.ADMIN_ROLE is access.ADMIN_ROLE
+    assert "ADMIN_ROLE =" not in Path(admission.__file__).read_text()
