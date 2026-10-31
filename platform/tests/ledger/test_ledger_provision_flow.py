@@ -21,10 +21,10 @@ def rating(p, witnessed, n):
 
 
 def test_a_new_project_takes_a_database_from_the_pool(memory_ledger, make_project):
-    before = provision.pool_level()
+    before = support.pool_level()
     p = make_project(OWNER)
     assert log_of(p["pid"]) in memory_ledger.databases()
-    assert provision.pool_level() == before - 1
+    assert support.pool_level() == before - 1
 
 
 def test_with_the_pool_empty_a_projects_events_wait(own_store, make_project, witnessed, mode):

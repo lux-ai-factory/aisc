@@ -98,4 +98,13 @@ def test_auth_on_without_a_jwks_url_refuses_rather_than_letting_through(app, mon
     monkeypatch.setenv("KEYCLOAK_ISSUER", ISSUER)
     client = TestClient(app, raise_server_exceptions=False)
     r = client.get("/who", headers={"Authorization": f"Bearer {token()}"})
-    assert r.status_code >= 400
+    assert r.status_code == 500          # not 401: no credentials the caller sends can fix it
+
+
+def test_auth_on_without_an_issuer_refuses_with_500(app, monkeypatch, token):
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("KEYCLOAK_JWKS_URL", "http://keycloak:8080/does-not-matter")
+    monkeypatch.delenv("KEYCLOAK_ISSUER", raising=False)
+    client = TestClient(app, raise_server_exceptions=False)
+    r = client.get("/who", headers={"Authorization": f"Bearer {token()}"})
+    assert r.status_code == 500

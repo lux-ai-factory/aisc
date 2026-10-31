@@ -1,8 +1,12 @@
 """Superset takes who is using it from the gateway, like every other module.
 
-Run with: python -m unittest test_gateway_identity (needs PyJWT and cryptography,
-which the dashboard image has).
+Run with: python -m unittest test_gateway_identity (needs PyJWT and cryptography at the
+versions the dashboard image has, PyJWT 2.8.0 and cryptography 50.0.2, as scripts/verify.sh pins them).
 """
+import base64
+import hashlib
+import hmac
+import json
 import time
 import unittest
 
@@ -25,14 +29,25 @@ def token(key=KEY, issuer=ISSUER, **claims):
     return jwt.encode(body, key, algorithm="RS256")
 
 
-def run(environ):
+def signed_with_a_secret(secret: bytes, **claims):
+    """An HS256 token, built by hand: PyJWT refuses to sign one with a key that looks asymmetric."""
+    def part(raw: bytes) -> bytes:
+        return base64.urlsafe_b64encode(raw).rstrip(b"=")
+
+    body = {"iss": ISSUER, "sub": "sub-1", "preferred_username": "alice", "azp": GATEWAY,
+            "exp": int(time.time()) + 300, **claims}
+    signing_input = part(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()) + b"." + part(json.dumps(body).encode())
+    return (signing_input + b"." + part(hmac.new(secret, signing_input, hashlib.sha256).digest())).decode()
+
+
+def run(environ, key_for=lambda _t: KEY.public_key()):
     seen = {}
 
     def app(env, start_response):
         seen.update(env)
         return [b""]
 
-    GatewayIdentity(app, issuer=ISSUER, client_id=GATEWAY, key_for=lambda _t: KEY.public_key())(environ, lambda *a: None)
+    GatewayIdentity(app, issuer=ISSUER, client_id=GATEWAY, key_for=key_for)(environ, lambda *a: None)
     return seen
 
 
@@ -71,6 +86,30 @@ class WhoTheGatewaySays(unittest.TestCase):
 
     def test_a_remote_user_sent_by_the_client_is_ignored(self):
         self.assertNotIn("REMOTE_USER", run({"REMOTE_USER": "admin"}))
+
+    def test_claims_sent_by_the_client_are_dropped(self):
+        self.assertNotIn(CLAIMS_KEY, run({CLAIMS_KEY: {"preferred_username": "admin", "realm_access": {"roles": ["admin"]}}}))
+
+    def test_an_unsigned_token_is_nobody(self):
+        unsigned = jwt.encode({"iss": ISSUER, "sub": "sub-1", "preferred_username": "alice", "azp": GATEWAY,
+                               "exp": int(time.time()) + 300}, None, algorithm="none")
+        self.assertNotIn("REMOTE_USER", run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": unsigned}))
+
+    def test_a_token_signed_with_a_shared_secret_is_nobody(self):
+        """Only RS256: an HS256 token is refused even when the key lookup yields the very secret it was signed
+        with, so a public key can never be used as an HMAC secret."""
+        secret = b"a secret the key lookup hands back"
+        env = run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": signed_with_a_secret(secret)}, key_for=lambda _t: secret)
+        self.assertNotIn("REMOTE_USER", env)
+
+    def test_a_token_without_a_username_is_nobody(self):
+        env = run({"HTTP_X_AUTH_REQUEST_ACCESS_TOKEN": token(preferred_username=None)})
+        self.assertNotIn("REMOTE_USER", env)
+        self.assertNotIn(CLAIMS_KEY, env)
+
+    def test_the_keys_address_is_required(self):
+        with self.assertRaises(ValueError):
+            GatewayIdentity(lambda *a: [b""], issuer=ISSUER, client_id=GATEWAY, jwks_url="")
 
 
 class FollowTheGateway(unittest.TestCase):

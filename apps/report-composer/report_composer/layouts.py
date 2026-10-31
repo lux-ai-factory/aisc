@@ -2,7 +2,7 @@
 
 A layout is an ordered list of blocks {instance_id, block_type, options}. Block types, their
 options schemas and the values a data reference may take come from the renderer; this module
-decides what a layout may hold. A template is a layout without project data.
+decides what a layout may hold. A layout file (presets.py) is a layout without project data.
 """
 from __future__ import annotations
 

@@ -231,8 +231,7 @@
   function valueOf(input) {
     const kind = input.dataset.kind;
     if (kind === "bool") return input.checked;
-    if (kind === "int") return input.value === "" ? null : parseInt(input.value, 10);
-    if (kind === "int-or-null") return input.value === "" ? null : parseInt(input.value, 10);
+    if (kind === "int" || kind === "int-or-null") return input.value === "" ? null : parseInt(input.value, 10);
     if (kind === "json") {
       if (input.tagName === "SELECT") return input.value === "" ? null : parse(input.value, true);
       return parse(input.dataset.value, true);

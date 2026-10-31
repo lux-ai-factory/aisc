@@ -86,8 +86,8 @@ def test_links_go_through_the_platform_to_the_tools_tile():
     assert ("return '/api/projects/' + enc(slug) + '/dashboards/open' + (tool ? '?plugin=' + enc(tool.label) + "
             "'&target=' + enc(target.key === null ? 'unassigned' : target.label) + "
             "(versionNumber ? '&version=' + versionNumber : '') : '');") in script
-    assert "dashboard(pid, target, it, data.version ? data.version.number : null)" in script
-    assert "aisc-' + pid" not in script and "native_filters=" not in script   # the platform builds those now
+    assert "dashboard(target, it, data.version ? data.version.number : null)" in script
+    assert "pid" not in script and "native_filters=" not in script   # the platform builds those now
 
 
 def test_the_no_target_entry_filters_on_unassigned():

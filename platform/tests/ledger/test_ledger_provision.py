@@ -12,6 +12,7 @@ import uuid
 import pytest
 
 from platform_service.ledger import pool, provision
+from tests.ledger import support
 from tests.ledger.conftest import needs_db
 
 pytestmark = needs_db
@@ -22,11 +23,11 @@ def pid():
 
 
 def test_assign_takes_a_database_of_the_current_store(memory_ledger):
-    before = provision.pool_level()
+    before = support.pool_level()
     p = pid()
     db = provision.assign(p)
     assert db in memory_ledger.databases() and provision.database_for(p) == db
-    assert provision.pool_level() == before - 1
+    assert support.pool_level() == before - 1
 
 
 def test_assigning_twice_gives_the_same_database(memory_ledger):
@@ -68,12 +69,12 @@ def test_with_the_pool_empty_a_project_waits_and_gets_one_after_a_refill(own_sto
 
 def test_an_assignment_in_a_rolled_back_transaction_leaves_the_database_free(memory_ledger):
     """Project creation calls assign in its own transaction: a failed creation consumes nothing (n-c)."""
-    before, p = provision.pool_level(), pid()
+    before, p = support.pool_level(), pid()
     with pytest.raises(RuntimeError):
         with provision.transaction() as conn:
             provision.assign(p, conn=conn)
             raise RuntimeError("the project insert failed")
-    assert provision.pool_level() == before and provision.database_for(p) is None
+    assert support.pool_level() == before and provision.database_for(p) is None
 
 
 def test_the_pool_refuses_a_name_that_is_not_a_ledger_name(memory_ledger):

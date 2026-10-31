@@ -8,12 +8,13 @@
 #   - Postgres with one project database, the results of two Data Drift runs and one LangBiTe run
 #     (scripts/fixtures/superset_upgrade/project.sql);
 #   - Redis, the dashboard's cache;
-#   - the given Superset image with the stack's three extra packages (as apps/results-dashboard/Dockerfile),
+#   - the given Superset image with the stack's two extra packages (as apps/results-dashboard/Dockerfile),
 #     the real superset_config.py and aisc_ext mounted.
 # Then scripts/superset_upgrade_check.py registers the project through the bridge, syncs both plugins with
 # their real default charts (scripts/fixtures/superset_upgrade/visualizations.json), opens every tile in a
 # browser, and checks a person's chart survives a re-sync. Exit 0: all held. Non-zero: the failing chart is named.
-# Needs docker and uv; the browser is the stack's own Playwright Chromium or /usr/bin/google-chrome.
+# Needs docker, uv, openssl, python3 and curl; the browser is the stack's own Playwright Chromium or
+# /usr/bin/google-chrome.
 set -euo pipefail
 
 BREAK=0

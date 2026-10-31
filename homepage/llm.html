@@ -227,7 +227,7 @@
           if (document.getElementById('page-message').hidden) show('gate');
           return;
         }
-        if (!a || !a.admin) {
+        if (!a.admin) {
           document.getElementById('who').textContent = 'signed in';
           show('gate');
           return;

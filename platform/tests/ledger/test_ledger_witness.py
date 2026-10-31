@@ -203,14 +203,14 @@ def test_the_engine_names_its_project_in_a_header(witnessed, project, mode):
 
 
 def test_an_unknown_project_id_goes_to_the_platform_log_and_creates_nothing(witnessed, mode):
-    from platform_service.ledger import provision
+    from tests.ledger import support
 
     mode("enforce")
     ghost = str(uuid.uuid4())
-    before = provision.assigned()
+    before = support.assigned()
     rec = record(witnessed(MEMBER, "POST", "control_objectives", ratings(ghost)))
     assert rec.project_pid is None
-    assert provision.assigned() == before                          # no database for a random pid
+    assert support.assigned() == before                          # no database for a random pid
 
 
 def test_a_strangers_request_never_enters_the_projects_log(witnessed, project, mode):

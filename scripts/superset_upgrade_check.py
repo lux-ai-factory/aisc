@@ -61,15 +61,15 @@ def export_zip(path: str) -> None:
 def import_page(args, slug: str) -> None:
     """Assessment > Import charts: an admin's import lands under Your charts; a viewer is refused."""
     import tempfile
-    zip_path = tempfile.mktemp(suffix=".zip")
-    export_zip(zip_path)
     viewer_pw = "viewer-" + args.token[:12]
     in_superset(args.container, f"""
 from superset import security_manager as sm
 if sm.find_user(username="viewer1") is None:
     sm.add_user("viewer1", "V", "One", "viewer1@aisc.invalid", [sm.find_role("AiscViewer")], password="{viewer_pw}")
 print("ok")""")
-    with sync_playwright() as pw:
+    with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+        zip_path = os.path.join(folder, "export.zip")
+        export_zip(zip_path)
         browser = pw.chromium.launch(executable_path=args.chrome)
         for user, password in (("admin", args.admin_password), ("viewer1", viewer_pw)):
             page = browser.new_context().new_page()

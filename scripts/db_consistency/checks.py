@@ -2,10 +2,10 @@
 means the check passed. Only SELECTs, on read-only connections (cluster.py).
 
 Every module's tables and the card versions (project.system) live in the project's own
-database `project_<hex>`; `platform` keeps only core.project, core.project_member,
-core.schema_migration, the catalogue and the report library. So C3, C4, C6 and C7 run per project
-database. A reference that crosses projects cannot exist (foreign keys); what can still go wrong is
-a pid that does not resolve in its own database."""
+database `project_<hex>`; `platform` keeps only its core schema (core.project, core.project_member,
+core.schema_migration and the platform's own tables), the ledger schema and the catalogue. So C3, C4, C6
+and C7 run per project database. A reference that crosses projects cannot exist (foreign keys); what can
+still go wrong is a pid that does not resolve in its own database."""
 
 from __future__ import annotations
 
@@ -362,10 +362,10 @@ def _in(schemas: tuple[str, ...]) -> str:
 
 
 def c8_naming(cl: Cluster) -> list[Finding]:
-    """snake_case columns and timestamptz, in the schemas that are not frozen: core and the report
-    library of `platform`; project, qualification, control_objectives, report_composer and
-    controls of each project database; superset's aisc_* tables. Not engine (frozen), not the
-    catalogue, not migration trackers. Each finding names its database."""
+    """snake_case columns and timestamptz, in the schemas that are not frozen: core of `platform`;
+    project, qualification, control_objectives, report_composer and controls of each project database;
+    superset's aisc_* tables. Not engine (frozen), not the catalogue, not migration trackers. Each finding
+    names its database."""
     out = _lint(cl, cl.platform_db, _in(LINTED_PLATFORM_SCHEMAS), cl.platform_db)
     for db in project_databases(cl):
         out += _lint(cl, db, _in(LINTED_PROJECT_SCHEMAS), db)

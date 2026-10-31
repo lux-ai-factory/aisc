@@ -64,4 +64,4 @@ def test_the_messages_name_looks_and_sections():
     assert 'f"A layout holds at most {layouts.MAX_BLOCKS} sections."' in api
     assert 'f"the section type {b.get(\'block_type\')!r} is not available"' in layouts
     assert '"This file uses sections this installation does not offer: "' in presets
-    assert 'f"A preset holds at most {MAX_BLOCKS} sections."' in presets
+    assert 'f"A preset holds at most {layouts.MAX_BLOCKS} sections."' in presets

@@ -2,7 +2,8 @@
 
 `MemoryLedger` is the store contract in memory (test_ledger_store.py's `any_store` tests keep it honest
 against immudb); `fill_pool`, `seed` and `rehash_export` were platform_service.ledger.testing;
-`tamper_mapping` was actors.tamper. Not a test module."""
+`tamper_mapping` was actors.tamper; `assigned` and `pool_level` read the pool table for the provisioning
+tests. Not a test module."""
 from __future__ import annotations
 
 import hashlib
@@ -207,6 +208,25 @@ def fill_pool(store, n: int) -> list[str]:
         store.create(name)
     pool.register(store, names)
     return names
+
+
+def assigned() -> dict[str, str]:
+    """Every assignment: pid -> database (the list of databases expected to exist)."""
+    from platform_service import db
+
+    with db.pool().connection() as conn:
+        rows = conn.execute("SELECT assigned_pid::text AS pid, db FROM ledger.pool"
+                            " WHERE assigned_pid IS NOT NULL").fetchall()
+    return {r["pid"]: r["db"] for r in rows}
+
+
+def pool_level() -> int:
+    """Free databases of the current store's server."""
+    from platform_service import db, ledger
+
+    with db.pool().connection() as conn:
+        return conn.execute("SELECT count(*) AS n FROM ledger.pool WHERE assigned_pid IS NULL AND server_id = %s",
+                            (ledger.current().server_id,)).fetchone()["n"]
 
 
 def seed(pid: str, events: list[dict]) -> list[int]:

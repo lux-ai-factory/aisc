@@ -120,7 +120,9 @@ def _history_refused(opened: Opened, history) -> JSONResponse | None:
 #: other request, Caddy's forward_auth to /authz/witness among them. Two caps: PLATFORM_FACADE_THREADS calls
 #: at once across the platform, PLATFORM_FACADE_RUN_CAP at once per run (its pass, or a key issued without
 #: one), so one run's dataset cannot take every thread from another run. A call over a cap waits (its
-#: wait counts against the client's facade timeout); nothing is refused for capacity.
+#: wait counts against the client's facade timeout); nothing is refused for capacity. An adapter call abandoned
+#: on its timeout (abandon_on_cancel in _ask) gives its slots back at once while its thread runs on, so threads
+#: still busy with abandoned adapter calls are outside both caps.
 FACADE_THREADS_DEFAULT = 32
 FACADE_RUN_CAP_DEFAULT = 8
 _FACADE_LIMITER = None
@@ -155,7 +157,8 @@ def _facade_limiter():
 async def _in_facade_threads(run_id: str, func, *args, abandon_on_cancel: bool = False, **kwargs):
     """func(*args, **kwargs) in the facade's threads: first a slot of the run (waited for without holding a
     thread), then one of the pool. The run's limiter goes when its last call ends. `abandon_on_cancel`: a
-    cancelled wait returns at once and leaves the thread to finish on its own."""
+    cancelled wait returns at once and leaves the thread to finish on its own, and both slots are given back
+    at once too, so that thread no longer counts against either cap."""
     import functools
 
     import anyio

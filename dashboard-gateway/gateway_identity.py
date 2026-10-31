@@ -38,6 +38,8 @@ class GatewayIdentity:
         #: the gateway's own Keycloak client (oauth2-proxy's), from the settings
         self.client_id = client_id
         if key_for is None:
+            if not jwks_url:
+                raise ValueError("jwks_url: the realm's keys address is required")
             client = jwt.PyJWKClient(jwks_url)
             key_for = lambda token: client.get_signing_key_from_jwt(token).key  # noqa: E731
         self.key_for = key_for

@@ -10,12 +10,10 @@ from __future__ import annotations
 import copy
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from . import layouts, prose
 from .errors import ApiError
 
-DIRECTORY = Path(__file__).resolve().parent / "presets"
 FILE_FORMAT = "aisc-report-preset"
 #: the version written; version 1 files (with toc auto/on/off, a language, run ids) are still read
 FILE_VERSION = 2
@@ -24,7 +22,6 @@ READ_VERSIONS = (1, 2)
 #: (block type, option) -> the value that replaces it, or DROP
 DROP = object()
 RETIRED_OPTIONS = {("test_results", "evaluations"): DROP, ("changes_since", "compare_to"): "previous"}
-MAX_BLOCKS = 50
 NAME_MAX = 120
 
 
@@ -144,9 +141,9 @@ def from_file(doc, block_types) -> Preset:
                                                for b in blocks):
         raise ApiError(422, "not_a_preset", "This file is not a report preset.",
                        [{"pointer": "/blocks", "message": "must be a list of blocks"}])
-    if len(blocks) > MAX_BLOCKS:
-        raise ApiError(422, "too_many_blocks", f"A preset holds at most {MAX_BLOCKS} sections.",
-                       [{"pointer": "/blocks", "message": f"holds at most {MAX_BLOCKS} sections"}])
+    if len(blocks) > layouts.MAX_BLOCKS:   # the same limit as saving a layout
+        raise ApiError(422, "too_many_blocks", f"A preset holds at most {layouts.MAX_BLOCKS} sections.",
+                       [{"pointer": "/blocks", "message": f"holds at most {layouts.MAX_BLOCKS} sections"}])
     unknown_types_problem(blocks, block_types)
     blocks, retired = retire_options(blocks, block_types)
     types = _types(block_types)

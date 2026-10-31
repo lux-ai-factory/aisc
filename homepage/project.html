@@ -506,9 +506,6 @@
         var card = document.getElementById(id);
         if (card) window.aiscLink(card, 'engine', inProject[id] + encodeURIComponent(p.pid));
       });
-      // Step 4 is a page of the launcher: it links the evidence and leads on to
-      // the engine and the controls app.
-      document.getElementById('sandbox-card').href = '/evidence.html?project=' + encodeURIComponent(slug);
     })
     .catch(function () {
       document.getElementById('project-name').textContent = 'Unknown project';

@@ -65,6 +65,20 @@ def test_more_than_50_blocks():
     assert validate([blk("free_text", text="x") for _ in range(50)]) == []
 
 
+def test_importing_a_preset_refuses_more_sections_than_a_layout_may_hold(monkeypatch):
+    """A preset file and a saved layout share one section limit."""
+    from report_composer import layouts, presets
+    from report_composer.errors import ApiError
+
+    monkeypatch.setattr(layouts, "MAX_BLOCKS", 2)
+    doc = {"format": "aisc-report-preset", "version": 2, "name": "x",
+           "blocks": [{"block_type": "free_text", "options": {}} for _ in range(3)]}
+    with pytest.raises(ApiError) as refused:
+        presets.from_file(doc, [])
+    assert refused.value.code == "too_many_blocks"
+    assert "at most 2 sections" in refused.value.message
+
+
 def test_more_than_10_charts():
     assert "too_many_blocks" in codes(validate([blk("dashboard_chart", chart_id=33) for _ in range(11)]))
 

@@ -1,4 +1,4 @@
-"""The report composer: step 6 of the platform, composing the report.
+"""The report composer: the Report of step 4, Collect evidence, composing the report.
 
     uvicorn report_composer.app:app --host 0.0.0.0 --port 8095 --proxy-headers
 """

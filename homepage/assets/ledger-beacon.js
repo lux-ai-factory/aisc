@@ -1,5 +1,5 @@
-// The browser beacon: what only the page knows, such as a page opened or left with
-// unsaved changes. Best effort: sendBeacon with text/plain needs no CORS preflight, and the gateway
+// The browser beacon: what only the page knows, such as a page being opened (page.opened).
+// Best effort: sendBeacon with text/plain needs no CORS preflight, and the gateway
 // witnesses the request itself, so who sent it is certain; what it says is the browser's word.
 (function () {
   window.aiscBeacon = function (project, action, details) {

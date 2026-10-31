@@ -1,5 +1,5 @@
-# The report composer (step 6). shared/identity (aisc_identity) is not copied: docker compose
-# mounts it at /app/shared/identity.
+# The report composer: the Report of step 4, Collect evidence. shared/identity (aisc_identity) is not
+# copied: docker compose mounts it at /app/shared/identity.
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.9.9 /uv /uvx /bin/
 WORKDIR /app

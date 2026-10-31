@@ -242,7 +242,8 @@ def _top_up(url: str, level: int, wait: int = 0) -> int:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
     print(f"ledger user aisc_ledger: password {'changed' if ledger_changed else 'unchanged'}")
-    note = " (restart aisc-backend: its open session was closed)" if "rights repaired" in engine_done else ""
+    note = " (its open session was closed: the engine's clerk logs in again on its next write)" \
+        if "rights repaired" in engine_done else ""
     print(f"engine account {engine_account.ENGINE_USER} on {engine_account.ENGINE_DATABASE}: {engine_done}{note}")
     if (missing := waited(lambda: _platform_ready(dsn))) is not None:
         print(f"waited {wait} s and still not ready: {missing}", file=sys.stderr)

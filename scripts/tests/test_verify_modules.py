@@ -43,3 +43,13 @@ def test_verify_runs_the_renderers_and_the_agents():
     text = (ROOT / "scripts/verify.sh").read_text()
     for name in ("qualification pdf|", "qualification agents|", "controls pdf|"):
         assert name in text, name
+
+
+def test_the_engine_suites_scratch_folder_is_made_once_and_removed():
+    """The engine suite's SQLite name points into a folder verify.sh makes once and removes on exit, rather
+    than a mktemp -d inside the row that nothing removes."""
+    text = (ROOT / "scripts/verify.sh").read_text()
+    line = next(line for line in text.splitlines() if line.startswith("engine backend|"))
+    assert "mktemp" not in line and 'DB_NAME="$ENGINE_DB_DIR/engine-verify.db"' in line
+    assert "ENGINE_DB_DIR=$(mktemp -d); export ENGINE_DB_DIR" in text
+    assert "trap 'rm -rf \"$ENGINE_DB_DIR\"' EXIT" in text

@@ -52,6 +52,9 @@ fi
 
 if [ "$ONLY" != "--stack" ]; then
   line "the modules"
+  # the engine suite's SQLite file goes in a folder made once here and removed on exit
+  ENGINE_DB_DIR=$(mktemp -d); export ENGINE_DB_DIR
+  trap 'rm -rf "$ENGINE_DB_DIR"' EXIT
   # module | directory | what tells you its dependencies are there | command
   while IFS='|' read -r name dir marker cmd; do
     [ -n "$name" ] || continue
@@ -74,9 +77,9 @@ qualification agents|apps/qualification|node_modules|docker run --rm -e PYTHONDO
 controls pdf|apps/controls/services/pdf_renderer||docker build -q -t aisc-t-cpdf . >/dev/null && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD:/w:ro" -w /w aisc-t-cpdf sh -lc 'pip install -q pytest httpx && python -m pytest -q -p no:cacheprovider'
 controls|apps/controls|node_modules|npx vitest run
 engine webapp|apps/webapp|node_modules|npx vitest run
-dashboard gateway|dashboard-gateway||PYTHONDONTWRITEBYTECODE=1 uv run --no-project --quiet --with pyjwt --with cryptography python -m unittest -q test_gateway_identity
+dashboard gateway|dashboard-gateway||PYTHONDONTWRITEBYTECODE=1 uv run --no-project --quiet --with pyjwt==2.8.0 --with cryptography==50.0.2 --with flask==2.3.3 --with flask-login==0.6.3 --with werkzeug==3.0.6 python -m unittest -q test_gateway_identity test_superset_gateway_config
 results dashboard|apps/results-dashboard|.venv|PYTHONPATH=. .venv/bin/python -m pytest -q --ignore=tests/test_sso_login.py
-engine backend|apps/backend|.venv|PYTHONPATH=../../shared/plugin-interface/src:../../shared/plugin-manager/src:../../shared/identity DB_ENGINE=django.db.backends.sqlite3 DB_NAME="$(mktemp -d)/engine-verify.db" .venv/bin/python manage.py test aisc_backend.tests.routers aisc_backend.tests.repositories aisc_backend.tests.immudb aisc_backend.tests.keycloak aisc_backend.tests.test_sample
+engine backend|apps/backend|.venv|PYTHONPATH=../../shared/plugin-interface/src:../../shared/plugin-manager/src:../../shared/identity DB_ENGINE=django.db.backends.sqlite3 DB_NAME="$ENGINE_DB_DIR/engine-verify.db" .venv/bin/python manage.py test aisc_backend.tests.routers aisc_backend.tests.repositories aisc_backend.tests.immudb aisc_backend.tests.keycloak aisc_backend.tests.test_sample
 MODULES
 fi
 

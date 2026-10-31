@@ -8,9 +8,6 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/scripts/lib/throwaway-pg.sh"
-trap 'tpg_cleanup' EXIT
-trap 'tpg_cleanup; exit 130' INT
-trap 'tpg_cleanup; exit 143' TERM
 
 # Its tests make and drop hundreds of project databases; each DROP DATABASE waits for a checkpoint,
 # minutes apiece with fsync on. Nothing in a throwaway server has to survive a crash.

@@ -58,6 +58,9 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
   saved.
 - `/p/{ref}/layouts/{id}/generate`: the Generate report form (version, period, other versions, compare with,
   PDF or Word), handled in Python.
+- `POST /p/{ref}/layouts/{id}/download-report`: Download report in the editor's preview pane; generates the
+  report with the pane's version, period and other-versions choice, lists it like any report and answers the
+  document itself, so the browser downloads it and stays on the editor.
 - `/p/{ref}/templates`: the templates (a report's look), one editor.
 - `/`: sends the browser to the launcher (`LAUNCHER_URL`).
 

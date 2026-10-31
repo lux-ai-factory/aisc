@@ -62,18 +62,3 @@ def database_for(pid: str) -> str | None:
     with db.pool().connection() as conn:
         row = conn.execute("SELECT db FROM ledger.pool WHERE assigned_pid = %s", (pid,)).fetchone()
     return row["db"] if row else None
-
-
-def assigned() -> dict[str, str]:
-    """Every assignment: pid -> database (the list of databases expected to exist)."""
-    with db.pool().connection() as conn:
-        rows = conn.execute("SELECT assigned_pid::text AS pid, db FROM ledger.pool"
-                            " WHERE assigned_pid IS NOT NULL").fetchall()
-    return {r["pid"]: r["db"] for r in rows}
-
-
-def pool_level() -> int:
-    """Free databases of the current store's server."""
-    with db.pool().connection() as conn:
-        return conn.execute("SELECT count(*) AS n FROM ledger.pool WHERE assigned_pid IS NULL AND server_id = %s",
-                            (ledger.current().server_id,)).fetchone()["n"]

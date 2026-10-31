@@ -59,7 +59,7 @@ while [ $# -gt 0 ]; do
     --only) ONLY=$2; shift
             case ",$ONLY," in *,G2,*) echo "G2 is retired: knowledge_graph and qualification_risk are our own tables; see the header" >&2; exit 2 ;; esac
             case ",$ONLY," in *,G1,*|*,G5,*) echo "G1 and G5 are retired: the engine is ours to change; see the header" >&2; exit 2 ;; esac ;;
-    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,48p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -87,10 +87,10 @@ intended_base() { awk -v r="$1" '$1 == "base" && $2 == r { print $3 }' "$INTENDE
 # Pinned references
 ORDERS_ENGINE_REF=e34fca3   # --orders: the pre-isolation reference its six orders are compared with
 QUAL_REF=e112001            # qualification before the card-versions migration
-PI_REF=6138081              # plugin-interface 0.4.0 on its pilot branch: upstream 0.3.0 merged, optional card access, value output, rejected rows counted, asks through the platform facade (hardened), tool calls; 408 and 429 stop the run; an unreadable ask URL is refused; every secret header value and its encoded forms scrubbed before the cut
+PI_REF=c492eb1              # plugin-interface 0.4.0 on its pilot branch: upstream 0.3.0 merged, optional card access, value output, rejected rows counted, asks through the platform facade (hardened), tool calls; 408 and 429 stop the run; an unreadable ask URL is refused; every secret header value and its encoded forms scrubbed before the cut
 # G4 checks this checkout of plugin-interface; overridable only so a test can point it at a moved or dirty copy
 PI_DIR=${GUARD_PI_DIR:-$ROOT/shared/plugin-interface}
-PM_REF=5c07ffc              # plugin-manager on its pilot branch: the configured plugin folder wins and local plugins in worktrees are followed, on its maintainers' feat/dev-catalogue-staging line, pinning the plugin interface 0.4.0 (its wheel rebuilt at PI_REF), with its CI workflow
+PM_REF=96f1195              # plugin-manager on its pilot branch: the configured plugin folder wins and local plugins in worktrees are followed, on its maintainers' feat/dev-catalogue-staging line, pinning the plugin interface 0.4.0 (its wheel rebuilt at PI_REF), with its CI workflow
 LIVE_TOP=ad6262f            # top-level commit whose init/ and platform/ are the live shape
 LIVE_ENGINE=dfe4120         # backend with 0022, as live
 MCAS_PID=1e722ea2-4ce3-47fa-81bf-11a6b53ad679

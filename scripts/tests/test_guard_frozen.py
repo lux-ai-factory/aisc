@@ -22,6 +22,14 @@ SCRIPTS = [GUARD, CHAIN, ROOT / "scripts/lib/throwaway-pg.sh", ROOT / "scripts/p
 
 # the guard's own hygiene
 
+def test_help_prints_the_whole_header():
+    """--help ends with the header: the sources it reads (GUARD_SOURCE, GUARD_OUT) and its exit status."""
+    r = run([str(GUARD), "--help"], timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "GUARD_SOURCE=worktree" in r.stdout and "$GUARD_OUT" in r.stdout
+    assert "Exit status: 0 when every selected check passes, 1 otherwise." in r.stdout
+
+
 @needs_guard_history()
 def test_no_container_remains_after_success(tmp_path):
     """A run that succeeds removes its container."""

@@ -34,7 +34,6 @@ token_for(){ # user password -> an access token for the engine's client, or noth
 # makes the probe project (scripts/lib/probe-project.sh) and later runs reuse it.
 . "$(dirname "$0")/lib/probe-project.sh"
 probe_project_for "$(token_for "$U" "$P")"
-trap 'rm -f "$J"' EXIT
 
 echo "1. one Keycloak login, at the launcher"
 page=$(curl -s -c "$J" -b "$J" -L --max-time 25 "$VERIFY_BASE_URL/")

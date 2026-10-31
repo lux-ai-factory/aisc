@@ -98,6 +98,18 @@
   `judge_model` behind the cleanup's backup and dry run, printing `retired` lines after the keys to rotate.
   Check: `scripts/lib/engine-tests.sh aisc_backend.tests.test_langbite_judge_keys`.
 
+### The audit's mechanical fixes (no behaviour change, nothing to do when upgrading)
+- Every module: comments, READMEs and docstrings that no longer said what the code does now do; dead code
+  (unused CSS on the launcher pages, unused routes, parameters and helpers) is gone; tests that proved nothing
+  now check behaviour, and missing tests were added.
+- The dashboard gateway has behaviour tests for its Superset hook and runs them on the image's PyJWT and
+  cryptography versions; an empty keys address is refused when the gateway starts.
+- The plugin-manager no longer has the unused `list_packages`/`close`; its wheel is vendored again into the
+  engine and the eval worker. The guard's plugin-interface and plugin-manager pins follow their new commits.
+- The system card renderer has no `/render/html` route; its ledger route exception is gone with it.
+- Check: `cd scripts/tests && uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]' pytest -q`
+  and `scripts/guard-frozen.sh`.
+
 ## 2026-10-23: plugins are fetched on install
 
 ### Changes

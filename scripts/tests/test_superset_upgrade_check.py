@@ -93,3 +93,11 @@ def test_verify_passes_on_the_image_it_was_given_and_no_other(tmp_path, given, p
     r = subprocess.run(["bash", str(tmp_path / "scripts/verify.sh"), "--superset-upgrade", *given],
                        capture_output=True, text=True, timeout=60)
     assert r.stdout.strip() == f"args={len(given)}:{passed}", r.stdout + r.stderr
+
+
+def test_the_export_zip_is_written_in_a_folder_removed_afterwards():
+    """The import check's chart export goes in a temporary folder that is removed with it, not a bare
+    tempfile.mktemp name (racy, and left behind)."""
+    text = CHECKER.read_text()
+    assert "mktemp(" not in text
+    assert "tempfile.TemporaryDirectory()" in text
