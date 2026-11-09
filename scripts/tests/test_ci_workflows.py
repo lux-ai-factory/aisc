@@ -25,6 +25,7 @@ CI = ROOT / ".github/workflows/ci.yml"
 SUITES = {
     "identity", "platform", "control-objectives", "report-composer",
     "engine", "engine on postgres", "eval", "eval lint", "plugin-manager", "plugin-interface", "report-generator",
+    "chart-assistant",
 }
 
 

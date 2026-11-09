@@ -16,7 +16,7 @@ from platform_service import llm_store, secret_box
 
 KEEP = llm_store.KEEP
 #: every column a response may carry (never secret_ciphertext nor secret_headers_ciphertext)
-PUBLIC = ("name", "label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
+PUBLIC = ("name", "label", "kind", "provider", "base_url", "method", "path", "headers", "secret_header", "body_template",
           "response_path", "refusal", "model", "timeout_s", "protocol_version", "engine_component", "updated_at",
           "updated_by", "last_test_at", "last_test_ok", "last_test_detail", "target_key", "secret_header_names",
           "supports_tools", "supports_logprobs")
@@ -42,6 +42,20 @@ def get(pid, name: str, *, with_deleted: bool = False) -> dict | None:
 
 class TargetSetOnce(ValueError):
     """The connection is already the endpoint of another target: nothing was written."""
+
+
+class NameTaken(ValueError):
+    """A connection of this name is of the other sort (a provider connection, or one that is not): a save never
+    takes it over. Nothing was written."""
+
+
+class ConnectionAssessed(ValueError):
+    """The connection reaches the assessed system and is also used as a test tool or by an agent, which the
+    database refuses (project-template/0030_connectivity.sql). Nothing was written."""
+
+
+def _assessed_lock(exc: psycopg.errors.RaiseException) -> bool:
+    return "assessed system" in str(exc)
 
 
 def save(pid, name: str, fields: dict, *, ciphertext=KEEP, header_ciphertext=KEEP, subject: str | None) -> dict:
@@ -74,21 +88,78 @@ def save(pid, name: str, fields: dict, *, ciphertext=KEEP, header_ciphertext=KEE
         outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
                             details={"changed": changed,
                                      "secret": "kept" if ciphertext is KEEP else ("removed" if ciphertext is None else "set")})
+        if before is not None and (before.get("kind") == "provider") != (fields.get("kind", before.get("kind")) == "provider"):
+            raise NameTaken(name)
         once = (" WHERE connection.endpoint.target_key IS NULL"
                 " OR connection.endpoint.target_key IS NOT DISTINCT FROM EXCLUDED.target_key"
                 if "target_key" in fields else "")
-        row = conn.execute(
-            f"INSERT INTO connection.endpoint ({insert_cols}) VALUES ({insert_vals})"
-            f" ON CONFLICT (name) DO UPDATE SET {updates},"
-            "  secret_ciphertext = CASE WHEN %(set_key)s THEN EXCLUDED.secret_ciphertext"
-            "                      ELSE connection.endpoint.secret_ciphertext END,"
-            "  secret_headers_ciphertext = CASE WHEN %(set_headers)s THEN EXCLUDED.secret_headers_ciphertext"
-            "                              ELSE connection.endpoint.secret_headers_ciphertext END,"
-            "  updated_at = now(), updated_by = EXCLUDED.updated_by, deleted_at = NULL"
-            f"{once} RETURNING {_SELECT}", params).fetchone()
+        try:
+            row = _upsert(conn, insert_cols, insert_vals, updates, once, params)
+        except psycopg.errors.RaiseException as exc:
+            if _assessed_lock(exc):
+                raise ConnectionAssessed(name) from None
+            raise
         if row is None:                                   # rolls back the event emitted above
             raise TargetSetOnce(name)
         return row
+
+
+def _upsert(conn, insert_cols, insert_vals, updates, once, params):
+    """The connection's INSERT ... ON CONFLICT, its row or None when `once` refused it."""
+    return conn.execute(
+        f"INSERT INTO connection.endpoint ({insert_cols}) VALUES ({insert_vals})"
+        f" ON CONFLICT (name) DO UPDATE SET {updates},"
+        "  secret_ciphertext = CASE WHEN %(set_key)s THEN EXCLUDED.secret_ciphertext"
+        "                      ELSE connection.endpoint.secret_ciphertext END,"
+        "  secret_headers_ciphertext = CASE WHEN %(set_headers)s THEN EXCLUDED.secret_headers_ciphertext"
+        "                              ELSE connection.endpoint.secret_headers_ciphertext END,"
+        "  updated_at = now(), updated_by = EXCLUDED.updated_by, deleted_at = NULL"
+        f"{once} RETURNING {_SELECT}", params).fetchone()
+
+
+def upsert_provider(conn, name: str, *, label: str, provider: str, ciphertext=KEEP, base_url=KEEP,
+                    subject: str | None) -> dict:
+    """Insert, update or revive a provider connection on an open transaction; a KEEP column keeps its stored
+    value (a revived one starts without key and address). A connection of that name that is not a provider
+    connection is never taken over (NameTaken)."""
+    params = {"name": name, "label": label, "provider": provider,
+              "ciphertext": None if ciphertext is KEEP else ciphertext,
+              "base_url": "" if base_url is KEEP or base_url is None else base_url,
+              "set_key": ciphertext is not KEEP, "set_url": base_url is not KEEP, "subject": subject}
+    row = conn.execute(
+        "INSERT INTO connection.endpoint (name, label, kind, provider, base_url, secret_ciphertext, updated_by)"
+        " VALUES (%(name)s, %(label)s, 'provider', %(provider)s, %(base_url)s, %(ciphertext)s, %(subject)s)"
+        " ON CONFLICT (name) DO UPDATE SET label = EXCLUDED.label, provider = EXCLUDED.provider,"
+        "  secret_ciphertext = CASE WHEN %(set_key)s THEN EXCLUDED.secret_ciphertext"
+        "    WHEN connection.endpoint.deleted_at IS NOT NULL THEN NULL ELSE connection.endpoint.secret_ciphertext END,"
+        "  base_url = CASE WHEN %(set_url)s THEN EXCLUDED.base_url"
+        "    WHEN connection.endpoint.deleted_at IS NOT NULL THEN '' ELSE connection.endpoint.base_url END,"
+        "  updated_at = now(), updated_by = EXCLUDED.updated_by, deleted_at = NULL"
+        " WHERE connection.endpoint.kind = 'provider'"
+        f" RETURNING {_SELECT}", params).fetchone()
+    if row is None:
+        raise NameTaken(name)
+    return row
+
+
+def save_provider(pid, name: str, *, label: str, provider: str, ciphertext=KEEP, base_url=KEEP,
+                  subject: str | None) -> dict:
+    """A provider connection saved from Manage > Connectivity, with its connection.saved event."""
+    from platform_service.ledger import outbox
+
+    with connect(pid) as conn, conn.transaction():
+        outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
+                            details={"changed": ["provider"],
+                                     "secret": "kept" if ciphertext is KEEP else ("removed" if ciphertext is None else "set")})
+        return upsert_provider(conn, name, label=label, provider=provider, ciphertext=ciphertext, base_url=base_url,
+                               subject=subject)
+
+
+def uses(pid) -> list[dict]:
+    """Every live use of a connection: {connection, use, agent, roles, model, tool_name}, agents first."""
+    with connect(pid) as conn:
+        return conn.execute("SELECT connection, use, agent, roles, model, tool_name FROM connection.use"
+                            " WHERE deleted_at IS NULL ORDER BY use, id").fetchall()
 
 
 def link_target(pid, name: str, target_key: str, *, subject: str | None) -> dict | None:
@@ -105,10 +176,15 @@ def link_target(pid, name: str, target_key: str, *, subject: str | None) -> dict
         outbox.emit_project(conn, "connection.saved", item_type="connection", item_id=name,
                             details={"changed": [] if before["target_key"] == target_key else ["target_key"],
                                      "secret": "kept"})
-        row = conn.execute(
-            "UPDATE connection.endpoint SET target_key = %s, updated_at = now(), updated_by = %s"
-            " WHERE name = %s AND deleted_at IS NULL AND (target_key IS NULL OR target_key = %s)"
-            f" RETURNING {_SELECT}", (target_key, subject, name, target_key)).fetchone()
+        try:
+            row = conn.execute(
+                "UPDATE connection.endpoint SET target_key = %s, updated_at = now(), updated_by = %s"
+                " WHERE name = %s AND deleted_at IS NULL AND (target_key IS NULL OR target_key = %s)"
+                f" RETURNING {_SELECT}", (target_key, subject, name, target_key)).fetchone()
+        except psycopg.errors.RaiseException as exc:
+            if _assessed_lock(exc):
+                raise ConnectionAssessed(name) from None
+            raise
         if row is None:                                   # rolls back the event emitted above
             raise TargetSetOnce(name)
         return row
@@ -130,7 +206,8 @@ def endpoints_by_target(pid) -> dict[str, dict]:
 
 
 def delete(pid, name: str) -> bool:
-    """Mark it deleted; the row stays for the evaluations that used it."""
+    """Mark it deleted, and its uses as an agent's model or a test tool with it; the rows stay for the
+    evaluations that used it."""
     from platform_service.ledger import outbox
 
     with connect(pid) as conn, conn.transaction():
@@ -138,6 +215,12 @@ def delete(pid, name: str) -> bool:
                             " AND deleted_at IS NULL RETURNING name", (name,)).fetchone() is not None
         if gone:
             outbox.emit_project(conn, "connection.deleted", item_type="connection", item_id=name)
+            # its uses end with it: a connection saved later under this name starts unused
+            ended = conn.execute("UPDATE connection.use SET deleted_at = now() WHERE connection = %s"
+                                 " AND deleted_at IS NULL RETURNING use", (name,)).fetchall()
+            for use in ended:
+                outbox.emit_project(conn, "connection.use.removed", item_type="connection_use", item_id=name,
+                                    details={"use": use["use"]})
         return gone
 
 

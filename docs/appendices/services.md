@@ -10,7 +10,7 @@ start, does its job and exits.
 
 | Service | What it does | Talks to |
 |---|---|---|
-| `caddy` | The gateway and the only published entry: the launcher on 8100, the step applications and the engine on 80, the dashboard on 8188 (443 too on an install served over https). Before passing a request on it asks `oauth2-proxy` whether the caller is signed in, asks the platform to witness every write (the ledger) and, for the admin tools, whether the caller is an admin. | `oauth2-proxy`, `platform`, every service it serves |
+| `caddy` | The gateway and the only published entry apart from Keycloak's sign-in page (`127.0.0.1:8081`): the launcher on 8100, the step applications and the engine on 80, the dashboard on 8188 (443 too on an install served over https). Before passing a request on it asks `oauth2-proxy` whether the caller is signed in, asks the platform to witness every write (the ledger) and, for the admin tools, whether the caller is an admin. | `oauth2-proxy`, `platform`, every service it serves |
 | `oauth2-proxy` | Holds the browser's session. Its cookie is set for the host, and cookies ignore ports, so one sign-in covers every port. | `keycloak` |
 | `keycloak` | The identity provider, realm `aisc`. Published on `127.0.0.1:8081` only; the browser signs in there. | `postgres` (database `keycloak`) |
 
@@ -18,7 +18,7 @@ start, does its job and exits.
 
 | Service | What it does | Talks to |
 |---|---|---|
-| `platform` | The hub: projects and roles, one database per project, the AI card versions, the project's catalogue and installs, connections and the doors tests call the assessed system through, helper models, the AI assistants' keys, the Evidence map, the data of the Collect evidence and Results pages, the dashboards' sync, the ledger. See [How AISC works](../architecture.md#3-the-platform). | `postgres`, `immudb`, `aisc-backend`, `plugin-publisher`, `devpi`, `dashboard`, `report-composer`, the hosted catalogue, the assessed systems |
+| `platform` | The hub: projects and roles, one database per project, the AI card versions, the project's catalogue and installs, connections and the doors tests call the assessed system through, helper models, the AI assistants' keys, the Evidence map, the data of the AI Assessment Sandbox and Results pages, the dashboards' sync, the ledger. See [How AISC works](../architecture.md#3-the-platform). | `postgres`, `immudb`, `aisc-backend`, `plugin-publisher`, `devpi`, `dashboard`, `report-composer`, `minio` (the checklists' proof files, one bucket per project), the hosted catalogue, the assessed systems |
 | `ledger-pool` | *One-shot.* Makes immudb databases ahead of time (only immudb's superuser may, and the platform never holds that password), gives waiting projects theirs, and makes the engine's own immudb account. | `immudb`, `postgres` |
 | `plugin-publisher` | Builds a test's package, from its repository on github.com/lux-ai-factory or from your folder in `local_plugins/`, as an unprivileged user with no secrets, and uploads it to `devpi`. At start it publishes the plugin interface. | github.com, `devpi` |
 | `devpi` | The stack's own package index, where tests are installed from. Kept in the volume `devpi_data`. | |
@@ -60,19 +60,20 @@ platform.
 | `aisc-webapp` | The engine's pages (React, static). | (the browser calls `aisc-backend`) |
 | `aisc-backend` | The engine's API (Django): datasets, models, plugins, evaluations and their results. Queues test runs. | `postgres`, `minio`, `rabbitmq`, `redis`, `devpi`, `immudb` (its own audit log), `platform` |
 | `aisc-backend-migrate` | *One-shot.* Brings every project database's `engine` schema up to date and grants the readers. | `postgres` |
-| `aisc-backend-ledger` | Every 10 seconds, sends the engine's ledger events from each project database to the platform. | `platform` |
+| `aisc-backend-ledger` | Every 10 seconds, sends the engine's ledger events from each project database to the platform. | `postgres` (each project database's engine outbox), `platform` |
 | `aisc-eval-worker` | Runs tests (Celery): installs a test's package in a fresh environment, runs it, sends the results back. | `rabbitmq`, `redis`, `aisc-backend`, `devpi`, `platform` (run pass, connections, helper models), helper model endpoints |
-| `aisc-eval-flower` | The monitor of the test runs' task queue, for admins (`inspect` profile). | `rabbitmq` |
+| `aisc-eval-flower` | The monitor of the test runs' task queue, for admins. Runs only when asked (`COMPOSE_PROFILES=inspect ./scripts/start.sh`). | `rabbitmq`, `redis` |
 | `rabbitmq` | The queue that carries test runs to the worker. | |
 | `redis` | Where the worker keeps task results. | |
-| `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`. `make_buckets` (*one-shot*) creates them. | |
+| `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`, which `make_buckets` (*one-shot*) creates, and one bucket `proof-<pid>` per project for the checklists' proof files, which the platform makes with the project. | |
 | `dashboard` | Superset with AISC's extension: one dashboard per test per project, comments and review requests. | `postgres` (database `superset`, the project databases read-only), `dashboard-redis`, `platform` |
 | `dashboard-migrate` | *One-shot.* Superset's migrations. | `postgres` |
+| `chart-assistant` | Builds a chart from a description of a project's data, for the dashboard's assistant, on a mock database of invented rows until a person validates the chart. Its role `assistant_mock` may create databases (`CREATEDB`) and makes one `assistant_mock_<pid>_<digest>` per project and description, dropping the project's older ones; it holds no credential of a project database. | `postgres` as `assistant_mock` (database `postgres` and its own mock databases), `platform` (the project's model) |
 | `dashboard-redis` | Superset's own cache, with a password, on a network only the dashboard's services join. | |
 | `report-composer` | Layouts, templates, generating reports and keeping them. | `postgres`, `report-renderer`, `platform` |
 | `report-composer-migrate` | *One-shot.* Brings every project database's `report_composer` schema up to date. | `postgres` |
 | `report-renderer` | Draws a report as PDF or Word. Reads the data itself, read-only. | `postgres` as `report_ro` (`platform`, the project databases, `superset`) |
-| `report-grants` | *One-shot.* Grants `report_ro` what the report reads. | `postgres` |
+| `report-grants` | *One-shot.* In every project database, grants the readers `report_ro` and `dashboard_ro` exactly what they read, and revokes anything else. | `postgres` |
 
 ### How a per-project one-shot ends
 
@@ -99,15 +100,15 @@ database is an orphan, reported, not migrated. Where a one-shot does not keep th
 | `postgres` | PostgreSQL: databases `platform`, one `project_<pid>` per project, `keycloak`, `superset`, `ledger_identity`. Publishes nothing unless `AISC_ADMIN_PORTS=on`. |
 | `postgres-setup` | *One-shot.* Applies the roles and grants on a volume that already exists. |
 | `immudb`, `immudb-key` | The tamper-evident ledger; `immudb-key` (*one-shot*) hands immudb its signing key. |
-| `pgadmin` | Browse and query every database, for admins, at `/inspect/pgadmin/` (`inspect` profile). |
-| `schema-docs` | Database diagrams (structure, never rows), at `/inspect/schema/` (`inspect` profile). |
+| `pgadmin` | Browse and query every database, for admins, at `/inspect/pgadmin/`. |
+| `schema-docs` | Database diagrams (structure, never rows), at `/inspect/schema/`. |
 
 ## Networks
 
 | Network | Who is on it |
 |---|---|
-| `backend` | every service except the static pages, the inspector tools and the dashboard's cache |
-| `frontend` | `caddy` and the services it serves |
+| `backend` | every service except the static pages, the inspector tools, the dashboard's cache and `immudb-key` (on no network) |
+| `frontend` | `caddy`, `platform`, `aisc-webapp`, `catalogue-private`, `qualification-web`, `control-objectives`, `controls-web`, `report-composer` (Caddy reaches `aisc-backend`, `dashboard`, `aisc-eval-flower` and `oauth2-proxy` over `backend`) |
 | `inspector` | `caddy`, `postgres`, `pgadmin`, `schema-docs` |
 | `dashboard` | `dashboard`, `dashboard-migrate`, `dashboard-redis` |
 

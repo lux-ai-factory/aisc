@@ -143,3 +143,42 @@ def removal(action):
     return "submission", f"cmsub{uuid.uuid4().hex[:19]}", {
         "details": {"checklist": C, "version": 2, "answers_removed": 1},
         "before": STATE, "after": {**STATE, "answers": []}}
+
+
+# proof files: route handlers (not server actions), on the answer's question, item the answer
+A, Q, F = "cmans0000000000000000001", "cmq1", "5b7f0b1e-1d7e-4c7a-9a43-0c1f5d0b9e11"
+PROOF = {"submission": S, "question": Q, "file": F, "name": "policy.pdf", "mime": "application/pdf",
+         "size": 1234, "sha256": "c" * 64}
+PROOF_CASES = [
+    ("POST", f"/submissions/{S}/questions/{Q}/files", "control.proof.attached"),
+    ("DELETE", f"/submissions/{S}/questions/{Q}/files/{F}", "control.proof.removed"),
+]
+
+
+@pytest.mark.parametrize("method, tail, action", PROOF_CASES, ids=[c[2] for c in PROOF_CASES])
+def test_a_proof_file_event_as_the_route_sends_it_is_accepted(project, memory_ledger, witnessed, method, tail,
+                                                               action):
+    request_id = witnessed(MEMBER, method, "controls", f"/controls/p/{project['pid']}{tail}")
+    emit(project["pid"], "controls_rw", body(request_id, action, "answer", A, details=PROOF))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+    [e] = [x for x in entries(memory_ledger, log_of(project["pid"])) if x.action == action]
+    assert (e.source_app, e.item_type, e.item_id) == ("controls", "answer", A)
+    assert e.details["sha256"] == "c" * 64 and e.details["file"] == F
+
+
+def test_a_proof_file_event_never_carries_the_file_s_content():
+    from platform_service.ledger.registry import REGISTRY
+
+    for action in ("control.proof.attached", "control.proof.removed"):
+        registered = REGISTRY[action]
+        assert set(registered.details_keys) == set(PROOF), action
+        assert not registered.content_required, action
+
+
+def test_a_proof_file_event_from_another_page_is_refused(project, memory_ledger, witnessed):
+    request_id = witnessed(MEMBER, "POST", "controls", f"/controls/p/{project['pid']}/submissions/{S}",
+                           next_action="7f0d05")
+    emit(project["pid"], "controls_rw", body(request_id, "control.proof.attached", "answer", A, details=PROOF))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) != []

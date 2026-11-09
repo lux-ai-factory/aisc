@@ -10,14 +10,26 @@
 <div class="field" data-field="{{ f.name }}"{% if f.show_if %} data-show-if='{{ f.show_if | tojson }}'{% endif %}{% if f.hidden %} hidden{% endif %}>
   {% if f.widget == "all-or-list" %}
   {%- set listed = f.value is iterable and f.value is not string and f.value is not mapping -%}
-  <fieldset data-option="{{ f.name }}" data-kind="all-or-list">
+  {#- f.every: each choice is a section of its own; no All radio, every box checked for "all" (all checked saves "all") -#}
+  <fieldset data-option="{{ f.name }}" data-kind="all-or-list"{% if f.every %} data-every{% endif %}>
     <legend>{{ f.label }}{% if f.required %} *{% endif %}</legend>
-    <label class="inline"><input type="radio" name="{{ key }}-{{ f.name }}" value="all" data-choice="all"{% if not listed %} checked{% endif %}> All (also ones added later)</label>
-    <label class="inline"><input type="radio" name="{{ key }}-{{ f.name }}" value="list" data-choice="list"{% if listed %} checked{% endif %}> Only these:</label>
+    {% if not f.every %}<label class="inline"><input type="radio" name="{{ key }}-{{ f.name }}" value="all" data-choice="all"{% if not listed %} checked{% endif %}> {{ f.all_label or "All (also ones added later)" }}</label>
+    <label class="inline"><input type="radio" name="{{ key }}-{{ f.name }}" value="list" data-choice="list"{% if listed %} checked{% endif %}> Only these:</label>{% endif %}
     {% if f.filter %}<input type="search" class="choice-filter" data-filter placeholder="Filter the list">{% endif %}
     <div class="choices">
-    {% for o in f.options %}<label class="inline"><input type="checkbox" value="{{ choice_value(o.value) }}"{% if o.value is mapping %} data-json{% endif %}{% if listed and o.value in f.value %} checked{% endif %}> {{ o.label }}</label>
+    {% for o in f.options %}<label class="inline"><input type="checkbox" value="{{ choice_value(o.value) }}"{% if o.value is mapping %} data-json{% endif %}{% if (listed and o.value in f.value) or (f.every and not listed) %} checked{% endif %}> {{ o.label }}</label>
     {% endfor %}</div>
+    {{ help(f) }}
+  </fieldset>
+  {% elif f.widget == "text-per-choice" %}
+  {#- one box per choice of another option, shown while that option lists it; the texts of choices not offered
+      now ride along in data-value -#}
+  <fieldset data-option="{{ f.name }}" data-kind="text-map" data-per-choice-of="{{ f.per_choice_of }}" data-value="{{ f.kept | tojson | forceescape }}">
+    <legend>{{ f.label }}</legend>
+    {% for o in f.options %}<label data-choice-box="{{ o.value }}"{% if o.hidden %} hidden{% endif %}>{{ o.label }}
+      <textarea data-choice="{{ o.value }}" rows="4">{{ o.text }}</textarea></label>
+    {% else %}<p class="hint">No blocks saved to the report yet.</p>
+    {% endfor %}
     {{ help(f) }}
   </fieldset>
   {% elif f.widget == "checkboxes" %}
@@ -52,19 +64,33 @@
   {% endif %}
 </div>
 {%- endmacro -%}
+{#- A section's form in the inspector: its options in a box, then its commentary in a box of its own (always
+    open, a large textarea), then More options, closed. The order is the order the script reads the values in. -#}
 {%- macro render_form(fields, key="__new__") -%}
-{% for f in fields if not f.more and f.widget != "commentary" %}{{ field(f, key) }}
+{#- the per-choice texts (a commentary per tool) go with the commentary, when the block has one -#}
+{% set per_choice = (fields | rejectattr("more") | selectattr("widget", "equalto", "text-per-choice") | list)
+   if (fields | selectattr("widget", "equalto", "commentary") | list) else [] %}
+{% set options = fields | rejectattr("more") | rejectattr("widget", "equalto", "commentary") | reject("in", per_choice) | list %}
+<div class="box options-box" data-options data-control="configure">
+<h3>Options</h3>
+{% for f in options %}{{ field(f, key) }}
+{% else %}<p class="hint">No other options.</p>
 {% endfor %}
+</div>
 {% for f in fields if f.widget == "commentary" %}
-<details data-commentary{% if f.value %} open{% endif %}><summary>Add a commentary</summary>
-  <label>{{ f.label }} <textarea data-option="commentary" data-kind="str" rows="6">{{ option_value(f.value) }}</textarea></label>
+<div class="box commentary-box" data-commentary>
+  {#- with a box per tool, the tools' boxes come first and the section's own text is the introduction printed
+      before the first tool's section (the renderer's lead) -#}
+  {% for p in per_choice %}{{ field(p, key) }}{% endfor %}
+  <h3>{{ "Introduction" if per_choice else "Commentary" }}</h3>
+  <textarea data-option="commentary" data-kind="str" rows="{{ 5 if per_choice else 14 }}" aria-label="{{ "Introduction" if per_choice else f.label }}" placeholder="{{ "Printed before the first tool's section. Left empty, there is none." if per_choice else "Shown with the section in the report. Left empty, there is none." }}">{{ option_value(f.value) }}</textarea>
   {{ help(f) }}
   <span class="help">{{ LIGHT_HELP }}</span>
-</details>
+</div>
 {% endfor %}
 {% set more = fields | selectattr("more") | list %}
 {% if more %}
-<details data-more><summary>More options</summary>
+<details class="box" data-more><summary>More options</summary>
 {% for f in more %}{{ field(f, key) }}
 {% endfor %}
 </details>

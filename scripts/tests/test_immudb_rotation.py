@@ -145,3 +145,19 @@ def test_the_guide_restarts_the_engine_after_a_rotation():
     i = flat.find("--rotate-one")
     near = flat[i: i + 1200]
     assert _RESTART_ENGINE.search(near), "the guide's rotation procedure does not restart aisc-backend"
+
+
+_NO_RELOGIN = re.compile(r"does not (log in|open it|open) again", re.I)
+
+
+@pytest.mark.parametrize("name", ROTATABLE[:1])
+def test_rotate_one_does_not_say_the_engine_cannot_log_in_again(scratch, name):  # noqa: F811
+    """The engine's audit clerk logs in again when immudb ended its login (apps/backend audit/clerk.py)."""
+    run_secrets(scratch)
+    r = _run(scratch, "--rotate-one", name)
+    assert not _NO_RELOGIN.search(r.stdout + r.stderr)
+
+
+def test_the_guide_does_not_say_the_engine_cannot_log_in_again():
+    flat = " ".join((ROOT / "docs/guide.md").read_text().split())
+    assert not _NO_RELOGIN.search(flat)

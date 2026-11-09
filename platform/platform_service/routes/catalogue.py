@@ -4,7 +4,7 @@ from __future__ import annotations
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from aisc_identity.headers import token_from_headers
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, StrictStr
 
@@ -110,8 +110,15 @@ def catalogue_install_info(slug: str, entry: str, request: Request,
 NOT_ADMIN_TO_INSTALL = "Installing a test takes the admin role."
 
 
+class InstallChoice(BaseModel):
+    """Which version to install; none means the one install-info offers by default."""
+    model_config = ConfigDict(extra="forbid")
+    version: StrictStr | None = None
+
+
 @router.post("/projects/{slug}/catalogue/api/tool/{entry}/install")
 def catalogue_install_test(slug: str, entry: str, request: Request,
+                           choice: InstallChoice | None = Body(None),
                            caller: Caller = Depends(caller_dependency)) -> dict:
     """Install the entry's test into this project without leaving the catalogue, as a
     control already is. The catalogue's pages are on this API's origin, so the call is
@@ -126,6 +133,15 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
         info = _private_reads(pid, lambda: catalogue.install_info(pid, entry, token))
     except catalogue.NoEntry as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    wanted = choice.version if choice else None
+    if wanted is not None and not (info["version"] and catalogue._same_version(wanted, info["version"])):
+        # another version than the default: one the index already holds, installed as it is there
+        offered = next((v for v in info.get("versions") or [] if v["installable"]
+                        and catalogue._same_version(v["version"], wanted)), None)
+        if offered is None:
+            raise HTTPException(status_code=409, detail=(
+                f"{info['package_name']} {wanted} is not offered on this stack; nothing was installed"))
+        return _install_from_index(pid, token, entry, info["package_name"], offered["version"], slug)
     if not info["installable"]:
         raise HTTPException(status_code=409, detail=info["reason"])
     version = info["version"]
@@ -167,6 +183,29 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
             raise no_project(slug)
         raise HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
     return {"slug": entry, "package_name": info["package_name"], "version": version}
+
+
+def _install_from_index(pid, token: str, entry: str, package: str, version: str, slug: str) -> dict:
+    """Install a version the index already holds: nothing is published. The engine is asked for it under
+    the name and version it lists the index build by, and must list it."""
+    from platform_service import engine_components
+    try:
+        listed = engine_components.available_plugins(pid, token)
+        seen = next((p for p in listed
+                     if catalogue._dist(p.get("package_name") or "") == catalogue._dist(package)
+                     and catalogue._same_version(str(p.get("version") or ""), version)
+                     and p.get("source") == "registry"), None)
+        if seen is None:
+            raise HTTPException(status_code=502, detail=(
+                f"the engine does not list {package} {version} from the index; nothing was installed"))
+        engine_components.install_plugin(pid, token, seen["package_name"], seen["version"], entry)
+    except engine_components.EngineUnavailable as exc:
+        if exc.status == 403:
+            raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
+        if exc.status == 404:
+            raise no_project(slug)
+        raise HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
+    return {"slug": entry, "package_name": package, "version": seen["version"]}
 
 
 @router.get("/projects/{slug}/catalogue/api/tags/")

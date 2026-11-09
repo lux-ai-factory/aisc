@@ -9,6 +9,7 @@
   const PICK_ONE = "Pick at least one, or choose All.";
   const EMPTY_CHAPTER = "This chapter is empty.";
   const OUTLINE_FAILED = "The chapter outline could not be updated.";
+  const PROBLEMS = "problems";
 
   async function call(method, path, body, base) {
     let r;
@@ -171,9 +172,14 @@
     return;
   }
 
-  // The editor (a built-in one is read-only: its one action is Duplicate)
+  // The editor: the toolbar, the outline (one row per section, in order), the inspector (one form per
+  // section, keyed by its instance id, only the selected one shown) and the preview
   showKeptNotices();
-  if (main.dataset.readOnly) {
+  const toolbar = main.querySelector(".toolbar");      // the preview stays in view under the sticky toolbar
+  if (toolbar && window.ResizeObserver) {
+    new ResizeObserver(function () { main.style.setProperty("--toolbar-height", toolbar.offsetHeight + "px"); }).observe(toolbar);
+  }
+  if (main.dataset.readOnly) {                       // a built-in one is read-only: its one action is Duplicate
     main.addEventListener("click", async function (ev) {
       const b = ev.target.closest('[data-control="duplicate"]'); if (!b) return;
       const res = await call("POST", "/layouts/" + b.dataset.layout + "/duplicate", {});
@@ -182,11 +188,15 @@
     return;
   }
   const list = document.getElementById("blocks");
+  const bodies = main.querySelector("[data-bodies]");  // none for a viewer: nothing to edit
+  const palette = main.querySelector("details[data-palette]");
   const state = main.querySelector("[data-state]");
   const layoutId = main.dataset.layout;
   const frame = main.querySelector("iframe");
   const label = main.querySelector("[data-preview-label]");
   const control = function (name) { return main.querySelector('[data-control="' + name + '"]'); };
+  const rowOf = function (iid) { return list.querySelector('[data-instance-id="' + iid + '"]'); };
+  const bodyOf = function (li) { return bodies && li ? bodies.querySelector('[data-body-for="' + li.dataset.instanceId + '"]') : null; };
   let revision = parseInt(main.dataset.revision, 10);
   let unsaved = false;
   function setLabel(text, error) { if (label) { label.textContent = text; label.classList.toggle("error", !!error); } }
@@ -197,30 +207,64 @@
     showSaved();
     schedule();
   }
-
-  // Indentation, numbers, the empty-chapter and the not-written hints, as Python computes them
+  // The selected section: its row is marked, its form is the one shown, its number and title head the inspector
+  let selected = null;
+  function select(li) {
+    if (!bodies) return;
+    selected = li || null;
+    Array.from(list.children).forEach(function (row) {
+      if (row === selected) row.setAttribute("aria-current", "true"); else row.removeAttribute("aria-current");
+      const body = bodyOf(row);
+      if (body) body.hidden = row !== selected;
+    });
+    const empty = main.querySelector("[data-inspector-empty]");
+    if (empty) empty.hidden = !!selected;
+    showTitle();
+  }
+  function showTitle() {
+    const title = main.querySelector("[data-inspector-title]");
+    if (title) title.textContent = selected ? (selected.dataset.number + " " + selected.querySelector("[data-title]").textContent).trim() : "";
+  }
+  // A row's flags, as Python names them ({name, label, title}: layouts.outline_flags). The problems flag
+  // is kept: it follows the problems the preview and the save answer.
+  function makeFlag(f) {
+    const span = document.createElement("span");
+    span.className = "flag flag-" + f.name; span.dataset.flag = f.name; span.title = f.title || ""; span.textContent = f.label; return span;
+  }
+  function drawFlags(li, flags) {
+    const box = li.querySelector("[data-flags]");
+    box.querySelectorAll('[data-flag]:not([data-flag="problems"])').forEach(function (f) { f.remove(); });
+    const problems = box.querySelector('[data-flag="problems"]');
+    flags.forEach(function (f) { box.insertBefore(makeFlag(f), problems); });
+  }
+  // Indentation, numbers, flags and the inspector's hints, as Python computes them
   let outlineAsked = 0, outlineTimer = null;             // the latest outline request; older answers are ignored
   async function redrawOutline() {
     const mine = ++outlineAsked;
-    const res = await call("POST", "/layouts/" + (layoutId || "new") + "/outline", { blocks: collect(), numbering: !!(control("numbering") || {}).checked });
+    const res = await call("POST", "/layouts/" + (layoutId || "new") + "/outline", { blocks: collect(), numbering: !!(control("numbering") || {}).checked, parts: partsOf() });
     if (mine !== outlineAsked) return;
     if (!res.ok) {                                       // No stale indentation, and a way to retry
-      Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; li.dataset.number = ""; });
-      list.querySelectorAll("[data-empty-chapter], [data-unwritten]").forEach(function (p) { p.remove(); });
+      Array.from(list.children).forEach(function (li) { li.dataset.depth = "0"; li.dataset.number = ""; drawFlags(li, []); });
+      bodies.querySelectorAll("[data-empty-chapter], [data-unwritten]").forEach(function (p) { p.remove(); });
+      showTitle();
       say(OUTLINE_FAILED, false, { label: "Try again", run: redrawOutline });
       return;
     }
     if (region && region.querySelector("[data-message-text]").textContent === OUTLINE_FAILED) say("");
     res.data.outline.forEach(function (o) {
-      const li = list.querySelector('[data-instance-id="' + o.instance_id + '"]');
-      if (!li) return;
+      const li = rowOf(o.instance_id), body = bodyOf(li);
+      if (!li || !body) return;
       li.dataset.depth = String(o.depth);
       li.dataset.number = o.number || "";
-      const before = li.querySelector("details, [data-problems]");
-      hint(li, "data-empty-chapter", o.empty_chapter ? EMPTY_CHAPTER : "", "hint", before);
-      hint(li, "data-unwritten", o.unwritten_hint || "", "hint", li.querySelector("details, [data-problems]"));
+      li.querySelector("[data-parts]").replaceChildren.apply(li.querySelector("[data-parts]"), (o.parts || []).map(function (p) { const x = document.createElement("span"); x.className = "row-part"; x.dataset.part = ""; x.dataset.number = p.number || ""; x.textContent = p.title; return x; }));
+      drawFlags(li, o.flags || []);
+      hint(body, "data-empty-chapter", o.empty_chapter ? EMPTY_CHAPTER : "", "hint", body.querySelector(".box, [data-problems]"));
+      hint(body, "data-unwritten", o.unwritten_hint || "", "hint", body.querySelector(".box, [data-problems]"));
     });
+    showTitle();
   }
+  function partsOf() {   // the tools each Exported results section checks ({iid: [titles]}): Python numbers them
+    return Array.from(list.children).reduce(function (out, li) { const t = Array.from(bodyOf(li).querySelectorAll("fieldset[data-every] .choices input:checked")).map(function (b) { return b.parentNode.textContent.trim(); }); if (t.length) out[li.dataset.instanceId] = t; return out; }, {}); }
   function moved() { dirty(); redrawOutline(); }
   function edited() { dirty(); clearTimeout(outlineTimer); outlineTimer = setTimeout(redrawOutline, 800); }
 
@@ -236,9 +280,13 @@
       if (input.tagName === "SELECT") return input.value === "" ? null : parse(input.value, true);
       return parse(input.dataset.value, true);
     }
+    if (kind === "text-map") return Array.from(input.querySelectorAll("textarea[data-choice]")).reduce(function (out, b) {
+      if (b.value.trim()) out[b.dataset.choice] = b.value; else delete out[b.dataset.choice]; return out;   // empty: no text
+    }, parse(input.dataset.value, true) || {});                       // on top of the texts of choices not offered now
     if (kind === "all-or-list") {
       const all = input.querySelector('input[data-choice="all"]');
       if (all && all.checked) return "all";
+      if (input.hasAttribute("data-every") && !input.querySelector(".choices input:not(:checked)")) return "all";   // a section per choice: all checked
       return Array.from(input.querySelectorAll('.choices input[type="checkbox"]:checked')).map(function (b) {
         return parse(b.value, b.hasAttribute("data-json"));
       });
@@ -251,9 +299,9 @@
     }
     return input.value;
   }
-  function optionsOf(li) {
+  function optionsOf(body) {
     const options = {};
-    li.querySelectorAll("[data-option]").forEach(function (input) {
+    body.querySelectorAll("[data-option]").forEach(function (input) {
       if (input.closest("[data-field][hidden]")) return;          // Hidden fields are not sent
       const v = valueOf(input);
       if (v === null && input.dataset.kind === "int-or-null") options[input.dataset.option] = null;
@@ -261,46 +309,54 @@
     });
     return options;
   }
-  function collect() {
+  function collect() {                                 // row by row, in outline order, each from its own form
     return Array.from(list.children).map(function (li) {
-      return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType, options: optionsOf(li) };
+      return { instance_id: li.dataset.instanceId, block_type: li.dataset.blockType, options: optionsOf(bodyOf(li)) };
     });
   }
-
   function editorState() {                            // what is saved: no version, no data (report modules)
     const box = function (name) { const c = control(name); return c ? c.checked : undefined; };
     return { template_id: (control("template") || {}).value || null, show_index: box("show_index"),
              numbering: box("numbering"), blocks: collect() };
   }
   function pickOneHints() {
-    list.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
+    bodies.querySelectorAll('fieldset[data-kind="all-or-list"]').forEach(function (set) {
       const v = valueOf(set);
       hint(set, "data-pick-one", Array.isArray(v) && v.length === 0 ? PICK_ONE : "", "inline-problem");
     });
   }
-  function showProblems(problems) {
-    list.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
+  function showProblems(problems) {                   // in the section's form, and a flag on its row
+    if (bodies) bodies.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
+    list.querySelectorAll('[data-flag="problems"]').forEach(function (f) { f.remove(); });
     const loose = [];
     (problems || []).forEach(function (p) {
-      const text = (p.pointer ? p.pointer + ": " : "") + p.message + " ";
-      const li = p.instance_id && list.querySelector('[data-instance-id="' + p.instance_id + '"]');
-      const target = li ? li.querySelector("[data-problems]") : null;
-      if (target) target.textContent += text;
-      else loose.push(text);
+      const text = (p.pointer ? p.pointer + ": " : "") + p.message;
+      const li = p.instance_id && rowOf(p.instance_id);
+      const body = li ? bodyOf(li) : null;
+      if (!body) { loose.push(text + " "); return; }
+      body.querySelector("[data-problems]").textContent += text + " ";
+      let mark = li.querySelector('[data-flag="problems"]');
+      if (!mark) mark = li.querySelector("[data-flags]").appendChild(makeFlag({ name: "problems", label: PROBLEMS }));
+      mark.title = (mark.title ? mark.title + "; " : "") + text;
     });
     say(loose.join(" "));
   }
 
-  // show-if: a field is shown only while the option it names has one of the listed values
+  // show-if: a field is shown only while the option it names has one of the listed values; a text box per choice
+  // (data-per-choice-of) only while the option it follows lists that choice, or All
   function applyShowIf(scope) {
     scope.querySelectorAll("[data-show-if]").forEach(function (field) {
-      const li = field.closest("li");
+      const body = field.closest("[data-body-for]");
       let rule = {};
       try { rule = JSON.parse(field.getAttribute("data-show-if")); } catch (e) { rule = {}; }
       field.hidden = !Object.keys(rule).every(function (name) {
-        const input = li.querySelector('[data-option="' + name + '"]');
+        const input = body.querySelector('[data-option="' + name + '"]');
         return input && rule[name].indexOf(valueOf(input)) >= 0;
       });
+    });
+    scope.querySelectorAll("fieldset[data-per-choice-of]").forEach(function (set) {   // a box per choice, shown while listed
+      const listed = Array.from(set.closest("[data-body-for]").querySelectorAll('[data-option="' + set.dataset.perChoiceOf + '"]')).map(valueOf)[0];
+      set.querySelectorAll("[data-choice-box]").forEach(function (l) { l.hidden = Array.isArray(listed) && listed.indexOf(l.dataset.choiceBox) < 0; });
     });
   }
 
@@ -351,27 +407,33 @@
     return false;
   }
 
+  // A new section from the "+ Add a section" menu: its row and its form, from the palette's template
+  function add(typeId) {
+    const parts = main.querySelector('template[data-block-template="' + typeId + '"]').content.cloneNode(true);
+    const item = parts.querySelector("li"), body = parts.querySelector("[data-body-for]");
+    const iid = crypto.randomUUID();
+    item.dataset.instanceId = iid; body.dataset.bodyFor = iid;
+    body.querySelectorAll('input[type="radio"]').forEach(function (r) { r.name = r.name.replace("__new__", iid); });
+    list.appendChild(item); bodies.appendChild(body); applyShowIf(body);
+    palette.open = false; select(item); item.focus(); moved();
+  }
+
   main.addEventListener("click", async function (ev) {
+    if (palette && palette.open && !ev.target.closest("[data-palette]")) palette.open = false;   // a click elsewhere closes it
+    const row = ev.target.closest("#blocks > li");
+    if (row) { select(row); return; }
     const target = ev.target.closest("[data-control], [data-add]");
     if (!target) return;
-    const li = target.closest("li[data-instance-id]");
     const what = target.dataset.control;
     if (target.dataset.add) {
-      const template = main.querySelector('template[data-block-template="' + target.dataset.add + '"]');
-      const item = template.content.firstElementChild.cloneNode(true);
-      item.dataset.instanceId = crypto.randomUUID();
-      item.querySelectorAll('input[type="radio"]').forEach(function (r) {
-        r.name = r.name.replace("__new__", item.dataset.instanceId);
-      });
-      list.appendChild(item);
-      applyShowIf(item);
-      moved();
-    } else if (what === "move-up" && li && li.previousElementSibling) {
-      list.insertBefore(li, li.previousElementSibling); moved();
-    } else if (what === "move-down" && li && li.nextElementSibling) {
-      list.insertBefore(li.nextElementSibling, li); moved();
-    } else if (what === "remove" && li) {
-      li.remove(); moved();
+      add(target.dataset.add);
+    } else if (what === "move-up" && selected && selected.previousElementSibling) {
+      list.insertBefore(selected, selected.previousElementSibling); moved();
+    } else if (what === "move-down" && selected && selected.nextElementSibling) {
+      list.insertBefore(selected.nextElementSibling, selected); moved();
+    } else if (what === "remove" && selected) {
+      const next = selected.nextElementSibling || selected.previousElementSibling;
+      bodyOf(selected).remove(); selected.remove(); select(next); moved();
     } else if (what === "save") {
       await save();
     } else if (what === "refresh-preview") {
@@ -382,6 +444,11 @@
       if (res.ok) { unsaved = false; location.href = main.dataset.base + "/"; } else say(errorText(res));
     }
   });
+  main.addEventListener("keydown", function (ev) {
+    const row = ev.target.closest("#blocks > li");
+    if (row && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); select(row); }
+    else if (ev.key === "Escape" && palette && palette.open) { palette.open = false; palette.querySelector("summary").focus(); }
+  });
 
   main.addEventListener("change", function (ev) {
     if (ev.target === autoBox) {
@@ -390,11 +457,10 @@
       if (auto) schedule();
       return;
     }
-    const li = ev.target.closest("li");
-    if (li) { applyShowIf(li); pickOneHints(); }
-    if (ev.target.closest("#blocks")) edited();
+    const body = ev.target.closest("[data-body-for]");
+    if (body) { applyShowIf(body); pickOneHints(); edited(); }
     else if (ev.target.closest('[data-control="numbering"]')) { dirty(); redrawOutline(); }
-    else if (ev.target.closest(".toolbar")) dirty();
+    else if (ev.target.closest(".toolbar") && !ev.target.closest('[data-control="preview-with"]')) dirty();
   });
   main.addEventListener("input", function (ev) {
     const filter = ev.target.closest("[data-filter]");
@@ -405,7 +471,7 @@
       });
       return;
     }
-    if (ev.target.closest("#blocks")) edited();
+    if (ev.target.closest("[data-body-for]")) edited();
   });
   window.addEventListener("beforeunload", function (ev) {
     if (unsaved) { ev.preventDefault(); ev.returnValue = ""; }
@@ -429,4 +495,5 @@
     list.insertBefore(dragged, ev.clientY < box.top + box.height / 2 ? over : over.nextSibling);
     dirty();
   });
+  select(list.querySelector('[aria-current="true"]') || list.firstElementChild);
 })();

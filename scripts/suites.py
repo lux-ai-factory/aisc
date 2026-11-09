@@ -2,6 +2,7 @@
 """How each module's tests are run: one row per suite, the only place that says so.
 
     python3 scripts/suites.py rows     # name|dir|marker|needs|command, one line per suite
+    python3 scripts/suites.py beds     # "<npm|uv> <dir>": the module environments scripts/prepare-tests.sh makes
 
 scripts/verify.sh --modules runs every row. The root CI's python matrix (.github/workflows/ci.yml) holds the
 rows marked ci, with the same names and commands; scripts/tests/test_suites.py fails when the two differ, so a
@@ -31,18 +32,21 @@ class Suite:
     #: whether the root CI's python matrix runs it
     ci: bool
     command: str
+    #: the environment scripts/tests' beds need in dir, which scripts/prepare-tests.sh makes from its lock: "npm"
+    #: (node_modules) or "uv" (.venv); empty for none
+    bed: str = ""
 
 
 SUITES = (
     Suite("identity", "shared/identity", "", ("uv", "docker"), True, "scripts/lib/identity-tests.sh"),
     Suite("platform", "platform", "", ("uv", "docker"), True, "scripts/test-platform.sh -q -p no:warnings"),
     Suite("control-objectives", "apps/control-objectives", "", ("uv", "docker"), True,
-          "scripts/lib/co-tests.sh -p no:warnings"),
+          "scripts/lib/co-tests.sh -p no:warnings", bed="uv"),
     Suite("report-composer", "apps/report-composer", "", ("uv", "docker"), True,
-          "cd apps/report-composer && uv run --extra dev pytest -q -p no:warnings"),
+          "cd apps/report-composer && uv run --extra dev pytest -q -p no:warnings", bed="uv"),
     # the engine without upstream's integration package (it needs a live stack), then its project database
     # tests on a throwaway Postgres in configurator mode
-    Suite("engine", "apps/backend", "", ("uv",), True, "scripts/lib/engine-tests.sh"),
+    Suite("engine", "apps/backend", "", ("uv",), True, "scripts/lib/engine-tests.sh", bed="uv"),
     Suite("engine on postgres", "apps/backend", "", ("uv", "docker"), True, "scripts/lib/engine-tests.sh --postgres"),
     # a few eval tests run only in one deployment mode: both modes
     Suite("eval", "apps/eval", "", ("uv",), True,
@@ -61,12 +65,17 @@ SUITES = (
     Suite("report-generator", "apps/report-generator", "", ("uv", "docker"), True,
           "cd apps/report-generator && env -u DATABASE_URL -u PLATFORM_TEST_DATABASE_URL uv run --locked --extra dev"
           " pytest -q -p no:cacheprovider tests"),
+    # the tests marked db read the live stack's Postgres: not in a row
+    Suite("chart-assistant", "apps/chart-assistant", "", ("uv",), True,
+          "cd apps/chart-assistant && uv run --locked --extra dev pytest -q -p no:cacheprovider -m 'not db'"),
+    Suite("plugin-publisher", "infra/plugin-publisher", "", ("uv",), False,
+          "cd infra/plugin-publisher && uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider"),
     Suite("report-plugin-interface", "shared/report-plugin-interface", "", ("uv",), False,
           "cd shared/report-plugin-interface && uv run --with pytest python -m pytest -q -p no:cacheprovider"),
     Suite("catalogue frontend", "apps/catalogue/frontend", "node_modules", ("npx",), False,
           "cd apps/catalogue/frontend && npx vitest run"),
     Suite("qualification", "apps/qualification", "node_modules", ("npx",), False,
-          "cd apps/qualification && npx vitest run"),
+          "cd apps/qualification && npx vitest run", bed="npm"),
     Suite("qualification prefill", "apps/qualification", "node_modules", ("docker",), False,
           "cd apps/qualification && docker run --rm -v \"$PWD:/w\" -w /w/services/prefill python:3.12-slim sh -lc"
           " 'pip install -q -r requirements.txt -r requirements-dev.txt"
@@ -86,7 +95,8 @@ SUITES = (
           "cd apps/controls/services/pdf_renderer && docker build -q -t aisc-t-cpdf . >/dev/null"
           " && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD:/w:ro\" -w /w aisc-t-cpdf"
           " sh -lc 'pip install -q pytest httpx && python -m pytest -q -p no:cacheprovider'"),
-    Suite("controls", "apps/controls", "node_modules", ("npx",), False, "cd apps/controls && npx vitest run"),
+    Suite("controls", "apps/controls", "node_modules", ("npx",), False, "cd apps/controls && npx vitest run",
+          bed="npm"),
     Suite("engine webapp", "apps/webapp", "node_modules", ("npx",), False, "cd apps/webapp && npx vitest run"),
     # the versions in the aisc-results-dashboard image (pip show pyjwt cryptography flask flask-login werkzeug):
     # PyJWT's behaviour differs between releases
@@ -103,11 +113,21 @@ def rows() -> str:
     return "".join(f"{s.name}|{s.dir}|{s.marker}|{','.join(s.needs)}|{s.command}\n" for s in SUITES)
 
 
+def beds() -> str:
+    """The Node modules first, then the uv ones, each in the list's order and once."""
+    seen: list[tuple[str, str]] = []
+    for kind in ("npm", "uv"):
+        for s in SUITES:
+            if s.bed == kind and (kind, s.dir) not in seen:
+                seen.append((kind, s.dir))
+    return "".join(f"{kind} {d}\n" for kind, d in seen)
+
+
 def main(argv: list[str]) -> int:
-    if argv != ["rows"]:
-        print("usage: scripts/suites.py rows", file=sys.stderr)
+    if argv not in (["rows"], ["beds"]):
+        print("usage: scripts/suites.py rows|beds", file=sys.stderr)
         return 2
-    sys.stdout.write(rows())
+    sys.stdout.write(rows() if argv == ["rows"] else beds())
     return 0
 
 

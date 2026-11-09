@@ -215,7 +215,7 @@
   handle_errors 502 503 {
     @flower expression `{http.request.orig_uri.path}.startsWith("/flower/")`
     handle @flower {
-      respond "Flower is not running on this installation. An administrator can start it with: docker compose --profile inspect up -d aisc-eval-flower" 503
+      respond "Flower is not running on this installation. An administrator can start it with: COMPOSE_PROFILES=inspect ./scripts/start.sh" 503
     }
   }
 }
@@ -313,13 +313,13 @@
       file_server
     }
   }
-  # pgAdmin and the diagrams run only under the compose profile `inspect`. Without them the
-  # proxy fails with 502; say so in a sentence anyone can read (the diagrams link is shown to
-  # every member). orig_uri: handle_path has already stripped /inspect/schema.
+  # pgAdmin and the diagrams start with the stack. If one is down the proxy fails with 502; say
+  # so in a sentence anyone can read (the diagrams link is shown to every member). orig_uri:
+  # handle_path has already stripped /inspect/schema.
   handle_errors 502 503 {
     @inspect expression `{http.request.orig_uri.path}.startsWith("/inspect/")`
     handle @inspect {
-      respond "This inspection tool is not running on this installation. An administrator can start it with: docker compose --profile inspect up -d pgadmin schema-docs" 503
+      respond "This inspection tool is not running on this installation. An administrator can start it again with ./scripts/start.sh, which starts every service." 503
     }
   }
 }

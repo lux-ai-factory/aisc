@@ -159,6 +159,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
     volumes:
       - engine_rabbitmq_data:/var/lib/rabbitmq
+      # the consumer timeout above the worker's task limit, so a long test run is never handed out twice
+      - ./infra/rabbitmq/conf.d/10-aisc.conf:/etc/rabbitmq/conf.d/10-aisc.conf:ro
     networks:
       - engine-standalone
 

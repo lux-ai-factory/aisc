@@ -18,6 +18,8 @@ dependencies = [
     "cryptography>=43",
     # the ledger's store; the same pin as the engine
     "immudb-py==1.5.0",
+    # the proof files of checklist answers, one MinIO bucket per project
+    "minio>=7.2",
 ]
 
 [project.optional-dependencies]

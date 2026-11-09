@@ -65,7 +65,7 @@
   <form class="filters" id="filters">
     <select name="step"><option value="">every step</option><option value="0">Page visits, projects and Manage</option>
       <option value="1">1. Qualify</option><option value="2">2. Control objectives</option>
-      <option value="3">3. Tests and checklists</option><option value="4">4. Collect evidence</option>
+      <option value="3">3. Tests and checklists</option><option value="4">4. AI Assessment Sandbox</option>
       <option value="5">4. Results</option><option value="6">4. Report</option></select>
     <input name="action" placeholder="action, e.g. risk.rated"/>
     <input name="item_id" placeholder="item id"/>
@@ -98,7 +98,7 @@
   var next = null;        // the cursor of the page after the one on screen; null on the oldest
   // the ledger numbers the steps 0 to 6; the page names them as the project page does
   var STEPS = {0: 'Page visits, projects and Manage', 1: '1. Qualify', 2: '2. Control objectives',
-               3: '3. Tests and checklists', 4: '4. Collect evidence', 5: '4. Results', 6: '4. Report'};
+               3: '3. Tests and checklists', 4: '4. AI Assessment Sandbox', 5: '4. Results', 6: '4. Report'};
   document.getElementById('back').href = '/p/' + encodeURIComponent(slug);
   document.getElementById('meta').textContent = slug;
 

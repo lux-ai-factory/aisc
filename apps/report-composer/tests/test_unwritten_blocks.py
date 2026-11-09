@@ -45,7 +45,8 @@ def editor(client, auth, blocks):
 
 
 def li_text(doc, iid):
-    return doc.find("li", attrs={"data-instance-id": iid}).get_text(" ", strip=True)
+    """The section's form in the inspector, where the hint is written out."""
+    return doc.find(attrs={"data-body-for": iid}).get_text(" ", strip=True)
 
 
 def test_built_in_blocks_holding_the_placeholder_are_flagged(client_v2, auth):

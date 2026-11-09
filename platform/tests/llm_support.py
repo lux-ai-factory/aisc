@@ -17,6 +17,7 @@ SECRETS_KEY = Fernet.generate_key().decode()
 INTERNAL_TOKEN = "pytest-internal-" + uuid.uuid4().hex  # the card agent's
 #: the risk mapper's: each agentic system has a token of its own and resolves only itself
 RISK_TOKEN = "pytest-risk-" + uuid.uuid4().hex
+CHART_TOKEN = "pytest-chart-" + uuid.uuid4().hex
 
 
 def new_key() -> str:

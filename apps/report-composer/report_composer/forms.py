@@ -4,8 +4,12 @@ Python decides every field; the page only draws what this returns. Labels and he
 schema's `title` and `description`, enum labels from `x-aisc-enum-labels`. Options marked
 `x-aisc-more` go under "More options" after the main ones; options with `x-aisc-show-if` are hidden
 while the named option has another value. "All or a list" options are radios and checkboxes, enum
-lists are checkbox lists, and the commentary has a field of its own. A block without annotations
-gets labels made from its option names, all of them main.
+lists are checkbox lists, and the commentary has a field of its own. An object of texts marked
+`x-aisc-per-choice-of` (the Exported results block's comments) gets one text box per choice of the option it
+names, hidden while that option lists other choices, labelled "Commentary: <choice>" and drawn with the
+section's own commentary. An "all or a list" option marked `x-aisc-section-per-choice` (each choice a section of
+its own) has no All radio: every choice is a checkbox, all checked for "all", and all checked saves "all". A block without annotations gets labels made from its
+option names, all of them main.
 """
 from __future__ import annotations
 
@@ -42,6 +46,22 @@ def _hidden(show_if, values: dict) -> bool:
     return any(values.get(option) not in (allowed or []) for option, allowed in show_if.items())
 
 
+def _text_per_choice(field: dict, prop: dict, values: dict, choices: dict) -> None:
+    """One text box per choice of the option `x-aisc-per-choice-of` names; the texts of choices not offered
+    now are kept aside, so saving the form does not lose them."""
+    source = prop["x-aisc-per-choice-of"]
+    texts = field["value"] if isinstance(field["value"], dict) else {}
+    listed = values.get(source)
+    listed = {str(v) for v in listed} if isinstance(listed, list) else None
+    options = [{"value": str(o["value"]), "label": "Commentary: " + (o.get("label") or str(o["value"])),
+                "text": texts.get(str(o["value"])) or "",
+                "hidden": listed is not None and str(o["value"]) not in listed}
+               for o in choices.get(source) or [] if not isinstance(o.get("value"), dict)]
+    offered = {o["value"] for o in options}
+    field.update(widget="text-per-choice", kind="text-map", per_choice_of=source, options=options,
+                 kept={k: v for k, v in texts.items() if k not in offered})
+
+
 def _field(name: str, prop: dict, values: dict, choices: dict, required: set) -> dict | None:
     value = values.get(name)
     show_if = prop.get("x-aisc-show-if") if isinstance(prop.get("x-aisc-show-if"), dict) else None
@@ -56,6 +76,8 @@ def _field(name: str, prop: dict, values: dict, choices: dict, required: set) ->
     types = _types(prop)
     if name == "commentary":
         field.update(widget="commentary", kind="str", light=True)
+    elif "object" in types and isinstance(prop.get("x-aisc-per-choice-of"), str):
+        _text_per_choice(field, prop, values, choices)
     elif "array" in types and items.get("type") == "object":
         # the Summary block's own coverage links: step 4 sets the links, so this is neither shown nor sent
         return None
@@ -63,7 +85,9 @@ def _field(name: str, prop: dict, values: dict, choices: dict, required: set) ->
         inner = _array_of(prop)
         options = list(choices.get(name) or _enum_options(inner.get("enum") or [],
                                                           inner.get("x-aisc-enum-labels") or labels))
-        field.update(widget="all-or-list", kind="all-or-list", options=options, filter=len(options) > FILTER_ABOVE)
+        field.update(widget="all-or-list", kind="all-or-list", options=options, filter=len(options) > FILTER_ABOVE,
+                     every=bool(prop.get("x-aisc-section-per-choice")),
+                     all_label=prop.get("x-aisc-all-label") if isinstance(prop.get("x-aisc-all-label"), str) else None)
     elif "array" in types:
         enum = items.get("enum")
         if enum:

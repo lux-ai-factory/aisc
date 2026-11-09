@@ -3,7 +3,7 @@ refusals every router answers with, and the ledger's check of a witnessed reques
 from __future__ import annotations
 
 from aisc_identity import Caller
-from aisc_identity.access import ADMIN_ROLE, Admitted, Refused, admit
+from aisc_identity.access import ADMIN_ROLE, Admitted, Refused, admit, at_least
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -86,3 +86,56 @@ def admin_project(slug: str, caller: Caller) -> dict:
 
 def secrets_unavailable(exc: llm_store.SecretsKeyError) -> HTTPException:
     return HTTPException(status_code=503, detail=str(exc))
+
+
+#: Who may do what with a project's connections, their uses, its model keys and its helper models: the rank each
+#: action takes ("viewer", "editor", "owner" of the project, or "admin", a platform admin only). A platform admin
+#: counts as owner of every project. The routes of connections.py, connectivity.py, helpers.py and llm.py name an
+#: action, never a role (tests/test_admission_actions.py).
+ACTIONS: dict[str, str] = {
+    # Manage > Connections: the connections themselves, keys included
+    "connection.read": "admin",
+    "connection.write": "admin",
+    "connection.test": "admin",
+    "connection.protocols": "viewer",
+    "target.read": "viewer",
+    "target.sync": "editor",
+    "target.file": "admin",
+    "allowlist.read": "owner",
+    "allowlist.write": "owner",
+    # Manage > Connectivity: what a connection is used for
+    "connectivity.read": "owner",
+    "connectivity.settings": "admin",          # every connection's settings, beside its uses (an owner sees each
+                                               # one's name, label, kind and uses only)
+    "use.agent": "admin",                      # a Configurator agent's model, and the models offered for it
+    "use.tool": "admin",                       # any connection without a target as a test tool: its key goes to plugins
+    "use.tool.provider": "owner",              # a provider connection as a test tool, or a test tool stopped
+    # model keys and the agents' choices (Manage > LLM)
+    "llm.read": "admin",
+    "llm.write": "admin",
+    # helper models
+    "helper.read": "viewer",
+    "helper.write": "owner",
+}
+
+
+def project_for(slug: str, caller: Caller, action: str) -> dict:
+    """The project, for a caller `action` admits (ACTIONS): a stranger gets 404, a lesser rank 403."""
+    needed = ACTIONS[action]
+    if needed == "admin":
+        return admin_project(slug, caller)
+    role_or_404(slug, caller, needed)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    return found
+
+
+def allowed_actions(slug: str, caller: Caller) -> set[str]:
+    """The actions of ACTIONS this caller may take in the project (a member's view of what it may manage)."""
+    try:
+        seen = admitted(slug, caller)
+    except Refused:
+        return set()
+    return {action for action, needed in ACTIONS.items()
+            if (seen.admin if needed == "admin" else at_least(seen.role, needed))}

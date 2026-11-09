@@ -32,9 +32,10 @@ with the default one:
 3. **System components** (always there): one row per component, with its type (VAIR terms first, then AISC's own
    kinds), its role and whether it is built in-house or by a third party.
 4. **Risk identification** (when the questionnaire has it): one row per risk, written as a chain: what could go
-   wrong, its source, the weakness, the consequence, the kind of harm, who is affected, what is affected, the control
-   and the follow-up control. The source, the consequence and both controls have a VAIR term beside the free text;
-   the kind of harm and what is affected are chosen from VAIR terms; who is affected is chosen from a list.
+   wrong, its source, the weakness, the consequence, the kind of harm, who is affected and what is affected. The
+   source and the consequence have a VAIR term beside the free text; the kind of harm and what is affected are
+   chosen from VAIR terms; who is affected is chosen from a list. The card identifies risks only: it does not record
+   what the provider does about them ("control" means only the assessment's controls).
 
 To save typing, **upload a document** (.pdf, .docx, .txt, .md or .markdown) describing the system: the prefill reads
 it with text rules (no model) and proposes answers. If the form already has answers, you choose whether it fills only
@@ -76,7 +77,7 @@ you can:
 |---|---|
 | `qualification-web` | the form and the card pages; it needs the platform (to make versions), `qualification-ontology` and `qualification-pdf` |
 | `qualification-prefill` | turns an uploaded document into proposed answers, with text rules only; stores nothing |
-| `qualification-agents` | the card agent; it uses the model and key chosen for the project under Manage > AI assistants, or else the stack's own setting |
+| `qualification-agents` | the card agent; it uses the model and key chosen for the project under Manage > Connectivity > Configurator agents, or else the stack's own setting |
 | `qualification-ontology` | builds the card graph (AIRO, typed with VAIR) from the answers, the agent's additions and your corrections; no card can be built or downloaded without it |
 | `qualification-pdf` | renders the card as PDF |
 | `qualification-migrate` | brings every project database's `qualification` schema up to date at start, then exits |

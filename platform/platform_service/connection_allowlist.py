@@ -31,7 +31,7 @@ from platform_service import connection_store
 STACK_SERVICES = frozenset({
     "aisc-backend", "aisc-backend-ledger", "aisc-backend-migrate", "aisc-backend-standalone", "aisc-eval", "aisc-eval-flower",
     "aisc-eval-worker", "aisc-eval-worker-standalone", "aisc-webapp", "aisc-webapp-standalone",
-    "backend", "caddy", "catalogue-private", "control-objectives", "control-objectives-migrate", "controls-migrate",
+    "backend", "caddy", "catalogue-private", "chart-assistant", "control-objectives", "control-objectives-migrate", "controls-migrate",
     "controls-pdf", "controls-web", "dashboard", "dashboard-migrate", "dashboard-redis", "devpi", "devpi-standalone",
     "eval", "immudb", "immudb-key", "isolate", "keycloak", "ledger-pool", "make_buckets", "minio", "minio-standalone",
     "oauth2-proxy", "pgadmin", "platform", "plugin-publisher", "postgres",

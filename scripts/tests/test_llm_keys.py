@@ -102,20 +102,6 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     assert "src" not in scripts[0].lower(), "no external script"
 
 
-def test_the_manage_menu_links_the_page_for_admins_only():
-    html = read(PROJECT_PAGE)
-    manage = re.search(r'<details[^>]*id="manage".*?</details>', html, re.S).group(0)
-    link = re.search(r'<a\b[^>]*id="llm-settings"[^>]*>(.*?)</a>', manage, re.S)
-    assert link, 'no <a id="llm-settings"> in the Manage menu'
-    assert link.group(1).strip() == "AI assistant models and keys"
-    script = script_of(html)
-    admin_gate = script.find("a.admin")
-    wiring = re.search(r"getElementById\('llm-settings'\)\.href\s*=\s*'/llm\.html\?project='\s*\+\s*"
-                       r"encodeURIComponent\(slug\)", script)
-    assert wiring, "the link's href is not set to /llm.html?project=<slug>"
-    assert admin_gate != -1 and wiring.start() > admin_gate, "the href is set outside the admin-only block"
-
-
 def test_non_admins_are_told_and_no_llm_call_is_made_first():
     html = read(PAGE)
     script = script_of(html)

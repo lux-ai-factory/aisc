@@ -62,9 +62,9 @@ def _is_origins(route):
 
 def _is_inspect_errors(key, value):
     """Another intended change, after this test was written: the launcher site's error routes, which say
-    in a sentence that pgAdmin or the diagrams are off (compose profile `inspect`, 2026-10 simplification).
+    in a sentence that pgAdmin or the diagrams are down and how to start them again.
     They answer only a failed /inspect/ request, so they change no route the gateway compares."""
-    return key == "errors" and "--profile inspect" in json.dumps(value)
+    return key == "errors" and "is not running on this installation" in json.dumps(value)
 
 
 def _is_sign_in(handler):

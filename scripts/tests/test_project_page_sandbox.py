@@ -1,5 +1,5 @@
 """The project page as two blocks:
-"Plan the assessment" with its three steps, an arrow down, then step 4, Collect evidence."""
+"Plan the assessment" with its three steps, an arrow down, then step 4, AI Assessment Sandbox."""
 import re
 
 from conftest import ROOT
@@ -39,7 +39,7 @@ def test_an_arrow_down_then_the_sandbox_card():
                   r'<section class="block sandbox">\s*<div class="row one">\s*'
                   r'<a class="card" id="sandbox-card"[^>]*>(.*?)</a>', markup(), re.S)
     assert m, "no arrow down to the sandbox card"
-    assert "<h2>4. Collect evidence</h2>" in m.group(1)
+    assert "<h2>4. AI Assessment Sandbox</h2>" in m.group(1)
     assert "<p>Answer the checklists, run the tests, see the results and compose the report, in one place.</p>" in m.group(1)
     assert re.search(r"getElementById\('sandbox-card'\)\.href\s*=\s*'/evidence\.html\?project='\s*\+\s*"
                      r"encodeURIComponent\(slug\)", html())

@@ -90,7 +90,7 @@ def test_the_step_filter_and_column_name_the_steps():
     """The ledger numbers steps 0 to 6; the page shows the project page's names for them."""
     html = LOGS.read_text()
     for value, label in (("0", "Page visits, projects and Manage"), ("1", "1. Qualify"), ("2", "2. Control objectives"),
-                         ("3", "3. Tests and checklists"), ("4", "4. Collect evidence"), ("5", "4. Results"),
+                         ("3", "3. Tests and checklists"), ("4", "4. AI Assessment Sandbox"), ("5", "4. Results"),
                          ("6", "4. Report")):
         assert f'<option value="{value}">{label}</option>' in html, label
     assert ">requests<" not in html and "<option>1</option>" not in html

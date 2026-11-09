@@ -67,6 +67,19 @@ MODELS_URL: dict[str, str] = {
     "xai": "https://api.x.ai/v1/models",
 }
 
+#: Where a hosted provider takes OpenAI-style chat calls, for a provider connection used as a test tool: its
+#: models URL without `/models`, except Google, whose OpenAI-compatible door is a path of its own.
+CHAT_BASE_URL: dict[str, str] = {
+    **{p: url.removesuffix("/models") for p, url in MODELS_URL.items()},
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+}
+
+
+def chat_base_url(provider: str) -> str | None:
+    """A hosted provider's OpenAI-style base URL, or None for one that is called at an address of its own."""
+    return CHAT_BASE_URL.get(provider)
+
+
 ANTHROPIC_VERSION = "2023-06-01"
 MAX_PAGES = 10
 MAX_BYTES = 5 * 1024 * 1024
@@ -235,6 +248,18 @@ def _is_mistral_chat(item) -> bool:
 
 def _ids_from(items, field) -> list:
     return [item.get(field) for item in items if isinstance(item, dict)]
+
+
+#: words in a model id that mark a model a judge or an attacker cannot chat with
+NOT_CHAT = ("embed", "whisper", "tts", "dall-e", "image", "moderation", "transcribe", "audio", "realtime", "search",
+            "rerank", "davinci", "babbage")
+
+
+def chat_first(ids: list[str]) -> list[str]:
+    """The ids with the chat models first, each part alphabetical."""
+    def not_chat(model_id: str) -> bool:
+        return any(word in model_id.lower() for word in NOT_CHAT)
+    return sorted(ids, key=lambda model_id: (not_chat(model_id), model_id))
 
 
 def _clean(ids) -> list[str]:

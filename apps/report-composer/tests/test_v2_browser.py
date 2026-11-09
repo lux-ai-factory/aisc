@@ -69,7 +69,18 @@ def live(client_v2, auth, token, fake_v2, bed, monkeypatch):
 
 
 def _li(page, iid):
+    """The section's row in the outline."""
     return page.locator(f'#blocks li[data-instance-id="{iid}"]')
+
+
+def _move(page, iid, where):
+    """Selects the section in the outline, then moves it with the inspector's Up or Down."""
+    _li(page, iid).click()
+    page.click(f'[data-inspector] [data-control="move-{where}"]')
+
+
+def _empty_flag(page, iid):
+    return _li(page, iid).locator('[data-flag="empty"]')
 
 
 def test_fix_the_preview_recovers_after_a_network_failure(live):
@@ -99,19 +110,19 @@ def test_fix_chapter_indentation_follows_a_move(live):
     cover, chapter, card = v2blk("cover"), v2blk("chapter", title="Evidence"), v2blk("ai_card")
     page, lay = live([cover, chapter, card])
     assert _li(page, card["instance_id"]).get_attribute("data-depth") == "1"
-    assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
+    assert _empty_flag(page, chapter["instance_id"]).count() == 0
 
-    _li(page, card["instance_id"]).locator('[data-control="move-up"]').click()
+    _move(page, card["instance_id"], "up")
     page.wait_for_function(
         f"""() => document.querySelector('#blocks li[data-instance-id="{card['instance_id']}"]').dataset.depth === "0" """,
         timeout=5000)
-    _li(page, chapter["instance_id"]).get_by_text("This chapter is empty.").wait_for(timeout=5000)
+    _empty_flag(page, chapter["instance_id"]).wait_for(timeout=5000)
 
-    _li(page, card["instance_id"]).locator('[data-control="move-down"]').click()
+    _move(page, card["instance_id"], "down")
     page.wait_for_function(
         f"""() => document.querySelector('#blocks li[data-instance-id="{card['instance_id']}"]').dataset.depth === "1" """,
         timeout=5000)
-    assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
+    assert _empty_flag(page, chapter["instance_id"]).count() == 0
 
 
 def test_fix_r2_5_an_older_outline_answer_arriving_last_is_ignored(live):
@@ -129,20 +140,20 @@ def test_fix_r2_5_an_older_outline_answer_arriving_last_is_ignored(live):
 
     page.route("**/outline", hold_first_outline)
     card_li = _li(page, card["instance_id"])
-    card_li.locator('[data-control="move-up"]').click()   # order 1: card before the chapter (depth 0)
+    _move(page, card["instance_id"], "up")                # order 1: card before the chapter (depth 0)
     deadline = time.monotonic() + 5
     while not held and time.monotonic() < deadline:
         page.wait_for_timeout(20)
     assert held, "the first outline request was not sent"
     with page.expect_response(lambda r: r.url.endswith("/outline"), timeout=5000):
-        card_li.locator('[data-control="move-down"]').click()  # order 2: card back in the chapter (depth 1)
+        page.click('[data-inspector] [data-control="move-down"]')  # order 2 (the card is still selected): card back in the chapter (depth 1)
     page.wait_for_timeout(300)
     assert card_li.get_attribute("data-depth") == "1"
     with page.expect_response(lambda r: r.url.endswith("/outline"), timeout=5000):
         held[0].continue_()                               # the answer for order 1 now arrives last
     page.wait_for_timeout(300)
     assert card_li.get_attribute("data-depth") == "1"
-    assert "This chapter is empty." not in _li(page, chapter["instance_id"]).inner_text()
+    assert _empty_flag(page, chapter["instance_id"]).count() == 0
 
 
 def test_numbers_follow_a_move_and_the_numbering_box(live):
@@ -156,7 +167,7 @@ def test_numbers_follow_a_move_and_the_numbering_box(live):
             timeout=5000)
 
     number_is(card, "1.1")
-    _li(page, card["instance_id"]).locator('[data-control="move-up"]').click()
+    _move(page, card["instance_id"], "up")
     number_is(card, "1")
     number_is(chapter, "2")
     page.locator('[data-control="numbering"]').uncheck()
@@ -164,3 +175,44 @@ def test_numbers_follow_a_move_and_the_numbering_box(live):
     number_is(chapter, "")
     page.locator('[data-control="numbering"]').check()
     number_is(card, "1")
+
+
+def test_select_a_section_write_its_commentary_and_save(live, client_v2, auth, monkeypatch):
+    """Selecting a row (Enter on it) opens its form in the inspector; the commentary written there is saved,
+    and the row gets the "note" flag from the outline Python answers."""
+    cover, card = v2blk("cover"), v2blk("ai_card")
+    page, lay = live([cover, card])
+
+    def body(b):
+        return page.locator(f'[data-inspector] [data-body-for="{b["instance_id"]}"]')
+
+    assert body(cover).is_visible() and not body(card).is_visible()     # the first section is selected
+    _li(page, card["instance_id"]).focus()
+    page.keyboard.press("Enter")
+    assert body(card).is_visible() and not body(cover).is_visible()
+    assert _li(page, card["instance_id"]).get_attribute("aria-current") == "true"
+    area = body(card).locator('[data-commentary] textarea[data-option="commentary"]')
+    area.fill("Accuracy held at 0.91.")
+    _li(page, card["instance_id"]).locator('[data-flag="note"]').wait_for(timeout=5000)
+    page.click('.toolbar [data-control="save"]')
+    page.locator("[data-state]").filter(has_text="Saved (revision 2)").wait_for(timeout=5000)
+    monkeypatch.setenv("PLATFORM_ORIGIN", "http://localhost")
+    saved = client_v2.get(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice")).json()
+    assert [b["options"].get("commentary") for b in saved["blocks"]] == [None, "Accuracy held at 0.91."]
+
+
+def test_the_add_menu_opens_closes_with_escape_and_selects_the_new_section(live):
+    page, _ = live([v2blk("cover")])
+    menu = page.locator("details[data-palette]")
+    menu.locator("summary").focus()
+    page.keyboard.press("Enter")
+    assert menu.get_attribute("open") is not None
+    page.keyboard.press("Escape")
+    assert menu.get_attribute("open") is None
+    menu.locator("summary").click()
+    menu.locator('button[data-add="ai_card"]').click()
+    assert menu.get_attribute("open") is None
+    rows = page.locator("#blocks > li[data-instance-id]")
+    assert rows.count() == 2 and rows.nth(1).get_attribute("aria-current") == "true"
+    new_id = rows.nth(1).get_attribute("data-instance-id")
+    assert page.locator(f'[data-inspector] [data-body-for="{new_id}"]').is_visible()

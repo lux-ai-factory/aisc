@@ -130,8 +130,6 @@ CREATE TABLE control_objectives.risk (
     consequence text NOT NULL,
     impact text NOT NULL,
     stakeholder text NOT NULL,
-    control text NOT NULL,
-    follow_up_control text NOT NULL,
     areas text[] NOT NULL,
     vair_terms text[] NOT NULL,
     provenance text NOT NULL,

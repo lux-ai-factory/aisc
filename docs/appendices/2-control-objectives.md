@@ -34,7 +34,7 @@ Custom objective sets and Objective profiles.
    counts as 0 here until both are rated.
 3. **Link objectives to risks.** Either by hand, risk by risk, or with **Suggest with AI**: the risk mapper (an AI
    assistant) proposes, for each risk nobody linked by hand, the objectives of the profile that mitigate it. Each
-   proposal must quote the risk's chain (the risk, its source, weakness, consequence, impact and controls). Unknown
+   proposal must quote the risk's chain (the risk, its source, weakness, consequence and impact). Unknown
    or repeated objectives and wrong quotes are sent back, for at most three attempts in all; what still fails is
    dropped. Links made by hand are replaced only if you tick **Also replace objectives I linked by hand**.
 4. **Pick the priority objectives.** An objective's priority score is the sum of the levels of the risks linked to it. The
@@ -63,7 +63,7 @@ counts 0 towards any score, and is never given a value it was not given.
 
 ## What it needs
 
-The risk mapper needs a model: the one chosen for the project under Manage > AI assistants (an admin's setting), or
+The risk mapper needs a model: the one chosen for the project under Manage > Connectivity > Configurator agents (an admin's setting), or
 else the stack's setting (`CONTROL_OBJECTIVES_LLM_*`; the default is a local Ollama `mistral` model, which needs no
 key). Rating and scoring use no model.
 

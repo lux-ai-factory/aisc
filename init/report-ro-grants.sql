@@ -20,7 +20,7 @@ DO $grants$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['public.aisc_comment', 'public.dashboards', 'public.dashboard_roles',
+    FOREACH t IN ARRAY ARRAY['public.aisc_comment', 'public.aisc_report_plot', 'public.dashboards', 'public.dashboard_roles',
                              'public.ab_role', 'public.dashboard_slices', 'public.slices',
                              'public.tables'] LOOP
         IF to_regclass(t) IS NOT NULL THEN

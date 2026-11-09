@@ -89,7 +89,9 @@ def test_busy_launcher_dashboard_and_sign_in_ports_are_moved(published):
     assert settings["LAUNCHER_EXTERNAL_URL"] == "http://localhost:8110/"
     assert settings["DASHBOARD_EXTERNAL_URL"] == "http://localhost:8198"
     assert settings["KEYCLOAK_URL_EXTERNAL"] == "http://localhost:8091"
-    assert len(moved) == 3
+    # the engine's port may be taken on the machine too (port 80 on the Windows runner): only the browser's count
+    browser_moves = [line for line in moved if "ENGINE_PORT" not in line]
+    assert len(browser_moves) == 3, moved
     assert no_problem_names(problems, 8100, 8188, 8081)
 
 

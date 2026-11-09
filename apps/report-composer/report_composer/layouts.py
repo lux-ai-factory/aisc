@@ -226,18 +226,49 @@ def _letters(n: int) -> str:
     return out
 
 
-def outline_numbers(blocks: list[dict], numbering: bool = False) -> list[str]:
-    """The report's section number per block ("" for none), so the editor shows what the report prints:
-    the renderer's structure.plan rule (chapters 1, 2, their blocks 1.1, 1.2, the appendix A, B; no number
-    for the cover or the appendix heading). An unwritten free text is left out of the report and takes no
-    number (the renderer's document.py). Nothing is numbered when numbering is off."""
-    out = []
+def section_parts(blocks: list[dict], block_types=(), choices=None) -> dict[str, list[str]]:
+    """The tools a block prints as sections of their own, by instance id: for an option marked
+    `x-aisc-section-per-choice` (the Exported results block's `dashboards`), the labels of the choices it picks
+    ("all": every one), in the order offered, which is the order the report prints them. A block that picks none,
+    or has no choices, is not listed: the report prints it as one section."""
+    by_type = {t["type_id"]: t for t in block_types or ()}
+    out: dict[str, list[str]] = {}
+    for b in blocks:
+        props = ((by_type.get(b["block_type"]) or {}).get("options_schema") or {}).get("properties") or {}
+        name = next((n for n, p in props.items() if isinstance(p, dict) and p.get("x-aisc-section-per-choice")), None)
+        if name is None:
+            continue
+        options = b.get("options") if isinstance(b.get("options"), dict) else {}
+        default = ((by_type[b["block_type"]].get("default_options") or {}).get(name, "all"))
+        picked = options.get(name, default)
+        offered = ((choices or {}).get(b["block_type"]) or {}).get(name) or []
+        wanted = None if picked == "all" else {str(v) for v in picked} if isinstance(picked, list) else set()
+        titles = [str(o.get("label") or o.get("value")) for o in offered
+                  if wanted is None or str(o.get("value")) in wanted]
+        if titles:
+            out[b.get("instance_id")] = titles
+    return out
+
+
+def _numbers(blocks: list[dict], numbering: bool, parts: dict) -> tuple[list[str], list[list[str]]]:
+    """The number of each block and of each of its parts (see outline_numbers)."""
+    out, part_numbers = [], []
     top = sub = 0
     in_appendix, chapter = False, None
+
+    def take() -> str:
+        nonlocal top, sub
+        if chapter is not None:
+            sub += 1
+            return f"{chapter}.{sub}"
+        top += 1
+        return _letters(top) if in_appendix else str(top)
+
     for b in blocks:
         t = b["block_type"]
         options = b.get("options") if isinstance(b.get("options"), dict) else {}
-        if not numbering or t == "cover" or (t == "free_text" and prose.is_placeholder(options.get("text"))):
+        titles = parts.get(b.get("instance_id")) or []
+        if t == "cover" or (t == "free_text" and prose.is_placeholder(options.get("text"))):
             out.append("")
         elif t == "appendix":
             in_appendix, top, chapter = True, 0, None
@@ -246,26 +277,67 @@ def outline_numbers(blocks: list[dict], numbering: bool = False) -> list[str]:
             top, sub = top + 1, 0
             chapter = _letters(top) if in_appendix else str(top)
             out.append(chapter)
-        elif chapter is not None:
-            sub += 1
-            out.append(f"{chapter}.{sub}")
+        elif titles:
+            out.append("")
+            part_numbers.append([take() for _ in titles])
+            continue
         else:
-            top += 1
-            out.append(_letters(top) if in_appendix else str(top))
-    return out
+            out.append(take())
+        part_numbers.append([])
+    if not numbering:
+        return [""] * len(out), [[""] * len(p) for p in part_numbers]
+    return out, part_numbers
 
 
-def outline(blocks: list[dict], block_types=(), numbering: bool = False) -> list[dict]:
+def outline_numbers(blocks: list[dict], numbering: bool = False, parts=None) -> list[str]:
+    """The report's section number per block ("" for none), so the editor shows what the report prints:
+    the renderer's structure.plan rule (chapters 1, 2, their blocks 1.1, 1.2, the appendix A, B; no number
+    for the cover or the appendix heading). An unwritten free text is left out of the report and takes no
+    number (the renderer's document.py). A block listed in `parts` (section_parts) prints one section per part:
+    it takes no number itself, its parts take one each. Nothing is numbered when numbering is off."""
+    return _numbers(blocks, numbering, parts or {})[0]
+
+
+EMPTY_CHAPTER = "This chapter is empty."
+NOTED = "This section has a commentary."
+
+
+def outline_flags(*, noted: bool, unwritten_hint: str | None, empty_chapter: bool, problems=()) -> list[dict]:
+    """The flags on a section's row in the editor's outline, as {name, label, title}, in this order: note (its
+    commentary is written), to write (a text still holds the placeholder), empty (a chapter without content),
+    problems (what saving or the preview refused, joined)."""
+    flags = []
+    if noted:
+        flags.append({"name": "note", "label": "note", "title": NOTED})
+    if unwritten_hint:
+        flags.append({"name": "to-write", "label": "to write", "title": unwritten_hint})
+    if empty_chapter:
+        flags.append({"name": "empty", "label": "empty", "title": EMPTY_CHAPTER})
+    if problems:
+        flags.append({"name": "problems", "label": "problems", "title": "; ".join(problems)})
+    return flags
+
+
+def outline(blocks: list[dict], block_types=(), numbering: bool = False, parts=None) -> list[dict]:
     """The editor's outline for any block order: {instance_id, depth, empty_chapter, unwritten, unwritten_hint,
-    number} per block; the editor redraws indentation, hints and numbers from this after a move or an
-    edit. `unwritten` names the options still holding the placeholder; a block type the
-    renderer does not describe uses the fixed list."""
+    number, noted, flags} per block, and `parts` [{title, number}] for a block listed in `parts` (section_parts:
+    the tools it prints a section of each); the editor redraws indentation, hints, numbers, parts and the row flags
+    from this after a move or an edit. `unwritten` names the options still holding the placeholder (a block type
+    the renderer does not describe uses the fixed list); `noted` says the commentary is written."""
     by_type = {t["type_id"]: t for t in block_types or ()}
+    parts = parts or {}
+    numbers, part_numbers = _numbers(blocks, numbering, parts)
     out = []
-    for b, (depth, empty), number in zip(blocks, outline_depths(blocks), outline_numbers(blocks, numbering)):
+    for b, (depth, empty), number, pn in zip(blocks, outline_depths(blocks), numbers, part_numbers):
         options = b.get("options") if isinstance(b.get("options"), dict) else {}
         names = prose.unwritten(b["block_type"], options, by_type.get(b["block_type"]))
-        out.append({"instance_id": b.get("instance_id"), "depth": depth, "empty_chapter": empty,
-                    "unwritten": names, "unwritten_hint": prose.unwritten_hint(b["block_type"], names),
-                    "number": number})
+        hint = prose.unwritten_hint(b["block_type"], names)
+        noted = prose.commentary_written(options)
+        entry = {"instance_id": b.get("instance_id"), "depth": depth, "empty_chapter": empty,
+                 "unwritten": names, "unwritten_hint": hint, "number": number, "noted": noted,
+                 "flags": outline_flags(noted=noted, unwritten_hint=hint, empty_chapter=empty)}
+        if pn:
+            entry["parts"] = [{"title": title, "number": n}
+                              for title, n in zip(parts[b.get("instance_id")], pn)]
+        out.append(entry)
     return out

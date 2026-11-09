@@ -42,6 +42,7 @@ platform	platform/platform_service/routes/projects.py	set_project_member_role	it
 platform	platform/platform_service/routes/projects.py	remove_project_member	its event is written one layer down, in the change's own transaction: member.removed (db.remove_member)
 platform	platform/platform_service/routes/projects.py	create_system_version	its event is written one layer down, in the change's own transaction: card_version.created (db.create_version)
 platform	platform/platform_service/routes/connections.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
+platform	platform/platform_service/routes/connections.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
 platform	platform/platform_service/routes/llm.py	save_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.saved (llm_store.save_provider)
 platform	platform/platform_service/routes/llm.py	remove_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.removed (llm_store.delete_provider)
 platform	platform/platform_service/routes/llm.py	save_llm_choice	its event is written one layer down, in the change's own transaction: llm.choice.saved (llm_store.save_choice)
@@ -71,4 +72,11 @@ platform	platform/platform_service/routes/catalogue.py	choose_catalogue	not reco
 platform	platform/platform_service/routes/catalogue.py	update_catalogue	not recorded yet: an admin refreshes the private catalogue's copy of the public one
 platform	platform/platform_service/routes/catalogue.py	put_local_dimensions	not recorded yet: an admin assigns requirement dimensions to a local plugin package
 platform	platform/platform_service/routes/connections.py	mint_run_pass	the worker asks for a run's pass before the plugin starts; nothing of the project changes (the run's own events are the engine's)
-platform	platform/platform_service/routes/connections.py	revoke_run_pass	the worker ends a run's pass when the run ends; nothing of the project changes
+platform	platform/platform_service/routes/connections.py	revoke_run_pass	the worker ends a run's pass when the run ends; its event is written one layer down, in the same transaction: run.trace.sealed (run_passes.revoke), a worker event of the run, not a person's act
+platform	platform/platform_service/routes/proof_files.py	store_proof_file	its event is the controls app's: control.proof.attached, written when it links the stored file to the answer
+platform	platform/platform_service/routes/connectivity.py	run_agent_on	its event is written one layer down, in the change's own transaction: connection.use.saved (llm_store.save_agent)
+platform	platform/platform_service/routes/connectivity.py	stop_agent_choice	its event is written one layer down, in the change's own transaction: connection.use.removed (llm_store.remove_agent)
+platform	platform/platform_service/routes/connectivity.py	use_as_tool	its event is written one layer down, in the change's own transaction: connection.use.saved (helper_store.use_as_tool)
+platform	platform/platform_service/routes/connectivity.py	stop_tool	its event is written one layer down, in the change's own transaction: connection.use.removed (helper_store.stop_tool)
+engine	apps/backend/aisc_backend/routers/evaluation.py	rename_evaluation	not recorded in the ledger yet: the engine audit log keeps who renamed the run and when (log_action)
+dashboard	apps/results-dashboard/aisc_ext/assistant/api.py	start	nothing of the project changes: the conversation and its mock database are the assistant's; a chart is recorded when it is validated (dashboard.assistant.validated)

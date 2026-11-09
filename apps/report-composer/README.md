@@ -1,7 +1,7 @@
 # Report composer
 
-The report composer is the Report of step 4 Collect evidence in AISC, the AI Assessment Sandbox Configurator
-(steps: 1 Qualify the AI system, 2 Set control objectives, 3 Choose tests and checklists, 4 Collect evidence).
+The report composer is the Report of step 4 AI Assessment Sandbox in AISC, the AI Assessment Sandbox Configurator
+(steps: 1 Qualify the AI system, 2 Set control objectives, 3 Choose tests and checklists, 4 AI Assessment Sandbox).
 It runs as the compose service `report-composer`, with `report-composer-migrate` (its database migrations) and
 `report-renderer` (which draws the documents, `apps/report-generator`).
 
@@ -52,14 +52,19 @@ The screens are drawn in Python (`report_composer/pages.py`, `templates/`); the 
 
 - `/p/{ref}/`: the layouts, built-in ones first; New layout and Import from file in the header; Open,
   Duplicate and Export on each row.
-- `/p/{ref}/layouts/{id}` (and `/layouts/new`, `/layouts/builtin-<slug>` read-only): the editor (name,
-  template, index, numbering, the grouped block palette, order, per-block options, Save, Generate report,
-  Delete) with the preview beside it, drawn with a version and period chosen in the preview pane and never
-  saved.
+- `/p/{ref}/layouts/{id}` (and `/layouts/new`, `/layouts/builtin-<slug>` read-only): the editor, full width.
+  One sticky toolbar holds the name, template, index, numbering, the preview's version and period (never
+  saved), Show, Generate and download, Save and Delete. Below it, three columns: the outline (one row per
+  section with its number and flags: note, to write, empty, problems, from `layouts.outline`; "+ Add a
+  section" opens the grouped block palette), the inspector (the selected section's options, its commentary
+  and More options) and the preview. A section that prints one numbered section per tool (Exported results: its
+  option marked `x-aisc-section-per-choice`) lists the tools it picks under its row, numbered as the report
+  numbers them (`layouts.section_parts`, sent to the outline route as `parts`); its tools are checkboxes, all
+  checked for "all" (also for a new section), and each tool's "Commentary: <tool>" box sits in the Commentary box.
 - `/p/{ref}/layouts/{id}/generate`: the Generate report form (version, period, other versions, compare with,
   PDF or Word), handled in Python.
-- `POST /p/{ref}/layouts/{id}/download-report`: Download report in the editor's preview pane; generates the
-  report with the pane's version, period and other-versions choice, lists it like any report and answers the
+- `POST /p/{ref}/layouts/{id}/download-report`: Generate and download in the editor's toolbar; generates the
+  report with the toolbar's version, period and other-versions choice, lists it like any report and answers the
   document itself, so the browser downloads it and stays on the editor.
 - `/p/{ref}/templates`: the templates (a report's look), one editor.
 - `/`: sends the browser to the launcher (`LAUNCHER_URL`).
@@ -78,7 +83,7 @@ This brings up the whole stack, the three services above included. To run Compos
 `uv run scripts/aisc.py secrets` prints the exact command for this install (an install served over https needs
 one more compose file than the others).
 
-Open a project on http://localhost:8100, then 4. Collect evidence and its **Report** heading, or go to
+Open a project on http://localhost:8100, then 4. AI Assessment Sandbox and its **Report** heading, or go to
 http://localhost/report-composer/p/<project pid>.
 
 Migrations run in `python -m report_composer.migrate` (every project database, in the one-shot

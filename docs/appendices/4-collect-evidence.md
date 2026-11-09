@@ -1,4 +1,4 @@
-# Appendix 4: Collect evidence
+# Appendix 4: AI Assessment Sandbox
 
 Back to [How AISC works](../architecture.md).
 
@@ -9,7 +9,7 @@ results are shown, and the report puts it all together for one version of the AI
 
 ## Where
 
-Project page, **4. Collect evidence**. The page (`homepage/evidence.html`, on the launcher's port) has an **AI card
+Project page, **4. AI Assessment Sandbox**. The page (`homepage/evidence.html`, on the launcher's port) has an **AI card
 version** selector, an **Evidence map** button with the version's coverage in one line ("4 of 6 objectives linked ·
 2 gaps"), and four columns: Answer checklists, Run tests, Results, Report. Each column's heading opens its
 application; under it are tiles.
@@ -29,7 +29,14 @@ are listed whatever the version.
 - A set of answers is a draft until closed; reopening it makes a new version. Each can be downloaded as PDF
   (`controls-pdf`).
 - Every answer is stamped with the AI card version that was latest when it was given.
-- Kept in schema `controls` of the project's database.
+- **Proof files.** An editor can attach files to a draft's answers as proof: at most 10 per question, 25 MB each,
+  documents and images only (PDF, PNG, JPEG, WebP, Word, Excel, PowerPoint, OpenDocument, CSV, text). The platform
+  reads each file's type from its bytes, and the extension must agree. Each file is listed with who attached it and
+  when, any member can download it, and the PDF lists it. Files are frozen when the answers are closed and carried
+  into the next version. Removing one only unlinks it: the platform keeps the file. Attaching and removing are
+  recorded in the ledger (`control.proof.attached`, `control.proof.removed`).
+- Kept in schema `controls` of the project's database; the proof files' bytes in the project's MinIO bucket
+  `proof-<pid>`.
 
 ## Run tests
 
@@ -40,17 +47,27 @@ are listed whatever the version.
 - **Configure** holds a test's saved settings. They can be exported to a `.json` file and imported again (an import
   is checked against the test's form).
 - **Run** sets up a run:
-  - **What is assessed**: the system or one component of the AI card, or a local model file uploaded in the engine's
-    Settings, never both. A test that calls the system needs a connection for it (Manage > Components and
-    connections).
+  - **What is assessed**: the system or one component of the AI card, or a local model file (a model component's
+    file uploaded under Manage > Connectivity > System under assessment), never both. A test that calls the system
+    needs a connection for it (Manage > Connectivity > System under assessment).
   - **Helper models**: for each role the test asks for (judge, attacker, grader, embedder or generator), one of the
-    project's helper models allowed that role (Manage > Helper models), and the model name it runs.
-  - **Datasets and models**: chosen from the project's components of the right type.
+    project's helper models allowed that role (Manage > Connectivity > Test tools), and the model name it runs.
+  - **Datasets and models**: chosen from the project's components of the right type: the test data uploaded in
+    the engine's Settings (**Test data**), and the files of the AI card's components uploaded under Manage.
   - **The settings**: one of the test's saved configurations.
 - `aisc-backend` records the run, stamps it with the latest AI card version, and queues it. `aisc-eval-worker`
   installs the test's package in a fresh environment (from `devpi`, or from its folder for a local one), runs it,
   and sends the measurements and the files the test writes back to `aisc-backend`, which keeps them in schema
-  `engine` and in `minio` (bucket `artifacts`).
+  `engine` and in `minio` (bucket `artifacts`). The ledger keeps each file's SHA-256.
+- Every call a test makes to the system under test goes through the platform's protocol endpoints, whatever the
+  test, and the platform records it before the answer goes back: the request as sent (input, history, settings),
+  the whole answer or the error, and when. A request the platform refuses to send is recorded too; a call that
+  cannot be recorded gets no answer. The records are append-only and chained (each one's hash covers the one
+  before), in schema `trace` of the project's database. When the test ends, passed or failed, the worker keeps
+  them as the run's file `system-under-test-calls.jsonl` (one line per call, then the seal: the number of calls
+  and the last hash), so they download from the run's page like its other files.
+- Not recorded: the calls a test makes to a helper model (a judge, for example), which the test makes itself
+  with the key the platform hands it.
 - When a test fails while it runs, the run is marked Failed: the run's other tests still running are stopped, and
   those not yet started do not start. A package that fails to install, or whose measurements cannot be sent back,
   stops the run the same way.
@@ -79,7 +96,7 @@ are listed whatever the version.
 what is not covered yet. It is the step's risk and control matrix carried through to the evidence, as finance teams
 keep it: every risk to its objective, every objective to the checks that prove it, and the gaps in plain sight.
 
-**Where:** the **Evidence map** button on Collect evidence opens its own page (`homepage/evidence-map.html`) for the
+**Where:** the **Evidence map** button on AI Assessment Sandbox opens its own page (`homepage/evidence-map.html`) for the
 selected AI card version.
 
 **The grid:**
@@ -90,15 +107,16 @@ selected AI card version.
 - A cell is a link (✓), a link you can make (☐), or empty (·) when the item does not carry the objective's dimension:
   a fairness test is never evidence for a cybersecurity objective.
 - Two columns on the right: **Linked** (does any item cover it: the design question) and **Evidence (vN)** (did the
-  linked items give data for this version: not covered, no evidence yet, evidence, or evidence with attention when a
-  linked test failed or a linked checklist's mean score is below 3).
+  linked items give data: a linked test on this version, a linked checklist by its latest answers whatever the
+  version; not covered, no evidence yet, evidence, or evidence with attention when a linked test failed on this
+  version or a linked checklist's latest mean score is below 3).
 - **Gaps only** and **Priority only** narrow the rows. An objective nothing covers is a gap, shown as one; AISC does
   not suggest links to fill it.
 
 **What you do:**
 
 - Click a ☐ to link. Click a ✓ to open the link: an optional note on **why it is evidence** (what result counts as a
-  pass), who linked it and when, the runs or answers of this version that count, and **Unlink**.
+  pass), who linked it and when, a test's runs on this version or a checklist's latest answers, and **Unlink**.
 - One test may be evidence for several objectives.
 - When the map is complete, someone other than the person who made its links presses **Mark reviewed**. A later
   change to the map clears the review. Links, notes and reviews are all in the project's activity log.

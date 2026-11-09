@@ -7,8 +7,11 @@ Read-only: nothing is run but `scripts/suites.py rows`.
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 import yaml
 
@@ -84,3 +87,57 @@ def test_verify_takes_its_modules_from_the_registry():
     text = (ROOT / "scripts/verify.sh").read_text()
     assert "<<'MODULES'" not in text
     assert "scripts/suites.py rows" in text
+
+
+#: compose build contexts that hold tests no row runs, with why
+NO_ROW = {}
+SKIPPED_FOLDERS = {"node_modules", ".venv", ".git", "__pycache__", "build", "dist"}
+
+
+def compose_build_contexts() -> set[str]:
+    """Every folder a compose file builds an image from, from the repository root (a ${VAR:-default} as its
+    default)."""
+    found = set()
+    for f in sorted(ROOT.glob("docker-compose*.yml")):
+        for service in (yaml.safe_load(f.read_text()).get("services") or {}).values():
+            build = service.get("build")
+            if build is None:
+                continue
+            context = build if isinstance(build, str) else build.get("context", ".")
+            context = re.sub(r"\$\{[A-Z_]+:-([^}]*)\}", r"\1", context)
+            found.add(str(Path(context)))
+    return found
+
+
+def holds_tests(folder: Path) -> bool:
+    """A tests/ or test/ folder, or a test file (test_*.py, *_test.py, *.test.* or *.spec.*), outside installed
+    dependencies."""
+    for here, dirs, files in os.walk(folder):
+        dirs[:] = [d for d in dirs if d not in SKIPPED_FOLDERS]
+        if {"tests", "test"} & set(dirs):
+            return True
+        if any(re.match(r"^(test_.+\.py|.+_test\.py|.+\.(test|spec)\.[cm]?[jt]sx?)$", f) for f in files):
+            return True
+    return False
+
+
+def test_every_compose_built_folder_with_tests_has_a_row():
+    """A module with tests and an image the stack builds is run by a row (its folder, one above it or one inside
+    it), or is named in NO_ROW with the reason; so a new module is not left to a hand-written list."""
+    missing = []
+    for context in sorted(compose_build_contexts()):
+        if not (ROOT / context).is_dir() or not holds_tests(ROOT / context) or context in NO_ROW:
+            continue
+        if not any(s.dir == context or context.startswith(s.dir + "/") or s.dir.startswith(context + "/")
+                   for s in suites.SUITES):
+            missing.append(context)
+    assert missing == []
+    for context in NO_ROW:
+        assert holds_tests(ROOT / context), f"{context} holds no tests any more: take it off NO_ROW"
+
+
+def test_beds_lists_the_module_environments_prepare_tests_makes():
+    out = subprocess.run([sys.executable, str(ROOT / "scripts/suites.py"), "beds"], capture_output=True, text=True,
+                         check=True).stdout
+    assert out == ("npm apps/qualification\nnpm apps/controls\n"
+                   "uv apps/control-objectives\nuv apps/report-composer\nuv apps/backend\n")

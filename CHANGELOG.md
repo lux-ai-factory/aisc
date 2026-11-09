@@ -1,5 +1,39 @@
 # Changelog of the aisc root repository (newest first).
 
+## Unreleased: hardening after the audit of every change since 31 October
+
+### Upgrading an existing install
+- Flower (the eval queue monitor) no longer starts with the stack: it read every project's task arguments on the
+  internal network without a login. Start it when needed with `COMPOSE_PROFILES=inspect ./scripts/start.sh`.
+- Sign-in lockout is on: five wrong passwords lock an account for 60 s, growing to at most 15 minutes. Start
+  applies the realm's lockout settings to an existing realm too.
+- The `platform` database no longer gives CONNECT and TEMPORARY to every role (PUBLIC); each module role keeps
+  its own. Applied by the database setup step at the next start.
+- The results dashboard creates two tables at start, `aisc_removed_chart` and `aisc_changed_chart`: plugin
+  default charts removed or changed with the chart assistant stay so through a tile sync.
+- `aisc.py drift` lists the running containers that no longer run what their image holds (read-only).
+
+### Changed
+- Dashboard events (Save to report, the chart assistant's validate, change and remove) now name their dashboard,
+  so the ledger accepts them; before, every one was rejected as belonging to no project.
+- Save to report: editors and admins only, and only under the name of a chart placed on that dashboard.
+- Chart assistant: it knows every plot by its definition, changes a matching plot in place (title, bar or line,
+  axis range, percentages), removes a plot only when the request asks to delete, and asks which plot when two
+  show the same thing; its query check no longer lets a WITH name hide a system table, and column names are
+  quoted wherever a validated chart uses them.
+- Connectivity: an owner may make only a provider connection a test tool, and sees each connection's name, kind
+  and use; admins see everything. The helpers page no longer removes or rewrites a connection made a tool on
+  Connectivity. Deleting a connection ends its uses.
+- Platform: proof files are type-checked without unpacking a whole archive member; a call to the system under
+  test is recorded even when it holds characters the database cannot store; a run's call trace still verifies
+  after the database rewrites its numbers, and its digest is sealed in the ledger when the run's pass ends.
+- One owner/admin rule table decides the connection, connectivity, helper and model routes.
+- Engine: Stop saves every stopped test and the run with one ledger event citing the person's request; a stopped
+  test stays stopped when the worker reports late; a plugin may not write files under the worker's own names.
+- Reports: the Exported results block keeps two dashboards of the same title apart and says its plots are as
+  saved; the "treated like the baseline" figure says how many runs it pools.
+- `scripts/suites.py` is the one list of test suites; every folder with tests that compose builds has a row.
+
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass
 
 ### Upgrading an existing install
@@ -7,6 +41,9 @@
   route answers without the key. Every plugin must take interface 0.4.0.
 - New secret `PLATFORM_ENGINE_TOKEN`: `uv run scripts/aisc.py start` adds it; a bare `docker compose up` fails
   until `uv run scripts/aisc.py secrets` is run.
+- New secret `PLATFORM_CONTROLS_TOKEN` (the checklists app's proof files): added the same way. The platform now
+  holds the stack's S3 settings and makes a MinIO bucket `proof-<pid>` per project; a project made before gets
+  its bucket with its first proof file.
 - Migrations applied at the next start: platform `0013_run_pass_use` and `0014_ledger_content_redaction`; every
   project database `0022_run_key_pass`, `0023_connection_secret_headers` and `0024_connection_capabilities`; the
   engine `0024_drop_stored_langbite_judge_keys`, which now changes nothing: the LangBiTe judge fields are removed
@@ -30,8 +67,42 @@
   the versions where a failing target fails the run instead of scoring as safe. The engine and worker install a
   plugin by exact version, so an install that holds 0.1.1 or 0.2.10 keeps the old code: once the branch each
   catalogue entry names carries the new version, install StrongREJECT and LangBiTe again from the catalogue.
+- Every project database gets `0028_target_file` at the next start (the uploaded file of a target).
+- Every project database gets `0030_connectivity` at the next start: provider keys, agent choices and helper models
+  move into connections (`connection.endpoint` kind `provider`, `connection.use`); see Manage > Connectivity.
 
 ### Changes
+- The platform stops a run whose calls keep failing, for every plugin: after 3 failed calls in a row, or once more
+  than 5% of at least 20 sent calls failed, the run's next calls are not sent, are recorded `not_sent`
+  (`run_stopped`) and are refused with the reason (403). `PLATFORM_RUN_STOP_IN_A_ROW` (3),
+  `PLATFORM_RUN_STOP_RATE` (0.05) and `PLATFORM_RUN_STOP_AFTER` (20) set it; 0 turns a rule off.
+- Manage > Connectivity replaces AI assistant models and keys, Components and connections and Helper models in the
+  menu: one connection model (provider connections, their uses by the Configurator's agents and as test tools),
+  the assessed system kept apart by the database.
+- A model or data component of the AI card can be reached by an uploaded file, under Manage > Components and
+  connections (`PUT /projects/{slug}/targets/{key}/file`, up to `TARGET_FILE_MAX_MB`, 2048 by default): the
+  platform makes one engine model or dataset component for it and the engine stores the bytes; the row shows the
+  file's name, size and SHA-256. The engine's Settings panel, in the Configurator, is now **Test data**: it adds
+  datasets and datashapes only and no longer lists what the platform makes from the AI card. The run form is
+  unchanged.
+- One version of a test's package is on in a project: installing a version, or switching one on, turns the
+  package's other versions off (kept, with their settings and evaluations). The event of the install
+  (`plugin.installed`) or of the switch (`engine.plugin.toggled`) names the versions turned off (`turned_off`); the
+  engine lists the version on first and the run page shows only versions on.
+- Step 4's test tiles: one tile per test of a package, matched by its name, so a test whose class was renamed
+  between versions (LangBiTe Mijke 0.2.8 to 0.3.0) keeps one tile with the runs of every version; its Configure
+  and Run open the version on.
+- The documentation as one PDF: `scripts/docs_pdf.py` builds `build/AISC-documentation.pdf` from README.md and
+  docs/ in the look of a Word template given to it (not kept in the repository): links between
+  pages jump within it, links to other files go to GitHub, Mermaid diagrams become pictures. The Markdown stays
+  the only source. Keycloak's lockout threshold in the realm file is 5 wrong passwords (was Keycloak's default
+  of 30); lockout itself stays off.
+- Proof files for checklist answers: the platform takes a file from the controls app
+  (`POST /internal/projects/{pid}/proof-files`, its own token), reads its type from its bytes (PDF, Office,
+  OpenDocument, CSV, text, PNG, JPEG, WebP; the extension must agree), refuses one over 25 MB, stores it under
+  its own id with its SHA-256 in the project's bucket and never replaces or deletes it while the project
+  exists. The bucket is made with the project's database and removed when the project is deleted. Ledger
+  actions `control.proof.attached` and `control.proof.removed`.
 - The internal resolve routes answer a connection's descriptor without its key (`has_secret` says whether it has
   one), under a run pass and under the connections token alike; only the protocol doors and the Test button
   decrypt it. Resolve and run-key issuance no longer need `PLATFORM_SECRETS_KEY`.

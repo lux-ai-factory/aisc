@@ -9,7 +9,7 @@ The appendices give the details. One per step, plus Manage:
 - [Appendix 1: Qualify the AI system](appendices/1-qualify.md)
 - [Appendix 2: Set control objectives](appendices/2-control-objectives.md)
 - [Appendix 3: Choose tests and checklists](appendices/3-tests-and-checklists.md)
-- [Appendix 4: Collect evidence](appendices/4-collect-evidence.md)
+- [Appendix 4: AI Assessment Sandbox](appendices/4-collect-evidence.md)
 - [Appendix 5: Manage](appendices/manage.md), the project's settings that the steps rely on
 
 And four for developers and operators:
@@ -35,7 +35,7 @@ what the evidence shows.
 | **1. Qualify the AI system** | What is this system, what is it made of, and what can go wrong with it? | Answer the questionnaire (by default the Annex IV points 1 and 2), list the components, describe the risks; optionally prefill from a document and let an AI assistant suggest additions | The **AI card**, versioned (v1, v2, ...): the system, its components and its risk chains | Step 2 reads its risks; step 4 assesses the system or one of its components; the report shows it |
 | **2. Set control objectives** | Which control objectives must this system meet, and which matter most? | Rate each risk (impact x likelihood), link risks to objectives (by hand or with an AI assistant), choose the priority objectives | The **risk and control matrix**: rated risks, the objectives each one calls for, a priority score per objective, the priority objectives | Step 3 filters the catalogue by the objectives' dimensions; step 4 and the report use the selected objectives |
 | **3. Choose tests and checklists** | Which tests and checklists will produce the evidence? | Choose the project's catalogue once (public or private), filter it, install tests and checklists | Tests installed in the engine, checklists installed in the controls app | Step 4 runs and answers them |
-| **4. Collect evidence** | What do the tests and the answers show, which objective do they prove, and how is it reported? | Answer the checklists, run the tests, look at the results, link each objective to its evidence on the Evidence map, compose and download the report | Checklist answers, test runs and their results, the Evidence map (reviewed by a second person), reports (PDF or Word) | The people who read the report |
+| **4. AI Assessment Sandbox** | What do the tests and the answers show, which objective do they prove, and how is it reported? | Answer the checklists, run the tests, look at the results, link each objective to its evidence on the Evidence map, compose and download the report | Checklist answers, test runs and their results, the Evidence map (reviewed by a second person), reports (PDF or Word) | The people who read the report |
 
 **Step 1 does not decide the system's AI Act risk class.** Annex III classification is a legal judgement, which AISC
 leaves to people: the questionnaire lets you tag the Annex III areas that apply, and whoever composes the report
@@ -52,7 +52,7 @@ reports are per version. So everything in a report is about one version of the s
 flowchart TB
     B[Browser] -->|sign in| KC["keycloak (127.0.0.1:8081)"]
     B --> GW["caddy, asking oauth2-proxy"]
-    GW -->|":8100"| L["launcher pages: projects, the four steps,<br/>Collect evidence, Evidence map, Results, Manage<br/>+ catalogue-private at /project-catalogue/"]
+    GW -->|":8100"| L["launcher pages: projects, the four steps,<br/>AI Assessment Sandbox, Evidence map, Results, Manage<br/>+ catalogue-private at /project-catalogue/"]
     GW -->|":80"| APPS["qualification-web, control-objectives,<br/>controls-web, report-composer,<br/>engine: aisc-webapp + aisc-backend"]
     GW -->|":8188"| DASH["dashboard (Superset)"]
     L -->|"/api/*"| P["platform"]
@@ -66,6 +66,10 @@ flowchart TB
     W -->|"run pass; the test calls the platform's doors"| P
     P -->|"forwards to the connection"| SYS(("the AI system<br/>being assessed"))
     BE --> M[("minio")]
+    P -->|"proof files"| M
+    P --> IDX
+    BE --> IDX
+    P --> DASH
     P & APPS & BE & DASH --> DB[("postgres")]
     P & BE --> IM[("immudb")]
 ```
@@ -112,7 +116,7 @@ renderer and the dashboard).
 - **the project's catalogue** and the installs it starts;
 - **connections** to the AI system being assessed, and the **helper models** tests use as tools;
 - the **AI assistants'** models and keys for steps 1 and 2;
-- **the Evidence map**, the data of the Collect evidence and Results pages, and the dashboards;
+- **the Evidence map**, the data of the AI Assessment Sandbox and Results pages, and the dashboards;
 - the **ledger**: who did what, kept in `immudb`.
 
 ### 4. Running tests
@@ -134,7 +138,7 @@ that speaks none of these protocols is reached through an adapter plugin from `a
 ### Where data is kept
 
 In short: `postgres` holds the platform's database and one database per project (every step's records), `minio` the
-uploaded datasets and models and the files tests write, `devpi` the test packages, `immudb` the ledger, `keycloak`
+uploaded datasets and models, the files tests write and the checklists' proof files (one bucket per project), `devpi` the test packages, `immudb` the ledger, `keycloak`
 the accounts. [Appendix 8](appendices/data.md) has the full map.
 
 ## Reading further

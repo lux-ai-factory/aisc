@@ -11,9 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from platform_service import db, llm_catalogue, llm_store, secret_box
+from platform_service import connection_store, db, llm_catalogue, llm_store, secret_box
 from platform_service.projects import looks_like_pid
-from platform_service.routes.admission import _internal, admin_project, secrets_unavailable
+from platform_service.routes.admission import _internal, project_for, secrets_unavailable
 
 router = APIRouter()
 
@@ -121,7 +121,7 @@ def provider_view(provider: str, row: dict | None) -> dict:
 @router.get("/projects/{slug}/llm")
 def llm_settings(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
     """Every provider with its state, and each agentic system's choice (null: its environment)."""
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "llm.read")["pid"]
     rows = llm_store.providers(pid)
     chosen = llm_store.choices(pid)
     return {
@@ -138,7 +138,7 @@ def save_llm_provider(slug: str, provider: str, body: ProviderIn,
 
     An absent field keeps what is stored. Everything is validated before anything is
     encrypted or written."""
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "llm.write")["pid"]
     entry = catalogue_entry(provider)
     sent = {name for name in body.model_fields_set if getattr(body, name) is not None}
     if not sent:
@@ -164,15 +164,24 @@ def save_llm_provider(slug: str, provider: str, body: ProviderIn,
     fingerprint = None
     if key is not None and ledger_witness.mode() != "off":
         fingerprint = ledger_secrets.fingerprint(pid, key)            # never the key itself
-    row = llm_store.save_provider(pid, provider, ciphertext=ciphertext, base_url=base_url,
-                                  subject=caller.subject, key_fingerprint=fingerprint)
+    try:
+        row = llm_store.save_provider(pid, provider, ciphertext=ciphertext, base_url=base_url,
+                                      subject=caller.subject, key_fingerprint=fingerprint)
+    except connection_store.NameTaken:
+        raise _name_taken(provider) from None
     return provider_view(provider, row)
+
+
+def _name_taken(provider: str) -> HTTPException:
+    name = llm_store.connection_name(provider)
+    return HTTPException(status_code=409, detail=f"{name}, the connection {provider} is kept in, is a connection of "
+                                                 "another kind; rename or delete it first")
 
 
 @router.delete("/projects/{slug}/llm/providers/{provider}", status_code=204)
 def remove_llm_provider(slug: str, provider: str, caller: Caller = Depends(caller_dependency)) -> Response:
     """Remove a provider's key and base URL, unless a system still uses it."""
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "llm.write")["pid"]
     catalogue_entry(provider)
     outcome = llm_store.delete_provider(pid, provider)
     if isinstance(outcome, list):
@@ -186,7 +195,7 @@ def remove_llm_provider(slug: str, provider: str, caller: Caller = Depends(calle
 @router.get("/projects/{slug}/llm/providers/{provider}/models")
 def llm_provider_models(slug: str, provider: str, caller: Caller = Depends(caller_dependency)) -> dict:
     """The provider's models, asked live with this project's key: 200 with `error` on failure."""
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "llm.read")["pid"]
     entry = catalogue_entry(provider)
     row = llm_store.providers(pid).get(provider)
     if not is_usable(provider, row):
@@ -213,22 +222,25 @@ def save_llm_choice(slug: str, system: str, body: SystemChoiceIn,
                     caller: Caller = Depends(caller_dependency)) -> dict:
     """Choose a usable provider and a model for an agentic system (the model is not
     checked against the live list)."""
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "llm.write")["pid"]
     known_system(system)
     if body.provider not in llm_catalogue.PROVIDERS:
         raise HTTPException(status_code=422, detail=f"no provider {body.provider!r}")
     if not is_usable(body.provider, llm_store.providers(pid).get(body.provider)):
         raise HTTPException(status_code=422, detail=f"{body.provider} cannot be used in this project yet")
     model = clean_model(body.model)
-    llm_store.save_choice(pid, system, body.provider, model, subject=caller.subject,
-                          keyless_row=(body.provider == "ollama"))
+    try:
+        llm_store.save_choice(pid, system, body.provider, model, subject=caller.subject,
+                              keyless_row=(body.provider == "ollama"))
+    except connection_store.NameTaken:
+        raise _name_taken(body.provider) from None
     return {"system": system, "provider": body.provider, "model": model}
 
 
 @router.delete("/projects/{slug}/llm/systems/{system}", status_code=204)
 def remove_llm_choice(slug: str, system: str, caller: Caller = Depends(caller_dependency)) -> Response:
     """The system goes back to its own environment configuration."""
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "llm.write")["pid"]
     known_system(system)
     if not llm_store.delete_choice(pid, system):
         raise HTTPException(status_code=404, detail=f"{system} has no choice to remove")
@@ -239,7 +251,8 @@ def remove_llm_choice(slug: str, system: str, caller: Caller = Depends(caller_de
 
 
 #: The token each agentic system resolves itself with, by the variable that holds it.
-SYSTEM_TOKENS = {"card_agent": "PLATFORM_CARD_AGENT_TOKEN", "risk_mapper": "PLATFORM_RISK_MAPPER_TOKEN"}
+SYSTEM_TOKENS = {"card_agent": "PLATFORM_CARD_AGENT_TOKEN", "risk_mapper": "PLATFORM_RISK_MAPPER_TOKEN",
+                 "chart_assistant": "PLATFORM_CHART_ASSISTANT_TOKEN"}
 
 
 @router.get("/internal/projects/{pid}/llm/{system}")
@@ -287,5 +300,7 @@ def resolve_llm(pid: str, system: str, request: Request) -> JSONResponse:
                 return _internal(503, {"detail": str(exc)})
             except llm_store.KeyUnreadable as exc:
                 return _internal(409, {"detail": str(exc)})
+    # chat_base_url: where a hosted provider takes OpenAI-style chat calls (None for one at an address of its own)
     return _internal(200, {"configured": True, "provider": provider, "model": choice["model"],
-                           "base_url": base_url, "api_key": api_key})
+                           "base_url": base_url, "api_key": api_key,
+                           "chat_base_url": llm_catalogue.chat_base_url(provider)})

@@ -8,11 +8,24 @@
 # Node modules get node_modules/ from their lock (npm ci); Python modules get .venv/ from their
 # lock (uv sync --locked, so a lock out of date fails instead of being rewritten).
 # --check looks at presence only (not freshness), needs no node, npm or uv, and makes no network call.
+# The modules come from scripts/suites.py (its rows' bed field), the one list of them.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
-NODE_MODULES=(apps/qualification apps/controls)
-UV_MODULES=(apps/backend apps/control-objectives apps/report-composer)
+if ! BEDS=$(python3 "$ROOT/scripts/suites.py" beds); then
+  echo "prepare-tests: scripts/suites.py could not list the modules (python3 is needed)" >&2
+  exit 1
+fi
+NODE_MODULES=()
+UV_MODULES=()
+while read -r kind dir; do
+  case $kind in
+    npm) NODE_MODULES+=("$dir") ;;
+    uv) UV_MODULES+=("$dir") ;;
+  esac
+done <<BEDS
+$BEDS
+BEDS
 
 usage() { echo "usage: scripts/prepare-tests.sh [--check]" >&2; exit 2; }
 

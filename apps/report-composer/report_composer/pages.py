@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import builtin_layouts, builtin_reports, db, forms, groups, layouts, ledger, preview_with, prose, reports
+from . import builtin_layouts, builtin_reports, db, forms, groups, layouts, ledger, preview_with, reports
 from . import templates as looks
 from .errors import ApiError
 from .guards import guard
@@ -86,26 +86,36 @@ def _form_for(block_type: dict, options: dict, choices: dict) -> list[dict]:
     return forms.form_fields(block_type["options_schema"], values, choices)
 
 
+def _sections_per_choice(block_type: dict) -> bool:
+    """Whether a block type prints one section per choice of an option (x-aisc-section-per-choice)."""
+    props = (block_type.get("options_schema") or {}).get("properties") or {}
+    return any(isinstance(p, dict) and p.get("x-aisc-section-per-choice") for p in props.values())
+
+
 def _reference_choices(request: Request, project: dict, layout: dict, by_type: dict, system_pid) -> dict[str, dict]:
-    """The values each reference option of the layout's block types may take, by block type."""
+    """The values each reference option of the layout's block types may take, by block type; also for a type that
+    prints a section per choice, so a new section of it shows its choices (every tool checked) at once."""
     renderer = request.app.state.renderer
     choices: dict[str, dict] = {}
-    for t in {b["block_type"] for b in layout["blocks"]}:
+    wanted = {b["block_type"] for b in layout["blocks"]} | {k for k, t in by_type.items() if _sections_per_choice(t)}
+    for t in sorted(wanted):
         if t in by_type and layouts.reference_options(by_type[t]):
             choices[t] = renderer_call(renderer.choices, project["pid"], system_pid, t) or {} if system_pid else {}
     return choices
 
 
-def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, depth: int = 0,
-                   empty_chapter: bool = False, problems=(), number: str = "") -> dict:
-    """A block as the editor's outline draws it; an editor also gets its configure form. A block still
-    holding the placeholder in a prose option gets the unwritten hint."""
-    unwritten = prose.unwritten(block["block_type"], block["options"] or {}, block_type)
+def _outline_entry(block: dict, block_type: dict | None, choices: dict, editor: bool, place: dict,
+                   problems=()) -> dict:
+    """A block as the editor draws it: its outline row (number, depth, the flags of `place`, one entry of
+    layouts.outline, plus a problems flag) and, for an editor, its form in the inspector."""
+    messages = [p["message"] for p in problems]
     return {"instance_id": block["instance_id"], "block_type": block["block_type"],
             "title": (block["options"] or {}).get("title") or (block_type["title"] if block_type else None),
-            "known": block_type is not None, "depth": depth, "empty_chapter": empty_chapter, "number": number,
-            "unwritten_hint": prose.unwritten_hint(block["block_type"], unwritten),
-            "problems": [p["message"] for p in problems],
+            "known": block_type is not None, "depth": place["depth"], "empty_chapter": place["empty_chapter"],
+            "number": place["number"], "parts": place.get("parts") or [], "unwritten_hint": place["unwritten_hint"], "noted": place["noted"],
+            "problems": messages,
+            "flags": layouts.outline_flags(noted=place["noted"], unwritten_hint=place["unwritten_hint"],
+                                           empty_chapter=place["empty_chapter"], problems=messages),
             "fields": _form_for(block_type, block["options"], choices.get(block["block_type"], {}))
             if (block_type and editor) else []}
 
@@ -165,14 +175,15 @@ def editor_page(request: Request, ref: str, layout_id: str):
     by_block: dict[str, list] = {}
     for p in problems:
         by_block.setdefault(p.get("instance_id"), []).append(p)
-    depths = layouts.outline_depths(layout["blocks"])
-    numbers = layouts.outline_numbers(layout["blocks"], bool(layout.get("numbering")))
-    blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor, depth, empty,
-                             by_block.get(b["instance_id"], ()), number)
-              for b, (depth, empty), number in zip(layout["blocks"], depths, numbers)]
+    places = layouts.outline(layout["blocks"], types, bool(layout.get("numbering")),
+                             parts=layouts.section_parts(layout["blocks"], types, choices))
+    blocks = [_outline_entry(b, by_type.get(b["block_type"]), choices, editor, place,
+                             by_block.get(b["instance_id"], ()))
+              for b, place in zip(layout["blocks"], places)]
     palette = [{"label": grp["label"], "types": [
         {"type_id": t["type_id"], "title": t["title"], "description": t.get("description") or "",
-         "fields": _form_for(t, t.get("new_instance_options") or {}, {})} for t in grp["types"]]}
+         "fields": _form_for(t, t.get("new_instance_options") or {},
+                             choices.get(t["type_id"], {}) if _sections_per_choice(t) else {})} for t in grp["types"]]}
         for grp in groups.palette(types)] if editor else []
     template_ids = {t["id"] for t in templates}
     shown = {**asked, "system_id": system_pid}

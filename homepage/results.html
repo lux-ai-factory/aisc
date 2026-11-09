@@ -46,7 +46,7 @@
 <div class="shell">
 
 <div class="topbar">
-  <a class="back" id="back" href="/" aria-label="Back to Collect evidence">&larr; Collect evidence</a>
+  <a class="back" id="back" href="/" aria-label="Back to AI Assessment Sandbox">&larr; AI Assessment Sandbox</a>
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
@@ -123,7 +123,7 @@
 
   function render(data) {
     var crumb = $('crumb');
-    var back = el('a', null, 'Collect evidence · Results');
+    var back = el('a', null, 'AI Assessment Sandbox · Results');
     back.href = '/evidence.html?project=' + enc(slug) + (version ? '&version=' + enc(version) : '');
     crumb.appendChild(back);
     var target = (data.targets || []).filter(function (t) {
@@ -165,7 +165,7 @@
 
   function boot() {
     $('back').href = '/evidence.html?project=' + enc(slug);
-    $('back').textContent = '\u2190 Collect evidence';
+    $('back').textContent = '\u2190 AI Assessment Sandbox';
     aisc.call('/api/projects/' + enc(slug)).then(function (p) {
       if (p.status === 0) { show('page-message', p.message); return; }
       if (!p.ok) { show('page-message', 'No such project: ' + slug + '.'); return; }

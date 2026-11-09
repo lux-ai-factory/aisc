@@ -21,6 +21,11 @@
 #                 the run form; the AI System offers no LLM components
 #   identity      a plugin is told apart by its package and its name: two packages may ship a plugin of the
 #                 same name (a copy of a test), and selecting or running one never takes the other
+#   names         a plugin configuration is named when it is saved, shown by name in Config History and the
+#                 run form; Config History keeps the current configuration while the form is edited
+#   runs          a run is named at launch or afterwards, shown by its name, and can be stopped from the
+#                 progress bar
+#   versions      a project may hold several versions of a test's package, one on; the one off shows no card
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -54,7 +59,7 @@ webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place test
 webapp src/pages/PluginEvaluations.tsx reports, errors: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. Failed runs listed with their error
 webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words
 webapp src/pages/evaluationOutcome.test.ts errors: its tests
-webapp src/models/models.tsx errors: a run's plugin entry carries error_message
+webapp src/models/models.tsx errors, names: a run's plugin entry carries error_message; a configuration carries its name
 webapp src/pages/PluginEvaluations.noReport.test.ts reports: no source of the app links to /report any more
 webapp src/pages/PluginStartEvaluation.tsx wording, project, identity: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name
 webapp src/pages/PluginStartEvaluation.launch.test.ts wording: the start button says Launch Evaluation
@@ -67,7 +72,7 @@ webapp src/platform/gatewaySession.ts modes: the gateway's session
 webapp src/pluginCatalogue/PluginInstallContext.tsx modes: install target by mode
 webapp src/pluginCatalogue/installUri.ts modes: catalogue slug of an install link
 webapp src/pluginCatalogue/testing.tsx modes: test helpers without a new dependency
-webapp src/upstreamFilesUnchanged.test.ts modes: the upstream files the configurator no longer edits equal master; PluginEvaluations.tsx and PluginStartEvaluation.tsx are not among them (reports, wording)
+webapp src/upstreamFilesUnchanged.test.ts modes, names: the upstream files the configurator no longer edits equal master; PluginEvaluations.tsx and PluginStartEvaluation.tsx are not among them (reports, wording), nor ConfigHistory.tsx and PluginsConfig.tsx (names)
 webapp README.md docs: what the branch changes and how the frontend runs inside AISC
 webapp src/pages/OpenPluginFromUrl.tsx modes: the execution page opens the test ?plugin= names (step 4's E link)
 webapp src/pages/OpenPluginFromUrl.test.tsx modes: its test
@@ -78,5 +83,15 @@ webapp src/pages/pluginToggle.test.ts errors: its test
 webapp src/api/projectHelpers.ts helpers: the project's helper models, read from the platform for the run form (configurator)
 webapp src/components/AISystemSettings.tsx helpers: the AI System offers no LLM components; models a test uses as tools are the project's helper models
 webapp src/components/AISystemSettings.test.tsx helpers: its tests
-webapp src/components/plugin/PluginEvaluationForm.tsx helpers: the run form picks a helper model for each role a test asks for
-webapp src/components/plugin/PluginEvaluationForm.test.tsx helpers: its tests
+webapp src/components/plugin/PluginEvaluationForm.tsx helpers, names: the run form picks a helper model for each role a test asks for; it shows a configuration by its name
+webapp src/components/plugin/PluginEvaluationForm.test.tsx helpers, names: its tests
+webapp src/components/plugin/ConfigHistory.tsx names: a configuration is listed by its name and date
+webapp src/pages/PluginsConfig.tsx names: the Configuration name field sent with Save; Config History shows the saved current configuration, not the form's live preview; the fill-from-dataset control is called Load settings from Test data; the form opens with the current configuration, not empty
+webapp src/pages/PluginsConfig.names.test.tsx names: its tests
+webapp src/components/EvaluationProgressList.tsx runs: the progress bar titles each run with its name and offers Stop (src/components/runStop.test.ts)
+webapp src/components/runStop.ts runs: the progress bar's run title and its Stop call
+webapp src/components/runStop.test.ts runs: its tests
+webapp src/components/RenameRun.tsx runs: rename a finished run from its card on the Results page
+webapp src/pages/runName.ts runs: a run's name at launch and on its card, and the rename call
+webapp src/pages/runName.test.ts runs: its tests
+webapp src/pages/PluginStartEvaluation.versions.test.tsx versions: the version off shows no card and the last-used values come back for the version on

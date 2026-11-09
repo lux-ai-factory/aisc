@@ -21,8 +21,8 @@ def test_the_layouts_page_is_step_4s_report_layouts():
 
 def test_the_editor_speaks_of_sections_looks_and_the_table_of_contents():
     page = source("templates/editor.html.j2")
-    assert "<h2>Add a section</h2>" in page and "Add a module" not in page and "module" not in page
-    assert "<h2>Sections, in order</h2>" in page and "Blocks, in order" not in page
+    assert ">+ Add a section</summary>" in page and "Add a module" not in page and "module" not in page
+    assert "<h2>Outline</h2>" in page and "Blocks, in order" not in page
     assert 'class="type"' not in page                                   # no grey type id tags
     assert "<label>Look <select" in page and ">Platform look</option>" in page
     assert "> Table of contents</label>" in page and "> Number the sections</label>" in page
@@ -31,7 +31,7 @@ def test_the_editor_speaks_of_sections_looks_and_the_table_of_contents():
     assert "&larr; Report layouts</a>" in page and "All layouts of" not in page
     assert "tests and checklists give evidence" in page and "tests and controls" not in page
     assert "Make a template" not in page and "make a template" not in page
-    assert "Unknown section: {{ b.block_type }}" in page
+    assert "Unknown section: {{ block_type }}" in page
 
 
 def test_the_looks_page_speaks_of_looks():
@@ -65,3 +65,9 @@ def test_the_messages_name_looks_and_sections():
     assert 'f"the section type {b.get(\'block_type\')!r} is not available"' in layouts
     assert '"This file uses sections this installation does not offer: "' in presets
     assert 'f"A preset holds at most {layouts.MAX_BLOCKS} sections."' in presets
+
+
+def test_the_unknown_section_notice_says_it_must_be_removed_to_save():
+    page = source("templates/editor.html.j2")
+    assert "Unknown section: {{ block_type }}. Remove it to save the layout." in page
+    assert "save the layout as it is" not in page

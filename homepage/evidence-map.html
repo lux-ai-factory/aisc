@@ -94,7 +94,7 @@
 <div class="shell">
 
 <div class="topbar">
-  <a class="back" id="back" href="/" aria-label="Back to Collect evidence">&larr; Collect evidence</a>
+  <a class="back" id="back" href="/" aria-label="Back to AI Assessment Sandbox">&larr; AI Assessment Sandbox</a>
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
@@ -356,7 +356,7 @@
   function boot() {
     var back = '/evidence.html?project=' + enc(slug) + (version ? '&version=' + enc(version) : '');
     $('back').href = back;
-    var crumb = $('crumb'), a = el('a', null, 'Collect evidence');
+    var crumb = $('crumb'), a = el('a', null, 'AI Assessment Sandbox');
     a.href = back;
     crumb.appendChild(a);
     crumb.appendChild(el('span', null, '\u203a'));

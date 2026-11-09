@@ -47,7 +47,9 @@ def test_the_target_schema_is_made_in_every_project_database(client, as_user, ma
     cols = one(dsn, project["pid"], "select column_name from information_schema.columns where table_schema = 'target'"
                                     " and table_name = 'target' order by ordinal_position")
     assert [c[0] for c in cols] == ["key", "kind", "component_kind", "label", "first_card_number",
-                                    "last_card_number", "engine_component", "created_at", "updated_at"]
+                                    "last_card_number", "engine_component", "created_at", "updated_at",
+                                    "file_component", "file_name", "file_size", "file_sha256", "file_uploaded_at",
+                                    "file_uploaded_by"]
 
 
 def test_the_readers_read_targets_and_nothing_else_of_the_platform(client, as_user, make_project, stub, dsn):

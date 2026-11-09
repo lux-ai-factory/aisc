@@ -1,0 +1,1316 @@
+# The reader tables of a project database: what the chart assistant may know (never the rows).
+# Structure from the catalog; meanings written by hand for the tables charts use.
+control_objectives.graph:
+  columns:
+    digest:
+      meaning: ''
+      type: character varying
+    jsonld:
+      meaning: ''
+      type: text
+    project_id:
+      meaning: ''
+      type: character varying
+    uploaded_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+control_objectives.mapped_objective:
+  columns:
+    id:
+      meaning: ''
+      type: integer
+    objective_id:
+      meaning: ''
+      type: text
+    quote:
+      meaning: ''
+      type: text
+    rationale:
+      meaning: ''
+      type: text
+    risk_row_id:
+      meaning: ''
+      type: integer
+    source:
+      meaning: ''
+      type: text
+  meaning: ''
+control_objectives.mapping_run:
+  columns:
+    attempts:
+      meaning: ''
+      type: integer
+    error:
+      meaning: ''
+      type: text
+    findings:
+      meaning: ''
+      type: jsonb
+    model:
+      meaning: ''
+      type: text
+    project_id:
+      meaning: ''
+      type: character varying
+    ran_at:
+      meaning: ''
+      type: timestamp with time zone
+    stop:
+      meaning: ''
+      type: text
+    stops:
+      meaning: ''
+      type: jsonb
+  meaning: ''
+control_objectives.objective_key:
+  columns:
+    key:
+      meaning: ''
+      type: boolean
+    objective_id:
+      meaning: ''
+      type: text
+    project_id:
+      meaning: ''
+      type: character varying
+  meaning: ''
+control_objectives.objective_profile:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    created_by_sub:
+      meaning: ''
+      type: text
+    description:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: character varying
+    name:
+      meaning: ''
+      type: text
+  meaning: ''
+control_objectives.objective_profile_version:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    created_by_sub:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: character varying
+    number:
+      meaning: ''
+      type: integer
+    profile_id:
+      meaning: ''
+      type: character varying
+  meaning: ''
+control_objectives.objective_profile_version_item:
+  columns:
+    objective_id:
+      meaning: ''
+      type: text
+    position:
+      meaning: ''
+      type: integer
+    profile_version_id:
+      meaning: ''
+      type: character varying
+    set_code:
+      meaning: ''
+      type: text
+    set_version_number:
+      meaning: ''
+      type: integer
+  meaning: ''
+control_objectives.objective_selection:
+  columns:
+    objective_ids:
+      meaning: ''
+      type: ARRAY
+    priority_ids:
+      meaning: ''
+      type: ARRAY
+    project_id:
+      meaning: ''
+      type: character varying
+    updated_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+control_objectives.objective_set:
+  columns:
+    code:
+      meaning: ''
+      type: text
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    created_by_sub:
+      meaning: ''
+      type: text
+    description:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: character varying
+    name:
+      meaning: ''
+      type: text
+    next_number:
+      meaning: ''
+      type: integer
+  meaning: ''
+control_objectives.objective_set_version:
+  columns:
+    id:
+      meaning: ''
+      type: character varying
+    number:
+      meaning: ''
+      type: integer
+    published_at:
+      meaning: ''
+      type: timestamp with time zone
+    published_by:
+      meaning: ''
+      type: text
+    published_by_sub:
+      meaning: ''
+      type: text
+    set_id:
+      meaning: ''
+      type: character varying
+  meaning: ''
+control_objectives.objective_set_version_item:
+  columns:
+    assessment_mode:
+      meaning: ''
+      type: text
+    dimension:
+      meaning: ''
+      type: text
+    grounding_tier_flag:
+      meaning: ''
+      type: text
+    label:
+      meaning: ''
+      type: text
+    legal_basis:
+      meaning: ''
+      type: text
+    notes:
+      meaning: ''
+      type: text
+    objective_id:
+      meaning: ''
+      type: text
+    position:
+      meaning: ''
+      type: integer
+    set_version_id:
+      meaning: ''
+      type: character varying
+    standards_grounding:
+      meaning: ''
+      type: text
+    target:
+      meaning: ''
+      type: text
+    text:
+      meaning: ''
+      type: text
+  meaning: ''
+control_objectives.project:
+  columns:
+    carried:
+      meaning: ''
+      type: jsonb
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    id:
+      meaning: ''
+      type: character varying
+    name:
+      meaning: ''
+      type: text
+    objectives_digest:
+      meaning: ''
+      type: character varying
+    profile_version_id:
+      meaning: ''
+      type: character varying
+    system_id:
+      meaning: ''
+      type: uuid
+    updated_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+control_objectives.risk:
+  columns:
+    areas:
+      meaning: ''
+      type: ARRAY
+    consequence:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: integer
+    impact:
+      meaning: ''
+      type: text
+    mapped_by_hand:
+      meaning: ''
+      type: boolean
+    position:
+      meaning: ''
+      type: integer
+    project_id:
+      meaning: ''
+      type: character varying
+    provenance:
+      meaning: ''
+      type: text
+    rating_impact:
+      meaning: ''
+      type: integer
+    rating_likelihood:
+      meaning: ''
+      type: integer
+    risk_id:
+      meaning: ''
+      type: text
+    severity_comment:
+      meaning: ''
+      type: text
+    short_label:
+      meaning: ''
+      type: text
+    source:
+      meaning: ''
+      type: text
+    stakeholder:
+      meaning: ''
+      type: text
+    text:
+      meaning: ''
+      type: text
+    vair_terms:
+      meaning: ''
+      type: ARRAY
+    vulnerability:
+      meaning: ''
+      type: text
+  meaning: ''
+controls.checklist:
+  columns:
+    catalogueId:
+      meaning: ''
+      type: text
+    controlTopic:
+      meaning: ''
+      type: text
+    countryIds:
+      meaning: ''
+      type: ARRAY
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    description:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    questions_version:
+      meaning: ''
+      type: integer
+    regulationIds:
+      meaning: ''
+      type: ARRAY
+    sourceId:
+      meaning: ''
+      type: text
+    source_updated_at:
+      meaning: ''
+      type: timestamp with time zone
+    title:
+      meaning: ''
+      type: text
+    updated_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+controls.checklist_question:
+  columns:
+    article:
+      meaning: ''
+      type: text
+    category:
+      meaning: ''
+      type: text
+    checklistId:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    order:
+      meaning: ''
+      type: integer
+    text:
+      meaning: ''
+      type: text
+  meaning: ''
+controls.source:
+  columns:
+    citation:
+      meaning: ''
+      type: text
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    id:
+      meaning: ''
+      type: text
+    name:
+      meaning: ''
+      type: text
+    slug:
+      meaning: ''
+      type: text
+    updated_at:
+      meaning: ''
+      type: timestamp with time zone
+    url:
+      meaning: ''
+      type: text
+  meaning: ''
+controls.submission:
+  columns:
+    archived_at:
+      meaning: ''
+      type: timestamp with time zone
+    checklistId:
+      meaning: ''
+      type: text
+    closed_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    id:
+      meaning: ''
+      type: text
+    label:
+      meaning: ''
+      type: text
+    previousVersionId:
+      meaning: ''
+      type: text
+    questions_version:
+      meaning: ''
+      type: integer
+    status:
+      meaning: ''
+      type: USER-DEFINED
+    updated_at:
+      meaning: ''
+      type: timestamp with time zone
+    version:
+      meaning: ''
+      type: integer
+  meaning: ''
+controls.submission_answer:
+  columns:
+    answer:
+      meaning: ''
+      type: text
+    answered_at:
+      meaning: ''
+      type: timestamp with time zone
+    id:
+      meaning: ''
+      type: text
+    questionId:
+      meaning: ''
+      type: text
+    question_article:
+      meaning: ''
+      type: text
+    question_category:
+      meaning: ''
+      type: text
+    question_order:
+      meaning: ''
+      type: integer
+    question_text:
+      meaning: ''
+      type: text
+    score:
+      meaning: ''
+      type: integer
+    submissionId:
+      meaning: ''
+      type: text
+    system_version_number:
+      meaning: ''
+      type: integer
+    system_version_pid:
+      meaning: ''
+      type: uuid
+  meaning: ''
+controls.submission_answer_file:
+  columns:
+    answer_id:
+      meaning: ''
+      type: text
+    file_id:
+      meaning: ''
+      type: uuid
+    id:
+      meaning: ''
+      type: text
+    mime:
+      meaning: ''
+      type: text
+    name:
+      meaning: ''
+      type: text
+    sha256:
+      meaning: ''
+      type: text
+    size:
+      meaning: ''
+      type: integer
+    uploaded_at:
+      meaning: ''
+      type: timestamp with time zone
+    uploaded_by:
+      meaning: ''
+      type: text
+  meaning: ''
+engine.aisc_backend_aicomponent:
+  columns:
+    component_type:
+      meaning: component type
+      type: character varying
+    created_at:
+      meaning: created at
+      type: timestamp with time zone
+    data:
+      meaning: data
+      type: character varying
+    description:
+      meaning: description
+      type: character varying
+    file_size:
+      meaning: file size
+      type: bigint
+    id:
+      meaning: id
+      type: bigint
+    json_value:
+      meaning: json value
+      type: jsonb
+    name:
+      meaning: name
+      type: character varying
+    pid:
+      meaning: pid
+      type: uuid
+    source_dataset_id:
+      meaning: source dataset id
+      type: bigint
+    storage_container:
+      meaning: storage container
+      type: character varying
+    system_id:
+      meaning: system id
+      type: bigint
+  meaning: A component of the AI system in the engine; target.target.engine_component is its pid.
+engine.aisc_backend_aisystem:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    description:
+      meaning: ''
+      type: character varying
+    id:
+      meaning: ''
+      type: bigint
+    name:
+      meaning: ''
+      type: character varying
+    pid:
+      meaning: ''
+      type: uuid
+    project_id:
+      meaning: ''
+      type: bigint
+  meaning: ''
+engine.aisc_backend_artifact:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    data:
+      meaning: ''
+      type: character varying
+    description:
+      meaning: ''
+      type: character varying
+    evaluation_plugin_id:
+      meaning: ''
+      type: bigint
+    file_size:
+      meaning: ''
+      type: bigint
+    id:
+      meaning: ''
+      type: bigint
+    name:
+      meaning: ''
+      type: character varying
+    pid:
+      meaning: ''
+      type: uuid
+    storage_container:
+      meaning: ''
+      type: character varying
+  meaning: ''
+engine.aisc_backend_derived:
+  columns:
+    base_metric_id:
+      meaning: ''
+      type: bigint
+    expression:
+      meaning: ''
+      type: character varying
+    metric_ptr_id:
+      meaning: ''
+      type: bigint
+  meaning: ''
+engine.aisc_backend_direct:
+  columns:
+    metric_ptr_id:
+      meaning: ''
+      type: bigint
+  meaning: ''
+engine.aisc_backend_evaluation:
+  columns:
+    created_at:
+      meaning: when it was launched
+      type: timestamp with time zone
+    id:
+      meaning: row id; ordered by created_at it is the run number people see
+      type: bigint
+    pid:
+      meaning: public id
+      type: uuid
+    project_id:
+      meaning: -> the engine project
+      type: bigint
+    status:
+      meaning: Pending, Done or Failed
+      type: character varying
+    system_id:
+      meaning: '-> project.system.pid: the AI card version it was run on'
+      type: uuid
+    task:
+      meaning: the worker's task id
+      type: uuid
+  meaning: 'An evaluation: one launch, holding one or more test runs.'
+engine.aisc_backend_evaluationinput:
+  columns:
+    component_id:
+      meaning: -> engine.aisc_backend_aicomponent.id
+      type: bigint
+    created_at:
+      meaning: when it was given
+      type: timestamp with time zone
+    description:
+      meaning: free text
+      type: character varying
+    evaluation_plugin_id:
+      meaning: -> engine.aisc_backend_evaluationplugin.id
+      type: bigint
+    helper_ref:
+      meaning: a test tool used instead of a component
+      type: character varying
+    id:
+      meaning: row id
+      type: bigint
+    name:
+      meaning: the input's name (target, dataset...)
+      type: character varying
+    pid:
+      meaning: public id
+      type: uuid
+    value:
+      meaning: JSON value of the input
+      type: jsonb
+  meaning: An input given to a test run; the input named target is what was assessed.
+engine.aisc_backend_evaluationplugin:
+  columns:
+    created_at:
+      meaning: when it was made
+      type: timestamp with time zone
+    description:
+      meaning: free text
+      type: character varying
+    error_message:
+      meaning: why it failed, when it did
+      type: text
+    evaluation_id:
+      meaning: -> engine.aisc_backend_evaluation.id
+      type: bigint
+    finished_at:
+      meaning: when it ended
+      type: timestamp with time zone
+    id:
+      meaning: row id
+      type: bigint
+    name:
+      meaning: the run's name as people gave it (e.g. Age · OpenAI)
+      type: character varying
+    pid:
+      meaning: public id
+      type: uuid
+    plugin_config_id:
+      meaning: -> the configuration it ran with
+      type: bigint
+    started_at:
+      meaning: when it started
+      type: timestamp with time zone
+    status:
+      meaning: Pending, Running, Done or Failed
+      type: character varying
+  meaning: 'A test run: one test (plugin) inside an evaluation.'
+engine.aisc_backend_measurement:
+  columns:
+    created_at:
+      meaning: when it was stored
+      type: timestamp with time zone
+    description:
+      meaning: free text the test wrote
+      type: character varying
+    dimensions:
+      meaning: JSON labels of the result; its keys depend on the metric (see the project's metrics)
+      type: jsonb
+    direction:
+      meaning: whether higher scores are better
+      type: character varying
+    error:
+      meaning: why the result has no value, when it failed
+      type: character varying
+    id:
+      meaning: row id
+      type: bigint
+    metric_id:
+      meaning: '-> engine.aisc_backend_metric.id: what is measured'
+      type: bigint
+    name:
+      meaning: the result's own name (often the metric's)
+      type: character varying
+    observation_id:
+      meaning: '-> engine.aisc_backend_observation.id: the run''s batch of results'
+      type: bigint
+    pid:
+      meaning: public id
+      type: uuid
+    score:
+      meaning: the result's value
+      type: double precision
+    time:
+      meaning: when the result was made
+      type: timestamp with time zone
+    uncertainty:
+      meaning: uncertainty of the score, when given
+      type: double precision
+    unit:
+      meaning: unit of the score, when any
+      type: character varying
+  meaning: One result of one test run. What it measures is its metric; its labels are in dimensions.
+engine.aisc_backend_metric:
+  columns:
+    created_at:
+      meaning: when it was first seen
+      type: timestamp with time zone
+    description:
+      meaning: free text
+      type: character varying
+    id:
+      meaning: row id
+      type: bigint
+    name:
+      meaning: the metric's name, e.g. Conversation, Jailbreak success
+      type: character varying
+    pid:
+      meaning: public id
+      type: uuid
+    type_spec:
+      meaning: the metric's type, as the test declared it
+      type: character varying
+  meaning: What a result measures, by name (one row per metric name).
+engine.aisc_backend_metriccategory:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    description:
+      meaning: ''
+      type: character varying
+    id:
+      meaning: ''
+      type: bigint
+    name:
+      meaning: ''
+      type: character varying
+    pid:
+      meaning: ''
+      type: uuid
+  meaning: ''
+engine.aisc_backend_metriccategory_metrics:
+  columns:
+    id:
+      meaning: ''
+      type: bigint
+    metric_id:
+      meaning: ''
+      type: bigint
+    metriccategory_id:
+      meaning: ''
+      type: bigint
+  meaning: ''
+engine.aisc_backend_observation:
+  columns:
+    created_at:
+      meaning: when it was stored
+      type: timestamp with time zone
+    description:
+      meaning: free text
+      type: character varying
+    evaluation_id:
+      meaning: -> engine.aisc_backend_evaluation.id
+      type: bigint
+    evaluation_plugin_id:
+      meaning: '-> engine.aisc_backend_evaluationplugin.id: the test run'
+      type: bigint
+    id:
+      meaning: row id
+      type: bigint
+    name:
+      meaning: name
+      type: character varying
+    observer:
+      meaning: who stored it
+      type: character varying
+    pid:
+      meaning: public id
+      type: uuid
+    tool:
+      meaning: 'the test that made it: package::Plugin (vVERSION)'
+      type: character varying
+  meaning: A batch of results of one test run, stored together.
+engine.aisc_backend_plugin:
+  columns:
+    catalogue_slug:
+      meaning: ''
+      type: character varying
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    current_config_id:
+      meaning: ''
+      type: bigint
+    description:
+      meaning: ''
+      type: character varying
+    display_name:
+      meaning: ''
+      type: character varying
+    enabled:
+      meaning: ''
+      type: boolean
+    id:
+      meaning: ''
+      type: bigint
+    name:
+      meaning: ''
+      type: character varying
+    package_name:
+      meaning: ''
+      type: character varying
+    pid:
+      meaning: ''
+      type: uuid
+    project_id:
+      meaning: ''
+      type: bigint
+    version:
+      meaning: ''
+      type: character varying
+  meaning: ''
+engine.aisc_backend_project:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    description:
+      meaning: ''
+      type: character varying
+    id:
+      meaning: ''
+      type: bigint
+    name:
+      meaning: ''
+      type: character varying
+    pid:
+      meaning: ''
+      type: uuid
+    project_id:
+      meaning: ''
+      type: uuid
+    status:
+      meaning: ''
+      type: character varying
+  meaning: ''
+project.system:
+  columns:
+    created_at:
+      meaning: created at
+      type: timestamp with time zone
+    created_by:
+      meaning: created by
+      type: text
+    description:
+      meaning: description
+      type: text
+    name:
+      meaning: name
+      type: text
+    number:
+      meaning: the version number people see
+      type: integer
+    pid:
+      meaning: public id
+      type: uuid
+    provider:
+      meaning: provider
+      type: text
+    updated_at:
+      meaning: updated at
+      type: timestamp with time zone
+    version:
+      meaning: version
+      type: text
+  meaning: The AI card versions of the project.
+qualification.card_component:
+  columns:
+    airo_property:
+      meaning: ''
+      type: text
+    component_key:
+      meaning: ''
+      type: uuid
+    component_pid:
+      meaning: ''
+      type: uuid
+    component_type:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    linked_at:
+      meaning: ''
+      type: timestamp with time zone
+    name:
+      meaning: ''
+      type: text
+    object_name:
+      meaning: ''
+      type: text
+    qualification_id:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.knowledge_graph:
+  columns:
+    built_at:
+      meaning: ''
+      type: timestamp with time zone
+    digest:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    jsonld:
+      meaning: ''
+      type: text
+    nodes:
+      meaning: ''
+      type: integer
+    qualificationId:
+      meaning: ''
+      type: text
+    stamp:
+      meaning: ''
+      type: ARRAY
+    triples:
+      meaning: ''
+      type: integer
+    turtle:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.qualification:
+  columns:
+    company:
+      meaning: ''
+      type: text
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    deployer_term:
+      meaning: ''
+      type: text
+    description:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    intendedDeployers:
+      meaning: ''
+      type: text
+    localityTags:
+      meaning: ''
+      type: ARRAY
+    marketFormTags:
+      meaning: ''
+      type: ARRAY
+    ontologyExtracted:
+      meaning: ''
+      type: jsonb
+    ontologyPatch:
+      meaning: ''
+      type: jsonb
+    ontology_at:
+      meaning: ''
+      type: timestamp with time zone
+    provider_term:
+      meaning: ''
+      type: text
+    purpose:
+      meaning: ''
+      type: text
+    questionnaire_version_id:
+      meaning: ''
+      type: text
+    sectorTags:
+      meaning: ''
+      type: ARRAY
+    systemName:
+      meaning: ''
+      type: text
+    systemVersion:
+      meaning: ''
+      type: text
+    system_id:
+      meaning: ''
+      type: uuid
+    system_type:
+      meaning: ''
+      type: text
+    targetSystemTags:
+      meaning: ''
+      type: ARRAY
+    targetUseCase:
+      meaning: ''
+      type: text
+    targetUsers:
+      meaning: ''
+      type: text
+    updated_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+qualification.qualification_answer:
+  columns:
+    answer:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    qualificationId:
+      meaning: ''
+      type: text
+    questionId:
+      meaning: ''
+      type: text
+    toolId:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.qualification_risk:
+  columns:
+    affected:
+      meaning: ''
+      type: text
+    consequence:
+      meaning: ''
+      type: text
+    consequence_term:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    impactAreas:
+      meaning: ''
+      type: ARRAY
+    impact_term:
+      meaning: ''
+      type: text
+    position:
+      meaning: ''
+      type: integer
+    qualificationId:
+      meaning: ''
+      type: text
+    risk:
+      meaning: ''
+      type: text
+    source:
+      meaning: ''
+      type: text
+    source_term:
+      meaning: ''
+      type: text
+    vulnerability:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.question:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    id:
+      meaning: ''
+      type: text
+    local_id:
+      meaning: ''
+      type: text
+    scope:
+      meaning: ''
+      type: text
+    set_id:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.question_set:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    description:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    name:
+      meaning: ''
+      type: text
+    origin:
+      meaning: ''
+      type: text
+    retired_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+qualification.question_set_version:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    number:
+      meaning: ''
+      type: integer
+    set_id:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.question_set_version_item:
+  columns:
+    annex_point:
+      meaning: ''
+      type: text
+    citation:
+      meaning: ''
+      type: text
+    group_label:
+      meaning: ''
+      type: text
+    position:
+      meaning: ''
+      type: integer
+    question_id:
+      meaning: ''
+      type: text
+    required:
+      meaning: ''
+      type: boolean
+    set_version_id:
+      meaning: ''
+      type: text
+    text:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.questionnaire:
+  columns:
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    description:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    listed:
+      meaning: ''
+      type: boolean
+    name:
+      meaning: ''
+      type: text
+    origin:
+      meaning: ''
+      type: text
+    retired_at:
+      meaning: ''
+      type: timestamp with time zone
+  meaning: ''
+qualification.questionnaire_version:
+  columns:
+    blocks:
+      meaning: ''
+      type: ARRAY
+    created_at:
+      meaning: ''
+      type: timestamp with time zone
+    created_by:
+      meaning: ''
+      type: text
+    id:
+      meaning: ''
+      type: text
+    number:
+      meaning: ''
+      type: integer
+    questionnaire_id:
+      meaning: ''
+      type: text
+  meaning: ''
+qualification.questionnaire_version_item:
+  columns:
+    position:
+      meaning: ''
+      type: integer
+    question_id:
+      meaning: ''
+      type: text
+    questionnaire_version_id:
+      meaning: ''
+      type: text
+    set_version_id:
+      meaning: ''
+      type: text
+  meaning: ''
+target.target:
+  columns:
+    component_kind:
+      meaning: component kind
+      type: text
+    created_at:
+      meaning: created at
+      type: timestamp with time zone
+    engine_component:
+      meaning: -> engine.aisc_backend_aicomponent.pid
+      type: uuid
+    file_component:
+      meaning: file component
+      type: uuid
+    file_name:
+      meaning: file name
+      type: text
+    file_sha256:
+      meaning: file sha256
+      type: text
+    file_size:
+      meaning: file size
+      type: bigint
+    file_uploaded_at:
+      meaning: file uploaded at
+      type: timestamp with time zone
+    file_uploaded_by:
+      meaning: file uploaded by
+      type: text
+    first_card_number:
+      meaning: first card number
+      type: integer
+    key:
+      meaning: system or component:<id>
+      type: text
+    kind:
+      meaning: system or component
+      type: text
+    label:
+      meaning: the name people see, e.g. OpenAI back-end
+      type: text
+    last_card_number:
+      meaning: last card number
+      type: integer
+    updated_at:
+      meaning: updated at
+      type: timestamp with time zone
+  meaning: 'What a test can assess: the system or one of its components; label is how people name it (e.g. OpenAI back-end).'

@@ -83,13 +83,13 @@ INSERT INTO qualification.knowledge_graph (id, "qualificationId", digest, turtle
 
 -- `affected` and `impactAreas` are vocabulary ids (fixture airo_vocab.json); the rest is free text.
 -- inserted out of order: the block orders by position
-INSERT INTO qualification.qualification_risk (id, "qualificationId", "position", risk, source, vulnerability, consequence, affected, "impactAreas", control, "followUpControl") VALUES
-  ('qr-2', 'q-a2', 2, 'Opaque refusals', 'Model complexity', NULL, 'Applicants cannot contest', 'user', '{fundamental_rights}', 'Explanations', NULL),
-  ('qr-1', 'q-a2', 1, 'Bias against applicants <script>alert(1)</script>', 'Training data', 'Historic bias', 'Unfair refusals', 'operator', '{health,safety}', 'Bias audit', 'Quarterly review'),
-  ('qr-v1', 'q-a1', 1, 'Old risk V1MARK', 'x', NULL, 'x', 'operator', '{}', 'x', NULL),
-  ('qr-b', 'q-b1', 1, 'Beta risk BETAMARK', 'x', NULL, 'x', 'user', '{}', 'x', NULL),
-  ('qr-e2', 'q-e2', 1, 'Echo risk E2MARK', 'x', NULL, 'x', 'user', '{}', 'x', NULL),
-  ('qr-e1', 'q-e1', 1, 'Echo risk E1MARK', 'x', NULL, 'x', 'user', '{}', 'x', NULL);
+INSERT INTO qualification.qualification_risk (id, "qualificationId", "position", risk, source, vulnerability, consequence, affected, "impactAreas") VALUES
+  ('qr-2', 'q-a2', 2, 'Opaque refusals', 'Model complexity', NULL, 'Applicants cannot contest', 'user', '{fundamental_rights}'),
+  ('qr-1', 'q-a2', 1, 'Bias against applicants <script>alert(1)</script>', 'Training data', 'Historic bias', 'Unfair refusals', 'operator', '{health,safety}'),
+  ('qr-v1', 'q-a1', 1, 'Old risk V1MARK', 'x', NULL, 'x', 'operator', '{}'),
+  ('qr-b', 'q-b1', 1, 'Beta risk BETAMARK', 'x', NULL, 'x', 'user', '{}'),
+  ('qr-e2', 'q-e2', 1, 'Echo risk E2MARK', 'x', NULL, 'x', 'user', '{}'),
+  ('qr-e1', 'q-e1', 1, 'Echo risk E1MARK', 'x', NULL, 'x', 'user', '{}');
 
 -- ── control objectives (assessments) ─────────────────────────────────────────
 INSERT INTO control_objectives.project (id, name, objectives_digest, created_at, updated_at, project_id, system_id) VALUES
@@ -99,13 +99,13 @@ INSERT INTO control_objectives.project (id, name, objectives_digest, created_at,
   ('coe1', 'Echo v1', 'd4', now(), now(), 'e0000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001'),
   ('coe2', 'Echo v2', 'd5', now(), now(), 'e0000000-0000-4000-8000-000000000001', 'e2000000-0000-4000-8000-000000000002');
 
-INSERT INTO control_objectives.risk (id, project_id, risk_id, "position", text, short_label, source, vulnerability, consequence, impact, stakeholder, control, follow_up_control, areas, vair_terms, provenance, rating_impact, rating_likelihood) VALUES
-  (201, 'coa2', 'R-1', 1, 'Bias against applicants', 'Bias', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 4, 3),
-  (202, 'coa2', 'R-2', 2, 'Opaque refusals', 'Opacity', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 2, NULL),
-  (101, 'coa1', 'R-1', 1, 'Old risk V1MARK', 'Old', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 1, NULL),
-  (301, 'cob1', 'R-1', 1, 'Beta risk BETAMARK', 'Beta', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 1, NULL),
-  (401, 'coe1', 'R-1', 1, 'Echo risk E1MARK', 'Echo1', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 1, NULL),
-  (402, 'coe2', 'R-1', 1, 'Echo risk E2MARK', 'Echo2', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, 2);
+INSERT INTO control_objectives.risk (id, project_id, risk_id, "position", text, short_label, source, vulnerability, consequence, impact, stakeholder, areas, vair_terms, provenance, rating_impact, rating_likelihood) VALUES
+  (201, 'coa2', 'R-1', 1, 'Bias against applicants', 'Bias', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 4, 3),
+  (202, 'coa2', 'R-2', 2, 'Opaque refusals', 'Opacity', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 2, NULL),
+  (101, 'coa1', 'R-1', 1, 'Old risk V1MARK', 'Old', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 1, NULL),
+  (301, 'cob1', 'R-1', 1, 'Beta risk BETAMARK', 'Beta', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 1, NULL),
+  (401, 'coe1', 'R-1', 1, 'Echo risk E1MARK', 'Echo1', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 1, NULL),
+  (402, 'coe2', 'R-1', 1, 'Echo risk E2MARK', 'Echo2', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 3, 2);
 
 -- version 2 of Alpha: objectives R1.1, R2.1, R4.1, R5.1 (the fixture CSV labels them)
 INSERT INTO control_objectives.mapped_objective (id, risk_row_id, objective_id, quote, rationale) VALUES

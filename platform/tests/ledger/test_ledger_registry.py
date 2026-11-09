@@ -35,7 +35,8 @@ REQUIRED = [
     # platform and Manage
     "project.created", "project.deleted", "member.added", "member.role_changed", "member.removed",
     "card_version.created", "llm.provider.saved", "llm.provider.removed", "llm.choice.saved",
-    "connection.saved", "connection.deleted", "connection.tested", "allowlist.host.allowed",
+    "connection.saved", "connection.deleted", "connection.tested", "connection.use.saved", "connection.use.removed",
+    "allowlist.host.allowed",
     "allowlist.host.removed",
     # step 1
     "question_set.created", "question_set.version_created", "question_set.retired",
@@ -336,3 +337,43 @@ def test_only_the_settings_route_deletes_a_secret():
     action = REGISTRY["engine.secret.deleted"]
     assert action.caused_by == (SETTINGS_ONLY_SECRET_DELETE,)
     assert action.per_request == 1
+
+
+def test_a_plot_the_chart_assistant_removes_is_recorded_from_the_message_that_asked_for_it():
+    removed = REGISTRY["dashboard.assistant.removed"]
+    assert removed.item_type == "chart" and removed.details_keys == ("dashboard",)
+    assert removed.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "message"),)
+
+
+def test_a_validated_chart_may_say_which_plot_it_replaced():
+    assert "replaces" in REGISTRY["dashboard.assistant.validated"].details_keys
+
+
+
+def test_a_plot_the_chart_assistant_changes_in_place_is_recorded_from_the_message_that_asked_for_it():
+    changed = REGISTRY["dashboard.assistant.changed"]
+    assert changed.item_type == "chart" and changed.details_keys == ("dashboard",)
+    assert changed.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "message"),)
+
+
+def test_one_message_may_remove_several_plots_each_with_its_own_event():
+    assert REGISTRY["dashboard.assistant.removed"].per_request is None
+
+
+def test_a_person_stopping_a_run_on_the_engine_is_recorded_from_the_stop_request():
+    stopped = REGISTRY["engine.evaluation.stopped"]
+    assert stopped.emitters == ("engine",) and stopped.item_type == "evaluation"
+    assert stopped.actor_kinds == ("user",) and stopped.per_request == 1
+    assert stopped.details_keys == ("status_before", "tests")
+    (cause,) = stopped.caused_by
+    assert cause[0] == "engine" and cause[1] == "POST"
+    m = re.match(cause[2], "/api/v1/evaluations/0b6f3c4e-1111-2222-3333-444455556666/stop")
+    assert m and m.group("item") == "0b6f3c4e-1111-2222-3333-444455556666"
+    assert stopped.routes == (("engine", "apps/backend/aisc_backend/routers/evaluation.py", "stop_evaluation"),)
+
+
+def test_deleting_a_connection_may_end_each_of_its_uses_with_its_own_event():
+    removed = REGISTRY["connection.use.removed"]
+    assert removed.per_request is None
+    assert any(app == "platform" and method == "DELETE" and re.match(path, "/api/projects/p/connections/judge-x")
+               for app, method, path in removed.caused_by)

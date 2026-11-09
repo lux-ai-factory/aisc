@@ -41,11 +41,11 @@ INSERT INTO qualification.card_component (id, qualification_id, component_pid, a
   ('cc-m2a', 'q-m2', 'f2c00000-0000-4000-8000-000000000001', 'hasModel', 'Example Assistant chat model', 'model', 'example-assistant', '2026-09-18 09:00+00'),
   ('cc-m2b', 'q-m2', 'f2c00000-0000-4000-8000-000000000002', 'hasTestingData', 'Example FAQ', 'dataset', 'faq.csv', '2026-09-18 10:00+00');
 
-INSERT INTO qualification.qualification_risk (id, "qualificationId", "position", risk, source, vulnerability, consequence, affected, "impactAreas", control, "followUpControl") VALUES
-  ('qr-m1', 'q-m1', 1, 'Wrong answer', 'Model', NULL, 'User given wrong information', 'user', '{}', 'Review', NULL),
-  ('qr-m2a', 'q-m2', 1, 'Wrong answer', 'Model', NULL, 'User given wrong information', 'user', '{}', 'Review', NULL),
-  ('qr-m2b', 'q-m2', 2, 'Biased answers', 'Training data', NULL, 'Unequal treatment', 'user', '{fundamental_rights}', 'Bias tests', NULL),
-  ('qr-d1', 'q-d1', 1, 'Delta risk', 'x', NULL, 'x', 'user', '{}', 'x', NULL);
+INSERT INTO qualification.qualification_risk (id, "qualificationId", "position", risk, source, vulnerability, consequence, affected, "impactAreas") VALUES
+  ('qr-m1', 'q-m1', 1, 'Wrong answer', 'Model', NULL, 'User given wrong information', 'user', '{}'),
+  ('qr-m2a', 'q-m2', 1, 'Wrong answer', 'Model', NULL, 'User given wrong information', 'user', '{}'),
+  ('qr-m2b', 'q-m2', 2, 'Biased answers', 'Training data', NULL, 'Unequal treatment', 'user', '{fundamental_rights}'),
+  ('qr-d1', 'q-d1', 1, 'Delta risk', 'x', NULL, 'x', 'user', '{}');
 
 -- ── control objectives: (impact, likelihood) in version 2: (5, 4) rating 20 Critical, (3, -) 9 Medium,
 -- (1, 2) 2 Low, (-, -) not rated, (4, -) 12 High; an unrated part counts 3 ──
@@ -54,16 +54,16 @@ INSERT INTO control_objectives.project (id, name, objectives_digest, created_at,
   ('com2', 'Mike v2', 'dm2', now(), now(), 'f0000000-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000002'),
   ('cod1', 'Delta v1', 'dd1', now(), now(), 'd0000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000001');
 
-INSERT INTO control_objectives.risk (id, project_id, risk_id, "position", text, short_label, source, vulnerability, consequence, impact, stakeholder, control, follow_up_control, areas, vair_terms, provenance, rating_impact, rating_likelihood) VALUES
-  (601, 'com2', 'R-1', 1, 'Wrong answer', 'Customer support', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 5, 4),
-  (602, 'com2', 'R-2', 2, 'Biased answers', 'Bias', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, NULL),
-  (603, 'com2', 'R-3', 3, 'Outdated information', 'Outdated', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 1, 2),
-  (604, 'com2', 'R-4', 4, 'Unclear limits', 'Limits', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', NULL, NULL),
-  (605, 'com2', 'R-5', 5, 'Unmapped risk', 'Unmapped', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 4, NULL),
+INSERT INTO control_objectives.risk (id, project_id, risk_id, "position", text, short_label, source, vulnerability, consequence, impact, stakeholder, areas, vair_terms, provenance, rating_impact, rating_likelihood) VALUES
+  (601, 'com2', 'R-1', 1, 'Wrong answer', 'Customer support', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 5, 4),
+  (602, 'com2', 'R-2', 2, 'Biased answers', 'Bias', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 3, NULL),
+  (603, 'com2', 'R-3', 3, 'Outdated information', 'Outdated', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 1, 2),
+  (604, 'com2', 'R-4', 4, 'Unclear limits', 'Limits', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', NULL, NULL),
+  (605, 'com2', 'R-5', 5, 'Unmapped risk', 'Unmapped', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 4, NULL),
   -- version 1: R-1 was impact 3 x likelihood 3 = 9 (20 in version 2), R-9 went away in version 2
-  (651, 'com1', 'R-1', 1, 'Wrong answer', 'Customer support', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, 3),
-  (659, 'com1', 'R-9', 2, 'Old risk M1MARK', 'OldM1', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 2, NULL),
-  (701, 'cod1', 'R-1', 1, 'Delta risk', 'Delta', 's', 'v', 'c', 'i', 'st', 'ctl', 'fu', '{}', '{}', 'card', 3, NULL);
+  (651, 'com1', 'R-1', 1, 'Wrong answer', 'Customer support', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 3, 3),
+  (659, 'com1', 'R-9', 2, 'Old risk M1MARK', 'OldM1', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 2, NULL),
+  (701, 'cod1', 'R-1', 1, 'Delta risk', 'Delta', 's', 'v', 'c', 'i', 'st', '{}', '{}', 'card', 3, NULL);
 
 -- version 2: R1.1 (impact 5), R2.1 (3), R4.1 (1), R5.1 (not rated); R-5 maps to nothing.
 -- version 1: R1.1 and R3.1 (R3.1 removed and R2.1, R4.1, R5.1 added in version 2)

@@ -80,6 +80,30 @@ def create(pid, token: str, name: str, value: str, engine_pid: str | None = None
     return str(made["pid"])
 
 
+def create_file_component(pid, token: str, component_type: str, name: str, card_target: str) -> str:
+    """A new `model` or `dataset` component holding the uploaded file of the card target `card_target`
+    (json_value.card_target, so the engine's test data panel can leave it out); its pid."""
+    made = _call("POST", f"/api/v1/projects/{engine_project(pid, token)}/components", pid, token,
+                 {"name": name, "component_type": component_type, "json_value": {"card_target": card_target}})
+    return str(made["pid"])
+
+
+#: an upload may be large: the engine stores it before it answers
+UPLOAD_TIMEOUT_S = 900
+
+
+def upload(pid, token: str, component: str, file_name: str, stream) -> None:
+    """The bytes of `stream` as the file of `component`, through the engine's own upload route."""
+    try:
+        r = httpx.put(f"{_base()}/api/v1/components/{component}/data", timeout=UPLOAD_TIMEOUT_S,
+                      files={"file": (file_name, stream, "application/octet-stream")},
+                      headers={"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid)})
+    except httpx.HTTPError as exc:
+        raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
+    if r.status_code >= 300:
+        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code)
+
+
 def rename(pid, token: str, component: str, name: str) -> None:
     _call("PATCH", f"/api/v1/components/{component}", pid, token, {"name": name})
 

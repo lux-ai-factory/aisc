@@ -89,7 +89,9 @@ def test_new_layout_save_then_generate(live, fake_v2):
     page.click('.page-actions [data-control="start-new-layout"]')
     page.wait_for_url("**/layouts/new")
     page.fill('.toolbar input[name="name"]', "Browser layout")
+    page.click("[data-palette] > summary")                 # "+ Add a section" opens the menu
     page.click('[data-palette] button[data-add="cover"]')
+    page.click("[data-palette] > summary")                 # adding closed it
     page.click('[data-palette] button[data-add="test_runs"]')
     _shot(page, "2-new-layout")
     # created at .../layouts, never .../layouts/ and a slash redirect, which behind TLS sent the browser to
@@ -101,7 +103,7 @@ def test_new_layout_save_then_generate(live, fake_v2):
     assert redirected == []
     page.wait_for_selector("main[data-api]")
     _shot(page, "3-saved-layout")
-    # Download report, next to Show in the preview's form: generates and downloads, same page
+    # Generate and download, next to Show in the toolbar's preview choice: generates and downloads, same page
     page.select_option('form[data-control="preview-with"] select[name="system_id"]', IDS["A_V2"])
     page.fill('form[data-control="preview-with"] input[name="period_from"]', "2026-09-10")
     page.click('[data-control="download-report"] summary')

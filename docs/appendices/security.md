@@ -30,7 +30,7 @@ Who may do what, where the secrets are, and the limits of what AISC protects.
 - Only 80, 8100 and 8188 are published (443 on an https install); each sends an anonymous request to sign in.
   Keycloak is on `127.0.0.1:8081`. Databases, queues and storage publish nothing unless `AISC_ADMIN_PORTS=on`.
 - **Calls to the assessed system** go to public addresses; internal or private ones are refused unless the project
-  allows that host (Manage > Components and connections) or the stack does (`CONNECTIONS_ALLOWED_HOSTS`). The
+  allows that host (Manage > Connectivity > System under assessment) or the stack does (`CONNECTIONS_ALLOWED_HOSTS`). The
   stack's own services, loopback and cloud metadata addresses can never be allowed from the page.
 - **Test code is not sandboxed.** The worker that runs it is on the `backend` network with the platform, the
   databases and the queues. The platform's doors keep the assessed system's secrets away from a test, and the

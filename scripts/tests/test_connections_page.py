@@ -23,22 +23,6 @@ def markup_of(html):
 
 # the Manage entry
 
-def test_the_manage_menu_links_the_page_for_owners_and_admins():
-    # an owner manages the project's allowed internal hosts there, so the link shows for owners too;
-    # managing the connections themselves is for platform admins
-    html = read(PROJECT_PAGE)
-    manage = re.search(r'<details[^>]*id="manage".*?</details>', html, re.S).group(0)
-    link = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>(.*?)</a>', manage, re.S)
-    assert link and link.group(1).strip() == "Components and connections"
-    tag = re.search(r'<a\b[^>]*id="connections-settings"[^>]*>', manage).group(0)
-    assert "owner-only" in tag and "hidden" in tag, tag
-    script = script_of(html)
-    gate = re.search(r"if \(a\.admin \|\| a\.role === 'owner'\)", script)
-    wiring = re.search(r"getElementById\('connections-settings'\)\.href\s*=\s*'/connections\.html\?project='\s*\+\s*"
-                       r"encodeURIComponent\(slug\)", script)
-    assert gate and wiring and wiring.start() > gate.start(), "the href is not set inside the owner block"
-    assert script.find("if (!a.admin) return;") > wiring.start(), "the link must not wait for the admin-only part"
-
 
 # what the page does
 
@@ -311,12 +295,13 @@ def test_the_form_is_shaped_by_protocol():
     assert "'#editor .rest'" in shown and "'#editor .model'" in shown and "'#editor .a2a'" in shown
 
 
-def test_headers_key_header_and_timeout_are_under_advanced():
+def test_headers_and_the_key_header_are_under_advanced_and_the_timeout_is_not():
     form = re.search(r'<form id="editor".*?</form>', markup_of(read(PAGE)), re.S).group(0)
     advanced = re.search(r'<details id="advanced"[^>]*>\s*<summary>Advanced</summary>.*?</details>', form, re.S)
     assert advanced, "no Advanced section"
-    for field in ('id="f-headers"', 'id="f-secret-header"', 'id="f-timeout"'):
+    for field in ('id="f-headers"', 'id="f-secret-header"'):
         assert field in advanced.group(0) and form.count(field) == 1, field
+    assert 'id="f-timeout"' not in advanced.group(0) and form.count('id="f-timeout"') == 1
     assert 'id="f-secret"' not in advanced.group(0), "the key is asked of every protocol, not hidden"
 
 
@@ -333,7 +318,7 @@ def test_connections_without_a_target_are_listed_apart_for_admins():
     section = re.search(r'<section id="unlinked"[^>]*>\s*<h2>Connections without a target</h2>.*?</section>', markup, re.S)
     assert section and 'id="unlinked-rows"' in section.group(0)
     assert re.search(r'<div id="settings" hidden>.*id="unlinked".*</div>', markup, re.S), "an admin's part"
-    assert "filter(function (c) { return !c.target; })" in script
+    assert "filter(function (c) { return !c.target && c.kind !== 'provider'; })" in script
     assert "'Link to a target'" in script and "'Remove'" in script
     assert 'id="list"' not in markup and "connects to" not in script
 
@@ -525,3 +510,54 @@ def test_an_adapter_connection_sends_settings_and_secret_settings():
     assert re.search(r"if \(input\.value\) secretSettings\[", submit)
     fields = re.search(r"function adapterFieldsShown\((.*?)\n  \}\n", script, re.S).group(1)
     assert "secret_settings" in fields and "stored" in fields
+
+
+# a model or data component reached by an uploaded file
+
+def test_a_model_or_data_row_offers_an_upload_next_to_connect():
+    script = script_of(read(PAGE))
+    reach = re.search(r"function reachCell\(.*?\n  \}\n", script, re.S).group(0)
+    assert "t.file_kind" in reach and "'Upload a file'" in reach and "'Replace the file'" in reach
+    assert "'Connect'" in reach
+
+
+def test_the_file_goes_as_the_body_to_the_targets_file_route_named_in_the_query():
+    script = script_of(read(PAGE))
+    upload = re.search(r"function uploadFile\(.*?\n  \}\n", script, re.S).group(0)
+    assert "'/api/projects/' + enc(slug) + '/targets/' + enc(t.key) + '/file?name=' + enc(file.name)" in upload
+    assert "method: 'PUT'" in upload and "body: file" in upload
+    assert "JSON.stringify" not in upload
+    assert "reloadTargets(false)" in upload
+
+
+def test_a_row_reached_by_a_file_says_its_name_size_and_hash():
+    script = script_of(read(PAGE))
+    assert "'reached through an uploaded file'" in script
+    shown = re.search(r"function fileLine\(.*?\n  \}\n", script, re.S).group(0)
+    assert "f.name" in shown and "f.size" in shown and "f.sha256.slice(0, 12)" in shown
+
+
+def test_the_page_says_a_component_can_be_reached_by_a_file():
+    intro = re.search(r'<section id="target-section".*?</p>', markup_of(read(PAGE)), re.S).group(0)
+    assert "uploaded file" in intro
+
+
+def test_the_editor_leaves_provider_connections_to_connectivity():
+    # a provider connection (a model provider's key or a self-hosted model server) never reaches a target and is
+    # edited on the Connectivity page; this editor's "not linked" list would otherwise offer it a target
+    script = script_of(read(PAGE))
+    assert "c.kind !== 'provider'" in script
+    unlinked = re.search(r"unlinked = d\.connections\.filter\(function \(c\) \{ return ([^}]*) \}\)", script)
+    assert unlinked and "c.kind !== 'provider'" in unlinked.group(1)
+
+
+def test_every_connection_shows_its_timeout_adapter_ones_too():
+    # a slow system (the Mijke Mistral link) needs a longer timeout whatever its protocol: the field is not in a part
+    # of the form the page hides for an adapter's connection (.builtin)
+    html = markup_of(read(PAGE))
+    field = html.index('id="f-timeout"')
+    advanced = re.search(r'<details id="advanced" class="builtin">.*?</details>', html, re.S)
+    assert not (advanced and advanced.start() < field < advanced.end()), "the timeout is in the built-in-only Advanced"
+    before = html[:field]
+    opened = before.rfind('class="builtin')
+    assert opened == -1 or before.rfind("</", opened) > opened, "the timeout sits inside a built-in-only block"

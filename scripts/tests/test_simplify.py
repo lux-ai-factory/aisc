@@ -47,18 +47,25 @@ def test_an_env_secrets_that_still_has_a_removed_secret_keeps_working(scratch): 
     assert secrets_of(scratch).get("DASHBOARD_ADMIN_PASSWORD") == "kept"
 
 
-def test_the_inspection_tools_run_only_under_their_profile():
-    services = yaml.safe_load((ROOT / "docker-compose-infra.development.yml").read_text())["services"]
-    for svc in ("pgadmin", "schema-docs"):
-        assert services[svc].get("profiles") == ["inspect"], svc
+def test_every_service_but_flower_starts_with_the_stack():
+    """An install has every function running: no service waits for a compose profile, except Flower, which has
+    no sign-in of its own and runs only when asked."""
+    expected = {"docker-compose-infra.development.yml": [], "docker-compose.development.yml": ["aisc-eval-flower"]}
+    for name, kept_back in expected.items():
+        services = yaml.safe_load((ROOT / name).read_text())["services"]
+        profiled = sorted(svc for svc, spec in services.items() if spec.get("profiles"))
+        assert profiled == kept_back, f"{name}: {profiled}"
 
 
-def test_caddy_says_the_inspection_tools_are_off_instead_of_a_bare_502():
-    """With the inspection tools off, Caddy answers with a page naming the profile that starts them."""
+def test_caddy_says_an_inspection_tool_is_down_instead_of_a_bare_502():
+    """When pgAdmin or the diagrams are down, Caddy says so in a sentence and names the command that
+    starts every service again."""
     caddy = (ROOT / "Caddyfile").read_text()
     assert "handle_errors" in caddy
     assert "{http.request.orig_uri.path}" in caddy
-    assert "--profile inspect" in caddy
+    assert "--profile" not in caddy
+    launcher_errors = caddy.split('startsWith("/inspect/")', 1)[1].split("\n  }\n", 1)[0]
+    assert "scripts/start.sh" in launcher_errors
 
 
 def test_keycloak_and_superset_do_not_connect_as_the_superuser():
@@ -106,8 +113,10 @@ def test_test_only_packages_stay_out_of_the_sidecar_images():
         assert "-r requirements-dev.txt" in line, module
 
 
-def test_flower_runs_only_under_the_inspect_profile():
-    """The Celery monitor is a developer tool too; the engine site says so when it is off.
+def test_flower_runs_only_when_asked_and_the_engine_site_says_how_to_start_it():
+    """The Celery monitor has no sign-in of its own, and every container on the backend network (the eval worker
+    where every project's plugins run among them) could read every project's task arguments and results from it,
+    so it runs only under the compose profile inspect; when it is off the engine site says how to start it.
     No eval code reads CORS_ORIGINS, so compose stops setting it for flower and the worker."""
     services = yaml.safe_load((ROOT / "docker-compose.development.yml").read_text())["services"]
     assert services["aisc-eval-flower"].get("profiles") == ["inspect"]
@@ -115,4 +124,7 @@ def test_flower_runs_only_under_the_inspect_profile():
         assert "CORS_ORIGINS" not in (services[name].get("environment") or {}), name
     caddy = (ROOT / "Caddyfile").read_text()
     engine_site = caddy.split("{$CADDY_DOMAIN}:{$CADDY_PORT} {", 1)[1].split("\n}\n", 1)[0]
-    assert "handle_errors" in engine_site and "/flower/" in engine_site and "--profile inspect" in engine_site
+    assert "handle_errors" in engine_site and "/flower/" in engine_site
+    assert "COMPOSE_PROFILES=inspect ./scripts/start.sh" in engine_site
+    for doc in ("docs/guide.md", "docs/appendices/manage.md"):
+        assert "COMPOSE_PROFILES=inspect ./scripts/start.sh" in (ROOT / doc).read_text(), doc

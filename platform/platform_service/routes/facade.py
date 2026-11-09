@@ -8,7 +8,10 @@ the platform will not send is a 400 with the reason, a failed call a 502 {error,
 every key scrubbed. The OpenAI door carries tools and tool results the same way. A run key is accepted
 only while live and, when issued under a run's pass, while that pass is; it counts a use for each ask whose
 body every door reads the same way (_open_request), never for a probe. Calls run in the facade's own
-threads, capped across the platform and per run (_in_facade_threads)."""
+threads, capped across the platform and per run (_in_facade_threads). Every call, and every request a door
+refuses to send, is recorded in the run's trace (run_trace) before the door answers; a call that cannot be
+recorded is answered 503 and its answer is withheld. A run whose calls keep failing is stopped (run_stop): its
+next calls are not sent, recorded not_sent, and refused with the reason (403, a status no client retries)."""
 from __future__ import annotations
 
 import json
@@ -16,12 +19,12 @@ import logging
 import os
 from typing import NamedTuple
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
 from platform_service import (adapters, connection_allowlist, connection_facade, connection_store, db, llm_store,
-                              run_passes)
+                              run_passes, run_stop, run_trace)
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
 from platform_service.routes.connections import (CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, adapter_connection_of,
@@ -182,10 +185,55 @@ async def _in_facade_threads(run_id: str, func, *args, abandon_on_cancel: bool =
             del _RUN_LIMITERS[run_id]
 
 
-async def _ask(pid, opened: Opened, input, history=None, params=None):
-    """(answer, None) or (None, error) of one call, the way every door makes it. A connection of an adapter's
-    kind waits for one of the adapter's slots without holding a thread, and gets its answer within the
-    caller's own wait (facade_timeout_s) or a timeout: an adapter that hangs never keeps a door open."""
+UNRECORDED = "the call could not be recorded in the run's trace, so its answer is withheld"
+
+
+async def _record(pid, opened: Opened, door: str, request: dict, outcome: str, answer=None, error=None,
+                  started_at=None) -> None:
+    """One row of the run's trace (run_trace.record), every value scrubbed of the connection's secrets.
+    A row that cannot be written stops the door with a 503: no answer leaves the platform unrecorded."""
+    def clean(value):                                  # jsonb-safe first, so any request or answer can be kept
+        if value is None:
+            return None
+        text = json.dumps(run_trace.storable(value), allow_nan=False)
+        return json.loads(connection_facade.scrub(text, opened.secrets))
+    try:
+        await run_in_threadpool(run_trace.record, pid, opened.run_id, opened.descriptor.name, door, clean(request),
+                                outcome, clean(answer), clean(error), started_at or run_trace.now(), run_trace.now())
+    except Exception as exc:
+        logger.error("connection %s of project %s: a call was not recorded in the run's trace (%s)",
+                     opened.descriptor.name, pid, exc.__class__.__name__)
+        raise HTTPException(503, UNRECORDED) from None
+
+
+async def _not_sent(pid, opened: Opened, door: str, body, detail: str) -> None:
+    """A request the door refuses to send, recorded as it came with the reason."""
+    await _record(pid, opened, door, body if isinstance(body, dict) else {"body": body}, "not_sent",
+                  error={"code": "not_sent", "detail": detail})
+
+
+async def _ask(pid, opened: Opened, input, history=None, params=None, *, door: str):
+    """(answer, None) or (None, error) of one call, the way every door makes it, recorded in the run's trace
+    before it is given back. A connection of an adapter's kind waits for one of the adapter's slots without
+    holding a thread, and gets its answer within the caller's own wait (facade_timeout_s) or a timeout: an
+    adapter that hangs never keeps a door open."""
+    request = {"input": input, "history": history or [], "params": params or {}}
+    stopped = await run_in_threadpool(run_stop.reason, pid, opened.run_id)
+    if stopped:                                       # the run's calls keep failing: this one is not sent
+        await _record(pid, opened, door, request, "not_sent", error={"code": "run_stopped", "detail": stopped})
+        return None, run_stop.RunStopped(stopped)
+    started_at = run_trace.now()
+    answer, failed = await _ask_unrecorded(pid, opened, input, history, params)
+    if failed:
+        await _record(pid, opened, door, request, "failed", started_at=started_at,
+                      error={"code": connection_facade.error_code(failed), "detail": str(failed)})
+    else:
+        await _record(pid, opened, door, request, "answered", answer=connection_facade.ask_answer(answer),
+                      started_at=started_at)
+    return answer, failed
+
+
+async def _ask_unrecorded(pid, opened: Opened, input, history=None, params=None):
     if opened.descriptor.kind in adapters.BUILT_IN_KINDS:
         return await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history, params)
     import contextlib
@@ -255,11 +303,14 @@ async def facade_aisc_ask(pid: str, name: str, request: Request) -> JSONResponse
     try:
         input, history, params = connection_facade.ask_request(body, opened.descriptor.kind, opened.supports_tools)
     except connection_facade.BadRequest as exc:
+        if body is not None:
+            await _not_sent(pid, opened, "aisc", body, str(exc))
         return _internal(400, {"detail": str(exc)})
     refused = _history_refused(opened, history)
     if refused:
+        await _not_sent(pid, opened, "aisc", body, json.loads(refused.body)["detail"])
         return refused
-    answer, failed = await _ask(pid, opened, input, history or None, params)
+    answer, failed = await _ask(pid, opened, input, history or None, params, door="aisc")
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         return _internal(status, out)
@@ -276,14 +327,19 @@ async def facade_openai_chat(pid: str, name: str, request: Request) -> JSONRespo
         input, history, params = connection_facade.openai_to_core(body or {}, opened.descriptor.kind,
                                                                   opened.supports_tools)
     except connection_facade.BadRequest as exc:
+        if body is not None:
+            await _not_sent(pid, opened, "openai", body, str(exc))
         return _internal(400, connection_facade.openai_error(str(exc)))
     if _history_refused(opened, history):
+        await _not_sent(pid, opened, "openai", body, "this connection does not take a history")
         return _internal(400, connection_facade.openai_error("this connection does not take a history"))
-    answer, failed = await _ask(pid, opened, input, history or None, params)
+    answer, failed = await _ask(pid, opened, input, history or None, params, door="openai")
     if failed:
         status, out = connection_facade.ask_failure(failed, opened.secrets)
         if status == 400:
             return _internal(400, connection_facade.openai_error(out["detail"]))
+        if status == 403:
+            return _internal(403, connection_facade.openai_error(out["detail"], "permission_error", out["error"]))
         code = out["error"]
         return _internal(502, connection_facade.openai_error(f"the system under test failed: {code}", "api_error", code))
     return _internal(200, connection_facade.core_to_openai(name, answer))
@@ -317,10 +373,14 @@ async def facade_a2a_rpc(pid: str, name: str, request: Request) -> JSONResponse:
     try:
         dialect, input = connection_facade.a2a_to_core(body)
     except KeyError:
+        await _not_sent(pid, opened, "a2a", body, f"method not found: {body.get('method')}")
         return _internal(200, connection_facade.jsonrpc_error(rid, -32601, f"method not found: {body.get('method')}"))
     except connection_facade.BadRequest as exc:
+        await _not_sent(pid, opened, "a2a", body, str(exc))
         return _internal(200, connection_facade.jsonrpc_error(rid, -32602, str(exc)))
-    answer, failed = await _ask(pid, opened, input)
+    answer, failed = await _ask(pid, opened, input, door="a2a")
+    if isinstance(failed, run_stop.RunStopped):
+        return _internal(200, connection_facade.jsonrpc_error(rid, -32603, str(failed)))
     if failed:
         return _internal(200, connection_facade.jsonrpc_error(
             rid, -32603, f"the system under test failed: {connection_facade.error_code(failed)}"))
@@ -369,11 +429,31 @@ async def facade_oip_infer(pid: str, name: str, model: str, request: Request) ->
     try:
         inputs = connection_facade.oip_to_core(body or {})
     except connection_facade.BadRequest as exc:
+        if body is not None:
+            await _not_sent(pid, opened, "oip", body, str(exc))
         return _internal(400, {"error": str(exc)})
     answers = []
     for item in inputs:
-        answer, failed = await _ask(pid, opened, item)
+        answer, failed = await _ask(pid, opened, item, door="oip")
+        if isinstance(failed, run_stop.RunStopped):
+            return _internal(403, {"error": str(failed)})
         if failed:
             return _internal(502, {"error": f"the system under test failed: {connection_facade.error_code(failed)}"})
         answers.append(answer)
     return _internal(200, connection_facade.core_to_oip(name, (body or {}).get("id"), answers))
+
+
+@router.get("/internal/run-passes/trace")
+def run_pass_trace(request: Request):
+    """The calls of the run that holds this pass, as JSON lines ending with the seal (run_trace.export): the
+    worker reads them before it revokes the pass and keeps them as the run's file. Inside the network only."""
+    if "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers:
+        return _internal(404, {"detail": "not here"})
+    run_pass = request.headers.get(run_passes.HEADER) or ""
+    pass_hash = run_passes.hash_of(run_pass)
+    if not run_pass.startswith(run_passes.PREFIX) or not run_passes.is_live(pass_hash):
+        return _internal(401, {"detail": "a live run pass is needed"})
+    projects = run_passes.projects_of(pass_hash)
+    text = "".join(run_trace.export(pid, f"pass:{pass_hash}") for pid in projects) if projects else \
+        run_trace.empty_export()
+    return PlainTextResponse(text, media_type="application/x-ndjson")

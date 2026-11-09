@@ -110,11 +110,12 @@ def test_each_plugin_is_synced_with_the_default_charts_of_its_latest_run(client,
     assert bridge.requests("PUT")[0]["headers"]["x-aisc-bridge-token"] == "bridge-token"
 
 
-def test_a_plugin_with_no_run_is_sent_with_no_charts(client, as_user, runs, engine_api, bridge):
+def test_a_plugin_with_no_run_gets_no_tile_and_is_listed_without_a_url(client, as_user, runs, engine_api, bridge):
     _route(bridge, runs["pid"])
-    sync(client, as_user, runs)
-    sent = {b["json"]["plugin"]: b["json"] for b in bridge.requests("PUT")}
-    assert sent["aisc-plugin-promptfoo::PromptfooPlugin"]["visualizations"] == []
+    answer = sync(client, as_user, runs).json()
+    assert "aisc-plugin-promptfoo::PromptfooPlugin" not in {b["json"]["plugin"] for b in bridge.requests("PUT")}
+    listed = {d["plugin"]: d["url"] for d in answer["dashboards"]}
+    assert listed["aisc-plugin-promptfoo::PromptfooPlugin"] is None
 
 
 def test_a_run_the_engine_refuses_is_sent_with_no_charts_and_said(client, as_user, runs, monkeypatch, bridge):

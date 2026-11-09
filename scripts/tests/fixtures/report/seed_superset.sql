@@ -22,6 +22,9 @@ INSERT INTO slices (id, slice_name, datasource_type, viz_type, datasource_id, uu
   (34, 'Checklist scores', 'table', 'table', 101, gen_random_uuid()),
   (35, 'Beta chart BETAMARK', 'table', 'table', 200, gen_random_uuid()),
   (36, 'Echo accuracy', 'table', 'table', 500, gen_random_uuid());
+-- the chart later in the alphabet is the newer one, so a list by date differs from a list by name
+UPDATE slices SET changed_on = '2026-01-01 10:00' WHERE id = 33;
+UPDATE slices SET changed_on = '2026-02-01 10:00' WHERE id = 34;
 INSERT INTO dashboard_slices (id, dashboard_id, slice_id) VALUES (1, 10, 33), (2, 10, 34), (3, 20, 35), (5, 50, 36);
 -- comments are keyed by dashboard_id text: the id or the slug; created_at without time zone, read as UTC
 INSERT INTO aisc_comment (id, dashboard_id, chart_id, parent_id, author_sub, author_name, body, created_at) VALUES
@@ -33,3 +36,13 @@ INSERT INTO aisc_comment (id, dashboard_id, chart_id, parent_id, author_sub, aut
   (6, '20', 35, NULL, 'bob', 'Bob', 'Beta comment BETAMARK', '2026-09-12 09:00'),
   (7, '50', 36, NULL, 'erin', 'Erin', 'Echo comment', '2026-09-06 09:00');
 SET session_replication_role = origin;
+
+-- what Save to report stored: one vector file per plot, with its filters as text and the rows its chart drew (NULL:
+-- saved without a count) (the table: schema_superset.sql)
+INSERT INTO aisc_report_plot (dashboard_id, chart, tab, tags, svg, sha256, comment, author_name, created_at, rows, save_id) VALUES
+  (10, 'By register', 'First tab', '["Model: OpenAI"]', convert_to('<svg xmlns="http://www.w3.org/2000/svg"><text>old</text></svg>','UTF8'), 'old', 'older comment', 'Alice', '2026-01-01 10:00', 5, 'save-old'),
+  (10, 'By community', 'First tab', '["Model: OpenAI"]', convert_to('<svg xmlns="http://www.w3.org/2000/svg"><text>com</text></svg>','UTF8'), 'com', 'only in the older save', 'Alice', '2026-01-01 10:00:01', 4, 'save-old'),
+  (10, 'By register', 'First tab', '["Model: OpenAI"]', convert_to('<svg xmlns="http://www.w3.org/2000/svg"><text>new</text></svg>','UTF8'), 'new', 'Newest comment', 'Alice', '2026-02-01 10:00:00', 2, 'save-new'),
+  (10, 'By register', 'First tab', '["Model: Local"]', convert_to('<svg xmlns="http://www.w3.org/2000/svg"><text>loc</text></svg>','UTF8'), 'loc', '', 'Alice', '2026-02-01 10:00:01', 1, 'save-new'),
+  (10, 'By category', 'First tab', '[]', convert_to('<svg xmlns="http://www.w3.org/2000/svg"><text>cat</text></svg>','UTF8'), 'cat', '', 'Alice', '2026-02-01 10:00:02', NULL, 'save-new'),
+  (20, 'Other', '', '[]', convert_to('<svg xmlns="http://www.w3.org/2000/svg"><text>oth</text></svg>','UTF8'), 'oth', 'another project', 'Bob', '2026-02-02 10:00', 3, 'save-b');

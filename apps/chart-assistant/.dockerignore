@@ -1,0 +1,6 @@
+# the image takes pyproject.toml, uv.lock and chart_assistant/ only: nothing local goes to the daemon
+.venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+tests

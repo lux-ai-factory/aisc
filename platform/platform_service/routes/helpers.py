@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from platform_service import connection_allowlist, db, helper_store, llm_store, secret_box
 from platform_service.projects import looks_like_pid
-from platform_service.routes.admission import _internal, role_or_404, secrets_unavailable
+from platform_service.routes.admission import _internal, allowed_actions, project_for, secrets_unavailable
 from platform_service.routes.connections import _behind_gateway
 from platform_service.routes.llm import clean_base_url, clean_key, clean_model
 
@@ -53,13 +53,8 @@ def known_name(name: str) -> None:
 
 
 def managed_project(slug: str, caller: Caller) -> str:
-    """The project's pid for an owner or a platform admin (who counts as owner of every project):
-    a stranger gets 404, an editor or a viewer 403."""
-    role_or_404(slug, caller, "owner")
-    found = db.get_project(slug)
-    if found is None:
-        raise HTTPException(status_code=404, detail=f"no project {slug!r}")
-    return found["pid"]
+    """The project's pid for whoever may keep its helpers (admission.ACTIONS "helper.write")."""
+    return project_for(slug, caller, "helper.write")["pid"]
 
 
 def reachable(pid, url: str) -> None:
@@ -75,10 +70,9 @@ def reachable(pid, url: str) -> None:
 
 @router.get("/projects/{slug}/helpers")
 def list_helpers(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
-    role = role_or_404(slug, caller)
-    pid = db.get_project(slug)["pid"]
+    pid = project_for(slug, caller, "helper.read")["pid"]
     return {"helpers": [helper_view(r) for r in helper_store.list_models(pid)],
-            "roles": list(helper_store.ROLES), "can_manage": role == "owner"}
+            "roles": list(helper_store.ROLES), "can_manage": "helper.write" in allowed_actions(slug, caller)}
 
 
 @router.put("/projects/{slug}/helpers/{name}")

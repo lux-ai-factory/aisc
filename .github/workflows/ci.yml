@@ -57,6 +57,9 @@ jobs:
           # its db tests start throwaway Postgres containers; the caller's database addresses must not reach them
           - suite: report-generator
             run: cd apps/report-generator && env -u DATABASE_URL -u PLATFORM_TEST_DATABASE_URL uv run --locked --extra dev pytest -q -p no:cacheprovider tests
+          # the tests marked db read the live stack's Postgres: not in CI
+          - suite: chart-assistant
+            run: cd apps/chart-assistant && uv run --locked --extra dev pytest -q -p no:cacheprovider -m 'not db'
     steps:
       - uses: actions/checkout@v4
       - run: |

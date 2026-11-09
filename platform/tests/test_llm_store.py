@@ -186,7 +186,7 @@ def test_the_inspector_reads_only_ciphertext(client, admin, project, dsn):
     except psycopg.OperationalError:
         pytest.skip("inspector_ro is not in this throwaway database (apply init/inspector-role.sql)")
     with conn:
-        found = conn.execute("select row_to_json(p)::text from llm.provider p").fetchall()
+        found = conn.execute("select row_to_json(p)::text from connection.endpoint p").fetchall()
     assert found and all(key not in r[0] for r in found)
 
 
@@ -198,9 +198,9 @@ def test_only_fernet_ciphertext_is_stored(client, admin, project, dsn):
     assert client.put(f"/projects/{project['slug']}/llm/providers/openai", json={"api_key": key},
                       headers=admin).status_code == 200
     with project_db(dsn, project) as conn:
-        dumped = [r[0] for r in conn.execute("select row_to_json(p)::text from llm.provider p").fetchall()]
-        dumped += [r[0] for r in conn.execute("select row_to_json(s)::text from llm.system_choice s").fetchall()]
-        token = conn.execute("select ciphertext from llm.provider where provider = 'openai'").fetchone()[0]
+        dumped = [r[0] for r in conn.execute("select row_to_json(p)::text from connection.endpoint p").fetchall()]
+        dumped += [r[0] for r in conn.execute("select row_to_json(s)::text from connection.use s").fetchall()]
+        token = conn.execute("select secret_ciphertext from connection.endpoint where name = 'llm-openai'").fetchone()[0]
     assert all(key not in d and key[8:] not in d for d in dumped)
     assert Fernet(SECRETS_KEY.encode()).decrypt(token.encode()).decode() == key
 
@@ -218,7 +218,7 @@ def test_the_newest_key_encrypts_and_older_ones_still_decrypt(client, admin, pro
     assert r.status_code == 200 and r.json()["api_key"] == first
     second = new_key()
     client.put(f"/projects/{project['slug']}/llm/providers/openai", json={"api_key": second}, headers=admin)
-    token = one(dsn, project, "select ciphertext from llm.provider where provider = 'openai'")[0]
+    token = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'llm-openai'")[0]
     assert Fernet(SECRETS_KEY.encode()).decrypt(token.encode()).decode() == second
 
 
@@ -259,7 +259,7 @@ def test_rotate_re_encrypts_every_key_and_prints_counts_only(client, admin, proj
     assert re.search(r"\d", done.stdout), "rotate printed no counts"
     for secret in (key, conn_key, newest, SECRETS_KEY):
         assert secret not in out
-    token = one(dsn, project, "select ciphertext from llm.provider where provider = 'openai'")[0]
+    token = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'llm-openai'")[0]
     assert Fernet(newest.encode()).decrypt(token.encode()).decode() == key
     token = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'mcas-chat'")[0]
     assert Fernet(newest.encode()).decrypt(token.encode()).decode() == conn_key
@@ -293,7 +293,7 @@ def test_rotation_keeps_a_key_saved_while_it_runs(client, admin, project, dsn, m
     old, new = new_key(), new_key()
     url = f"/projects/{project['slug']}/llm/providers/openai"
     client.put(url, json={"api_key": old}, headers=admin)
-    token = one(dsn, project, "select ciphertext from llm.provider where provider = 'openai'")[0]
+    token = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'llm-openai'")[0]
     newest = Fernet.generate_key().decode()
     monkeypatch.setenv("PLATFORM_SECRETS_KEY", f"{newest},{SECRETS_KEY}")
     real = llm_store.fernet()
@@ -305,6 +305,6 @@ def test_rotation_keeps_a_key_saved_while_it_runs(client, admin, project, dsn, m
     monkeypatch.setattr(secret_box, "fernet", lambda: racing)
     counts = llm_store.rotate_all(dsn)
     assert racing.saved
-    stored = one(dsn, project, "select ciphertext from llm.provider where provider = 'openai'")[0]
+    stored = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'llm-openai'")[0]
     assert real.decrypt(stored.encode()).decode() == new, "rotation wrote the old key over the one saved meanwhile"
     assert counts["changed_meanwhile"] >= 1

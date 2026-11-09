@@ -49,7 +49,7 @@ DECLARE
         'project.system',
         'target.target',
         'controls.checklist', 'controls.checklist_question', 'controls.source', 'controls.submission',
-        'controls.submission_answer',
+        'controls.submission_answer', 'controls.submission_answer_file',
         'qualification.qualification', 'qualification.qualification_answer', 'qualification.qualification_risk',
         'qualification.knowledge_graph', 'qualification.card_component', 'qualification.question_set',
         'qualification.question_set_version', 'qualification.question_set_version_item', 'qualification.question',

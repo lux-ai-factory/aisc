@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors
 from pydantic import BaseModel
 
-from platform_service import dashboard_bridge, db, projectdb, targets
+from platform_service import dashboard_bridge, db, projectdb, proof_store, targets
 from platform_service.membership import validate_role
 from platform_service.projects import normalise_name, slug_for, validate_slug
 from platform_service.routes.admission import ADMIN_ROLE, last_owner, no_project, owner_or_403, role_or_404
@@ -87,14 +87,17 @@ def add_project(body: ProjectIn, caller: Caller = Depends(caller_dependency)) ->
 
 
 def provision_or_undo(pid) -> None:
-    """Make the project's database, or remove the project again.
+    """Make the project's database and its bucket for proof files, or remove the project again.
 
     A project without its database is one every module fails on. CREATE
     DATABASE may have succeeded before the template step failed, so the
     database is dropped too; a failing drop is logged and does not mask the 503.
+    The bucket is made last, so a bucket that cannot be made leaves nothing
+    behind either.
     """
     try:
         projectdb.provision(db.dsn(), pid)
+        proof_store.make_project_bucket(pid)
     except Exception:
         db.delete_project(pid)
         try:
@@ -138,6 +141,12 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
                                 " the platform's database role is not set up to close it") from None
         raise
     db.delete_project(found["pid"])
+    # its proof files go with it; the project is gone either way, so a bucket left behind is only logged
+    try:
+        proof_store.remove_project_bucket(found["pid"])
+    except Exception:
+        logger.exception("project %s: its proof-file bucket %s could not be removed; remove it by hand",
+                         found["pid"], proof_store.bucket_name(found["pid"]))
 
 
 def _reopen(pid, grantees: list[str]) -> None:

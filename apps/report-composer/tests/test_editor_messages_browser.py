@@ -9,7 +9,7 @@ import time
 import pytest
 
 from test_preset_import_and_keep_texts import FOREIGN, label, preset_file
-from test_v2_browser import _li, live  # noqa: F401  (the browser fixture)
+from test_v2_browser import _li, _move, live  # noqa: F401  (the browser fixture)
 from v2_fakes import client_v2, fake_v2, v2blk  # noqa: F401
 
 pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
@@ -32,19 +32,18 @@ def test_a_failed_outline_request_clears_the_outline_and_offers_try_again(live):
             r.continue_()
 
     page.route("**/outline", route)
-    card_li = _li(page, card["instance_id"])
-    card_li.locator('[data-control="move-up"]').click()
+    _move(page, card["instance_id"], "up")
     deadline = time.monotonic() + 5
     while not held and time.monotonic() < deadline:
         page.wait_for_timeout(20)
     assert held, "the first outline request was not sent"
-    card_li.locator('[data-control="move-down"]').click()
+    page.click('[data-inspector] [data-control="move-down"]')   # the card is still selected
     region = page.locator("main [data-message]")
     region.filter(has_text=MESSAGE).wait_for(timeout=5000)
     assert aborted
     depths = page.eval_on_selector_all("#blocks li[data-instance-id]", "els => els.map(e => e.dataset.depth)")
     assert depths and set(depths) == {"0"}
-    assert "This chapter is empty." not in page.locator("#blocks").inner_text()
+    assert page.locator('#blocks [data-flag="empty"]').count() == 0
 
     held[0].continue_()                                    # the older answer arrives last: still ignored
     page.wait_for_timeout(300)

@@ -12,7 +12,7 @@ from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, Service
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from platform_service import connection_store, db, helper_store, target_store, targets
+from platform_service import connection_store, db, helper_store, llm_catalogue, llm_store, target_store, targets
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
 from platform_service.routes.connections import _behind_gateway
@@ -55,3 +55,27 @@ def list_helpers(pid: str, request: Request, role: str | None = None) -> JSONRes
         {"name": h["name"], "label": h["label"], "roles": list(h["roles"]), "ref": f"helper:{pid}/{h['name']}",
          "endpoint_host": urlsplit(h["endpoint_url"]).hostname or ""}
         for h in helper_store.list_models(pid, role)]})
+
+
+@router.get("/internal/projects/{pid}/helpers/{name}/models")
+def helper_models(pid: str, name: str, request: Request) -> JSONResponse:
+    """The models a test tool can run, asked live with its own connection, chat models first, for the run form:
+    {"models": [...], "error": None} or {"models": [], "error": why}. The key is decrypted here only and never
+    answered; the listing keeps llm_catalogue's limits (time, size, count, no redirect, no proxy)."""
+    if _behind_gateway(request):
+        return _internal(404, {"detail": "not here"})
+    try:
+        identify(request.headers.get(SERVICE_TOKEN_HEADER), {"engine": "PLATFORM_ENGINE_TOKEN"})
+    except ServiceRefused as refused:
+        return _internal(refused.status, {"detail": refused.detail})
+    if not looks_like_pid(pid) or db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    target = helper_store.listing_of(pid, name)
+    if target is None or target["provider"] not in llm_catalogue.PROVIDERS:
+        return _internal(404, {"detail": f"no test tool {name!r}"})
+    try:
+        key = llm_store.decrypt(name, target["ciphertext"]) if target["ciphertext"] else None
+    except (llm_store.KeyUnreadable, llm_store.SecretsKeyError) as exc:
+        return _internal(200, {"models": [], "error": str(exc)})
+    listed = llm_catalogue.list_models(target["provider"], api_key=key, base_url=target["base_url"])
+    return _internal(200, {"models": llm_catalogue.chat_first(listed["models"]), "error": listed["error"]})

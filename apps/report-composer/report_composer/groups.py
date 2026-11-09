@@ -5,7 +5,7 @@ GROUPS: list[tuple[str, tuple[str, ...]]] = [
     ("AI card", ("ai_card", "risk_classification")),
     ("Control objectives and checklists", ("control_objectives", "control_answers", "summary_coverage")),
     ("Tests run", ("test_runs",)),
-    ("Results", ("test_results", "dashboard_chart", "chart")),
+    ("Results", ("superset_exports", "test_results", "dashboard_chart", "chart")),
     ("Summary", ("key_figures", "changes_since")),
     ("Document", ("cover", "chapter", "free_text", "appendix")),
 ]

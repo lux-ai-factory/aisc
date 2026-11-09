@@ -1,4 +1,4 @@
-"""Collect evidence: the links between the control
+"""AI Assessment Sandbox: the links between the control
 objectives selected in step 2 and the tests and controls installed in step 3.
 
 The links are the platform's own (schema `evidence`, template 0016). What may be linked belongs to
@@ -673,17 +673,20 @@ def view(pid, version: str | None = None, token: str = "") -> dict:
     tests += [{"key": k, "label": k, "stale": "removed", "engine_name": None, "runs": None}
               for k in sorted({r["item_key"] for r in stored if r["kind"] == "test"} - set(found.plugins))]
     # The tiles: one per engine plugin, keyed by its package like `tests`.
-    # The engine keeps a row per installed version (an upgrade disables the old one): one tile per plugin,
-    # enabled when any version is, with the runs of all its versions
+    # The engine keeps a row per installed version (an upgrade disables the old one): one tile per plugin
+    # of a package, matched by its label, so a plugin whose class was renamed between versions keeps one
+    # tile; enabled when any version is, with the runs of all its versions, and its buttons on the version
+    # on (the engine opens a plugin by class name, and an old name may be another package's)
     tiles: dict[tuple, dict] = {}
     for p in found.engine_plugins:
         runs = found.plugin_runs.get(p["id"], no_runs)
-        tile = tiles.setdefault((p["package_name"], p.get("name")), {
-            "key": p["package_name"], "engine_name": p.get("name"),
-            "label": p["display_name"] or p.get("name") or p["package_name"],
+        label = p["display_name"] or p.get("name") or p["package_name"]
+        tile = tiles.setdefault((p["package_name"], label), {
+            "key": p["package_name"], "engine_name": p.get("name"), "label": label,
             "stale": "disabled", "runs": dict(no_runs)})
         if p["enabled"]:
             tile["stale"] = None
+            tile["engine_name"] = p.get("name")
         tile["runs"] = {k: tile["runs"][k] + runs[k] for k in no_runs}
     plugins = sorted(tiles.values(), key=lambda p: p["label"].lower())
     controls = [{"key": k, "label": title, "stale": None, "questions": found.questions.get(k, 0),

@@ -103,7 +103,7 @@ def test_no_em_dash_in_the_page():
     assert "—" not in read(PAGE) and "&mdash;" not in read(PAGE)
 
 
-# ── Collect evidence leads to it ────────────────────────────────────────────
+# ── AI Assessment Sandbox leads to it ────────────────────────────────────────────
 
 def test_collect_evidence_has_the_evidence_map_button_and_its_coverage_line():
     html = read(EVIDENCE)

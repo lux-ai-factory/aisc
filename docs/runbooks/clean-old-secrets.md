@@ -90,9 +90,10 @@ Removing the copies does not make an exposed key safe. Every key the dry run lis
    each redacted project's log and checks it with `scripts/verify-ledger-export.py` (the ok line ends with
    `N frozen content(s) redacted, each named by a ledger.content.redacted entry`).
 
-   Exit codes: 0 done; 1 verification failed (backup kept); 2 refused (no folder, folder inside the
-   repository, passphrase missing or short); 3 not enough disk; 4 backup failed (nothing changed); 5 a
-   clean step failed (backup kept). Anything but 0: stop and report with the printed lines. If the platform
+   Exit codes: 0 done; 1 verification failed (backup kept); 2 usage error or refused (no folder, folder
+   inside the repository, passphrase missing or short, no openssl); 3 not enough disk; 4 backup failed
+   (nothing changed); 5 a count or clean step failed (a count failure changes nothing; a clean failure keeps
+   the backup). Anything but 0: stop and report with the printed lines. If the platform
    step printed `the ledger raised an integrity alarm`, the log does not verify: do not run the cleanup again
    before the log is checked. A line `shred is not available` means the export and backup files were removed
    with `rm` only; say so in the report.

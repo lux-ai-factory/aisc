@@ -1,7 +1,7 @@
 """The coverage links a report is made with.
 
 Which tests and controls give evidence for which control objective is set per project on the
-platform's Collect evidence page (step 4), and kept in the project's own database: table
+platform's AI Assessment Sandbox page (step 4), and kept in the project's own database: table
 `evidence.link` (project templates 0016 and 0019), one set per AI card version, readable by this
 service's role. Every snapshot carries them as `coverage_links`, one entry per objective: tests by
 plugin package, checklists by checklist id. A generated report stores its snapshot, so it keeps the

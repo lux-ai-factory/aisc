@@ -553,9 +553,11 @@ def install_info(pid, slug: str, token: str) -> dict:
     if entry.get("aisc_in_local_plugins"):
         # a plugin of the install's local_plugins/: the publisher builds it from there and puts it on the index
         # on every install (unchanged content is not uploaded again), so the index always has the folder's code
-        return {"slug": slug, "package_name": package, "version": _public_version(entry.get("version") or ""),
+        version = _public_version(entry.get("version") or "")
+        return {"slug": slug, "package_name": package, "version": version,
                 "index_url": index_url(), "installable": True, "reason": None, "fetched_on_install": True,
-                "source": LOCAL_PLUGINS_SOURCE}
+                "source": LOCAL_PLUGINS_SOURCE,
+                "versions": _versions(pid, package, version, versions_on_index(package))}
     # a local entry is this stack's own build: never replaced by a fetch from GitHub
     repo = None if entry.get("aisc_local") else plugin_sources.repo_of(package)
     on_index = versions_on_index(package)
@@ -579,7 +581,44 @@ def install_info(pid, slug: str, token: str) -> dict:
         reason = why_not                    # the index's version is offered, and why not the source's
     return {"slug": slug, "package_name": package, "version": version, "index_url": index_url(),
             "installable": installable, "reason": reason,
-            "fetched_on_install": fetched, "source": f"lux-ai-factory/{repo}" if repo else None}
+            "fetched_on_install": fetched, "source": f"lux-ai-factory/{repo}" if repo else None,
+            "versions": _versions(pid, package, version, on_index)}
+
+
+def _version_key(version: str):
+    try:
+        return (1, Version(version))
+    except InvalidVersion:
+        return (0, Version("0"))
+
+
+def _project_versions(pid, package: str) -> dict[str, bool]:
+    """The versions of `package` this project's engine holds, each with whether it is on."""
+    with evidence._reader(pid) as conn:
+        rows = evidence._rows(conn, "SELECT package_name, version, enabled FROM engine.aisc_backend_plugin")
+    held: dict[str, bool] = {}
+    for r in rows:
+        if _dist(r["package_name"] or "") == _dist(package):
+            v = _public_version(r["version"] or "")
+            held[v] = held.get(v, False) or bool(r["enabled"])
+    return held
+
+
+def _versions(pid, package: str, default: str | None, on_index: list[str]) -> list[dict]:
+    """Every version of the package, newest first: those this stack can install (the index's, and the
+    default when the install publishes it first) and those the project holds, each saying which."""
+    installable = {_public_version(v) for v in on_index} | ({default} if default else set())
+    held = _project_versions(pid, package)
+    found = {}
+    for v in installable | set(held):
+        if not any(_same_version(v, k) for k in found):
+            found[v] = v
+    out = []
+    for v in sorted(found, key=_version_key, reverse=True):
+        mine = next((k for k in held if _same_version(k, v)), None)
+        out.append({"version": v, "installable": any(_same_version(v, k) for k in installable),
+                    "installed": mine is not None, "enabled": bool(mine is not None and held[mine])})
+    return out
 
 
 def tags(pid) -> list[dict]:

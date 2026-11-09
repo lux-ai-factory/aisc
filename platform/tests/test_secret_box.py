@@ -138,8 +138,8 @@ def _connection(client, project, headers, url, key=None):
 
 
 ROUTES = {
-    "llm provider": (_llm, "select ciphertext from llm.provider where provider = 'compatible'"),
-    "helper model": (_helper, "select ciphertext from helper.model where name = 'judge'"),
+    "llm provider": (_llm, "select secret_ciphertext from connection.endpoint where name = 'llm-compatible'"),
+    "helper model": (_helper, "select secret_ciphertext from connection.endpoint where name = 'judge'"),
     "connection": (_connection, "select secret_ciphertext from connection.endpoint where name = 'chat'"),
 }
 

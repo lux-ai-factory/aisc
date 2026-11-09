@@ -332,6 +332,33 @@ ALTER TABLE ONLY controls.submission
 
 
 --
+-- Name: submission_answer_file; Type: TABLE; Schema: controls; Owner: -
+--
+
+CREATE TABLE controls.submission_answer_file (
+    id text NOT NULL,
+    answer_id text NOT NULL,
+    file_id uuid NOT NULL,
+    name text NOT NULL,
+    mime text NOT NULL,
+    size integer NOT NULL,
+    sha256 text NOT NULL,
+    uploaded_by text,
+    uploaded_at timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE ONLY controls.submission_answer_file
+    ADD CONSTRAINT submission_answer_file_pkey PRIMARY KEY (id);
+
+CREATE INDEX submission_answer_file_answer_id_idx ON controls.submission_answer_file USING btree (answer_id);
+
+CREATE UNIQUE INDEX submission_answer_file_answer_id_file_id_key ON controls.submission_answer_file USING btree (answer_id, file_id);
+
+ALTER TABLE ONLY controls.submission_answer_file
+    ADD CONSTRAINT submission_answer_file_answer_id_fkey FOREIGN KEY (answer_id) REFERENCES controls.submission_answer(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- PostgreSQL database dump complete
 --
 

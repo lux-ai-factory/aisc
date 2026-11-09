@@ -95,12 +95,12 @@ done
 
 echo "2c. and every tool has a Back to the page it was entered from"
 # Qualification and control objectives are opened from the project page, so their Back goes there.
-# Controls and the engine are opened from the project's step 4, Collect evidence, so theirs goes back
-# to it (controls says "Collect evidence"; the engine, held to its upstream, still says "AI Assessment Sandbox"). Matched on what it points at and on its label,
+# Controls and the engine are opened from the project's step 4, AI Assessment Sandbox, so theirs goes back
+# to it, and both call it "AI Assessment Sandbox" (the engine, held to its upstream, always did). Matched on what it points at and on its label,
 # not on wording alone. The engine is a single-page app whose page is an empty div until React runs,
 # so it is checked in its bundle below rather than in its HTML.
 for e in "qualification|$VERIFY_APPS_URL/qualification/p/$PROJECT|Back to the project|/p/$PROJECT" \
-         "controls|$VERIFY_APPS_URL/controls/p/$PROJECT/checklists|Collect evidence|evidence.html?project=$PROJECT" \
+         "controls|$VERIFY_APPS_URL/controls/p/$PROJECT/checklists|AI Assessment Sandbox|evidence.html?project=$PROJECT" \
          "control objectives|$VERIFY_APPS_URL/control-objectives/p/$PROJECT/projects|Back to the project|/p/$PROJECT"; do
   IFS='|' read -r n u label target <<<"$e"
   body=$(curl -s -b "$J" -L --max-time 30 "$u")

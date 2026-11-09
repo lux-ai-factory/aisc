@@ -1,5 +1,7 @@
 """Server-rendered screens.
 The frontend is one small script; what is on the page is decided in Python."""
+import re
+
 import pytest
 
 from conftest import IDS, blk, new_layout
@@ -45,7 +47,7 @@ def test_one_small_script(client, auth):
     lay = new_layout(client, auth, name="Scripted", system_id=IDS["A_V2"])
     doc = soup(client.get(f"/p/alpha/layouts/{lay['id']}", headers=auth("alice")).text)
     scripts = [s.get("src") for s in doc.find_all("script") if s.get("src")]
-    assert len(scripts) == 1 and scripts[0].endswith("composer.js")
+    assert len(scripts) == 1 and re.search(r"/static/composer\.js\?v=[0-9a-f]{12}$", scripts[0])
     from pathlib import Path
 
     js = Path(__file__).resolve().parents[1] / "report_composer/static/composer.js"

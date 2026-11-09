@@ -161,7 +161,7 @@ def test_one_entry_for_the_diagrams_and_it_opens_the_landing_page_on_this_projec
 
 def test_pgadmin_and_the_other_admin_tools_stay_admin_only():
     menu, script = menu_and_script()
-    for element_id in ("inspect-pgadmin", "llm-settings", "delete-open", "inspect-flower"):
+    for element_id in ("inspect-pgadmin", "delete-open", "inspect-flower"):
         tag = re.search(rf'<(a|button)\b[^>]*id="{element_id}"[^>]*>', menu).group(0)
         assert "admin-only" in tag and "hidden" in tag, element_id
     assert 'href="/inspect/pgadmin/"' in menu

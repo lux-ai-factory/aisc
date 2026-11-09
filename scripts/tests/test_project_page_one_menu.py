@@ -21,7 +21,7 @@ def test_manage_holds_the_endpoints_and_the_old_manage_items():
     menu = re.search(r'<details[^>]*id="manage".*?</details>', BODY, re.S).group(0)
     assert re.search(r"<summary>\s*Manage", menu)
     for item in ("Background tasks", "My account", 'id="inspect-schema"', 'id="inspect-pgadmin"',
-                 'id="llm-settings"', 'id="delete-open"'):
+                 'id="connectivity-settings"', 'id="delete-open"'):
         assert item in menu, item
 
 
@@ -29,7 +29,7 @@ def test_who_sees_what_is_unchanged():
     menu = re.search(r'<details[^>]*id="manage".*?</details>', BODY, re.S).group(0)
     assert not re.search(r'<details[^>]*id="manage"[^>]*\bhidden\b', menu), "the endpoints are for everyone signed in"
     assert re.search(r'<a id="inspect-schema"[^>]*class="member-only"[^>]*hidden', menu)
-    for i in ("inspect-pgadmin", "llm-settings", "delete-open"):
+    for i in ("inspect-pgadmin", "delete-open"):
         tag = re.search(r'<[a-z]+\b[^>]*id="' + i + r'"[^>]*>', menu).group(0)
         assert "admin-only" in tag and "hidden" in tag, tag
     assert "#manage .member-only" in HTML
@@ -42,9 +42,9 @@ def test_the_menu_uses_the_assessments_words_not_the_products():
     assert re.search(r'<a data-origin="keycloak" data-path="/realms/aisc/account">My account</a>', visible)
     assert re.search(r'<span class="group admin-only" hidden>Admin tools</span>\s*'
                      r'<a id="inspect-flower" class="admin-only" hidden[^>]*>Background tasks</a>', visible)
-    assert '<span class="group admin-only" hidden>AI assistants</span>' in visible
-    assert '<span class="group owner-only" hidden>Assessed system</span>' in visible
-    for old in ("Endpoints", "Keycloak account", ">Flower<", "Agentic systems", "Systems under test", "Targets and endpoints"):
+    assert '<span class="group owner-only" hidden>Connectivity</span>' in visible
+    for old in ("Endpoints", "Keycloak account", ">Flower<", "Agentic systems", "Systems under test", "Targets and endpoints",
+                "AI assistants", "Assessed system", "Helper models"):
         assert old not in visible, old
 
 

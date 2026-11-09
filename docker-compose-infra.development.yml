@@ -95,6 +95,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      # the consumer timeout above the worker's task limit, so a long test run is never handed out twice
+      - ./infra/rabbitmq/conf.d/10-aisc.conf:/etc/rabbitmq/conf.d/10-aisc.conf:ro
     networks:
       - backend
 
@@ -135,6 +137,8 @@ services:
       # The database inspector's read-only role, and Keycloak's and Superset's databases closed to
       # PUBLIC. After 50-superset-db.sql, because it closes the superset database.
       - ./init/inspector-role.sql:/docker-entrypoint-initdb.d/70-inspector-role.sql:ro,Z
+      # The chart assistant's role on its mock databases.
+      - ./init/chart-assistant-role.sql:/docker-entrypoint-initdb.d/75-chart-assistant-role.sql:ro,Z
     restart: unless-stopped
     networks:
       - backend
@@ -165,7 +169,9 @@ services:
       # Keycloak's and Superset's own roles (init/keycloak-role.sql, init/superset-role.sql)
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?run scripts/secrets.sh first}
       SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?run scripts/secrets.sh first}
+      ASSISTANT_MOCK_PASSWORD: ${ASSISTANT_MOCK_PASSWORD:?run scripts/secrets.sh first}
     volumes:
+      - ./init/chart-assistant-role.sql:/setup/chart-assistant-role.sql:ro,Z
       - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
       - ./init/report-roles.sql:/setup/report-roles.sql:ro,Z
       - ./init/inspector-role.sql:/setup/inspector-role.sql:ro,Z
@@ -190,7 +196,8 @@ services:
       && psql -v ON_ERROR_STOP=1 -v controls_rw_password=\"$$CONTROLS_RW_PASSWORD\" -f /setup/controls-role.sql
       && psql -v ON_ERROR_STOP=1 -v engine_rw_password=\"$$ENGINE_RW_PASSWORD\" -f /setup/engine-role.sql
       && psql -v ON_ERROR_STOP=1 -v app_password=\"$$KEYCLOAK_DB_PASSWORD\" -f /setup/keycloak-role.sql
-      && psql -v ON_ERROR_STOP=1 -v app_password=\"$$SUPERSET_DB_PASSWORD\" -f /setup/superset-role.sql"
+      && psql -v ON_ERROR_STOP=1 -v app_password=\"$$SUPERSET_DB_PASSWORD\" -f /setup/superset-role.sql
+      && psql -v ON_ERROR_STOP=1 -v assistant_mock_password=\"$$ASSISTANT_MOCK_PASSWORD\" -f /setup/chart-assistant-role.sql"
     depends_on:
       - postgres
     restart: "no"
@@ -366,8 +373,6 @@ services:
   # /var/lib/pgadmin in a volume, which outlives the container, so the password file is rewritten
   # and the server list reloaded on every start rather than only on the first.
   pgadmin:
-    # a developer tool: started only with --profile inspect (Caddy says so when it is off)
-    profiles: ["inspect"]
     image: dpage/pgadmin4:9.18
     container_name: ${CONTAINER_PREFIX:-}pgadmin
     environment:
@@ -400,8 +405,6 @@ services:
   # platform's or a project's), made on the first visit and again after ten minutes. Behind the same
   # admin gate, at :8100/inspect/schema/<database>/. Reads as inspector_ro.
   schema-docs:
-    # a developer tool: started only with --profile inspect (Caddy says so when it is off)
-    profiles: ["inspect"]
     build: inspector/schema-docs/
     image: aisc-schema-docs:${AISC_IMAGE_TAG:-latest}
     pull_policy: never

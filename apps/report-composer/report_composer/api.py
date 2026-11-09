@@ -272,6 +272,10 @@ def preview(request: Request, layout_id: str, g: Guarded = Depends(project_guard
                                                  "X-Content-Type-Options": "nosniff"})
 
 
+#: the most tools one section lists in the outline
+MAX_PARTS = 200
+
+
 @router.post("/p/{ref}/layouts/{layout_id}/outline")
 def outline(request: Request, layout_id: str, body: dict = Body(...),
             g: Guarded = Depends(project_guard("editor"))):
@@ -291,9 +295,18 @@ def outline(request: Request, layout_id: str, body: dict = Body(...),
     if not isinstance(numbering, bool):
         raise ApiError(422, "invalid_request", "numbering must be true or false.",
                        [{"pointer": "/numbering", "message": "is not valid"}])
+    # the tools a block prints a section of each (section_parts), as the editor's form picks them: {instance id:
+    # [title, ...]}; numbered here, as the report numbers them
+    parts = body.get("parts") or {}
+    if not isinstance(parts, dict) or not all(
+            isinstance(k, str) and isinstance(v, list) and len(v) <= MAX_PARTS
+            and all(isinstance(x, str) and len(x) <= 500 for x in v) for k, v in parts.items()) \
+            or not set(parts) <= {b["instance_id"] for b in blocks}:
+        raise ApiError(422, "invalid_request", "parts must name the sections' tools.",
+                       [{"pointer": "/parts", "message": "is not valid"}])
     # cached block types, short timeout, [] when the renderer fails: the outline then uses the fixed prose
     # list, so indentation keeps working without the renderer
-    return {"outline": layouts.outline(blocks, outline_block_types(request), numbering=numbering)}
+    return {"outline": layouts.outline(blocks, outline_block_types(request), numbering=numbering, parts=parts)}
 
 
 @router.post("/p/{ref}/layouts/{layout_id}/preview")

@@ -22,23 +22,23 @@ from conftest import ROOT
 
 SCRIPT = ROOT / "scripts/prepare-tests.sh"
 NODE_MODULES = ("apps/qualification", "apps/controls")
-UV_MODULES = ("apps/backend", "apps/control-objectives", "apps/report-composer")
+UV_MODULES = ("apps/control-objectives", "apps/report-composer", "apps/backend")
 #: tools a real environment would offer that the scratch PATH must not
 HIDDEN_TOOLS = {"node", "nodejs", "npm", "npx", "uv", "uvx", "corepack"}
 
 ALL_MISSING = (
     "apps/qualification has no node_modules: run scripts/prepare-tests.sh\n"
     "apps/controls has no node_modules: run scripts/prepare-tests.sh\n"
-    "apps/backend has no .venv: run scripts/prepare-tests.sh\n"
     "apps/control-objectives has no .venv: run scripts/prepare-tests.sh\n"
     "apps/report-composer has no .venv: run scripts/prepare-tests.sh\n"
+    "apps/backend has no .venv: run scripts/prepare-tests.sh\n"
 )
 INSTALL_CALLS = [
     "npm ci --no-audit --no-fund @ apps/qualification",
     "npm ci --no-audit --no-fund @ apps/controls",
-    "uv sync --locked --all-extras @ apps/backend",
     "uv sync --locked --all-extras @ apps/control-objectives",
     "uv sync --locked --all-extras @ apps/report-composer",
+    "uv sync --locked --all-extras @ apps/backend",
 ]
 
 
@@ -67,6 +67,7 @@ def make_root(base: Path, *, environments: bool = False) -> Path:
     root = base / "repo"
     (root / "scripts").mkdir(parents=True)
     shutil.copy2(SCRIPT, root / "scripts/prepare-tests.sh")
+    shutil.copy2(ROOT / "scripts/suites.py", root / "scripts/suites.py")
     for m in NODE_MODULES:
         (root / m).mkdir(parents=True)
         (root / m / "package.json").write_text("{}\n")
@@ -192,7 +193,7 @@ def test_install_stops_at_the_first_failing_command(tmp_path, system_bin):
     r = prepare(root, tmp_path, system_bin)
     assert r.returncode == 1
     assert "prepare-tests: uv sync --locked --all-extras failed in apps/control-objectives" in r.stderr
-    assert calls(tmp_path) == INSTALL_CALLS[:4]
+    assert calls(tmp_path) == INSTALL_CALLS[:3]
 
 
 def test_install_without_npm_names_node_and_npm(tmp_path, system_bin):
@@ -267,3 +268,10 @@ def test_the_guide_prepares_with_the_script():
     assert "scripts/prepare-tests.sh --check" in section
     assert "npm ci" not in section
     assert "uv sync" not in section
+
+
+def test_the_modules_come_from_the_suites_list():
+    """scripts/suites.py is the one list of the modules: prepare-tests keeps no copy of its own."""
+    text = SCRIPT.read_text()
+    assert 'scripts/suites.py" beds' in text
+    assert "NODE_MODULES=(apps" not in text and "UV_MODULES=(apps" not in text

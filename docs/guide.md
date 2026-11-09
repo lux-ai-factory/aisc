@@ -32,14 +32,15 @@ Part of this repository:
 | `shared/identity/` | `aisc_identity`, shared by every Python service: who is calling (gateway headers, Keycloak tokens), what they may do in a project (`access`, held to `access-cases.json`), which service is calling (`service_tokens`), and the ledger event a change writes (`ledger_events`) |
 | `shared/access-ts/` | The TypeScript client of the platform's `/authz/projects/{ref}`, vendored into qualification and controls |
 | `shared/ledger-ts/` | How the Next.js apps write a ledger event, vendored into qualification and controls |
-| `homepage/` | the launcher pages served by Caddy on port 8100: the project list, a project's page (Plan the assessment, then Collect evidence), the Collect evidence page, the Evidence map, Manage pages |
+| `homepage/` | the launcher pages served by Caddy on port 8100: the project list, a project's page (Plan the assessment, then AI Assessment Sandbox), the AI Assessment Sandbox page, the Evidence map, Manage pages |
 | `dashboard-gateway/` | the Superset config overlay that takes the user from the gateway's token |
 | `Caddyfile` | the gateway's routes |
-| `init/` | SQL run once by `postgres-setup`: databases, roles and grants |
+| `init/` | SQL for databases, roles and grants: run by `postgres-setup` at every start (it is idempotent), and partly by Postgres itself on a fresh volume |
 | `scripts/` | setup (`secrets.sh`), checks against a running stack (`verify*.sh`), tests of the stack's configuration (`scripts/tests`) |
 | `keycloak/` | the realm export (template) and the login theme |
 | `inspector/` | pgAdmin and SchemaSpy, for admins, at `:8100/inspect/` |
 | `infra/minio/` | builds MinIO from source |
+| `infra/plugin-publisher/` | the plugin publisher (service `plugin-publisher`): fetches, builds and uploads a test's package to `devpi` when an admin installs it |
 | `def_plugins/`, `local_plugins/` | `def_plugins/` is the standalone engine's default plugin folder, not used by `start` (see its README); `local_plugins/` holds your own plugin sources (`PLUGIN_PATH`) |
 | `local_controls/` | checklists every project catalogue gets next to the public catalogue's (mounted into the platform) |
 | `adapters/` | your adapter plugins: protocols a connection can use besides the built-in ones (mounted into the platform; only its README is in git) |
@@ -99,7 +100,9 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   Controls are installed by the controls app from the catalogue's API.
 - **What a test assesses, and the models that help it.** A test's target is what it assesses: the AI
   system or one component its AI card lists ("What is assessed (AI card)" in the evaluation form), or a
-  local model file uploaded in step 4's Settings ("What is assessed (local model file)"). Each plugin
+  local model file ("What is assessed (local model file)"): a model component's file uploaded under
+  Manage > Connectivity > System under assessment, or a model file uploaded in step 4's Settings before that page took
+  files. Each plugin
   declares which of the two it accepts (`@assesses`, section 13 of the plugin interface's
   `PLUGIN_DEVELOPER_GUIDE.md`), and the form offers only those. Runs on a local model file are listed
   apart under step 4's Results, never counted with the AI card's results or put in its reports. A helper model is a model a test uses
@@ -107,9 +110,12 @@ engine ──> immudb (its own audit log: database auditdb, user aisc_engine)
   the form asks for one per role ("Helper model · Judge (not assessed)"). The datashape role `target`
   of a dataset column (beside `feature`, `date` and `ignore`) marks the label column, the outcome each
   row records; it names no target.
-- **The assessed system over the network.** Under a project's **Manage > Components and connections** an admin
+- **The assessed system over the network.** Under a project's **Manage > Connectivity > System under assessment** an admin
   registers the AI systems the project assesses (OpenAI-compatible, A2A, Open Inference Protocol, or
-  a REST API with a request template). A plugin reaches a connection through the platform. Calls to
+  a REST API with a request template). A plugin reaches a connection through the platform. A model or a
+  data component can instead be reached by an uploaded file (a model file such as ONNX, or a dataset):
+  the platform passes it to the engine as a model or dataset component, which the evaluation form lists
+  like any other. Step 4's Settings holds only the test data: the data the tests run on. Calls to
   internal addresses are refused unless a project's owners allow them on that page, or the
   deployment allows them for every project with `CONNECTIONS_ALLOWED_HOSTS` on the `platform`
   service.
@@ -171,7 +177,7 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   passwords of its two accounts from its environment. The `immudb-key` job hands immudb its copy of the key, so no file ACL is needed (macOS
   has no `setfacl`). Run it again after a pull: it
   keeps existing values and adds any new secret. `--rotate` replaces them (except the ones stored data
-  depends on, see the top of the script); `--add-ledger-key` adds a version of the ledger's key.
+  depends on, see the top of `scripts/aisc.py` and its `KEPT_ON_ROTATE`); `--add-ledger-key` adds a version of the ledger's key.
   `LEDGER_IMMUDB_PASSWORD` and `ENGINE_IMMUDB_PASSWORD` survive `--rotate` (immudb holds their users'
   copies).
   The infrastructure's own passwords (`POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD`,
@@ -180,7 +186,8 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   volume is first made. An install made before they were generated keeps the values it runs on (its
   `env.runtime`'s, else the old committed ones): `secrets.sh` writes those into `env.secrets`, never new
   ones, so such an install stays on well-known passwords until each is rotated. A new install gets
-  random ones.
+  random ones, except the realm's two accounts on a local (http) install: they are `admin` / `admin` and
+  `user` / `user`, and random only on an install served over https.
 - **Rotating an infrastructure password.** `./scripts/rotate-infra-password.sh NAME` (one of the six
   above) sets a new value in the running service first (`ALTER ROLE`, `rabbitmqctl change_password`,
   Keycloak's `kcadm.sh`), then in `env.secrets` and `env.runtime`; a service that refuses leaves both files
@@ -193,8 +200,9 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   ledger-pool platform aisc-backend`): immudb applies its superuser's password at start
   (`IMMUDB_FORCE_ADMIN_PASSWORD`), and `ledger-pool`, as the superuser, gives `aisc_ledger` and
   `aisc_engine` their new ones and must exit 0. Then `docker compose ... restart aisc-backend`, whichever
-  name was rotated: `up -d` leaves an unchanged aisc-backend running, and immudb's restart ended its audit
-  session, which the engine does not open again by itself (its audit writes fail until it restarts). The
+  name was rotated: `up -d` leaves an unchanged aisc-backend running on a login immudb's restart ended. Its
+  audit clerk would log in again by itself on its next write; the restart makes the engine start on the new
+  password at once. The
   platform's ledger writes fail for the seconds between its restart and ledger-pool's run, then recover by
   themselves.
 - **Start order.** Compose orders the start itself: `postgres-setup` runs `init/` and the one-shot
@@ -210,7 +218,7 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   install's id (every install made before ids names its stack `aisc`); it then says how to list and delete
   the volumes by hand.
 - **A project's page** shows two blocks: **Plan the assessment** (1 Qualify the AI system, 2 Set control
-  objectives, 3 Choose tests and checklists) and below it **4 Collect evidence**, where checklists are
+  objectives, 3 Choose tests and checklists) and below it **4 AI Assessment Sandbox**, where checklists are
   answered, tests run, results are looked at, each objective is linked to its evidence on the Evidence map and
   the report is composed.
 - **Serving over HTTPS.** Caddy serves HTTPS when `CADDY_DOMAIN` starts with `https://`
@@ -225,7 +233,8 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   them too (`scripts/lib/dev-accounts.sh`). The Keycloak console's account is `admin` with
   `KEYCLOAK_ADMIN_PASSWORD` from `env.secrets`. The console is on `127.0.0.1:8081` only.
 - **Checks.** `./scripts/verify.sh --stack` runs `verify-db-access.sh`, `verify-project-databases.sh`,
-  `verify-sso.sh`, `verify-rbac.sh` and `verify-plugins.sh` against the running stack.
+  `verify-sso.sh`, `verify-rbac.sh` and `verify-plugins.sh`, then `stackcheck db-access` (`scripts/stackcheck`),
+  against the running stack.
   `verify-project-databases.sh` (and `verify-db-consistency.sh`) read Postgres from this machine, on
   `127.0.0.1:5432`, which is published only with `AISC_ADMIN_PORTS=on` (in the environment or `env.local`,
   then `start`); without it they say so and fail. The checks that
@@ -245,15 +254,16 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
 - **Optional model keys**, for steps 1 and 2 to suggest answers: `MISTRAL_API_KEY` or
   `ANTHROPIC_API_KEY` for qualification; control objectives defaults to a local Ollama on the host and
   takes `CONTROL_OBJECTIVES_LLM_PROVIDER` plus that provider's key instead. Per-project keys for the
-  card agent and the risk mapper are set in the UI under **Manage > AI assistants > AI assistant models and keys**.
+  card agent and the risk mapper are set in the UI under **Manage > Connectivity > Configurator agents**.
 - **Host tools for tests:** [uv](https://docs.astral.sh/uv/) (it fetches Python 3.12 for the platform
   and the report composer).
 
 Other addresses: the engine at http://localhost/, its API at `/api`, Keycloak at http://localhost:8081
 (realm `aisc`, this machine only), the dashboard at http://localhost:8188. Flower, the eval worker's
-Celery monitor, is at `/flower/` for admins only (it shows every project's task arguments and results),
-and runs only under the compose profile `inspect` (`docker compose --profile inspect up -d
-aisc-eval-flower`); without it the page says so. Its link is in a project's Manage menu, for admins.
+Celery monitor, is at `/flower/` for admins only (it shows every project's task arguments and results). It
+has no sign-in of its own, so it runs only when asked: `COMPOSE_PROFILES=inspect ./scripts/start.sh` starts it
+with the rest. pgAdmin and the schema diagrams at `:8100/inspect/` start with the stack; if one of them is down
+the page says so. Their links are in a project's Manage menu, for admins.
 
 ### Your own plugins
 
@@ -284,7 +294,7 @@ through it unchanged. Only `adapters/README.md` is part of AISC; your adapters s
 The execution engine (`apps/backend`, `apps/eval`, `apps/webapp`) also runs standalone, without the
 platform or the gateway. `AISC_DEPLOYMENT` selects the mode in the backend and the eval worker
 (`APP_DEPLOYMENT` in the webapp): unset means **standalone** (one database holding all projects, no
-project header); `configurator`, which every compose file here except the standalone one sets,
+project header); `configurator`, which `docker-compose.development.yml` sets (the staging files leave it unset),
 means one database per project, migrated by the one-shot `aisc-backend-migrate`
 (`manage.py migrate_projects`).
 
@@ -333,21 +343,22 @@ likely to change:
 |---|---|---|---|
 | `CADDY_DOMAIN` | `env.plugin_downloader` | the gateway's origin | `http://localhost` |
 | `API_URL_EXTERNAL` | `env.plugin_downloader` | the engine as the browser reaches it (webapp, launcher links) | `http://localhost` |
-| `KEYCLOAK_URL_EXTERNAL` | `env.local` (see the address row below) | Keycloak as the browser reaches it (webapp, launcher links) | `http://localhost:8081` |
-| `DASHBOARD_EXTERNAL_URL` | `caddy`, `report-renderer`, `platform` (`env.local`, see the address row below) | the dashboard as the browser reaches it (launcher links, report links, plugin tile links) | `http://localhost:8188` |
+| `KEYCLOAK_URL_EXTERNAL` | `env.plugin_downloader` (`start` overrides it in `env.local` when it moves the port; see the address row below) | Keycloak as the browser reaches it (webapp, launcher links) | `http://localhost:8081` |
+| `DASHBOARD_EXTERNAL_URL` | `caddy`, `keycloak`, `report-renderer`, `platform` (`env.local`, see the address row below) | the dashboard as the browser reaches it (launcher links, report links, plugin tile links) | `http://localhost:8188` |
 | `KEYCLOAK_ADMIN` | `env.plugin_downloader` | Keycloak's bootstrap admin | `admin` |
 | `GATEWAY_COOKIE_SECURE` | `env.plugin_downloader` | the gateway's session cookie is Secure: `true` when `CADDY_DOMAIN` is `https://` | `false` |
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
-| `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | generated |
+| `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | `admin` / `user` on a local http install, generated on an install served over https |
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
 | `GITHUB_TOKEN` | `plugin-publisher` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: installing a private plugin fails |
 | `PLUGIN_PUBLISHER_TOKEN` | `platform`, `plugin-publisher` (made by `start`) | the token the platform presents when it asks the publisher to fetch a plugin | generated |
 | `PLATFORM_ENGINE_TOKEN` | `platform`, `aisc-backend` (made by `start`) | the token the engine presents when it asks the platform whether a card target has a connection | generated |
+| `PLATFORM_CONTROLS_TOKEN` | `platform`, `controls-web` (made by `start`) | the token the checklists app presents when it stores or reads the proof files of an answer | generated |
 | `PLUGIN_PATH` | `env.plugin_downloader` | your plugin sources, mounted into the engine | `./local_plugins/` |
 | `PACKAGE_REGISTRY_URL` | `env.plugin_downloader` | the index the engine installs plugins from | `http://devpi:3141` |
 | `CATALOGUE_EXTERNAL_URL`, `CATALOGUE_API_URL` | `env.plugin_downloader` | the hosted catalogue's page and API | `https://sandboxconfigurator.aifactory.lu/...` |
 | `CONNECTIONS_ALLOWED_HOSTS` | `platform` | internal hosts every project's connections may call (comma list) | empty |
-| `PLATFORM_FACADE_THREADS` | `platform` | how many calls to systems under test the protocol endpoints run at once, in threads of their own (more wait), so slow systems cannot take the threads every other request needs | `16` |
+| `PLATFORM_FACADE_THREADS` | `platform` | how many calls to systems under test the protocol endpoints run at once, in threads of their own (more wait), so slow systems cannot take the threads every other request needs; the compose files do not pass it, so it applies only when added to the platform service's `environment` | `32` |
 | `MODEL_LISTING_SSL_VERIFY` | `env.plugin_downloader` | the engine checks TLS when it lists a provider's models; a provider behind a self-signed certificate fails to list until this is `False` | `True` |
 | `PLATFORM_OLLAMA_BASE_URL` | `platform` | where a project's Ollama choice is reached | `http://host.docker.internal:11434` |
 | `MISTRAL_API_KEY`, `ANTHROPIC_API_KEY` | qualification, control objectives | hosted model keys | empty |
@@ -369,7 +380,7 @@ also the address people are sent back to after they sign in.
 
 The secrets themselves (gateway cookie and client secrets, service tokens, database role passwords,
 `PLATFORM_SECRETS_KEY` that encrypts stored LLM keys, the ledger keys, `DASHBOARD_REDIS_PASSWORD`) are listed with their purpose
-in `scripts/secrets.sh`. Never commit `env.secrets`, `env.runtime` or `immudb-signing.key`.
+in `scripts/aisc.py` (`SECRETS`). Never commit `env.secrets`, `env.runtime` or `immudb-signing.key`.
 
 ## Tests
 
@@ -394,7 +405,8 @@ From the repository root:
 # plus harnesses that start throwaway Postgres containers with docker run
 uv run --with pytest --with pyyaml --with 'psycopg[binary]' pytest -q -p no:cacheprovider scripts/tests
 
-# the platform service, every test including the database ones, against a throwaway PostgreSQL
+# the platform service, every test including the database ones, against a throwaway PostgreSQL (and a throwaway
+# MinIO for the proof-file store when the stack's MinIO image is built; otherwise those tests skip)
 # (extra arguments go to pytest)
 scripts/test-platform.sh -q
 

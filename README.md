@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml/badge.svg?branch=pilot)](https://github.com/lux-ai-factory/aisc/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.md)
-[![arXiv](https://img.shields.io/badge/arXiv-2509.25256-b31b1b.svg)](https://arxiv.org/abs/2509.25256)
+[![AIES 2026](https://img.shields.io/badge/AIES-2026-b31b1b.svg)](https://doi.org/10.1609/aies.v9i1.43163)
 
 This is the `pilot` branch: the beta version of AISC, which we use to run the pilots that validate the Sandbox
 Configurator. It has every function and is still evolving, so your feedback is very welcome. The stable version,
@@ -21,7 +21,7 @@ Each project assesses one AI system, in four steps:
 1. **Qualify the AI system.** Describe the system, its components and its risks in a versioned AI card.
 2. **Set control objectives.** Rate the system's risks and link them to the control objectives it must meet.
 3. **Choose tests and checklists.** Pick them from the catalogue and install them in one click.
-4. **Collect evidence.** Answer the checklists, run the tests, look at the results, link each control objective
+4. **AI Assessment Sandbox.** Answer the checklists, run the tests, look at the results, link each control objective
    to its evidence on the Evidence map and compose the report.
 
 Along the way, AISC:
@@ -57,7 +57,7 @@ New to these tools? Follow the three steps below.
 |---|---|
 | **Computer** | Windows 10 or 11, macOS or Linux, on a 64-bit Intel or AMD processor (x86_64) |
 | **Memory** | 8 GB of RAM free for AISC. On Windows and macOS, a computer with 16 GB is comfortable |
-| **Disk** | 30 GB free |
+| **Disk** | 30 GB free; the first build needs about 20 GB, and `start` warns below that |
 | **Free ports** | 80, 8100, 8188, and 8081 on `127.0.0.1`. If one is taken, `start` moves AISC to a free one and tells you (not on an install served over https, which also needs 443) |
 | **Internet** | While installing (GitHub, Docker Hub, PyPI, npm and Linux package mirrors), and GitHub again when a test is first installed from the catalogue |
 | **Accounts** | None. Everything AISC needs is public (a few optional test plugins are private: installing one needs a `GITHUB_TOKEN` in `env.secrets`) |
@@ -159,10 +159,12 @@ your passwords.
 
 The **Manage** menu, top right, holds the project's settings: the components of the AI system and the
 connections AISC reaches them through, the helper models tests use as tools, the AI assistants' models and keys,
-the activity log and, for administrators, the background tasks.
+the activity log and, for administrators, the background tasks (Flower) and the database inspector (pgAdmin
+and the schema diagrams). All of them start with the stack except Flower, which runs only when started with
+`COMPOSE_PROFILES=inspect ./scripts/start.sh`.
 
 The AI assistants of steps 1 and 2 (the card agent and the risk mapper) use a language model. They need a model
-and an API key, which an administrator adds under **Manage > AI assistant models and keys**.
+and an API key, which an administrator chooses under **Manage > Connectivity > Configurator agents**.
 
 ## Everyday use
 
@@ -227,6 +229,9 @@ the architecture and the steps; [docs/guide.md](docs/guide.md) describes every c
 - [Your own plugins](docs/guide.md#your-own-plugins), [your own checklists](docs/guide.md#your-own-controls) and
   [your own protocols](docs/guide.md#your-own-protocols) (adapter plugins).
 - [lux-ai-factory/rfc](https://github.com/lux-ai-factory/rfc): architecture, mission and user guide.
+- This README and `docs/` in one PDF: `uv run --no-project --with pypandoc_binary --with python-docx scripts/docs_pdf.py
+  <template.docx>` writes `build/AISC-documentation.pdf` (and `.docx`) in the look of the Word template given (needs LibreOffice,
+  and Node.js with Chrome for the diagrams).
 
 ## Contributing
 
@@ -239,13 +244,15 @@ contributor license agreements in this repository ([individuals](<AISC ICLA (Ind
 If you use AISC in research, please cite:
 
 ```bibtex
-@misc{buscemi2025sandboxconfigurator,
-  title         = {The Sandbox Configurator: A Framework to Support Technical Assessment in AI Regulatory Sandboxes},
-  author        = {Buscemi, Alessio and Simonetto, Thibault and Pagani, Daniele and Castignani, German and Cordy, Maxime and Cabot, Jordi},
-  year          = {2025},
-  eprint        = {2509.25256},
-  archivePrefix = {arXiv},
-  url           = {https://arxiv.org/abs/2509.25256}
+@inproceedings{buscemi2026sandboxconfigurator,
+  title     = {The AI Assessment Sandbox Configurator: A Framework to Support Technical Assessment in AI Regulatory Sandboxes},
+  author    = {Buscemi, Alessio and Castignani, German and Pagani, Daniele and Cordy, Maxime and Cabot, Jordi},
+  booktitle = {Proceedings of the AAAI/ACM Conference on AI, Ethics, and Society},
+  volume    = {9},
+  number    = {1},
+  pages     = {565--576},
+  year      = {2026},
+  doi       = {10.1609/aies.v9i1.43163}
 }
 ```
 

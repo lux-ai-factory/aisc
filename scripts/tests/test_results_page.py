@@ -46,8 +46,7 @@ def test_a_refused_evidence_read_says_the_platforms_reason():
 def test_the_breadcrumb_leads_back_to_step_4():
     script = script_of(read(PAGE))
     assert re.search(r"'/evidence\.html\?project=' \+ enc\(slug\)", script)
-    assert "'Collect evidence · Results'" in script and "'\\u2190 Collect evidence'" in script
-    assert "Sandbox'" not in script
+    assert "'AI Assessment Sandbox · Results'" in script and "'\\u2190 AI Assessment Sandbox'" in script
 
 
 def test_one_big_button_per_tool_with_counts_and_last_run():

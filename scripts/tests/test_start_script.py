@@ -447,7 +447,7 @@ def test_an_exited_container_from_an_earlier_run_does_not_stop_start(scratch):
 
 
 def test_a_container_of_a_service_not_in_this_start_does_not_stop_start(scratch):
-    api_exited(scratch, FAR_FUTURE, services="platform\n")         # api: an inspect-profile or orphan container
+    api_exited(scratch, FAR_FUTURE, services="platform\n")         # api: an orphan container
     (scratch / "not-ready").write_text("1")
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -1339,3 +1339,14 @@ def test_the_temporary_config_is_gone_when_start_fails_after_the_bypass(scratch)
     folder = steps(scratch, "build")[1]
     assert steps(scratch, "up") == [folder]
     assert not os.path.exists(folder)
+
+
+def test_start_turns_the_account_lockout_on_in_an_existing_realm(scratch):
+    """The realm file is imported only into a new install: one made before the lockout was turned on keeps
+    guessing open until start tells its realm the realm file's lockout settings."""
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^KCADM update realms/aisc ", (scratch / "kcadm.log").read_text(), re.M)
+    sent = [json.loads(line) for line in (scratch / "exec-input").read_text().splitlines() if line.strip()]
+    realm = [s for s in sent if "bruteForceProtected" in s]
+    assert realm and realm[-1]["bruteForceProtected"] is True and realm[-1]["failureFactor"] == 5

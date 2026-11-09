@@ -18,18 +18,6 @@ def read(path):
     return path.read_text()
 
 
-def test_manage_menu_links_helper_models():
-    html = read(PROJECT_PAGE)
-    assert 'id="helper-models"' in html
-    assert ">Helper models</span>" in html
-    group = html.index(">Helper models</span>")
-    assert html.index(">Assessed system</span>") < group
-    link = html.index('id="helper-models"')
-    assert group < link < html.index('class="danger admin-only"')
-    assert re.search(r'id="helper-models"[^>]*class="member-only"|class="member-only"[^>]*id="helper-models"', html)
-    assert "'/helpers.html?project=' + encodeURIComponent(slug)" in html
-
-
 def test_helpers_page_never_renders_a_key_field_value():
     html = read(PAGE)
     assert re.search(r"<input[^>]*type=\"password\"", html)

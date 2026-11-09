@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module1" script:language="StarBasic">
+REM Opens a .docx, fills its table of contents and fields, and exports a PDF next to it.
+Sub DocxToPdf(sPath As String)
+  Dim oArgs(0) As New com.sun.star.beans.PropertyValue
+  oArgs(0).Name = &quot;Hidden&quot; : oArgs(0).Value = True
+  oDoc = StarDesktop.loadComponentFromURL(ConvertToURL(sPath), &quot;_blank&quot;, 0, oArgs())
+  oIdx = oDoc.getDocumentIndexes()
+  For i = 0 To oIdx.getCount() - 1
+    oIdx.getByIndex(i).update()
+  Next i
+  oDoc.getTextFields().refresh()
+  Dim oOut(0) As New com.sun.star.beans.PropertyValue
+  oOut(0).Name = &quot;FilterName&quot; : oOut(0).Value = &quot;writer_pdf_Export&quot;
+  oDoc.storeToURL(ConvertToURL(Left(sPath, Len(sPath) - 5) &amp; &quot;.pdf&quot;), oOut())
+  oDoc.close(True)
+End Sub
+</script:module>

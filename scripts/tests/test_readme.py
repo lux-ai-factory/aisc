@@ -65,7 +65,7 @@ def test_the_readme_walks_the_four_steps_of_the_project_page():
     intro = section("What it does")
     assert "four steps" in intro
     for step in ("**Qualify the AI system.**", "**Set control objectives.**", "**Choose tests and checklists.**",
-                 "**Collect evidence.**"):
+                 "**AI Assessment Sandbox.**"):
         assert step in intro, step
 
 
@@ -177,3 +177,12 @@ def test_the_readme_stops_and_removes_with_aisc_py():
     assert "uv run scripts/aisc.py stop" in text and "uv run scripts/aisc.py remove" in text
     assert "docker compose -p aisc" not in text
     assert "one install at a time" in text.lower()
+
+
+def test_the_readme_cites_the_published_paper():
+    citing = section("Citing AISC")
+    assert "The AI Assessment Sandbox Configurator: A Framework to Support Technical Assessment" in citing
+    assert "Proceedings of the AAAI/ACM Conference on AI, Ethics, and Society" in citing
+    assert "565--576" in citing and "10.1609/aies.v9i1.43163" in citing
+    assert "Simonetto" not in citing and "arXiv" not in citing
+    assert "arxiv.org" not in README.read_text().split("\n## ")[0]

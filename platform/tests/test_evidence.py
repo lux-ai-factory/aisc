@@ -1,4 +1,4 @@
-"""Collect evidence: which tests and controls give evidence for which selected control
+"""AI Assessment Sandbox: which tests and controls give evidence for which selected control
 objective, many to many, per project.
 
 The links live in the project's own database (schema `evidence`, template 0016), written only by
@@ -788,6 +788,25 @@ def test_a_plugin_disabled_in_every_version_still_says_so(client, as_user, engin
     tiles = [p for p in body["plugins"] if p["engine_name"] == "LangBiTePlugin"]
     assert len(tiles) == 1 and tiles[0]["stale"] == "disabled"
     assert {t["key"]: t for t in body["tests"]}["aisc-plugin-langbite"]["stale"] == "disabled"
+
+
+def test_a_test_whose_class_was_renamed_between_versions_keeps_one_tile(client, as_user, engine, dsn):
+    """LangBiTe (Mijke) 0.2.8 was LangBiteEvaluationPlugin, 0.3.0 is LangBiteMijkeEvaluationPlugin: one test,
+    one tile, counting the runs of both, its buttons on the version on (the old name may be another test's)."""
+    pid = engine["pid"]
+    _upgraded_langbite(dsn, pid)
+    sql(dsn, pid, "UPDATE engine.aisc_backend_plugin SET name = 'LangBiTeRenamedPlugin' WHERE enabled = true"
+                  " AND package_name = 'aisc-plugin-langbite'")
+    old = sql(dsn, pid, "SELECT id FROM engine.aisc_backend_plugin WHERE name = 'LangBiTePlugin'")[0][0]
+    config = sql(dsn, pid, "INSERT INTO engine.aisc_backend_pluginconfig (plugin_id, name) VALUES (%s, 'c')"
+                           " RETURNING id", (old,))[0][0]
+    ev = sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluation (status, system_id)"
+                       " VALUES ('Done', %s) RETURNING id", (V2,))[0][0]
+    sql(dsn, pid, "INSERT INTO engine.aisc_backend_evaluationplugin (evaluation_id, plugin_config_id, status)"
+                  " VALUES (%s, %s, 'Done')", (ev, config))
+    tiles = [p for p in get(client, as_user, engine).json()["plugins"] if p["key"] == "aisc-plugin-langbite"]
+    assert tiles == [{"key": "aisc-plugin-langbite", "engine_name": "LangBiTeRenamedPlugin", "label": "LangBiTe",
+                      "stale": None, "runs": {"executed": 1, "failed": 0, "running": 0}}]
 
 
 # ── step 4 control tiles: each checklist's latest answers, as the controls app shows them ──

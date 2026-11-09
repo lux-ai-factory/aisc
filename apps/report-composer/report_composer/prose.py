@@ -8,7 +8,7 @@ carries no `x-aisc-prose`, lies under no `x-aisc-prose: false` or `x-aisc-refere
 describe keeps the fixed list: commentary, free_text.text and chapter.intro.
 
 Presets drop prose unless texts are kept (`strip_options`), and the editor flags options that still hold
-the placeholder (`unwritten`, `unwritten_hint`).
+the placeholder (`unwritten`, `unwritten_hint`) and sections whose commentary is written (`commentary_written`).
 """
 from __future__ import annotations
 
@@ -182,6 +182,12 @@ def is_placeholder(text) -> bool:
 
 
 _is_placeholder = is_placeholder
+
+
+def commentary_written(options) -> bool:
+    """True when the block's commentary holds text of its own: not empty, not blank, not the placeholder."""
+    text = (options or {}).get("commentary")
+    return isinstance(text, str) and bool(text.strip()) and not is_placeholder(text)
 
 
 def unwritten(type_id: str, options: dict, block_type: dict | None) -> list[str]:

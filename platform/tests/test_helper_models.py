@@ -166,12 +166,12 @@ def test_ledger_records_fingerprint_not_key(client, as_user, project, monkeypatc
 
 def test_rotate_all_rotates_helper_keys(client, as_user, project, dsn, monkeypatch):
     put(client, project, as_user(ALICE))
-    before = one(dsn, project, "select ciphertext from helper.model where name = 'judge'")[0]
+    before = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'judge'")[0]
     newest = Fernet.generate_key().decode()
     monkeypatch.setenv("PLATFORM_SECRETS_KEY", f"{newest},{SECRETS_KEY}")
     counts = llm_store.rotate_all(dsn)
     assert counts["rotated"] >= 1
-    after = one(dsn, project, "select ciphertext from helper.model where name = 'judge'")[0]
+    after = one(dsn, project, "select secret_ciphertext from connection.endpoint where name = 'judge'")[0]
     assert after != before
     assert Fernet(newest.encode()).decrypt(after.encode()).decode() == KEY
 

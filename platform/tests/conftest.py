@@ -64,6 +64,8 @@ def dsn():
 @pytest.fixture(autouse=True)
 def _point_the_service_at_the_test_database(monkeypatch):
     monkeypatch.setenv("PLATFORM_DATABASE_URL", DSN)
+    # never the stack's MinIO: a test that wants a store puts one in place (tests/proof_fake.py)
+    monkeypatch.delenv("S3_URL", raising=False)
 
 
 #: Everything these tests create is named this way, and everything named this

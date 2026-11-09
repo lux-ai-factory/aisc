@@ -1,4 +1,4 @@
-"""The Collect evidence page (evidence.html), step 4. The project page's sandbox card opens it; it has the
+"""The AI Assessment Sandbox page (evidence.html), step 4. The project page's sandbox card opens it; it has the
 three ways on (the engine, the controls app, the dashboard) with their tiles. Its tables linking tests and
 controls to the control objectives are gone from the page (the platform keeps the links, the report
 composer reads them). Static checks of the page source, like test_connections_page.py."""
@@ -31,7 +31,7 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
     # one inline script, and the shared origins helper (no link names localhost)
     assert scripts == [' src="/assets/origins.js"', ""], scripts
-    assert re.search(r"<title>Collect evidence\b", html)
+    assert re.search(r"<title>AI Assessment Sandbox - ", html)
 
 
 def test_it_has_the_two_buttons_into_the_project():
@@ -271,12 +271,68 @@ def test_the_four_columns_sit_side_by_side_across_the_whole_page():
 
 # ── the AI Assessment Sandbox ───────────────────────────────────────────────
 
-def test_the_page_is_collect_evidence():
+def test_the_page_is_the_ai_assessment_sandbox():
     html = read(PAGE)
     markup, script = markup_of(html), script_of(html)
-    assert '<p class="subtitle">Collect evidence</p>' in markup
-    assert "AI Assessment Sandbox</" not in markup.replace("<h1>AI Assessment Sandbox Configurator</h1>", "")
-    assert "document.title = p.name + ' - Collect evidence'" in script
+    assert '<p class="subtitle">AI Assessment Sandbox</p>' in markup
+    assert "Collect evidence" not in html
+    assert "document.title = p.name + ' - AI Assessment Sandbox'" in script
+
+
+# ── the Evidence map: top right of the page's head ──────────────────────────
+
+def test_the_evidence_map_sits_top_right_of_the_head():
+    html = read(PAGE)
+    markup = markup_of(html)
+    head = re.search(r'<div class="page-head">(.*?)\n  </div>\n', markup, re.S)
+    assert head, "no page-head block"
+    left, right = head.group(1).split('<div class="map-bar"', 1)
+    assert 'id="project-name"' in left and 'id="version-bar"' in left
+    assert 'id="evidence-map"' in right and 'id="map-coverage"' in right
+    css = style_of(html).replace(" ", "")
+    assert re.search(r"\.page-head\{[^}]*display:flex[^}]*justify-content:space-between", css)
+
+
+# ── Manage: the project page's menu, here too ───────────────────────────────
+
+PROJECT = ROOT / "homepage/project.html"
+
+
+def menu_of(html):
+    body = html[html.index("<body>"):]
+    return re.search(r'<details class="menu" id="manage">.*?</details>', body, re.S).group(0)
+
+
+def test_the_top_bar_has_the_project_pages_manage_menu_without_delete():
+    html = read(PAGE)
+    topbar = re.search(r'<div class="topbar">(.*?)\n</div>', html, re.S).group(1)
+    assert '<details class="menu" id="manage">' in topbar
+    project_menu = menu_of(read(PROJECT))
+    without_delete = re.sub(r'\s*<button type="button" class="danger admin-only" hidden id="delete-open">.*?</button>',
+                            "", project_menu, flags=re.S)
+    assert menu_of(html) == without_delete
+    assert "delete-open" not in html
+
+
+def test_the_menu_looks_like_the_project_pages():
+    mine, theirs = style_of(read(PAGE)), style_of(read(PROJECT))
+    for selector in (".menu", ".menu summary", ".menu summary svg", ".menu .panel", ".menu .panel a",
+                     ".menu .panel .group", ".menu .panel .sep", ".menu .panel [hidden]"):
+        assert rule(mine, selector) == rule(theirs, selector), selector
+
+
+def test_the_menu_shows_each_person_what_the_project_page_does():
+    script = script_of(read(PAGE))
+    assert "'/api/authz/projects/' + enc(slug)" in script
+    for wired in ("$('inspect-schema').href = '/inspect/schema/?project=' + enc(p.pid)",
+                  "$('activity-log').href = '/logs.html?project=' + enc(slug)",
+                  "$('connectivity-settings').href = '/connectivity.html?project=' + enc(slug)"):
+        assert wired in script, wired
+    for group in ("member-only", "owner-only", "admin-only"):
+        assert "'#manage ." + group + "'" in script, group
+    assert "a.admin || a.role === 'owner'" in script
+    # it closes on a click elsewhere and on Escape
+    assert "!menu.contains(e.target)" in script and "e.key === 'Escape'" in script
 
 
 def test_report_is_a_fourth_big_button_with_its_column():

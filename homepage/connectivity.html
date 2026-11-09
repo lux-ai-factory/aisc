@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Connectivity - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<style>
+  /* The launcher's tokens, fonts, header and session line are /assets/launcher.css; these are this page's own.
+     Everything this page decides is decided by the platform (GET .../connectivity); the page only shows it.
+     Magenta (--accent) marks what is assessed. */
+  main{max-width:1180px; margin:0 auto; padding:40px 32px 64px}
+  .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
+  .subtitle{margin:0 0 24px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .note{margin:0 0 18px; padding:12px 14px; border-left:3px solid var(--border-strong); color:var(--muted);
+    font-size:13.5px; background:rgba(0,15,223,.02); max-width:95ch}
+  .note.assessed{border-left-color:var(--accent); background:rgba(255,0,126,.05)}
+  .note b{color:var(--text)}
+
+  .tabs{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--border); background:var(--panel)}
+  .tab{all:unset; box-sizing:border-box; cursor:pointer; display:grid; gap:4px; padding:14px 16px;
+    border-right:1px solid var(--border); border-bottom:3px solid transparent; min-width:0}
+  .tab:last-child{border-right:0; background:var(--panel-2)}
+  .tab:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
+  .tab[aria-selected="true"]{border-bottom-color:var(--primary)}
+  .tab.assessed[aria-selected="true"]{border-bottom-color:var(--accent)}
+  .tab .k{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint)}
+  .tab.assessed .k{color:var(--accent)}
+  .tab .n{font-family:"MuseoModerno",sans-serif; font-weight:600; font-size:16px; color:var(--heading)}
+  .tab .st{font-family:var(--mono); font-size:11px; color:var(--muted)}
+
+  section.panel{margin-top:24px}
+  section.panel h2{margin:0 0 6px; font-size:20px; font-weight:600}
+  section.panel > p{margin:0 0 16px; color:var(--muted); font-size:14px; max-width:85ch}
+  .wrap{overflow-x:auto}
+  table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--border); min-width:640px}
+  th, td{padding:11px 14px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; font-size:14px}
+  th{font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); background:var(--panel-2)}
+  td.name{font-weight:600}
+  .mono{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .pill{display:inline-block; margin:0 6px 4px 0; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
+    text-transform:uppercase; padding:3px 8px; border:1px solid var(--border-strong); color:var(--muted)}
+  .pill.ok{color:var(--ok); border-color:var(--ok)}
+  .pill.assessed{color:var(--accent); border-color:var(--accent)}
+  input, select{font:inherit; font-size:13.5px; padding:7px 9px; color:var(--text); border:1px solid var(--border-strong);
+    background:var(--panel); border-radius:0; max-width:100%}
+  input:focus, select:focus{outline:2px solid var(--primary); outline-offset:-1px}
+  button.b{display:inline-flex; align-items:center; padding:7px 12px; cursor:pointer; border:1px solid var(--primary);
+    background:var(--primary); color:#fff; font-family:var(--mono); font-size:10.5px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase}
+  button.b.ghost{background:transparent; color:var(--primary)}
+  button.b:hover{background:var(--primary-hover); border-color:var(--primary-hover); color:#fff}
+  .row{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  .roles label{display:inline-flex; gap:4px; align-items:center; margin-right:10px; font-size:13px}
+  form.new{display:grid; gap:10px; max-width:720px; margin-top:18px; padding:16px 18px; border:1px solid var(--border);
+    background:var(--panel)}
+  form.new label{display:grid; gap:4px; font-size:12.5px; color:var(--muted)}
+  .msg{display:block; min-height:1em; font-size:12.5px; color:var(--muted)}
+  .msg.err{color:var(--error)}
+  @media (max-width:820px){
+    main{padding:28px 16px 40px}
+    .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to the project">&larr; Project</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="subtitle">Connectivity</p>
+  <p class="note" id="page-message" hidden></p>
+
+  <div id="content" hidden>
+    <div class="tabs" role="tablist" aria-label="Connectivity">
+      <button class="tab assessed" role="tab" data-tab="assessed" aria-controls="p-assessed">
+        <span class="k">Assessed</span><span class="n">System under assessment</span><span class="st" id="st-assessed"></span>
+      </button>
+      <button class="tab" role="tab" data-tab="agents" aria-controls="p-agents">
+        <span class="k">Helps you</span><span class="n">Configurator agents</span><span class="st" id="st-agents"></span>
+      </button>
+      <button class="tab" role="tab" data-tab="tools" aria-controls="p-tools">
+        <span class="k">Helps the tests</span><span class="n">Test tools</span><span class="st" id="st-tools"></span>
+      </button>
+      <button class="tab" role="tab" data-tab="connections" aria-controls="p-connections">
+        <span class="k">Shared</span><span class="n">Connections</span><span class="st" id="st-connections"></span>
+      </button>
+    </div>
+
+    <section class="panel" id="p-assessed" role="tabpanel">
+      <h2>System under assessment</h2>
+      <p>One row per component of the AI card, and the connection or uploaded file that reaches it.</p>
+      <p class="note assessed"><b>Every call to these is recorded</b> in the run trace and is part of the evidence.
+        A connection that reaches the assessed system is never a test tool or a Configurator agent's model.</p>
+      <div class="wrap"><table>
+        <thead><tr><th>Component</th><th>Reached through</th><th>Protocol</th><th>Last test</th></tr></thead>
+        <tbody id="components"></tbody>
+      </table></div>
+      <p class="row" style="margin-top:14px"><a class="b" id="edit-assessed">Edit connections, uploads and allowed hosts</a></p>
+    </section>
+
+    <section class="panel" id="p-agents" role="tabpanel" hidden>
+      <h2>Configurator agents</h2>
+      <p>The Configurator's own agents, which help fill in the assessment. Each runs on a provider connection with a
+        model; with no choice, it uses the stack's own setting. Only a platform admin chooses.</p>
+      <div class="wrap"><table>
+        <thead><tr><th>Agent</th><th>Connection</th><th>Model</th><th></th></tr></thead>
+        <tbody id="agents"></tbody>
+      </table></div>
+      <span class="msg" id="agents-msg"></span>
+    </section>
+
+    <section class="panel" id="p-tools" role="tabpanel" hidden>
+      <h2>Test tools</h2>
+      <p>A test asks for a tool by role; the run's form offers the connections listed here for that role.
+        Which roles a connection serves is set on the Connections tab.</p>
+      <div class="wrap"><table>
+        <thead><tr><th>Role</th><th>Connections offered</th></tr></thead>
+        <tbody id="tools"></tbody>
+      </table></div>
+    </section>
+
+    <section class="panel" id="p-connections" role="tabpanel" hidden>
+      <h2>Connections</h2>
+      <p>Every way the project reaches a model or a system, set up once. Keys are stored encrypted for this project
+        and never shown again.</p>
+      <div class="wrap"><table>
+        <thead><tr><th>Connection</th><th>Protocol</th><th>Address</th><th>Key</th><th>Used for</th><th>Test tool roles</th></tr></thead>
+        <tbody id="connections"></tbody>
+      </table></div>
+      <span class="msg" id="connections-msg"></span>
+
+      <form class="new" id="new-provider" autocomplete="off" hidden>
+        <strong>New provider connection</strong>
+        <label>Name (lowercase letters, digits and dashes)
+          <input id="n-name" type="text" required pattern="[a-z0-9][a-z0-9\-]{0,62}" maxlength="63"/></label>
+        <label>Label <input id="n-label" type="text" required maxlength="120"/></label>
+        <label>Provider <select id="n-provider"></select></label>
+        <label>Address (a self-hosted model server only)
+          <input id="n-base-url" type="url" placeholder="https://host/v1"/></label>
+        <label>Key <input id="n-secret" type="password" autocomplete="new-password"/></label>
+        <div class="row"><button class="b" type="submit">Save connection</button></div>
+        <span class="msg" id="n-msg"></span>
+      </form>
+    </section>
+  </div>
+</main>
+
+</div>
+
+<script>
+  var slug = new URLSearchParams(location.search).get('project') || '';
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var enc = encodeURIComponent;
+  var base = '/api/projects/' + enc(slug);
+  var data = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  // The only request helper: same origin, the session cookie, JSON bodies. Resolves {ok, status, body}.
+  function api(path, method, body) {
+    return fetch(path, {
+      method: method || 'GET', credentials: 'same-origin',
+      headers: body ? {'Content-Type': 'application/json'} : {},
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (b) {
+        return {ok: res.ok, status: res.status, body: b};
+      });
+    });
+  }
+
+  function refusal(r) {
+    var d = r.body && r.body.detail;
+    return typeof d === 'string' ? d : 'Refused (HTTP ' + r.status + ')';
+  }
+
+  function say(id, text, isError) { $(id).textContent = text || ''; $(id).className = isError ? 'msg err' : 'msg'; }
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+
+  function cell(row, content, cls) {
+    var td = el('td', cls);
+    if (content instanceof Node) td.appendChild(content); else td.textContent = content == null ? '' : content;
+    row.appendChild(td);
+    return td;
+  }
+
+  // ---- tabs ----
+  function show(name) {
+    var tabs = document.querySelectorAll('.tab');
+    var known = [].map.call(tabs, function (t) { return t.getAttribute('data-tab'); });
+    if (known.indexOf(name) < 0) name = 'assessed';
+    [].forEach.call(tabs, function (t) {
+      var on = t.getAttribute('data-tab') === name;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      $('p-' + t.getAttribute('data-tab')).hidden = !on;
+    });
+  }
+  [].forEach.call(document.querySelectorAll('.tab'), function (t) {
+    t.addEventListener('click', function () {
+      show(t.getAttribute('data-tab'));
+      try { history.replaceState(null, '', '#' + t.getAttribute('data-tab')); } catch (e) { /* hash stays */ }
+    });
+  });
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+
+  // ---- rendering what the platform answered ----
+  function renderAssessed() {
+    var body = $('components'); body.textContent = '';
+    var reached = 0;
+    data.components.forEach(function (c) {
+      var tr = el('tr');
+      cell(tr, c.label + (c.kind === 'system' ? ' (system)' : ''), 'name');
+      if (c.connection) {
+        reached++;
+        cell(tr, c.connection.name, 'mono'); cell(tr, c.connection.protocol);
+        cell(tr, el('span', 'pill' + (c.connection.last_test_ok ? ' ok' : ''),
+                    c.connection.last_test_ok === null ? 'not tried' : (c.connection.last_test_ok ? 'answered' : 'failed')));
+      } else if (c.file) {
+        reached++;
+        cell(tr, c.file.name, 'mono'); cell(tr, 'Uploaded file'); cell(tr, '');
+      } else {
+        cell(tr, el('span', 'pill', 'not connected')); cell(tr, ''); cell(tr, '');
+      }
+      body.appendChild(tr);
+    });
+    $('st-assessed').textContent = reached + ' of ' + data.components.length + ' components reachable';
+    $('edit-assessed').href = '/connections.html?project=' + enc(slug);
+  }
+
+  function providerConnections() {
+    return data.connections.filter(function (c) { return c.kind === 'provider'; });
+  }
+
+  function renderAgents() {
+    var body = $('agents'); body.textContent = '';
+    var set = 0;
+    data.agents.forEach(function (a) {
+      if (a.choice) set++;
+      var tr = el('tr');
+      cell(tr, a.label, 'name');
+      if (!data.can_manage) {
+        cell(tr, a.choice ? a.choice.connection : 'Stack default', 'mono');
+        cell(tr, a.choice ? a.choice.model : '', 'mono'); cell(tr, '');
+        body.appendChild(tr); return;
+      }
+      var pick = el('select'); pick.id = 'agent-' + a.id;
+      pick.appendChild(el('option', null, 'Stack default')).value = '';
+      providerConnections().forEach(function (c) {
+        var o = el('option', null, c.label + ' (' + c.name + ')'); o.value = c.name;
+        if (a.choice && a.choice.connection === c.name) o.selected = true;
+        pick.appendChild(o);
+      });
+      var model = el('input'); model.id = 'model-' + a.id; model.placeholder = 'model';
+      model.value = a.choice ? a.choice.model : '';
+      var choices = el('datalist'); choices.id = 'models-' + a.id;
+      model.setAttribute('list', choices.id);
+      var note = el('div', 'hint');
+      pick.addEventListener('change', function () { fillModels(pick.value, choices, note); });
+      fillModels(pick.value, choices, note);
+      var save = el('button', 'b ghost', 'Save'); save.type = 'button';
+      save.addEventListener('click', function () { saveAgent(a.id, pick.value, model.value); });
+      var modelCell = el('div'); modelCell.appendChild(model); modelCell.appendChild(choices); modelCell.appendChild(note);
+      cell(tr, pick); cell(tr, modelCell); cell(tr, save);
+      body.appendChild(tr);
+    });
+    $('st-agents').textContent = set + ' of ' + data.agents.length + ' chosen';
+  }
+
+  // The models the chosen connection's provider offers, asked live with the project's key, as the model's choices.
+  // A name the list lacks can still be typed; when the provider cannot list them, the note says why.
+  function fillModels(connection, choices, note) {
+    choices.textContent = ''; note.textContent = '';
+    var c = providerConnections().filter(function (x) { return x.name === connection; })[0];
+    if (!c || !c.provider) return;
+    note.textContent = 'Asking ' + c.label + ' for its models…';
+    api(base + '/connections/' + enc(c.name) + '/models').then(function (r) {
+      var models = (r.ok && r.body && r.body.models) || [];
+      models.forEach(function (m) { choices.appendChild(el('option')).value = m; });
+      if (models.length) { note.textContent = models.length + ' models: click the box to pick one.'; return; }
+      var why = (r.body && (r.body.error || r.body.detail)) || ('HTTP ' + r.status);
+      note.textContent = 'The list could not be read (' + why + '): type the model name.';
+    });
+  }
+
+  function renderTools() {
+    var body = $('tools'); body.textContent = '';
+    var served = 0;
+    data.tools.forEach(function (t) {
+      if (t.connections.length) served++;
+      var tr = el('tr');
+      cell(tr, t.role, 'name');
+      cell(tr, t.connections.length ? t.connections.map(function (c) { return c.label + ' (' + c.name + ')'; }).join(', ')
+                                    : 'none yet', 'mono');
+      body.appendChild(tr);
+    });
+    $('st-tools').textContent = served + ' of ' + data.tools.length + ' roles offered';
+  }
+
+  // The component a connection reaches, if any. An admin is given it with the connection; an owner is given only a
+  // connection's name, label, kind and uses, so the component that names it as its connection says it.
+  function assessedBy(c) {
+    if (c.target) return c.target.label;
+    var hit = data.components.filter(function (t) { return t.connection && t.connection.name === c.name; })[0];
+    return hit ? hit.label : null;
+  }
+
+  function usedFor(c) {
+    var box = el('div');
+    var assessed = assessedBy(c);
+    if (assessed !== null) box.appendChild(el('span', 'pill assessed', 'assessed: ' + assessed));
+    c.used_for.forEach(function (u) {
+      box.appendChild(el('span', 'pill', u.use === 'agent' ? 'agent: ' + u.agent + ', ' + u.model
+                                                           : 'tool: ' + u.roles.join(', ')));
+    });
+    return box;
+  }
+
+  function roleEditor(c) {
+    var box = el('div', 'roles');
+    if (assessedBy(c) !== null) { box.textContent = '(assessed)'; return box; }
+    var current = [];
+    c.used_for.forEach(function (u) { if (u.use === 'tool') current = u.roles; });
+    data.roles.forEach(function (role) {
+      var label = el('label'); var box2 = el('input'); box2.type = 'checkbox'; box2.value = role;
+      box2.checked = current.indexOf(role) >= 0;
+      label.appendChild(box2); label.appendChild(document.createTextNode(role)); box.appendChild(label);
+    });
+    var save = el('button', 'b ghost', 'Save roles'); save.type = 'button';
+    save.addEventListener('click', function () {
+      var roles = [].filter.call(box.querySelectorAll('input'), function (i) { return i.checked; })
+                    .map(function (i) { return i.value; });
+      saveTool(c.name, roles);
+    });
+    box.appendChild(save);
+    return box;
+  }
+
+  function renderConnections() {
+    var body = $('connections'); body.textContent = '';
+    data.connections.forEach(function (c) {
+      var tr = el('tr');
+      cell(tr, c.label + ' (' + c.name + ')', 'name');
+      // a connection's settings (provider, address, whether a key is stored) come to an admin only
+      cell(tr, c.kind === 'provider' ? (c.provider ? 'Provider: ' + c.provider : 'Provider') : c.protocol || c.kind);
+      cell(tr, c.base_url || '', 'mono');
+      cell(tr, 'has_secret' in c ? el('span', 'pill' + (c.has_secret ? ' ok' : ''), c.has_secret ? 'stored' : 'none') : '');
+      cell(tr, usedFor(c));
+      cell(tr, roleEditor(c));
+      body.appendChild(tr);
+    });
+    $('st-connections').textContent = data.connections.length + ' connections';
+    $('new-provider').hidden = !data.can_manage;
+    var pick = $('n-provider');
+    if (!pick.options.length) {
+      data.providers.forEach(function (p) {
+        var o = el('option', null, p.label); o.value = p.id; pick.appendChild(o);
+      });
+    }
+  }
+
+  function render() {
+    renderAssessed(); renderAgents(); renderTools(); renderConnections();
+  }
+
+  function reload() {
+    return api('/api/projects/' + enc(slug) + '/connectivity').then(function (r) {
+      if (!r.ok) { $('page-message').textContent = refusal(r); $('page-message').hidden = false; return; }
+      data = r.body;
+      $('content').hidden = false;
+      render();
+    });
+  }
+
+  // ---- writes: each one through the platform, then the page reads everything again ----
+  function saveAgent(agent, connection, model) {
+    var done = connection ? api(base + '/agents/' + enc(agent), 'PUT', {connection: connection, model: model})
+                          : api(base + '/agents/' + enc(agent), 'DELETE');
+    done.then(function (r) {
+      if (!r.ok && !(r.status === 404 && !connection)) { say('agents-msg', refusal(r), true); return; }
+      say('agents-msg', 'Saved.'); reload();
+    });
+  }
+
+  function saveTool(name, roles) {
+    var path = base + '/connections/' + enc(name) + '/tool';
+    var done = roles.length ? api(path, 'PUT', {roles: roles}) : api(path, 'DELETE');
+    done.then(function (r) {
+      if (!r.ok && !(r.status === 404 && !roles.length)) { say('connections-msg', refusal(r), true); return; }
+      say('connections-msg', 'Saved.'); reload();
+    });
+  }
+
+  $('new-provider').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var sent = {label: $('n-label').value, kind: 'provider', provider: $('n-provider').value};
+    if ($('n-base-url').value) sent.base_url = $('n-base-url').value;
+    if ($('n-secret').value) sent.secret = $('n-secret').value;
+    api(base + '/connections/' + enc($('n-name').value), 'PUT', sent).then(function (r) {
+      if (!r.ok) { say('n-msg', refusal(r), true); return; }
+      $('n-secret').value = '';
+      say('n-msg', 'Saved.'); reload();
+    });
+  });
+
+  // ---- start: the project, then the page's one read ----
+  $('back').href = '/p/' + enc(slug);
+  api(base).then(function (r) {
+    if (!r.ok) { $('page-message').textContent = 'No such project: ' + slug + '.'; $('page-message').hidden = false; return; }
+    $('project-name').textContent = r.body.name;
+    document.title = r.body.name + ' - Connectivity';
+    $('who').textContent = 'signed in';
+    show(location.hash.slice(1));
+    return reload();
+  }).catch(function () {
+    $('page-message').textContent = 'The platform is not answering. Nothing was saved.';
+    $('page-message').hidden = false;
+  });
+</script>
+</body>
+</html>

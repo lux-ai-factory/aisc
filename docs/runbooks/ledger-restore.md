@@ -41,7 +41,7 @@ the state is re-anchored. Nothing is lost on the apps' side: events wait in the 
      ```
 4. **Know what restarts.** After the re-anchor the log's numbering continues from the restored
    head, so numbers that existed before the restore are given again to new entries. The read index
-   is keyed by (project, seq): its rows above the restored head must be moved aside
+   is keyed by (log, seq), the log being the ledger database's name: its rows above the restored head must be moved aside
    (kept, marked "lost in restore") before the relay writes again.
 5. **Expect the gap.** Entries written after the backup was taken are gone from immudb. The published
    heads only prove they existed: there is no archive to rebuild them from yet.

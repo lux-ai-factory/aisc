@@ -1,9 +1,10 @@
 """Screens drawn in Python.
 
 Markup hooks these tests assume:
-- outline: `li[data-instance-id][data-depth]` (1 inside a chapter, 0 otherwise)
-- block form: `details[data-more]` "More options" (closed), `details[data-commentary]` "Add a commentary",
-  fields with `data-show-if` (JSON) and `hidden` when hidden
+- outline: `li[data-instance-id][data-depth]` (1 inside a chapter, 0 otherwise), one row per section
+- inspector: one body per section, `[data-body-for=<instance_id>]`, holding its form: `details[data-more]`
+  "More options" (closed), the commentary box `[data-commentary]` (always open), fields with `data-show-if`
+  (JSON) and `hidden` when hidden
 - every page: `div[data-message][role=alert][aria-live=polite]` first in `main`, and one `dialog[data-confirm]`
 - layouts page: per row `[data-control=duplicate|export-structure]`
 """
@@ -36,7 +37,13 @@ def editor(client, auth, blocks, who="alice", **body):
 
 
 def li_of(doc, iid):
+    """The section's row in the outline."""
     return doc.find("li", attrs={"data-instance-id": iid})
+
+
+def body_of(doc, iid):
+    """The section's form in the inspector."""
+    return doc.find(attrs={"data-body-for": iid})
 
 
 # no select multiple anywhere
@@ -58,7 +65,7 @@ def test_r_u4_1_no_select_multiple_on_any_page(client_v2, auth):
 def test_r_u4_2_all_or_list_radios_then_checkboxes(client_v2, auth):
     tests = v2blk("test_results", evaluations=[IDS["EVAL_A_V2"]])
     lay, doc = editor(client_v2, auth, [tests])
-    field = li_of(doc, tests["instance_id"]).find(attrs={"data-field": "evaluations"})
+    field = body_of(doc, tests["instance_id"]).find(attrs={"data-field": "evaluations"})
     radios = field.find_all("input", attrs={"type": "radio"})
     labels = [r.find_parent("label").get_text(" ", strip=True) for r in radios]
     assert labels == ["All (also ones added later)", "Only these:"]
@@ -74,9 +81,9 @@ def test_r_u4_3_a_stored_empty_list_shows_only_these_and_the_problem(client_v2, 
     bed.psql(pdb_of("A"), "UPDATE report_composer.layout_block SET options = options || '{\"evaluations\": []}'"
                           f" WHERE instance_id = '{tests['instance_id']}'")
     doc = soup(client_v2.get(f"/p/alpha/layouts/{lay['id']}?system_id={IDS['A_V2']}", headers=auth("alice")).text)
-    field = li_of(doc, tests["instance_id"]).find(attrs={"data-field": "evaluations"})
+    field = body_of(doc, tests["instance_id"]).find(attrs={"data-field": "evaluations"})
     assert field.find_all("input", attrs={"type": "radio"})[1].has_attr("checked")
-    assert "Pick at least one, or choose All." in li_of(doc, tests["instance_id"]).get_text()
+    assert "Pick at least one, or choose All." in body_of(doc, tests["instance_id"]).get_text()
 
 
 # More options, commentary
@@ -84,7 +91,7 @@ def test_r_u4_3_a_stored_empty_list_shows_only_these_and_the_problem(client_v2, 
 def test_r_u5_4_more_options_are_a_closed_disclosure_at_the_end(client_v2, auth):
     tests = v2blk("test_results")
     lay, doc = editor(client_v2, auth, [tests])
-    li = li_of(doc, tests["instance_id"])
+    li = body_of(doc, tests["instance_id"])
     more = li.find("details", attrs={"data-more": True})
     assert more is not None and not more.has_attr("open")
     assert more.find("summary").get_text(strip=True) == "More options"
@@ -95,19 +102,21 @@ def test_r_u5_4_more_options_are_a_closed_disclosure_at_the_end(client_v2, auth)
 def test_r_u5_3_help_lines_are_shown(client_v2, auth):
     kf = v2blk("key_figures")
     lay, doc = editor(client_v2, auth, [kf])
-    assert "One tile per tool." in li_of(doc, kf["instance_id"]).get_text()
+    assert "One tile per tool." in body_of(doc, kf["instance_id"]).get_text()
 
 
-def test_r_v3_13_commentary_disclosure_closed_when_empty_open_when_set(client_v2, auth):
+def test_the_commentary_has_its_own_box_below_the_options_always_open(client_v2, auth):
     empty, filled = v2blk("ai_card"), v2blk("cover", commentary="Read this first")
     lay, doc = editor(client_v2, auth, [empty, filled])
-    for iid, is_open in ((empty["instance_id"], False), (filled["instance_id"], True)):
-        d = li_of(doc, iid).find("details", attrs={"data-commentary": True})
-        assert d is not None and d.find("summary").get_text(strip=True) == "Add a commentary"
-        assert d.has_attr("open") is is_open
-        area = d.find("textarea", attrs={"data-option": "commentary"})
-        assert area is not None and area.get("rows") == "6"
-    more = li_of(doc, empty["instance_id"]).find("details", attrs={"data-more": True})
+    for iid in (empty["instance_id"], filled["instance_id"]):
+        box = body_of(doc, iid).find(attrs={"data-commentary": True})
+        assert box is not None and box.name != "details" and box.find_parent("details") is None
+        assert box.find(["h3", "h4"]).get_text(strip=True) == "Commentary"
+        area = box.find("textarea", attrs={"data-option": "commentary"})
+        assert area is not None and int(area.get("rows")) >= 12
+        options = body_of(doc, iid).find(attrs={"data-options": True})
+        assert options is not None and options.find(attrs={"data-option": "commentary"}) is None
+    more = body_of(doc, empty["instance_id"]).find("details", attrs={"data-more": True})
     assert more.find(attrs={"data-field": "commentary_position"}) is not None
     assert "After the section" in more.get_text() and "Place the commentary" in more.get_text()
 
@@ -115,14 +124,14 @@ def test_r_v3_13_commentary_disclosure_closed_when_empty_open_when_set(client_v2
 def test_r_v3_15_help_line_under_light_formatting_textareas(client_v2, auth):
     ai, md = v2blk("ai_card"), v2blk("free_text", text="x", format="markdown")
     lay, doc = editor(client_v2, auth, [ai, md])
-    assert HELP in li_of(doc, ai["instance_id"]).find("details", attrs={"data-commentary": True}).get_text(" ", strip=True)
-    assert HELP in li_of(doc, md["instance_id"]).find(attrs={"data-field": "text"}).get_text(" ", strip=True)
+    assert HELP in body_of(doc, ai["instance_id"]).find(attrs={"data-commentary": True}).get_text(" ", strip=True)
+    assert HELP in body_of(doc, md["instance_id"]).find(attrs={"data-field": "text"}).get_text(" ", strip=True)
 
 
 def test_r_v3_16_the_composer_never_interprets_markup(client_v2, auth):
     b = v2blk("cover", commentary="**bold** <b>raw</b>")
     lay, doc = editor(client_v2, auth, [b])
-    area = li_of(doc, b["instance_id"]).find("textarea", attrs={"data-option": "commentary"})
+    area = body_of(doc, b["instance_id"]).find("textarea", attrs={"data-option": "commentary"})
     assert area is not None and area.get_text() == "**bold** <b>raw</b>"
     assert "<strong>bold" not in str(doc)
 
@@ -149,7 +158,7 @@ def test_r_u5_2_the_palette_shows_block_descriptions(client_v2, auth):
 def test_r_v4_15_show_if_fields_are_drawn_hidden(client_v2, auth):
     chart = v2blk("chart", dataset="coverage_status")
     lay, doc = editor(client_v2, auth, [chart])
-    field = li_of(doc, chart["instance_id"]).find(attrs={"data-field": "tool_chart"})
+    field = body_of(doc, chart["instance_id"]).find(attrs={"data-field": "tool_chart"})
     assert field is not None and json.loads(field.get("data-show-if") or "null") == {"dataset": ["tool_chart"]}
     assert field.has_attr("hidden")
 
@@ -167,7 +176,7 @@ def test_r_v5_9_blocks_inside_a_chapter_are_indented(client_v2, auth):
 def test_r_v5_8_an_empty_chapter_is_a_hint_not_an_error(client_v2, auth):
     ch = v2blk("chapter", title="Nothing here")
     lay, doc = editor(client_v2, auth, [v2blk("cover"), ch, v2blk("chapter", title="Next"), v2blk("ai_card")])
-    assert "This chapter is empty." in li_of(doc, ch["instance_id"]).get_text()
+    assert "This chapter is empty." in body_of(doc, ch["instance_id"]).get_text()
     assert client_v2.post(f"/api/p/alpha/layouts/{lay['id']}/validate", headers=auth("alice")).json()["valid"] is True
 
 
@@ -246,13 +255,14 @@ def test_fix_outline_route_gives_depth_and_empty_chapter_for_any_order(client_v2
                        json={"blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"]}
                                         for b in order]}, headers=auth("alice"))
     assert r.status_code == 200, r.text[:300]
+    empty = {"name": "empty", "label": "empty", "title": "This chapter is empty."}
     assert r.json() == {"outline": [
         {"instance_id": cover["instance_id"], "depth": 0, "empty_chapter": False, "unwritten": [],
-         "unwritten_hint": None, "number": ""},
+         "unwritten_hint": None, "number": "", "noted": False, "flags": []},
         {"instance_id": card["instance_id"], "depth": 0, "empty_chapter": False, "unwritten": [],
-         "unwritten_hint": None, "number": ""},
+         "unwritten_hint": None, "number": "", "noted": False, "flags": []},
         {"instance_id": chapter["instance_id"], "depth": 0, "empty_chapter": True, "unwritten": [],
-         "unwritten_hint": None, "number": ""}]}
+         "unwritten_hint": None, "number": "", "noted": False, "flags": [empty]}]}
 
 
 def test_fix_outline_route_is_for_editors_and_checks_its_input(client_v2, auth):

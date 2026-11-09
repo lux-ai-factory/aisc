@@ -3645,6 +3645,28 @@ ALTER TABLE ONLY public.user_favorite_tag
 
 
 --
+-- Name: aisc_report_plot; Type: TABLE; Schema: public; Owner: -
+-- Save to report's plots (apps/results-dashboard aisc_ext/report_exports/model.py). Made here, before the bed runs
+-- report-grants, so the grants run is what lets report_ro read it.
+--
+
+CREATE TABLE public.aisc_report_plot (
+    id serial PRIMARY KEY,
+    dashboard_id integer NOT NULL,
+    chart text NOT NULL,
+    tab text NOT NULL DEFAULT '',
+    tags jsonb NOT NULL DEFAULT '[]',
+    svg bytea NOT NULL,
+    sha256 text NOT NULL,
+    comment text NOT NULL DEFAULT '',
+    author_name text NOT NULL,
+    created_at timestamp NOT NULL,
+    rows integer,
+    save_id text
+);
+
+
+--
 -- PostgreSQL database dump complete
 --
 

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import secrets
+import uuid
 from urllib.parse import urlsplit
 
 from aisc_identity import Caller
@@ -22,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 from platform_service import (adapters, connection_allowlist, connection_facade, connection_store, db, llm_store,
                               run_passes, secret_box, target_store, targets)
 from platform_service.projects import looks_like_pid
-from platform_service.routes.admission import _internal, admin_project, no_project, role_or_404, secrets_unavailable
+from platform_service.routes.admission import _internal, project_for, secrets_unavailable
 
 router = APIRouter()
 
@@ -46,7 +47,10 @@ class ConnectionIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     label: StrictStr
     kind: StrictStr
-    base_url: StrictStr
+    #: required for every kind but `provider`, where only a self-hosted model server has one
+    base_url: StrictStr = ""
+    #: a provider connection's provider, a key of llm_catalogue.PROVIDERS (kind `provider` only)
+    provider: StrictStr | None = None
     method: StrictStr = "POST"
     path: StrictStr = ""
     headers: dict[str, StrictStr] = {}
@@ -210,15 +214,15 @@ def connection_view(row: dict) -> dict:
     target = target_store.get(row["pid"], row["target_key"]) if row.get("target_key") and row.get("pid") else None
     out["target"] = {"key": target["key"], "kind": target["kind"], "label": target["label"]} if target else None
     out.pop("target_key", None)
-    if row.get("kind") not in adapters.BUILT_IN_KINDS:
+    if row.get("kind") not in adapters.BUILT_IN_KINDS and row.get("kind") != "provider":
         # an adapter's connection: its plain fields, and its secret fields by name only
         out["settings"] = out.pop("body_template", None) or {}
         out["secret_settings"], out["secret_headers"] = out["secret_headers"], []
     return out
 
 
-def admin_connection(slug: str, caller: Caller, name: str) -> str:
-    pid = admin_project(slug, caller)["pid"]
+def admin_connection(slug: str, caller: Caller, name: str, action: str = "connection.write") -> str:
+    pid = project_for(slug, caller, action)["pid"]
     if not CONNECTION_NAME.fullmatch(name):
         raise HTTPException(status_code=422, detail="name: lower-case letters, digits and hyphens, up to 63")
     return pid
@@ -248,13 +252,22 @@ def _with_pid(pid: str, row: dict | None) -> dict | None:
 
 @router.get("/projects/{slug}/connections")
 def list_connections(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
-    pid = admin_project(slug, caller)["pid"]
+    pid = project_for(slug, caller, "connection.read")["pid"]
     return {"connections": [connection_view(_with_pid(pid, r)) for r in connection_store.list_connections(pid)]}
 
 
 def target_set_once() -> HTTPException:
     return HTTPException(status_code=422, detail="target: what a connection reaches is set once; create a new "
                                                  "connection to reach another one")
+
+
+def used_connection(name: str) -> HTTPException:
+    return HTTPException(status_code=409, detail=f"{name} is used as a test tool or by an agent: it cannot reach the "
+                                                 "assessed system")
+
+
+def other_kind(name: str) -> HTTPException:
+    return HTTPException(status_code=409, detail=f"{name} is a connection of another kind; choose another name")
 
 
 def checked_target(pid: str, name: str, key: str, before: dict | None) -> str:
@@ -275,7 +288,7 @@ def checked_target(pid: str, name: str, key: str, before: dict | None) -> str:
 def list_protocols(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
     """The protocols a connection can use: the built-in ones, then each installed adapter with the fields its
     connection editor asks for (never a value)."""
-    role_or_404(slug, caller)
+    project_for(slug, caller, "connection.protocols")
     built_in = [{"name": kind, "label": targets.PROTOCOL_NAMES[kind], "adapter": False}
                 for kind in adapters.BUILT_IN_KINDS]
     return {"protocols": built_in + [a.public() for _, a in sorted(adapters.registry().items())]}
@@ -288,6 +301,10 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
     A target another connection holds (also the old target of a revived one) is 409, naming the
     target and the connection that holds it."""
     pid = admin_connection(slug, caller, name)
+    if body.kind == "provider":
+        return save_provider_connection(pid, name, body, caller)
+    if body.provider is not None:
+        raise _invalid_connection("provider: only for a connection of kind provider")
     fields = connection_fields(body)
     ciphertext = connection_store.KEEP
     if "secret" in body.model_fields_set:
@@ -335,9 +352,64 @@ def save_connection(slug: str, name: str, body: ConnectionIn, request: Request,
                                                     + (f", {holder}" if holder else "")) from None
     except connection_store.TargetSetOnce:
         raise target_set_once() from None               # another save set it since `before` was read
+    except connection_store.ConnectionAssessed:
+        raise used_connection(name) from None
+    except connection_store.NameTaken:
+        raise other_kind(name) from None
     retire_engine_component(pid, row, request)
     if row.get("target_key"):
         _rename_targets(pid, request)
+    return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
+
+
+#: what a provider connection leaves out: the provider's own API decides the rest
+_NOT_FOR_PROVIDER = ("method", "path", "headers", "secret_header", "body_template", "response_path", "refusal",
+                     "model", "protocol_version", "secret_headers", "supports_tools", "supports_logprobs",
+                     "settings", "secret_settings")
+
+
+def save_provider_connection(pid: str, name: str, body: ConnectionIn, caller: Caller) -> JSONResponse:
+    """A model provider's account, or a self-hosted model server (kind `provider`): its provider, its key and, for
+    a self-hosted one, its address. It never reaches the assessed system; agents and test tools use it."""
+    from platform_service import llm_catalogue
+    from platform_service.routes.llm import clean_base_url, clean_key
+
+    entry = llm_catalogue.PROVIDERS.get(body.provider or "")
+    if entry is None:
+        raise _invalid_connection(f"provider: one of {', '.join(sorted(llm_catalogue.PROVIDERS))}")
+    if body.target is not None:
+        raise _invalid_connection("target: a provider connection never reaches the assessed system; agents and "
+                                  "test tools use it")
+    sent = [f for f in _NOT_FOR_PROVIDER if f in body.model_fields_set]
+    if sent:
+        raise _invalid_connection(f"{', '.join(sent)}: not for a provider connection")
+    label = body.label.strip()
+    if not 1 <= len(label) <= 120:
+        raise _invalid_connection("label: 1 to 120 characters")
+    base_url = clean_base_url(body.base_url)
+    if base_url is not None and not entry.base_url_editable:
+        raise _invalid_connection(f"base_url: {entry.label} is called at its own address; it takes none")
+    if body.provider == "compatible" and base_url is None:
+        raise _invalid_connection("base_url: a self-hosted model server needs its address")
+    if body.provider == "ollama" and body.secret:
+        raise _invalid_connection("secret: ollama takes no key")
+    ciphertext = connection_store.KEEP
+    if "secret" in body.model_fields_set:
+        try:
+            ciphertext = llm_store.encrypt(clean_key(body.secret)) if body.secret else None
+        except llm_store.SecretsKeyError as exc:
+            raise secrets_unavailable(exc) from None
+    before = connection_store.get(pid, name, with_deleted=True)
+    if before is not None and before["kind"] != "provider":
+        raise HTTPException(status_code=409, detail=f"{name} is a connection of another kind; choose another name")
+    if before is not None and ciphertext is connection_store.KEEP:
+        # a stored key goes only where it was entered for: another origin needs it typed again
+        secret_box.kept_key(before.get("base_url") or None, base_url, bool(before.get("has_secret")))
+    try:
+        row = connection_store.save_provider(pid, name, label=label, provider=body.provider, ciphertext=ciphertext,
+                                             base_url=base_url, subject=caller.username or caller.subject)
+    except connection_store.NameTaken:
+        raise HTTPException(status_code=409, detail=f"{name} is a connection of another kind; choose another name") from None
     return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
 
 
@@ -365,6 +437,8 @@ def link_target(slug: str, name: str, body: TargetIn, request: Request,
                                                     + (f", {holder}" if holder else "")) from None
     except connection_store.TargetSetOnce:
         raise target_set_once() from None
+    except connection_store.ConnectionAssessed:
+        raise used_connection(name) from None
     if row is None:
         raise HTTPException(status_code=404, detail=f"no connection {name!r}")
     _rename_targets(pid, request)
@@ -426,9 +500,11 @@ def descriptor_of(row: dict, pid: str | None = None) -> dict:
     """What anyone the internal routes let in may see of a connection: every setting, whether it has a key
     (`has_secret`), never the key itself, and the target it is the endpoint of (part of what the
     connection is, so of its fingerprint). Nothing is decrypted here."""
+    # `provider` is left out: only a provider connection has one, and it never reaches the assessed system (and so
+    # the view, and the fingerprint made of it, stay what they were before provider connections existed)
     out = {k: row.get(k) for k in connection_store.PUBLIC if k not in ("engine_component", "last_test_at",
                                                                        "last_test_ok", "last_test_detail",
-                                                                       "target_key")}
+                                                                       "target_key", "provider")}
     out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
     # the secret headers by name, their values masked: the fingerprint and the client's copy hold none
     out["headers"] = {**(out.get("headers") or {}), **{h: MASK for h in out.pop("secret_header_names", None) or []}}
@@ -490,7 +566,7 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     `capability_missing` when one fails."""
     from aisc_plugin_interface import connections as client
 
-    pid = admin_connection(slug, caller, name)
+    pid = admin_connection(slug, caller, name, "connection.test")
     row = connection_store.descriptor(pid, name)
     if row is None or row["deleted_at"] is not None:
         raise HTTPException(status_code=404, detail=f"no connection {name!r}")
@@ -625,14 +701,24 @@ def mint_run_pass(body: dict, request: Request) -> JSONResponse:
     return _internal(201, {"pass": run_pass, "expires_at": expires.isoformat()})
 
 
+def _uuid_or_none(value: str | None) -> str | None:
+    try:
+        return str(uuid.UUID(value)) if value else None
+    except ValueError:
+        return None
+
+
 @router.delete("/internal/run-passes")
 def revoke_run_pass(request: Request) -> Response:
     """The worker ends a run's pass when the run ends, and with it the run keys issued under it in every
-    project it named; an unknown or already ended pass is no error."""
+    project it named; an unknown or already ended pass is no error. The run's call trace is sealed in the
+    ledger with it (run_passes.revoke), citing X-AISC-Request-Id and X-AISC-Run-Id when the worker sends them."""
     if _behind_gateway(request):
         return _internal(404, {"detail": "not here"})
     run_pass = request.headers.get(run_passes.HEADER) or ""
-    for pid in run_passes.revoke(run_pass):
+    # the run's request and id, which its trace's seal cites (an id that is not a uuid is left out)
+    request_id, run_id = (_uuid_or_none(request.headers.get(h)) for h in ("X-AISC-Request-Id", "X-AISC-Run-Id"))
+    for pid in run_passes.revoke(run_pass, request_id=request_id, run_id=run_id):
         # the keys issued under it; one left by a database that fails here is refused at use anyway
         try:
             connection_store.revoke_run_keys(pid, run_passes.hash_of(run_pass))
@@ -742,23 +828,73 @@ def _targets_answer(pid: str, synced: dict | None = None) -> dict:
 
 @router.get("/projects/{slug}/targets")
 def list_targets(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
-    role_or_404(slug, caller)
-    found = db.get_project(slug)
-    if found is None:
-        raise no_project(slug)
+    found = project_for(slug, caller, "target.read")
     targets.ensure_system(found["pid"], found["name"])
     return _targets_answer(found["pid"])
 
 
 @router.post("/projects/{slug}/targets/sync")
 def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
-    role_or_404(slug, caller, "editor")
-    found = db.get_project(slug)
-    if found is None:
-        raise no_project(slug)
+    found = project_for(slug, caller, "target.sync")
     targets.ensure_system(found["pid"], found["name"])
     synced = targets.sync(found["pid"], token_from_headers(request.headers) or "")
     return _targets_answer(found["pid"], synced)
+
+
+#: the largest file that may reach a target, in MB (TARGET_FILE_MAX_MB)
+TARGET_FILE_MAX_MB = 2048
+#: what a target file's name may be: the name the person's file had, without folders
+TARGET_FILE_NAME = re.compile(r"[^/\\\x00-\x1f]{1,255}")
+
+
+def _target_file_cap() -> int:
+    try:
+        return int(os.environ.get("TARGET_FILE_MAX_MB") or TARGET_FILE_MAX_MB) * 1024 * 1024
+    except ValueError:
+        return TARGET_FILE_MAX_MB * 1024 * 1024
+
+
+@router.put("/projects/{slug}/targets/{key}/file")
+async def upload_target_file(slug: str, key: str, request: Request, name: str = "",
+                             caller: Caller = Depends(caller_dependency)) -> dict:
+    """Reach a model or data component of the AI card by an uploaded file (the body, named `name`) instead
+    of an endpoint. Who manages connections may. Read once, hashed as it comes and never more than the
+    cap kept; the engine then holds the bytes (targets.upload_file)."""
+    import tempfile
+
+    from starlette.concurrency import run_in_threadpool
+
+    from platform_service import engine_components
+
+    pid = (await run_in_threadpool(project_for, slug, caller, "target.file"))["pid"]
+    if not TARGET_FILE_NAME.fullmatch(name or ""):
+        raise HTTPException(status_code=422, detail="name: the file's name, without folders, up to 255 characters")
+    if not targets.is_key(key):
+        raise HTTPException(status_code=404, detail=f"no target {key} in this project")
+    cap = _target_file_cap()
+    digest, size = hashlib.sha256(), 0
+    with tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024) as spool:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > cap:
+                raise HTTPException(status_code=413, detail=f"a file is at most {cap // (1024 * 1024)} MB")
+            digest.update(chunk)
+            spool.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=422, detail="the file is empty")
+        spool.seek(0)
+        try:
+            await run_in_threadpool(targets.upload_file, pid, key, token_from_headers(request.headers) or "", name,
+                                    spool, size, digest.hexdigest(), caller.subject)
+        except targets.NoSuchTarget:
+            raise HTTPException(status_code=404, detail=f"no target {key} in this project") from None
+        except targets.TakesNoFile:
+            raise HTTPException(status_code=422, detail=f"{key} is reached through an endpoint only: only a model"
+                                                        " or a data component takes a file") from None
+        except engine_components.EngineUnavailable as exc:
+            logger.warning("file of target %s of project %s not stored: %s", key, pid, exc)
+            raise HTTPException(status_code=502, detail="the engine did not take the file: try again later") from None
+    return {"key": key, "name": name, "size": size, "sha256": digest.hexdigest()}
 
 
 @router.get("/projects/{slug}/targets/assessable-by")
@@ -768,10 +904,7 @@ def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(
     connection). An engine that does not answer lists none, and says so."""
     from platform_service import engine_components
 
-    role_or_404(slug, caller)
-    found = db.get_project(slug)
-    if found is None:
-        raise no_project(slug)
+    found = project_for(slug, caller, "target.read")
     targets.ensure_system(found["pid"], found["name"])
     rows = targets.view(found["pid"], None)
     try:
@@ -792,15 +925,6 @@ def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(
 class AllowedHostIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     note: StrictStr | None = None
-
-
-def owner_project(slug: str, caller: Caller) -> str:
-    """The project's pid, for an owner or a platform admin; a stranger gets 404, a lesser member 403."""
-    role_or_404(slug, caller, "owner")
-    found = db.get_project(slug)
-    if found is None:
-        raise no_project(slug)
-    return found["pid"]
 
 
 def _allowed_view(row: dict) -> dict:
@@ -825,7 +949,7 @@ def _not_the_floor(host: str) -> None:
 
 @router.get("/projects/{slug}/allowed-hosts")
 def list_allowed_hosts(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
-    pid = owner_project(slug, caller)
+    pid = project_for(slug, caller, "allowlist.read")["pid"]
     return {"floor": connection_allowlist.floor(),
             "entries": [_allowed_view(r) for r in connection_allowlist.entries(pid)]}
 
@@ -833,7 +957,7 @@ def list_allowed_hosts(slug: str, caller: Caller = Depends(caller_dependency)) -
 @router.put("/projects/{slug}/allowed-hosts/{entry}")
 def put_allowed_host(slug: str, entry: str, body: AllowedHostIn,
                      caller: Caller = Depends(caller_dependency)) -> dict:
-    pid = owner_project(slug, caller)
+    pid = project_for(slug, caller, "allowlist.write")["pid"]
     host = _entry_or_422(entry)
     _not_the_floor(host)
     note = (body.note or "").strip() or None
@@ -849,7 +973,7 @@ def put_allowed_host(slug: str, entry: str, body: AllowedHostIn,
 
 @router.delete("/projects/{slug}/allowed-hosts/{entry}", status_code=204)
 def delete_allowed_host(slug: str, entry: str, caller: Caller = Depends(caller_dependency)) -> Response:
-    pid = owner_project(slug, caller)
+    pid = project_for(slug, caller, "allowlist.write")["pid"]
     host = _entry_or_422(entry)
     _not_the_floor(host)
     if not connection_allowlist.remove(pid, host):

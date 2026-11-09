@@ -117,13 +117,36 @@ def is_live(pass_hash: str) -> bool:
                             (pass_hash,)).fetchone() is not None
 
 
-def revoke(run_pass: str) -> list[str]:
-    """End a pass; the projects its references named (sorted, unique), whose run keys under it the
-    caller deletes. [] for an unknown pass."""
+def projects_of(pass_hash: str) -> list[str]:
+    """The projects a live pass's references name (sorted, unique); [] for none."""
     with db.pool().connection() as conn:
-        row = conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s RETURNING refs",
-                           (hash_of(run_pass or ""),)).fetchone()
+        row = conn.execute("SELECT refs FROM core.run_pass WHERE pass_hash = %s AND expires_at > clock_timestamp()",
+                           (pass_hash,)).fetchone()
     return sorted({ref[1] for ref in row["refs"]}) if row else []
+
+
+def revoke(run_pass: str, *, request_id: str | None = None, run_id: str | None = None) -> list[str]:
+    """End a pass; the projects its references named (sorted, unique), whose run keys under it the
+    caller deletes. [] for an unknown pass.
+
+    A pass that names its evaluation plugin also seals that run's call trace in each project, in the same
+    transaction as the pass's end: a run.trace.sealed event {calls, digest} (run_trace.seal), citing the request
+    and the run the worker names (the run its evaluation started), so the ledger holds the digest the trace's
+    export must end with."""
+    from platform_service import run_trace
+    from platform_service.ledger import outbox
+
+    pass_hash = hash_of(run_pass or "")
+    with db.pool().connection() as conn, conn.transaction():
+        row = conn.execute("DELETE FROM core.run_pass WHERE pass_hash = %s RETURNING refs, evaluation_plugin::text",
+                           (pass_hash,)).fetchone()
+        projects = sorted({ref[1] for ref in row["refs"]}) if row else []
+        if row and row["evaluation_plugin"]:
+            for pid in projects:
+                outbox.emit(conn, "run.trace.sealed", project_pid=pid, item_type="evaluation_plugin",
+                            item_id=row["evaluation_plugin"], details=run_trace.seal(pid, f"pass:{pass_hash}"),
+                            request_id=request_id, run_id=run_id)
+    return projects
 
 
 def record(run_pass: str, pid: str, connection: str, protocol: str, fingerprint: str) -> None:

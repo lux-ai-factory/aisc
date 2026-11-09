@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Report composer{% endblock %}</title>
-<link rel="stylesheet" href="{{ root }}/static/composer.css">
+<link rel="stylesheet" href="{{ root }}{{ asset("composer.css") }}">
 </head>
 <body>
 <header class="site-header">
@@ -17,15 +17,15 @@
     </a>
     <nav class="site-nav">
       {% if project %}
-      {# Opened from the project's step 4, Collect evidence, so the back link goes one level up, there. #}
-      <a href="{{ launcher }}evidence.html?project={{ project.pid }}" aria-label="Back to Collect evidence">&larr; Collect evidence</a>
+      {# Opened from the project's step 4, AI Assessment Sandbox, so the back link goes one level up, there. #}
+      <a href="{{ launcher }}evidence.html?project={{ project.pid }}" aria-label="Back to AI Assessment Sandbox">&larr; AI Assessment Sandbox</a>
       <a href="{{ root }}/p/{{ project.slug }}/"{% if here == "layouts" %} class="nav-here"{% endif %}>Report layouts</a>
       <a href="{{ root }}/p/{{ project.slug }}/templates"{% if here == "templates" %} class="nav-here"{% endif %}>Report looks</a>
       {% endif %}
     </nav>
   </div>
 </header>
-<div class="rc-page">
+<div class="rc-page{% block page_class %}{% endblock %}">
 {% block main %}{% endblock %}
 </div>
 {% block script %}{% endblock %}

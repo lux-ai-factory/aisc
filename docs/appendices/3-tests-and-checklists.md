@@ -51,6 +51,11 @@ Installing a test takes the realm role `admin`. "Install into this project" open
    the same content. The dialog warns that this "can take a minute"; the platform waits up to 10 minutes.
 3. After a build, the platform checks that the engine now sees that version; then it asks the engine to install it.
 
+A project holds one version of a test's package on at a time. Installing a version, or switching one on in the
+engine, turns that package's other versions off in the project; they are not deleted, so their settings and
+evaluations stay, and the run page shows only the version on. The ledger event of the install or the switch names
+the versions it turned off (`turned_off`).
+
 A test already installed shows **Installed**: the catalogue does not upgrade it. A private repository needs a
 `GITHUB_TOKEN` in `env.secrets`. A failure to fetch, build or install is shown in the dialog with its reason and
 "nothing was installed"; a missing admin role, with "Installing a test takes the admin role."

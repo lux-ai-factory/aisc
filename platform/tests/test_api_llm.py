@@ -21,7 +21,7 @@ from psycopg.conninfo import make_conninfo
 
 from platform_service import llm_catalogue, projectdb
 from tests.conftest import needs_database
-from tests.llm_support import INTERNAL_TOKEN, RISK_TOKEN, SECRETS_KEY, new_key
+from tests.llm_support import CHART_TOKEN, INTERNAL_TOKEN, RISK_TOKEN, SECRETS_KEY, new_key
 from tests.http_stub import FakeServer
 
 pytestmark = needs_database
@@ -37,6 +37,7 @@ def _secrets(monkeypatch):
     monkeypatch.setenv("PLATFORM_SECRETS_KEY", SECRETS_KEY)
     monkeypatch.setenv("PLATFORM_CARD_AGENT_TOKEN", INTERNAL_TOKEN)
     monkeypatch.setenv("PLATFORM_RISK_MAPPER_TOKEN", RISK_TOKEN)
+    monkeypatch.setenv("PLATFORM_CHART_ASSISTANT_TOKEN", CHART_TOKEN)
     monkeypatch.delenv("PLATFORM_INTERNAL_TOKEN", raising=False)
     monkeypatch.delenv("PLATFORM_OLLAMA_BASE_URL", raising=False)
 
@@ -72,7 +73,7 @@ def put_system(client, project, system, headers, provider, model):
 
 
 #: each system's own token, which is what its agent holds
-TOKEN_OF = {"card_agent": INTERNAL_TOKEN, "risk_mapper": RISK_TOKEN}
+TOKEN_OF = {"card_agent": INTERNAL_TOKEN, "risk_mapper": RISK_TOKEN, "chart_assistant": CHART_TOKEN}
 OWN = object()
 
 
@@ -91,7 +92,11 @@ def provider_entry(client, project, headers, provider):
     return {p["id"]: p for p in listed.json()["providers"]}[provider]
 
 
-def rows(dsn, project, sql="select * from llm.provider"):
+PROVIDER_ROWS = ("select provider, secret_ciphertext as ciphertext, nullif(base_url, '') as base_url"
+                 " from connection.endpoint where kind = 'provider' and name like 'llm-%' and deleted_at is null")
+
+
+def rows(dsn, project, sql=PROVIDER_ROWS):
     name = projectdb.database_name(project["pid"])
     with psycopg.connect(make_conninfo(dsn, dbname=name)) as conn:
         cur = conn.execute(sql)
@@ -175,6 +180,7 @@ def test_the_listing_has_every_provider_and_both_systems(client, admin, project)
     assert body["systems"] == [
         {"id": "card_agent", "label": "Card agent (Qualification)", "choice": None},
         {"id": "risk_mapper", "label": "Risk mapper (Control objectives)", "choice": None},
+        {"id": "chart_assistant", "label": "Chart assistant (Results dashboard)", "choice": None},
     ]
 
 
@@ -527,7 +533,7 @@ def test_a_missing_or_wrong_token_is_401(client, project):
 
 @pytest.mark.parametrize("value", [None, ""])
 def test_without_any_system_token_the_route_is_closed(client, project, monkeypatch, value):
-    for name in ("PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN"):
+    for name in ("PLATFORM_CARD_AGENT_TOKEN", "PLATFORM_RISK_MAPPER_TOKEN", "PLATFORM_CHART_ASSISTANT_TOKEN"):
         if value is None:
             monkeypatch.delenv(name)
         else:
@@ -603,7 +609,7 @@ def test_a_choice_resolves_with_its_decrypted_key(client, admin, project):
     r = resolve(client, project["pid"])
     assert r.status_code == 200, r.text
     assert r.json() == {"configured": True, "provider": "openai", "model": "gpt-4o-mini",
-                        "base_url": None, "api_key": key}
+                        "base_url": None, "api_key": key, "chat_base_url": llm_catalogue.chat_base_url("openai")}
     assert resolve(client, project["pid"], "risk_mapper").json() == {"configured": False}
 
 
@@ -611,7 +617,7 @@ def test_ollama_resolves_with_the_default_base_url_and_no_key(client, admin, pro
     put_system(client, project, "risk_mapper", admin, "ollama", "llama3.2:1b")
     assert resolve(client, project["pid"], "risk_mapper").json() == {
         "configured": True, "provider": "ollama", "model": "llama3.2:1b",
-        "base_url": "http://host.docker.internal:11434", "api_key": None}
+        "base_url": "http://host.docker.internal:11434", "api_key": None, "chat_base_url": None}
 
 
 def test_compatible_resolves_with_its_stored_base_url(client, admin, project):
@@ -620,14 +626,14 @@ def test_compatible_resolves_with_its_stored_base_url(client, admin, project):
     put_system(client, project, "card_agent", admin, "compatible", "local")
     assert resolve(client, project["pid"]).json() == {
         "configured": True, "provider": "compatible", "model": "local",
-        "base_url": "http://127.0.0.1:9/v1", "api_key": key}
+        "base_url": "http://127.0.0.1:9/v1", "api_key": key, "chat_base_url": None}
 
 
 def test_a_choice_whose_key_is_gone_is_409_naming_the_provider(client, admin, project, dsn):
     key = new_key()
     put_provider(client, project, "openai", admin, api_key=key)
     put_system(client, project, "card_agent", admin, "openai", "gpt-4o-mini")
-    run_sql(dsn, project, "update llm.provider set ciphertext = null where provider = 'openai'")
+    run_sql(dsn, project, "update connection.endpoint set secret_ciphertext = null where name = 'llm-openai'")
     r = resolve(client, project["pid"])
     assert r.status_code == 409
     assert "openai" in r.json()["detail"] and key not in r.text
@@ -648,7 +654,7 @@ def test_no_page_facing_response_holds_the_key_or_its_ciphertext(client, admin, 
     bodies = [put_provider(client, project, "openai", admin, api_key=key).text]
     bodies.append(put_provider(client, project, "compatible", admin, api_key=key,
                                base_url="http://127.0.0.1:9/v1").text)
-    token = rows(dsn, project, "select ciphertext from llm.provider where provider='openai'")[0]["ciphertext"]
+    token = rows(dsn, project)[0]["ciphertext"]
     bodies.append(client.get(base(project), headers=admin).text)
     bodies.append(client.get(f"{base(project)}/providers/openai/models", headers=admin).text)
     bodies.append(put_system(client, project, "card_agent", admin, "openai", "gpt-a").text)
@@ -690,3 +696,18 @@ def test_one_token_for_both_systems_closes_the_route(client, project, monkeypatc
     monkeypatch.setenv("PLATFORM_RISK_MAPPER_TOKEN", INTERNAL_TOKEN)
     for system in ("card_agent", "risk_mapper"):
         assert resolve(client, project["pid"], system, token=INTERNAL_TOKEN).status_code == 503
+
+
+# The chart assistant: a third agent, with a token of its own and the provider's chat address in its answer
+
+def test_the_chart_assistant_resolves_with_its_own_token_only(client, project):
+    assert resolve(client, project["pid"], "chart_assistant").status_code == 200
+    assert resolve(client, project["pid"], "chart_assistant", token=RISK_TOKEN).status_code == 403
+
+
+def test_a_hosted_providers_answer_names_its_chat_address(client, admin, project):
+    key = new_key()
+    assert client.put(f"{base(project)}/providers/openai", json={"api_key": key}, headers=admin).status_code == 200
+    assert put_system(client, project, "chart_assistant", admin, "openai", "gpt-4o-mini").status_code == 200
+    body = resolve(client, project["pid"], "chart_assistant").json()
+    assert body["chat_base_url"] == "https://api.openai.com/v1" and body["model"] == "gpt-4o-mini"

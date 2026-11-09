@@ -239,8 +239,11 @@ services:
       && celery -A aisc_eval.celery_worker worker --loglevel=info"
 
   aisc-eval-flower:
-    # a developer tool: started only with --profile inspect (Caddy says so when it is off)
+    # started only when asked (COMPOSE_PROFILES=inspect ./scripts/start.sh): it has no sign-in of its own, and
+    # any container on the backend network (the eval worker, where every project's plugins run) could read
+    # every project's task arguments and results from it; Caddy says how to start it when it is off
     profiles: ["inspect"]
+    restart: unless-stopped
     platform: linux/amd64
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -339,6 +342,8 @@ services:
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
       # sent to controls-pdf by the submission report route
       CONTROLS_WEB_TO_PDF_TOKEN: ${CONTROLS_WEB_TO_PDF_TOKEN:?run scripts/secrets.sh first}
+      # sent to the platform with each proof file attached to an answer, and when one is read back
+      PLATFORM_CONTROLS_TOKEN: ${PLATFORM_CONTROLS_TOKEN:?run scripts/secrets.sh first}
     depends_on:
       controls-migrate:
         condition: service_completed_successfully
@@ -843,9 +848,14 @@ services:
       - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
       - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
       - ./dashboard-gateway:/app/pythonpath_gateway:ro,Z
+      # Superset's hook for a deployment's own code: Save to report and the chart assistant panel
+      - ./apps/results-dashboard/templates_override/tail_js_custom_extra.html:/app/superset/templates/tail_js_custom_extra.html:ro,Z
     environment:
       <<: *dashboard-env
       SUPERSET_BIND_ADDRESS: 0.0.0.0
+      # the chart assistant: where it is and the token it takes from the dashboard only
+      ASSISTANT_URL: http://chart-assistant:8096
+      ASSISTANT_DASHBOARD_TOKEN: ${ASSISTANT_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
       SUPERSET_PORT: ${DASHBOARD_INTERNAL_PORT:-8189}
       # the dashboard's own config, run unchanged, then who is signed in taken
       # from the gateway's verified token
@@ -871,6 +881,29 @@ services:
     depends_on:
       dashboard-migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  # The chart assistant (apps/chart-assistant): builds charts from a description of a project's data, on mock
+  # databases of invented rows (with the project's real target and short dimension labels), until a person validates
+  # them in the dashboard. It reaches the platform (for the
+  # project's model) and its mock databases only: it holds no credential of a project database.
+  chart-assistant:
+    build: apps/chart-assistant
+    image: aisc-chart-assistant:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: ${CONTAINER_PREFIX:-}chart-assistant
+    environment:
+      ASSISTANT_DASHBOARD_TOKEN: ${ASSISTANT_DASHBOARD_TOKEN:?run scripts/secrets.sh first}
+      PLATFORM_URL: http://platform:8000
+      PLATFORM_CHART_ASSISTANT_TOKEN: ${PLATFORM_CHART_ASSISTANT_TOKEN:?run scripts/secrets.sh first}
+      MOCK_DATABASE_URL: postgresql://assistant_mock:${ASSISTANT_MOCK_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/postgres
+    depends_on:
+      postgres-setup:
+        condition: service_completed_successfully
+    expose:
+      - "8096"
+    networks:
+      - backend
     restart: unless-stopped
 
   # The plugin publisher (infra/plugin-publisher): an internal service the platform asks, with its own
@@ -958,6 +991,13 @@ services:
       PLATFORM_LEDGER_AGENTS_TOKEN: ${PLATFORM_LEDGER_AGENTS_TOKEN:?run scripts/secrets.sh first}
       # the engine backend's token for asking whether a card target has a connection
       PLATFORM_ENGINE_TOKEN: ${PLATFORM_ENGINE_TOKEN:?run scripts/secrets.sh first}
+      # The proof files of checklist answers: the controls app sends and reads them with this token, and
+      # the platform keeps them in MinIO, one bucket per project. The platform is the only service of the
+      # two that holds MinIO's credentials (the stack's S3 settings).
+      PLATFORM_CONTROLS_TOKEN: ${PLATFORM_CONTROLS_TOKEN:?run scripts/secrets.sh first}
+      S3_URL: ${S3_URL}
+      S3_USER: ${S3_USER}
+      S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
       # platform_rw's generated password: postgres-setup applies the same value to the role
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
@@ -986,6 +1026,7 @@ services:
       # one token per agentic system: each agent resolves only its own choice and key
       PLATFORM_CARD_AGENT_TOKEN: ${PLATFORM_CARD_AGENT_TOKEN:?run scripts/secrets.sh first}
       PLATFORM_RISK_MAPPER_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
+      PLATFORM_CHART_ASSISTANT_TOKEN: ${PLATFORM_CHART_ASSISTANT_TOKEN:?run scripts/secrets.sh first}
       # where a project's ollama choice is reached unless it stored its own URL
       PLATFORM_OLLAMA_BASE_URL: ${PLATFORM_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       # Manage -> Connections: the token the plugin-side client resolves a connection with; the

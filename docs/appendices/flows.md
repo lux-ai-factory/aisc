@@ -10,19 +10,20 @@ How a request travels through the stack, for the main things people do. Service 
 1. The browser opens a page on 80, 8100 or 8188. `caddy` asks `oauth2-proxy` whether the caller is signed in. Without
    a session the browser is sent to `keycloak` (`127.0.0.1:8081`); after the login `oauth2-proxy` sets a cookie for the
    host, which covers every port.
-2. `caddy` passes the request on with the caller's token.
-3. The service checks the caller itself. The Python services verify the token with `aisc_identity` and read the
+2. A write is witnessed first: `caddy` asks the platform, which records who made the request and gives it a request
+   id that the service's ledger events cite (see [The ledger](#the-ledger)).
+3. `caddy` passes the request on with the caller's token (and, for a write, that request id).
+4. The service checks the caller itself. The Python services verify the token with `aisc_identity` and read the
    caller's role in the project from the platform's database; the Next.js applications (qualification, controls) pass
    the token to the platform's `/authz/projects/{ref}` and follow its answer; the dashboard checks it through
    `dashboard-gateway/`.
-4. A write is witnessed first: `caddy` asks the platform, which records who made the request and gives it a request
-   id that the service's ledger events cite (see [The ledger](#the-ledger)).
 
 ## Creating a project
 
 The launcher calls the platform. The platform records the project and its owner, creates the project's database
-`project_<pid>` from `platform/project-template/` (every schema the steps use), and registers the project with the
-dashboard (a Superset connection, its datasets and a role). At every start the `*-migrate` services bring each
+`project_<pid>` from `platform/project-template/` (every schema the steps use but `catalogue`, which is made when the
+project chooses its catalogue), makes its bucket for proof files in `minio` and the system's target, and registers the
+project with the dashboard (a Superset connection, its datasets and a role). At every start the `*-migrate` services bring each
 application's tables up to date in every project database.
 
 ## Step 1: saving the AI card
@@ -42,8 +43,9 @@ a quote from the chain for each), priority choices and the objective selection g
 
 - **Choosing the catalogue**: the platform records the choice in the project's `catalogue` schema; for a private
   catalogue it copies the public one there.
-- **A test** (admins): the platform works out the version. If `devpi` lacks it, `plugin-publisher` clones the
-  repository (or copies the `local_plugins/` folder), builds the package and uploads it; the platform checks that the
+- **A test** (admins): the platform works out the version. If `devpi` lacks that version of a repository plugin,
+  `plugin-publisher` clones the repository, builds the package and uploads it; a plugin from `local_plugins/` is built
+  and uploaded on every install (unchanged content is not uploaded again); the platform checks that the
   engine sees it, then asks `aisc-backend` to install it.
 - **A checklist** (editors): the catalogue page asks `controls-web`, which gets the checklist's package from the
   platform and installs it into `controls`.
@@ -51,8 +53,10 @@ a quote from the chain for each), priority choices and the objective selection g
 ## Step 4: a test run
 
 1. On the engine's pages, `aisc-backend` records the evaluation, stamps it with the latest AI card version, and
-   queues it on `rabbitmq`: what is assessed, the helper models per role, the datasets and models, the settings.
-2. `aisc-eval-worker` takes the tasks: install the test's package in a fresh environment, run each test, finish.
+   queues its id on `rabbitmq`, with the project and a run ticket in the message's headers.
+2. `aisc-eval-worker` reads the evaluation from `aisc-backend` (what is assessed, the helper models per role, the
+   datasets and models, the settings), then takes the tasks: install the test's package in a fresh environment, run
+   each test, finish.
 3. The worker gets a **run pass** from the platform and hands it to the test.
 4. The test reaches the **assessed system** through the platform: with the run pass it reads the connection's
    settings (secret values masked), takes a run key, and calls one of the platform's doors (`aisc/ask`, OpenAI,
@@ -66,7 +70,7 @@ a quote from the chain for each), priority choices and the objective selection g
 
 ## Step 4: results and dashboards
 
-- The Collect evidence and Results pages ask the platform, which reads `engine` and `controls` of the project's
+- The AI Assessment Sandbox and Results pages ask the platform, which reads `engine` and `controls` of the project's
   database read-only and the AI card's targets.
 - **Open charts**: the platform takes the test's latest finished run, asks `aisc-backend` for the charts the plugin
   declares (with the caller's token), and hands them to the dashboard, which makes or updates that test's dashboard,
@@ -97,7 +101,9 @@ With the stack's settings (`LEDGER_GATEWAY=on`, `LEDGER_MODE=record`):
    Postgres and returns a request id.
 2. **Events**: each service writes an event citing that request id in the same transaction as the change it
    describes: the Python and Next.js applications through the project database's `ledger.emit`, the platform in its
-   own outbox, the engine in its outbox, which `aisc-backend-ledger` sends to the platform every 10 seconds.
+   own outbox, the engine in its outbox, which `aisc-backend-ledger` sends to the platform every 10 seconds;
+   `qualification-agents` and the dashboard (from a queue in Superset's database) post theirs to the platform's
+   `/internal/projects/{pid}/ledger/events`.
 3. **Relay**: a worker in each platform process turns witness records and events into entries of the project's
    immudb database (an event that does not fit its request is recorded as rejected), and indexes them.
 4. **Reading**: Manage > Activity log checks every entry before showing it; an export can be checked offline with

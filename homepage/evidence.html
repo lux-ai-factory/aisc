@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Collect evidence - AI Assessment Sandbox Configurator</title>
+<title>AI Assessment Sandbox - AI Assessment Sandbox Configurator</title>
 <link rel="icon" href="/assets/laif-logo.svg"/>
 <link rel="stylesheet" href="/assets/launcher.css"/>
 <style>
@@ -69,7 +69,9 @@
   details.idle .tiles{margin-top:6px}
   .version-bar{display:flex; align-items:center; gap:10px; margin:8px 0 0}
   /* the Evidence map of the version shown, with its coverage in one line */
-  .map-bar{display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:14px 0 0}
+  /* the page's head: the project, the step and the card version on the left, the Evidence map top right */
+  .page-head{display:flex; justify-content:space-between; align-items:flex-start; gap:24px; flex-wrap:wrap}
+  .map-bar{display:flex; flex-direction:column; align-items:flex-end; gap:8px; margin:4px 0 0}
   a.map{display:inline-flex; align-items:center; padding:9px 16px; text-decoration:none;
         border:1px solid var(--primary); color:var(--primary); background:var(--panel);
         font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase}
@@ -84,6 +86,42 @@
   .local h3{margin:0 0 4px; font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase}
   .local p{margin:0 0 8px; color:var(--muted); font-size:12.5px}
   .local .tile{border-left-color:var(--border-strong); border-style:dashed}
+
+  /* ---- Manage: the project page's menu, the same rules (test_evidence_page.py keeps them equal) ---- */
+  .menu{position:relative; margin-left:auto}
+  .menu summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
+    padding:7.2px 12px; border:1px solid var(--border);
+    font-family:var(--mono); font-size:13.2px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+    transition:border-color .14s ease, color .14s ease;
+  }
+  .menu summary::-webkit-details-marker{display:none}
+  .menu summary:hover{color:var(--primary); border-color:var(--border-strong)}
+  .menu summary:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
+  .menu summary svg{
+    width:13.2px; height:13.2px; stroke:currentColor; stroke-width:2; fill:none;
+    transition:transform .16s ease;
+  }
+  .menu[open] summary{color:var(--primary); border-color:var(--primary)}
+  .menu[open] summary svg{transform:rotate(180deg)}
+  .menu .panel{
+    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:261.6px;
+    padding:6px 0; background:var(--panel);
+    border:1px solid var(--border-strong); box-shadow:0 14px 34px rgba(12,18,60,.13);
+  }
+  .menu .panel a{
+    display:block; padding:10.8px 18px; text-decoration:none;
+    font-family:var(--mono); font-size:13.8px; color:var(--text);
+  }
+  .menu .panel a:hover{background:var(--panel-2); color:var(--primary)}
+  .menu .panel a:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
+  .menu .panel [hidden]{display:none}
+  .menu .panel .group{
+    display:block; padding:9.6px 18px 4.8px; font-family:var(--mono); font-size:12px;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+  }
+  .menu .panel .sep{display:block; height:1px; margin:6px 0; background:var(--border)}
 
   @media (max-width:1200px){
     .ways{grid-template-columns:repeat(2, minmax(0, 1fr))}
@@ -102,19 +140,50 @@
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
+  <details class="menu" id="manage">
+    <summary>
+      Manage
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </summary>
+    <div class="panel">
+      <a data-origin="keycloak" data-path="/realms/aisc/account">My account</a>
+      <span class="sep admin-only" hidden></span>
+      <span class="group admin-only" hidden>Admin tools</span>
+      <!-- every project's evaluation tasks: an admin's only (Caddy's admin gate refuses the rest) -->
+      <a id="inspect-flower" class="admin-only" hidden data-origin="engine" data-path="/flower/">Background tasks</a>
+      <span class="sep member-only" hidden></span>
+      <span class="group member-only" hidden>Logs</span>
+      <a id="activity-log" class="member-only" hidden>Activity log</a>
+      <span class="sep member-only" hidden></span>
+      <span class="group member-only" hidden>Inspect database</span>
+      <!-- Structure only, for every member: this project's database and the shared one on one page. -->
+      <a id="inspect-schema" class="member-only" hidden target="_blank" rel="noopener">Database diagrams</a>
+      <!-- The data itself, across every project: an admin's only. -->
+      <a id="inspect-pgadmin" class="admin-only" hidden href="/inspect/pgadmin/" target="_blank" rel="noopener">Browse &amp; query (pgAdmin)</a>
+      <span class="sep admin-only" hidden></span>
+      <!-- The assessed system, the Configurator's agents and the test tools: what the project connects to. -->
+      <span class="group owner-only" hidden>Connectivity</span>
+      <a id="connectivity-settings" class="owner-only" hidden>Connectivity</a>
+      <span class="sep owner-only" hidden></span>
+    </div>
+  </details>
   <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>
-  <h1 class="title" id="project-name">&hellip;</h1>
-  <p class="subtitle">Collect evidence</p>
-  <div class="version-bar" hidden id="version-bar">
-    <label for="version">AI card version</label>
-    <select class="version" id="version" aria-label="AI card version"></select>
-  </div>
-  <div class="map-bar" id="map-bar" hidden>
-    <a class="map" id="evidence-map" href="#">Evidence map</a>
-    <span class="map-coverage" id="map-coverage"></span>
+  <div class="page-head">
+    <div>
+      <h1 class="title" id="project-name">&hellip;</h1>
+      <p class="subtitle">AI Assessment Sandbox</p>
+      <div class="version-bar" hidden id="version-bar">
+        <label for="version">AI card version</label>
+        <select class="version" id="version" aria-label="AI card version"></select>
+      </div>
+    </div>
+    <div class="map-bar" id="map-bar" hidden>
+      <a class="map" id="evidence-map" href="#">Evidence map</a>
+      <span class="map-coverage" id="map-coverage"></span>
+    </div>
   </div>
   <p class="note" id="page-message" hidden></p>
 
@@ -408,6 +477,36 @@
     $('version-bar').hidden = !all.length;
   }
 
+  // Manage, as on the project page: the account for anyone signed in, the rest by role. The platform decides
+  // who is what; Delete stays on the project page.
+  function manageMenu(p) {
+    api('/api/authz/projects/' + enc(slug))
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .catch(function () { return null; })
+      .then(function (a) {
+        if (!a || !(a.role || a.admin)) return;   // members see the menu, strangers nothing
+        function reveal(selector) {
+          [].forEach.call(document.querySelectorAll(selector), function (node) { node.hidden = false; });
+        }
+        $('inspect-schema').href = '/inspect/schema/?project=' + enc(p.pid);
+        $('activity-log').href = '/logs.html?project=' + enc(slug);
+        reveal('#manage .member-only');
+        if (a.admin || a.role === 'owner') {
+          $('connectivity-settings').href = '/connectivity.html?project=' + enc(slug);
+          reveal('#manage .owner-only');
+        }
+        if (!a.admin) return;
+        reveal('#manage .admin-only');
+      });
+  }
+  document.addEventListener('click', function (e) {
+    var menu = $('manage');
+    if (menu.open && !menu.contains(e.target)) menu.open = false;
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') $('manage').open = false;
+  });
+
   function boot() {
     $('back').href = '/p/' + enc(slug);
     $('version').addEventListener('change', function () {
@@ -427,7 +526,8 @@
       .then(function (p) {
         if (!p) return null;
         $('project-name').textContent = p.name;
-        document.title = p.name + ' - Collect evidence';
+        document.title = p.name + ' - AI Assessment Sandbox';
+        manageMenu(p);
         window.aiscLink($('write-report'), 'engine', '/report-composer/p/' + enc(p.pid));
         // the engine takes the project as a query; the controls app has it in the path
         pid = p.pid;

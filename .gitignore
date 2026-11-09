@@ -20,3 +20,6 @@ adapters/*
 # plugins of the operator's own (local_plugins/README.md): only the README is AISC's
 local_plugins/*
 !local_plugins/README.md
+
+# the documentation PDF and what goes into it (scripts/docs_pdf.py)
+/build/

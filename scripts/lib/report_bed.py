@@ -69,7 +69,8 @@ BEGIN
   FOREACH reader IN ARRAY ARRAY['report_ro', 'dashboard_ro'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = reader) THEN
       EXECUTE format('GRANT SELECT ON controls.checklist, controls.checklist_question, controls.source, '
-                     'controls.submission, controls.submission_answer TO %I', reader);
+                     'controls.submission, controls.submission_answer, controls.submission_answer_file TO %I',
+                     reader);
     END IF;
   END LOOP;
 END $$;

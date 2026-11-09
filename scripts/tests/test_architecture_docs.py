@@ -12,7 +12,7 @@ STEPS = {
     "1-qualify.md": "Qualify the AI system",
     "2-control-objectives.md": "Set control objectives",
     "3-tests-and-checklists.md": "Choose tests and checklists",
-    "4-collect-evidence.md": "Collect evidence",
+    "4-collect-evidence.md": "AI Assessment Sandbox",
     "manage.md": "Manage",
 }
 DOCS = [ARCHITECTURE] + [APPENDICES / name for name in STEPS]

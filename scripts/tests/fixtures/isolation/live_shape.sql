@@ -1,6 +1,8 @@
 -- Schema-only shape of the moving schemas of the live platform database, taken 2026-09-25 from the
 -- restored rehearsal copy (live-20260925-1149.sql) in a throwaway container. No data, no owners, no ACLs.
 -- Used by the catalog-diff tests (test_isolation_fixture.py, test_card_version_keys_orders.py).
+-- Edited by hand since: qualification.qualification_risk and control_objectives.risk lost the provider's
+-- measure columns (control, followUpControl / follow_up_control), as the modules' migrations drop them.
 --
 -- PostgreSQL database dump
 --
@@ -526,8 +528,6 @@ CREATE TABLE control_objectives.risk (
     consequence text NOT NULL,
     impact text NOT NULL,
     stakeholder text NOT NULL,
-    control text NOT NULL,
-    follow_up_control text NOT NULL,
     areas text[] NOT NULL,
     vair_terms text[] NOT NULL,
     provenance text NOT NULL,
@@ -1289,9 +1289,7 @@ CREATE TABLE qualification.qualification_risk (
     vulnerability text,
     consequence text NOT NULL,
     affected text NOT NULL,
-    "impactAreas" text[] DEFAULT ARRAY[]::text[],
-    control text NOT NULL,
-    "followUpControl" text
+    "impactAreas" text[] DEFAULT ARRAY[]::text[]
 );
 
 

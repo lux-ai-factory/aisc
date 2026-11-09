@@ -244,10 +244,13 @@ def test_install_info_is_answered_from_the_stacks_own_index(client, as_user, evi
 
     r = info("langbite")
     assert r.status_code == 200, r.text
-    assert r.json() == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.1",
+    def without_versions(got):                             # the version list has tests of its own below
+        return {k: v for k, v in got.items() if k != "versions"}
+
+    assert without_versions(r.json()) == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.1",
                         "index_url": f"{index.base}/root/public/+simple/", "installable": True, "reason": None,
                         "fetched_on_install": False, "source": "lux-ai-factory/aisc-plugin-langbite"}
-    local = info("local-my-probe").json()                    # an engine package from local_plugins/
+    local = without_versions(info("local-my-probe").json())  # an engine package from local_plugins/
     assert local == {"slug": "local-my-probe", "package_name": "my-probe", "version": "0.2.0",
                      "index_url": f"{index.base}/root/public/+simple/", "installable": True, "reason": None,
                      "fetched_on_install": True, "source": "local_plugins"}
@@ -777,3 +780,80 @@ def test_the_engines_refusal_is_passed_on(client, as_user, evidence_project, pub
     assert r.status_code == 403 and r.json()["detail"] == "Installing a test takes the admin role."
     engine_takes_installs(engine, evidence_project, status=500)
     assert client.post(url(evidence_project, "/api/tool/langbite/install"), headers=admin(as_user)).status_code == 502
+
+
+# ── several versions of a test: install-info lists them, the install takes one ──────────────────────
+
+def installed_rows(dsn, project, package, rows):
+    """The engine's rows of `package` in this project: (version, enabled) each."""
+    sql(dsn, project["pid"], "DELETE FROM engine.aisc_backend_plugin WHERE package_name = %s", (package,))
+    for version, enabled in rows:
+        sql(dsn, project["pid"], "INSERT INTO engine.aisc_backend_plugin (package_name, version, display_name, enabled)"
+            " VALUES (%s, %s, 'x', %s)", (package, version, enabled))
+
+
+def test_install_info_lists_every_version_newest_first_with_what_the_project_has(
+        client, as_user, evidence_project, dsn, public, engine, index, publisher):
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    installed_rows(dsn, evidence_project, "aisc-plugin-langbite", [("0.1.0", False), ("1.0", True)])
+    got = install_info_of(client, as_user, evidence_project, "langbite")
+    assert got["version"] == "0.1.1"                       # the default offered is unchanged
+    assert got["versions"] == [                            # 1.0 is gone from the index but is installed and on
+        {"version": "1.0", "installable": False, "installed": True, "enabled": True},
+        {"version": "0.2.0rc1", "installable": True, "installed": False, "enabled": False},
+        {"version": "0.1.1", "installable": True, "installed": False, "enabled": False},
+        {"version": "0.1.0", "installable": True, "installed": True, "enabled": False},
+    ]
+
+
+def test_install_info_lists_a_source_version_the_index_lacks(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "snt-data-drift")
+    assert got["versions"] == [{"version": "0.3.1", "installable": True, "installed": False, "enabled": False}]
+
+
+def test_install_info_of_a_local_plugin_lists_its_folder_version_and_the_older_ones_on_the_index(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    index.route("GET", "/root/public/+simple/my-probe/", (200, b'<html><body><a href="x">my_probe-0.1.0-py3-none-any.whl</a>'
+                                                              b'<a href="y">my_probe-0.2.0-py3-none-any.whl</a></body></html>'))
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    got = install_info_of(client, as_user, evidence_project, "local-my-probe")
+    assert [v["version"] for v in got["versions"]] == ["0.2.0", "0.1.0"]
+
+
+def test_an_older_version_on_the_index_is_installed_as_asked_without_publishing(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/langbite/install"), json={"version": "0.1.0"},
+                    headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"slug": "langbite", "package_name": "aisc-plugin-langbite", "version": "0.1.0"}
+    assert engine.requests("POST", "/api/v1/plugins")[-1]["json"]["version"] == "0.1.0"
+    assert publisher.requests("POST", "/publish") == []
+
+
+def test_a_version_install_info_does_not_offer_is_refused_and_nothing_is_installed(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    engine_takes_installs(engine, evidence_project)
+    r = client.post(url(evidence_project, "/api/tool/langbite/install"), json={"version": "9.9.9"},
+                    headers=admin(as_user))
+    assert r.status_code == 409 and "9.9.9" in r.json()["detail"]
+    assert engine.requests("POST", "/api/v1/plugins") == []
+
+
+def test_an_older_version_of_a_local_plugin_comes_from_the_index_without_building_the_folder(
+        client, as_user, evidence_project, public, engine, index, publisher):
+    index.route("GET", "/root/public/+simple/my-probe/", (200, b'<html><body><a href="x">my_probe-0.1.0-py3-none-any.whl</a></body></html>'))
+    engine.route("GET", "/api/v1/plugins", (200, [{"package_name": "my-probe", "version": "0.2.0+local", "source": "local"},
+                                                  {"package_name": "my-probe", "version": "0.1.0", "source": "registry"}]))
+    engine_takes_installs(engine, evidence_project)
+    assert choose(client, as_user, evidence_project, "private").status_code == 200
+    r = client.post(url(evidence_project, "/api/tool/local-my-probe/install"), json={"version": "0.1.0"},
+                    headers=admin(as_user))
+    assert r.status_code == 200, r.text
+    sent = engine.requests("POST", "/api/v1/plugins")[-1]["json"]
+    assert (sent["package_name"], sent["version"]) == ("my-probe", "0.1.0")
+    assert publisher.requests("POST", "/publish") == []

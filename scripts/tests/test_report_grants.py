@@ -37,9 +37,9 @@ CONTROL_OBJECTIVES = ["project", "risk", "mapped_objective", "mapping_run"]
 ENGINE = ["aisc_backend_project", "aisc_backend_evaluation", "aisc_backend_evaluationplugin",
           "aisc_backend_evaluationinput", "aisc_backend_plugin", "aisc_backend_aicomponent",
           "aisc_backend_observation", "aisc_backend_measurement", "aisc_backend_metric", "aisc_backend_artifact"]
-SUPERSET = ["aisc_comment", "dashboards", "dashboard_roles", "ab_role", "dashboard_slices", "slices",
-            "tables"]
-CONTROLS = ["checklist", "checklist_question", "submission", "submission_answer", "source"]
+SUPERSET = ["aisc_comment", "aisc_report_plot", "dashboards", "dashboard_roles", "ab_role", "dashboard_slices",
+            "slices", "tables"]
+CONTROLS = ["checklist", "checklist_question", "submission", "submission_answer", "submission_answer_file", "source"]
 ENGINE_FORBIDDEN = ["auth_user", "django_session", "aisc_backend_projectconfig", "account_emailaddress",
                     "aisc_backend_pluginconfigprojectconfig"]
 
@@ -148,7 +148,7 @@ def test_d6b_engine_tables_outside_the_list_are_refused(bed, table):
 
 @pytest.mark.parametrize("table", SUPERSET)
 def test_d6b_report_ro_reads_the_superset_tables(bed, table):
-    """In superset, SELECT on the seven tables of chart ownership and comments."""
+    """In superset, SELECT on the tables of chart ownership, comments and saved plots."""
     r = as_ro(bed, "superset", f"SELECT count(*) FROM public.{table}")
     assert ok(r), r.stderr
 

@@ -204,6 +204,8 @@ def ask_failure(exc, secrets: list) -> tuple[int, dict]:
     detail = scrub(str(exc), secrets)[:300]
     if type(exc).__name__ == "BadRequest":
         return 400, {"detail": detail}
+    if type(exc).__name__ == "RunStopped":            # the platform stopped the run: not sent, never retried
+        return 403, {"error": "run_stopped", "status": None, "detail": detail}
     status = getattr(exc, "status", None)
     status = status if isinstance(status, int) and not isinstance(status, bool) else None
     return 502, {"error": error_code(exc), "status": status, "detail": detail}

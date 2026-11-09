@@ -119,7 +119,8 @@
        result says which. A component the latest AI card no longer lists stays, marked, with its
        results. Components are added on the AI card, in step 1, Qualify. A test that calls the system
        or a component reaches it through its connection, shown on its row; next to it, the installed
-       tests that can assess it.</p>
+       tests that can assess it. A model or a data component can instead be reached by an uploaded file
+       (a model file such as ONNX, or a dataset): the tests that read a model or a dataset then list it.</p>
     <table id="targets">
       <thead><tr><th>System or component</th><th>How it is reached</th><th>Tests that can assess it</th></tr></thead>
       <tbody id="target-rows"></tbody>
@@ -154,6 +155,9 @@
         <label for="f-base">Base URL</label>
         <input id="f-base" type="url" placeholder="https://system.example.com"/>
         <div id="adapter-fields" hidden></div>
+        <label for="f-timeout">Timeout (seconds)</label>
+        <input id="f-timeout" type="number" min="1" max="600" value="60"/>
+        <p class="help">How long a call may wait for the system to answer, 1 to 600; a slow system needs more.</p>
         <label class="model" for="f-model">Model</label>
         <input class="model" id="f-model" type="text" placeholder="e.g. gpt-4o-mini, or the served model's name"/>
         <label class="openai">Carries</label>
@@ -194,8 +198,6 @@
             <label for="f-secret-header">Key header</label>
             <input id="f-secret-header" type="text" placeholder="Authorization: Bearer {{secret}}"/>
             <p class="help">Where the key goes; {{secret}} is replaced by it. OpenAI-compatible, A2A and OIP: leave empty for Authorization: Bearer.</p>
-            <label for="f-timeout">Timeout (seconds)</label>
-            <input id="f-timeout" type="number" min="1" max="600" value="60"/>
           </div>
         </details>
         <div class="actions"><button type="submit">Save</button><button type="button" class="ghost" id="cancel">Cancel</button>
@@ -322,7 +324,7 @@
           if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }
           connectionsByTarget = {};
           d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
-          unlinked = d.connections.filter(function (c) { return !c.target; });
+          unlinked = d.connections.filter(function (c) { return !c.target && c.kind !== 'provider'; });
           reloadTargets(false);                   // draws the connections without a target too
         });
       })
@@ -729,20 +731,29 @@
   function reachCell(t, tr) {
     var td = el('td', 'reach');
     if (!isAdmin) {
-      td.appendChild(el('div', t.endpoint ? 'ok' : 'bad', t.endpoint ? 'reached through ' + protocolName(t.endpoint.kind) : 'not connected'));
+      if (t.endpoint) td.appendChild(el('div', 'ok', 'reached through ' + protocolName(t.endpoint.kind)));
+      else td.appendChild(el('div', t.file ? 'ok' : 'bad', t.file ? 'reached through an uploaded file' : 'not connected'));
+      if (t.file) td.appendChild(fileLine(t.file));
       return td;
     }
     var c = connectionsByTarget[t.key];
     var msg = el('span', 'msg');
     var actions = el('div', 'fields');
+    // a model or a data component may be reached by an uploaded file instead of (or as well as) an endpoint
+    var upload = t.file_kind ? button('ghost', t.file ? 'Replace the file' : 'Upload a file',
+                                      function () { pickFile(t, msg); }) : null;
     if (!c) {
-      td.appendChild(el('div', 'bad', 'not connected'));
+      td.appendChild(el('div', t.file ? 'ok' : 'bad', t.file ? 'reached through an uploaded file' : 'not connected'));
+      if (t.file) td.appendChild(fileLine(t.file));
       actions.appendChild(button('ghost', 'Connect', function () { openEditor(null, t, tr); }));
+      if (upload) actions.appendChild(upload);
       td.appendChild(actions); td.appendChild(msg);
       return td;
     }
     td.appendChild(el('div', 'ok', 'reached through ' + protocolName(c.kind) + ' at ' + c.base_url));
     td.appendChild(el('small', '', c.name + ' · ' + describe(c)));
+    if (t.file) td.appendChild(fileLine(t.file));
+    if (upload) actions.appendChild(upload);
     td.appendChild(el('div', c.has_secret ? 'ok' : '', c.has_secret ? 'key stored' : 'no key'));
     var lastTry = el('div', c.last_test_ok ? 'ok' : 'bad',
                      c.last_test_at ? (c.last_test_ok ? 'last try OK ' : 'last try failed ') + when(c.last_test_at) : '');
@@ -760,6 +771,41 @@
     actions.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
     td.appendChild(actions); td.appendChild(tryBox); td.appendChild(result); td.appendChild(msg);
     return td;
+  }
+
+  /** The uploaded file of a target: its name, size and the start of its SHA-256. */
+  function fileLine(f) {
+    var mb = f.size >= 1024 * 1024 ? (f.size / (1024 * 1024)).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB';
+    return el('small', '', 'file ' + f.name + ' · ' + mb + ' · sha256 ' + f.sha256.slice(0, 12) + ' · ' + when(f.uploaded_at));
+  }
+
+  var filePicker = el('input'); filePicker.type = 'file'; filePicker.hidden = true;
+  var fileFor = null;
+  document.body.appendChild(filePicker);
+
+  function pickFile(t, msg) {
+    fileFor = {t: t, msg: msg};
+    filePicker.value = '';
+    filePicker.click();
+  }
+
+  filePicker.addEventListener('change', function () {
+    if (fileFor && filePicker.files[0]) uploadFile(fileFor.t, filePicker.files[0], fileFor.msg);
+  });
+
+  /** The file as the body of PUT .../targets/<key>/file, named in the query; the targets are read again. */
+  function uploadFile(t, file, msg) {
+    say(msg, 'Uploading ' + file.name + '...');
+    fetch('/api/projects/' + enc(slug) + '/targets/' + enc(t.key) + '/file?name=' + enc(file.name),
+          {method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/octet-stream'}, body: file})
+      .then(function (res) {
+        return bodyOf(res).then(function (d) {
+          if (!res.ok) { say(msg, refusal(res, d), true); return; }
+          say(msg, 'Uploaded.');
+          reloadTargets(false);
+        });
+      })
+      .catch(function () { say(msg, NOT_ANSWERING, true); });
   }
 
   /** The installed tests that can assess target t (`able` is the platform's assessable-by answer). */

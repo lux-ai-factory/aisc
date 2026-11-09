@@ -276,7 +276,7 @@ def run_2c(pages: dict[str, str], bundle: str) -> str:
 
 PAGES_AS_DESIGNED = {
     "/qualification/p/pid-1": '<a href="http://l/p/pid-1" aria-label="Back to the project">',
-    "/controls/p/pid-1": '<a href="http://l/evidence.html?project=pid-1" class="btn ghost site-back">← Collect evidence</a>',
+    "/controls/p/pid-1": '<a href="http://l/evidence.html?project=pid-1" class="btn ghost site-back">← AI Assessment Sandbox</a>',
     "/control-objectives/p/pid-1": '<a href="http://l/p/pid-1" aria-label="Back to the project">',
 }
 BUNDLE_AS_DESIGNED = 'aria-label:"Back to the AI Assessment Sandbox",href:"/evidence.html?project="'

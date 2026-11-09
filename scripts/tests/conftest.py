@@ -25,7 +25,9 @@ CHAIN = ROOT / "scripts/test-pipeline-chain.sh"
 
 #: the install scripts: the bash wrappers, scripts/aisc.py they run, and the helper that runs it with uv
 INSTALL_SCRIPTS = ("scripts/aisc.py", "scripts/secrets.sh", "scripts/start.sh", "scripts/rotate-infra-password.sh",
-                   "scripts/lib/aisc-py.sh")
+                   "scripts/lib/aisc-py.sh",
+                   # start reads the realm's account lockout from it
+                   "keycloak/aisc-realm.json")
 
 
 def copy_install_scripts(dest: Path) -> None:

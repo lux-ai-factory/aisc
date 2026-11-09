@@ -135,7 +135,7 @@ READERS = ("report_ro", "dashboard_ro")
 #: what the readers may read, exhaustive
 READER_TABLES = {
     "project": ["system"],
-    "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer"],
+    "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer", "submission_answer_file"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
                       "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],

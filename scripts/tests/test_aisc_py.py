@@ -185,6 +185,7 @@ def test_a_port_someone_listens_on_is_not_free():
 def test_a_port_below_1024_without_root_is_judged_by_connecting(monkeypatch):
     """Linux refuses the bind itself without root; then whether something answers decides."""
     m = aisc_py()
+    monkeypatch.setattr(m, "ON_WINDOWS", False)
 
     def refused(self, address):
         raise PermissionError(13, "Permission denied")
@@ -492,7 +493,7 @@ def test_a_reserved_port_on_windows_is_taken(monkeypatch):
         raise PermissionError(10013, "access forbidden")
 
     monkeypatch.setattr(socket.socket, "bind", refused)
-    monkeypatch.setattr(m.os, "name", "nt")
+    monkeypatch.setattr(m, "ON_WINDOWS", True)
     assert not m.port_is_free(51234, "0.0.0.0")
 
 
@@ -741,12 +742,13 @@ def fake_docker(tmp_path, log):
     `stack-folders` (the working_dir label of each of the stack's containers), and fails while `ps-fails` exists."""
     tools = tmp_path / "fake-tools"
     tools.mkdir(exist_ok=True)
+    logic = tools / "fake_docker.py"
+    shutil.copy(ROOT / "scripts/tests/fixtures/fake_docker.py", logic)
+    # Windows' CreateProcess does not run a #!/bin/sh file: it finds docker.cmd on PATH instead
     docker = tools / "docker"
-    docker.write_text(f'#!/bin/sh\necho "$@" >> "{log}"\n'
-                      f'if [ "$1" = ps ]; then [ -f "{tmp_path}/ps-fails" ] && exit 1\n'
-                      f'  [ -f "{tmp_path}/stack-folders" ] && cat "{tmp_path}/stack-folders"; fi\n'
-                      'exit 0\n')
+    docker.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{logic}" "{log}" "{tmp_path}" "$@"\n')
     docker.chmod(0o755)
+    (tools / "docker.cmd").write_text(f'@"{sys.executable}" "{logic}" "{log}" "{tmp_path}" %*\r\n')
 
 
 def stack_runs_from(tmp_path, *folders):
@@ -1015,3 +1017,15 @@ def test_an_empty_infrastructure_password_takes_the_value_the_install_runs_on(tm
     assert r.returncode == 0, r.stderr
     kept = values(secrets_file)["POSTGRES_PASSWORD"] == "thevolumesvalue"   # a boolean: a failure prints no value
     assert kept, "a new POSTGRES_PASSWORD was generated, not the one the volume holds"
+
+
+def test_docker_is_the_program_the_path_finds(tmp_path, monkeypatch):
+    """Windows runs a program found through the parent's search path, so every docker call names the one this
+    PATH finds, from the moment the module loads."""
+    fake_docker(tmp_path, tmp_path / "docker.log")
+    monkeypatch.setenv("PATH", fake_path(tmp_path))
+    copy_install_scripts(tmp_path)
+    module = aisc_py(tmp_path)
+    assert module.DOCKER == shutil.which("docker", path=fake_path(tmp_path))
+    assert module.DOCKER.startswith(str(tmp_path / "fake-tools"))
+

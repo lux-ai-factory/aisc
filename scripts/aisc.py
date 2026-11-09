@@ -14,6 +14,7 @@
     uv run scripts/aisc.py remove                             # delete this install's containers and all its data
     uv run scripts/aisc.py password                           # the admin and user accounts' passwords
     uv run scripts/aisc.py rotate-infra-password NAME [--ask] # a new value for an infrastructure password
+    uv run scripts/aisc.py drift [--prefix STACK]             # which running containers differ from their image
 
 scripts/start.sh, scripts/secrets.sh and scripts/rotate-infra-password.sh run the same commands. Only Python
 and Docker are needed on the host: no bash, openssl, curl or awk, so a Windows terminal will do. uv fetches
@@ -115,8 +116,11 @@ BROWSER_PORTS: tuple[BrowserPort, ...] = (
 INSTALL = "AISC_INSTALL"
 NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker Desktop or the docker "
              "service, then run this again.")
-#: the docker command start found on PATH (see find_docker); every docker call runs this one
-DOCKER = "docker"
+#: the docker command on this process's PATH (as find_docker finds it), found once when the module loads; start
+#: finds it again and checks it answers. Windows runs a bare `docker` from the parent's search path, not this PATH.
+DOCKER = shutil.which("docker", path=os.environ.get("PATH")) or "docker"
+#: Windows judges a refused or shared bind differently (see can_bind)
+ON_WINDOWS = os.name == "nt"
 
 
 def optional_compose_files() -> list[str]:
@@ -203,6 +207,10 @@ SECRETS = [
     # One token per agentic system, so each agent resolves only its own choice and key.
     ("PLATFORM_CARD_AGENT_TOKEN", "rand"),
     ("PLATFORM_RISK_MAPPER_TOKEN", "rand"),
+    ("PLATFORM_CHART_ASSISTANT_TOKEN", "rand"),
+    # the chart assistant: the dashboard's calls to it, and its role on the mock databases (init/chart-assistant-role.sql)
+    ("ASSISTANT_DASHBOARD_TOKEN", "rand"),
+    ("ASSISTANT_MOCK_PASSWORD", "rand"),
     # the plugin-side client of Manage -> Connections resolves a connection with it (platform, eval worker)
     ("PLATFORM_CONNECTIONS_TOKEN", "rand"),
     # One token per caller edge of the service-only APIs: each is held by its caller and its callee only, so no
@@ -249,6 +257,8 @@ SECRETS = [
     ("PLUGIN_PUBLISHER_TOKEN", "rand"),
     # the engine backend asks the platform whether a card target has a connection with it; held by the two only
     ("PLATFORM_ENGINE_TOKEN", "rand"),
+    # the controls app sends and reads the proof files of checklist answers with it; held by the two only
+    ("PLATFORM_CONTROLS_TOKEN", "rand"),
 ]
 # The infrastructure passwords: their volumes hold them (see the top of this file).
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
@@ -266,7 +276,8 @@ KEPT_ON_ROTATE = ("PLATFORM_SECRETS_KEY", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMU
 FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_API_KEY", "SUPERSET_GUEST_TOKEN_SECRET",
                    "DASHBOARD_BRIDGE_TOKEN", "REPORT_SERVICE_TOKEN", "KEYCLOAK_DB_PASSWORD", "SUPERSET_DB_PASSWORD",
                    "REPORT_RO_PASSWORD", "REPORT_COMPOSER_PASSWORD", "INSPECTOR_PASSWORD", "PLATFORM_CARD_AGENT_TOKEN",
-                   "PLATFORM_RISK_MAPPER_TOKEN", "PLATFORM_CONNECTIONS_TOKEN", "QUALIFICATION_AGENTS_TO_WEB_TOKEN",
+                   "PLATFORM_RISK_MAPPER_TOKEN", "PLATFORM_CHART_ASSISTANT_TOKEN", "ASSISTANT_DASHBOARD_TOKEN",
+                   "ASSISTANT_MOCK_PASSWORD", "PLATFORM_CONNECTIONS_TOKEN", "QUALIFICATION_AGENTS_TO_WEB_TOKEN",
                    "QUALIFICATION_WEB_TO_AGENTS_TOKEN", "QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN",
                    "QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN", "QUALIFICATION_WEB_TO_PREFILL_TOKEN",
                    "QUALIFICATION_WEB_TO_PDF_TOKEN", "CONTROLS_WEB_TO_PDF_TOKEN", "IMMUDB_ADMIN_PASSWORD",
@@ -274,7 +285,7 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "CONTROLS_RW_PASSWORD", "ENGINE_RW_PASSWORD", "RUN_TICKET_KEY", "DASHBOARD_RO_PASSWORD",
                    "DASHBOARD_REDIS_PASSWORD", "AISC_WITNESS_GATEWAY_SECRET", "PLATFORM_LEDGER_ENGINE_TOKEN",
                    "PLATFORM_LEDGER_DASHBOARD_TOKEN", "PLATFORM_LEDGER_AGENTS_TOKEN", "PLUGIN_PUBLISHER_TOKEN",
-                   "PLATFORM_ENGINE_TOKEN")
+                   "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
 ROTATE_ONE = ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD")
 LEDGER_KEYS = re.compile(r"v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*")
@@ -458,7 +469,8 @@ def rotate_one(name: str) -> None:
         hint + " up -d immudb ledger-pool platform aisc-backend",
         f"  ledger-pool must exit 0 (docker compose -p {PROJECT} ps -a ledger-pool), then, whichever name was rotated:",
         hint + " restart aisc-backend",
-        "  (immudb's restart ended the engine's audit session, and the engine does not log in again by itself)")
+        "  (so the engine runs on the new password at once; after immudb's restart its audit clerk would also log in"
+        " again by itself on its next write)")
 
 
 def install_line(path: str) -> str | None:
@@ -559,6 +571,10 @@ def can_bind(family: socket.AddressFamily, host: str, port: int) -> bool | None:
         # sockets) a bind on 0.0.0.0 would succeed beside a program listening on 127.0.0.1 only.
         if sys.platform.startswith("linux"):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # On Windows a wildcard bind succeeds beside a program listening on one address of the same port (the
+        # [::1] case) unless the probe asks for the port to itself
+        if ON_WINDOWS and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         if family == socket.AF_INET6:
             # IPv6 only, so a program on the IPv4 side is not counted twice (and macOS binds [::] dual-stack)
             s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
@@ -567,7 +583,7 @@ def can_bind(family: socket.AddressFamily, host: str, port: int) -> bool | None:
             return True
         except PermissionError:
             # Windows' reserved ranges (Hyper-V, WSL): Docker cannot publish there either
-            return False if os.name == "nt" else None
+            return False if ON_WINDOWS else None
         except OSError as failed:
             # an IPv6 address this machine does not have (IPv6 switched off) holds nothing
             return family == socket.AF_INET6 and failed.errno in (errno.EADDRNOTAVAIL,
@@ -1350,11 +1366,25 @@ def sign_in_clients(engine: str, launcher: str, dashboard: str, over_https: bool
     }
 
 
+#: the realm file's settings that lock an account after too many wrong passwords; start sends them to the realm
+#: on every start, since the import that first gave them is never run again on an existing install
+LOCKOUT_SETTINGS = ("bruteForceProtected", "permanentLockout", "maxTemporaryLockouts", "bruteForceStrategy",
+                    "maxFailureWaitSeconds", "minimumQuickLoginWaitSeconds", "waitIncrementSeconds",
+                    "quickLoginCheckMilliSeconds", "maxDeltaTimeSeconds", "failureFactor")
+
+
+def realm_lockout() -> dict:
+    """The account-lockout settings as keycloak/aisc-realm.json holds them."""
+    realm = json.loads((ROOT / "keycloak" / "aisc-realm.json").read_text())
+    return {name: realm[name] for name in LOCKOUT_SETTINGS if name in realm}
+
+
 def sync_sign_in() -> None:
-    """Tells Keycloak the addresses this install has now, and the gateway client's current secret. The realm
-    import put the addresses and the secret of its first start into the realm's database and is never run again,
-    so a port that moved since would leave the sign-in sending people to an address nothing answers on, and a
-    rotated secret would leave oauth2-proxy refused. Run on every start once the realm answers; Keycloak may
+    """Tells Keycloak the addresses this install has now, the gateway client's current secret and the realm
+    file's account lockout. The realm import put the addresses, the secret and the lockout of its first start
+    into the realm's database and is never run again, so a port that moved since would leave the sign-in sending
+    people to an address nothing answers on, a rotated secret would leave oauth2-proxy refused, and a realm made
+    before the lockout was turned on would take any number of wrong passwords. Run on every start once the realm answers; Keycloak may
     still refuse its admin for a moment then, so it is tried again (START_SYNC_TRIES times, START_SYNC_WAIT_S
     apart)."""
     tries = int(os.environ.get("START_SYNC_TRIES", "6"))
@@ -1368,6 +1398,7 @@ def sync_sign_in() -> None:
     if gateway_secret:
         clients["aisc-gateway"]["secret"] = gateway_secret
     admin = value_in("KEYCLOAK_ADMIN_PASSWORD", OUT).strip("'\"")
+    lockout = realm_lockout()
 
     def why_not_told() -> str:
         """Empty once both clients hold the addresses; else what kcadm said."""
@@ -1388,6 +1419,9 @@ def sync_sign_in() -> None:
                             stdin=json.dumps(settings))
             if updated.returncode != 0:
                 return updated.stderr.strip() or f"kcadm could not update the client {client_id}"
+        locked = kcadm(DOCKER, container, admin, "update", "realms/aisc", "-f", "-", stdin=json.dumps(lockout))
+        if locked.returncode != 0:
+            return locked.stderr.strip() or "kcadm could not update the realm's account lockout"
         return ""
 
     for attempt in range(tries):
@@ -1537,7 +1571,7 @@ def stuck_services(ps_lines: str, was_restarting: set[str], this_start: set[str]
                    after_failed_up: bool = False) -> tuple[list[str], set[str]]:
     """(the services to report, the services restarting now), from lines of `service TAB status TAB container`.
     Only this start's services count (this_start; None when compose would not list them): the project also holds
-    containers of earlier runs (an inspect profile) and of removed services, which `up -d` leaves as they are.
+    containers of removed services, which `up -d` leaves as they are.
     A container that restarts once and then stays up is normal (it waited for a dependency), so a restarting
     one counts only when it was restarting on the poll before as well and, in the wait loops, has also restarted
     CRASH_LOOP_RESTARTS times or been at it for RESTART_GRACE_S since began_at (crash_looping): a service waiting
@@ -1741,7 +1775,7 @@ def start_steps() -> None:
         say("Removing the plugin-downloader container left from the old plugin download.")
         subprocess.run([DOCKER, "rm", "-f", *old_ids], capture_output=True)
     STACK_BEING_STARTED = True
-    # the services this start has (not an inspect profile's, not a removed service's) and when `up` began: a
+    # the services this start has (not a removed service's) and when `up` began: a
     # container that exited with an error counts only if it is one of them and stopped after that
     stack = Stack(COMPOSE)
     listed = captured([*COMPOSE, "config", "--services"])
@@ -1875,8 +1909,119 @@ def remove(_args: list[str]) -> None:
     say(f"Removed the containers and data of {PROJECT}. This folder can now be deleted.")
 
 
+#: where an image we build keeps its code, besides the image's own working folder
+APP_FOLDERS = ("/app", "/aisc", "/srv", "/usr/share/nginx/html", "/etc/nginx")
+#: what a file of code ends in: a changed folder, data file or log is not code
+CODE_SUFFIXES = frozenset({".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".css", ".html", ".htm", ".j2",
+                           ".jinja", ".jinja2", ".conf", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".sh", ".sql"})
+#: what a running service writes into its app folders by itself: bytecode, the venv uv syncs, caches, logs, tmp
+NOT_CODE = re.compile(r"(^|/)(__pycache__|\.venv|node_modules|\.cache|\.npm|logs?|tmp)(/|$)|\.(pyc|log)$")
+#: an image whose name starts so is built from this checkout; any other is an upstream image, used as published
+OWN_IMAGE = "aisc-"
+DIFF_WAIT_S = 120
+
+
+#: files an image of ours rewrites itself at every start, so `docker diff` always shows them changed: the webapp's
+#: env.sh (in /docker-entrypoint.d) writes the deployment mode into its config and its bundle. A copy made by hand of
+#: these same files cannot be told apart from that rewrite.
+WRITTEN_AT_START = {"aisc-webapp": re.compile(r"^(/etc/nginx/conf\.d/default\.conf|/usr/share/nginx/html/assets/index-[^/]+\.js)$")}
+
+
+def written_at_start(image: str, line: str) -> bool:
+    """A change (C) the image's own start-up makes, not drift."""
+    rule = WRITTEN_AT_START.get(image.split(":")[0].split("/")[-1])
+    return bool(rule) and line.startswith("C ") and bool(rule.match(line[2:]))
+
+
+def code_path(path: str, workdir: str, mounts: list[str]) -> bool:
+    """A file of code inside the image's app folders (APP_FOLDERS and its working folder), not one a bind mount
+    brings from the tree, and not one the service writes by itself (NOT_CODE)."""
+    def under(folder: str) -> bool:
+        return path == folder or path.startswith(folder.rstrip("/") + "/")
+
+    folders = [*APP_FOLDERS, *([workdir] if workdir not in ("", "/") else [])]
+    return (any(under(f) for f in folders) and not any(under(m) for m in mounts)
+            and not NOT_CODE.search(path) and Path(path).suffix in CODE_SUFFIXES)
+
+
+def drift(args: list[str]) -> None:
+    """Which running containers of the stack no longer run what their image holds. Read-only: docker ps, inspect
+    and diff only. Reports, per container of an image built here (named aisc-...):
+      - code docker diff shows changed (C), added (A) or deleted (D) since the image: files ending in a code
+        suffix (CODE_SUFFIXES) under /app, /aisc, /srv, /usr/share/nginx/html, /etc/nginx or the image's working
+        folder; not __pycache__/*.pyc, .venv, node_modules, .cache, .npm, *.log and log folders, tmp folders,
+        nor anything under a bind mount (code mounted from the tree runs as the tree is: nothing to report);
+      - containers made from one image name that run different image ids (one was made before a rebuild).
+    Upstream images (keycloak, postgres, pgadmin ...) are listed, not checked: their entrypoints write files. Files
+    one of our images rewrites at every start (WRITTEN_AT_START: the webapp's config and bundle) are not drift.
+    Exit 0 when nothing drifted, 1 otherwise.
+        uv run scripts/aisc.py drift [--prefix STACK]   (default: this checkout's stack)"""
+    stack = PROJECT
+    rest = list(args)
+    while rest:
+        option = rest.pop(0)
+        if option == "--prefix" and rest:
+            stack = rest.pop(0)
+        else:
+            raise Refused(f"aisc.py drift: unknown option {option}; usage: aisc.py drift [--prefix STACK]", 2)
+    docker_command = find_docker()
+    if docker_command is None:
+        raise Refused(NO_DOCKER)
+    listed = docker_in_time([docker_command, "ps", "--filter", f"label=com.docker.compose.project={stack}",
+                             "--format", "{{.Names}}"], DOCKER_CALL_WAIT_S)
+    if listed is None or listed.returncode != 0:
+        raise Refused(f"Docker did not list the containers of stack {stack}")
+    names = sorted(listed.stdout.split())
+    if not names:
+        raise Refused(f"stack {stack} has no running container: nothing to compare")
+    inspected = docker_in_time([docker_command, "inspect", *names], DOCKER_CALL_WAIT_S)
+    if inspected is None or inspected.returncode != 0:
+        raise Refused(f"Docker did not inspect the containers of stack {stack}")
+    containers = {c["Name"].lstrip("/"): c for c in json.loads(inspected.stdout)}
+
+    rows: list[tuple[str, str, str, list[str]]] = []
+    drifted: set[str] = set()
+    by_image: dict[str, dict[str, list[str]]] = {}
+    for name in names:
+        c = containers[name]
+        image, image_id = c["Config"]["Image"], c["Image"].removeprefix("sha256:")[:12]
+        if not image.startswith(OWN_IMAGE):
+            rows.append((name, image, "upstream image, not checked", []))
+            continue
+        by_image.setdefault(image, {}).setdefault(image_id, []).append(name)
+        diff = docker_in_time([docker_command, "diff", name], DIFF_WAIT_S)
+        if diff is None or diff.returncode != 0:
+            rows.append((name, image_id, "docker diff did not answer", []))
+            drifted.add(name)
+            continue
+        mounts = [m["Destination"] for m in c.get("Mounts") or []]
+        workdir = c["Config"].get("WorkingDir") or ""
+        changed = [line for line in diff.stdout.splitlines()
+                   if line[:2] in ("C ", "A ", "D ") and code_path(line[2:], workdir, mounts)
+                   and not written_at_start(image, line)]
+        if changed:
+            drifted.add(name)
+        rows.append((name, image_id, f"{len(changed)} code paths differ from the image" if changed else "ok", changed))
+
+    split = {image: ids for image, ids in by_image.items() if len(ids) > 1}
+    for ids in split.values():
+        drifted.update(n for members in ids.values() for n in members)
+
+    width, image_width = max(len(n) for n in names) + 2, max(len(r[1]) for r in rows) + 2
+    say(f"Drift of stack {stack}: running containers against their images", "",
+        f"{'container':<{width}}{'image':<{image_width}}state")
+    for name, image, state, changed in rows:
+        say(f"{name:<{width}}{image:<{image_width}}{state}", *(f"    {line}" for line in sorted(changed)))
+    for image, ids in sorted(split.items()):
+        say("", f"{image} runs as {len(ids)} different images:",
+            *(f"    {image_id}  {', '.join(members)}" for image_id, members in sorted(ids.items())))
+    say("", f"{len(drifted)} of {len(names)} containers drifted." if drifted else "No container drifted.")
+    if drifted:
+        raise Refused("aisc.py drift: the containers above do not run what their image holds", 1)
+
+
 COMMANDS = {"start": start, "secrets": make_secrets, "password": show_passwords,
-            "rotate-infra-password": rotate_infra_password, "stop": stop, "remove": remove}
+            "rotate-infra-password": rotate_infra_password, "stop": stop, "remove": remove, "drift": drift}
 
 
 def main(argv: list[str]) -> int:

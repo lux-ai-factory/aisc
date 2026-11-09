@@ -1,7 +1,7 @@
 """Coverage comes from step 4.
 
 A layout has no coverage map: which tests and controls give evidence for which objective is set
-once per project on the platform's Collect evidence page (evidence.link in the project's database,
+once per project on the platform's AI Assessment Sandbox page (evidence.link in the project's database,
 template 0016). Every snapshot, preview or generated report, carries those links as coverage_links,
 grouped per objective (tests by plugin package, checklists by id), so a generated report keeps the
 links it was made with. Links stored in a summary block's own options are not sent, and an old
@@ -104,7 +104,7 @@ def test_the_editor_has_no_coverage_map(client_v2, auth):
     doc = soup(client_v2.get(f"/p/alpha/layouts/{layout['id']}?system_id={IDS['A_V2']}", headers=auth("alice")).text)
     assert doc.find("details", attrs={"data-coverage-map": True}) is None
     assert doc.find(attrs={"data-control": "use-coverage-map"}) is None
-    assert "Collect evidence" in doc.get_text(" ", strip=True)
+    assert "AI Assessment Sandbox" in doc.get_text(" ", strip=True)
 
 
 

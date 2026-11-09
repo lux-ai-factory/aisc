@@ -54,11 +54,78 @@ def mirror_name(row: dict, connection: dict | None = None, latest_card: int | No
     if connection:
         protocol = protocol_name(connection.get("kind")) if connection.get("kind") else "unknown protocol"
         name += f" · reached through {protocol}"
+    elif row.get("file_name"):
+        name += " · uploaded file, no endpoint"
     else:
         name += " · not connected"
     if row["kind"] != "system" and latest_card is not None and (row["last_card_number"] or 0) < latest_card:
         name += f" · not in AI card v{latest_card}"
     return name
+
+
+#: the engine component type a card component's uploaded file becomes, by its card kind; every other
+#: kind, and the system, is reached through an endpoint only
+FILE_KINDS = {"model": "model", "training_data": "dataset", "validation_data": "dataset", "other_data": "dataset"}
+
+
+def file_kind(row: dict) -> str | None:
+    """`model` or `dataset`: the kind of file that can reach this target, or None when only an endpoint can."""
+    return FILE_KINDS.get(row["component_kind"]) if row["kind"] == "component" else None
+
+
+class NoSuchTarget(LookupError):
+    pass
+
+
+class TakesNoFile(ValueError):
+    pass
+
+
+def file_component_name(row: dict) -> str:
+    return f"AI card · Component: {row['label']} ({KIND_LABELS.get(row['component_kind'], 'component')}) · uploaded file"
+
+
+def upload_file(pid, key: str, token: str, name: str, stream, size: int, sha256: str, by: str | None) -> None:
+    """Reach the component `key` by this file: its engine component (made on the first upload, reused
+    after) gets the bytes, then the target records what they were and its mirror is renamed. The engine
+    keeps a replaced file's object, so the runs that used it still say which file they tested. Raises
+    NoSuchTarget, TakesNoFile, or engine_components.EngineUnavailable (nothing recorded)."""
+    row = target_store.get(pid, key)
+    if row is None:
+        raise NoSuchTarget(key)
+    component_type = file_kind(row)
+    if component_type is None:
+        raise TakesNoFile(key)
+    # the lock only to find or make the component, never for the upload itself (up to 2 GB): card saves'
+    # syncs and connection renames of the project wait for it
+    with _mirrors_lock(pid):
+        component = target_store.get(pid, key)["file_component"]
+        if component is None:
+            component = _new_file_component(pid, token, row, component_type)
+    try:
+        engine_components.upload(pid, token, str(component), name, stream)
+    except engine_components.EngineUnavailable as exc:
+        if exc.status != 404:
+            raise
+        # the engine no longer has it (removed there): a new one takes the file
+        with _mirrors_lock(pid):
+            component = _new_file_component(pid, token, row, component_type)
+        stream.seek(0)
+        engine_components.upload(pid, token, str(component), name, stream)
+    target_store.set_file(pid, key, name, size, sha256, by)
+    from platform_service import db
+
+    _exists, latest = db.latest_version(str(pid))
+    reason = ensure_mirrors(pid, token, latest["number"] if latest else None)
+    if reason:
+        logger.warning("target %s of project %s has its file, its mirror not renamed: %s", key, pid, reason)
+
+
+def _new_file_component(pid, token: str, row: dict, component_type: str) -> str:
+    component = engine_components.create_file_component(
+        pid, token, component_type, file_component_name(row), reference(pid, row["key"]))
+    target_store.set_file_component(pid, row["key"], component)
+    return component
 
 
 def status(row: dict, latest_card: int | None) -> str:
@@ -238,6 +305,10 @@ def view(pid, latest_card: int | None) -> list[dict]:
         "status": status(r, latest_card),
         "engine_component": str(r["engine_component"]) if r["engine_component"] else None,
         "endpoint": endpoints.get(r["key"]),
+        "file_kind": file_kind(r),
+        "engine_file_component": str(r["file_component"]) if r["file_component"] else None,
+        "file": {"name": r["file_name"], "size": r["file_size"], "sha256": r["file_sha256"],
+                 "uploaded_at": r["file_uploaded_at"].isoformat()} if r["file_name"] else None,
     } for r in rows]
 
 
