@@ -64,6 +64,11 @@ services:
       KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-aisc-backend-admin}
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
+      # headless qualification service (computes the AI card; backend stores it)
+      QUALIFICATION_SERVICE_URL: http://qualification-headless:8000
+      # headless report service (renders the report snapshot to PDF/HTML)
+      REPORT_SERVICE_URL: http://report-headless:8000
+      SERVICE_TOKEN_FOR_APPS: ${BACKEND_TO_QUALIFICATION_TOKEN}
     # Resolves host.docker.internal to the host on Linux (Engine >= 20.10);
     # harmless no-op on Docker Desktop (macOS/Windows) where it already works.
     extra_hosts:
@@ -80,6 +85,10 @@ services:
       redis:
         condition: service_started
       rabbitmq:
+        condition: service_started
+      qualification-headless:
+        condition: service_started
+      report-headless:
         condition: service_started
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:z
@@ -163,102 +172,55 @@ services:
     networks:
       - backend
 
-  # ── AI-compliance checklists app (apps/controls submodule) ──
-  controls-pdf:
-    build: apps/controls/services/pdf_renderer
-    container_name: controls-pdf
-    restart: unless-stopped
-    networks:
-      - backend
-
-  controls-migrate:
-    build: apps/controls
-    container_name: controls-migrate
-    command: >
-      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done && npx prisma db seed"
-    env_file: apps/controls/env.development
-    depends_on:
-      - postgres
-    restart: "no"
-    networks:
-      - backend
-
-  controls-web:
-    build:
-      context: apps/controls
-      args:
-        NEXT_BASE_PATH: /controls
-    container_name: controls-web
-    env_file: apps/controls/env.development
-    environment:
-      # the server-side audit forwarder posts here (service name on the backend network, not localhost)
-      AISC_BACKEND_URL: http://aisc-backend:8000
-    depends_on:
-      controls-migrate:
-        condition: service_completed_successfully
-      controls-pdf:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - backend
-      - frontend
-
-  # ── EU-AI-Act qualification app (apps/qualification submodule) ──
-  # LiteLLM completion sidecar — holds the provider key; the app calls it over HTTP.
-  qualification-llm:
-    build: apps/qualification/services/llm
-    container_name: qualification-llm
-    environment:
-      # Default provider is Mistral; LiteLLM picks the key matching LLM_MODEL.
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LLM_MODEL: ${QUALIFICATION_LLM_MODEL:-mistral/mistral-large-latest}
-    restart: unless-stopped
-    networks:
-      - backend
-
-  # System-card PDF renderer sidecar.
-  qualification-pdf:
-    build: apps/qualification/services/system_card_renderer
-    container_name: qualification-pdf
-    restart: unless-stopped
-    networks:
-      - backend
-
-  qualification-migrate:
-    build: apps/qualification
-    container_name: qualification-migrate
-    command: >
-      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
-    env_file: apps/qualification/env.development
-    depends_on:
-      - postgres
-    restart: "no"
-    networks:
-      - backend
-
-  qualification-web:
+  # The real AIRO graph builder the headless service calls to build the card.
+  # Without it the headless service falls back to a deterministic stub card
+  # (summary + digest only) — the card is then not "computed".
+  qualification-ontology:
     build:
       context: apps/qualification
-      args:
-        NEXT_BASE_PATH: /qualification
-    container_name: qualification-web
+      dockerfile: services/ontology/Dockerfile
+    container_name: qualification-ontology
     environment:
-      AISC_BACKEND_URL: http://aisc-backend:8000
-    # Migration is owned by qualification-migrate; the web container only serves.
-    command: ["npx", "next", "start", "-p", "3000"]
-    env_file: apps/qualification/env.development
+      QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN: ${ONTOLOGY_WEB_TOKEN:-}
+      QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${ONTOLOGY_AGENTS_TOKEN:-}
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # The headless qualification service: answers in, AI card out. Stateless —
+  # the backend owns all qualification data; this is only the compute.
+  qualification-headless:
+    build: apps/qualification/services/headless
+    container_name: qualification-headless
+    environment:
+      BACKEND_TO_QUALIFICATION_TOKEN: ${BACKEND_TO_QUALIFICATION_TOKEN:-}
+      # the system's IR node in generated cards; deployment-specific, never a
+      # hardcoded host (unset -> a local urn:aisc:project in the service)
+      AISC_SYSTEM_IRI: ${AISC_SYSTEM_IRI:-}
+      # where the AIRO graph is built; unset -> the stub card is returned
+      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
+      HEADLESS_TO_ONTOLOGY_TOKEN: ${ONTOLOGY_WEB_TOKEN:-}
     depends_on:
-      qualification-migrate:
-        condition: service_completed_successfully
-      qualification-llm:
-        condition: service_started
-      qualification-pdf:
+      qualification-ontology:
         condition: service_started
     restart: unless-stopped
     networks:
       - backend
-      - frontend
+
+  # The headless report service: snapshot in, PDF/HTML out. Stateless — the
+  # backend assembles the snapshot, stores it and the document; this is the
+  # renderer only (no UI, no own DB).
+  report-headless:
+    build: apps/reporting/services/headless
+    container_name: report-headless
+    environment:
+      # The backend sends ONE shared outbound token (SERVICE_TOKEN_FOR_APPS) to
+      # every app door; the report door defaults to that same token so the call
+      # is accepted, with a dedicated override when one is wanted.
+      BACKEND_TO_REPORT_TOKEN: ${BACKEND_TO_REPORT_TOKEN:-${BACKEND_TO_QUALIFICATION_TOKEN:-}}
+    restart: unless-stopped
+    networks:
+      - backend
 
 volumes:
   flower_data:
