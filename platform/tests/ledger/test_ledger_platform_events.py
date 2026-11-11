@@ -98,6 +98,31 @@ def test_a_card_version_saved_by_step_1_is_the_persons(project, client, as_user,
     assert person(project["pid"], e.actor_ref)[0] == MEMBER and e.item_version == "1"
 
 
+def test_a_card_correction_saved_by_step_1_is_the_persons(project, client, as_user, witnessed, memory_ledger,
+                                                         mode):
+    """A correction is submitted to qualification like a new version; qualification asks the platform to
+    revise the latest version with the person's token and the forwarded id."""
+    mode("enforce")
+    submit = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/system/edit",
+                       next_action="60b7a2efb1d3fb3ac1825abb501965ed20949d5937")
+    made = client.post(f"/projects/{project['slug']}/system-versions", json={"name": "MCAS", "version": "1.2.0"},
+                       headers={**as_user(MEMBER), "X-AISC-Request-Id": submit})
+    assert made.status_code in (200, 201), made.text
+    fix = witnessed(MEMBER, "POST", "qualification", f"/qualification/p/{project['slug']}/system/edit",
+                    next_action="60b7a2efb1d3fb3ac1825abb501965ed20949d5937")
+    r = client.patch(f"/projects/{project['slug']}/system-versions/{made.json()['pid']}",
+                     json={"name": "MCAS", "version": "1.2.0", "provider": "Eindhoven Engine",
+                           "reason": "provider name", "requested_by": "the provider"},
+                     headers={**as_user(MEMBER), "X-AISC-Request-Id": fix})
+    assert r.status_code == 200, r.text
+    relay_all(project["pid"])
+    assert [e.details["reason"] for e in entries(memory_ledger, log_of(project["pid"]))
+            if e.action == "ledger.rejected"] == []
+    [e] = [e for e in actions(memory_ledger, project["pid"]) if e.action == "card_version.revised"]
+    assert (e.source_app, e.request_id) == ("platform", fix)
+    assert person(project["pid"], e.actor_ref)[0] == MEMBER and e.item_version == "1"
+
+
 def _project_db_event(project, witnessed):
     """An event in the project database's own outbox, which the drop would destroy."""
     from tests.ledger.test_ledger_outbox import emit

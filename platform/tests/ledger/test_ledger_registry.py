@@ -377,3 +377,51 @@ def test_deleting_a_connection_may_end_each_of_its_uses_with_its_own_event():
     assert removed.per_request is None
     assert any(app == "platform" and method == "DELETE" and re.match(path, "/api/projects/p/connections/judge-x")
                for app, method, path in removed.caused_by)
+
+
+# The three events a card revision and a controls amendment emit, in the shapes the code builds them:
+# apps/qualification/src/app/p/[project]/qualify/new/actions.ts (submitQualification, the correction branch),
+# platform_service/db.py (revise_version) and apps/controls/src/app/p/[project]/submissions/[id]/actions.ts
+# (reopenForAmendment).
+_AMENDED = {"event_id": str(uuid.uuid4()), "request_id": str(uuid.uuid4()), "action": "qualification.amended",
+            "item_type": "qualification", "item_id": "cmcard0000000000000000002",
+            "details": {"revision": 2, "amends": "cmcard0000000000000000001", "reason": "provider name",
+                        "requested_by": "Eindhoven Engine", "risks": 2, "components": 1},
+            "content": {"systemName": "MCAS"}}
+_REVISED = {"event_id": str(uuid.uuid4()), "request_id": str(uuid.uuid4()), "action": "card_version.revised",
+            "item_type": "card_version", "item_id": str(uuid.uuid4()), "item_version": 1,
+            "details": {"number": 1, "card_revision": 2, "reason": "provider name",
+                        "requested_by": "Eindhoven Engine"}}
+_REOPENED = {"event_id": str(uuid.uuid4()), "request_id": str(uuid.uuid4()),
+             "action": "controls.submission.reopened", "item_type": "submission",
+             "item_id": "cmsub0000000000000000001",
+             "details": {"next": "cmsub0000000000000000002", "version": 2, "reason": "a typo in an answer",
+                         "requested_by": "the auditor"},
+             "content": {"next": {"label": "Run", "status": "Draft", "answers": []}}}
+
+
+@pytest.mark.parametrize("event, emitter", [(_AMENDED, "qualification"), (_REVISED, "platform"),
+                                            (_REOPENED, "controls")], ids=lambda v: v if isinstance(v, str) else v["action"])
+def test_a_correction_or_amendment_event_as_the_code_emits_it_has_no_problem(event, emitter):
+    assert check(event, emitter=emitter) == []
+
+
+def test_an_amendment_without_its_card_is_a_problem():
+    assert "content_required" in check({**_AMENDED, "content": None}, emitter="qualification")
+
+
+def _caused_by(action, app, method, path):
+    return any(a == app and m == method and re.match(p, path) for a, m, p in REGISTRY[action].caused_by)
+
+
+@pytest.mark.parametrize("page", ["/system/edit", "/qualify/new"])
+def test_a_card_correction_is_caused_by_the_step_1_form_like_a_new_version(page):
+    path = "/qualification/p/proj" + page
+    for action in ("qualification.amended", "card_version.revised"):
+        assert _caused_by(action, "qualification", "ACTION", path), action
+    assert _caused_by("card_version.revised", "platform", "PATCH", "/api/projects/proj/system-versions/abc")
+
+
+def test_saving_a_new_card_and_correcting_one_are_the_same_server_action():
+    assert "qualification.amended" in REGISTRY["qualification.created"].same_action
+    assert "qualification.created" in REGISTRY["qualification.amended"].same_action

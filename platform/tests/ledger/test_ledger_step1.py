@@ -57,6 +57,10 @@ CASES = [
      {"details": {"questionnaire_version": "v1", "risks": 2, "components": 1, "review_from_version": 3,
                   "corrections_carried": 4, "corrections_left": 1, "draft": "left", "review_failed": False},
       "content": {"systemName": "MCAS", "review": {"from_version": 3, "carried": ["risk0"], "left": ["risk1"]}}}),
+    ("POST", "/system/edit", "qualification.amended", "qualification", CARD,     # a correction: a new revision
+     {"details": {"revision": 2, "amends": "cmcard0000000000000000000", "reason": "provider name",
+                  "requested_by": "Eindhoven Engine", "risks": 2, "components": 1},
+      "content": {"systemName": "MCAS"}}),
     ("POST", "/question-sets/new", "question_set.created", "question_set", "s1",
      {"details": {"version": 1}, "content": {"set": {}}}),
     ("POST", "/questionnaires/import", "question_set.created", "question_set", "s2",     # an import's set
@@ -162,6 +166,25 @@ def test_one_save_action_makes_a_set_then_its_next_version(project, memory_ledge
     relay_all(project["pid"])
     assert rejected(memory_ledger, project["pid"]) == []
     assert len(accepted(memory_ledger, project["pid"], "question_set.version_created")) == 1
+
+
+def test_one_submit_action_makes_a_new_card_then_corrects_it(project, memory_ledger, witnessed):
+    """submitQualification is one server action (one action id) for a new version and for a correction."""
+    first = witnessed(MEMBER, "POST", "qualification", page(project, "/qualify/new"), next_action="7f0c04")
+    emit(project["pid"], "qualification_rw", body(first, "qualification.created", "qualification", CARD,
+                                                  details={"questionnaire_version": "v1", "risks": 0,
+                                                           "components": 1},
+                                                  content={"systemName": "MCAS"}))
+    relay_all(project["pid"])
+    later = witnessed(MEMBER, "POST", "qualification", page(project, "/system/edit"), next_action="7f0c04")
+    emit(project["pid"], "qualification_rw", body(later, "qualification.amended", "qualification", "cmcard2",
+                                                  details={"revision": 2, "amends": CARD, "reason": "typo",
+                                                           "requested_by": "the provider", "risks": 0,
+                                                           "components": 1},
+                                                  content={"systemName": "MCAS"}))
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+    assert len(accepted(memory_ledger, project["pid"], "qualification.amended")) == 1
 
 
 def test_an_action_id_still_refuses_an_action_of_another_server_action(project, memory_ledger, witnessed):
