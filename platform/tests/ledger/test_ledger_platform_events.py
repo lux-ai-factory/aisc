@@ -112,7 +112,7 @@ def test_a_card_correction_saved_by_step_1_is_the_persons(project, client, as_us
                     next_action="60b7a2efb1d3fb3ac1825abb501965ed20949d5937")
     r = client.patch(f"/projects/{project['slug']}/system-versions/{made.json()['pid']}",
                      json={"name": "MCAS", "version": "1.2.0", "provider": "Eindhoven Engine",
-                           "reason": "provider name", "requested_by": "the provider"},
+                           "reason": "provider name", "requested_by": "the provider", "expected_card_revision": 1},
                      headers={**as_user(MEMBER), "X-AISC-Request-Id": fix})
     assert r.status_code == 200, r.text
     relay_all(project["pid"])

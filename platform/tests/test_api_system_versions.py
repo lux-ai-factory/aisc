@@ -211,7 +211,7 @@ def test_the_old_version_routes_are_gone(client, as_user, project, dsn):
 # Revising the latest version in place
 def revise_body(**over):
     return {"name": "MCAS", "version": "v1.2.0", "provider": "Eindhoven Engine", "description": "corrected",
-            "reason": "provider name", "requested_by": "Eindhoven Engine", **over}
+            "reason": "provider name", "requested_by": "Eindhoven Engine", "expected_card_revision": 1, **over}
 
 
 def patch(client, as_user, project, pid, who=ALICE, **over):
@@ -243,6 +243,43 @@ def test_patch_not_latest_409(client, as_user, project):
     first = save(client, as_user, project).json()
     save(client, as_user, project)
     assert patch(client, as_user, project, first["pid"]).status_code == 409
+
+
+def test_patch_of_a_card_corrected_since_it_was_opened_409(client, as_user, project):
+    made = save(client, as_user, project).json()
+    assert patch(client, as_user, project, made["pid"]).status_code == 200
+    stale = patch(client, as_user, project, made["pid"], provider="TU/e", expected_card_revision=1)
+    assert stale.status_code == 409, stale.text
+    [kept] = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(ALICE)).json()
+    assert (kept["card_revision"], kept["provider"]) == (2, "Eindhoven Engine")
+    assert patch(client, as_user, project, made["pid"], expected_card_revision=2).status_code == 200
+
+
+def test_patch_without_the_revision_it_started_from_422(client, as_user, project):
+    made = save(client, as_user, project).json()
+    body = revise_body()
+    del body["expected_card_revision"]
+    response = client.patch(f"/projects/{project['slug']}/system-versions/{made['pid']}", json=body,
+                            headers=as_user(ALICE))
+    assert response.status_code == 422
+
+
+def test_two_corrections_of_the_same_revision_at_once_one_wins_one_is_409(client, as_user, project):
+    made = save(client, as_user, project).json()
+    statuses, barrier = [], threading.Barrier(2)
+
+    def one(provider):
+        barrier.wait()
+        statuses.append(patch(client, as_user, project, made["pid"], provider=provider).status_code)
+
+    threads = [threading.Thread(target=one, args=(p,)) for p in ("Eindhoven Engine", "TU/e")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(statuses) == [200, 409]
+    [kept] = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(ALICE)).json()
+    assert kept["card_revision"] == 2
 
 
 @pytest.mark.parametrize("field", ["reason", "requested_by"])

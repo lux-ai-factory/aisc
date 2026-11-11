@@ -544,7 +544,8 @@ def test_a_module_role_reads_only_project_and_project_member_in_platform():
 
 def revise(project, pid, **over):
     fields = {"name": "MCAS", "version": "v1", "provider": "Eindhoven Engine", "description": None,
-              "reason": "provider name", "requested_by": "Eindhoven Engine", "subject": ALICE, **over}
+              "reason": "provider name", "requested_by": "Eindhoven Engine", "subject": ALICE,
+              "expected_card_revision": 1, **over}
     return db.revise_version(project["slug"], pid, **fields)
 
 
@@ -580,24 +581,36 @@ def test_revise_of_an_unknown_version_or_project(project, dsn):
     with pytest.raises(db.NoSuchVersion):
         revise(project, str(uuid.uuid4()))
     assert db.revise_version("no-such-project-" + uuid.uuid4().hex, str(uuid.uuid4()), "a", None, None, None,
-                             "r", "w", ALICE) is None
+                             "r", "w", ALICE, expected_card_revision=1) is None
 
 
 @needs_database
-def test_two_revisions_at_once_get_consecutive_numbers(project, dsn):
+def test_two_revisions_of_the_same_card_revision_at_once_one_wins_the_other_is_not_latest(project, dsn):
     made = db.create_version(project["slug"], "MCAS", "v1", None, None, ALICE)
     results, barrier = [], threading.Barrier(2)
 
     def one():
         barrier.wait()
-        results.append(revise(project, made["pid"])["card_revision"])
+        try:
+            results.append(revise(project, made["pid"])["card_revision"])
+        except db.NotLatest:
+            results.append("not latest")
 
     threads = [threading.Thread(target=one) for _ in range(2)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    assert sorted(results) == [2, 3]
+    assert sorted(results, key=str) == [2, "not latest"]
+
+
+@needs_database
+def test_revise_refuses_a_card_revision_that_is_no_longer_the_current_one(project, dsn):
+    made = db.create_version(project["slug"], "MCAS", "v1", "TU/e", None, ALICE)
+    revise(project, made["pid"])
+    with pytest.raises(db.NotLatest):
+        revise(project, made["pid"], provider="other", expected_card_revision=1)
+    assert revise(project, made["pid"], expected_card_revision=2)["card_revision"] == 3
 
 
 @needs_database

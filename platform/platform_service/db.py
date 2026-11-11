@@ -362,11 +362,15 @@ def create_version(project: str, name: str, version: str | None, provider: str |
 
 
 def revise_version(project: str, pid: str, name: str, version: str | None, provider: str | None,
-                   description: str | None, reason: str, requested_by: str, subject: str | None) -> dict | None:
+                   description: str | None, reason: str, requested_by: str, subject: str | None, *,
+                   expected_card_revision: int) -> dict | None:
     """Correct the description of the project's latest card version in place: the same row and number, its
     card_revision one higher, under the advisory lock create_version takes so a save and a revision (or two
-    revisions) at once cannot interleave. None: no such project. NoSuchVersion: no version with this pid.
-    NotLatest: a newer version exists. ProjectDatabaseGone: its database is gone."""
+    revisions) at once cannot interleave. `expected_card_revision` is the card revision the correction
+    started from: when another correction came first, the version's card_revision is no longer that one and
+    this correction would silently replace it, so it is refused. None: no such project. NoSuchVersion: no
+    version with this pid. NotLatest: a newer version exists, or the card was corrected since.
+    ProjectDatabaseGone: its database is gone."""
     project_pid = _resolve(project)
     if project_pid is None:
         return None
@@ -377,10 +381,10 @@ def revise_version(project: str, pid: str, name: str, version: str | None, provi
     with project_connection(project_pid) as conn, conn.transaction():
         conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
         latest = conn.execute("select pid from project.system order by number desc limit 1").fetchone()
-        exists = conn.execute("select 1 from project.system where pid = %s", (wanted,)).fetchone()
+        exists = conn.execute("select card_revision from project.system where pid = %s", (wanted,)).fetchone()
         if exists is None:
             raise NoSuchVersion(pid)
-        if str(latest["pid"]) != wanted:
+        if str(latest["pid"]) != wanted or exists["card_revision"] != expected_card_revision:
             raise NotLatest(pid)
         row = conn.execute(
             "update project.system set name = %s, version = %s, provider = %s, description = %s,"
