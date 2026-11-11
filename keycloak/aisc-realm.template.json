@@ -479,6 +479,19 @@
   "webAuthnPolicyPasswordlessExtraOrigins": [],
   "users": [
     {
+      "id": "eb07f671-fa1b-4bd2-b2b5-7293f3f8fecb",
+      "username": "service-account-aisc-backend-admin",
+      "enabled": true,
+      "serviceAccountClientId": "aisc-backend-admin",
+      "clientRoles": {
+        "realm-management": [
+          "realm-admin"
+        ]
+      },
+      "notBefore": 0,
+      "groups": []
+    },
+    {
       "id": "c8134e20-7078-465a-8955-f25289bd4540",
       "username": "admin",
       "firstName": "admin",
@@ -1030,6 +1043,29 @@
         "configure": true,
         "manage": true
       }
+    },
+    {
+      "id": "bcf0376a-30f8-46eb-9e31-8fcf0f0d134c",
+      "clientId": "aisc-backend-admin",
+      "name": "aisc-backend-admin",
+      "description": "confidential service-account client the backend uses to manage users via the Admin REST API (WP7); secret from env, never committed",
+      "enabled": true,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "bearerOnly": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "secret": "${BACKEND_ADMIN_CLIENT_SECRET}",
+      "clientAuthenticatorType": "client-secret",
+      "defaultClientScopes": [
+        "roles"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
     }
   ],
   "clientScopes": [

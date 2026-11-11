@@ -57,6 +57,12 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      # Keycloak Admin REST client (WP7): service-account client the backend
+      # uses to manage users/roles; empty secret = admin surface off.
+      KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL:-http://keycloak:8080/auth}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-aisc}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-aisc-backend-admin}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
     # Resolves host.docker.internal to the host on Linux (Engine >= 20.10);
     # harmless no-op on Docker Desktop (macOS/Windows) where it already works.
