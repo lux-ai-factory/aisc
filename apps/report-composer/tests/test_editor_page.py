@@ -64,7 +64,7 @@ def test_a_built_in_opens_read_only(client_v2, auth):
     assert doc.find(attrs={"data-control": "duplicate"})["data-layout"] == "builtin-summary"
     assert "Summary" in doc.find("h1").get_text()
     assert doc.find("main")["data-read-only"] == "true"
-    assert len(doc.select("#blocks > li")) == 4
+    assert len(doc.select("#blocks > li")) == 6
 
 
 def test_a_built_in_previews(client_v2, auth, fake_v2):

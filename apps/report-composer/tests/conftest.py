@@ -141,6 +141,7 @@ BLOCK_TYPES = [
           {"links": [], "show_uncovered_only": False}),
     _type("free_text", "Free text", {"text": {"type": "string", "minLength": 1, "maxLength": 20000}}, {},
           required=("text",)),
+    _type("amendments", "Amendments", {"include_archived": {"type": "boolean"}}, {"include_archived": False}),
 ]
 
 #: what the fake renderer offers as choices, per (system, block type): only Alpha v2 / v3 data

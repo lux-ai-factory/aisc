@@ -202,6 +202,10 @@ def _v2_types() -> list[dict]:
     chapter["default_options"].update({"title": "Chapter", "page_break_before": True})
     out.append(chapter)
     out.append(_type("appendix", "Appendix", {}, {}, description="Everything after it is the appendix."))
+    out.append(_type("amendments", "Amendments", {
+        "include_archived": _p({"type": "boolean"}, "Include archived", "Also lists amendments whose submission is "
+                               "archived.", more=True),
+    }, {"include_archived": False}, description="The amendments made to the card and its checklists."))
     # the runs of the report's period
     out.append(_type("test_runs", "Test runs", {
         "detail": _p({"enum": ["summary", "full"]}, "Detail", "One line per run, or each tool.",

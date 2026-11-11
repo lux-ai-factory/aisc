@@ -28,9 +28,10 @@ def test_each_level_holds_more_modules_than_the_one_before(client_v2, auth):
     assert counts == sorted(counts) and len(set(counts)) == 5, counts
 
 
-def test_the_summary_is_the_four_modules_of_the_spec(client_v2, auth):
+def test_the_summary_is_the_four_modules_of_the_spec_and_the_amendments(client_v2, auth):
     s = _builtins(client_v2, auth)[0]
-    assert [b["block_type"] for b in s["blocks"]] == ["cover", "key_figures", "summary_coverage", "changes_since"]
+    assert [b["block_type"] for b in s["blocks"]] == ["cover", "key_figures", "summary_coverage", "changes_since",
+                                                      "appendix", "amendments"]
     assert s["blocks"][2]["options"]["show_uncovered_only"] is True
     assert s["show_index"] is False
 
