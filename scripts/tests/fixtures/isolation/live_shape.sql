@@ -295,6 +295,46 @@ BEGIN
   IF NOT qualification.card_is_current(NEW."qualificationId") THEN
     RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', NEW."qualificationId";
   END IF;
+  IF TG_OP = 'UPDATE' AND NOT qualification.card_is_current(OLD."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD."qualificationId";
+  END IF;
+  RETURN NEW;
+END $$;
+
+
+--
+-- Name: revision_corrects_the_one_before(); Type: FUNCTION; Schema: qualification; Owner: -
+--
+
+CREATE FUNCTION qualification.revision_corrects_the_one_before() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.revision > 1 AND NOT EXISTS (
+    SELECT 1 FROM qualification.qualification o
+     WHERE o.id = NEW.amends_id AND o.system_id = NEW.system_id AND o.revision = NEW.revision - 1
+  ) THEN
+    RAISE EXCEPTION 'AI card % is revision % of its version: it corrects that version''s revision %, not card %',
+      NEW.id, NEW.revision, NEW.revision - 1, NEW.amends_id;
+  END IF;
+  RETURN NEW;
+END $$;
+
+
+--
+-- Name: card_row_only_latest_changes(); Type: FUNCTION; Schema: qualification; Owner: -
+--
+
+CREATE FUNCTION qualification.card_row_only_latest_changes() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT qualification.card_is_current(NEW."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', NEW."qualificationId";
+  END IF;
+  IF TG_OP = 'UPDATE' AND NOT qualification.card_is_current(OLD."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD."qualificationId";
+  END IF;
   RETURN NEW;
 END $$;
 
@@ -341,6 +381,9 @@ CREATE FUNCTION qualification.component_only_latest_changes() RETURNS trigger
 BEGIN
   IF NOT qualification.card_is_current(NEW.qualification_id) THEN
     RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', NEW.qualification_id;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NOT qualification.card_is_current(OLD.qualification_id) THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD.qualification_id;
   END IF;
   RETURN NEW;
 END $$;
@@ -2188,10 +2231,31 @@ CREATE TRIGGER form_version_question_is_append_only BEFORE DELETE OR UPDATE ON q
 
 
 --
+-- Name: qualification qualification_revision_corrects_the_one_before; Type: TRIGGER; Schema: qualification; Owner: -
+--
+
+CREATE TRIGGER qualification_revision_corrects_the_one_before BEFORE INSERT OR UPDATE OF revision, amends_id, system_id ON qualification.qualification FOR EACH ROW EXECUTE FUNCTION qualification.revision_corrects_the_one_before();
+
+
+--
+-- Name: knowledge_graph knowledge_graph_only_latest_changes; Type: TRIGGER; Schema: qualification; Owner: -
+--
+
+CREATE TRIGGER knowledge_graph_only_latest_changes BEFORE INSERT OR UPDATE ON qualification.knowledge_graph FOR EACH ROW EXECUTE FUNCTION qualification.card_row_only_latest_changes();
+
+
+--
 -- Name: qualification_answer qualification_answer_only_latest_changes; Type: TRIGGER; Schema: qualification; Owner: -
 --
 
 CREATE TRIGGER qualification_answer_only_latest_changes BEFORE INSERT OR UPDATE ON qualification.qualification_answer FOR EACH ROW EXECUTE FUNCTION qualification.answer_only_latest_changes();
+
+
+--
+-- Name: qualification_risk qualification_risk_only_latest_changes; Type: TRIGGER; Schema: qualification; Owner: -
+--
+
+CREATE TRIGGER qualification_risk_only_latest_changes BEFORE INSERT OR UPDATE ON qualification.qualification_risk FOR EACH ROW EXECUTE FUNCTION qualification.card_row_only_latest_changes();
 
 
 --
@@ -2558,7 +2622,7 @@ ALTER TABLE ONLY qualification.qualification
 --
 
 ALTER TABLE ONLY qualification.qualification
-    ADD CONSTRAINT qualification_amends_id_fkey FOREIGN KEY (amends_id) REFERENCES qualification.qualification(id) ON DELETE CASCADE;
+    ADD CONSTRAINT qualification_amends_id_fkey FOREIGN KEY (amends_id) REFERENCES qualification.qualification(id);
 
 
 --
