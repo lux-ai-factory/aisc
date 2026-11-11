@@ -304,6 +304,15 @@ def test_identity_the_card_says_something_else_than_its_version(bed, cluster, co
         only(checks.c3_system_identity(cluster), "FAIL", DB_A, A_V2, "qualification", drifted, version_value)
 
 
+def test_identity_a_corrected_version_is_compared_with_its_latest_revision(bed, cluster):
+    # revision 1 keeps the old provider as it was; revision 2 and project.system carry the corrected one
+    corrected = REVISION_2.replace("'Acme AI', 'd2'", "'Acme Inc', 'd2'")
+    with planted(bed, DB_A,
+                 corrected + f"UPDATE project.system SET provider = 'Acme Inc' WHERE pid = '{A_V2}';",
+                 REMOVE_REVISION_2 + f"UPDATE project.system SET provider = 'Acme AI' WHERE pid = '{A_V2}';"):
+        assert checks.c3_system_identity(cluster) == []
+
+
 def test_identity_an_assessment_may_have_a_name_of_its_own(bed, cluster):
     """The assessor names an assessment; it is tied to its card version by system_id (checked by C4)."""
     with planted(bed, DB_A,

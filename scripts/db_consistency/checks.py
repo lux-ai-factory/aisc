@@ -107,7 +107,8 @@ CARD_FIELDS = (("systemName", "name"), ("systemVersion", "version"), ("company",
 
 def c3_system_identity(cl: Cluster) -> list[Finding]:
     """In each project database, a card version's name, version and provider read the same in
-    project.system and qualification. A NULL version or provider is the card's empty string. An assessment
+    project.system and its card's latest revision (a correction rewrites project.system; the revisions
+    before it keep what they said). A NULL version or provider is the card's empty string. An assessment
     has a name of its own, chosen by the assessor; it is tied to its card version by system_id (C4)."""
     out = []
     for db, _pid, slug in _dbs(cl):
@@ -118,6 +119,8 @@ def c3_system_identity(cl: Cluster) -> list[Finding]:
                 SELECT s.pid::text, s.number, q.id, q."systemName", s.name, q."systemVersion",
                        coalesce(s.version, ''), q.company, coalesce(s.provider, '')
                   FROM qualification.qualification q JOIN project.system s ON s.pid = q.system_id
+                 WHERE q.revision = (SELECT max(r.revision) FROM qualification.qualification r
+                                      WHERE r.system_id = q.system_id)
                  ORDER BY s.number, q.id""")
             for spid, number, qid, *values in rows:
                 for i, (qcol, scol) in enumerate(CARD_FIELDS):
