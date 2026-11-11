@@ -256,7 +256,7 @@ def c5_users(cl: Cluster) -> list[Finding]:
 
 def c6_stale_graph(cl: Cluster) -> list[Finding]:
     """In each project database, an assessment's graph (control_objectives.graph, step 2) is
-    still its card's current knowledge graph. The two digests are not comparable: qualification's
+    still its card's current knowledge graph (the card of a version is its latest revision). The two digests are not comparable: qualification's
     comes from the ontology builder, control objectives' is the sha256 of the bytes it was served.
     So the comparison is by content, the sha256 of each side's jsonld."""
     out = []
@@ -270,6 +270,8 @@ def c6_stale_graph(cl: Cluster) -> list[Finding]:
               FROM control_objectives.graph g
               JOIN control_objectives.project a ON a.id = g.project_id
               LEFT JOIN qualification.qualification q ON q.system_id = a.system_id
+                   AND q.revision = (SELECT max(r.revision) FROM qualification.qualification r
+                                      WHERE r.system_id = a.system_id)
               LEFT JOIN qualification.knowledge_graph k ON k."qualificationId" = q.id
              ORDER BY a.id""")
         for aid, sid, qid, missing, assessed, current, uploaded, built in rows:

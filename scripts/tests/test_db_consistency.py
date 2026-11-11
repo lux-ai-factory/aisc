@@ -458,6 +458,36 @@ def test_stale_graph_the_card_has_no_stored_graph_to_compare(bed, cluster):
         only(checks.c6_stale_graph(cluster), "WARN", DB_A, "coa2", "no stored knowledge graph")
 
 
+REVISION_2 = (
+    "INSERT INTO qualification.qualification (id, \"systemName\", \"systemVersion\", company, description,"
+    " \"targetUseCase\", \"targetUsers\", updated_at, system_id, revision, amends_id, amend_reason, amend_requested_by)"
+    f" VALUES ('q-a2r2', 'Alpha scorer', '1.0', 'Acme AI', 'd2', 'u', 'u', now(), '{A_V2}', 2, 'q-a2', 'fix', 'Acme, email');"
+)
+REVISION_2_GRAPH = (
+    "INSERT INTO qualification.knowledge_graph (id, \"qualificationId\", digest, turtle, jsonld, nodes, triples)"
+    f" VALUES ('kg-a2r2', 'q-a2r2', 'x', '# turtle', '{JSONLD}', 1, 1);"
+)
+REMOVE_REVISION_2 = (
+    "DELETE FROM qualification.knowledge_graph WHERE id = 'kg-a2r2';"
+    " DELETE FROM qualification.qualification WHERE id = 'q-a2r2';"
+)
+
+
+def test_stale_graph_compares_with_the_cards_latest_revision(bed, cluster):
+    # the earlier revision's graph differs, the latest revision's matches: nothing is stale
+    with planted(bed, DB_A,
+                 REVISION_2 + REVISION_2_GRAPH
+                 + "UPDATE qualification.knowledge_graph SET jsonld = jsonld || ' ' WHERE id = 'kg-a2';",
+                 REMOVE_REVISION_2
+                 + f"UPDATE qualification.knowledge_graph SET jsonld = '{JSONLD}' WHERE id = 'kg-a2';"):
+        assert checks.c6_stale_graph(cluster) == []
+
+
+def test_stale_graph_names_the_latest_revision_when_it_has_no_graph(bed, cluster):
+    with planted(bed, DB_A, REVISION_2, REMOVE_REVISION_2):
+        only(checks.c6_stale_graph(cluster), "WARN", DB_A, "coa2", "q-a2r2", "no stored knowledge graph")
+
+
 # C7 databases behind on migrations
 
 TEMPLATES = heads.templates()
