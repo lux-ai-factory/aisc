@@ -308,9 +308,17 @@ def test_identity_a_corrected_version_is_compared_with_its_latest_revision(bed, 
     # revision 1 keeps the old provider as it was; revision 2 and project.system carry the corrected one
     corrected = REVISION_2.replace("'Acme AI', 'd2'", "'Acme Inc', 'd2'")
     with planted(bed, DB_A,
-                 corrected + f"UPDATE project.system SET provider = 'Acme Inc' WHERE pid = '{A_V2}';",
-                 REMOVE_REVISION_2 + f"UPDATE project.system SET provider = 'Acme AI' WHERE pid = '{A_V2}';"):
+                 corrected + f"UPDATE project.system SET provider = 'Acme Inc', card_revision = 2 WHERE pid = '{A_V2}';",
+                 REMOVE_REVISION_2
+                 + f"UPDATE project.system SET provider = 'Acme AI', card_revision = 1 WHERE pid = '{A_V2}';"):
         assert checks.c3_system_identity(cluster) == []
+
+
+def test_identity_a_version_counts_a_revision_its_cards_do_not_have(bed, cluster):
+    # the platform counted revision 2 (a correction), but no card holds revision 2
+    with planted(bed, DB_A, f"UPDATE project.system SET card_revision = 2 WHERE pid = '{A_V2}';",
+                 f"UPDATE project.system SET card_revision = 1 WHERE pid = '{A_V2}';"):
+        only(checks.c3_system_identity(cluster), "FAIL", DB_A, A_V2, "card_revision", "2", "1")
 
 
 def test_identity_an_assessment_may_have_a_name_of_its_own(bed, cluster):

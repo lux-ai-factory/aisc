@@ -128,6 +128,16 @@ def c3_system_identity(cl: Cluster) -> list[Finding]:
                     if card != version:
                         out.append(fail("C3", f"{db} ({slug}) system {spid} v{number}: qualification {qid} "
                                               f"{qcol} is '{card}', project.system {scol} is '{version}'"))
+            # a correction counts its revision on project.system inside the card's transaction: a count
+            # with no card behind it is a correction half made, and it blocks every later one
+            for spid, number, counted, stored in cl.rows(db, """
+                SELECT s.pid::text, s.number, s.card_revision, max(q.revision)
+                  FROM project.system s JOIN qualification.qualification q ON q.system_id = s.pid
+                 GROUP BY s.pid, s.number, s.card_revision
+                HAVING s.card_revision <> max(q.revision)
+                 ORDER BY s.number"""):
+                out.append(fail("C3", f"{db} ({slug}) system {spid} v{number}: project.system card_revision is "
+                                      f"{counted}, its cards' latest revision is {stored}"))
     return out
 
 
