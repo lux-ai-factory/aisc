@@ -208,7 +208,7 @@ def test_project_system_has_exactly_the_card_version_columns(project, dsn):
             " where i.indrelid = 'project.system'::regclass and i.indisunique and i.indnatts = 1"
             " and a.attname = 'number'").fetchone()
     assert set(cols) == {"pid", "number", "name", "version", "provider", "description",
-                         "created_at", "updated_at", "created_by"}, f"columns are {sorted(cols)}"
+                         "created_at", "updated_at", "created_by", "card_revision"}, f"columns are {sorted(cols)}"
     assert "project_id" not in cols, "project.system has no project_id: the database is the project"
     assert cols["pid"][0] == "uuid" and "gen_random_uuid" in (cols["pid"][2] or "")
     assert cols["number"][:2] == ("integer", "NO")
@@ -537,3 +537,80 @@ def test_a_module_role_reads_only_project_and_project_member_in_platform():
                 defaults = conn.execute("select count(*) from pg_default_acl d join pg_roles r on r.oid = d.defaclrole"
                                         " where array_to_string(d.defaclacl, ',') like '%dashboard_ro%'").fetchone()[0]
                 assert defaults == 0, "platform-db.sql no longer gives dashboard_ro default privileges"
+
+
+# Revising the latest version's description in place.
+
+
+def revise(project, pid, **over):
+    fields = {"name": "MCAS", "version": "v1", "provider": "Eindhoven Engine", "description": None,
+              "reason": "provider name", "requested_by": "Eindhoven Engine", "subject": ALICE, **over}
+    return db.revise_version(project["slug"], pid, **fields)
+
+
+@needs_database
+def test_new_version_has_card_revision_one(project, dsn):
+    made = db.create_version(project["slug"], "MCAS", "v1", None, None, ALICE)
+    assert made["card_revision"] == 1
+    assert db.latest_version(project["slug"])[1]["card_revision"] == 1
+    assert db.list_versions(project["slug"])[0]["card_revision"] == 1
+
+
+@needs_database
+def test_revise_updates_the_latest_version_in_place(project, dsn):
+    made = db.create_version(project["slug"], "MCAS", "v1", "TU/e", None, ALICE)
+    revised = revise(project, made["pid"])
+    assert revised["pid"] == made["pid"] and revised["number"] == 1
+    assert revised["card_revision"] == 2 and revised["provider"] == "Eindhoven Engine"
+    assert len(db.list_versions(project["slug"])) == 1
+
+
+@needs_database
+def test_revise_refuses_a_version_that_is_not_the_latest(project, dsn):
+    first = db.create_version(project["slug"], "MCAS", "v1", "TU/e", None, ALICE)
+    db.create_version(project["slug"], "MCAS", "v2", None, None, ALICE)
+    with pytest.raises(db.NotLatest):
+        revise(project, first["pid"])
+    unchanged = [v for v in db.list_versions(project["slug"]) if v["pid"] == first["pid"]][0]
+    assert unchanged["provider"] == "TU/e" and unchanged["card_revision"] == 1
+
+
+@needs_database
+def test_revise_of_an_unknown_version_or_project(project, dsn):
+    with pytest.raises(db.NoSuchVersion):
+        revise(project, str(uuid.uuid4()))
+    assert db.revise_version("no-such-project-" + uuid.uuid4().hex, str(uuid.uuid4()), "a", None, None, None,
+                             "r", "w", ALICE) is None
+
+
+@needs_database
+def test_two_revisions_at_once_get_consecutive_numbers(project, dsn):
+    made = db.create_version(project["slug"], "MCAS", "v1", None, None, ALICE)
+    results, barrier = [], threading.Barrier(2)
+
+    def one():
+        barrier.wait()
+        results.append(revise(project, made["pid"])["card_revision"])
+
+    threads = [threading.Thread(target=one) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(results) == [2, 3]
+
+
+@needs_database
+def test_revise_emits_card_version_revised(project, dsn, monkeypatch):
+    from tests.ledger.test_ledger_outbox import SUPERUSER_DSN, as_superuser
+
+    if not SUPERUSER_DSN:
+        pytest.skip("PLATFORM_TEST_SUPERUSER_URL is not set: ledger.outbox is read as the superuser")
+    monkeypatch.setenv("LEDGER_MODE", "record")
+    made = db.create_version(project["slug"], "MCAS", "v1", None, None, ALICE)
+    revise(project, made["pid"])
+    [row] = as_superuser(project["pid"], "SELECT item_id, details FROM ledger.outbox"
+                                         " WHERE action = 'card_version.revised'")
+    assert str(row[0]) == str(made["pid"])
+    assert row[1] == {"number": 1, "card_revision": 2, "reason": "provider name",
+                      "requested_by": "Eindhoven Engine"}

@@ -34,7 +34,7 @@ REQUIRED = [
     "session.signed_in", "session.signed_out", "access.refused",
     # platform and Manage
     "project.created", "project.deleted", "member.added", "member.role_changed", "member.removed",
-    "card_version.created", "llm.provider.saved", "llm.provider.removed", "llm.choice.saved",
+    "card_version.created", "card_version.revised", "llm.provider.saved", "llm.provider.removed", "llm.choice.saved",
     "connection.saved", "connection.deleted", "connection.tested", "connection.use.saved", "connection.use.removed",
     "allowlist.host.allowed",
     "allowlist.host.removed",

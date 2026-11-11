@@ -206,3 +206,47 @@ def test_the_old_version_routes_are_gone(client, as_user, project, dsn):
     assert client.get(f"/ai-system-versions/{pid}", headers=as_user(ALICE)).status_code in (404, 405)
     assert client.post(f"/ai-system-versions/{pid}/freeze", json={"reason": "x"},
                        headers=as_user(ALICE)).status_code in (404, 405)
+
+
+# Revising the latest version in place
+def revise_body(**over):
+    return {"name": "MCAS", "version": "v1.2.0", "provider": "Eindhoven Engine", "description": "corrected",
+            "reason": "provider name", "requested_by": "Eindhoven Engine", **over}
+
+
+def patch(client, as_user, project, pid, who=ALICE, **over):
+    return client.patch(f"/projects/{project['slug']}/system-versions/{pid}", json=revise_body(**over),
+                        headers=as_user(who))
+
+
+def test_patch_revises_for_editor(client, as_user, project):
+    made = save(client, as_user, project).json()
+    response = patch(client, as_user, project, made["pid"])
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["pid"], body["number"], body["card_revision"]) == (made["pid"], 1, 2)
+    assert body["provider"] == "Eindhoven Engine" and body["description"] == "corrected"
+
+
+def test_patch_refused_for_viewer(client, as_user, project, viewer):
+    made = save(client, as_user, project).json()
+    assert patch(client, as_user, project, made["pid"], who=viewer).status_code == 403
+    assert patch(client, as_user, project, made["pid"], who=MALLORY).status_code == 404
+
+
+def test_patch_unknown_pid_404(client, as_user, project):
+    save(client, as_user, project)
+    assert patch(client, as_user, project, "00000000-0000-0000-0000-000000000001").status_code == 404
+
+
+def test_patch_not_latest_409(client, as_user, project):
+    first = save(client, as_user, project).json()
+    save(client, as_user, project)
+    assert patch(client, as_user, project, first["pid"]).status_code == 409
+
+
+@pytest.mark.parametrize("field", ["reason", "requested_by"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_patch_empty_reason_or_requested_by_422(client, as_user, project, field, value):
+    made = save(client, as_user, project).json()
+    assert patch(client, as_user, project, made["pid"], **{field: value}).status_code == 422

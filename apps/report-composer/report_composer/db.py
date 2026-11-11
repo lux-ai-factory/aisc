@@ -36,7 +36,7 @@ def _uuid(value) -> str | None:
 
 # Versions
 
-_SYSTEM = "pid::text AS pid, number, name, version AS release"
+_SYSTEM = "pid::text AS pid, number, name, version AS release, card_revision"
 
 
 def systems(conn) -> list[dict]:

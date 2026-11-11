@@ -138,6 +138,9 @@ _ACTIONS = [
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "POST", _LAUNCH + "/system-versions$")),
        details_keys=("number", "name", "version", "provider")),
+    _a("card_version.revised", 1, ("platform",), "card_version",
+       caused_by=(("platform", "PATCH", _LAUNCH + "/system-versions/(?P<item>[^/]+)$"),),
+       details_keys=("number", "card_revision", "reason", "requested_by")),
     _a("targets.synced", 0, ("platform",), "project",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),
                   ("platform", "POST", _LAUNCH + "/targets/sync$")), details_keys=("added", "renamed")),
