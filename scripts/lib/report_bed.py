@@ -235,6 +235,18 @@ def run_report_grants(t: Throwaway) -> subprocess.CompletedProcess:
         capture_output=True, text=True, timeout=300)
 
 
+CARD_REVISIONS_MIGRATION = ROOT / "apps/qualification/prisma/migrations/20261111000000_card_revisions/migration.sql"
+
+
+def _card_revision_columns(t) -> None:
+    """The schema dump predates the card revisions migration of apps/qualification: its columns, keys and
+    unique index are applied from that migration itself (up to the functions, which the bed does not carry)."""
+    sql = CARD_REVISIONS_MIGRATION.read_text(encoding="utf-8")
+    marker = "-- The card that may still change"
+    assert marker in sql, "the card revisions migration changed shape: update _card_revision_columns"
+    t.psql("platform", sql.split(marker)[0])
+
+
 def build(label: str = "report", *, seed: bool = True, modules: bool = True,
           report_files: bool = True) -> ReportBed:
     t = Throwaway.start(label)
@@ -255,6 +267,7 @@ def build(label: str = "report", *, seed: bool = True, modules: bool = True,
                                  ("control_objectives", "control_objectives_rw"),
                                  ("engine", "engine_rw")):
                 _as_file(t, "platform", role, FIXTURES / f"schema_{schema}.sql")
+            _card_revision_columns(t)
             _su_file(t, "superset", FIXTURES / "schema_superset.sql")
             for key in ("A", "B", "E", "M", "D"):
                 _project_database(t, IDS[key])
