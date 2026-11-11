@@ -69,6 +69,9 @@ services:
       # headless report service (renders the report snapshot to PDF/HTML)
       REPORT_SERVICE_URL: http://report-headless:8000
       SERVICE_TOKEN_FOR_APPS: ${BACKEND_TO_QUALIFICATION_TOKEN}
+      # Hosted controls catalogue API; read by `sync_controls_catalogue` to
+      # populate the checklist tables (was a vendored seed before).
+      CONTROLS_CATALOG_URL: ${CONTROLS_CATALOG_URL:-https://sandboxconfigurator.aifactory.lu/api/api}
     # Resolves host.docker.internal to the host on Linux (Engine >= 20.10);
     # harmless no-op on Docker Desktop (macOS/Windows) where it already works.
     extra_hosts:
