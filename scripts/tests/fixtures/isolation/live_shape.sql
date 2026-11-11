@@ -292,11 +292,67 @@ CREATE FUNCTION qualification.answer_only_latest_changes() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
-  IF NOT qualification.card_is_latest(
-       (SELECT q.system_id FROM qualification.qualification q WHERE q.id = NEW."qualificationId")) THEN
-    RAISE EXCEPTION 'AI card % is of a version that is not the latest: it is kept as it was', NEW."qualificationId";
+  IF NOT qualification.card_is_current(NEW."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', NEW."qualificationId";
+  END IF;
+  IF TG_OP = 'UPDATE' AND NOT qualification.card_is_current(OLD."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD."qualificationId";
   END IF;
   RETURN NEW;
+END $$;
+
+
+--
+-- Name: revision_corrects_the_one_before(); Type: FUNCTION; Schema: qualification; Owner: -
+--
+
+CREATE FUNCTION qualification.revision_corrects_the_one_before() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.revision > 1 AND NOT EXISTS (
+    SELECT 1 FROM qualification.qualification o
+     WHERE o.id = NEW.amends_id AND o.system_id = NEW.system_id AND o.revision = NEW.revision - 1
+  ) THEN
+    RAISE EXCEPTION 'AI card % is revision % of its version: it corrects that version''s revision %, not card %',
+      NEW.id, NEW.revision, NEW.revision - 1, NEW.amends_id;
+  END IF;
+  RETURN NEW;
+END $$;
+
+
+--
+-- Name: card_row_only_latest_changes(); Type: FUNCTION; Schema: qualification; Owner: -
+--
+
+CREATE FUNCTION qualification.card_row_only_latest_changes() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NOT qualification.card_is_current(NEW."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', NEW."qualificationId";
+  END IF;
+  IF TG_OP = 'UPDATE' AND NOT qualification.card_is_current(OLD."qualificationId") THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD."qualificationId";
+  END IF;
+  RETURN NEW;
+END $$;
+
+
+--
+-- Name: card_is_current(text); Type: FUNCTION; Schema: qualification; Owner: -
+--
+
+CREATE FUNCTION qualification.card_is_current(card_id text) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM qualification.qualification q
+     WHERE q.id = card_id
+       AND qualification.card_is_latest(q.system_id)
+       AND q.revision = (SELECT max(o.revision) FROM qualification.qualification o
+                          WHERE o.system_id = q.system_id));
 END $$;
 
 
@@ -323,9 +379,11 @@ CREATE FUNCTION qualification.component_only_latest_changes() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
-  IF NOT qualification.card_is_latest(
-       (SELECT q.system_id FROM qualification.qualification q WHERE q.id = NEW.qualification_id)) THEN
-    RAISE EXCEPTION 'AI card % is of a version that is not the latest: it is kept as it was', NEW.qualification_id;
+  IF NOT qualification.card_is_current(NEW.qualification_id) THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', NEW.qualification_id;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NOT qualification.card_is_current(OLD.qualification_id) THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD.qualification_id;
   END IF;
   RETURN NEW;
 END $$;
@@ -415,8 +473,8 @@ CREATE FUNCTION qualification.qualification_only_latest_changes() RETURNS trigge
     LANGUAGE plpgsql
     AS $$
 BEGIN
-  IF NOT qualification.card_is_latest(OLD.system_id) THEN
-    RAISE EXCEPTION 'AI card % is of a version that is not the latest: it is kept as it was', OLD.id;
+  IF NOT qualification.card_is_current(OLD.id) THEN
+    RAISE EXCEPTION 'AI card % is not the latest revision of the latest version: it is kept as it was', OLD.id;
   END IF;
   RETURN NEW;
 END $$;
@@ -1259,7 +1317,12 @@ CREATE TABLE qualification.qualification (
     ontology_at timestamp(3) with time zone,
     project_id uuid NOT NULL,
     system_id uuid NOT NULL,
-    form_version_id text
+    form_version_id text,
+    revision integer DEFAULT 1 NOT NULL,
+    amends_id text,
+    amend_reason text,
+    amend_requested_by text,
+    CONSTRAINT qualification_revision_is_explained CHECK ((((revision = 1) AND (amends_id IS NULL) AND (amend_reason IS NULL) AND (amend_requested_by IS NULL)) OR ((revision > 1) AND (amends_id IS NOT NULL) AND (length(btrim(COALESCE(amend_reason, ''::text))) > 0) AND (length(btrim(COALESCE(amend_requested_by, ''::text))) > 0))))
 );
 
 
@@ -2112,10 +2175,10 @@ CREATE INDEX qualification_form_version_id_idx ON qualification.qualification US
 
 
 --
--- Name: qualification_system_id_key; Type: INDEX; Schema: qualification; Owner: -
+-- Name: qualification_system_id_revision_key; Type: INDEX; Schema: qualification; Owner: -
 --
 
-CREATE UNIQUE INDEX qualification_system_id_key ON qualification.qualification USING btree (system_id);
+CREATE UNIQUE INDEX qualification_system_id_revision_key ON qualification.qualification USING btree (system_id, revision);
 
 
 --
@@ -2168,10 +2231,31 @@ CREATE TRIGGER form_version_question_is_append_only BEFORE DELETE OR UPDATE ON q
 
 
 --
+-- Name: qualification qualification_revision_corrects_the_one_before; Type: TRIGGER; Schema: qualification; Owner: -
+--
+
+CREATE TRIGGER qualification_revision_corrects_the_one_before BEFORE INSERT OR UPDATE OF revision, amends_id, system_id ON qualification.qualification FOR EACH ROW EXECUTE FUNCTION qualification.revision_corrects_the_one_before();
+
+
+--
+-- Name: knowledge_graph knowledge_graph_only_latest_changes; Type: TRIGGER; Schema: qualification; Owner: -
+--
+
+CREATE TRIGGER knowledge_graph_only_latest_changes BEFORE INSERT OR UPDATE ON qualification.knowledge_graph FOR EACH ROW EXECUTE FUNCTION qualification.card_row_only_latest_changes();
+
+
+--
 -- Name: qualification_answer qualification_answer_only_latest_changes; Type: TRIGGER; Schema: qualification; Owner: -
 --
 
 CREATE TRIGGER qualification_answer_only_latest_changes BEFORE INSERT OR UPDATE ON qualification.qualification_answer FOR EACH ROW EXECUTE FUNCTION qualification.answer_only_latest_changes();
+
+
+--
+-- Name: qualification_risk qualification_risk_only_latest_changes; Type: TRIGGER; Schema: qualification; Owner: -
+--
+
+CREATE TRIGGER qualification_risk_only_latest_changes BEFORE INSERT OR UPDATE ON qualification.qualification_risk FOR EACH ROW EXECUTE FUNCTION qualification.card_row_only_latest_changes();
 
 
 --
@@ -2531,6 +2615,14 @@ ALTER TABLE ONLY qualification.qualification
 
 ALTER TABLE ONLY qualification.qualification
     ADD CONSTRAINT qualification_system_id_fkey FOREIGN KEY (system_id) REFERENCES core.system(pid) ON DELETE CASCADE;
+
+
+--
+-- Name: qualification qualification_amends_id_fkey; Type: FK CONSTRAINT; Schema: qualification; Owner: -
+--
+
+ALTER TABLE ONLY qualification.qualification
+    ADD CONSTRAINT qualification_amends_id_fkey FOREIGN KEY (amends_id) REFERENCES qualification.qualification(id);
 
 
 --

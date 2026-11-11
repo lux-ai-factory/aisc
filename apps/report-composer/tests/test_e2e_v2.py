@@ -30,7 +30,7 @@ pytestmark = [pytest.mark.db, pytest.mark.e2e,
               pytest.mark.skipif(not (GENERATOR / "report_service.py").is_file(),
                                  reason=f"the report generator is not checked out at {GENERATOR}")]
 TOKEN = "e2e-v2-token-" + "0" * 24
-EU = ["cover", "free_text", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives", "control_answers", "summary_coverage", "chapter", "test_runs", "test_results", "chart", "changes_since", "free_text", "appendix", "free_text"]      # the built-in layout eu-ai-act
+EU = ["cover", "free_text", "key_figures", "chapter", "ai_card", "risk_classification", "chapter", "control_objectives", "control_answers", "summary_coverage", "chapter", "test_runs", "test_results", "chart", "changes_since", "free_text", "appendix", "free_text", "amendments"]      # the built-in layout eu-ai-act
 
 
 @pytest.fixture(scope="module")

@@ -49,6 +49,10 @@
       "options": {
         "compare_to": "previous"
       }
+    },
+    {
+      "block_type": "amendments",
+      "options": {}
     }
   ]
 }

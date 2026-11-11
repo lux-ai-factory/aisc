@@ -35,6 +35,10 @@
         "compare_to": "previous",
         "show_unchanged": false
       }
+    },
+    {
+      "block_type": "amendments",
+      "options": {}
     }
   ]
 }

@@ -116,6 +116,10 @@
         "text": "Write this section.",
         "format": "markdown"
       }
+    },
+    {
+      "block_type": "amendments",
+      "options": {}
     }
   ]
 }

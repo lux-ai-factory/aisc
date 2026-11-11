@@ -146,6 +146,10 @@
         "show_components": false,
         "show_tags": false
       }
+    },
+    {
+      "block_type": "amendments",
+      "options": {}
     }
   ]
 }

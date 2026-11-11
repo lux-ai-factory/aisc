@@ -206,3 +206,84 @@ def test_the_old_version_routes_are_gone(client, as_user, project, dsn):
     assert client.get(f"/ai-system-versions/{pid}", headers=as_user(ALICE)).status_code in (404, 405)
     assert client.post(f"/ai-system-versions/{pid}/freeze", json={"reason": "x"},
                        headers=as_user(ALICE)).status_code in (404, 405)
+
+
+# Revising the latest version in place
+def revise_body(**over):
+    return {"name": "MCAS", "version": "v1.2.0", "provider": "Eindhoven Engine", "description": "corrected",
+            "reason": "provider name", "requested_by": "Eindhoven Engine", "expected_card_revision": 1, **over}
+
+
+def patch(client, as_user, project, pid, who=ALICE, **over):
+    return client.patch(f"/projects/{project['slug']}/system-versions/{pid}", json=revise_body(**over),
+                        headers=as_user(who))
+
+
+def test_patch_revises_for_editor(client, as_user, project):
+    made = save(client, as_user, project).json()
+    response = patch(client, as_user, project, made["pid"])
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["pid"], body["number"], body["card_revision"]) == (made["pid"], 1, 2)
+    assert body["provider"] == "Eindhoven Engine" and body["description"] == "corrected"
+
+
+def test_patch_refused_for_viewer(client, as_user, project, viewer):
+    made = save(client, as_user, project).json()
+    assert patch(client, as_user, project, made["pid"], who=viewer).status_code == 403
+    assert patch(client, as_user, project, made["pid"], who=MALLORY).status_code == 404
+
+
+def test_patch_unknown_pid_404(client, as_user, project):
+    save(client, as_user, project)
+    assert patch(client, as_user, project, "00000000-0000-0000-0000-000000000001").status_code == 404
+
+
+def test_patch_not_latest_409(client, as_user, project):
+    first = save(client, as_user, project).json()
+    save(client, as_user, project)
+    assert patch(client, as_user, project, first["pid"]).status_code == 409
+
+
+def test_patch_of_a_card_corrected_since_it_was_opened_409(client, as_user, project):
+    made = save(client, as_user, project).json()
+    assert patch(client, as_user, project, made["pid"]).status_code == 200
+    stale = patch(client, as_user, project, made["pid"], provider="TU/e", expected_card_revision=1)
+    assert stale.status_code == 409, stale.text
+    [kept] = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(ALICE)).json()
+    assert (kept["card_revision"], kept["provider"]) == (2, "Eindhoven Engine")
+    assert patch(client, as_user, project, made["pid"], expected_card_revision=2).status_code == 200
+
+
+def test_patch_without_the_revision_it_started_from_422(client, as_user, project):
+    made = save(client, as_user, project).json()
+    body = revise_body()
+    del body["expected_card_revision"]
+    response = client.patch(f"/projects/{project['slug']}/system-versions/{made['pid']}", json=body,
+                            headers=as_user(ALICE))
+    assert response.status_code == 422
+
+
+def test_two_corrections_of_the_same_revision_at_once_one_wins_one_is_409(client, as_user, project):
+    made = save(client, as_user, project).json()
+    statuses, barrier = [], threading.Barrier(2)
+
+    def one(provider):
+        barrier.wait()
+        statuses.append(patch(client, as_user, project, made["pid"], provider=provider).status_code)
+
+    threads = [threading.Thread(target=one, args=(p,)) for p in ("Eindhoven Engine", "TU/e")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(statuses) == [200, 409]
+    [kept] = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(ALICE)).json()
+    assert kept["card_revision"] == 2
+
+
+@pytest.mark.parametrize("field", ["reason", "requested_by"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_patch_empty_reason_or_requested_by_422(client, as_user, project, field, value):
+    made = save(client, as_user, project).json()
+    assert patch(client, as_user, project, made["pid"], **{field: value}).status_code == 422

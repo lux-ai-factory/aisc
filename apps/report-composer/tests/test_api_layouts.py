@@ -22,7 +22,8 @@ def test_systems_newest_first(client, auth):
     r = client.get("/api/p/alpha/systems", headers=auth("victor"))
     assert r.status_code == 200
     assert [s["number"] for s in r.json()] == [3, 2, 1]
-    assert r.json()[0] == {"pid": IDS["A_V3"], "number": 3, "name": "Alpha scorer", "release": "1.1"}
+    assert r.json()[0] == {"pid": IDS["A_V3"], "number": 3, "name": "Alpha scorer", "release": "1.1",
+                         "card_revision": 1}
 
 
 def test_choices_come_from_the_renderer_for_the_project(client, auth, fake_renderer):

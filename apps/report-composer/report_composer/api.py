@@ -255,6 +255,7 @@ def _render_preview(request: Request, g: Guarded, layout: dict, template, pw, li
     if pw.system is None:
         return {"html": f"<!DOCTYPE html><html><body><p>{NO_VERSION}</p></body></html>", "block_statuses": []}
     snapshot = reports.snapshot_of(g.project, layout, "preview", g.caller, template, system_id=pw.system["pid"],
+                                   card_revision=pw.system["card_revision"], pinned_at=request.app.state.clock(),
                                    selection=pw.selection, coverage_links=links,
                                    declared_charts=declared_charts.for_snapshot(request, g.project, layout["blocks"]))
     return renderer_call(request.app.state.renderer.render, snapshot)

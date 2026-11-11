@@ -138,6 +138,10 @@ _ACTIONS = [
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "POST", _LAUNCH + "/system-versions$")),
        details_keys=("number", "name", "version", "provider")),
+    _a("card_version.revised", 1, ("platform",), "card_version",
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
+                  ("platform", "PATCH", _LAUNCH + "/system-versions/(?P<item>[^/]+)$")),
+       details_keys=("number", "card_revision", "reason", "requested_by")),
     _a("targets.synced", 0, ("platform",), "project",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),
                   ("platform", "POST", _LAUNCH + "/targets/sync$")), details_keys=("added", "renamed")),
@@ -221,6 +225,13 @@ _ACTIONS = [
        # the next version's review: what it took from the card before it (content.review names the nodes)
        details_keys=("questionnaire_version", "risks", "components", "review_from_version",
                      "corrections_carried", "corrections_left", "draft", "review_failed"), content_required=True,
+       same_action=("qualification.amended",),
+       routes=(("qualification", "apps/qualification/src/app/p/[project]/qualify/new/actions.ts", "submitQualification"),)),
+    # a correction of the latest version's description: a new revision of the card (same submit action)
+    _a("qualification.amended", 1, ("qualification",), "qualification",
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page
+       details_keys=("revision", "amends", "reason", "requested_by", "risks", "components"), content_required=True,
+       same_action=("qualification.created",),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/qualify/new/actions.ts", "submitQualification"),)),
     _a("card.node_corrected", 1, ("qualification",), "qualification",
        caused_by=(("qualification", "ACTION", _QU + r"/qualify/(?P<item>[^/]+)$"),),
@@ -465,7 +476,8 @@ _ACTIONS = [
        caused_by=(("controls", "ACTION", _CT + r"/submissions/(?P<item>[^/]+)$"),),
        details_keys=("score",), content_required=True, same_action=("controls.submission.draft_saved",)),
     _a("controls.submission.reopened", 4, ("controls",), "submission",
-       caused_by=(("controls", "ACTION", _CT + r"/submissions/(?P<item>[^/]+)$"),), details_keys=("next", "version"),
+       caused_by=(("controls", "ACTION", _CT + r"/submissions/(?P<item>[^/]+)$"),),
+       details_keys=("next", "version", "reason", "requested_by"),
        routes=(("controls", "apps/controls/src/app/p/[project]/submissions/[id]/actions.ts", "reopenForAmendment"),)),
     _a("controls.submission.archived", 4, ("controls",), "submission",
        caused_by=(("controls", "ACTION", _CT + r"/submissions/(?P<item>[^/]+)$"),),

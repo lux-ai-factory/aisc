@@ -304,6 +304,23 @@ def test_identity_the_card_says_something_else_than_its_version(bed, cluster, co
         only(checks.c3_system_identity(cluster), "FAIL", DB_A, A_V2, "qualification", drifted, version_value)
 
 
+def test_identity_a_corrected_version_is_compared_with_its_latest_revision(bed, cluster):
+    # revision 1 keeps the old provider as it was; revision 2 and project.system carry the corrected one
+    corrected = REVISION_2.replace("'Acme AI', 'd2'", "'Acme Inc', 'd2'")
+    with planted(bed, DB_A,
+                 corrected + f"UPDATE project.system SET provider = 'Acme Inc', card_revision = 2 WHERE pid = '{A_V2}';",
+                 REMOVE_REVISION_2
+                 + f"UPDATE project.system SET provider = 'Acme AI', card_revision = 1 WHERE pid = '{A_V2}';"):
+        assert checks.c3_system_identity(cluster) == []
+
+
+def test_identity_a_version_counts_a_revision_its_cards_do_not_have(bed, cluster):
+    # the platform counted revision 2 (a correction), but no card holds revision 2
+    with planted(bed, DB_A, f"UPDATE project.system SET card_revision = 2 WHERE pid = '{A_V2}';",
+                 f"UPDATE project.system SET card_revision = 1 WHERE pid = '{A_V2}';"):
+        only(checks.c3_system_identity(cluster), "FAIL", DB_A, A_V2, "card_revision", "2", "1")
+
+
 def test_identity_an_assessment_may_have_a_name_of_its_own(bed, cluster):
     """The assessor names an assessment; it is tied to its card version by system_id (checked by C4)."""
     with planted(bed, DB_A,
@@ -456,6 +473,36 @@ def test_stale_graph_the_card_has_no_stored_graph_to_compare(bed, cluster):
                  "UPDATE qualification.knowledge_graph SET \"qualificationId\" = 'q-none' WHERE id = 'kg-a2'",
                  "UPDATE qualification.knowledge_graph SET \"qualificationId\" = 'q-a2' WHERE id = 'kg-a2'"):
         only(checks.c6_stale_graph(cluster), "WARN", DB_A, "coa2", "no stored knowledge graph")
+
+
+REVISION_2 = (
+    "INSERT INTO qualification.qualification (id, \"systemName\", \"systemVersion\", company, description,"
+    " \"targetUseCase\", \"targetUsers\", updated_at, system_id, revision, amends_id, amend_reason, amend_requested_by)"
+    f" VALUES ('q-a2r2', 'Alpha scorer', '1.0', 'Acme AI', 'd2', 'u', 'u', now(), '{A_V2}', 2, 'q-a2', 'fix', 'Acme, email');"
+)
+REVISION_2_GRAPH = (
+    "INSERT INTO qualification.knowledge_graph (id, \"qualificationId\", digest, turtle, jsonld, nodes, triples)"
+    f" VALUES ('kg-a2r2', 'q-a2r2', 'x', '# turtle', '{JSONLD}', 1, 1);"
+)
+REMOVE_REVISION_2 = (
+    "DELETE FROM qualification.knowledge_graph WHERE id = 'kg-a2r2';"
+    " DELETE FROM qualification.qualification WHERE id = 'q-a2r2';"
+)
+
+
+def test_stale_graph_compares_with_the_cards_latest_revision(bed, cluster):
+    # the earlier revision's graph differs, the latest revision's matches: nothing is stale
+    with planted(bed, DB_A,
+                 REVISION_2 + REVISION_2_GRAPH
+                 + "UPDATE qualification.knowledge_graph SET jsonld = jsonld || ' ' WHERE id = 'kg-a2';",
+                 REMOVE_REVISION_2
+                 + f"UPDATE qualification.knowledge_graph SET jsonld = '{JSONLD}' WHERE id = 'kg-a2';"):
+        assert checks.c6_stale_graph(cluster) == []
+
+
+def test_stale_graph_names_the_latest_revision_when_it_has_no_graph(bed, cluster):
+    with planted(bed, DB_A, REVISION_2, REMOVE_REVISION_2):
+        only(checks.c6_stale_graph(cluster), "WARN", DB_A, "coa2", "q-a2r2", "no stored knowledge graph")
 
 
 # C7 databases behind on migrations

@@ -41,6 +41,7 @@ platform	platform/platform_service/routes/projects.py	add_project_member	its eve
 platform	platform/platform_service/routes/projects.py	set_project_member_role	its event is written one layer down, in the change's own transaction: member.role_changed (db.add_member)
 platform	platform/platform_service/routes/projects.py	remove_project_member	its event is written one layer down, in the change's own transaction: member.removed (db.remove_member)
 platform	platform/platform_service/routes/projects.py	create_system_version	its event is written one layer down, in the change's own transaction: card_version.created (db.create_version)
+platform	platform/platform_service/routes/projects.py	revise_system_version	its event is written one layer down, in the change's own transaction: card_version.revised (db.revise_version)
 platform	platform/platform_service/routes/connections.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
 platform	platform/platform_service/routes/connections.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
 platform	platform/platform_service/routes/llm.py	save_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.saved (llm_store.save_provider)

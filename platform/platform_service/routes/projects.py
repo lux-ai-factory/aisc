@@ -7,7 +7,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from platform_service import dashboard_bridge, db, projectdb, proof_store, targets
 from platform_service.membership import validate_role
@@ -45,6 +45,21 @@ class SystemIn(BaseModel):
     version: str | None = None
     provider: str | None = None
     description: str | None = None
+
+
+class SystemRevisionIn(SystemIn):
+    reason: str
+    requested_by: str
+    #: the card revision the correction started from (refused with 409 when it is no longer the current one)
+    expected_card_revision: int
+
+    @field_validator("reason", "requested_by")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be empty")
+        return value
 
 
 @router.get("/projects")
@@ -311,6 +326,31 @@ def create_system_version(
     if made is None:
         raise no_project(project)
     return made
+
+
+@router.patch("/projects/{project}/system-versions/{pid}")
+def revise_system_version(
+    project: str, pid: str, body: SystemRevisionIn, caller: Caller = Depends(caller_dependency)
+) -> dict:
+    """Correct the description of the latest card version without making a new one: same pid and number,
+    card_revision one higher. Needs a reason, who asked, and the card revision it started from (409 when
+    another correction came first). Changing the work: an editor."""
+    role_or_404(project, caller, needed="editor")
+    name, version = system_key(body.name, body.version)
+    try:
+        revised = db.revise_version(project, pid, name, version, body.provider, body.description,
+                                    body.reason, body.requested_by, caller.subject,
+                                    expected_card_revision=body.expected_card_revision)
+    except db.ProjectDatabaseGone:
+        raise no_project(project) from None
+    except db.NoSuchVersion:
+        raise HTTPException(status_code=404, detail=f"no version {pid!r} in {project!r}") from None
+    except db.NotLatest:
+        raise HTTPException(status_code=409, detail="only the latest version, as last corrected, can be revised:"
+                                                    " reload it") from None
+    if revised is None:
+        raise no_project(project)
+    return revised
 
 
 @router.get("/projects/{project}/system-versions")

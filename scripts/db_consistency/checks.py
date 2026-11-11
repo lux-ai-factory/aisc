@@ -107,7 +107,8 @@ CARD_FIELDS = (("systemName", "name"), ("systemVersion", "version"), ("company",
 
 def c3_system_identity(cl: Cluster) -> list[Finding]:
     """In each project database, a card version's name, version and provider read the same in
-    project.system and qualification. A NULL version or provider is the card's empty string. An assessment
+    project.system and its card's latest revision (a correction rewrites project.system; the revisions
+    before it keep what they said). A NULL version or provider is the card's empty string. An assessment
     has a name of its own, chosen by the assessor; it is tied to its card version by system_id (C4)."""
     out = []
     for db, _pid, slug in _dbs(cl):
@@ -118,6 +119,8 @@ def c3_system_identity(cl: Cluster) -> list[Finding]:
                 SELECT s.pid::text, s.number, q.id, q."systemName", s.name, q."systemVersion",
                        coalesce(s.version, ''), q.company, coalesce(s.provider, '')
                   FROM qualification.qualification q JOIN project.system s ON s.pid = q.system_id
+                 WHERE q.revision = (SELECT max(r.revision) FROM qualification.qualification r
+                                      WHERE r.system_id = q.system_id)
                  ORDER BY s.number, q.id""")
             for spid, number, qid, *values in rows:
                 for i, (qcol, scol) in enumerate(CARD_FIELDS):
@@ -125,6 +128,16 @@ def c3_system_identity(cl: Cluster) -> list[Finding]:
                     if card != version:
                         out.append(fail("C3", f"{db} ({slug}) system {spid} v{number}: qualification {qid} "
                                               f"{qcol} is '{card}', project.system {scol} is '{version}'"))
+            # a correction counts its revision on project.system inside the card's transaction: a count
+            # with no card behind it is a correction half made, and it blocks every later one
+            for spid, number, counted, stored in cl.rows(db, """
+                SELECT s.pid::text, s.number, s.card_revision, max(q.revision)
+                  FROM project.system s JOIN qualification.qualification q ON q.system_id = s.pid
+                 GROUP BY s.pid, s.number, s.card_revision
+                HAVING s.card_revision <> max(q.revision)
+                 ORDER BY s.number"""):
+                out.append(fail("C3", f"{db} ({slug}) system {spid} v{number}: project.system card_revision is "
+                                      f"{counted}, its cards' latest revision is {stored}"))
     return out
 
 
@@ -256,7 +269,7 @@ def c5_users(cl: Cluster) -> list[Finding]:
 
 def c6_stale_graph(cl: Cluster) -> list[Finding]:
     """In each project database, an assessment's graph (control_objectives.graph, step 2) is
-    still its card's current knowledge graph. The two digests are not comparable: qualification's
+    still its card's current knowledge graph (the card of a version is its latest revision). The two digests are not comparable: qualification's
     comes from the ontology builder, control objectives' is the sha256 of the bytes it was served.
     So the comparison is by content, the sha256 of each side's jsonld."""
     out = []
@@ -270,6 +283,8 @@ def c6_stale_graph(cl: Cluster) -> list[Finding]:
               FROM control_objectives.graph g
               JOIN control_objectives.project a ON a.id = g.project_id
               LEFT JOIN qualification.qualification q ON q.system_id = a.system_id
+                   AND q.revision = (SELECT max(r.revision) FROM qualification.qualification r
+                                      WHERE r.system_id = a.system_id)
               LEFT JOIN qualification.knowledge_graph k ON k."qualificationId" = q.id
              ORDER BY a.id""")
         for aid, sid, qid, missing, assessed, current, uploaded, built in rows:

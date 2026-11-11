@@ -68,13 +68,16 @@ def _sent_options(block: dict) -> dict:
     return options
 
 
-def snapshot_of(project, layout, mode, caller, template=None, *, system_id, selection=None,
-                document_id=None, coverage_links=(), declared_charts=None) -> dict:
+def snapshot_of(project, layout, mode, caller, template=None, *, system_id, card_revision, pinned_at,
+                selection=None, document_id=None, coverage_links=(), declared_charts=None) -> dict:
     """What the renderer is sent: the layout, and the data it covers (the anchor version and the
     selection); `template` (read with its logo) gives the
     report its look, and none means the platform look. `coverage_links` are the project's step 4 links
-    (evidence_links.coverage_links) of the card version it is of."""
+    (evidence_links.coverage_links) of the card version it is of. The report is pinned to the version's
+    `card_revision` and to `pinned_at`, the time of generation (a date-time with its time zone), so it can
+    be made again exactly: amendments made after that time are not listed."""
     snap = {"snapshot_version": 3, "project_id": project["pid"], "system_id": system_id,
+            "card_revision": card_revision, "pinned_at": pinned_at.isoformat(),
             "layout": {"id": layout["id"], "name": layout["name"], "revision": layout["revision"]},
             "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": _sent_options(b)}
                        for b in layout["blocks"]],
@@ -144,14 +147,16 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
     # only what is saved is generated; without a template it is the platform look
     template = template_of(conn, layout)
     report_id = str(uuid.uuid4())
+    now = clock()                  # the time the report is pinned at and created at
     snapshot = snapshot_of(project, layout, fmt, caller, template, system_id=system["pid"],
+                           card_revision=system["card_revision"], pinned_at=now,
                            selection=data_selection.for_snapshot(sel), document_id=report_id,
                            coverage_links=evidence_links.coverage_links(conn, system["pid"]),
                            declared_charts=declared)
     if anchor is not None:
         snapshot["document"]["ledger_anchor"] = anchor                # printed by the renderer
     db.insert_report(conn, layout_id=layout["id"], layout_revision=layout["revision"],
-                     system_id=system["pid"], snapshot=snapshot, created_by=caller.subject, created_at=clock(),
+                     system_id=system["pid"], snapshot=snapshot, created_by=caller.subject, created_at=now,
                      fmt=fmt, report_id=report_id, period_from=sel.period_from, period_to=sel.period_to,
                      other_versions=sel.other_versions, compare_to=sel.compare_to)
     return report_id, snapshot
