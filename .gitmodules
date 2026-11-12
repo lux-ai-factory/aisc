@@ -20,9 +20,9 @@
 	branch = master
 [submodule "apps/controls"]
 	path = apps/controls
-	url = https://github.com/lux-ai-factory/aisc-controls.git
+	url = git@github.com:lux-ai-factory/aisc-controls.git
 	branch = main
 [submodule "apps/qualification"]
 	path = apps/qualification
-	url = https://github.com/lux-ai-factory/aisc-qualification.git
+	url = git@github.com:lux-ai-factory/aisc-qualification.git
 	branch = main

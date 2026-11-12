@@ -21,8 +21,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout repository
+      # The submodules are public but use SSH URLs, so point git at HTTPS for CI.
+      # Must run before checkout, which is what fetches the submodules.
+      - name: Point submodule SSH URLs at HTTPS
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf
+          "git@github.com:"
+
+      - name: Checkout repository with submodules
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
