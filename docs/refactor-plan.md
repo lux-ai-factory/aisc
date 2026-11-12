@@ -254,19 +254,19 @@ An agent doing heavy development here is expected to follow this loop. It is dup
 Fill in from `uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`.
 
 Recorded from `uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX` on
-`refactor/architecture-consolidation` (cut from `dev`, 2026-11-12). 11 passed, 7 xfailed.
+`refactor/architecture-consolidation` (cut from `dev`, 2026-11-12). 14 passed, 4 xfailed.
 
 | item | guard | state |
 |---|---|---|
-| I1 run independent | `test_i1_worker_does_not_fetch_from_backend_midrun` | **xfail** — the worker still fetches request/inputs/files mid-run |
-| I2 door not credential | `test_i2_plugin_environment_is_an_allowlist` | **xfail** — the plugin subprocess inherits the worker's whole environment |
+| I1 run independent | `test_i1_worker_does_not_fetch_from_backend_midrun` | **pass** — dispatch embeds the bytes; the run path never fetches |
+| I2 door not credential | `test_i2_plugin_environment_is_an_allowlist` | **pass** — the plugin gets an allowlisted env, not the worker's |
 | I3 one implementation | `test_i3_plugin_interface_is_independent`, `test_i3_eval_worker_has_no_backend_import`, `test_i3_shared_artifacts_are_acyclic` | **pass** |
 | I3 one project-DB path | `test_i3_one_project_database_module` | **pass** (smell is `pilot`-only) |
 | I3 one ledger | `test_i3_no_second_ledger` | **pass** (smell is `pilot`-only) |
 | I4 flags not modes | `test_i4_one_deployment_contract`, `test_i4_app_graph_is_static`, `test_i4_urlconf_is_static` | **pass** (smell is `pilot`-only) |
 | I5 domain is the model layer | `test_i5_installed_app_owns_tables` | **pass** (one app owns its tables) |
 | I5 one migration tool | `test_i5_one_migration_tool` | **xfail** — Prisma under `qualification`/`controls` |
-| I7 no secret leaves use | `test_i7_outbound_paths_scrub` | **xfail** — logs/artifacts are not scrubbed |
+| I7 no secret leaves use | `test_i7_outbound_paths_scrub` | **pass** — stdout, stderr, logs, artifacts and errors are scrubbed |
 | I8 new moving part ⇒ ADR | `test_allowlist_entries_are_adr_backed` | **pass** (allowlist empty) |
 | I9 boundary on the axis | `test_i9_no_domain_slice_module`, `test_i3_no_product_ui_outside_webapp` | **xfail** — `qualification`, `controls` |
 | I10 core first | `test_i10_core_does_not_import_optional` | **pass** |
@@ -275,9 +275,14 @@ Recorded from `uv run --no-project --with pytest python -m pytest tests/architec
 | `import-linter` enforced | static AST layer guards in this suite | **pass** — deliberate: apps are separate repos with separate venvs (see `tests/architecture/README.md`) |
 | `homepage/`, `platform/`, `scripts/` retired | — | **n/a on `dev`** — those exist only on `pilot`; nothing to retire here |
 
-The seven xfails split into two groups: three are `pilot`-only smells already absent from `dev`
-(I3 project-DB, I3 ledger, I4 mode) — kept as regression guards; four are real gaps on `dev`
-(I1, I2, I7, I9/I11).
+The four remaining xfails are one cause seen from four angles: the `qualification` and `controls`
+submodules are domain slices (I9) that ship their own migration tool (I5) and their own UI (I3),
+and their per-domain `*-migrate` containers are step containers (I11). 2.7 folds the domains; 2.9
+turns the migration into a step.
+
+**Done on this branch so far (2026-11-12):** Phase 0 (docs, guards, CI, CODEOWNERS, allowlist);
+the run is self-contained (I1); the plugin gets an allowlisted environment (I2); every outbound run
+path scrubs (I7).
 
 ---
 
