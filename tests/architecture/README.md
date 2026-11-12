@@ -33,7 +33,7 @@ natural home).
 | I7 no secret leaves use | `test_i7_outbound_paths_scrub` | passing — the run path scrubs stdout, stderr, logs, artifacts, errors |
 | I9 boundaries on the axis | `test_i9_no_domain_slice_module` | **xfail** — `qualification`, `controls` are domain slices |
 | I10 core first | `test_i10_core_does_not_import_optional` | passing |
-| I11 one container per process | `test_i11_no_step_containers` | **xfail** — `*-migrate`/`*-setup`/`*-grant` services |
+| I11 one container per process | `test_i11_no_step_containers` | passing — migrations are steps of the app process |
 | I8 process | `test_allowlist_entries_are_adr_backed` | passing |
 
 An `xfail` guard is an invariant the current code does **not** yet meet. It documents the gap; it starts

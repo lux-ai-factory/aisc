@@ -153,8 +153,6 @@ def _compose_service_names(path: Path) -> list[str]:
     return names
 
 
-@pytest.mark.xfail(reason="I11: steps run as containers in the compose files (ARCHITECTURE.md I11)",
-                   strict=False)
 def test_i11_no_step_containers():
     """A container runs a long-lived process; migrations/setup/grants are steps, not services (I11)."""
     offenders = []

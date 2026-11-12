@@ -254,7 +254,7 @@ An agent doing heavy development here is expected to follow this loop. It is dup
 Fill in from `uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`.
 
 Recorded from `uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX` on
-`refactor/architecture-consolidation` (cut from `dev`, 2026-11-12). 14 passed, 4 xfailed.
+`refactor/architecture-consolidation` (cut from `dev`, 2026-11-12). 15 passed, 3 xfailed.
 
 | item | guard | state |
 |---|---|---|
@@ -270,19 +270,19 @@ Recorded from `uv run --no-project --with pytest python -m pytest tests/architec
 | I8 new moving part ⇒ ADR | `test_allowlist_entries_are_adr_backed` | **pass** (allowlist empty) |
 | I9 boundary on the axis | `test_i9_no_domain_slice_module`, `test_i3_no_product_ui_outside_webapp` | **xfail** — `qualification`, `controls` |
 | I10 core first | `test_i10_core_does_not_import_optional` | **pass** |
-| I11 one container per process | `test_i11_no_step_containers` | **xfail** — `make_buckets`, `controls-migrate`, `qualification-migrate` |
+| I11 one container per process | `test_i11_no_step_containers` | **pass** — the domain migrations are steps of the app process, not containers |
 | CI runs the guards as **required** | `.github/workflows/architecture-guards.yaml` | **wired** — mark it a required status check in branch protection |
 | `import-linter` enforced | static AST layer guards in this suite | **pass** — deliberate: apps are separate repos with separate venvs (see `tests/architecture/README.md`) |
 | `homepage/`, `platform/`, `scripts/` retired | — | **n/a on `dev`** — those exist only on `pilot`; nothing to retire here |
 
-The four remaining xfails are one cause seen from four angles: the `qualification` and `controls`
-submodules are domain slices (I9) that ship their own migration tool (I5) and their own UI (I3),
-and their per-domain `*-migrate` containers are step containers (I11). 2.7 folds the domains; 2.9
-turns the migration into a step.
+The three remaining xfails are one cause: `qualification` and `controls` are domain slices (I9)
+that ship their own migration tool (I5) and their own UI (I3). Step 2.7 folds those domains into
+`backend`/`webapp` behind feature flags; nothing else closes them.
 
-**Done on this branch so far (2026-11-12):** Phase 0 (docs, guards, CI, CODEOWNERS, allowlist);
+**Done on this branch so far (2026-11-12):** Phase 0 (docs, guards, CI, CODEOWNERS, allowlist,
+status board); submodule conventions (SSH URLs + an `AGENTS.md` in each of the seven submodules);
 the run is self-contained (I1); the plugin gets an allowlisted environment (I2); every outbound run
-path scrubs (I7).
+path scrubs (I7); the domain migrations are steps, not containers (I11).
 
 ---
 
