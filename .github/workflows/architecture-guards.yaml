@@ -1,0 +1,34 @@
+name: Architecture guards
+
+# The rules in ARCHITECTURE.md are only real if they fail a build. This job runs
+# tests/architecture/ on every change. Mark it a REQUIRED status check in branch
+# protection: a red guard is a stop, not a warning.
+on:
+  pull_request:
+  push:
+    branches:
+      - "master"
+      - "main"
+      - "dev"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-guards:
+    name: Architecture guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Standard library only: no app venv, no services, seconds to run.
+      - name: Run the architectural guards
+        run: uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
