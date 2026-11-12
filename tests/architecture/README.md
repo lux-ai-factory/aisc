@@ -18,8 +18,8 @@ natural home).
 
 | invariant | test | state today |
 |---|---|---|
-| I1 run independence | `test_i1_worker_does_not_fetch_from_backend_midrun` | **xfail** — the worker still fetches mid-run |
-| I2 door not credential | `test_i2_plugin_environment_is_an_allowlist` | **xfail** — the plugin inherits the worker's env |
+| I1 run independence | `test_i1_worker_does_not_fetch_from_backend_midrun` | passing — the run path consumes what it was dispatched with |
+| I2 door not credential | `test_i2_plugin_environment_is_an_allowlist` | passing — the plugin gets an allowlisted env |
 | I3 one implementation | `test_i3_plugin_interface_is_independent` | passing |
 | I3 one implementation | `test_i3_eval_worker_has_no_backend_import` | passing |
 | I3 one implementation | `test_i3_one_project_database_module` | passing |
@@ -30,7 +30,7 @@ natural home).
 | I4 app graph | `test_i4_app_graph_is_static`, `test_i4_urlconf_is_static` | passing |
 | I5 one migration tool | `test_i5_one_migration_tool` | **xfail** — Prisma under `qualification`/`controls` |
 | I5 app owns tables | `test_i5_installed_app_owns_tables` | passing |
-| I7 no secret leaves use | `test_i7_outbound_paths_scrub` | **xfail** — logs/artifacts are not scrubbed |
+| I7 no secret leaves use | `test_i7_outbound_paths_scrub` | passing — the run path scrubs stdout, stderr, logs, artifacts, errors |
 | I9 boundaries on the axis | `test_i9_no_domain_slice_module` | **xfail** — `qualification`, `controls` are domain slices |
 | I10 core first | `test_i10_core_does_not_import_optional` | passing |
 | I11 one container per process | `test_i11_no_step_containers` | **xfail** — `*-migrate`/`*-setup`/`*-grant` services |

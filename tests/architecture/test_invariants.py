@@ -64,15 +64,28 @@ def test_i3_eval_worker_has_no_backend_import():
     assert not bad, "the eval worker must reach the engine over its API, not by import:\n" + "\n".join(bad)
 
 
-@pytest.mark.xfail(reason="I1: the worker still fetches request/inputs/files mid-run (ARCHITECTURE.md I1)",
-                   strict=False)
+def _function_source(path: Path, name: str) -> str:
+    """The source of one function, so a guard can scan a path rather than a file."""
+    text = path.read_text(encoding="utf-8")
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return ast.get_source_segment(text, node) or ""
+    return ""
+
+
 def test_i1_worker_does_not_fetch_from_backend_midrun():
-    """The run path uses only what it was dispatched with; the only run->backend call posts results."""
+    """The run path uses only what it was dispatched with; the only run->backend call posts results.
+
+    Only ``run_plugin`` — the run path — is scanned. Fetching at *dispatch* (``run_evaluation``)
+    is how a run is made self-contained, so those calls are expected and allowed; a fetch inside
+    ``run_plugin`` is the violation.
+    """
     fetches = {
         "get_evaluation_request", "get_evaluation_inputs", "get_dataset_file_content",
         "get_model_file_content", "get_project_settings_by_pid", "get_evaluation_plugins_status",
     }
-    src = (ROOT / "apps/eval/aisc_eval/celery_tasks.py").read_text(encoding="utf-8")
+    src = _function_source(ROOT / "apps/eval/aisc_eval/celery_tasks.py", "run_plugin")
+    assert src, "could not locate the run path (run_plugin)"
     used = sorted(name for name in fetches if f"{name}(" in src)
     assert not used, f"mid-run backend fetches in the run path: {used}"
 
@@ -325,8 +338,6 @@ def test_i10_core_does_not_import_optional():
     assert not bad, "core code depends on an optional domain: " + ", ".join(sorted(set(bad)))
 
 
-@pytest.mark.xfail(reason="I2/I7: the plugin subprocess inherits the worker's whole environment "
-                          "(ARCHITECTURE.md I2)", strict=False)
 def test_i2_plugin_environment_is_an_allowlist():
     """The plugin subprocess gets a filtered environment, not the worker's whole environment (I2/I7)."""
     src = (ROOT / "apps/eval/aisc_eval/celery_tasks.py").read_text(encoding="utf-8")
@@ -339,8 +350,6 @@ def test_i2_plugin_environment_is_an_allowlist():
 _SCRUB = re.compile(r"\bscrub\w*\(")
 
 
-@pytest.mark.xfail(reason="I7: the plugin run path writes logs and artifacts without scrubbing "
-                          "(ARCHITECTURE.md I7)", strict=False)
 def test_i7_outbound_paths_scrub():
     """Every path that can carry a secret outward (log, artifact, error, message) scrubs it (I7)."""
     src = (ROOT / "apps/eval/aisc_eval/celery_tasks.py").read_text(encoding="utf-8")
