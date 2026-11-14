@@ -1916,9 +1916,28 @@ def stop(_args: list[str]) -> None:
     say(f"Stopped the containers of {PROJECT}. Their data is kept: run start to bring them back.")
 
 
+def offer_backup() -> None:
+    """Before the volumes go: ask whether to back them up first (scripts/backup-databases.sh, every part restored
+    and counted), and say where. A backup that does not pass stops the removal."""
+    folder = os.environ.get("AISC_BACKUP_DIR") or str(Path.home() / "aisc-backups" / PROJECT)
+    try:
+        answer = input(f"Back up its databases, ledger, files and secrets first, to {folder} "
+                       "(scripts/backup-databases.sh)? [y/N]: ")
+    except EOFError:
+        answer = ""
+    if answer.strip().lower() not in ("y", "yes"):
+        return
+    try:
+        done = subprocess.run(["bash", str(ROOT / "scripts/backup-databases.sh"), "--dir", folder], cwd=ROOT)
+    except FileNotFoundError:
+        raise Refused("there is no bash here to run scripts/backup-databases.sh; nothing was removed") from None
+    if done.returncode != 0:
+        raise Refused(f"the backup did not pass (see above); nothing was removed. What it wrote is in {folder}")
+
+
 def remove(_args: list[str]) -> None:
-    """Delete this install's containers and volumes (all its data), after the person types this folder's name.
-    No answer, or any other, removes nothing."""
+    """Delete this install's containers and volumes (all its data), after the person types this folder's name and
+    is offered a backup. No answer, or any other, removes nothing."""
     argv = own_compose("remove")
     try:
         typed = input(f"This deletes this install's containers and all its data (stack {PROJECT}). "
@@ -1927,6 +1946,7 @@ def remove(_args: list[str]) -> None:
         typed = ""
     if typed.strip() != ROOT.name:
         raise Refused("nothing was removed")
+    offer_backup()
     run_compose([*argv, "down", "-v", "--remove-orphans"])
     say(f"Removed the containers and data of {PROJECT}. This folder can now be deleted.")
 
