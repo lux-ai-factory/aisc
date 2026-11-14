@@ -360,7 +360,9 @@
       // a connection's settings (provider, address, whether a key is stored) come to an admin only
       cell(tr, c.kind === 'provider' ? (c.provider ? 'Provider: ' + c.provider : 'Provider') : c.protocol || c.kind);
       cell(tr, c.base_url || '', 'mono');
-      cell(tr, 'has_secret' in c ? el('span', 'pill' + (c.has_secret ? ' ok' : ''), c.has_secret ? 'stored' : 'none') : '');
+      // an adapter's connection keeps its token as a secret setting, apart from an ordinary key
+      var stored = c.has_secret || (c.secret_settings || []).length > 0;
+      cell(tr, 'has_secret' in c ? el('span', 'pill' + (stored ? ' ok' : ''), stored ? 'stored' : 'none') : '');
       cell(tr, usedFor(c));
       cell(tr, roleEditor(c));
       body.appendChild(tr);
