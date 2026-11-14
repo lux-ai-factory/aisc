@@ -41,7 +41,7 @@ def authorisation(ref: str, want: str = "GET", caller: Caller = Depends(caller_d
 def ledger_witness(request: Request) -> Response:
     """The ledger's witness, for Caddy's forward_auth.
     Never served to a browser: the launcher answers 404 to /api/authz/*, and a call without the
-    gateway secret gets 401. Off unless LEDGER_MODE says otherwise."""
+    gateway secret gets 401. On unless LEDGER_MODE is off (absent means record)."""
     from platform_service.ledger.witness import witness
 
     answer = witness(request.headers)
