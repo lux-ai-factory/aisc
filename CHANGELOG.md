@@ -3,6 +3,10 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Backups: `bash scripts/backup-databases.sh` backs up every database, the immudb ledger and its key, MinIO's
+  files and the secrets file (encrypted), and restores each into a throwaway to compare it
+  (`docs/runbooks/restore-a-backup.md`). Make its passphrase file first. `bash scripts/schedule.sh --install` runs
+  it daily at 02:30 and `scripts/verify.sh --stack` at 03:30; nothing is scheduled until you run that.
 - New secret `ENGINE_SECRETS_KEY`: the engine encrypts the credentials it stores with this key of its own, no
   longer with one derived from `DJANGO_SECRET_KEY`. `uv run scripts/aisc.py start` adds it; the backend and the
   eval worker take it when they are recreated, and the backend refuses to start without it. Values stored before
