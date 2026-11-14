@@ -1,0 +1,33 @@
+{
+  "switch": [
+    {"value": "true", "is": true},
+    {"value": " On ", "is": true},
+    {"value": "1", "is": true},
+    {"value": "YES", "is": true},
+    {"value": "off", "is": false},
+    {"value": "FALSE", "is": false},
+    {"value": "0", "is": false},
+    {"value": "no", "is": false},
+    {"value": "", "refused": true},
+    {"value": "   ", "refused": true},
+    {"value": "ture", "refused": true},
+    {"value": "enabled", "refused": true},
+    {"value": "\"true\"", "refused": true}
+  ],
+  "auth_enabled": [
+    {"value": null, "is": true},
+    {"value": "false", "is": false},
+    {"value": "", "refused": true},
+    {"value": "ture", "refused": true}
+  ],
+  "ledger_mode": [
+    {"value": null, "is": "record"},
+    {"value": " Enforce ", "is": "enforce"},
+    {"value": "off", "is": "off"},
+    {"value": "record", "is": "record"},
+    {"value": "", "refused": true},
+    {"value": "recrod", "refused": true},
+    {"value": "on", "refused": true},
+    {"value": "true", "refused": true}
+  ]
+}

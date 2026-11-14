@@ -14,6 +14,7 @@ from jwt import PyJWKClient
 from aisc_identity.caller import Caller, IdentityMissing, caller_from_claims
 from aisc_identity.gateway import GatewayRefused, gateway_identity
 from aisc_identity.headers import gateway_token, token_from_headers
+from aisc_identity.switches import auth_enabled
 from aisc_identity.tokens import TokenRejected, verify_token
 
 
@@ -37,16 +38,13 @@ class Settings:
     dev_roles: tuple[str, ...]
 
 
-def _flag(name: str, default: str) -> bool:
-    return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
-
-
 def settings() -> Settings:
     roles = os.environ.get("AUTH_DEV_ROLES", "")
     return Settings(
         # Default on. A service that forgets to set this refuses requests,
         # which is noticed immediately; the other default is not noticed at all.
-        enabled=_flag("AUTH_ENABLED", "true"),
+        # A value that is neither an on nor an off word is refused, not read as off.
+        enabled=auth_enabled(),
         issuer=os.environ.get("KEYCLOAK_ISSUER", ""),
         jwks_url=os.environ.get("KEYCLOAK_JWKS_URL", ""),
         dev_roles=tuple(r.strip() for r in roles.split(",") if r.strip()),
