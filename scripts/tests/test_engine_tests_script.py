@@ -45,8 +45,8 @@ record = {
             if k in os.environ},
     "db_folder_existed": bool(db_name) and os.path.isdir(os.path.dirname(db_name)),
 }
-with open(os.environ["STAND_IN_LOG"], "w") as f:
-    json.dump(record, f)
+with open(os.environ["STAND_IN_LOG"], "a") as f:
+    f.write(json.dumps(record) + "\n")
 PY
 exit "${STAND_IN_EXIT:-0}"
 """
@@ -59,6 +59,27 @@ def expected_labels() -> list[str]:
                 if p.is_dir() and (p / "__init__.py").is_file() and p.name != "integration"]
     modules = [p.stem for p in TESTS.glob("test_*.py")]
     return sorted(f"aisc_backend.tests.{name}" for name in packages + modules)
+
+
+#: What marks a module whose tests run only in the Configurator (isolation_support.configurator_only and the
+#: per-module skips); the script's configurator pass runs those modules with AISC_DEPLOYMENT=configurator.
+CONFIGURATOR_MARK = re.compile(r"configurator_only|configurator_run|_CONFIGURATOR_RUN|skipIf\(_STANDALONE_RUN")
+SUPERUSER_MARK = re.compile(r"SUPERUSER_URL_VAR|superuser_url")
+
+
+def configurator_labels() -> list[str]:
+    """The test modules, in the packages too, with configurator-only tests that need no Postgres superuser (those
+    run in --postgres), as dotted labels, sorted."""
+    files = [f for f in TESTS.rglob("test_*.py") if "integration" not in f.relative_to(TESTS).parts]
+    picked = [f for f in files if CONFIGURATOR_MARK.search(f.read_text()) and not SUPERUSER_MARK.search(f.read_text())]
+    return sorted("aisc_backend.tests." + ".".join(f.relative_to(TESTS).with_suffix("").parts) for f in picked)
+
+
+def run_all_with_stand_in(tmp_path: Path, *args: str, cwd: Path = ROOT, exit_code: int = 0):
+    """The script's run with the stand-in uv: (result, every call it made, in order)."""
+    r, _ = run_with_stand_in(tmp_path, *args, cwd=cwd, exit_code=exit_code)
+    log = tmp_path / "uv-call.json"
+    return r, [json.loads(line) for line in log.read_text().splitlines()] if log.is_file() else []
 
 
 def run_with_stand_in(tmp_path: Path, *args: str, cwd: Path = ROOT, exit_code: int = 0):
@@ -76,8 +97,9 @@ def run_with_stand_in(tmp_path: Path, *args: str, cwd: Path = ROOT, exit_code: i
         # the caller's own database address must not reach the engine's runner
         "DATABASE_URL": "postgresql://someone:secret@127.0.0.1:5432/platform",
     })
+    log.unlink(missing_ok=True)
     r = subprocess.run([str(SCRIPT), *args], cwd=cwd, env=env, capture_output=True, text=True, timeout=120)
-    call = json.loads(log.read_text()) if log.is_file() else None
+    call = json.loads(log.read_text().splitlines()[0]) if log.is_file() else None
     return r, call
 
 
@@ -111,7 +133,8 @@ def test_the_postgres_mode_uses_the_throwaway_database_helper():
 @needs_backend
 def test_the_labels_are_the_test_packages_and_modules_without_integration():
     labels = expected_labels()
-    assert len(labels) == 47, labels
+    assert "aisc_backend.tests.routers" in labels and "aisc_backend.tests.test_ledger_events" in labels, labels
+    assert len(labels) == len(set(labels))
     assert "aisc_backend.tests.integration" not in labels
 
 
@@ -168,6 +191,64 @@ def test_the_exit_code_is_the_runners(tmp_path):
     r, call = run_with_stand_in(tmp_path, exit_code=3)
     assert call is not None
     assert r.returncode == 3
+
+
+# the Configurator's own tests (the door, isolation, the modes), which a standalone run skips
+
+
+@needs_backend
+def test_the_configurator_pass_is_the_modules_whose_tests_are_configurator_only():
+    labels = configurator_labels()
+    for label in ("aisc_backend.tests.routers.test_project_membership", "aisc_backend.tests.test_isolation_engine",
+                  "aisc_backend.tests.test_every_project_route_is_guarded", "aisc_backend.tests.test_modes_routes"):
+        assert label in labels, label
+    assert "aisc_backend.tests.test_isolation_engine_db" not in labels, "a superuser module runs in --postgres"
+    assert "aisc_backend.tests.test_ledger_events" not in labels
+
+
+@needs_backend
+def test_sqlite_mode_runs_the_configurator_only_modules_again_in_configurator_mode(tmp_path):
+    r, calls = run_all_with_stand_in(tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert len(calls) == 2, calls
+    standalone, configurator = calls
+    assert standalone["env"].get("AISC_DEPLOYMENT") != "configurator"
+    assert configurator["argv"] == RUNNER + configurator_labels()
+    assert configurator["env"].get("AISC_DEPLOYMENT") == "configurator"
+    assert configurator["env"].get("DB_ENGINE") == "django.db.backends.sqlite3"
+    assert "DATABASE_URL" not in configurator["env"]
+    assert configurator["db_folder_existed"]
+
+
+@needs_backend
+def test_a_failing_standalone_pass_still_runs_the_configurator_pass_and_fails(tmp_path):
+    r, calls = run_all_with_stand_in(tmp_path, exit_code=3)
+    assert len(calls) == 2
+    assert r.returncode == 3
+
+
+@needs_backend
+def test_labels_given_narrow_the_run_to_them(tmp_path):
+    r, calls = run_all_with_stand_in(tmp_path, "aisc_backend.tests.test_ledger_events", "-v", "2")
+    assert r.returncode == 0, r.stderr
+    assert [c["argv"] for c in calls] == [RUNNER + ["aisc_backend.tests.test_ledger_events", "-v", "2"]]
+
+
+@needs_backend
+def test_files_given_narrow_the_run_and_a_configurator_module_runs_in_both_modes(tmp_path):
+    r, calls = run_all_with_stand_in(tmp_path, "apps/backend/aisc_backend/tests/routers/test_project_membership.py",
+                                     "aisc_backend/tests/test_ledger_events.py")
+    assert r.returncode == 0, r.stderr
+    membership, events = "aisc_backend.tests.routers.test_project_membership", "aisc_backend.tests.test_ledger_events"
+    assert [c["argv"] for c in calls] == [RUNNER + [membership, events], RUNNER + [membership]]
+    assert calls[1]["env"].get("AISC_DEPLOYMENT") == "configurator"
+
+
+@needs_backend
+def test_a_label_that_names_no_test_module_is_refused(tmp_path):
+    r, calls = run_all_with_stand_in(tmp_path, "aisc_backend/tests/test_no_such_module.py")
+    assert r.returncode == 2 and calls == []
+    assert "test_no_such_module" in r.stderr
 
 
 # real runs
