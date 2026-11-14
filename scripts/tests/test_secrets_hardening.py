@@ -77,14 +77,14 @@ def test_an_empty_value_is_generated_again_and_the_rest_kept(scratch):  # noqa: 
     run_secrets(scratch)
     before = secrets_of(scratch)
     text = (scratch / "env.secrets").read_text()
-    (scratch / "env.secrets").write_text(re.sub(r"^DJANGO_SECRET_KEY=.*$", "DJANGO_SECRET_KEY=", text, flags=re.M))
+    (scratch / "env.secrets").write_text(re.sub(r"^INTERNAL_API_KEY=.*$", "INTERNAL_API_KEY=", text, flags=re.M))
     r = run_secrets(scratch)
     after = secrets_of(scratch)
-    assert re.fullmatch(r"[0-9a-f]{64}", after.get("DJANGO_SECRET_KEY", "")) is not None, "the empty value was kept"
-    assert _digest({k: v for k, v in after.items() if k != "DJANGO_SECRET_KEY"}) == \
-        _digest({k: v for k, v in before.items() if k != "DJANGO_SECRET_KEY"}), "another value changed"
+    assert re.fullmatch(r"[0-9a-f]{64}", after.get("INTERNAL_API_KEY", "")) is not None, "the empty value was kept"
+    assert _digest({k: v for k, v in after.items() if k != "INTERNAL_API_KEY"}) == \
+        _digest({k: v for k, v in before.items() if k != "INTERNAL_API_KEY"}), "another value changed"
     assert list(after) == list(before), "the order of env.secrets changed"
-    assert after["DJANGO_SECRET_KEY"] not in r.stdout + r.stderr, "the new value was printed"
+    assert after["INTERNAL_API_KEY"] not in r.stdout + r.stderr, "the new value was printed"
 
 
 @contextlib.contextmanager

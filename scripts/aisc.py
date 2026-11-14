@@ -282,6 +282,11 @@ FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 KEPT_ON_ROTATE = ("PLATFORM_SECRETS_KEY", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD", "PLATFORM_LEDGER_KEYS",
                   "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY",
                   *VOLUME_BOUND)
+# The keys that open what is stored: an emptied line for one of them is refused, never made again, since every value
+# encrypted or signed under the old key would become unreadable or unverifiable. PLATFORM_SECRETS_KEY opens the stored
+# LLM keys, ENGINE_SECRETS_KEY and DJANGO_SECRET_KEY the engine's stored credentials, PLATFORM_LEDGER_KEYS checks the
+# ledger's past signatures.
+NEVER_MADE_AGAIN = ("PLATFORM_SECRETS_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY", "PLATFORM_LEDGER_KEYS")
 # What --rotate replaces: every other secret, named here so that a secret added to SECRETS is put in one of the
 # two by a decision (scripts/tests/test_aisc_py.py fails until it is), never fresh by default.
 FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_API_KEY", "SUPERSET_GUEST_TOKEN_SECRET",
@@ -952,6 +957,12 @@ def make_secrets(args: list[str], hint: bool = True) -> None:
         raise Refused(f"secrets does not take {mode}: it takes --rotate, --rotate-one NAME or --add-ledger-key "
                       "(or nothing, to keep the values and add any that are missing). Nothing changed.", 2)
     existed = Path(OUT).is_file()
+    if existed:
+        emptied = [name for name in NEVER_MADE_AGAIN if f"{name}=" in lines_of(OUT)]
+        if emptied:
+            raise Refused(f"{OUT} has an empty {', '.join(emptied)}. A new value would leave what is stored under the "
+                          "old one unreadable, so none is made. Put the old value back (from env.runtime, if it still "
+                          "holds it, or from a backup of the secrets file), then run this again. Nothing changed.")
     if mode == "--add-ledger-key":
         add_ledger_key()
     elif mode == "--rotate-one":
