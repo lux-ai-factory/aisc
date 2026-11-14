@@ -3,6 +3,15 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Boundaries are strict. The engine refuses a component file that is empty (422), larger than
+  `TARGET_FILE_MAX_MB` (2048 by default, now given to the engine as well as the platform; 413) or not of its type
+  (415: a dataset takes `.csv .tsv .parquet .json .jsonl .zip`, a model `.onnx .pkl .joblib .pt .pth .safetensors
+  .h5 .keras .zip`), and a plugin artifact above the same cap; the platform passes these refusals on instead of a
+  502. A run's artifact list previews only the first 256 KB of a file (a png, pdf or zip larger than that shows
+  no preview: download it). Project, member and AI system bodies refuse unknown fields and overlong text (an AI
+  card description is at most 2000 characters). `POST /api/v1/audit` on the engine takes `X-AISC-Project` and an
+  editor of that project, names the app from the token's client, and refuses `source_app` or any other unknown
+  field in the body. Rebuild and recreate the engine, the platform and the qualification prefill service.
 - `AUTH_ENABLED` and `LEDGER_MODE` are read strictly by every service: on words `1 true yes on`, off words
   `0 false no off`, ledger modes `off record enforce`, case and surrounding spaces ignored. Any other value, an
   empty one included, stops the service at start with a message naming the variable, where it used to mean off.
