@@ -60,7 +60,9 @@ REVOKE ALL ON aisc_setup.guard_trigger FROM PUBLIC;
 GRANT SELECT ON aisc_setup.guard_trigger TO PUBLIC;
 WITH listed (table_name, trigger_name) AS (VALUES
     ('trace.call', 'call_append_only'),
-    ('trace.call', 'call_no_truncate')
+    ('trace.call', 'call_no_truncate'),
+    ('project.system', 'system_no_delete'),
+    ('project.system', 'system_no_truncate')
 ), unlisted AS (
     DELETE FROM aisc_setup.guard_trigger g
      WHERE NOT EXISTS (SELECT 1 FROM listed l WHERE l.table_name = g.table_name AND l.trigger_name = g.trigger_name)

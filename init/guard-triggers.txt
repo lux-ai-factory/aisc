@@ -11,3 +11,6 @@
 trace.call call_append_only
 trace.call call_no_truncate
 
+# the card versions: a version is never deleted (platform/project-template/0034_card_versions_kept.sql)
+project.system system_no_delete
+project.system system_no_truncate
