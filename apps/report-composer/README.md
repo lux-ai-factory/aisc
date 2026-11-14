@@ -120,7 +120,7 @@ uv run uvicorn report_composer.app:app --host 127.0.0.1 --port 8095 --proxy-head
 | `PLATFORM_ORIGIN` | the origin writes must come from | `http://localhost` | the engine's address (`API_URL_EXTERNAL`, `http://localhost` by default) |
 | `LAUNCHER_URL` | where `/`, the header's mark and Back send the browser | `http://localhost:8100/` | same |
 | `PLATFORM_URL` | the platform, asked for a report's ledger anchor and for the declared charts | empty (no anchor, no declared charts) | `http://platform:8000` |
-| `LEDGER_MODE` | `off`, `record` or `enforce`; events are written only when not `off` | `off` | `record` |
+| `LEDGER_MODE` | `off`, `record` or `enforce`; events are written only when not `off`. Any other value, empty included, stops the service at start, as does an `AUTH_ENABLED` that is not an on or off word | absent means `record` | `record` |
 | `AUTH_ENABLED` | verify the caller's token (`aisc_identity`) | `true` | `true` |
 | `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URL` | the realm the token is checked against | empty | the `aisc` realm |
 | `AISC_GATEWAY_CLIENT_ID` | the gateway's client, whose token lets an event cite `X-AISC-Request-Id` | `aisc-gateway` | unset (the default) |
