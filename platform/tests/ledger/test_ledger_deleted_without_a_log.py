@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psycopg
 
-from tests.conftest import DSN
+from tests.conftest import DSN, MIGRATE_DSN
 from tests.ledger.conftest import needs_db
 
 pytestmark = needs_db
@@ -27,6 +27,12 @@ def _leftovers(conn, pid: str) -> tuple[str, str]:
     return request, event
 
 
+def _migrate() -> None:
+    """The migration again, as the platform runs its migrations: platform_migrator."""
+    with psycopg.connect(MIGRATE_DSN, autocommit=True) as conn:
+        conn.execute(MIGRATION.read_text())
+
+
 def test_what_a_project_deleted_without_a_log_left_is_closed_and_no_longer_pending(project, memory_ledger):
     from platform_service.ledger import relay
 
@@ -34,7 +40,7 @@ def test_what_a_project_deleted_without_a_log_left_is_closed_and_no_longer_pendi
     with psycopg.connect(DSN, autocommit=True) as conn:
         request, event = _leftovers(conn, gone)
         kept_request, kept_event = _leftovers(conn, project["pid"])
-        conn.execute(MIGRATION.read_text())
+        _migrate()
         closed = conn.execute("SELECT closed_at IS NOT NULL, closed_reason, delivered_seq FROM ledger.witness"
                               " WHERE request_id = %s", (request,)).fetchone()
         sent = conn.execute("SELECT delivered_at IS NOT NULL, delivered_reason, delivered_seq FROM core.outbox"

@@ -12,7 +12,7 @@ import pytest
 from psycopg.conninfo import make_conninfo
 
 from platform_service import db, llm_store, projectdb
-from tests.conftest import ALICE, needs_database, one, project_db
+from tests.conftest import ALICE, MIGRATE_DSN, needs_database, one, project_db
 from tests.connection_support import new_secret
 from tests.test_connection_facades import _env, base, issue, keyed, mcas, stub  # noqa: F401  (fixtures)
 
@@ -266,7 +266,7 @@ def test_a_project_made_before_the_capabilities_gets_them_at_the_next_start(clie
     column = ("select count(*) from information_schema.columns where table_schema = 'connection'"
               " and table_name = 'endpoint' and column_name in ('supports_tools', 'supports_logprobs')")
     assert one(dsn, made, column) == (0,)
-    with project_db(dsn, made) as conn:
+    with project_db(MIGRATE_DSN, made) as conn:          # the platform's own, as before the owner roles
         conn.execute("insert into connection.endpoint (name, label, kind, base_url, model, timeout_s, secret_ciphertext)"
                      " values ('old-model', 'Old', 'openai', %s, 'gpt-4o-mini', 5, %s)",
                      (stub.base + "/v1", llm_store.encrypt(new_secret())))

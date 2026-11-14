@@ -15,7 +15,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from platform_service import db, projectdb
-from tests.conftest import needs_database, one, project_db
+from tests.conftest import MIGRATE_DSN, needs_database, one, project_db
 from tests.connection_support import CONNECTIONS_TOKEN, SECRETS_KEY, engine_component, new_secret
 from tests.http_stub import Stub
 
@@ -69,15 +69,15 @@ def resolve(client, project, name, token=CONNECTIONS_TOKEN, headers=None):
 def test_a_new_project_gets_the_schema_and_applying_again_changes_nothing(project, dsn):
     assert one(dsn, project, "select to_regclass('connection.endpoint')") == ("connection.endpoint",)
     assert one(dsn, project, "select 1 from provision.template_migration where name = '0012_connection.sql'")
-    with project_db(dsn, project) as conn, conn.transaction():
+    with project_db(MIGRATE_DSN, project) as conn, conn.transaction():   # as the platform applies its template
         conn.execute(TEMPLATE_FILE.read_text())
 
 
 def test_the_schema_is_the_platforms_and_closed_to_everyone_else(project, dsn):
     owner, acl = one(dsn, project, "select pg_get_userbyid(nspowner), nspacl::text from pg_namespace"
                                    " where nspname = 'connection'")
-    assert owner == "platform_rw"
-    assert set(re.findall(r'(?:^|[{,])"?([^=,{}"]*)=', acl or "")) <= {"platform_rw"}, acl
+    assert owner == "platform_owner"
+    assert set(re.findall(r'(?:^|[{,])"?([^=,{}"]*)=', acl or "")) <= {"platform_owner", "platform_rw"}, acl
 
 
 @pytest.mark.parametrize("role", ["controls_rw", "dashboard_ro", "report_ro", "engine_rw"])

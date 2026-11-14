@@ -22,7 +22,7 @@ from psycopg.conninfo import make_conninfo
 
 from platform_service import db, projectdb
 from platform_service.migrate import migrate
-from tests.conftest import needs_database
+from tests.conftest import MIGRATE_DSN, needs_database
 from tests.core_scratch import (
     apply_platform_migrations,
     needs_superuser,
@@ -160,11 +160,11 @@ def test_a_database_that_had_0001_to_0005_gets_0006_to_0010_at_the_next_provisio
     try:
         for f in OLD_TEMPLATE:
             shutil.copy(projectdb.TEMPLATE / f, old / f)
-        with psycopg.connect(dsn, autocommit=True) as conn:
+        with psycopg.connect(MIGRATE_DSN, autocommit=True) as conn:
             conn.execute(f'create database "{name}"')
-        with psycopg.connect(make_conninfo(dsn, dbname=name)) as conn:
+        with psycopg.connect(make_conninfo(MIGRATE_DSN, dbname=name)) as conn:
             migrate(conn, old, projectdb.TRACKING_TABLE)
-        projectdb.provision(dsn, pid)
+        projectdb.provision(MIGRATE_DSN, pid)
         with psycopg.connect(make_conninfo(dsn, dbname=name)) as conn:
             applied = {r[0] for r in conn.execute("select name from provision.template_migration").fetchall()}
             system = conn.execute("select to_regclass('project.system')").fetchone()[0]
@@ -173,12 +173,13 @@ def test_a_database_that_had_0001_to_0005_gets_0006_to_0010_at_the_next_provisio
         assert system is not None, "project.system missing after provision()"
     finally:
         shutil.rmtree(old, ignore_errors=True)
-        projectdb.drop(dsn, pid)
+        projectdb.drop(MIGRATE_DSN, pid)
 
-    # and the same through provision_all, for the fixture's project, whose new
-    # rows are removed as if it predated 0006
+    # and the same through provision_all, for the fixture's project, whose row of 0006 is removed as if it
+    # predated it (only 0006: the module schemas of 0007..0010 belong to their owner roles now, and a file
+    # that changes them is never applied a second time)
     with in_project(dsn, project["pid"]) as conn:
-        conn.execute("delete from provision.template_migration where name = any(%s)", (list(NEW_TEMPLATE),))
+        conn.execute("delete from provision.template_migration where name = '0006_project_system.sql'")
     monkeypatch.setattr(db, "_unprovisioned", None)
     db.pool()
     with in_project(dsn, project["pid"]) as conn:
@@ -219,7 +220,7 @@ def test_project_system_has_exactly_the_card_version_columns(project, dsn):
         assert cols[c][:2] == ("timestamp with time zone", "NO") and "now()" in (cols[c][2] or ""), c
     assert pk == ["pid"]
     assert unique_number, "number is UNIQUE"
-    assert owner == "platform_rw", "project.system is owned by platform_rw"
+    assert owner == "platform_owner", "project.system is owned by platform_owner"
 
 
 @needs_database
@@ -272,14 +273,14 @@ def test_only_platform_rw_writes_project_system_and_the_modules_read_and_referen
 @pytest.mark.parametrize("role", list(MODULE_SCHEMAS))
 def test_a_module_role_connects_and_has_its_own_schema_only(project, dsn, role):
     """Each module's schema exists in the project database, owned by
-    platform_rw, and only that module's role may create in it."""
+    its module's owner role, and only that module's role may create in it."""
     require_new_template("module schemas")
     own = MODULE_SCHEMAS[role]
     with in_project(dsn, project["pid"]) as conn:
         owner, comment = conn.execute(
             "select pg_get_userbyid(nspowner), obj_description(oid, 'pg_namespace') from pg_namespace"
             " where nspname = %s", (own,)).fetchone() or (None, None)
-        assert owner == "platform_rw", f"schema {own} owned by platform_rw, got {owner}"
+        assert owner == f"{own}_owner", f"schema {own} owned by {own}_owner, got {owner}"
         assert comment, f"schema {own} has a comment"
         for schema in ["controls", "llm", "connection", "provision", *MODULE_SCHEMAS.values()]:
             if conn.execute("select 1 from pg_namespace where nspname = %s", (schema,)).fetchone() is None:
@@ -333,8 +334,10 @@ def test_readers_get_usage_on_every_module_schema(project, dsn):
         # the reader grants come from the table owner's migrations, never from default privileges
         defaults = conn.execute(
             "select n.nspname, pg_get_userbyid(d.defaclrole) from pg_default_acl d"
-            " left join pg_namespace n on n.oid = d.defaclnamespace").fetchall()
-        assert defaults == [], f"default privileges in the project database: {defaults}"
+            " left join pg_namespace n on n.oid = d.defaclnamespace"
+            " cross join lateral aclexplode(d.defaclacl) a"
+            " where pg_get_userbyid(a.grantee) = any(%s)", (list(READERS),)).fetchall()
+        assert defaults == [], f"default privileges for the readers in the project database: {defaults}"
 
 
 # The card-version functions use project.system.
@@ -410,7 +413,7 @@ def test_delete_unregisters_then_drops_then_deletes_the_row(client, as_user, pro
 def test_versions_of_a_project_whose_database_is_gone_are_404_not_500(client, as_user, project, dsn):
     """Between DROP DATABASE and the core.project delete, the card-version
     routes answer 404 for that pid (the database is the project)."""
-    projectdb.drop(dsn, project["pid"])
+    projectdb.drop(MIGRATE_DSN, project["pid"])
     for path in (f"/projects/{project['slug']}/system-versions",
                  f"/projects/{project['slug']}/system-versions/latest"):
         got = client.get(path, headers=as_user(ALICE))

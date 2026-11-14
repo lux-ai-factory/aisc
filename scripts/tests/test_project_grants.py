@@ -53,13 +53,16 @@ def test_every_project_database_lists_template_0001_to_0010(bed):
         assert names == ib.TEMPLATES, f"{db}: {names}"
 
 
-@pytest.mark.parametrize("schema", ["project", "qualification", "control_objectives", "engine", "report_composer"])
-def test_the_template_makes_each_module_schema_owned_by_platform_rw(bed, schema):
-    """Each module schema is created by the template and owned by platform_rw."""
+@pytest.mark.parametrize("schema,owner", [("project", "platform_owner"), ("qualification", "qualification_owner"),
+                                          ("control_objectives", "control_objectives_owner"),
+                                          ("engine", "engine_owner"), ("report_composer", "report_composer_owner")])
+def test_the_template_makes_each_module_schema_owned_by_its_owner_role(bed, schema, owner):
+    """Each module schema is created by the template and handed to its owner role; the platform's own schema
+    belongs to platform_owner (init/owner-roles.sql). None to platform_rw, the role the platform's requests use."""
     bed.require("templates")
     for db in DBS:
-        owner = bed.scalar(db, f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '{schema}'")
-        assert owner == "platform_rw", f"{db} schema {schema} owner is {owner!r}"
+        got = bed.scalar(db, f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '{schema}'")
+        assert got == owner, f"{db} schema {schema} owner is {got!r}"
 
 
 @pytest.mark.parametrize("schema,role", [(s, r) for s, r in ib.MODULES.items() if s != "controls"])
@@ -168,7 +171,8 @@ def test_a_module_role_has_rights_only_on_its_own_schema(bed, schema, role):
 
 @pytest.mark.parametrize("role", list(ib.MODULES.values()))
 def test_project_system_is_select_and_references_only_for_module_roles(bed, role):
-    """SELECT, REFERENCES on project.system for every module role; no role but platform_rw writes it."""
+    """SELECT, REFERENCES on project.system for every module role; no role but platform_rw writes it, and
+    platform_owner owns it (init/owner-roles.sql)."""
     bed.require("templates", "project_system")
     for db in DBS:
         assert _can(bed, db, role, "project.system", "SELECT")
@@ -176,7 +180,7 @@ def test_project_system_is_select_and_references_only_for_module_roles(bed, role
         for priv in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
             assert not _can(bed, db, role, "project.system", priv), f"{db} {role} may {priv} project.system"
         owner = bed.scalar(db, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = 'project.system'::regclass")
-        assert owner == "platform_rw"
+        assert owner == "platform_owner"
 
 
 @pytest.mark.parametrize("schema,role", [(s, r) for s, r in ib.MODULES.items()])

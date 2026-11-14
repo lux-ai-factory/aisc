@@ -6,7 +6,7 @@ another project: it is connected to the wrong place to do it.
 
 The test beds make and drop one the way the platform does, from `platform/`:
 
-    python -m platform_service.projectdb provision|drop <pid> --dsn <the platform database, as platform_rw>
+    python -m platform_service.projectdb provision|drop <pid> --dsn <the platform database, as platform_migrator>
 """
 from __future__ import annotations
 
@@ -62,7 +62,10 @@ def connect(pid: str | UUID, *, autocommit: bool = False, row_factory=dict_row) 
 
 def provision(base_dsn: str, pid: str | UUID) -> str:
     """Make this project's database if it is missing, and bring its template
-    up to date. Safe to call again: that is how existing projects get theirs."""
+    up to date. Safe to call again: that is how existing projects get theirs.
+
+    `base_dsn` is the platform database as platform_migrator (db.migrate_dsn()): only platform_owner may
+    create databases, and the template is applied as it."""
     name = database_name(pid)
     with psycopg.connect(base_dsn, autocommit=True) as conn:
         exists = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone()
@@ -71,6 +74,8 @@ def provision(base_dsn: str, pid: str | UUID) -> str:
                 conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
             except errors.DuplicateDatabase:
                 pass  # another instance made it between the check and here
+        # the role the platform's requests use connects to it (the template gives it its rows)
+        conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO platform_rw").format(sql.Identifier(name)))
     with psycopg.connect(make_conninfo(base_dsn, dbname=name)) as conn:
         migrate(conn, TEMPLATE, TRACKING_TABLE)
         sync_platform_actions(conn)
@@ -92,9 +97,27 @@ def sync_platform_actions(conn) -> None:
 
 
 def drop(base_dsn: str, pid: str | UUID) -> None:
+    """Remove this project's database, as platform_migrator (`base_dsn`, the platform database).
+
+    New connections are refused first, then the sessions the apps hold there are ended through
+    aisc_setup.end_project_sessions (init/owner-roles.sql: platform_owner may not signal other roles'
+    sessions itself), then the database is dropped. A drop that fails lets connections in again, so the
+    project keeps working."""
     name = database_name(pid)
+    ident = sql.Identifier(name)
     with psycopg.connect(base_dsn, autocommit=True) as conn:
-        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+        if conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone() is None:
+            return
+        conn.execute(sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS false").format(ident))
+        try:
+            conn.execute("SELECT aisc_setup.end_project_sessions(%s)", (name,))
+            conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(ident))
+        except Exception:
+            try:
+                conn.execute(sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS true").format(ident))
+            except psycopg.Error:
+                pass                                                  # it may be gone after all; the drop's error says why
+            raise
 
 
 def main(argv: list[str]) -> int:
@@ -102,7 +125,7 @@ def main(argv: list[str]) -> int:
                                      description="Make (provision) or remove (drop) a project's database.")
     parser.add_argument("command", choices=("provision", "drop"))
     parser.add_argument("pid")
-    parser.add_argument("--dsn", required=True, help="the platform database, as platform_rw")
+    parser.add_argument("--dsn", required=True, help="the platform database, as platform_migrator")
     args = parser.parse_args(argv)
     try:
         name = database_name(args.pid)

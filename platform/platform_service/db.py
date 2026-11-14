@@ -59,6 +59,17 @@ def dsn() -> str:
     )
 
 
+def migrate_dsn() -> str:
+    """The platform database as platform_migrator, whose sessions act as platform_owner: the only role that
+    migrates core, makes and drops project databases and applies their template. platform_rw, the role every
+    request runs as (dsn()), owns nothing. No default: without it the service does not start."""
+    url = os.environ.get("PLATFORM_MIGRATE_DATABASE_URL", "")
+    if not url:
+        raise RuntimeError("PLATFORM_MIGRATE_DATABASE_URL is not set: the platform migrates, makes and drops project"
+                           " databases as platform_migrator (scripts/secrets.sh makes its password)")
+    return url
+
+
 def bootstrap_subjects() -> list[str]:
     """Who owns the projects that predate membership.
 
@@ -158,7 +169,7 @@ def _setup(p: ConnectionPool) -> None:
     not done, so the next pool() call does it again."""
     global _migrated
     if not _migrated:
-        with p.connection() as conn:
+        with psycopg.connect(migrate_dsn()) as conn:
             migrate(conn)
         bootstrap_owners(bootstrap_subjects())
         _migrated = True
@@ -250,7 +261,7 @@ def _provision_pending(current: set[str]) -> None:
     _last_attempt = time.monotonic()
     for pid in sorted(_unprovisioned):
         try:
-            projectdb.provision(dsn(), pid)
+            projectdb.provision(migrate_dsn(), pid)
         except Exception:
             logger.exception("could not provision the database of project %s; trying again later", pid)
             continue

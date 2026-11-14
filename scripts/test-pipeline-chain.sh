@@ -127,7 +127,7 @@ migrate_project_database() {
 # step N -> command (run from the repo root); a runner exit status and output are judged below
 step_cmd() {
   local n=$1
-  local plat="cd platform && PLATFORM_TEST_DATABASE_URL=$(tpg_dsn platform_rw platform) uv run --extra dev pytest -q -p no:cacheprovider -m chain -k chain_step$n"
+  local plat="cd platform && PLATFORM_TEST_DATABASE_URL=$(tpg_dsn platform_rw platform) PLATFORM_TEST_MIGRATE_DATABASE_URL=$(tpg_dsn platform_migrator platform) uv run --extra dev pytest -q -p no:cacheprovider -m chain -k chain_step$n"
   local ctrl="cd apps/controls && PROJECT_DATABASE_URL='postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls' npx vitest run -t chain_step$n"
   case $n in
     1|6) echo "$plat" ;;

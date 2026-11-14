@@ -16,7 +16,7 @@ from cryptography.fernet import Fernet
 from psycopg.conninfo import make_conninfo
 
 from platform_service import connection_store, db, llm_store, projectdb
-from tests.conftest import ALICE, needs_database, one, project_db
+from tests.conftest import ALICE, MIGRATE_DSN, needs_database, one, project_db
 from tests.connection_support import CONNECTIONS_TOKEN, SECRETS_KEY, new_secret
 from tests.test_connections import _env, base, put, resolve, rest_body, stub  # noqa: F401  (fixtures)
 
@@ -217,7 +217,7 @@ def test_a_project_made_before_secret_headers_gets_them_at_the_next_start(client
     column = ("select count(*) from information_schema.columns where table_schema = 'connection'"
               " and table_name = 'endpoint' and column_name in ('secret_header_names', 'secret_headers_ciphertext')")
     assert one(dsn, made, column) == (0,)
-    with project_db(dsn, made) as conn:
+    with project_db(MIGRATE_DSN, made) as conn:          # the platform's own, as before the owner roles
         conn.execute("insert into connection.endpoint (name, label, kind, base_url, path, body_template,"
                      " response_path, timeout_s, secret_ciphertext) values (%s, 'Old', 'rest', %s, '/chat', %s, 'answer',"
                      " 5, %s)", (NAME, stub.base, json.dumps({"question": "{{input}}"}), llm_store.encrypt(new_secret())))

@@ -11,7 +11,7 @@ import psycopg
 import pytest
 
 from platform_service import run_trace
-from tests.conftest import needs_database, project_db
+from tests.conftest import MIGRATE_DSN, needs_database, project_db
 from tests.connection_support import CONNECTIONS_TOKEN
 from tests.test_run_passes import _env, made_with_endpoints, stub, with_pass  # noqa: F401  (fixtures)
 
@@ -165,7 +165,11 @@ def test_a_recorded_call_cannot_be_changed_or_deleted(client, project, stub, dsn
     run_pass = mint(client, project)
     client.post(door(project, "/aisc/ask"), json={"input": "q"}, headers=keyed(run_key(client, project, run_pass)))
     for statement in ("UPDATE trace.call SET answer = '{}'::jsonb", "DELETE FROM trace.call"):
-        with project_db(dsn, project) as conn, pytest.raises(psycopg.Error, match="append-only"):
+        # the role the platform's requests use may only insert and read
+        with project_db(dsn, project) as conn, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute(statement)
+        # and the table's owner is stopped by its trigger
+        with project_db(MIGRATE_DSN, project) as conn, pytest.raises(psycopg.Error, match="append-only"):
             conn.execute(statement)
 
 

@@ -26,6 +26,21 @@ def _test_database_url() -> str:
 
 
 DSN = _test_database_url()
+
+
+def _test_migrate_database_url() -> str:
+    """PLATFORM_TEST_MIGRATE_DATABASE_URL: the throwaway's platform_migrator, under the same rules as DSN."""
+    from urllib.parse import urlsplit
+
+    url = os.environ.get("PLATFORM_TEST_MIGRATE_DATABASE_URL", "")
+    try:
+        port = urlsplit(url).port
+    except ValueError:
+        return ""
+    return "" if not url or port in (None, 5432) else url
+
+
+MIGRATE_DSN = _test_migrate_database_url()
 ISSUER = "http://keycloak:8080/realms/aisc"
 
 
@@ -72,6 +87,10 @@ def _ledger_off_unless_a_test_says_otherwise(monkeypatch):
 @pytest.fixture(autouse=True)
 def _point_the_service_at_the_test_database(monkeypatch):
     monkeypatch.setenv("PLATFORM_DATABASE_URL", DSN)
+    if MIGRATE_DSN:
+        monkeypatch.setenv("PLATFORM_MIGRATE_DATABASE_URL", MIGRATE_DSN)
+    else:
+        monkeypatch.delenv("PLATFORM_MIGRATE_DATABASE_URL", raising=False)
     # never the stack's MinIO: a test that wants a store puts one in place (tests/proof_fake.py)
     monkeypatch.delenv("S3_URL", raising=False)
 
@@ -104,15 +123,11 @@ def _leave_the_database_as_we_found_it():
         # members and systems follow their project: both are ON DELETE CASCADE.
         conn.execute("DELETE FROM core.project WHERE slug LIKE %s", (TEST_PREFIX + "%",))
         conn.commit()
-    superuser = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
+    # as the platform drops them: platform_migrator (the superuser where the run gave no migrator)
+    dropper = MIGRATE_DSN or os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
     for pid in pids:
-        try:
-            projectdb.drop(DSN, pid)
-        except psycopg.errors.InsufficientPrivilege:
-            # another role's session was still closing; platform_rw may not end it, the superuser may
-            if not superuser:
-                raise
-            projectdb.drop(superuser, pid)
+        if dropper:
+            projectdb.drop(dropper, pid)
 
 
 @pytest.fixture(scope="session")

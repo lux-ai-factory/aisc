@@ -1011,6 +1011,8 @@ services:
       S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
       # platform_rw's generated password: postgres-setup applies the same value to the role
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      # platform_migrator (init/owner-roles.sql): migrations, making and dropping project databases, as platform_owner
+      PLATFORM_MIGRATE_DATABASE_URL: postgresql://platform_migrator:${PLATFORM_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
       # A project belongs to the people in it, so this service has to know who
       # is asking. Verified here rather than taken on the gateway's word.

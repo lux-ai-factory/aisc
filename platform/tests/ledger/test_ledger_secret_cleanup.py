@@ -118,7 +118,9 @@ def test_the_content_table_carries_a_redaction_mark_that_must_be_consistent(plat
                     conn.execute("INSERT INTO ledger.content (log, event_id, content, redacted_at, redaction)"
                                  " VALUES (%s, %s, %s::jsonb, %s::timestamptz, %s)",
                                  (log, str(uuid.uuid4()), values[0], values[1], values[2]))
-    with psycopg.connect(platform_dsn, autocommit=False) as conn:
+    from tests.conftest import MIGRATE_DSN
+
+    with psycopg.connect(MIGRATE_DSN, autocommit=False) as conn:  # as the platform migrates: platform_migrator
         conn.execute("SET search_path = core")
         conn.execute(MIGRATION.read_text())                  # a second time: no error
         conn.rollback()
