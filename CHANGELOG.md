@@ -3,6 +3,10 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- New secret `ENGINE_SECRETS_KEY`: the engine encrypts the credentials it stores with this key of its own, no
+  longer with one derived from `DJANGO_SECRET_KEY`. `uv run scripts/aisc.py start` adds it; the backend and the
+  eval worker take it when they are recreated, and the backend refuses to start without it. Values stored before
+  still decrypt, so `DJANGO_SECRET_KEY` stays kept by `secrets --rotate` until they are encrypted again.
 - New secret `REDIS_PASSWORD`: the shared Redis (the worker's Celery results) asks for it. `uv run scripts/aisc.py
   start` adds it without changing any other secret; the redis, backend, eval worker and flower containers take it
   when they are recreated. Results of tasks in flight at that restart are lost, so restart with no run going.

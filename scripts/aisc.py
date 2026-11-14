@@ -191,6 +191,9 @@ SECRETS = [
     ("GATEWAY_COOKIE_SECRET", "cookie"),
     ("GATEWAY_CLIENT_SECRET", "rand"),
     ("DJANGO_SECRET_KEY", "rand"),
+    # the engine's own key for the credentials it stores (aisc_backend/utils/encryption.py), held by the backend and
+    # the eval worker; values stored before it, under DJANGO_SECRET_KEY, still decrypt
+    ("ENGINE_SECRETS_KEY", "fernet"),
     ("INTERNAL_API_KEY", "rand"),
     ("SUPERSET_SECRET_KEY", "rand"),
     # signs the dashboard's guest tokens (embedding is on): never Superset's published default
@@ -273,10 +276,12 @@ FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 # DEVPI_ROOT_PASSWORD: devpi's volume holds root's password and devpi refuses to start on another one.
 # SUPERSET_SECRET_KEY: it encrypts the database connections Superset stores; to change it, set
 # PREVIOUS_SECRET_KEY to the old one and run `superset re-encrypt-secrets` in the dashboard container.
-# DJANGO_SECRET_KEY: the engine encrypts the credentials it stores with it (aisc_backend/utils/encryption.py),
-# so a new one would leave them unreadable.
+# ENGINE_SECRETS_KEY: the engine encrypts the credentials it stores with it (aisc_backend/utils/encryption.py).
+# DJANGO_SECRET_KEY: credentials the engine stored before ENGINE_SECRETS_KEY existed are under a key derived from
+# it, so it stays kept until every stored value has been encrypted again under ENGINE_SECRETS_KEY.
 KEPT_ON_ROTATE = ("PLATFORM_SECRETS_KEY", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD", "PLATFORM_LEDGER_KEYS",
-                  "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", "DJANGO_SECRET_KEY", *VOLUME_BOUND)
+                  "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY",
+                  *VOLUME_BOUND)
 # What --rotate replaces: every other secret, named here so that a secret added to SECRETS is put in one of the
 # two by a decision (scripts/tests/test_aisc_py.py fails until it is), never fresh by default.
 FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_API_KEY", "SUPERSET_GUEST_TOKEN_SECRET",

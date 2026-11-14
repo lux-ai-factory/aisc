@@ -20,6 +20,8 @@ x-backend-env: &backend-env
   DB_SCHEMA: ${DB_SCHEMA}
   BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+  # the key of the credentials the engine stores, its own (aisc_backend/utils/encryption.py)
+  ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
   # Keys the run tickets that bind a plugin's calls back to its own project and evaluation; never given to
   # the eval worker, which holds DJANGO_SECRET_KEY and runs plugin code
   RUN_TICKET_KEY: ${RUN_TICKET_KEY:?run scripts/secrets.sh first}
@@ -223,6 +225,8 @@ services:
       PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      # decrypts the plugin settings the engine stores (aisc_eval/utils/encryption.py); never passed to a plugin
+      ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
     depends_on:
       - aisc-backend
       - rabbitmq
