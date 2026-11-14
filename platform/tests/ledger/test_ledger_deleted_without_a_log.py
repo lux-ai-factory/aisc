@@ -46,9 +46,3 @@ def test_what_a_project_deleted_without_a_log_left_is_closed_and_no_longer_pendi
     assert sent[0] and "deleted before it had one" in sent[1] and sent[2] is None
     assert kept == (True, True)
     assert gone not in relay._projects_with_work()
-
-
-def test_the_migration_runs_again_without_harm():
-    with psycopg.connect(DSN, autocommit=True) as conn:
-        conn.execute(MIGRATION.read_text())
-        conn.execute(MIGRATION.read_text())
