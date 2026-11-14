@@ -233,10 +233,10 @@ class _UntilDeadline:
 
 
 def guarded_open(allowed_hosts: list[str] | None, denied_addresses: list[str] | None,
-                 deadline: float | None = None) -> Callable:
+                 deadline: float | None = None, floor_hosts: list[str] | None = None) -> Callable:
     """The `open(request, timeout=None)` an adapter reaches its system with: urllib's, under the same rules as
     the plugins' client (the project's allowed hosts, private and denied addresses refused on the URL and on
-    the address actually connected), redirects not followed. `request` is a URL or a urllib Request; the
+    the address actually connected, loopback only for the floor's hosts), redirects not followed. `request` is a URL or a urllib Request; the
     response is returned unread, so a stream can be read as it comes. With a `deadline` (time.monotonic()), no
     connection or read goes past it, whatever timeout the adapter asks for (or none): EndpointTimeout."""
     import socket
@@ -252,9 +252,9 @@ def guarded_open(allowed_hosts: list[str] | None, denied_addresses: list[str] | 
                 raise client.EndpointTimeout("no time left before the caller's deadline; not sent")
             timeout = left if timeout is None else min(timeout, left)
         hosts = allowed_hosts if allowed_hosts is not None else client.allowed_hosts_from_env()
-        client.guard_url(url, hosts, denied_addresses)
+        client.guard_url(url, hosts, denied_addresses, floor_hosts)
         try:
-            with client._Policy(hosts, denied_addresses):
+            with client._Policy(hosts, denied_addresses, floor_hosts):
                 response = client._OPENER.open(request, timeout=timeout)
         except client._Redirected as exc:
             raise client.EndpointBadResponse(f"the system answered with a redirect ({exc.code}),"
@@ -294,7 +294,7 @@ def limiter(adapter: Adapter):
 
 
 def call(adapter: Adapter, connection: dict, input, history: list, params: dict, *, allowed_hosts=None,
-         denied_addresses=None, deadline: float):
+         denied_addresses=None, floor_hosts=None, deadline: float):
     """One question through `adapter`, as the interface's Answer. `connection` is {name, label, base_url,
     timeout_s, settings, secrets}; `deadline` (time.monotonic()) is when the caller stops waiting: the opener
     the adapter gets goes no further. An exception with `code` "refused" is a refusal; with auth, not_found,
@@ -309,7 +309,7 @@ def call(adapter: Adapter, connection: dict, input, history: list, params: dict,
     started = time.monotonic()
     try:
         text = adapter.call(connection, input, history, params,
-                            guarded_open(allowed_hosts, denied_addresses, deadline))
+                            guarded_open(allowed_hosts, denied_addresses, deadline, floor_hosts))
     except client.EndpointError as exc:                   # the opener's own: blocked, redirected, timed out
         raise type(exc)(connection_facade.scrub(f"{label}: {exc}", secrets), status=exc.status) from None
     except Exception as exc:                              # the adapter's: mapped by its code
