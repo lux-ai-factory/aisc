@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NotCanonical } from "@/vendor/aisc-ledger/canonical";
 import { emitEvent, eventBody, withoutAuthors } from "@/vendor/aisc-ledger/emit";
+import { SwitchInvalid } from "@/vendor/aisc-ledger/switches";
 
 function recorder() {
   const calls: { sql: string; values: unknown[] }[] = [];
@@ -20,7 +21,7 @@ function recorder() {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("emitEvent", () => {
-  it("writes nothing while LEDGER_MODE is off or unset", async () => {
+  it("writes nothing while LEDGER_MODE is off", async () => {
     const tx = recorder();
     vi.stubEnv("LEDGER_MODE", "off");
     expect(
@@ -30,6 +31,23 @@ describe("emitEvent", () => {
         itemId: "q1",
       }),
     ).toBeNull();
+    expect(tx.calls).toEqual([]);
+  });
+
+  it("writes the event when LEDGER_MODE is unset, which means record", async () => {
+    const tx = recorder();
+    vi.stubEnv("LEDGER_MODE", undefined);
+    const id = await emitEvent(tx, { action: "qualification.created", itemType: "qualification", itemId: "q1" });
+    expect(id).not.toBeNull();
+    expect(tx.calls).toHaveLength(1);
+  });
+
+  it("refuses a LEDGER_MODE that is not off, record or enforce", async () => {
+    const tx = recorder();
+    vi.stubEnv("LEDGER_MODE", "recrod");
+    await expect(
+      emitEvent(tx, { action: "qualification.created", itemType: "qualification", itemId: "q1" }),
+    ).rejects.toThrow(SwitchInvalid);
     expect(tx.calls).toEqual([]);
   });
 
