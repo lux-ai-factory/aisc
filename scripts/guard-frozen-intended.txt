@@ -32,6 +32,7 @@
 #                 reason once; with no connection for a helper role the run form sends the person to Connectivity
 #   testdata      Delete on test data asks first; a refused add or edit, or a file the engine could not store, is
 #                 said with the engine's reason and the dialog stays open
+#   filetypes     a dataset or model file picker offers only the extensions the engine takes for that type
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -87,7 +88,7 @@ webapp src/patchedDependencies.test.ts dependencies: each shipped dependency abo
 webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin
 webapp src/pages/pluginToggle.test.ts errors: its test
 webapp src/api/projectHelpers.ts helpers, launch: the project's helper models, read from the platform for the run form (configurator); the last run's helper model, while the project still offers it for the role
-webapp src/components/AISystemSettings.tsx helpers, retire, testdata: the AI System offers no LLM components; models a test uses as tools are the project's helper models; Delete says whether a dataset was deleted, retired or could not be removed, Show retired lists retired ones with Restore; Delete asks first; a refused add or edit, or a file not stored, says the reason and keeps the dialog open
+webapp src/components/AISystemSettings.tsx helpers, retire, testdata, filetypes: the AI System offers no LLM components; models a test uses as tools are the project's helper models; Delete says whether a dataset was deleted, retired or could not be removed, Show retired lists retired ones with Restore; Delete asks first; a refused add or edit, or a file not stored, says the reason and keeps the dialog open; the add and edit file pickers offer only the engine's extensions for the type
 webapp src/components/AISystemSettings.test.tsx helpers: its tests
 webapp src/components/plugin/PluginEvaluationForm.tsx helpers, names, retire, launch: the run form picks a helper model for each role a test asks for; it shows a configuration by its name; a retired dataset is not offered, and the last run's choice comes back only while it is in use; the last run's helper model comes back with its other inputs; with no connection for a helper role it points to Connectivity
 webapp src/components/plugin/PluginEvaluationForm.test.tsx helpers, names, launch: its tests; the pointer to Connectivity
@@ -109,3 +110,7 @@ webapp src/pages/PluginStartEvaluation.relaunch.test.tsx launch: a relaunch keep
 webapp src/pages/PluginStartEvaluation.refusal.test.tsx launch: a refused launch says the engine's reason once
 webapp src/components/plugin/PluginEvaluationForm.connectivity.test.tsx launch: the run form points to Connectivity for a helper role
 webapp src/components/AISystemSettings.saveFailures.test.tsx testdata: Delete asks first; refused saves say why and keep the dialog open
+webapp src/components/addProjectWizard.tsx filetypes: the dataset picker offers only the engine's dataset extensions (it took any file)
+webapp src/models/componentFileTypes.ts filetypes: the engine's file extensions per component type, as the pickers' accept value
+webapp src/models/componentFileTypes.test.ts filetypes: its tests
+webapp src/components/componentFilePickers.test.tsx filetypes: the wizard and test data pickers offer only the engine's extensions
