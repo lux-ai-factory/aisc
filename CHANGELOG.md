@@ -8,6 +8,9 @@
   (`docs/runbooks/restore-a-backup.md`). Make its passphrase file first. `bash scripts/schedule.sh --install` runs
   it daily at 02:30 and `scripts/verify.sh --stack` at 03:30; nothing is scheduled until you run that.
   `aisc.py remove` offers a backup before it deletes the volumes.
+- `secrets` and `start` refuse an empty `PLATFORM_SECRETS_KEY`, `DJANGO_SECRET_KEY`, `ENGINE_SECRETS_KEY` or
+  `PLATFORM_LEDGER_KEYS` line instead of making a new key: put the old value back (from `env.runtime` or the
+  backup's secrets copy).
 - New secret `ENGINE_SECRETS_KEY`: the engine encrypts the credentials it stores with this key of its own, no
   longer with one derived from `DJANGO_SECRET_KEY`. `uv run scripts/aisc.py start` adds it; the backend and the
   eval worker take it when they are recreated, and the backend refuses to start without it. Values stored before
