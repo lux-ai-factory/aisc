@@ -30,6 +30,7 @@ PASSWORD_OF = {
     "dashboard_ro": "DASHBOARD_RO_PASSWORD",
     "report_composer_rw": "REPORT_COMPOSER_PASSWORD",
     "report_ro": "REPORT_RO_PASSWORD",
+    "platform_migrator": "PLATFORM_MIGRATOR_PASSWORD",
 }
 
 

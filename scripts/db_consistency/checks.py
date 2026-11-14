@@ -58,7 +58,8 @@ KNOWN_DATABASES = {"platform", "keycloak", "superset", "postgres", "control_obje
 #: someone decides to drop them.
 LEFTOVER_DATABASES = {"aisc", "controls", "qualification", "control_objectives"}
 #: What stays in `platform`.
-KNOWN_PLATFORM_SCHEMAS = {"core", "ledger", "public"}
+#: aisc_setup: the superuser's functions the owner roles call (init/owner-roles.sql).
+KNOWN_PLATFORM_SCHEMAS = {"core", "ledger", "public", "aisc_setup"}
 #: The module schemas that moved into the project databases and are dropped by the cutover's final
 #: drop.
 RETIRED_PLATFORM_SCHEMAS = {"engine", "qualification", "control_objectives", "report_composer"}

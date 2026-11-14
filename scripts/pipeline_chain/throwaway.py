@@ -88,10 +88,23 @@ class Throwaway:
         return f"postgresql://{role}:{role}@127.0.0.1:{self.port}/{db}"
 
 
+def platform_role(t: Throwaway) -> str:
+    """The role the platform migrates and provisions as: platform_migrator once init/owner-roles.sql has made it
+    (its sessions act as platform_owner), else platform_rw (a cluster set up from an older tree)."""
+    made = t.scalar("platform", "SELECT count(*) FROM pg_roles WHERE rolname = 'platform_migrator'")
+    return "platform_migrator" if made == "1" else "platform_rw"
+
+
+#: The first platform migration of the owner roles. The ones before it ran as platform_rw on every install
+#: made before them, and the older beds (the shared layout, with core.system owned by platform_rw) need that.
+FIRST_MIGRATION_AS_OWNER = "0015"
+
+
 def platform_migration(t: Throwaway, path: Path) -> None:
-    """As platform_service.migrate: one transaction as platform_rw, recorded."""
+    """As platform_service.migrate: one transaction, recorded. Migrations before the owner roles as platform_rw,
+    as an install made before them applied them; the later ones as the platform's migrating role."""
     t.psql("platform", "SET search_path = core;\n"
            "CREATE TABLE IF NOT EXISTS core.schema_migration (name text PRIMARY KEY,"
            " applied_at timestamptz NOT NULL DEFAULT now());\nBEGIN;\n" + path.read_text()
            + f"\n;\nINSERT INTO core.schema_migration (name) VALUES ('{path.name}');\nCOMMIT;\n",
-           role="platform_rw")
+           role="platform_rw" if path.name < FIRST_MIGRATION_AS_OWNER else platform_role(t))

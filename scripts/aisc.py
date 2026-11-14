@@ -237,6 +237,15 @@ SECRETS = [
     ("PLATFORM_LEDGER_KEYS", "ledgerkey"),
     # platform_rw, the platform service's database role: postgres-setup applies it on every start
     ("PLATFORM_RW_PASSWORD", "rand"),
+    # the migrator logins, one per owner role (init/owner-roles.sql): postgres-setup applies them on every start.
+    # A migrator's sessions act as its module's owner role; only the platform uses its own so far
+    # (PLATFORM_MIGRATE_DATABASE_URL), to migrate, make and drop project databases.
+    ("PLATFORM_MIGRATOR_PASSWORD", "rand"),
+    ("QUALIFICATION_MIGRATOR_PASSWORD", "rand"),
+    ("CONTROLS_MIGRATOR_PASSWORD", "rand"),
+    ("CONTROL_OBJECTIVES_MIGRATOR_PASSWORD", "rand"),
+    ("REPORT_COMPOSER_MIGRATOR_PASSWORD", "rand"),
+    ("ENGINE_MIGRATOR_PASSWORD", "rand"),
     # qualification_rw, the qualification app's database role: postgres-setup applies it on every start
     ("QUALIFICATION_RW_PASSWORD", "rand"),
     # control_objectives_rw, the control objectives service's database role: postgres-setup applies it
@@ -301,7 +310,9 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "CONTROLS_RW_PASSWORD", "ENGINE_RW_PASSWORD", "RUN_TICKET_KEY", "DASHBOARD_RO_PASSWORD",
                    "DASHBOARD_REDIS_PASSWORD", "REDIS_PASSWORD", "AISC_WITNESS_GATEWAY_SECRET", "PLATFORM_LEDGER_ENGINE_TOKEN",
                    "PLATFORM_LEDGER_DASHBOARD_TOKEN", "PLATFORM_LEDGER_AGENTS_TOKEN", "PLUGIN_PUBLISHER_TOKEN",
-                   "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN")
+                   "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN", "PLATFORM_MIGRATOR_PASSWORD",
+                   "QUALIFICATION_MIGRATOR_PASSWORD", "CONTROLS_MIGRATOR_PASSWORD", "CONTROL_OBJECTIVES_MIGRATOR_PASSWORD",
+                   "REPORT_COMPOSER_MIGRATOR_PASSWORD", "ENGINE_MIGRATOR_PASSWORD")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
 ROTATE_ONE = ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD")
 LEDGER_KEYS = re.compile(r"v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*")

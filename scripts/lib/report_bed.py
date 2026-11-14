@@ -17,10 +17,11 @@ What it builds, in order (each step as the stack does it):
  2. init/report-roles.sql (superuser), when present and report_files is on, plus what its
     shared-layout version made in `platform` and the current one does not (the shared
     report_composer schema, core.system grants, the composer's search_path)
- 3. platform migrations 0001.. as platform_rw
+ 3. init/owner-roles.sql and init/project-database-setup.sql (template1), then platform migrations 0001.. as
+    platform_migrator
  4. the module schemas from the read-only dumps in scripts/tests/fixtures/report/, each restored
     as its own module role (so ownership is as on the stack), and superset's as the superuser
- 5. project databases of Alpha, Beta, Echo, Mike and Delta as platform_rw with platform/project-template/*.sql
+ 5. project databases of Alpha, Beta, Echo, Mike and Delta as platform_migrator with platform/project-template/*.sql
     (every template file, 0003_report.sql included), then schema controls as controls_rw
  6. scripts/report-grants.sh, when present and report_files is on, run inside the container
     like the stack's report-grants one-shot: PG* env, init/report-ro-grants.sql copied to /setup
@@ -195,6 +196,18 @@ def _run(t: Throwaway, db: str, sql: str, role: str | None, what: str) -> None:
         raise RuntimeError(f"bed: {what} failed on {db} as {role or 'superuser'}:\n{r.stderr[-3000:]}")
 
 
+#: The composer's role, which init/owner-roles.sql needs, where init/report-roles.sql did not run.
+COMPOSER_ROLE_SQL = """
+DO $role$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'report_composer_rw') THEN
+    CREATE ROLE report_composer_rw LOGIN PASSWORD 'report_composer_rw';
+  END IF;
+END
+$role$;
+"""
+
+
 def _su_file(t: Throwaway, db: str, path: Path) -> None:
     _run(t, db, path.read_text(), None, path.name)
 
@@ -204,15 +217,15 @@ def _as_file(t: Throwaway, db: str, role: str, path: Path, prefix: str = "") -> 
 
 
 def _project_database(t: Throwaway, pid: str) -> str:
-    """As platform_service.projectdb.provision: made by platform_rw, template applied as it."""
+    """As platform_service.projectdb.provision: made by platform_migrator, template applied as it."""
     name = project_db(pid)
-    t.psql("platform", f'CREATE DATABASE "{name}"', role="platform_rw")
+    t.psql("platform", f'CREATE DATABASE "{name}"', role="platform_migrator")
     t.psql(name, "CREATE SCHEMA IF NOT EXISTS provision;\n"
            "CREATE TABLE IF NOT EXISTS provision.template_migration (name text PRIMARY KEY,"
-           " applied_at timestamptz NOT NULL DEFAULT now());", role="platform_rw")
+           " applied_at timestamptz NOT NULL DEFAULT now());", role="platform_migrator")
     for f in sorted(PROJECT_TEMPLATE.glob("*.sql")):
         t.psql(name, f.read_text() + f"\n;\nINSERT INTO provision.template_migration (name) VALUES ('{f.name}');",
-               role="platform_rw")
+               role="platform_migrator")
     _as_file(t, name, "controls_rw", FIXTURES / "schema_controls.sql")
     # What controls' own migration 20260926000100_readers_read_the_listed_tables grants, as the
     # tables' owner: the fixture above is the schema only. A default privilege in template1 must not
@@ -260,6 +273,10 @@ def build(label: str = "report", *, seed: bool = True, modules: bool = True,
         if bed.applied["report-roles.sql"]:
             _su_file(t, "platform", REPORT_ROLES_SQL)
             _run(t, "platform", PRE_ISOLATION_REPORT_ROLES_EXTRA, None, "pre-isolation report-roles lines")
+        # the owner roles, as postgres-setup makes them (they need every runtime role first)
+        _run(t, "platform", COMPOSER_ROLE_SQL, None, "the composer's role")
+        _su_file(t, "platform", ROOT / "init/owner-roles.sql")
+        _su_file(t, "template1", ROOT / "init/project-database-setup.sql")
         for m in sorted((ROOT / "platform/migrations").glob("*.sql")):
             platform_migration(t, m)
         if modules:

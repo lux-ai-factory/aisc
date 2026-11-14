@@ -1,0 +1,13 @@
+# The guard triggers of a project database: one `schema.table trigger` per line.
+#
+# A listed trigger may not be disabled or dropped by anyone but the superuser: the event trigger
+# aisc_guard_triggers_stay (init/project-database-setup.sql) refuses it, in every project database.
+# init/project-database-setup.sql holds the same list (scripts/tests/test_owner_roles.py checks
+# that the two agree), since the test beds run that file from standard input, where it cannot read this one.
+#
+# A migration that changes a listed trigger uses CREATE OR REPLACE TRIGGER, never DROP and CREATE.
+
+# the run trace: every call a run made, append-only
+trace.call call_append_only
+trace.call call_no_truncate
+

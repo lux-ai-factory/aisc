@@ -10,9 +10,10 @@ erroring in a fixture:
     bed.stop()
 
 Steps, in the stack's order:
- 1. init/platform-db.sql, init/project-databases.sql, init/inspector-role.sql, init/report-roles.sql
+ 1. init/platform-db.sql, init/project-databases.sql, init/inspector-role.sql, init/report-roles.sql,
+    init/owner-roles.sql, then init/project-database-setup.sql in template1
     (superuser; a file that fails is a problem, not an error)
- 2. platform migrations as platform_rw (scripts/pipeline_chain/throwaway.platform_migration)
+ 2. platform migrations as platform_migrator (scripts/pipeline_chain/throwaway.platform_migration)
  3. two projects A and B in core.project (platform_rw), their databases made by the platform's own
     `projectdb.provision` (so every template file is applied)
  4. each module's migrate command against every project database:
@@ -38,7 +39,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
-from throwaway import SU, Throwaway, platform_migration  # noqa: E402
+from throwaway import SU, Throwaway, platform_migration, platform_role  # noqa: E402
 
 A = "a0000000-0000-4000-8000-00000000000a"
 B = "b0000000-0000-4000-8000-00000000000b"
@@ -209,7 +210,7 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
     code = ("import sys; from platform_service import projectdb\n"
             "for p in sys.argv[2:]: projectdb.provision(sys.argv[1], p)\n")
     _run(bed, "provision", ["uv", "run", "--quiet", "--extra", "dev", "python", "-c", code,
-                            bed.dsn("platform_rw", "platform"), *pids],
+                            bed.dsn(platform_role(bed.t), "platform"), *pids],
          ROOT / "platform", {"PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
                              "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform")},
          "projectdb.provision")
@@ -290,8 +291,9 @@ def build(label: str, *, projects: tuple[str, ...] = (A, B), modules: bool = Tru
     bed = IsoBed(t)
     try:
         _su_file(bed, "postgres", ROOT / "init/platform-db.sql", "init")
-        for f in ("project-databases", "inspector-role", "report-roles"):
+        for f in ("project-databases", "inspector-role", "report-roles", "owner-roles"):
             _su_file(bed, "platform", ROOT / f"init/{f}.sql", f"init-{f}")
+        _su_file(bed, "template1", ROOT / "init/project-database-setup.sql", "init-project-database-setup")
         for m in sorted((ROOT / "platform/migrations").glob("*.sql")):
             try:
                 platform_migration(t, m)

@@ -12,7 +12,7 @@
 #                module; the readers (report_ro, dashboard_ro) read exactly READER_TABLES and nothing by a
 #                default privilege; PUBLIC may not connect; inspector_ro writes nothing
 #   placement    the retired module schemas of platform (and core.system) are unreachable by
-#                every role but the superuser and inspector_ro (pg_read_all_data, by design); with
+#                every role but the superuser and inspector_ro (it reads by schema, by design); with
 #                --final-layout platform has exactly PLATFORM_SCHEMAS and core exactly CORE_TABLES
 #   databases    every project has its database, with every template file, every module at its head,
 #                unique positive card version numbers, and every system_id resolving in the same database
@@ -126,7 +126,8 @@ PLATFORM_TABLES["report_ro"] = {("core.project", "SELECT")}
 #: the platform schema each of these roles holds by design (its owner, or made for it)
 HOLDS: dict[str, str] = {}
 #: the schemas of platform in the final layout
-PLATFORM_SCHEMAS = {"core", "ledger", "public"}   # ledger: the platform's own (pool, witness, index)
+# ledger: the platform's own (pool, witness, index); aisc_setup: the superuser's functions the owner roles call
+PLATFORM_SCHEMAS = {"core", "ledger", "public", "aisc_setup"}
 CORE_TABLES = {"project", "project_member", "schema_migration", "outbox"}   # outbox: the platform's ledger events (0008)
 #: module schema of a project database -> its role
 MODULES = {"qualification": "qualification_rw", "control_objectives": "control_objectives_rw",
@@ -331,8 +332,8 @@ def placement(present):
             ok = False
             say("FAIL", "placement", f"core has {', '.join(sorted(core))}, not exactly {', '.join(sorted(CORE_TABLES))}")
     if ok:
-        say("PASS", "placement", "the retired schemas are unreachable (inspector_ro reads everything through"
-                             " pg_read_all_data by design, and is not counted)"
+        say("PASS", "placement", "the retired schemas are unreachable (inspector_ro reads by schema"
+                             " (init/inspector-role.sql), and is not counted)"
                              + ("; platform has exactly the layout of PLATFORM_SCHEMAS" if FINAL_LAYOUT else ""))
 
 

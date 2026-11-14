@@ -10,7 +10,6 @@
 SELECT format('ALTER ROLE platform_rw WITH LOGIN PASSWORD %L', :'platform_rw_password') \gexec
 \endif
 
--- platform_rw deletes projects: DROP DATABASE ... WITH (FORCE) ends the sessions the apps hold on a
--- project's database (each keeps a pool there once it has opened the project), which takes
--- pg_signal_backend. It can't end a superuser's session.
-GRANT pg_signal_backend TO platform_rw;
+-- platform_rw no longer deletes projects and is not given pg_signal_backend: platform_migrator drops a
+-- project's database and ends the apps' sessions on it through aisc_setup.end_project_sessions
+-- (init/owner-roles.sql, which also takes back the membership earlier versions of this file granted).
