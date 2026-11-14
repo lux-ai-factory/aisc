@@ -3,6 +3,23 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Owner roles. Run `scripts/secrets.sh` first: it adds the six `*_MIGRATOR_PASSWORD` values, which
+  postgres-setup applies and `PLATFORM_MIGRATE_DATABASE_URL` uses (the platform refuses to start without it).
+  postgres-setup now makes NOLOGIN owner roles (`<module>_owner`) and their migrator logins
+  (`init/owner-roles.sql`), takes `CREATEDB` and `pg_signal_backend` from `platform_rw`, and installs
+  `init/project-database-setup.sql` in `template1` and every project database (the functions that hand a module
+  schema to its owner and end a project's sessions, and the alarm that refuses disabling or dropping a listed
+  guard trigger, `init/guard-triggers.txt`). At its next start the platform migrates as `platform_migrator`:
+  its own tables, the project databases and the platform's schemas in them pass from `platform_rw` to
+  `platform_owner`, and each module schema to its module's owner role; `platform_rw` keeps reading and writing
+  rows, nothing more (no `DELETE` on card versions, insert and read only on the run trace and the verified
+  ledger state). Card versions refuse `DELETE` and `TRUNCATE` for everyone (a card is corrected through a
+  revision; a project leaves by dropping its database), and evidence restricts instead of cascading. The
+  verified ledger state becomes a log that only grows (`ledger.state_log`; `ledger.state` is copied once and
+  kept read-only). The database inspector reads by schema, never a project's `connection`, `llm` or `helper`;
+  nobody connects to the platform database through `PUBLIC`. Back up first (`scripts/backup-databases.sh`), then
+  restart postgres-setup and rebuild and recreate the platform; the modules keep their roles until their own
+  migrations move to their owners.
 - Addresses are checked at the call. Loopback and the unspecified address (`0.0.0.0`, `::`, mapped forms) are
   reached only by hosts in `CONNECTIONS_ALLOWED_HOSTS` (and, for model addresses, the host of
   `PLATFORM_OLLAMA_BASE_URL`), even when a project allows the name; every address that is not globally routable
