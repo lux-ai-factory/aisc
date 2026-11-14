@@ -1,6 +1,6 @@
 # Changelog of the aisc root repository (newest first).
 
-## Unreleased: hardening after the audit of every change since 31 October
+## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
 - Flower (the eval queue monitor) no longer starts with the stack: it read every project's task arguments on the
@@ -12,31 +12,6 @@
 - The results dashboard creates two tables at start, `aisc_removed_chart` and `aisc_changed_chart`: plugin
   default charts removed or changed with the chart assistant stay so through a tile sync.
 - `aisc.py drift` lists the running containers that no longer run what their image holds (read-only).
-
-### Changed
-- Dashboard events (Save to report, the chart assistant's validate, change and remove) now name their dashboard,
-  so the ledger accepts them; before, every one was rejected as belonging to no project.
-- Save to report: editors and admins only, and only under the name of a chart placed on that dashboard.
-- Chart assistant: it knows every plot by its definition, changes a matching plot in place (title, bar or line,
-  axis range, percentages), removes a plot only when the request asks to delete, and asks which plot when two
-  show the same thing; its query check no longer lets a WITH name hide a system table, and column names are
-  quoted wherever a validated chart uses them.
-- Connectivity: an owner may make only a provider connection a test tool, and sees each connection's name, kind
-  and use; admins see everything. The helpers page no longer removes or rewrites a connection made a tool on
-  Connectivity. Deleting a connection ends its uses.
-- Platform: proof files are type-checked without unpacking a whole archive member; a call to the system under
-  test is recorded even when it holds characters the database cannot store; a run's call trace still verifies
-  after the database rewrites its numbers, and its digest is sealed in the ledger when the run's pass ends.
-- One owner/admin rule table decides the connection, connectivity, helper and model routes.
-- Engine: Stop saves every stopped test and the run with one ledger event citing the person's request; a stopped
-  test stays stopped when the worker reports late; a plugin may not write files under the worker's own names.
-- Reports: the Exported results block keeps two dashboards of the same title apart and says its plots are as
-  saved; the "treated like the baseline" figure says how many runs it pools.
-- `scripts/suites.py` is the one list of test suites; every folder with tests that compose builds has a row.
-
-## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass
-
-### Upgrading an existing install
 - Plugins on a plugin interface below 0.4.0 that call a connected target directly no longer reach it: the resolve
   route answers without the key. Every plugin must take interface 0.4.0.
 - New secret `PLATFORM_ENGINE_TOKEN`: `uv run scripts/aisc.py start` adds it; a bare `docker compose up` fails
@@ -72,6 +47,25 @@
   move into connections (`connection.endpoint` kind `provider`, `connection.use`); see Manage > Connectivity.
 
 ### Changes
+- Dashboard events (Save to report, the chart assistant's validate, change and remove) now name their dashboard,
+  so the ledger accepts them; before, every one was rejected as belonging to no project.
+- Save to report: editors and admins only, and only under the name of a chart placed on that dashboard.
+- Chart assistant: it knows every plot by its definition, changes a matching plot in place (title, bar or line,
+  axis range, percentages), removes a plot only when the request asks to delete, and asks which plot when two
+  show the same thing; its query check no longer lets a WITH name hide a system table, and column names are
+  quoted wherever a validated chart uses them.
+- Connectivity: an owner may make only a provider connection a test tool, and sees each connection's name, kind
+  and use; admins see everything. The helpers page no longer removes or rewrites a connection made a tool on
+  Connectivity. Deleting a connection ends its uses.
+- Platform: proof files are type-checked without unpacking a whole archive member; a call to the system under
+  test is recorded even when it holds characters the database cannot store; a run's call trace still verifies
+  after the database rewrites its numbers, and its digest is sealed in the ledger when the run's pass ends.
+- One owner/admin rule table decides the connection, connectivity, helper and model routes.
+- Engine: Stop saves every stopped test and the run with one ledger event citing the person's request; a stopped
+  test stays stopped when the worker reports late; a plugin may not write files under the worker's own names.
+- Reports: the Exported results block keeps two dashboards of the same title apart and says its plots are as
+  saved; the "treated like the baseline" figure says how many runs it pools.
+- `scripts/suites.py` is the one list of test suites; every folder with tests that compose builds has a row.
 - The platform stops a run whose calls keep failing, for every plugin: after 3 failed calls in a row, or once more
   than 5% of at least 20 sent calls failed, the run's next calls are not sent, are recorded `not_sent`
   (`run_stopped`) and are refused with the reason (403). `PLATFORM_RUN_STOP_IN_A_ROW` (3),
