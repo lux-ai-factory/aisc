@@ -260,6 +260,29 @@ def engine(*args: str, cwd: Path = ROOT, script: Path = SCRIPT, timeout: int = 9
 
 
 TEST_ID = re.compile(r"^\w+ \((aisc_backend\.tests\.[\w.]+)\)", re.M)
+RAN = re.compile(r"^Ran (\d+) tests? in ", re.M)
+SUMMARY = re.compile(r"^(OK|FAILED)(?: \((.*)\))?$", re.M)
+
+
+def passes(text: str) -> list[tuple[int, int]]:
+    """(tests run, tests skipped) of each manage.py test pass in a run's output, in order; each pass ends with
+    a `Ran N tests` line and its summary (`OK`, `OK (skipped=K)`)."""
+    ran = [int(n) for n in RAN.findall(text)]
+    summaries = SUMMARY.findall(text)
+    assert len(ran) == len(summaries), text[-2000:]
+    skipped = [int(m.group(1)) if (m := re.search(r"skipped=(\d+)", detail)) else 0 for _, detail in summaries]
+    assert all(verdict == "OK" for verdict, _ in summaries), text[-2000:]
+    return list(zip(ran, skipped))
+
+
+def postgres_labels() -> list[str]:
+    """The modules --postgres runs: those directly under aisc_backend/tests that need a Postgres superuser."""
+    return sorted(f"aisc_backend.tests.{f.stem}" for f in TESTS.glob("*.py")
+                  if f.stem != "isolation_support" and SUPERUSER_MARK.search(f.read_text()))
+
+
+def under(test_id: str, labels: list[str]) -> bool:
+    return any(test_id == lab or test_id.startswith(lab + ".") for lab in labels)
 
 
 @pytest.fixture(scope="module")
@@ -269,12 +292,14 @@ def verbose_run():
 
 @real_runs
 @needs_backend
-def test_a_real_sqlite_run_passes_without_the_integration_package():
+def test_a_real_sqlite_run_passes_both_modes_without_the_integration_package():
     r = engine()
-    assert r.returncode == 0, (r.stdout + r.stderr)[-4000:]
     output = r.stdout + r.stderr
-    assert re.search(r"^Ran 576 tests in ", output, re.M), output[-2000:]
-    assert re.search(r"^OK \(skipped=134\)$", output, re.M), output[-2000:]
+    assert r.returncode == 0, output[-4000:]
+    # the standalone pass, then the configurator pass; each ran tests and did not skip them all
+    totals = passes(r.stderr)
+    assert len(totals) == 2, totals
+    assert all(0 < ran and skipped < ran for ran, skipped in totals), totals
     assert "aisc_backend.tests.integration" not in output
 
 
@@ -284,26 +309,27 @@ def test_a_real_verbose_run_names_every_label_and_one_line_per_test(verbose_run)
     r = verbose_run
     output = r.stdout + r.stderr
     assert r.returncode == 0, output[-4000:]
-    ids = TEST_ID.findall(output)
-    assert len(ids) == 576, len(ids)
-    labels = expected_labels()
-    assert len(labels) == 36
-    unlabelled = [i for i in ids if not any(i == lab or i.startswith(lab + ".") for lab in labels)]
-    assert not unlabelled, unlabelled[:10]
-    empty = [lab for lab in labels if not any(i == lab or i.startswith(lab + ".") for i in ids)]
-    assert not empty, f"labels with no test: {empty}"
-    assert not [i for i in ids if i.startswith("aisc_backend.tests.integration")]
-    assert "OK (skipped=134)" in output
+    totals = passes(r.stderr)
+    assert len(totals) == 2, totals
+    first_pass_end = RAN.search(r.stderr).end()
+    standalone, configurator = TEST_ID.findall(r.stderr[:first_pass_end]), TEST_ID.findall(r.stderr[first_pass_end:])
+    assert (len(standalone), len(configurator)) == (totals[0][0], totals[1][0])
+    for ids, labels in ((standalone, expected_labels()), (configurator, configurator_labels())):
+        assert labels
+        unlabelled = [i for i in ids if not under(i, labels)]
+        assert not unlabelled, unlabelled[:10]
+        empty = [lab for lab in labels if not any(under(i, [lab]) for i in ids)]
+        assert not empty, f"labels with no test: {empty}"
+    assert not [i for i in standalone + configurator if i.startswith("aisc_backend.tests.integration")]
 
 
 @real_runs
 @needs_backend
-def test_a_real_run_from_another_folder_gives_the_same_totals(tmp_path):
+def test_a_real_run_from_another_folder_gives_the_same_totals(tmp_path, verbose_run):
     r = engine(cwd=tmp_path)
     output = r.stdout + r.stderr
     assert r.returncode == 0, output[-4000:]
-    assert re.search(r"^Ran 576 tests in ", output, re.M), output[-2000:]
-    assert "OK (skipped=134)" in output
+    assert passes(r.stderr) == passes(verbose_run.stderr)
 
 
 def containers(prefix: str) -> list[str]:
@@ -322,9 +348,10 @@ def test_a_real_postgres_run_runs_every_database_test_and_removes_its_container(
     r = engine("--postgres", timeout=1800)
     output = r.stdout + r.stderr
     assert r.returncode == 0, output[-4000:]
-    assert re.search(r"^Ran 45 tests in ", output, re.M), output[-2000:]
-    assert re.search(r"^OK$", output, re.M), output[-2000:]
-    assert "skipped=" not in output
+    # every module that needs a superuser ran, and none of its tests skipped
+    [(ran, skipped)] = passes(output)
+    assert ran >= len(postgres_labels()) > 0
+    assert skipped == 0 and "skipped=" not in output
     started = CONTAINER_LINE.search(output)
     assert started, "no aisc-t-engine container was started"
     name, port = started.groups()
@@ -362,9 +389,10 @@ def test_a_postgres_run_whose_database_tests_all_skip_fails(tmp_path):
     root = scratch_root(tmp_path, text.replace("AISC_DEPLOYMENT=configurator", "AISC_DEPLOYMENT_UNUSED=configurator"))
     r = engine("--postgres", cwd=tmp_path, script=root / "scripts/lib/engine-tests.sh", timeout=1800)
     output = r.stdout + r.stderr
-    assert re.search(r"^Ran 45 tests in ", output, re.M), output[-2000:]
-    assert "OK (skipped=41)" in output, output[-2000:]
-    assert ("engine-tests: 41 database tests skipped: the throwaway database did not reach them"
+    # outside configurator mode the database tests skip; the run says so with their number and fails
+    [(ran, skipped)] = passes(output)
+    assert 0 < skipped <= ran, (ran, skipped)
+    assert (f"engine-tests: {skipped} database tests skipped: the throwaway database did not reach them"
             in r.stderr.splitlines()), r.stderr[-2000:]
     assert r.returncode == 1
     assert not [n for n in containers("aisc-t-engine") if n in output]
