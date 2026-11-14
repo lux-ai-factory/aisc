@@ -26,6 +26,12 @@
 #   runs          a run is named at launch or afterwards, shown by its name, and can be stopped from the
 #                 progress bar
 #   versions      a project may hold several versions of a test's package, one on; the one off shows no card
+#   retire        a dataset deleted while evaluations used it is retired, not removed: it leaves the test data
+#                 list and the run forms, Show retired lists it with Restore
+#   launch        a relaunch keeps the last run's helper models (its judge); a refused launch says the engine's
+#                 reason once; with no connection for a helper role the run form sends the person to Connectivity
+#   testdata      Delete on test data asks first; a refused add or edit, or a file the engine could not store, is
+#                 said with the engine's reason and the dialog stays open
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -59,14 +65,14 @@ webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place test
 webapp src/pages/PluginEvaluations.tsx reports, errors: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. Failed runs listed with their error
 webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words
 webapp src/pages/evaluationOutcome.test.ts errors: its tests
-webapp src/models/models.tsx errors, names: a run's plugin entry carries error_message; a configuration carries its name
+webapp src/models/models.tsx errors, names, retire: a run's plugin entry carries error_message; a configuration carries its name; a component carries retired_at
 webapp src/pages/PluginEvaluations.noReport.test.ts reports: no source of the app links to /report any more
-webapp src/pages/PluginStartEvaluation.tsx wording, project, identity: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name
+webapp src/pages/PluginStartEvaluation.tsx wording, project, identity, retire, launch: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name; a retired dataset is not offered for a new run; the last run's helper models come back while the project still offers them; a refused launch says the engine's reason once
 webapp src/pages/PluginStartEvaluation.launch.test.ts wording: the start button says Launch Evaluation
 webapp src/pages/PluginStartEvaluation.test.tsx project, identity: the saved selections are per project (start-eval-selections:<projectUUID>, keyed by package and name), so switching projects in one tab never restores another's
 webapp src/pages/PluginStartEvaluation.identity.test.tsx identity: two plugins of the same name are selected and run apart
 webapp src/platform/currentProject.test.ts modes: the tab's platform project; Back goes one level up, to the AI Assessment Sandbox
-webapp src/platform/currentProject.ts modes: the tab's platform project (pid only); Back goes one level up, to the AI Assessment Sandbox
+webapp src/platform/currentProject.ts modes, launch: the tab's platform project (pid only); Back goes one level up, to the AI Assessment Sandbox; the Connectivity page's address, Connections tab
 webapp src/platform/gatewaySession.test.ts modes: the gateway's session
 webapp src/platform/gatewaySession.ts modes: the gateway's session
 webapp src/pluginCatalogue/PluginInstallContext.tsx modes: install target by mode
@@ -80,13 +86,13 @@ webapp package-lock.json dependencies: npm audit high fixes within majors (axios
 webapp src/patchedDependencies.test.ts dependencies: each shipped dependency above its vulnerable range
 webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin
 webapp src/pages/pluginToggle.test.ts errors: its test
-webapp src/api/projectHelpers.ts helpers: the project's helper models, read from the platform for the run form (configurator)
-webapp src/components/AISystemSettings.tsx helpers: the AI System offers no LLM components; models a test uses as tools are the project's helper models
+webapp src/api/projectHelpers.ts helpers, launch: the project's helper models, read from the platform for the run form (configurator); the last run's helper model, while the project still offers it for the role
+webapp src/components/AISystemSettings.tsx helpers, retire, testdata: the AI System offers no LLM components; models a test uses as tools are the project's helper models; Delete says whether a dataset was deleted, retired or could not be removed, Show retired lists retired ones with Restore; Delete asks first; a refused add or edit, or a file not stored, says the reason and keeps the dialog open
 webapp src/components/AISystemSettings.test.tsx helpers: its tests
-webapp src/components/plugin/PluginEvaluationForm.tsx helpers, names: the run form picks a helper model for each role a test asks for; it shows a configuration by its name
-webapp src/components/plugin/PluginEvaluationForm.test.tsx helpers, names: its tests
+webapp src/components/plugin/PluginEvaluationForm.tsx helpers, names, retire, launch: the run form picks a helper model for each role a test asks for; it shows a configuration by its name; a retired dataset is not offered, and the last run's choice comes back only while it is in use; the last run's helper model comes back with its other inputs; with no connection for a helper role it points to Connectivity
+webapp src/components/plugin/PluginEvaluationForm.test.tsx helpers, names, launch: its tests; the pointer to Connectivity
 webapp src/components/plugin/ConfigHistory.tsx names: a configuration is listed by its name and date
-webapp src/pages/PluginsConfig.tsx names: the Configuration name field sent with Save; Config History shows the saved current configuration, not the form's live preview; the fill-from-dataset control is called Load settings from Test data; the form opens with the current configuration, not empty
+webapp src/pages/PluginsConfig.tsx names, retire: the Configuration name field sent with Save; Config History shows the saved current configuration, not the form's live preview; the fill-from-dataset control is called Load settings from Test data; the form opens with the current configuration, not empty; Load settings from Test data offers no retired dataset
 webapp src/pages/PluginsConfig.names.test.tsx names: its tests
 webapp src/components/EvaluationProgressList.tsx runs: the progress bar titles each run with its name and offers Stop (src/components/runStop.test.ts)
 webapp src/components/runStop.ts runs: the progress bar's run title and its Stop call
@@ -95,3 +101,11 @@ webapp src/components/RenameRun.tsx runs: rename a finished run from its card on
 webapp src/pages/runName.ts runs: a run's name at launch and on its card, and the rename call
 webapp src/pages/runName.test.ts runs: its tests
 webapp src/pages/PluginStartEvaluation.versions.test.tsx versions: the version off shows no card and the last-used values come back for the version on
+webapp src/models/retired.ts retire: a retired dataset is told apart and left out of the lists and run forms
+webapp src/models/retired.test.ts retire: its tests
+webapp src/components/AISystemSettings.retire.test.tsx retire, testdata: Delete, Show retired and Restore on the test data list; its tests answer Delete's question
+webapp src/components/plugin/PluginEvaluationForm.retired.test.tsx retire: the run form offers no retired dataset
+webapp src/pages/PluginStartEvaluation.relaunch.test.tsx launch: a relaunch keeps the last run's judge
+webapp src/pages/PluginStartEvaluation.refusal.test.tsx launch: a refused launch says the engine's reason once
+webapp src/components/plugin/PluginEvaluationForm.connectivity.test.tsx launch: the run form points to Connectivity for a helper role
+webapp src/components/AISystemSettings.saveFailures.test.tsx testdata: Delete asks first; refused saves say why and keep the dialog open

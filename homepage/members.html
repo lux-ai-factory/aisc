@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Members - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<style>
+  /* The launcher's tokens, fonts, header and session line are /assets/launcher.css; these are this page's own.
+     Who may do what is decided by the platform (the project's member routes); the page only shows it and
+     says the platform's reason when it refuses. */
+  main{max-width:1080px; margin:0 auto; padding:40px 32px 64px}
+  .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
+  .subtitle{margin:0 0 24px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .note{margin:0 0 18px; padding:12px 14px; border-left:3px solid var(--border-strong); color:var(--muted);
+    font-size:13.5px; max-width:95ch}
+  .note b{color:var(--text)}
+  .wrap{overflow-x:auto}
+  table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--border); min-width:640px}
+  th, td{padding:11px 14px; border-bottom:1px solid var(--border); text-align:left; vertical-align:middle; font-size:14px}
+  th{font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); background:var(--panel-2)}
+  .mono{font-family:var(--mono); font-size:12px; color:var(--muted); word-break:break-all}
+  input, select{font:inherit; font-size:13.5px; padding:7px 9px; color:var(--text); border:1px solid var(--border-strong);
+    background:var(--panel); border-radius:0; max-width:100%}
+  input:focus, select:focus{outline:2px solid var(--primary); outline-offset:-1px}
+  button.b{display:inline-flex; align-items:center; padding:7px 12px; cursor:pointer; border:1px solid var(--primary);
+    background:var(--primary); color:var(--panel); font-family:var(--mono); font-size:10.5px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase}
+  button.b.ghost{background:transparent; color:var(--primary)}
+  button.b:disabled{opacity:.5; cursor:default}
+  .row{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  form.new{display:grid; gap:10px; max-width:720px; margin-top:18px; padding:16px 18px; border:1px solid var(--border);
+    background:var(--panel)}
+  form.new label{display:grid; gap:4px; font-size:12.5px; color:var(--muted)}
+  .msg{display:block; min-height:1em; margin-top:8px; font-size:12.5px; color:var(--muted)}
+  .msg.err{color:var(--error)}
+  @media (max-width:820px){ main{padding:28px 16px 40px} }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to the project">&larr; Project</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="subtitle">Members</p>
+  <p class="note" id="page-message" hidden></p>
+  <p class="note" id="own-id" hidden>Your account id is <b class="mono" id="own-subject"></b>. To be added to another
+    project, send it to one of its owners.</p>
+
+  <div id="content" hidden>
+    <p class="note">A <b>viewer</b> reads the project, an <b>editor</b> also changes its work, an <b>owner</b> also
+      manages its members and connectivity. A project always keeps at least one owner.</p>
+    <div class="wrap"><table>
+      <thead><tr><th>Member</th><th>Account id</th><th>Role</th><th>Added</th><th></th></tr></thead>
+      <tbody id="members"></tbody>
+    </table></div>
+    <span class="msg" id="members-msg" role="status"></span>
+
+    <form class="new" id="add-member" autocomplete="off">
+      <strong>Add a member</strong>
+      <label>Account id (the person sees their own at the top of this page, from any project's address; a
+        platform admin also finds it in Keycloak, Users)
+        <input id="m-subject" type="text" required maxlength="255"/></label>
+      <label>Email (shown in this list) <input id="m-email" type="email" maxlength="320"/></label>
+      <label>Role
+        <select id="m-role">
+          <option value="viewer">viewer</option>
+          <option value="editor">editor</option>
+          <option value="owner">owner</option>
+        </select></label>
+      <div class="row"><button class="b" type="submit">Add member</button></div>
+      <span class="msg" id="m-msg" role="status"></span>
+    </form>
+  </div>
+</main>
+
+</div>
+
+<script src="/assets/page.js"></script>
+<script>
+  var slug = aisc.project();
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var enc = encodeURIComponent;
+  var base = '/api/projects/' + enc(slug) + '/members';
+  var ROLES = ['viewer', 'editor', 'owner'];
+
+  function $(id) { return document.getElementById(id); }
+  function say(id, text, isError) { var el = $(id); el.textContent = text || ''; el.className = 'msg' + (isError ? ' err' : ''); }
+  // the platform's own words for a refusal: page.js gives its detail (for example why the last owner cannot
+  // leave or lose the owner role), or that nothing answers
+  function refused(answer, what) {
+    return what + ': ' + answer.message;
+  }
+  function nameOf(m) { return m.email || m.subject; }
+
+  $('back').href = '/p/' + enc(slug);
+
+  function row(m) {
+    var tr = document.createElement('tr');
+    var who = document.createElement('td'); who.textContent = m.email || '(no email)';
+    var id = document.createElement('td'); id.className = 'mono'; id.textContent = m.subject;
+    var roleCell = document.createElement('td');
+    var role = document.createElement('select');
+    role.setAttribute('aria-label', 'Role of ' + nameOf(m));
+    ROLES.forEach(function (r) {
+      var o = document.createElement('option'); o.value = r; o.textContent = r; o.selected = r === m.role; role.appendChild(o);
+    });
+    role.addEventListener('change', function () {
+      var wanted = role.value;
+      role.disabled = true;
+      aisc.call(base + '/' + enc(m.subject), {method: 'PUT', body: {role: wanted}}).then(function (answer) {
+        role.disabled = false;
+        if (!answer.ok) { role.value = m.role; say('members-msg', refused(answer, nameOf(m) + ' keeps the role ' + m.role), true); return; }
+        m.role = wanted;
+        say('members-msg', nameOf(m) + ' is now ' + wanted + '.');
+      });
+    });
+    roleCell.appendChild(role);
+    var added = document.createElement('td'); added.className = 'mono';
+    added.textContent = m.added_at ? String(m.added_at).slice(0, 10) : '';
+    var act = document.createElement('td');
+    var remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'b ghost'; remove.textContent = 'Remove';
+    remove.addEventListener('click', function () {
+      if (!window.confirm('Remove ' + nameOf(m) + ' from this project? They lose access to all of its work.')) return;
+      remove.disabled = true;
+      aisc.call(base + '/' + enc(m.subject), {method: 'DELETE'}).then(function (answer) {
+        if (!answer.ok) { remove.disabled = false; say('members-msg', refused(answer, nameOf(m) + ' was not removed'), true); return; }
+        say('members-msg', nameOf(m) + ' was removed.');
+        load();
+      });
+    });
+    act.appendChild(remove);
+    [who, id, roleCell, added, act].forEach(function (td) { tr.appendChild(td); });
+    return tr;
+  }
+
+  function load() {
+    return aisc.call(base).then(function (answer) {
+      if (!answer.ok) {
+        $('content').hidden = true;
+        $('page-message').hidden = false;
+        $('page-message').textContent = refused(answer, 'The members could not be read');
+        return;
+      }
+      var body = $('members');
+      body.textContent = '';
+      (answer.data || []).forEach(function (m) { body.appendChild(row(m)); });
+      $('content').hidden = false;
+    });
+  }
+
+  $('add-member').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var subject = $('m-subject').value.trim();
+    var email = $('m-email').value.trim();
+    if (!subject) { say('m-msg', 'Give the account id of the person to add.', true); return; }
+    var body = {subject: subject, role: $('m-role').value};
+    if (email) body.email = email;
+    aisc.call(base, {method: 'POST', body: body}).then(function (answer) {
+      if (!answer.ok) { say('m-msg', refused(answer, 'Nobody was added'), true); return; }   // the typed values stay
+      say('m-msg', (email || subject) + ' was added as ' + body.role + '.');
+      $('m-subject').value = ''; $('m-email').value = '';
+      load();
+    });
+  });
+
+  aisc.call('/api/projects/' + enc(slug)).then(function (answer) {
+    $('project-name').textContent = answer.ok && answer.data ? answer.data.name : slug;
+  });
+  load();
+
+  aisc.call('/oauth2/userinfo').then(function (answer) {
+    var d = answer.data;
+    if (!d) return;
+    $('who').textContent = d.preferredUsername || d.user || d.email || 'user';
+    // oauth2-proxy's user is the sign-in's subject, the id the member routes take
+    if (d.user) { $('own-subject').textContent = d.user; $('own-id').hidden = false; }
+  });
+</script>
+</body>
+</html>

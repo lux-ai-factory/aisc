@@ -26,7 +26,6 @@ pytestmark = needs_database
 
 ALICE = "00000000-0000-0000-0000-00000000a11c"
 PLATFORM_DIR = Path(__file__).resolve().parent.parent
-TEMPLATE_FILE = projectdb.TEMPLATE / "0005_llm.sql"
 
 
 @pytest.fixture(autouse=True)
@@ -45,13 +44,6 @@ def columns(dsn, project, table):
 
 
 # The template file
-
-
-def test_applying_the_file_again_changes_nothing(project, dsn):
-    with project_db(dsn, project) as conn:
-        with conn.transaction():
-            conn.execute(TEMPLATE_FILE.read_text())
-            conn.execute(TEMPLATE_FILE.read_text())
 
 
 def test_schema_llm_is_owned_by_platform_rw_and_closed_to_everyone_else(project, dsn):

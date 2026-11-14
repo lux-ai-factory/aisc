@@ -286,6 +286,9 @@
       <!-- The assessed system, the Configurator's agents and the test tools: what the project connects to. -->
       <span class="group owner-only" hidden>Connectivity</span>
       <a id="connectivity-settings" class="owner-only" hidden>Connectivity</a>
+      <!-- who is in the project and with which role: an owner adds, changes and removes them -->
+      <span class="group owner-only" hidden>People</span>
+      <a id="members-settings" class="owner-only" hidden>Members</a>
       <span class="sep owner-only" hidden></span>
       <button type="button" class="danger admin-only" hidden id="delete-open">Delete this project&hellip;</button>
     </div>
@@ -403,6 +406,7 @@
       if (a.admin || a.role === 'owner') {      // an owner decides which internal hosts connections reach
         [].forEach.call(document.querySelectorAll('#manage .owner-only'), function (el) { el.hidden = false; });
         document.getElementById('connectivity-settings').href = '/connectivity.html?project=' + encodeURIComponent(slug);
+        document.getElementById('members-settings').href = '/members.html?project=' + encodeURIComponent(slug);
       }
       if (!a.admin) return;                      // what follows is an admin's only
       [].forEach.call(document.querySelectorAll('#manage .admin-only'), function (el) { el.hidden = false; });

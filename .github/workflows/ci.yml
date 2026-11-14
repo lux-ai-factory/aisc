@@ -32,6 +32,7 @@ jobs:
         include:
           - suite: identity
             run: scripts/lib/identity-tests.sh
+          # the runner starts a throwaway Postgres, MinIO and immudb, and fails on a skip it does not allow
           - suite: platform
             run: scripts/test-platform.sh -q -p no:warnings
           - suite: control-objectives
@@ -60,6 +61,9 @@ jobs:
           # the tests marked db read the live stack's Postgres: not in CI
           - suite: chart-assistant
             run: cd apps/chart-assistant && uv run --locked --extra dev pytest -q -p no:cacheprovider -m 'not db'
+          # the sign-in tests import Superset: they run inside the dashboard's own image
+          - suite: results dashboard sso
+            run: cd apps/results-dashboard && docker build -q -t aisc-t-dashboard . >/dev/null && docker run --rm -u root -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/w -v "$PWD:/w:ro" -w /w --entrypoint sh aisc-t-dashboard -c 'pip install -q pytest && python -m pytest -q -p no:cacheprovider tests/test_sso_login.py'
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -78,6 +82,10 @@ jobs:
           if [ ${#missing[@]} -gt 0 ]; then
             sudo apt-get update -q && sudo apt-get install -y -q "${missing[@]}"
           fi
+      # the proof-file store tests run on the stack's own MinIO image, built from source
+      - name: the MinIO image
+        if: matrix.suite == 'platform'
+        run: docker build -q -t aisc-minio:latest infra/minio
       - run: ${{ matrix.run }}
 
   repository-checks:
@@ -134,9 +142,17 @@ jobs:
       matrix:
         include:
           - app: qualification
+            typecheck: npx tsc --noEmit -p .
+            tests: npx vitest run test/unit test/vendor
             database: cd apps/qualification && test/db/throwaway-db.sh
           - app: controls
+            typecheck: npx tsc --noEmit -p .
+            tests: npx vitest run test/unit test/vendor
             database: scripts/lib/controls-tests.sh
+          # the engine webapp (upstream's React app): its tsconfig.json only references the two below
+          - app: webapp
+            typecheck: npx tsc --noEmit -p tsconfig.app.json && npx tsc --noEmit -p tsconfig.node.json
+            tests: npx vitest run
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -148,11 +164,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: npm ci
         working-directory: apps/${{ matrix.app }}
-      - run: npx tsc --noEmit -p .
+      - run: ${{ matrix.typecheck }}
         working-directory: apps/${{ matrix.app }}
-      - run: npx vitest run test/unit test/vendor
+      - run: ${{ matrix.tests }}
         working-directory: apps/${{ matrix.app }}
       - run: ${{ matrix.database }}
+        if: matrix.database
 
   sidecars:
     name: ${{ matrix.service }}

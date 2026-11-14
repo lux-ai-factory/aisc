@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 # The engine's (apps/backend) tests, the way CI runs them.
 #
-#   scripts/lib/engine-tests.sh [manage.py test arguments]              # sqlite, default mode
-#   scripts/lib/engine-tests.sh --postgres [manage.py test arguments]   # throwaway Postgres, configurator mode
+#   scripts/lib/engine-tests.sh [labels or files] [manage.py test options]              # sqlite
+#   scripts/lib/engine-tests.sh --postgres [labels or files] [manage.py test options]   # throwaway Postgres
 #
 # sqlite mode runs every test package and test_*.py module directly under aisc_backend/tests but `integration`
-# (upstream's, it needs a live stack) on a fresh sqlite file that is removed afterwards.
+# (upstream's, it needs a live stack) on a fresh sqlite file that is removed afterwards, in the default
+# (standalone) mode. Then it runs again, in configurator mode (AISC_DEPLOYMENT=configurator), the modules whose
+# tests are the Configurator's alone (the door, isolation, the modes: marked configurator_only, configurator_run,
+# _CONFIGURATOR_RUN or skipIf(_STANDALONE_RUN)), which a standalone run skips. A module that also needs a
+# Postgres superuser runs in --postgres instead. The run fails when either pass fails.
 #
 # --postgres runs the modules that need a Postgres superuser (the project database tests) on a throwaway
 # Postgres (scripts/lib/throwaway-pg.sh, never the stack's port) with the platform's roles, in configurator mode. Those
 # tests skip, and the run still says OK, when the database does not reach them: a run that skipped any of them
 # fails here.
+#
+# Labels (aisc_backend.tests.test_x, aisc_backend.tests.test_x.SomeCase) or files (aisc_backend/tests/test_x.py,
+# apps/backend/aisc_backend/tests/routers/test_y.py) narrow the run to them; in sqlite mode the configurator
+# pass then runs only those of them that are configurator modules. Anything else is passed to manage.py test.
 #
 # Both modes run from the engine's lock and ignore the caller's DATABASE_URL. The vendored wheels are the
 # engine's only source of the plugin interface, the plugin-manager and aisc_identity.
@@ -26,8 +34,61 @@ if [ "${1:-}" = "--postgres" ]; then
   shift
 fi
 
+CONFIGURATOR_MARK='configurator_only|configurator_run|_CONFIGURATOR_RUN|skipIf\(_STANDALONE_RUN'
+SUPERUSER_MARK='SUPERUSER_URL_VAR|superuser_url'
+
+# The package folder a dotted label names, or the module file it or its longest prefix names (a label can go on
+# to a test class and method), or nothing.
+label_path() { # label
+  local rest=$1 path
+  path="$BACKEND/$(printf '%s' "$rest" | tr . /)"
+  if [ -d "$path" ] && [ -f "$path/__init__.py" ]; then printf '%s\n' "$path"; return; fi
+  while [ -n "$rest" ]; do
+    path="$BACKEND/$(printf '%s' "$rest" | tr . /)"
+    if [ -f "$path.py" ]; then printf '%s\n' "$path.py"; return; fi
+    [ "${rest%.*}" = "$rest" ] && return
+    rest=${rest%.*}
+  done
+}
+
+# The configurator modules in a file or folder, as dotted labels.
+configurator_modules() { # path
+  local file
+  while IFS= read -r file; do
+    case "$file" in */aisc_backend/tests/integration/*) continue ;; esac
+    if grep -qE "$CONFIGURATOR_MARK" "$file" && ! grep -qE "$SUPERUSER_MARK" "$file"; then
+      file=${file#"$BACKEND"/}
+      file=${file%.py}
+      printf '%s\n' "$file" | tr / .
+    fi
+  done < <(if [ -d "$1" ]; then find "$1" -name 'test_*.py' -type f; else printf '%s\n' "$1"; fi)
+}
+
+# the caller's labels and files, then the options for manage.py test
+given=()
+options=()
+for arg in "$@"; do
+  case "$arg" in
+    *.py|*/*)
+      arg=${arg#"$BACKEND"/}
+      arg=${arg#apps/backend/}
+      arg=${arg%.py}
+      given+=("$(printf '%s' "$arg" | tr / .)") ;;
+    aisc_backend.*) given+=("$arg") ;;
+    *) options+=("$arg") ;;
+  esac
+done
+for label in ${given[@]+"${given[@]}"}; do
+  if [ -z "$(label_path "$label")" ]; then
+    echo "engine-tests: $label names no test module of the engine" >&2
+    exit 2
+  fi
+done
+
 labels=()
-if [ $postgres = 0 ]; then
+if [ ${#given[@]} -gt 0 ]; then
+  labels=("${given[@]}")
+elif [ $postgres = 0 ]; then
   for entry in "$TESTS"/*; do
     name=$(basename "$entry")
     if [ -d "$entry" ] && [ -f "$entry/__init__.py" ] && [ "$name" != integration ]; then
@@ -45,18 +106,32 @@ else
     fi
   done
 fi
-sorted=()   # sorted with a read loop, which bash 3.2 (macOS) also has
-while IFS= read -r label; do sorted+=("$label"); done < <(printf '%s\n' "${labels[@]}" | LC_ALL=C sort)
-labels=("${sorted[@]}")
+if [ ${#given[@]} -eq 0 ]; then
+  sorted=()   # sorted with a read loop, which bash 3.2 (macOS) also has
+  while IFS= read -r label; do sorted+=("$label"); done < <(printf '%s\n' "${labels[@]}" | LC_ALL=C sort)
+  labels=("${sorted[@]}")
+fi
 
 if [ $postgres = 0 ]; then
+  # the configurator pass: the configurator modules among the labels, each once, sorted
+  configurator=()
+  while IFS= read -r label; do [ -n "$label" ] && configurator+=("$label"); done < <(
+    for label in "${labels[@]}"; do configurator_modules "$(label_path "$label")"; done | LC_ALL=C sort -u)
+
   db_folder=$(mktemp -d)
   trap 'rm -rf "$db_folder"' EXIT
   cd "$BACKEND"
   status=0
   env -u DATABASE_URL -u AISC_DEPLOYMENT \
     DB_ENGINE=django.db.backends.sqlite3 DB_NAME="$db_folder/engine-tests.db" \
-    "${RUNNER[@]}" "${labels[@]}" "$@" || status=$?
+    "${RUNNER[@]}" "${labels[@]}" ${options[@]+"${options[@]}"} || status=$?
+  if [ ${#configurator[@]} -gt 0 ]; then
+    configurator_status=0
+    env -u DATABASE_URL AISC_DEPLOYMENT=configurator \
+      DB_ENGINE=django.db.backends.sqlite3 DB_NAME="$db_folder/engine-configurator-tests.db" \
+      "${RUNNER[@]}" "${configurator[@]}" ${options[@]+"${options[@]}"} || configurator_status=$?
+    [ $status = 0 ] && status=$configurator_status
+  fi
   exit $status
 fi
 
@@ -75,7 +150,7 @@ env -u DATABASE_URL \
   AISC_DEPLOYMENT=configurator \
   DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw \
   DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
-  "${RUNNER[@]}" "${labels[@]}" "$@" 2>&1 | tee "$output" || status=$?
+  "${RUNNER[@]}" "${labels[@]}" ${options[@]+"${options[@]}"} 2>&1 | tee "$output" || status=$?
 summary=$(grep -E '^(OK|FAILED)( \(|$)' "$output" | tail -1 || true)
 rm -f "$output"
 if [[ "$summary" =~ skipped=([0-9]+) ]]; then

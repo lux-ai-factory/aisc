@@ -60,26 +60,26 @@ def test_deleting_a_project_removes_its_bucket_and_files(fake, client, make_proj
 
 
 def test_a_bucket_that_cannot_be_made_undoes_the_project(fake, client, as_user, unique, dsn):
-    import psycopg
-
-    from platform_service import projectdb
-
+    # databases other tests left without a project are not this test's: only a new one counts
+    before = _project_dbs_without_a_project(dsn)
     fake.down = True
     slug = unique()
     r = client.post("/projects", json={"name": slug, "slug": slug}, headers=as_user("alice"))
     assert r.status_code == 503, r.text
     fake.down = False
     assert client.get(f"/projects/{slug}", headers=as_user("root", roles=("admin",))).status_code == 404
-    with psycopg.connect(dsn) as conn:
-        names = [r[0] for r in conn.execute("SELECT datname FROM pg_database").fetchall()]
-    assert not [n for n in names if n.startswith("project_") and n not in _live_project_dbs(dsn, projectdb)]
+    assert _project_dbs_without_a_project(dsn) - before == set()
 
 
-def _live_project_dbs(dsn, projectdb):
+def _project_dbs_without_a_project(dsn):
     import psycopg
 
+    from platform_service import projectdb
+
     with psycopg.connect(dsn) as conn:
-        return {projectdb.database_name(r[0]) for r in conn.execute("SELECT pid FROM core.project").fetchall()}
+        names = {r[0] for r in conn.execute("SELECT datname FROM pg_database").fetchall()}
+        live = {projectdb.database_name(r[0]) for r in conn.execute("SELECT pid FROM core.project").fetchall()}
+    return {n for n in names if n.startswith("project_")} - live
 
 
 def test_a_project_still_made_when_no_store_is_set_up(monkeypatch, make_project):

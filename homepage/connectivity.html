@@ -332,23 +332,42 @@
     return box;
   }
 
+  // Roles ticked or unticked but not saved yet, by connection: the table is drawn again after every save, and
+  // a row keeps what the person ticked until its own Save roles sends it.
+  var unsavedRoles = {};
+
   function roleEditor(c) {
     var box = el('div', 'roles');
     if (assessedBy(c) !== null) { box.textContent = '(assessed)'; return box; }
     var current = [];
     c.used_for.forEach(function (u) { if (u.use === 'tool') current = u.roles; });
+    var shown = unsavedRoles[c.name] || current;
+    var marker = el('span', 'pill', 'not saved');
+    marker.hidden = !unsavedRoles[c.name];
+    var ticked = function () {
+      return [].filter.call(box.querySelectorAll('input'), function (i) { return i.checked; })
+               .map(function (i) { return i.value; });
+    };
     data.roles.forEach(function (role) {
       var label = el('label'); var box2 = el('input'); box2.type = 'checkbox'; box2.value = role;
-      box2.checked = current.indexOf(role) >= 0;
+      box2.checked = shown.indexOf(role) >= 0;
+      box2.addEventListener('change', function () {
+        var now = ticked();
+        var same = now.length === current.length && now.every(function (r) { return current.indexOf(r) >= 0; });
+        if (same) delete unsavedRoles[c.name]; else unsavedRoles[c.name] = now;
+        marker.hidden = same;
+      });
       label.appendChild(box2); label.appendChild(document.createTextNode(role)); box.appendChild(label);
     });
     var save = el('button', 'b ghost', 'Save roles'); save.type = 'button';
     save.addEventListener('click', function () {
-      var roles = [].filter.call(box.querySelectorAll('input'), function (i) { return i.checked; })
-                    .map(function (i) { return i.value; });
+      var roles = ticked();
+      if (!roles.length && current.length && !confirm('Nothing is ticked for ' + c.label + '. Saving removes it as a '
+          + 'test tool: every test that uses it as ' + current.join(', ') + ' no longer can. Remove it?')) return;
       saveTool(c.name, roles);
     });
     box.appendChild(save);
+    box.appendChild(marker);
     return box;
   }
 
@@ -360,7 +379,9 @@
       // a connection's settings (provider, address, whether a key is stored) come to an admin only
       cell(tr, c.kind === 'provider' ? (c.provider ? 'Provider: ' + c.provider : 'Provider') : c.protocol || c.kind);
       cell(tr, c.base_url || '', 'mono');
-      cell(tr, 'has_secret' in c ? el('span', 'pill' + (c.has_secret ? ' ok' : ''), c.has_secret ? 'stored' : 'none') : '');
+      // an adapter's connection keeps its token as a secret setting, apart from an ordinary key
+      var stored = c.has_secret || (c.secret_settings || []).length > 0;
+      cell(tr, 'has_secret' in c ? el('span', 'pill' + (stored ? ' ok' : ''), stored ? 'stored' : 'none') : '');
       cell(tr, usedFor(c));
       cell(tr, roleEditor(c));
       body.appendChild(tr);
@@ -403,6 +424,7 @@
     var done = roles.length ? api(path, 'PUT', {roles: roles}) : api(path, 'DELETE');
     done.then(function (r) {
       if (!r.ok && !(r.status === 404 && !roles.length)) { say('connections-msg', refusal(r), true); return; }
+      delete unsavedRoles[name];
       say('connections-msg', 'Saved.'); reload();
     });
   }

@@ -164,6 +164,9 @@
       <!-- The assessed system, the Configurator's agents and the test tools: what the project connects to. -->
       <span class="group owner-only" hidden>Connectivity</span>
       <a id="connectivity-settings" class="owner-only" hidden>Connectivity</a>
+      <!-- who is in the project and with which role: an owner adds, changes and removes them -->
+      <span class="group owner-only" hidden>People</span>
+      <a id="members-settings" class="owner-only" hidden>Members</a>
       <span class="sep owner-only" hidden></span>
     </div>
   </details>
@@ -493,6 +496,7 @@
         reveal('#manage .member-only');
         if (a.admin || a.role === 'owner') {
           $('connectivity-settings').href = '/connectivity.html?project=' + enc(slug);
+          $('members-settings').href = '/members.html?project=' + enc(slug);
           reveal('#manage .owner-only');
         }
         if (!a.admin) return;
