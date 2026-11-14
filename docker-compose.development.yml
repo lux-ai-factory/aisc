@@ -94,6 +94,8 @@ services:
       # read PLATFORM_ENGINE_TOKEN; the token grants only that answer (connected, protocol), no key
       PLATFORM_URL: http://platform:8000
       PLATFORM_ENGINE_TOKEN: ${PLATFORM_ENGINE_TOKEN:?run scripts/secrets.sh first}
+      # the largest component file or plugin artifact it stores, in MB (the platform's cap of a target file too)
+      TARGET_FILE_MAX_MB: ${TARGET_FILE_MAX_MB:-2048}
     networks:
       - backend
     depends_on:
@@ -987,6 +989,8 @@ services:
       # versioned master keys, and the tokens of the callers that post events.
       LEDGER_MODE: ${LEDGER_MODE:-record}
       PLATFORM_ADAPTERS_DIR: /app/adapters
+      # the largest file that may reach a target, in MB; the engine is given the same cap
+      TARGET_FILE_MAX_MB: ${TARGET_FILE_MAX_MB:-2048}
       AISC_WITNESS_GATEWAY_SECRET: ${AISC_WITNESS_GATEWAY_SECRET:?run scripts/secrets.sh first}
       AISC_GATEWAY_CLIENT_ID: aisc-gateway
       LEDGER_IMMUDB_URL: immudb:3322

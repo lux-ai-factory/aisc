@@ -843,6 +843,8 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
 
 #: the largest file that may reach a target, in MB (TARGET_FILE_MAX_MB)
 TARGET_FILE_MAX_MB = 2048
+#: the engine's answers that refuse the file itself (too large, wrong type, empty): passed on as they are
+ENGINE_FILE_REFUSALS = frozenset({413, 415, 422})
 #: what a target file's name may be: the name the person's file had, without folders
 TARGET_FILE_NAME = re.compile(r"[^/\\\x00-\x1f]{1,255}")
 
@@ -893,6 +895,9 @@ async def upload_target_file(slug: str, key: str, request: Request, name: str = 
                                                         " or a data component takes a file") from None
         except engine_components.EngineUnavailable as exc:
             logger.warning("file of target %s of project %s not stored: %s", key, pid, exc)
+            if exc.status in ENGINE_FILE_REFUSALS:
+                raise HTTPException(status_code=exc.status, detail="the engine refused the file: "
+                                    + (exc.detail or f"it answered {exc.status}")[:200]) from None
             raise HTTPException(status_code=502, detail="the engine did not take the file: try again later") from None
     return {"key": key, "name": name, "size": size, "sha256": digest.hexdigest()}
 
