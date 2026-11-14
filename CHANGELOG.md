@@ -3,6 +3,13 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- `AUTH_ENABLED` and `LEDGER_MODE` are read strictly by every service: on words `1 true yes on`, off words
+  `0 false no off`, ledger modes `off record enforce`, case and surrounding spaces ignored. Any other value, an
+  empty one included, stops the service at start with a message naming the variable, where it used to mean off.
+  An absent `LEDGER_MODE` now means `record` (the stack already sets `record`); a standalone engine still records
+  nothing. The platform writes a `ledger.mode` event to its own log at every start, off included. After the
+  restart, `scripts/verify-switches.sh` (also run by `verify.sh --stack`) checks the switches, the latest
+  `ledger.mode`, that Redis answers `NOAUTH` and that no log holds a token-shaped string.
 - Backups: `bash scripts/backup-databases.sh` backs up every database, the immudb ledger and its key, MinIO's
   files and the secrets file (encrypted), and restores each into a throwaway to compare it
   (`docs/runbooks/restore-a-backup.md`). Make its passphrase file first. `bash scripts/schedule.sh --install` runs
