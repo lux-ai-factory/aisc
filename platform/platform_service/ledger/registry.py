@@ -108,6 +108,9 @@ _ACTIONS = [
     # a frozen content redacted on the operator's word (secret_cleanup.py), appended by the platform itself
     _a("ledger.content.redacted", 0, (), "ledger", origin="platform", actor_kinds=("system",), per_request=None,
        details_keys=("event_ids", "reason", "count")),
+    # the mode the ledger started in, written at every start whatever it is, so a period with it off shows
+    _a("ledger.mode", 0, (), "ledger", origin="platform", actor_kinds=("system",), per_request=None,
+       details_keys=("mode",)),
     _a("ledger.reanchored", 0, (), "ledger", origin="platform",
        caused_by=(("platform", "POST", r"^/api/ledger/reanchor$"),), details_keys=("old_head", "new_head", "project")),
     # browser-reported, through the beacon

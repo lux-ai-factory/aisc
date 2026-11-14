@@ -356,6 +356,11 @@ class _Rejected(Exception):
         self.reason = reason
 
 
+#: Events the platform itself writes to core.outbox for its own log, with no request behind them (the ledger's
+#: mode at start). Only the platform writes core.outbox, and only these skip the request and emitter checks.
+_PLATFORM_OUTBOX_SYSTEM_EVENTS = ("ledger.mode",)
+
+
 def _judge(ev: dict, app: str | None, pid, log: str, project) -> dict:
     """The trusted entry for an event, or _Rejected with the first failing check, or _Hold."""
     action = registry.REGISTRY.get(ev["action"])
@@ -368,10 +373,11 @@ def _judge(ev: dict, app: str | None, pid, log: str, project) -> dict:
         raise _Rejected("unknown_action")
     if app is None:
         raise _Rejected("emitter")
+    own = ev["action"] in _PLATFORM_OUTBOX_SYSTEM_EVENTS and app == "platform" and ev["project_pid"] is None
     sent = {k: v for k, v in ev.items() if k not in ("extra", "occurred_at", "project_pid", "registry_version")
             and v is not None}
     sent.update(ev.get("extra") or {})
-    problems = registry.check(sent, emitter=app)
+    problems = registry.check(sent, emitter=None if own else app)
     if problems:
         raise _Rejected(problems[0])
 
@@ -385,6 +391,8 @@ def _judge(ev: dict, app: str | None, pid, log: str, project) -> dict:
         "before_sha256": secrets.state_digest(pid, ev["before"]) if ev["before"] is not None else None,
         "after_sha256": secrets.state_digest(pid, ev["after"]) if ev["after"] is not None else None,
     }
+    if own:                                                           # no person and no request behind it
+        return {**base, "actor_kind": "system", "actor_ref": None, "program": "platform"}
     if {"ai", "worker"} & set(action.actor_kinds) and "user" not in action.actor_kinds:
         return {**base, **_judge_run(ev, app, action, log)}
     return {**base, **_judge_request(ev, app, action, pid, log, project)}
