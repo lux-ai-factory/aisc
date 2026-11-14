@@ -45,7 +45,7 @@ run(){ # name | command
 
 if [ "$ONLY" != "--modules" ]; then
   line "the running stack"
-  for s in verify-db-access.sh verify-project-databases.sh verify-sso.sh verify-rbac.sh verify-plugins.sh; do
+  for s in verify-db-access.sh verify-project-databases.sh verify-sso.sh verify-rbac.sh verify-plugins.sh verify-switches.sh; do
     if [ -x "scripts/$s" ]; then run "$s" "scripts/$s"; else skipped "$s" "not executable"; fi
   done
   # the checks ported to scripts/stackcheck, beside their bash scripts until each group is proven on a live stack
