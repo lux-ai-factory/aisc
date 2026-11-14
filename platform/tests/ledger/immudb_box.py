@@ -39,6 +39,21 @@ def _free_port() -> int:
             return port
 
 
+def wait_for(url: str, admin_password: str, timeout_s: float = 60) -> None:
+    """Wait until the immudb at url (host:port) lets its superuser log in."""
+    from immudb import ImmudbClient
+
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            ImmudbClient(url).login("immudb", admin_password)
+            return
+        except Exception:                                               # noqa: BLE001
+            if time.monotonic() > deadline:
+                raise AssertionError(f"the immudb on {url} did not accept its superuser within {timeout_s:g} s")
+            time.sleep(0.5)
+
+
 class ImmudbBox:
     def __init__(self, admin_password: str | None = None):
         self.name = "aisc-t-immu-" + secrets.token_hex(4)
@@ -59,17 +74,7 @@ class ImmudbBox:
         self._wait()
 
     def _wait(self) -> None:
-        from immudb import ImmudbClient
-
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                ImmudbClient(self.url).login("immudb", self.admin_password)
-                return
-            except Exception:                                           # noqa: BLE001
-                if time.monotonic() > deadline:
-                    raise AssertionError(f"{self.name} did not accept its superuser within 60 s")
-                time.sleep(0.5)
+        wait_for(self.url, self.admin_password)
 
     def recreate(self, admin_password: str) -> None:
         """Remove the container and start a new one on the same volume with this superuser password and
