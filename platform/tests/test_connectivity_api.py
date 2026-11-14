@@ -49,6 +49,13 @@ def put_provider(client, project, headers, name="work-openai", **body):
 
 # ---- provider connections ------------------------------------------------------------------------
 
+def without_rule(answer: dict) -> dict:
+    """A resolve answer without the project's network rule, which it always carries."""
+    rule = ("allowed_hosts", "denied_addresses", "floor_hosts")
+    assert set(rule) <= set(answer), sorted(answer)
+    return {k: v for k, v in answer.items() if k not in rule}
+
+
 def test_an_admin_adds_a_provider_connection_and_never_gets_its_key_back(client, admin, project):
     key = new_key()
     r = put_provider(client, project, admin, secret=key)
@@ -95,8 +102,9 @@ def test_an_admin_runs_an_agent_on_a_provider_connection(client, admin, project)
 
     assert r.status_code == 200, r.text
     resolved = client.get(f"/internal/projects/{project['pid']}/llm/card_agent", headers={SERVICE: INTERNAL_TOKEN})
-    assert resolved.json() == {"configured": True, "provider": "openai", "model": "gpt-test", "base_url": None,
-                               "api_key": key, "chat_base_url": "https://api.openai.com/v1"}
+    assert without_rule(resolved.json()) == {"configured": True, "provider": "openai", "model": "gpt-test",
+                                             "base_url": None, "api_key": key,
+                                             "chat_base_url": "https://api.openai.com/v1"}
 
 
 def test_an_agent_runs_only_on_a_provider_connection(client, admin, project):
@@ -146,8 +154,8 @@ def test_an_owner_makes_a_provider_connection_a_test_tool(client, admin, as_user
         ("work-openai", f"helper:{project['pid']}/work-openai")]
     resolved = client.get(f"/internal/projects/{project['pid']}/helpers/work-openai/resolve",
                           headers={SERVICE: CONNECTIONS_TOKEN})
-    assert resolved.json() == {"label": "OpenAI (work)", "endpoint_url": "https://api.openai.com/v1",
-                               "roles": ["judge", "grader"], "api_key": key}
+    assert without_rule(resolved.json()) == {"label": "OpenAI (work)", "endpoint_url": "https://api.openai.com/v1",
+                                             "roles": ["judge", "grader"], "api_key": key}
 
 
 def test_a_connection_that_reaches_the_assessed_system_is_never_a_test_tool(client, admin, project):
