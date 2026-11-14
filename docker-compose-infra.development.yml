@@ -105,11 +105,17 @@ services:
     image: redis:7.4.11-alpine
     container_name: ${CONTAINER_PREFIX:-}redis
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
     volumes:
       - redis_data:/data
     networks:
       - backend
-    command: redis-server --protected-mode no
+    # the password goes through a config file, so it is not in the server's command line; the image's own
+    # entrypoint then runs the server as the redis user, as it did before
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'umask 077 && printf "requirepass %s\ndir /data\n" "$$REDIS_PASSWORD" > /tmp/redis.conf && chown redis /tmp/redis.conf && exec docker-entrypoint.sh redis-server /tmp/redis.conf'
 
   # PostgreSQL: the platform database, one database per project, Keycloak's and Superset's
   postgres:

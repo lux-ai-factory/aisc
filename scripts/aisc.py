@@ -247,6 +247,9 @@ SECRETS = [
     ("DASHBOARD_RO_PASSWORD", "rand"),
     # the dashboard's own Redis (Superset's cache, dashboard-redis): its password, held by the dashboard only
     ("DASHBOARD_REDIS_PASSWORD", "rand"),
+    # the shared Redis, where the worker's Celery results are kept: the backend's URL carries it (REDIS_BACKEND_URL
+    # in env.plugin_downloader refers to it), the worker and flower build theirs from it
+    ("REDIS_PASSWORD", "rand"),
     # the ledger witness: Caddy sends it, the platform checks it
     ("AISC_WITNESS_GATEWAY_SECRET", "rand"),
     # one token per caller that posts ledger events, held by it and the platform only
@@ -263,6 +266,9 @@ SECRETS = [
 # The infrastructure passwords: their volumes hold them (see the top of this file).
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
                 "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
+# What env.runtime defines first, from env.secrets only: compose expands a setting built from one of these with the
+# values defined above it (CELERY_BROKER_URL holds $RABBITMQ_PASSWORD, REDIS_BACKEND_URL $REDIS_PASSWORD).
+FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
 # DEVPI_ROOT_PASSWORD: devpi's volume holds root's password and devpi refuses to start on another one.
 # SUPERSET_SECRET_KEY: it encrypts the database connections Superset stores; to change it, set
@@ -283,7 +289,7 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "QUALIFICATION_WEB_TO_PDF_TOKEN", "CONTROLS_WEB_TO_PDF_TOKEN", "IMMUDB_ADMIN_PASSWORD",
                    "PLATFORM_RW_PASSWORD", "QUALIFICATION_RW_PASSWORD", "CONTROL_OBJECTIVES_RW_PASSWORD",
                    "CONTROLS_RW_PASSWORD", "ENGINE_RW_PASSWORD", "RUN_TICKET_KEY", "DASHBOARD_RO_PASSWORD",
-                   "DASHBOARD_REDIS_PASSWORD", "AISC_WITNESS_GATEWAY_SECRET", "PLATFORM_LEDGER_ENGINE_TOKEN",
+                   "DASHBOARD_REDIS_PASSWORD", "REDIS_PASSWORD", "AISC_WITNESS_GATEWAY_SECRET", "PLATFORM_LEDGER_ENGINE_TOKEN",
                    "PLATFORM_LEDGER_DASHBOARD_TOKEN", "PLATFORM_LEDGER_AGENTS_TOKEN", "PLUGIN_PUBLISHER_TOKEN",
                    "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
@@ -538,7 +544,7 @@ def write_runtime() -> None:
     $RABBITMQ_PASSWORD) with the values defined above it in the file."""
     def infra(line: str) -> bool:
         name = line.split("=", 1)[0]
-        return " " not in name and name in VOLUME_BOUND
+        return " " not in name and name in FIRST_IN_RUNTIME
 
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones

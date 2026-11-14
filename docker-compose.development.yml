@@ -213,6 +213,8 @@ services:
       API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      # the worker builds its Redis URL from this (aisc_eval/utils/env.py); never passed to a plugin
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
@@ -251,6 +253,7 @@ services:
     environment:
       AISC_DEPLOYMENT: configurator
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       FLOWER_URL_PREFIX: flower
     depends_on:

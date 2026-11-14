@@ -3,6 +3,9 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- New secret `REDIS_PASSWORD`: the shared Redis (the worker's Celery results) asks for it. `uv run scripts/aisc.py
+  start` adds it without changing any other secret; the redis, backend, eval worker and flower containers take it
+  when they are recreated. Results of tasks in flight at that restart are lost, so restart with no run going.
 - Flower (the eval queue monitor) no longer starts with the stack: it read every project's task arguments on the
   internal network without a login. Start it when needed with `COMPOSE_PROFILES=inspect ./scripts/start.sh`.
 - Sign-in lockout is on: five wrong passwords lock an account for 60 s, growing to at most 15 minutes. Start
