@@ -191,6 +191,9 @@ SECRETS = [
     ("GATEWAY_COOKIE_SECRET", "cookie"),
     ("GATEWAY_CLIENT_SECRET", "rand"),
     ("DJANGO_SECRET_KEY", "rand"),
+    # the engine's own key for the credentials it stores (aisc_backend/utils/encryption.py), held by the backend and
+    # the eval worker; values stored before it, under DJANGO_SECRET_KEY, still decrypt
+    ("ENGINE_SECRETS_KEY", "fernet"),
     ("INTERNAL_API_KEY", "rand"),
     ("SUPERSET_SECRET_KEY", "rand"),
     # signs the dashboard's guest tokens (embedding is on): never Superset's published default
@@ -247,6 +250,9 @@ SECRETS = [
     ("DASHBOARD_RO_PASSWORD", "rand"),
     # the dashboard's own Redis (Superset's cache, dashboard-redis): its password, held by the dashboard only
     ("DASHBOARD_REDIS_PASSWORD", "rand"),
+    # the shared Redis, where the worker's Celery results are kept: the backend's URL carries it (REDIS_BACKEND_URL
+    # in env.plugin_downloader refers to it), the worker and flower build theirs from it
+    ("REDIS_PASSWORD", "rand"),
     # the ledger witness: Caddy sends it, the platform checks it
     ("AISC_WITNESS_GATEWAY_SECRET", "rand"),
     # one token per caller that posts ledger events, held by it and the platform only
@@ -263,14 +269,24 @@ SECRETS = [
 # The infrastructure passwords: their volumes hold them (see the top of this file).
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
                 "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
+# What env.runtime defines first, from env.secrets only: compose expands a setting built from one of these with the
+# values defined above it (CELERY_BROKER_URL holds $RABBITMQ_PASSWORD, REDIS_BACKEND_URL $REDIS_PASSWORD).
+FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
 # DEVPI_ROOT_PASSWORD: devpi's volume holds root's password and devpi refuses to start on another one.
 # SUPERSET_SECRET_KEY: it encrypts the database connections Superset stores; to change it, set
 # PREVIOUS_SECRET_KEY to the old one and run `superset re-encrypt-secrets` in the dashboard container.
-# DJANGO_SECRET_KEY: the engine encrypts the credentials it stores with it (aisc_backend/utils/encryption.py),
-# so a new one would leave them unreadable.
+# ENGINE_SECRETS_KEY: the engine encrypts the credentials it stores with it (aisc_backend/utils/encryption.py).
+# DJANGO_SECRET_KEY: credentials the engine stored before ENGINE_SECRETS_KEY existed are under a key derived from
+# it, so it stays kept until every stored value has been encrypted again under ENGINE_SECRETS_KEY.
 KEPT_ON_ROTATE = ("PLATFORM_SECRETS_KEY", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD", "PLATFORM_LEDGER_KEYS",
-                  "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", "DJANGO_SECRET_KEY", *VOLUME_BOUND)
+                  "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY",
+                  *VOLUME_BOUND)
+# The keys that open what is stored: an emptied line for one of them is refused, never made again, since every value
+# encrypted or signed under the old key would become unreadable or unverifiable. PLATFORM_SECRETS_KEY opens the stored
+# LLM keys, ENGINE_SECRETS_KEY and DJANGO_SECRET_KEY the engine's stored credentials, PLATFORM_LEDGER_KEYS checks the
+# ledger's past signatures.
+NEVER_MADE_AGAIN = ("PLATFORM_SECRETS_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY", "PLATFORM_LEDGER_KEYS")
 # What --rotate replaces: every other secret, named here so that a secret added to SECRETS is put in one of the
 # two by a decision (scripts/tests/test_aisc_py.py fails until it is), never fresh by default.
 FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_API_KEY", "SUPERSET_GUEST_TOKEN_SECRET",
@@ -283,7 +299,7 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "QUALIFICATION_WEB_TO_PDF_TOKEN", "CONTROLS_WEB_TO_PDF_TOKEN", "IMMUDB_ADMIN_PASSWORD",
                    "PLATFORM_RW_PASSWORD", "QUALIFICATION_RW_PASSWORD", "CONTROL_OBJECTIVES_RW_PASSWORD",
                    "CONTROLS_RW_PASSWORD", "ENGINE_RW_PASSWORD", "RUN_TICKET_KEY", "DASHBOARD_RO_PASSWORD",
-                   "DASHBOARD_REDIS_PASSWORD", "AISC_WITNESS_GATEWAY_SECRET", "PLATFORM_LEDGER_ENGINE_TOKEN",
+                   "DASHBOARD_REDIS_PASSWORD", "REDIS_PASSWORD", "AISC_WITNESS_GATEWAY_SECRET", "PLATFORM_LEDGER_ENGINE_TOKEN",
                    "PLATFORM_LEDGER_DASHBOARD_TOKEN", "PLATFORM_LEDGER_AGENTS_TOKEN", "PLUGIN_PUBLISHER_TOKEN",
                    "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
@@ -538,7 +554,7 @@ def write_runtime() -> None:
     $RABBITMQ_PASSWORD) with the values defined above it in the file."""
     def infra(line: str) -> bool:
         name = line.split("=", 1)[0]
-        return " " not in name and name in VOLUME_BOUND
+        return " " not in name and name in FIRST_IN_RUNTIME
 
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
@@ -941,6 +957,12 @@ def make_secrets(args: list[str], hint: bool = True) -> None:
         raise Refused(f"secrets does not take {mode}: it takes --rotate, --rotate-one NAME or --add-ledger-key "
                       "(or nothing, to keep the values and add any that are missing). Nothing changed.", 2)
     existed = Path(OUT).is_file()
+    if existed:
+        emptied = [name for name in NEVER_MADE_AGAIN if f"{name}=" in lines_of(OUT)]
+        if emptied:
+            raise Refused(f"{OUT} has an empty {', '.join(emptied)}. A new value would leave what is stored under the "
+                          "old one unreadable, so none is made. Put the old value back (from env.runtime, if it still "
+                          "holds it, or from a backup of the secrets file), then run this again. Nothing changed.")
     if mode == "--add-ledger-key":
         add_ledger_key()
     elif mode == "--rotate-one":
@@ -1894,9 +1916,28 @@ def stop(_args: list[str]) -> None:
     say(f"Stopped the containers of {PROJECT}. Their data is kept: run start to bring them back.")
 
 
+def offer_backup() -> None:
+    """Before the volumes go: ask whether to back them up first (scripts/backup-databases.sh, every part restored
+    and counted), and say where. A backup that does not pass stops the removal."""
+    folder = os.environ.get("AISC_BACKUP_DIR") or str(Path.home() / "aisc-backups" / PROJECT)
+    try:
+        answer = input(f"Back up its databases, ledger, files and secrets first, to {folder} "
+                       "(scripts/backup-databases.sh)? [y/N]: ")
+    except EOFError:
+        answer = ""
+    if answer.strip().lower() not in ("y", "yes"):
+        return
+    try:
+        done = subprocess.run(["bash", str(ROOT / "scripts/backup-databases.sh"), "--dir", folder], cwd=ROOT)
+    except FileNotFoundError:
+        raise Refused("there is no bash here to run scripts/backup-databases.sh; nothing was removed") from None
+    if done.returncode != 0:
+        raise Refused(f"the backup did not pass (see above); nothing was removed. What it wrote is in {folder}")
+
+
 def remove(_args: list[str]) -> None:
-    """Delete this install's containers and volumes (all its data), after the person types this folder's name.
-    No answer, or any other, removes nothing."""
+    """Delete this install's containers and volumes (all its data), after the person types this folder's name and
+    is offered a backup. No answer, or any other, removes nothing."""
     argv = own_compose("remove")
     try:
         typed = input(f"This deletes this install's containers and all its data (stack {PROJECT}). "
@@ -1905,6 +1946,7 @@ def remove(_args: list[str]) -> None:
         typed = ""
     if typed.strip() != ROOT.name:
         raise Refused("nothing was removed")
+    offer_backup()
     run_compose([*argv, "down", "-v", "--remove-orphans"])
     say(f"Removed the containers and data of {PROJECT}. This folder can now be deleted.")
 

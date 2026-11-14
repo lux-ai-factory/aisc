@@ -5,9 +5,10 @@ by the plugin-side guard (aisc_plugin_interface.connections.guard_url) unless it
 by the deployment's CONNECTIONS_ALLOWED_HOSTS (the floor, set by the operator and not editable
 here) or by the project's own entries (connection.allowed_host, edited by its owners and
 platform admins). Some addresses are never allowed from the UI: the stack's own services,
-loopback (the platform itself) and cloud metadata. They are refused when an entry is saved and
-again at every call, on the resolved address, so re-pointing an allowed name reaches none of
-them. The floor may still allow them: that is the operator's explicit choice.
+loopback (the platform itself, also written 0.0.0.0, :: or as a mapped IPv6) and cloud metadata.
+They are refused when an entry is saved and again at every call, on the resolved address, so
+re-pointing an allowed name reaches none of them: loopback is reached only by the floor's hosts.
+The floor may still allow them: that is the operator's explicit choice.
 
 The rule of a project is computed at every call (its name lookups kept up to
 PLATFORM_ALLOWLIST_CACHE_S seconds), so a change applies with no restart; the
@@ -21,6 +22,7 @@ import re
 import socket
 import threading
 import time
+from collections.abc import Iterable
 
 from platform_service import connection_store
 
@@ -149,8 +151,23 @@ def floor() -> list[str]:
     return [h.strip().lower() for h in (os.environ.get("CONNECTIONS_ALLOWED_HOSTS") or "").split(",") if h.strip()]
 
 
+def _as_ipv4(ip):
+    """The IPv4 address an IPv6 one carries (IPv4-mapped, 6to4, NAT64), else the address itself, as the
+    plugin-side guard reads it."""
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return ip.ipv4_mapped
+        if ip.sixtofour is not None:
+            return ip.sixtofour
+        if ip in ipaddress.IPv6Network("64:ff9b::/96"):
+            return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return ip
+
+
 def _is_loopback(ip: str) -> bool:
-    return ipaddress.ip_address(ip).is_loopback
+    """Loopback or unspecified (0.0.0.0 and :: reach the machine itself), also written as a mapped IPv6."""
+    address = _as_ipv4(ipaddress.ip_address(ip))
+    return address.is_loopback or address.is_unspecified
 
 
 def denied_addresses() -> set[str]:
@@ -197,14 +214,20 @@ def why_denied(entry: str) -> str | None:
     return None
 
 
-def rule(pid) -> dict:
+def rule(pid, operator_hosts: Iterable[str] = ()) -> dict:
     """What a connection of this project may reach, now: the floor and the project's entries that
-    are not denied, and the addresses never reachable (for the guard, at the call)."""
-    allowed = [_guard_form(h) for h in floor() if _valid(h)]
+    are not denied, the addresses never reachable, and the floor hosts (the deployment's own, plus
+    `operator_hosts` such as the default local model server), the only ones that may reach loopback.
+    `operator_hosts` are allowed too. For the guard, at the call."""
+    floor_hosts = [_guard_form(h) for h in floor() if _valid(h)]
+    for host in operator_hosts:
+        if _valid(host) and _guard_form(host) not in floor_hosts:
+            floor_hosts.append(_guard_form(host))
+    allowed = list(floor_hosts)
     for row in entries(pid):
         if why_denied(row["host"]) is None and _guard_form(row["host"]) not in allowed:
             allowed.append(_guard_form(row["host"]))
-    return {"allowed_hosts": allowed, "denied_addresses": sorted(denied_addresses())}
+    return {"allowed_hosts": allowed, "denied_addresses": sorted(denied_addresses()), "floor_hosts": floor_hosts}
 
 
 def _valid(entry: str) -> bool:

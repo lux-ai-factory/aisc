@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import copy
 import importlib
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -37,6 +38,14 @@ import report_bed  # noqa: E402
 import report_bed_isolated  # noqa: E402
 
 IDS = report_bed.IDS
+
+
+@pytest.fixture(autouse=True)
+def _ledger_off_unless_a_test_says_otherwise(monkeypatch):
+    """An absent LEDGER_MODE means record, so every test starts with the ledger off unless the environment
+    already names a mode; a test that wants events sets it."""
+    if "LEDGER_MODE" not in os.environ:
+        monkeypatch.setenv("LEDGER_MODE", "off")
 
 
 def pdb_of(key: str = "A") -> str:

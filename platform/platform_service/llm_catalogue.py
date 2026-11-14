@@ -102,16 +102,26 @@ def list_timeout() -> float:
     return value if value > 0 else DEFAULT_TIMEOUT
 
 
-def list_models(provider: str, api_key: str | None = None, base_url: str | None = None) -> dict:
+def list_models(provider: str, api_key: str | None = None, base_url: str | None = None,
+                rule: dict | None = None) -> dict:
     """The provider's model ids, live: {"models": [...], "error": None} or {"models": [], "error": msg}.
 
     Never raises because of the provider. An unknown provider is a KeyError (the API
-    checks the id before calling)."""
+    checks the id before calling). With `rule` (connection_allowlist.rule of the project), a base URL
+    the rule refuses is not asked: its reason is the error."""
     entry = PROVIDERS[provider]
     label = entry.label
     timeout = list_timeout()
     if entry.base_url_editable and not base_url:
         return {"models": [], "error": f"{label} has no base URL"}
+    if rule is not None and entry.base_url_editable:
+        from aisc_plugin_interface import connections as guard
+
+        try:
+            guard.guard_url(base_url, **rule)
+        except guard.BlockedAddress as refused:
+            logger.info("listing models for %s refused by the project's network rule", provider)
+            return {"models": [], "error": f"{label}: {refused}"}
     client = httpx.Client(
         follow_redirects=False,
         timeout=httpx.Timeout(timeout, connect=min(CONNECT_TIMEOUT, timeout)),

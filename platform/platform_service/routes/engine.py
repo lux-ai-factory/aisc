@@ -12,7 +12,7 @@ from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, Service
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from platform_service import connection_store, db, helper_store, llm_catalogue, llm_store, target_store, targets
+from platform_service import connection_allowlist, connection_store, db, helper_store, llm_catalogue, llm_store, target_store, targets
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
 from platform_service.routes.connections import _behind_gateway
@@ -77,5 +77,7 @@ def helper_models(pid: str, name: str, request: Request) -> JSONResponse:
         key = llm_store.decrypt(name, target["ciphertext"]) if target["ciphertext"] else None
     except (llm_store.KeyUnreadable, llm_store.SecretsKeyError) as exc:
         return _internal(200, {"models": [], "error": str(exc)})
-    listed = llm_catalogue.list_models(target["provider"], api_key=key, base_url=target["base_url"])
+    listed = llm_catalogue.list_models(target["provider"], api_key=key, base_url=target["base_url"],
+                                       rule=connection_allowlist.rule(
+                                           pid, operator_hosts=llm_store.operator_hosts(target["base_url"])))
     return _internal(200, {"models": llm_catalogue.chat_first(listed["models"]), "error": listed["error"]})

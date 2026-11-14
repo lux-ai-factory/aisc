@@ -3,6 +3,46 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Addresses are checked at the call. Loopback and the unspecified address (`0.0.0.0`, `::`, mapped forms) are
+  reached only by hosts in `CONNECTIONS_ALLOWED_HOSTS` (and, for model addresses, the host of
+  `PLATFORM_OLLAMA_BASE_URL`), even when a project allows the name; every address that is not globally routable
+  (also CGNAT `100.64.0.0/10`, benchmarking, protocol assignments) needs an entry under Manage, Connections. A
+  self-hosted model server (provider connection) is refused at save when the rule refuses it; model listings, a
+  helper's endpoint at run start (the run fails naming why) and an agent's project model are checked before any
+  request. A model server on a private address (a LAN GPU box) needs an allowed-host entry in each project that
+  uses it. Rebuild and recreate the platform, the eval worker, the engine, control-objectives and the
+  qualification agents; restart the plugin publisher so devpi takes the rebuilt interface.
+- Boundaries are strict. The engine refuses a component file that is empty (422), larger than
+  `TARGET_FILE_MAX_MB` (2048 by default, now given to the engine as well as the platform; 413) or not of its type
+  (415: a dataset takes `.csv .tsv .parquet .json .jsonl .zip`, a model `.onnx .pkl .joblib .pt .pth .safetensors
+  .h5 .keras .zip`), and a plugin artifact above the same cap; the platform passes these refusals on instead of a
+  502. A run's artifact list previews only the first 256 KB of a file (a png, pdf or zip larger than that shows
+  no preview: download it). Project, member and AI system bodies refuse unknown fields and overlong text (an AI
+  card description is at most 2000 characters). `POST /api/v1/audit` on the engine takes `X-AISC-Project` and an
+  editor of that project, names the app from the token's client, and refuses `source_app` or any other unknown
+  field in the body. Rebuild and recreate the engine, the platform and the qualification prefill service.
+- `AUTH_ENABLED` and `LEDGER_MODE` are read strictly by every service: on words `1 true yes on`, off words
+  `0 false no off`, ledger modes `off record enforce`, case and surrounding spaces ignored. Any other value, an
+  empty one included, stops the service at start with a message naming the variable, where it used to mean off.
+  An absent `LEDGER_MODE` now means `record` (the stack already sets `record`); a standalone engine still records
+  nothing. The platform writes a `ledger.mode` event to its own log at every start, off included. After the
+  restart, `scripts/verify-switches.sh` (also run by `verify.sh --stack`) checks the switches, the latest
+  `ledger.mode`, that Redis answers `NOAUTH` and that no log holds a token-shaped string.
+- Backups: `bash scripts/backup-databases.sh` backs up every database, the immudb ledger and its key, MinIO's
+  files and the secrets file (encrypted), and restores each into a throwaway to compare it
+  (`docs/runbooks/restore-a-backup.md`). Make its passphrase file first. `bash scripts/schedule.sh --install` runs
+  it daily at 02:30 and `scripts/verify.sh --stack` at 03:30; nothing is scheduled until you run that.
+  `aisc.py remove` offers a backup before it deletes the volumes.
+- `secrets` and `start` refuse an empty `PLATFORM_SECRETS_KEY`, `DJANGO_SECRET_KEY`, `ENGINE_SECRETS_KEY` or
+  `PLATFORM_LEDGER_KEYS` line instead of making a new key: put the old value back (from `env.runtime` or the
+  backup's secrets copy).
+- New secret `ENGINE_SECRETS_KEY`: the engine encrypts the credentials it stores with this key of its own, no
+  longer with one derived from `DJANGO_SECRET_KEY`. `uv run scripts/aisc.py start` adds it; the backend and the
+  eval worker take it when they are recreated, and the backend refuses to start without it. Values stored before
+  still decrypt, so `DJANGO_SECRET_KEY` stays kept by `secrets --rotate` until they are encrypted again.
+- New secret `REDIS_PASSWORD`: the shared Redis (the worker's Celery results) asks for it. `uv run scripts/aisc.py
+  start` adds it without changing any other secret; the redis, backend, eval worker and flower containers take it
+  when they are recreated. Results of tasks in flight at that restart are lost, so restart with no run going.
 - Flower (the eval queue monitor) no longer starts with the stack: it read every project's task arguments on the
   internal network without a login. Start it when needed with `COMPOSE_PROFILES=inspect ./scripts/start.sh`.
 - Sign-in lockout is on: five wrong passwords lock an account for 60 s, growing to at most 15 minutes. Start

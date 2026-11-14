@@ -5,7 +5,7 @@ transaction of the change itself, so a rollback leaves no event and a committed
 change always has one. An event never names who acted: it cites the request the
 gateway witnessed (X-AISC-Request-Id), and the platform's relay takes the person
 from that record. Nothing is written while LEDGER_MODE is off; `record` and
-`enforce` turn it on.
+`enforce` turn it on, and an absent LEDGER_MODE means `record`.
 
 RequestId keeps a presented request id only on a request that carries a gateway
 token that verifies by the witness's own rule (aisc_identity.gateway): a caller
@@ -28,6 +28,8 @@ import os
 import uuid
 from typing import Any
 
+from aisc_identity.switches import ledger_mode
+
 #: The witnessed request being served, or None outside one.
 current_request: contextvars.ContextVar[str | None] = contextvars.ContextVar("ledger_request", default=None)
 
@@ -42,7 +44,8 @@ class NotLedgerSafe(ValueError):
 
 
 def on() -> bool:
-    return (os.environ.get("LEDGER_MODE") or "off").strip().lower() in ("record", "enforce")
+    """True unless LEDGER_MODE is off; absent means record, and a bad value raises SwitchInvalid."""
+    return ledger_mode() != "off"
 
 
 def event(action: str, *, item_type: str, item_id: str | None, details: dict | None = None,

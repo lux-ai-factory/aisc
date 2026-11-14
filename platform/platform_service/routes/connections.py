@@ -393,6 +393,10 @@ def save_provider_connection(pid: str, name: str, body: ConnectionIn, caller: Ca
         raise _invalid_connection("base_url: a self-hosted model server needs its address")
     if body.provider == "ollama" and body.secret:
         raise _invalid_connection("secret: ollama takes no key")
+    if base_url is not None:
+        # a self-hosted server's address follows the project's network rule, as a helper's does
+        from platform_service.routes.helpers import reachable
+        reachable(pid, base_url, field="base_url", operator_hosts=llm_store.operator_hosts(base_url))
     ciphertext = connection_store.KEEP
     if "secret" in body.model_fields_set:
         try:
@@ -843,8 +847,16 @@ def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_de
 
 #: the largest file that may reach a target, in MB (TARGET_FILE_MAX_MB)
 TARGET_FILE_MAX_MB = 2048
+#: the engine's answers that refuse the file itself (too large, wrong type, empty): passed on as they are
+ENGINE_FILE_REFUSALS = frozenset({413, 415, 422})
 #: what a target file's name may be: the name the person's file had, without folders
 TARGET_FILE_NAME = re.compile(r"[^/\\\x00-\x1f]{1,255}")
+
+
+def target_file_name_ok(name: str) -> bool:
+    """A target file's name is the person's file name, without folders, and never "." or ".." (spaces around
+    them included), which name a folder rather than a file."""
+    return bool(TARGET_FILE_NAME.fullmatch(name)) and name.strip() not in {".", ".."}
 
 
 def _target_file_cap() -> int:
@@ -867,7 +879,7 @@ async def upload_target_file(slug: str, key: str, request: Request, name: str = 
     from platform_service import engine_components
 
     pid = (await run_in_threadpool(project_for, slug, caller, "target.file"))["pid"]
-    if not TARGET_FILE_NAME.fullmatch(name or ""):
+    if not target_file_name_ok(name or ""):
         raise HTTPException(status_code=422, detail="name: the file's name, without folders, up to 255 characters")
     if not targets.is_key(key):
         raise HTTPException(status_code=404, detail=f"no target {key} in this project")
@@ -893,6 +905,9 @@ async def upload_target_file(slug: str, key: str, request: Request, name: str = 
                                                         " or a data component takes a file") from None
         except engine_components.EngineUnavailable as exc:
             logger.warning("file of target %s of project %s not stored: %s", key, pid, exc)
+            if exc.status in ENGINE_FILE_REFUSALS:
+                raise HTTPException(status_code=exc.status, detail="the engine refused the file: "
+                                    + (exc.detail or f"it answered {exc.status}")[:200]) from None
             raise HTTPException(status_code=502, detail="the engine did not take the file: try again later") from None
     return {"key": key, "name": name, "size": size, "sha256": digest.hexdigest()}
 

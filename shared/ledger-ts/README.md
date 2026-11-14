@@ -20,6 +20,7 @@ the project's own immudb database. The ledger's place in AISC is in
 | --- | --- |
 | `emit.ts` | `emitEvent(tx, event)` writes one event with `ledger.emit(jsonb)` on the caller's transaction and returns its event id. It cites the request the gateway witnessed and never names who acted. Nothing is written while `LEDGER_MODE` is off. |
 | `gatewayToken.ts` | `throughGateway(headers)`: whether the request carries a gateway token that verifies (RS256, issuer, expiry, `azp` = the gateway's client), the witness's own rule. Only then is the request id cited. |
+| `switches.ts` | `AUTH_ENABLED` and `LEDGER_MODE` read strictly, the twin of `aisc_identity.switches`: on words `1 true yes on`, off words `0 false no off`, ledger modes `off record enforce`, case and surrounding spaces ignored. Anything else, empty included, throws `SwitchInvalid` naming the variable. `checkSwitches()` reads both; each app calls it from `src/instrumentation.ts` and exits at start on a bad value. |
 | `canonical.ts` | RFC 8785 canonical JSON, the twin of the platform's `ledger/canonical.py`, and `ledgerSafe`, which refuses before writing what the relay would refuse later. Both refuse, rather than convert, a BigInt, a Date or any object that is not a plain record, and a value that contains itself; `eventBody` does the same for every field of an event, `details` included. The refusals are pinned to `aisc_identity.ledger_events` and the platform by `platform/tests/ledger/fixtures/canonical_refusals.json`. |
 
 ## Settings
@@ -28,8 +29,8 @@ Read from the application's environment.
 
 | Setting | Meaning | Default | In the stack |
 | --- | --- | --- | --- |
-| `LEDGER_MODE` | `record` or `enforce` writes events; anything else writes none | `off` | `record` |
-| `AUTH_ENABLED` | with it off (local work), nothing is verified and the presented request id is kept | `true` | `true` |
+| `LEDGER_MODE` | `record` or `enforce` writes events, `off` writes none; any other value stops the app at start | absent means `record` | `record` |
+| `AUTH_ENABLED` | with it off (local work), nothing is verified and the presented request id is kept; a value that is not an on or off word stops the app at start | absent means on | `true` |
 | `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URL` | the realm the gateway token is verified against; without them no request id is kept | none | realm `aisc` |
 | `AISC_GATEWAY_CLIENT_ID` | the gateway's client, which the token's `azp` must name | `aisc-gateway` | default |
 
@@ -42,6 +43,7 @@ qualification and controls are separate repositories with their own build contex
 | `*.ts` | `src/vendor/aisc-ledger/` |
 | `*.test.ts` | `test/vendor/ledger/` |
 | `platform/tests/ledger/fixtures/canonical_*.json` | `test/fixtures/ledger/` |
+| `shared/identity/switch-cases.json` | `test/fixtures/switch-cases.json` |
 
 `test/vendor/inSync.test.ts` in each app fails when a copy differs from this folder (it is skipped when the app is
 checked out without the aisc repository around it). To change one of these files, edit it here and copy it into

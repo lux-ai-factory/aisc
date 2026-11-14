@@ -7,7 +7,7 @@ from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from platform_service import dashboard_bridge, db, projectdb, proof_store, targets
 from platform_service.membership import validate_role
@@ -20,31 +20,41 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+# Each body takes only its own fields, as strings, each with an upper bound: an unknown field or an overlong
+# text is a 422 and is never stored.
+_STRICT = ConfigDict(extra="forbid")
+
+
 class ProjectIn(BaseModel):
-    name: str
-    slug: str | None = None
-    description: str | None = None
+    model_config = _STRICT
+    name: StrictStr = Field(max_length=200)
+    slug: StrictStr | None = Field(default=None, max_length=64)
+    description: StrictStr | None = Field(default=None, max_length=2000)
 
 
 class DeleteProjectIn(BaseModel):
-    confirm_name: str
+    model_config = _STRICT
+    confirm_name: StrictStr = Field(max_length=200)
 
 
 class MemberIn(BaseModel):
-    subject: str
-    email: str | None = None
-    role: str = "viewer"
+    model_config = _STRICT
+    subject: StrictStr = Field(max_length=255)
+    email: StrictStr | None = Field(default=None, max_length=320)
+    role: StrictStr = Field(default="viewer", max_length=32)
 
 
 class MemberRoleIn(BaseModel):
-    role: str
+    model_config = _STRICT
+    role: StrictStr = Field(max_length=32)
 
 
 class SystemIn(BaseModel):
-    name: str
-    version: str | None = None
-    provider: str | None = None
-    description: str | None = None
+    model_config = _STRICT
+    name: StrictStr = Field(max_length=200)
+    version: StrictStr | None = Field(default=None, max_length=100)
+    provider: StrictStr | None = Field(default=None, max_length=200)
+    description: StrictStr | None = Field(default=None, max_length=2000)
 
 
 class SystemRevisionIn(SystemIn):

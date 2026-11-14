@@ -115,6 +115,26 @@ def relabel(node, names=None):
     return node
 
 
+TOKEN_FILTER = {"request>headers>X-Auth-Request-Access-Token": {"filter": "delete"}}
+
+
+def without_token_filter(tree):
+    """Another intended change: every log drops the access token header (test_caddy_logs.py). A log whose
+    encoder only deletes that header is compared as the encoder it wraps, and the default log, which now
+    names stderr and JSON to carry the filter, as the default it was: Caddy writes JSON to stderr
+    when no terminal is attached."""
+    tree = json.loads(json.dumps(tree))
+    logs = (tree.get("logging") or {}).get("logs") or {}
+    for name, log in logs.items():
+        encoder = log.get("encoder") or {}
+        if encoder.get("format") == "filter" and encoder.get("fields") == TOKEN_FILTER:
+            log["encoder"] = encoder.get("wrap")
+        if name == "default" and log.get("encoder") == {"format": "json"} and \
+                log.get("writer") == {"output": "stderr"}:
+            del log["encoder"], log["writer"]
+    return tree
+
+
 def fixpoint(tree):
     while True:
         nxt = normal(tree)
@@ -129,7 +149,7 @@ def test_with_the_witness_unset_the_gateway_is_the_old_one_plus_the_strip_and_th
     old = (ROOT / "scripts/tests/fixtures/ledger_gateway/Caddyfile.before-ledger-gateway").read_text()
     (tmp_path / "Caddyfile").write_text(old.replace("host.docker.internal:4180", "oauth2-proxy:4180"))
     before = fixpoint(adapt(tmp_path / "Caddyfile"))
-    after = fixpoint(adapt(ROOT / "Caddyfile"))
+    after = fixpoint(without_token_filter(adapt(ROOT / "Caddyfile")))
     assert json.dumps(after, sort_keys=True) == json.dumps(before, sort_keys=True)
 
 

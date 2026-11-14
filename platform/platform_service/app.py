@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 
+from aisc_identity.switches import check_environment
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -33,7 +34,32 @@ app = FastAPI(title="AISC platform", docs_url="/docs")
 # The ledger's relay worker: idle while LEDGER_MODE is off.
 from platform_service.ledger import worker as _ledger_worker  # noqa: E402
 
-app.router.on_startup.append(_ledger_worker.start)
+
+def check_switches_at_start() -> None:
+    """Refuse to start on a bad AUTH_ENABLED or LEDGER_MODE: SwitchInvalid stops uvicorn, naming the variable."""
+    switches = check_environment()
+    logger.info("switches: AUTH_ENABLED=%s LEDGER_MODE=%s", switches["AUTH_ENABLED"], switches["LEDGER_MODE"])
+
+
+def record_ledger_mode_at_start() -> None:
+    """Write `ledger.mode` to the outbox at every start, off included. A database that cannot be reached is
+    logged and does not stop the start: the platform's other answers do not depend on this record."""
+    import psycopg
+
+    from platform_service import db
+    from platform_service.ledger import outbox, witness
+
+    mode = witness.mode()
+    if mode == "off":
+        logger.warning("the ledger is off: nothing is recorded")
+    try:
+        with psycopg.connect(db.dsn(), autocommit=True) as conn:
+            outbox.record_mode(conn, mode)
+    except psycopg.Error as exc:
+        logger.error("ledger: the mode at start could not be recorded: %s", exc)
+
+
+app.router.on_startup.extend([check_switches_at_start, record_ledger_mode_at_start, _ledger_worker.start])
 
 #: What the ledger's defence in depth checks: every write, but not the internal and authz routes,
 #: which carry service tokens or are Caddy's own.

@@ -62,6 +62,14 @@ def dsn():
 
 
 @pytest.fixture(autouse=True)
+def _ledger_off_unless_a_test_says_otherwise(monkeypatch):
+    """An absent LEDGER_MODE means record, so the suite starts every test with the ledger off unless the
+    environment already names a mode; a test that wants it on sets it (tests/ledger/conftest.py `mode`)."""
+    if "LEDGER_MODE" not in os.environ:
+        monkeypatch.setenv("LEDGER_MODE", "off")
+
+
+@pytest.fixture(autouse=True)
 def _point_the_service_at_the_test_database(monkeypatch):
     monkeypatch.setenv("PLATFORM_DATABASE_URL", DSN)
     # never the stack's MinIO: a test that wants a store puts one in place (tests/proof_fake.py)

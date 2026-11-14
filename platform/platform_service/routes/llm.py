@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from platform_service import connection_store, db, llm_catalogue, llm_store, secret_box
+from platform_service import connection_allowlist, connection_store, db, llm_catalogue, llm_store, secret_box
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, project_for, secrets_unavailable
 
@@ -214,7 +214,8 @@ def llm_provider_models(slug: str, provider: str, caller: Caller = Depends(calle
         base_url = row["base_url"] if row and row["base_url"] else None
         if base_url is None and provider == "ollama":
             base_url = llm_store.ollama_default()
-    return llm_catalogue.list_models(provider, api_key=key, base_url=base_url)
+    rule = connection_allowlist.rule(pid, operator_hosts=llm_store.operator_hosts(base_url))
+    return llm_catalogue.list_models(provider, api_key=key, base_url=base_url, rule=rule)
 
 
 @router.put("/projects/{slug}/llm/systems/{system}")
@@ -300,7 +301,9 @@ def resolve_llm(pid: str, system: str, request: Request) -> JSONResponse:
                 return _internal(503, {"detail": str(exc)})
             except llm_store.KeyUnreadable as exc:
                 return _internal(409, {"detail": str(exc)})
-    # chat_base_url: where a hosted provider takes OpenAI-style chat calls (None for one at an address of its own)
+    # chat_base_url: where a hosted provider takes OpenAI-style chat calls (None for one at an address of its own);
+    # the project's network rule, now: the agent checks base_url with it before it builds the model
     return _internal(200, {"configured": True, "provider": provider, "model": choice["model"],
                            "base_url": base_url, "api_key": api_key,
-                           "chat_base_url": llm_catalogue.chat_base_url(provider)})
+                           "chat_base_url": llm_catalogue.chat_base_url(provider),
+                           **connection_allowlist.rule(pid, operator_hosts=llm_store.operator_hosts(base_url))})

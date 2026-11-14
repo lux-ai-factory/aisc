@@ -1,3 +1,20 @@
+# Logs never hold the access token. `(strip-and-sign-in)` copies X-Auth-Request-Access-Token from
+# oauth2-proxy's answer onto every request it passes on, and both an access log and the error
+# reverse_proxy logs when an upstream fails write the request's headers. This block must stay the
+# first in the file (Caddy reads global options only there). It keeps the JSON lines Caddy writes to
+# stderr when no terminal is attached; every site `log` uses the same filter.
+{
+  log default {
+    output stderr
+    format filter {
+      wrap json
+      fields {
+        request>headers>X-Auth-Request-Access-Token delete
+      }
+    }
+  }
+}
+
 (tls-development) {
   tls internal
 }
@@ -118,7 +135,12 @@
 
 {$CADDY_DOMAIN}:{$CADDY_PORT} {
   log {
-    format console
+    format filter {
+      wrap console
+      fields {
+        request>headers>X-Auth-Request-Access-Token delete
+      }
+    }
     output file {$LOG_FILE} {
       roll_size 10MB
       roll_keep 10

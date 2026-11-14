@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
+from urllib.parse import urlsplit
 
 import psycopg
 
@@ -41,6 +42,30 @@ DEFAULT_OLLAMA_BASE_URL = "http://host.docker.internal:11434"
 # environment, read on every call
 def ollama_default() -> str:
     return os.environ.get("PLATFORM_OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL
+
+
+def _host_port(url: str | None) -> str | None:
+    """host:port of a URL, lower case, an IPv6 host in brackets; None when it has no host."""
+    try:
+        parts = urlsplit(url or "")
+        host, port = (parts.hostname or "").lower(), parts.port or (443 if parts.scheme == "https" else 80)
+    except ValueError:
+        return None
+    if not host:
+        return None
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
+def ollama_default_host() -> str | None:
+    """host:port of ollama_default(), the local model server the operator set for every project."""
+    return _host_port(ollama_default())
+
+
+def operator_hosts(url: str | None) -> list[str]:
+    """The operator's hosts a project's model address may use: the default local model server when `url` is on
+    it (connection_allowlist.rule takes them as floor hosts), else none."""
+    default = ollama_default_host()
+    return [default] if default and _host_port(url) == default else []
 
 
 # queries on one project's database

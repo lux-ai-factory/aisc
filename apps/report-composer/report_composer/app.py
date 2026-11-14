@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from aisc_identity.switches import check_environment
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -24,7 +25,9 @@ logger = logging.getLogger(__name__)
 def create_app(*, database_url=None, project_database_url=None, renderer=None, clock=None) -> FastAPI:
     """database_url: REPORT_COMPOSER_DATABASE_URL, `platform` (core.project and core.project_member).
     project_database_url: REPORT_COMPOSER_PROJECT_DATABASE_URL, the same kind of
-    DSN with `{database}` in place of the name, for everything of a project. Nothing connects here."""
+    DSN with `{database}` in place of the name, for everything of a project. Nothing connects here.
+    A bad AUTH_ENABLED or LEDGER_MODE raises SwitchInvalid first, so the service does not start."""
+    check_environment()
     database_url = database_url or os.environ.get("REPORT_COMPOSER_DATABASE_URL", "")
     project_database_url = project_database_url or os.environ.get("REPORT_COMPOSER_PROJECT_DATABASE_URL", "")
     projects = ProjectDatabases(project_database_url, database_url)

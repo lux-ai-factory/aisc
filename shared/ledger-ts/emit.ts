@@ -8,12 +8,14 @@
  * platform's relay takes the person from that witness record. It sends plain
  * content; the platform computes every keyed digest.
  *
- * Nothing is written while LEDGER_MODE is off (the default), so rows do not
- * pile up before the ledger is turned on.
+ * Nothing is written while LEDGER_MODE is off. An absent LEDGER_MODE means
+ * record, and any other value is refused (./switches), so a typo is not read
+ * as off.
  */
 import { randomUUID } from "node:crypto";
 
 import { throughGateway } from "./gatewayToken";
+import { ledgerMode } from "./switches";
 
 import { isPlainObject, ledgerSafe, NotCanonical } from "./canonical";
 
@@ -41,9 +43,9 @@ export type RawExecutor = {
   ) => Promise<number>;
 };
 
+/** True unless LEDGER_MODE is off; absent means record, and a bad value throws SwitchInvalid. */
 export function ledgerOn(): boolean {
-  const mode = (process.env.LEDGER_MODE ?? "off").trim().toLowerCase();
-  return mode === "record" || mode === "enforce";
+  return ledgerMode() !== "off";
 }
 
 /**

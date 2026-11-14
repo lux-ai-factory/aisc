@@ -37,9 +37,27 @@ def docker(*args, check=True):
     return subprocess.run(["docker", *args], capture_output=True, text=True, check=check)
 
 
+def _leading_global_block(text: str) -> tuple[str, str]:
+    """The global options block when it is the file's first block (comments before it allowed), and the rest."""
+    lines = text.splitlines(keepends=True)
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i += 1
+    if i == len(lines) or lines[i].strip() != "{":
+        return "", text
+    depth = 0
+    for j in range(i, len(lines)):
+        depth += lines[j].count("{") - lines[j].count("}")
+        if depth == 0:
+            return "".join(lines[: j + 1]), "".join(lines[j + 1:])
+    return "", text
+
+
 def caddyfile_for_test(text: str) -> str:
+    """The file as a throwaway runs it: the test TLS snippet after the global block, which Caddy wants first."""
     text = text.replace("oauth2-proxy:4180", "auth:4180")
-    return "(tls-test) {\n}\n" + text
+    head, rest = _leading_global_block(text)
+    return head + "\n(tls-test) {\n}\n" + rest
 
 
 @pytest.fixture(scope="module", params=["on", "off", "unset"])

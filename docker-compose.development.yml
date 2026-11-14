@@ -20,6 +20,8 @@ x-backend-env: &backend-env
   DB_SCHEMA: ${DB_SCHEMA}
   BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+  # the key of the credentials the engine stores, its own (aisc_backend/utils/encryption.py)
+  ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
   # Keys the run tickets that bind a plugin's calls back to its own project and evaluation; never given to
   # the eval worker, which holds DJANGO_SECRET_KEY and runs plugin code
   RUN_TICKET_KEY: ${RUN_TICKET_KEY:?run scripts/secrets.sh first}
@@ -92,6 +94,8 @@ services:
       # read PLATFORM_ENGINE_TOKEN; the token grants only that answer (connected, protocol), no key
       PLATFORM_URL: http://platform:8000
       PLATFORM_ENGINE_TOKEN: ${PLATFORM_ENGINE_TOKEN:?run scripts/secrets.sh first}
+      # the largest component file or plugin artifact it stores, in MB (the platform's cap of a target file too)
+      TARGET_FILE_MAX_MB: ${TARGET_FILE_MAX_MB:-2048}
     networks:
       - backend
     depends_on:
@@ -213,6 +217,8 @@ services:
       API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      # the worker builds its Redis URL from this (aisc_eval/utils/env.py); never passed to a plugin
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
@@ -221,6 +227,8 @@ services:
       PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      # decrypts the plugin settings the engine stores (aisc_eval/utils/encryption.py); never passed to a plugin
+      ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
     depends_on:
       - aisc-backend
       - rabbitmq
@@ -251,6 +259,7 @@ services:
     environment:
       AISC_DEPLOYMENT: configurator
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       FLOWER_URL_PREFIX: flower
     depends_on:
@@ -980,6 +989,8 @@ services:
       # versioned master keys, and the tokens of the callers that post events.
       LEDGER_MODE: ${LEDGER_MODE:-record}
       PLATFORM_ADAPTERS_DIR: /app/adapters
+      # the largest file that may reach a target, in MB; the engine is given the same cap
+      TARGET_FILE_MAX_MB: ${TARGET_FILE_MAX_MB:-2048}
       AISC_WITNESS_GATEWAY_SECRET: ${AISC_WITNESS_GATEWAY_SECRET:?run scripts/secrets.sh first}
       AISC_GATEWAY_CLIENT_ID: aisc-gateway
       LEDGER_IMMUDB_URL: immudb:3322

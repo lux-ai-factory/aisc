@@ -233,8 +233,12 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   them too (`scripts/lib/dev-accounts.sh`). The Keycloak console's account is `admin` with
   `KEYCLOAK_ADMIN_PASSWORD` from `env.secrets`. The console is on `127.0.0.1:8081` only.
 - **Checks.** `./scripts/verify.sh --stack` runs `verify-db-access.sh`, `verify-project-databases.sh`,
-  `verify-sso.sh`, `verify-rbac.sh` and `verify-plugins.sh`, then `stackcheck db-access` (`scripts/stackcheck`),
-  against the running stack.
+  `verify-sso.sh`, `verify-rbac.sh`, `verify-plugins.sh` and `verify-switches.sh`, then `stackcheck db-access`
+  (`scripts/stackcheck`), against the running stack.
+  `verify-switches.sh [--since TIME]` checks that every service given `AUTH_ENABLED` or `LEDGER_MODE` is running
+  with a switch word, that the latest `ledger.mode` the platform wrote at start is the stack's and is in its log,
+  that the shared Redis answers `NOAUTH` without its password, and that no log since TIME (default 24 hours)
+  holds a token-shaped string; it prints the count, never a match.
   `verify-project-databases.sh` (and `verify-db-consistency.sh`) read Postgres from this machine, on
   `127.0.0.1:5432`, which is published only with `AISC_ADMIN_PORTS=on` (in the environment or `env.local`,
   then `start`); without it they say so and fail. The checks that

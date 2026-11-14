@@ -37,6 +37,17 @@ def emit(conn, action: str, *, project_pid, item_type: str, item_id, details: di
     return event_id
 
 
+def record_mode(conn, mode: str) -> str:
+    """Queue `ledger.mode` for the platform's own log, whatever the mode: written while the ledger is off too,
+    and delivered once it is on, so a period without a ledger shows afterwards. Returns the event id."""
+    event_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO core.outbox (event_id, emitter, project_pid, action, item_type, item_id, details)"
+        " VALUES (%s, 'platform', NULL, 'ledger.mode', 'ledger', 'platform', %s)",
+        (event_id, json.dumps({"mode": mode})))
+    return event_id
+
+
 def _json(value):
     return None if value is None else json.dumps(value)
 

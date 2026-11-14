@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from urllib.parse import parse_qsl, quote, urlsplit
 
+from aisc_identity.switches import ledger_mode
 from platform_service.ledger import registry, secrets, settings
 
 _FIELDS = ("request_id", "at", "mode", "app", "method", "route_path", "query_hmac", "host", "project_pid",
@@ -43,8 +44,8 @@ def _header(headers, name: str) -> str:
 
 
 def mode() -> str:
-    value = os.environ.get("LEDGER_MODE", "off").strip().lower()
-    return value if value in ("off", "record", "enforce") else "off"
+    """off, record or enforce; absent means record, and any other value raises SwitchInvalid."""
+    return ledger_mode()
 
 
 #: A project's dashboard is `aisc-<pid hex>`, a plugin's `aisc-<pid hex>-<plugin>` (apps/results-dashboard

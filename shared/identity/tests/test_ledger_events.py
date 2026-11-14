@@ -120,13 +120,21 @@ def test_what_the_ledger_keeps_is_accepted():
 
 
 @pytest.mark.parametrize("mode,on", [("record", True), ("enforce", True), (" Record ", True), ("off", False),
-                                     ("", False), (None, False)])
-def test_the_ledger_is_on_only_in_record_or_enforce(monkeypatch, mode, on):
+                                     (None, True)])
+def test_the_ledger_is_on_unless_the_mode_is_off(monkeypatch, mode, on):
     if mode is None:
         monkeypatch.delenv("LEDGER_MODE", raising=False)
     else:
         monkeypatch.setenv("LEDGER_MODE", mode)
     assert ledger.on() is on
+
+
+def test_an_empty_ledger_mode_is_refused(monkeypatch):
+    from aisc_identity.switches import SwitchInvalid
+
+    monkeypatch.setenv("LEDGER_MODE", "")
+    with pytest.raises(SwitchInvalid):
+        ledger.on()
 
 
 def test_the_gateway_token_is_verified_off_the_event_loop(sign, monkeypatch):

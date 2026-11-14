@@ -15,11 +15,22 @@ TIMEOUT_S = 20
 
 
 class EngineUnavailable(RuntimeError):
-    """The engine did not accept the call. `status` is its answer's status, None when it did not answer."""
+    """The engine did not accept the call. `status` is its answer's status, None when it did not answer;
+    `detail` the reason it gave, when it gave one."""
 
-    def __init__(self, message: str, status: int | None = None):
+    def __init__(self, message: str, status: int | None = None, detail: str | None = None):
         super().__init__(message)
         self.status = status
+        self.detail = detail
+
+
+def _detail_of(r: httpx.Response) -> str | None:
+    """The `detail` of an engine refusal, when its body is JSON that has one."""
+    try:
+        detail = r.json().get("detail")
+    except (ValueError, AttributeError):
+        return None
+    return detail if isinstance(detail, str) else None
 
 
 def _base() -> str:
@@ -101,7 +112,7 @@ def upload(pid, token: str, component: str, file_name: str, stream) -> None:
     except httpx.HTTPError as exc:
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
-        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code)
+        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code, _detail_of(r))
 
 
 def rename(pid, token: str, component: str, name: str) -> None:

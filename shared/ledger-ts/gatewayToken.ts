@@ -29,6 +29,10 @@ import {
   type KeyObject,
 } from "node:crypto";
 
+import { authEnabled } from "./switches";
+
+export { authEnabled };
+
 export const GATEWAY_TOKEN_HEADER = "x-auth-request-access-token";
 
 type Claims = Record<string, unknown>;
@@ -163,12 +167,6 @@ function cachedKeyFor(jwksUrl: string): KeyFor {
   }
   return client;
 }
-
-/** On unless set to something else than 1/true/yes/on, as aisc_identity reads it. */
-const authEnabled = () =>
-  ["1", "true", "yes", "on"].includes(
-    (process.env.AUTH_ENABLED ?? "true").trim().toLowerCase(),
-  );
 
 /** Whether this request came through the gateway (see the top of the file). */
 export async function throughGateway(

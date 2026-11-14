@@ -285,7 +285,7 @@ async def _open_request(pid: str, name: str, request: Request):
         return None, None, (413, f"the request is more than {connection_facade.MAX_ASK_BYTES} bytes")
     try:
         body = json.loads(raw)
-    except ValueError:
+    except (ValueError, RecursionError):  # nested deeper than the parser follows is not JSON either
         body = None
     if not isinstance(body, dict):
         return opened, None, None
