@@ -19,7 +19,8 @@ def manage_of(html):
 
 def members_pages():
     """The launcher pages whose script calls the platform's member routes."""
-    return [p for p in sorted(HOMEPAGE.glob("*.html")) if re.search(r"/members\b", script_of(p.read_text()))]
+    # a link to the members page itself (/members.html) is not a call to the routes
+    return [p for p in sorted(HOMEPAGE.glob("*.html")) if re.search(r"/members\b(?!\.html)", script_of(p.read_text()))]
 
 
 def test_a_launcher_page_reads_and_writes_the_projects_members():
