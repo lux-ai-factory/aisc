@@ -849,6 +849,12 @@ ENGINE_FILE_REFUSALS = frozenset({413, 415, 422})
 TARGET_FILE_NAME = re.compile(r"[^/\\\x00-\x1f]{1,255}")
 
 
+def target_file_name_ok(name: str) -> bool:
+    """A target file's name is the person's file name, without folders, and never "." or ".." (spaces around
+    them included), which name a folder rather than a file."""
+    return bool(TARGET_FILE_NAME.fullmatch(name)) and name.strip() not in {".", ".."}
+
+
 def _target_file_cap() -> int:
     try:
         return int(os.environ.get("TARGET_FILE_MAX_MB") or TARGET_FILE_MAX_MB) * 1024 * 1024
@@ -869,7 +875,7 @@ async def upload_target_file(slug: str, key: str, request: Request, name: str = 
     from platform_service import engine_components
 
     pid = (await run_in_threadpool(project_for, slug, caller, "target.file"))["pid"]
-    if not TARGET_FILE_NAME.fullmatch(name or ""):
+    if not target_file_name_ok(name or ""):
         raise HTTPException(status_code=422, detail="name: the file's name, without folders, up to 255 characters")
     if not targets.is_key(key):
         raise HTTPException(status_code=404, detail=f"no target {key} in this project")
