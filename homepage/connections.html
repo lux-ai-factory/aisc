@@ -358,7 +358,10 @@
       var link = button('ghost', 'Link to a target', function () { linkTo(c, pick.value, msg); });
       if (!free.length) { pick.disabled = true; link.disabled = true; say(msg, 'Every target has a connection already.'); }
       af.appendChild(pick); af.appendChild(link);
-      af.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
+      af.appendChild(button('danger', 'Remove', function () {
+        if (!confirm(removeQuestion(c, null))) return;
+        write('DELETE', base() + '/' + enc(c.name), null, msg);
+      }));
       act.appendChild(af); act.appendChild(msg);
       tr.appendChild(act);
       rows.appendChild(tr);
@@ -396,6 +399,13 @@
         });
       })
       .catch(function () { say(result, NOT_ANSWERING, true); });
+  }
+
+  /** What Remove asks first: the connection, the target it reaches, and what ends with it. */
+  function removeQuestion(c, t) {
+    return 'Remove the connection ' + c.label + (t ? ', which reaches ' + targetName(t) : '') + '?\n\n'
+      + (t ? 'Its target is no longer connected, and ' : '')
+      + 'every agent and tool use of it ends. Only adding it again, with its key, brings it back.';
   }
 
   function write(method, path, body, msg) {
@@ -768,7 +778,10 @@
 
     actions.appendChild(button('ghost', 'Try', function () { tryBox.hidden = !tryBox.hidden; if (!tryBox.hidden) prompt.focus(); }));
     actions.appendChild(button('ghost', 'Edit', function () { openEditor(c, t, tr); }));
-    actions.appendChild(button('danger', 'Remove', function () { write('DELETE', base() + '/' + enc(c.name), null, msg); }));
+    actions.appendChild(button('danger', 'Remove', function () {
+      if (!confirm(removeQuestion(c, t))) return;
+      write('DELETE', base() + '/' + enc(c.name), null, msg);
+    }));
     td.appendChild(actions); td.appendChild(tryBox); td.appendChild(result); td.appendChild(msg);
     return td;
   }
