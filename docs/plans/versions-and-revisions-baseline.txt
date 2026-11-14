@@ -1,6 +1,0 @@
-Baseline before feature code (2026-11-11, branch pilot). Details: .superpowers/sdd/versions-and-revisions/test-setup.md
-platform                   2227 passed, 1 failed, 54 skipped   (failed: test_scrub_limits_documented::test_the_changelogs_scrub_entry_names_every_documented_limit)
-apps/qualification         2073 passed, 0 failed, 1 skipped    (with DB; without DB 1929 passed, 145 skipped; test/db intermittently crashes a worker)
-apps/controls              unit 333 passed; integration 121 passed; 0 failed (no-DB full run: 458 passed, 123 skipped)
-apps/report-generator      1016 passed, 0 failed, 0 skipped
-apps/report-composer       636 passed, 0 failed, 0 skipped
