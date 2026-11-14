@@ -57,15 +57,15 @@ def managed_project(slug: str, caller: Caller) -> str:
     return project_for(slug, caller, "helper.write")["pid"]
 
 
-def reachable(pid, url: str) -> None:
-    """422 unless the project's connections may reach `url`: the rule of Manage, Connections (a public
-    address, or an internal one the deployment or the project allows)."""
+def reachable(pid, url: str, field: str = "endpoint_url", operator_hosts: list[str] | tuple = ()) -> None:
+    """422 naming `field` unless the project's connections may reach `url`: the rule of Manage, Connections (a
+    public address, or an internal one the deployment, the operator's `operator_hosts` or the project allows)."""
     from aisc_plugin_interface import connections as client
 
     try:
-        client.guard_url(url, **connection_allowlist.rule(pid))
+        client.guard_url(url, **connection_allowlist.rule(pid, operator_hosts=operator_hosts))
     except client.BlockedAddress as exc:
-        raise HTTPException(status_code=422, detail=f"endpoint_url: {exc}") from None
+        raise HTTPException(status_code=422, detail=f"{field}: {exc}") from None
 
 
 @router.get("/projects/{slug}/helpers")
@@ -172,4 +172,5 @@ def resolve_helper(pid: str, name: str, request: Request) -> JSONResponse:
         return _internal(409, {"detail": f"the stored key for helper {name} cannot be decrypted; enter it again"})
     if stored is None:
         return _internal(404, {"detail": f"no helper {name!r}"})
-    return _internal(200, stored)
+    # the project's network rule, now: the worker checks the helper's address with it before the run starts
+    return _internal(200, {**stored, **connection_allowlist.rule(pid)})

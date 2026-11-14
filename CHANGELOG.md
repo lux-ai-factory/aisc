@@ -3,6 +3,15 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Addresses are checked at the call. Loopback and the unspecified address (`0.0.0.0`, `::`, mapped forms) are
+  reached only by hosts in `CONNECTIONS_ALLOWED_HOSTS` (and, for model addresses, the host of
+  `PLATFORM_OLLAMA_BASE_URL`), even when a project allows the name; every address that is not globally routable
+  (also CGNAT `100.64.0.0/10`, benchmarking, protocol assignments) needs an entry under Manage, Connections. A
+  self-hosted model server (provider connection) is refused at save when the rule refuses it; model listings, a
+  helper's endpoint at run start (the run fails naming why) and an agent's project model are checked before any
+  request. A model server on a private address (a LAN GPU box) needs an allowed-host entry in each project that
+  uses it. Rebuild and recreate the platform, the eval worker, the engine, control-objectives and the
+  qualification agents; restart the plugin publisher so devpi takes the rebuilt interface.
 - Boundaries are strict. The engine refuses a component file that is empty (422), larger than
   `TARGET_FILE_MAX_MB` (2048 by default, now given to the engine as well as the platform; 413) or not of its type
   (415: a dataset takes `.csv .tsv .parquet .json .jsonl .zip`, a model `.onnx .pkl .joblib .pt .pth .safetensors

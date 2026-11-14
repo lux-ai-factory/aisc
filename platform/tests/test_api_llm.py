@@ -86,6 +86,12 @@ def resolve(client, pid, system="card_agent", token=OWN, headers=None):
     return client.get(f"/internal/projects/{pid}/llm/{system}", headers=h)
 
 
+def without_rule(answer: dict) -> dict:
+    """A resolve answer without the project's network rule, which every configured answer carries."""
+    assert {"allowed_hosts", "denied_addresses", "floor_hosts"} <= set(answer), sorted(answer)
+    return {k: v for k, v in answer.items() if k not in ("allowed_hosts", "denied_addresses", "floor_hosts")}
+
+
 def provider_entry(client, project, headers, provider):
     listed = client.get(base(project), headers=headers)
     assert listed.status_code == 200, listed.text
@@ -456,11 +462,33 @@ def test_the_models_of_an_unknown_provider_are_404(client, admin, project):
     assert r.json()["detail"] != "Not Found", "the route itself is missing"
 
 
-def test_ollama_lists_from_the_stored_base_url(client, admin, project, fake):
+def test_ollama_lists_from_the_stored_base_url(client, admin, project, fake, monkeypatch):
+    # the fake is on loopback: only a host of the deployment's floor may reach it
+    monkeypatch.setenv("CONNECTIONS_ALLOWED_HOSTS", fake.url.split("//", 1)[1])
     fake.reply("/api/tags", {"models": [{"name": "gemma3"}]})
     put_provider(client, project, "ollama", admin, base_url=fake.url)
     r = client.get(f"{base(project)}/providers/ollama/models", headers=admin)
     assert r.json() == {"models": ["gemma3"], "error": None}
+
+
+def test_the_ollama_default_is_listed_as_the_operators_host(client, admin, project, fake, monkeypatch):
+    # PLATFORM_OLLAMA_BASE_URL is the operator's: listed with no entry, though it is an internal address
+    monkeypatch.setenv("PLATFORM_OLLAMA_BASE_URL", fake.url)
+    monkeypatch.delenv("CONNECTIONS_ALLOWED_HOSTS", raising=False)
+    fake.reply("/api/tags", {"models": [{"name": "gemma3"}]})
+    put_system(client, project, "card_agent", admin, "ollama", "gemma3")
+    r = client.get(f"{base(project)}/providers/ollama/models", headers=admin)
+    assert r.json() == {"models": ["gemma3"], "error": None}
+    assert fake.seen("/api/tags")
+
+
+def test_a_stored_internal_base_url_is_not_listed_without_an_entry(client, admin, project, fake, monkeypatch):
+    monkeypatch.delenv("CONNECTIONS_ALLOWED_HOSTS", raising=False)
+    fake.reply("/api/tags", {"models": [{"name": "gemma3"}]})
+    put_provider(client, project, "ollama", admin, base_url=fake.url)
+    r = client.get(f"{base(project)}/providers/ollama/models", headers=admin)
+    assert r.json()["models"] == [] and "internal address" in r.json()["error"]
+    assert not fake.seen("/api/tags")
 
 
 # The per-system choice
@@ -608,23 +636,26 @@ def test_a_choice_resolves_with_its_decrypted_key(client, admin, project):
     put_system(client, project, "card_agent", admin, "openai", "gpt-4o-mini")
     r = resolve(client, project["pid"])
     assert r.status_code == 200, r.text
-    assert r.json() == {"configured": True, "provider": "openai", "model": "gpt-4o-mini",
-                        "base_url": None, "api_key": key, "chat_base_url": llm_catalogue.chat_base_url("openai")}
+    assert without_rule(r.json()) == {"configured": True, "provider": "openai", "model": "gpt-4o-mini",
+                                      "base_url": None, "api_key": key,
+                                      "chat_base_url": llm_catalogue.chat_base_url("openai")}
     assert resolve(client, project["pid"], "risk_mapper").json() == {"configured": False}
 
 
 def test_ollama_resolves_with_the_default_base_url_and_no_key(client, admin, project):
     put_system(client, project, "risk_mapper", admin, "ollama", "llama3.2:1b")
-    assert resolve(client, project["pid"], "risk_mapper").json() == {
+    got = resolve(client, project["pid"], "risk_mapper").json()
+    assert without_rule(got) == {
         "configured": True, "provider": "ollama", "model": "llama3.2:1b",
         "base_url": "http://host.docker.internal:11434", "api_key": None, "chat_base_url": None}
+    assert got["floor_hosts"] == ["host.docker.internal:11434"], "the default local server is the operator's"
 
 
 def test_compatible_resolves_with_its_stored_base_url(client, admin, project):
     key = new_key()
     put_provider(client, project, "compatible", admin, api_key=key, base_url="http://127.0.0.1:9/v1")
     put_system(client, project, "card_agent", admin, "compatible", "local")
-    assert resolve(client, project["pid"]).json() == {
+    assert without_rule(resolve(client, project["pid"]).json()) == {
         "configured": True, "provider": "compatible", "model": "local",
         "base_url": "http://127.0.0.1:9/v1", "api_key": key, "chat_base_url": None}
 

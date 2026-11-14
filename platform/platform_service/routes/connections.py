@@ -393,6 +393,10 @@ def save_provider_connection(pid: str, name: str, body: ConnectionIn, caller: Ca
         raise _invalid_connection("base_url: a self-hosted model server needs its address")
     if body.provider == "ollama" and body.secret:
         raise _invalid_connection("secret: ollama takes no key")
+    if base_url is not None:
+        # a self-hosted server's address follows the project's network rule, as a helper's does
+        from platform_service.routes.helpers import reachable
+        reachable(pid, base_url, field="base_url", operator_hosts=llm_store.operator_hosts(base_url))
     ciphertext = connection_store.KEEP
     if "secret" in body.model_fields_set:
         try:

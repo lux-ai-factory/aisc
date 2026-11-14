@@ -78,7 +78,10 @@ def test_resolve_needs_worker_token_and_returns_key(client, project):
     assert resolving(client, project["pid"], token=ENGINE_TOKEN).status_code == 401
     r = resolving(client, project["pid"])
     assert r.status_code == 200, r.text
-    assert r.json() == {"label": "Judge", "endpoint_url": ENDPOINT, "roles": ["judge", "grader"], "api_key": KEY}
+    rule = ("allowed_hosts", "denied_addresses", "floor_hosts")
+    assert {k: v for k, v in r.json().items() if k not in rule} == {
+        "label": "Judge", "endpoint_url": ENDPOINT, "roles": ["judge", "grader"], "api_key": KEY}
+    assert set(rule) <= set(r.json()), "the project's network rule comes with the helper"
 
 
 def test_internal_routes_refuse_forwarded_requests(client, project):

@@ -24,8 +24,10 @@ def _env(monkeypatch):
 
 
 @pytest.fixture
-def fake():
+def fake(monkeypatch):
     server = FakeServer()
+    # the fake is on loopback: only a host of the deployment's floor may reach it
+    monkeypatch.setenv("CONNECTIONS_ALLOWED_HOSTS", server.url.split("//", 1)[1])
     yield server
     server.close()
 
