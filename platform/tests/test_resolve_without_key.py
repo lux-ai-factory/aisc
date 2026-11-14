@@ -18,7 +18,7 @@ pytestmark = needs_database
 PUBLIC_KEYS = {"name", "label", "kind", "base_url", "method", "path", "headers", "secret_header", "body_template",
                "response_path", "refusal", "model", "timeout_s", "protocol_version", "updated_by", "updated_at",
                "target", "has_secret", "allowed_hosts", "denied_addresses"}
-LATER_KEYS = {"supports_tools", "supports_logprobs"}
+LATER_KEYS = {"supports_tools", "supports_logprobs", "floor_hosts"}
 
 
 @pytest.fixture
