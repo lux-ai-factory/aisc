@@ -441,6 +441,13 @@ _ACTIONS = [
     _a("engine.component.deleted", 4, ("engine",), "component",
        caused_by=(("engine", "DELETE", _EN + r"/components/(?P<item>[^/]+)$"),), details_keys=("component_type",),
        routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "delete_component"),)),
+    # a component that runs used is retired by its DELETE instead of deleted, and can be restored
+    _a("engine.component.retired", 4, ("engine",), "component",
+       caused_by=(("engine", "DELETE", _EN + r"/components/(?P<item>[^/]+)$"),), details_keys=("component_type",),
+       routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "delete_component"),)),
+    _a("engine.component.restored", 4, ("engine",), "component",
+       caused_by=(("engine", "POST", _EN + r"/components/(?P<item>[^/]+)/restore$"),), details_keys=("component_type",),
+       routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "restore_component"),)),
     _a("engine.setting.created", 4, ("engine",), "setting",
        caused_by=(("engine", "POST", _EN + r"/project/settings/[^/]+$"),), details_keys=("key",),
        routes=(("engine", "apps/backend/aisc_backend/routers/project_config.py", "create_project_config"),)),
