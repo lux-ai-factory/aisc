@@ -1,5 +1,5 @@
 """The test suite's own cleanup removes exactly what it recorded, table by
-table (`ledger.pool`, `ledger.state` and the others listed in conftest.CLEANUP)."""
+table (`ledger.pool` and the others listed in conftest.CLEANUP)."""
 from __future__ import annotations
 
 import uuid

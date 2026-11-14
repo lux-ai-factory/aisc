@@ -115,3 +115,36 @@ END
 $alarm$;
 ALTER EVENT TRIGGER aisc_guard_triggers_stay ENABLE;
 ALTER EVENT TRIGGER aisc_guard_triggers_stay_on_drop ENABLE;
+
+-- The database inspector (init/inspector-role.sql) reads every schema here but the three that hold
+-- endpoints and keys (connection, llm, helper): USAGE and SELECT on what is there, and SELECT on what the
+-- platform, the modules and their owners make later. One function, so the platform's template applies the
+-- same rule to a project made between two starts (platform/project-template/0035_inspector_reads_by_schema.sql).
+CREATE OR REPLACE FUNCTION aisc_setup.inspector_reads() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $fn$
+DECLARE
+  s text;
+  r text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'inspector_ro') THEN
+    RETURN;
+  END IF;
+  FOR s IN SELECT nspname FROM pg_namespace WHERE nspname IN ('connection', 'llm', 'helper') LOOP
+    EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA %I FROM inspector_ro', s);
+    EXECUTE format('REVOKE ALL ON SCHEMA %I FROM inspector_ro', s);
+  END LOOP;
+  FOR s IN SELECT nspname FROM pg_namespace
+            WHERE nspname NOT IN ('connection', 'llm', 'helper', 'aisc_setup', 'information_schema', 'public')
+              AND nspname NOT LIKE 'pg\_%' LOOP
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO inspector_ro', s);
+    EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO inspector_ro', s);
+    FOR r IN SELECT rolname FROM pg_roles
+              WHERE rolname IN ('platform_owner', 'platform_rw', s || '_rw', s || '_owner') LOOP
+      EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT ON TABLES TO inspector_ro', r, s);
+    END LOOP;
+  END LOOP;
+END
+$fn$;
+REVOKE ALL ON FUNCTION aisc_setup.inspector_reads() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION aisc_setup.inspector_reads() TO platform_owner;
+SELECT aisc_setup.inspector_reads();

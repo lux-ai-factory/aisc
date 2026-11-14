@@ -79,9 +79,8 @@ CLEANUP = [
     ("ledger.content", "DELETE FROM ledger.content WHERE project_pid::text = ANY(%(pids)s)"),
     ("core.outbox", "DELETE FROM core.outbox WHERE project_pid::text = ANY(%(pids)s)"
                     " OR request_id::text = ANY(%(requests)s)"),
-    ("ledger.state", "DELETE FROM ledger.state WHERE db IN (SELECT db FROM ledger.pool"
-                     " WHERE server_id = ANY(%(servers)s))"),
     ("ledger.pool", "DELETE FROM ledger.pool WHERE server_id = ANY(%(servers)s)"),
+    # the verified states stay: ledger.state_log only grows, and ledger.state is read-only
 ]
 
 

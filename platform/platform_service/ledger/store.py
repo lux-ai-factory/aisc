@@ -444,7 +444,8 @@ class ImmudbLedger:
             raise HeadChanged(f"{db}: the server holds {new}, not {expected}")
         old = self.trusted_head(db)
         current = self._states.get(db)
-        self._states.put(db, State(db, new["tx"], bytes.fromhex(new["hash"]), None), expected=current)
+        self._states.put(db, State(db, new["tx"], bytes.fromhex(new["hash"]), None), expected=current,
+                         kind="reanchor")
         with self._lock:
             self._clients.pop(db, None)
         return old, new
