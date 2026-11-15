@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import time
 import uuid
+from urllib.parse import urlsplit
 
 A2A_VERSION = "1.0"
 
@@ -38,7 +40,9 @@ MAX_TOOLS = 128
 PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _TOOL_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 ERROR_CODES = (("BlockedAddress", "blocked"), ("EndpointAuthError", "auth"), ("EndpointNotFound", "not_found"),
-               ("EndpointTimeout", "timeout"), ("EndpointBadResponse", "bad_response"))
+               ("EndpointTimeout", "timeout"), ("EndpointBadResponse", "bad_response"), ("NameNotResolved", "dns"))
+DNS_FAILURE = ("{host} does not resolve from the platform. If it resolved before, the stack's DNS is stale:"
+               " restart the platform and the eval worker.")
 ASK_SHAPE = "{input, history?: [messages], params?: {}}"
 MAX_ASK_BYTES = 2_097_152
 #: the inputs one OIP request may ask: each one is its own call to the system under test
@@ -133,9 +137,38 @@ def ask_answer(answer) -> dict:
             "tool_calls": getattr(answer, "tool_calls", None) or None}
 
 
+class NameNotResolved(RuntimeError):
+    """The connection's host has no address the platform can find: its own error, not a blocked address."""
+    status = None
+
+    def __init__(self, host: str):
+        super().__init__(DNS_FAILURE.format(host=host))
+        self.host = host
+
+
+def name_not_resolved(exc, base_url: str, resolve=socket.getaddrinfo) -> NameNotResolved | None:
+    """NameNotResolved when `exc`, a refused address or a failed connection, came from a host that does not
+    resolve; None otherwise. Only those two errors are checked, so a timeout or an answer costs no lookup."""
+    if type(exc).__name__ not in ("BlockedAddress", "EndpointError"):
+        return None
+    try:
+        host = urlsplit(base_url or "").hostname
+    except ValueError:
+        return None
+    if not host:
+        return None
+    try:
+        resolve(host, None)
+    except socket.gaierror:
+        return NameNotResolved(host)
+    except OSError:
+        return None
+    return None
+
+
 def error_code(exc) -> str:
     """The short code of a client error, by its exact class: blocked, auth, not_found, timeout,
-    bad_response, or error."""
+    bad_response, dns, or error."""
     return next((code for cls, code in ERROR_CODES if type(exc).__name__ == cls), "error")
 
 

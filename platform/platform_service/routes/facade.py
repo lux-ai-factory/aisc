@@ -93,6 +93,8 @@ def _facade_call(pid, opened: Opened, input, history=None, params=None, deadline
             answer = call_adapter(pid, opened.descriptor, opened.adapter, input, history, params, deadline)
         return connection_facade.scrub_answer(answer, opened.secrets), None
     except client.EndpointError as exc:
+        # a host that does not resolve is named as such, with the restart that cures a stale DNS
+        exc = connection_facade.name_not_resolved(exc, opened.descriptor.base_url) or exc
         # a warning: the plugin sees only the answer's detail, and INFO lines don't reach the stack's log;
         # a system can echo the key, so the text is scrubbed like the answer's
         logger.warning("connection %s of project %s failed behind a protocol endpoint (%s): %s",

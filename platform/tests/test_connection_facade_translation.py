@@ -80,7 +80,7 @@ def test_check_params_returns_a_copy_of_what_passes():
 # error answers and scrubbing
 def test_ask_failure_maps_the_classes():
     c = interface()
-    cases = [(getattr(c, name), code) for name, code in facade.ERROR_CODES]
+    cases = [(getattr(c, name), code) for name, code in facade.ERROR_CODES if hasattr(c, name)]
     cases += [(c.EndpointError, "error"), (c.TargetHasNoEndpoint, "error")]
     for cls, code in cases:
         assert facade.ask_failure(cls("L: x KEY", status=409), ["KEY"]) == (
@@ -95,7 +95,7 @@ def test_ask_failure_maps_the_classes():
 def test_the_error_codes_are_the_probes():
     assert facade.ERROR_CODES == (("BlockedAddress", "blocked"), ("EndpointAuthError", "auth"),
                                   ("EndpointNotFound", "not_found"), ("EndpointTimeout", "timeout"),
-                                  ("EndpointBadResponse", "bad_response"))
+                                  ("EndpointBadResponse", "bad_response"), ("NameNotResolved", "dns"))
     assert facade.ASK_SHAPE == "{input, history?: [messages], params?: {}}"
     assert facade.MAX_ASK_BYTES == 2_097_152
 
