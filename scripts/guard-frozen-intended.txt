@@ -67,6 +67,7 @@ webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place test
 webapp src/pages/PluginEvaluations.tsx reports, errors: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. Failed runs listed with their error
 webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words
 webapp src/pages/evaluationOutcome.test.ts errors: its tests
+webapp src/pages/failedTestReason.test.ts errors: every Failed test on a run's card says why, or that no reason was recorded
 webapp src/models/models.tsx errors, names, retire: a run's plugin entry carries error_message; a configuration carries its name; a component carries retired_at
 webapp src/pages/PluginEvaluations.noReport.test.ts reports: no source of the app links to /report any more
 webapp src/pages/PluginStartEvaluation.tsx wording, project, identity, retire, launch: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name; a retired dataset is not offered for a new run; the last run's helper models come back while the project still offers them; a refused launch says the engine's reason once; Launch is off while a launch is sent and each click carries its own Idempotency-Key
