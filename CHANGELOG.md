@@ -3,6 +3,18 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- A plugin test reaches the network only through the eval worker's egress proxy. The worker needs `NET_ADMIN`
+  (compose adds it, with `init: true`) to set, at start, a firewall that lets the run users reach the proxy and
+  nothing else, IPv6 and DNS included; without it the worker still starts but refuses every plugin test, saying
+  why. A test may reach the platform (its facade and resolve routes), its helpers' and LLM inputs' endpoints, and
+  `PLUGIN_EGRESS_ALLOWED_HOSTS` (new, empty by default: `host`, `host:port` or `.domain` for the domain and every
+  host under it, public addresses only), each on an address the project's network rule allows. **Before
+  deploying, an operator sets `PLUGIN_EGRESS_ALLOWED_HOSTS` in env.local for what plugins download at run time**:
+  StrongREJECT reads its dataset from `raw.githubusercontent.com`; a plugin that loads a Hugging Face model or
+  dataset needs `.huggingface.co,.hf.co`. Hosted providers (OpenAI and the like) are reached when a helper or LLM
+  input names them; a plugin that calls one on its own, with no such input, now needs the host listed too. A
+  test's home is its own and is removed with the test, so model and dataset caches under `~` are downloaded again
+  on each run.
 - One user per plugin test. A root eval worker runs each test as a uid of its own from 10100-10199 (no passwd
   entry; the plugin gets its run's `HOME`, `TMPDIR`, `USER` and `LOGNAME`), in folders only that user can read,
   and kills whatever that user left running before the uid goes to the next test. At most 100 tests run at once

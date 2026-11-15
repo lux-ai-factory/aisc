@@ -52,3 +52,9 @@ def test_the_tests_running_at_once_each_at_their_process_cap_leave_room_in_the_c
     eval_default = re.search(r'"PLUGIN_MAX_PROCESSES":\s*(\d+)',
                              (ROOT / "apps/eval/aisc_eval/plugin_process.py").read_text()).group(1)
     assert int(eval_default) == per_test
+
+
+def test_the_worker_reaps_what_its_plugin_tests_leave():
+    """A plugin's process that outlived it is killed at the end of its test; the worker's first process must reap
+    it, or it stays a zombie of that user and counts against the next test's process cap."""
+    assert worker().get("init") is True

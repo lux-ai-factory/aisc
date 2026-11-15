@@ -245,6 +245,10 @@ services:
       PLUGIN_MAX_FILE_MB: ${PLUGIN_MAX_FILE_MB:-8192}
       PLUGIN_OUTPUT_MAX_MB: ${PLUGIN_OUTPUT_MAX_MB:-1024}
       PLUGIN_CPU_CORES: ${PLUGIN_CPU_CORES:-4}
+      # A plugin reaches the network only through the worker's egress proxy (aisc_eval/egress.py): the platform,
+      # its helpers' endpoints and these hosts, comma separated (host, host:port, or .domain for the domain and
+      # every host under it, public addresses only), for example a dataset or model a plugin downloads at run time.
+      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS:-}
     depends_on:
       - aisc-backend
       - rabbitmq
@@ -254,10 +258,16 @@ services:
     mem_limit: ${EVAL_WORKER_MEM_LIMIT:-16g}
     cpus: ${EVAL_WORKER_CPUS:-4}
     pids_limit: 2048
-    # plugins run as an unprivileged user (aisc_eval/plugin_process.py): nothing in the image may raise
+    # plugins run as unprivileged users (aisc_eval/plugin_process.py): nothing in the image may raise
     # them back up through a setuid program
     security_opt:
       - no-new-privileges:true
+    # only to set, at start, the firewall that keeps those users behind the egress proxy (docker-entrypoint.sh)
+    cap_add:
+      - NET_ADMIN
+    # a first process that reaps what a plugin left (killed at the end of its test), so no zombie of a run
+    # user counts against the next test's process cap
+    init: true
     networks:
       - backend
     volumes:
