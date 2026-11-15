@@ -148,12 +148,15 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
     from_folder = info["source"] == catalogue.LOCAL_PLUGINS_SOURCE
     repo = None if from_folder or not info["source"] else info["source"].removeprefix("lux-ai-factory/")
     fetching = f"publish {info['package_name']} from local_plugins" if from_folder else f"fetch {repo}"
+    wheel_sha256 = None
     if info["fetched_on_install"]:
         # published before it is installed, never the other way round; published but not installed is reusable
         try:
             published = (publisher.publish_local(info["package_name"]) if from_folder
                          else publisher.publish(repo, info["package_name"]))
             version = published["version"]
+            # the wheel just published, or the one the index already held with the same content
+            wheel_sha256 = published.get("sha256")
         except publisher.PublisherError as exc:
             raise HTTPException(status_code=502, detail=f"could not {fetching}: {exc}; nothing was installed")
     try:
@@ -175,7 +178,7 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
             version = seen["version"]
         # the name the engine lists the index build by: the index normalises it (my_probe is my-probe there)
         package = seen["package_name"] if from_folder else info["package_name"]
-        engine_components.install_plugin(pid, token, package, version, entry)
+        engine_components.install_plugin(pid, token, package, version, entry, wheel_sha256=wheel_sha256)
     except engine_components.EngineUnavailable as exc:
         if exc.status == 403:
             raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
