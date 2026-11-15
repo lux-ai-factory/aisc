@@ -3,6 +3,20 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Module owner roles. Each module now migrates its project databases as its migrator, acting as its owner role:
+  `PROJECT_MIGRATE_DATABASE_URL` for qualification and controls (their one-shots and web apps) and for control
+  objectives, `REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL` for the report composer, `DB_MIGRATE_USER` and
+  `DB_MIGRATE_PASSWORD` for the engine (aisc-backend, its one-shot and the ledger sender); compose builds them
+  from the `*_MIGRATOR_PASSWORD` values of `scripts/secrets.sh`. At the first start each module's new migration
+  hands the tables its runtime role made to its owner role (`REASSIGN OWNED`), takes `CREATE` on the schema from
+  the runtime role and leaves it `SELECT`, `INSERT`, `UPDATE` and `DELETE` (only `INSERT` and `SELECT` on the card
+  history, the form versions, the mapping archive and the layout revisions). References to a card version restrict
+  its deletion in every module; an AI card is never deleted; a run's card version is fixed when it starts. The
+  guards that keep an AI card, its history, the mapping archive, the layout revisions and a run's card version are
+  listed in `init/guard-triggers.txt`, so not even a migration lifts them. A module migrates a project database
+  only once its schema is its owner role's: while the platform has not handed it over yet, the one-shot waits
+  and tries again. Back up first (`scripts/backup-databases.sh`), restart postgres-setup, start the platform, then
+  rebuild and recreate every module.
 - Owner roles. Run `scripts/secrets.sh` first: it adds the six `*_MIGRATOR_PASSWORD` values, which
   postgres-setup applies and `PLATFORM_MIGRATE_DATABASE_URL` uses (the platform refuses to start without it).
   postgres-setup now makes NOLOGIN owner roles (`<module>_owner`) and their migrator logins
