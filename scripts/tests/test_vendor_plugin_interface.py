@@ -23,15 +23,15 @@ import pytest
 from conftest import ROOT
 
 SCRIPT = ROOT / "scripts/vendor-plugin-interface.sh"
-WHEEL = "aisc_plugin_interface-0.4.0-py3-none-any.whl"
+WHEEL = "aisc_plugin_interface-0.5.0-py3-none-any.whl"
 TARGETS = ("apps/backend", "apps/eval", "shared/plugin-manager")
 SOURCE_LINE = f'aisc-plugin-interface = {{ path = "vendor/{WHEEL}" }}'
-VENDORED = re.compile(rf"^vendored {re.escape(WHEEL)} into (.+); its lock names 0\.4\.0 from vendor/$")
+VENDORED = re.compile(rf"^vendored {re.escape(WHEEL)} into (.+); its lock names 0\.5\.0 from vendor/$")
 
 
 def _pyproject(name: str, with_source: bool = True) -> str:
     text = (f'[project]\nname = "{name}"\nversion = "0.0.1"\nrequires-python = ">=3.12"\n'
-            f'dependencies = ["aisc-plugin-interface>=0.4.0"]\n')
+            f'dependencies = ["aisc-plugin-interface>=0.5.0"]\n')
     if with_source:
         text += f"\n[tool.uv.sources]\n{SOURCE_LINE}\n"
     return text
@@ -87,7 +87,7 @@ def _assert_lock_takes_vendored(repo: Path) -> None:
     entries = [p for p in lock.get("package", []) if p.get("name") == "aisc-plugin-interface"]
     assert len(entries) == 1, f"{repo}/uv.lock: {entries}"
     (entry,) = entries
-    assert entry["version"] == "0.4.0"
+    assert entry["version"] == "0.5.0"
     assert entry["source"] == {"path": f"vendor/{WHEEL}"}
     assert entry["wheels"][0]["hash"] == "sha256:" + _sha256(repo / "vendor" / WHEEL)
 

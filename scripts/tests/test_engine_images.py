@@ -1,5 +1,5 @@
 """An image built from apps/backend/Dockerfile or apps/eval/Dockerfile alone, with no compose mount and no
-editable reinstall, holds this checkout's plugin interface (0.4.0), plugin-manager and aisc_identity, and the
+editable reinstall, holds this checkout's plugin interface (0.5.0), plugin-manager and aisc_identity, and the
 backend's Django app loads in it.
 
 These build images, which takes minutes, network and disk, so they run only when asked:
@@ -90,7 +90,7 @@ def test_the_image_holds_this_checkouts_interface_plugin_manager_and_identity(im
     r = _docker("run", "--rm", "--entrypoint", "/app/.venv/bin/python", tag, "-c", PROBE, timeout=300)
     assert r.returncode == 0, r.stdout + r.stderr
     found = json.loads(r.stdout.strip().splitlines()[-1])
-    assert found["version"] == "0.4.0"
+    assert found["version"] == "0.5.0"
     assert found["strict"] and found["required"]
     for name, folder in LOCAL_SOURCES.items():
         assert found["files"][name] == _source_hashes(folder), f"{tag}: {name} is not this checkout's"

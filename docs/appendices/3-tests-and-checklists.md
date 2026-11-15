@@ -48,7 +48,9 @@ Installing a test takes the realm role `admin`. "Install into this project" open
 2. When a build is needed, `plugin-publisher` clones the repository (or copies the folder, leaving out git, virtual
    environments, caches, old build output and every `.env` file, and refusing links), builds the package as an
    unprivileged user with no secrets, and uploads it to `devpi`. An upload is skipped when the index already holds
-   the same content. The dialog warns that this "can take a minute"; the platform waits up to 10 minutes.
+   the same content; a version the index holds with other content is refused ("give the plugin a new version"):
+   the index never replaces a version, so every install of it ran the same wheel. The publisher names that wheel's
+   sha256, which the engine records with the install. The dialog warns that this "can take a minute"; the platform waits up to 10 minutes.
 3. After a build, the platform checks that the engine now sees that version; then it asks the engine to install it.
 
 A project holds one version of a test's package on at a time. Installing a version, or switching one on in the
@@ -71,8 +73,9 @@ checklist already installed is left exactly as it is.
 - The catalogue choice and a private copy: schema `catalogue` of the project's database, created when the choice is
   made.
 - Installed tests: the engine (schema `engine`). Installed checklists: the controls app (schema `controls`).
-- Built packages: `devpi`, which keeps them across restarts (volume `devpi_data`). At every start the publisher puts
-  the shared plugin interface on it; tests arrive only when installed.
+- Built packages: `devpi`, which keeps them across restarts (volume `devpi_data`) and never replaces or deletes a
+  version it holds. At every start the publisher puts the shared plugin interface on it; tests arrive only when
+  installed.
 
 ## Your own tests and checklists
 

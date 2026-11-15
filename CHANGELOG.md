@@ -3,6 +3,25 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- The plugin index is immutable: devpi's `root/public` is created non-volatile, and a volume an earlier image
+  made volatile is made non-volatile at the next start (`devpi: index root/public made non-volatile`). A version
+  on the index is never replaced or deleted: the publisher refuses to publish a version that is already there
+  with other content (409, "give the plugin a new version; nothing was published"), the plugin interface at its
+  start included, and its answers name the sha256 of the wheel the index serves (`sha256`, no more `replaced`).
+  The platform hands that hash to the engine at a catalogue install, the engine records it (and a local plugin's
+  folder digest) in the ledger's `plugin.installed` (`wheel_sha256`, `code_digest`). **A plugin whose code
+  changes needs a new version.**
+- The plugin interface is 0.5.0 (0.4.0's code, released under a version of its own, since 0.4.0 can no longer be
+  replaced on the index): the engine, the eval worker and the plugin-manager pin `aisc-plugin-interface>=0.5.0`
+  from their `vendor/` wheels, and the publisher puts 0.5.0 on the index at its start. Plugins that pin
+  `>=0.4.0` (the pilots' and the local ones) resolve 0.5.0 from the index; the 0.4.0 already there stays.
+- Every run installs its plugin only from the hashes the engine recorded for it (engine migration 0035: four
+  empty columns on each run's plugin, no row changed): the wheel's sha256 and the hashed lock of its
+  dependencies, sent with the run (`pins`) and installed with `--require-hashes --no-deps`. A catalogue plugin
+  whose row has no recorded hash is refused before anything is installed ("open its page once so its
+  declarations are read"); the launch reads it first, so this happens only when that read failed. The run keeps
+  the wheel hash it ran, a local plugin's folder digest, git commit and dirty flag, and its environment as the
+  file `plugin-environment.txt` (its sha256 is in the ledger's `engine.artifact.uploaded`).
 - The engine never imports plugin code. Every plugin page (configure, launch, results, the dashboards' charts)
   answers from a manifest stored on the plugin's row (engine migration 0034: four empty columns, no row changed).
   The eval worker reads it in its sandbox: it installs the plugin from a hashed lock that must name the wheel's
