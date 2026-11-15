@@ -237,11 +237,11 @@ services:
       # decrypts the plugin settings the engine stores (aisc_eval/utils/encryption.py); never passed to a plugin
       ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
       # Each plugin's own limits (aisc_eval/plugin_process.py plugin_limits), read at each run: address space,
-      # processes and threads of all plugins together (they share one user), the largest file it may write,
+      # processes and threads of one test (each runs as a user of its own), the largest file it may write,
       # the total of its output files, and the cores its CPU time is counted for (the test's soft time limit
       # on each). Set in env.local and recreate the worker to change them.
       PLUGIN_MAX_MEMORY_MB: ${PLUGIN_MAX_MEMORY_MB:-16384}
-      PLUGIN_MAX_PROCESSES: ${PLUGIN_MAX_PROCESSES:-1024}
+      PLUGIN_MAX_PROCESSES: ${PLUGIN_MAX_PROCESSES:-400}
       PLUGIN_MAX_FILE_MB: ${PLUGIN_MAX_FILE_MB:-8192}
       PLUGIN_OUTPUT_MAX_MB: ${PLUGIN_OUTPUT_MAX_MB:-1024}
       PLUGIN_CPU_CORES: ${PLUGIN_CPU_CORES:-4}

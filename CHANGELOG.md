@@ -3,6 +3,12 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- One user per plugin test. A root eval worker runs each test as a uid of its own from 10100-10199 (no passwd
+  entry; the plugin gets its run's `HOME`, `TMPDIR`, `USER` and `LOGNAME`), in folders only that user can read,
+  and kills whatever that user left running before the uid goes to the next test. At most 100 tests run at once
+  on one worker. `PLUGIN_MAX_PROCESSES` now counts one test's processes and threads, not all plugins together, and
+  defaults to 400 (four tests at their cap stay under the container's 2048). A plugin cannot write in its working
+  folder any more: it writes to its output folder (the artifact callback), its home or its tmp.
 - Runs, limits and edges. Each plugin now runs under its own limits, read at every run from the worker's
   settings (env.local, then recreate the worker): `PLUGIN_MAX_MEMORY_MB` (16384, address space; a StrongREJECT
   process reserves about 4 GB to use 300 MB), `PLUGIN_MAX_PROCESSES` (1024, every process and thread of all plugins
