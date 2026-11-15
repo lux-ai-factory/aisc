@@ -384,8 +384,13 @@ _ACTIONS = [
        details_keys=("added", "removed", "carried", "notes_changed"), content_required=True, empty_content=True),
     _a("evidence.map.reviewed", 4, ("platform",), "evidence",
        caused_by=(("platform", "POST", _LAUNCH + "/evidence/review$"),), details_keys=("links",)),
+    # what the run is made of: its card version (the event's card_version), each plugin's package, version,
+    # configuration and its hash, and the settings it is given (a secret by key only); the stored file and hash of
+    # each file input; the local model files; the endpoint each target or connection would reach (a fingerprint).
+    # An older start names its plugins as a list of names.
     _a("engine.evaluation.run_requested", 4, ("engine",), "evaluation",
-       caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),), details_keys=("plugins", "local_models"),
+       caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),),
+       details_keys=("plugins", "local_models", "connections", "inputs"),
        runs=("engine.evaluation.status_changed", "engine.evaluation.plugin_status_changed", "engine.measures.recorded",
              "engine.artifact.uploaded", "engine.evaluation.input_marked_local", "run.trace.sealed"),
        routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "create_evaluation_task"),)),
