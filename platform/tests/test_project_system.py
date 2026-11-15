@@ -273,7 +273,7 @@ def test_only_platform_rw_writes_project_system_and_the_modules_read_and_referen
 @pytest.mark.parametrize("role", list(MODULE_SCHEMAS))
 def test_a_module_role_connects_and_has_its_own_schema_only(project, dsn, role):
     """Each module's schema exists in the project database, owned by
-    its module's owner role, and only that module's role may create in it."""
+    its module's owner role, which alone may create in it: the module's role uses it, its rows only."""
     require_new_template("module schemas")
     own = MODULE_SCHEMAS[role]
     with in_project(dsn, project["pid"]) as conn:
@@ -288,7 +288,7 @@ def test_a_module_role_connects_and_has_its_own_schema_only(project, dsn, role):
             usage = conn.execute("select has_schema_privilege(%s, %s, 'USAGE')", (role, schema)).fetchone()[0]
             create = conn.execute("select has_schema_privilege(%s, %s, 'CREATE')", (role, schema)).fetchone()[0]
             if schema == own:
-                assert usage and create, f"{role} has USAGE, CREATE on {own}"
+                assert usage and not create, f"{role} has USAGE and no CREATE on {own}"
             else:
                 assert not usage and not create, f"{role} has rights on {schema}"
         setting = conn.execute(
@@ -297,24 +297,22 @@ def test_a_module_role_connects_and_has_its_own_schema_only(project, dsn, role):
             " where d.datname = current_database() and r.rolname = %s", (role,)).fetchone()
     assert setting and re.search(rf"search_path={own}\b", setting[0]), \
         f"ALTER ROLE {role} IN DATABASE ... SET search_path = {own}; got {setting}"
-    # the role can really connect, and an unqualified name lands in its own schema
+    # the role can really connect, and an unqualified name resolves in its own schema
     with in_project(dsn, project["pid"], role=role) as conn:
-        conn.execute("create table probe_i1_2 (x int)")
-        where = conn.execute("select n.nspname from pg_class c join pg_namespace n on n.oid = c.relnamespace"
-                             " where c.relname = 'probe_i1_2'").fetchone()[0]
-        conn.execute("drop table probe_i1_2")
+        where = conn.execute("select current_schema()").fetchone()[0]
     assert where == own
 
 
 @needs_database
 def test_a_module_may_point_a_foreign_key_at_project_system(project, dsn):
-    """REFERENCES lets each module recreate its FK on project.system(pid)."""
+    """REFERENCES lets each module's migrations recreate its FK on project.system(pid): they run as its migrator,
+    acting as its owner role, which has what the module's role was granted."""
     require_new_template("foreign key at project.system")
-    with in_project(dsn, project["pid"], role="qualification_rw") as conn:
-        conn.execute("create table qualification.probe_i1_6 (s uuid references project.system (pid) on delete cascade)")
+    with in_project(dsn, project["pid"], role="qualification_migrator") as conn:
+        conn.execute("create table qualification.probe_i1_6 (s uuid references project.system (pid) on delete restrict)")
         conn.execute("drop table qualification.probe_i1_6")
-    with in_project(dsn, project["pid"], role="engine_rw") as conn:
-        conn.execute("create table engine.probe_i1_6 (s uuid references project.system (pid) on delete set null)")
+    with in_project(dsn, project["pid"], role="engine_migrator") as conn:
+        conn.execute("create table engine.probe_i1_6 (s uuid references project.system (pid) on delete restrict)")
         conn.execute("drop table engine.probe_i1_6")
 
 

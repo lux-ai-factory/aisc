@@ -155,11 +155,13 @@ def test_no_default_privilege_grants_to_a_reader(bed):
 
 @pytest.mark.parametrize("schema,role", list(ib.MODULES.items()))
 def test_a_module_role_has_rights_only_on_its_own_schema(bed, schema, role):
-    """USAGE, CREATE on its own schema; USAGE on project; nothing on llm, provision or another
-    module's schema."""
+    """USAGE on its own schema (CREATE only for its owner role, whose migrator migrates it); USAGE on project;
+    nothing on llm, provision or another module's schema."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         assert bed.scalar(db, f"SELECT has_schema_privilege('{role}', '{schema}', 'USAGE')") == "t"
+        assert bed.scalar(db, f"SELECT has_schema_privilege('{role}', '{schema}', 'CREATE')") == "f"
+        assert bed.scalar(db, f"SELECT has_schema_privilege('{schema}_owner', '{schema}', 'CREATE')") == "t"
         assert bed.scalar(db, f"SELECT has_schema_privilege('{role}', 'project', 'USAGE')") == "t"
         for other in [*ib.MODULES, "llm", "connection", "provision"]:
             if other == schema:
@@ -184,15 +186,16 @@ def test_project_system_is_select_and_references_only_for_module_roles(bed, role
 
 
 @pytest.mark.parametrize("schema,role", [(s, r) for s, r in ib.MODULES.items()])
-def test_module_tables_are_owned_by_their_module_role(bed, schema, role):
-    """Tables of a module schema are created by its own migrations, owned by its role."""
+def test_module_tables_are_owned_by_their_module_owner_role(bed, schema, role):
+    """Tables of a module schema are created by its own migrations, run by its migrator as its owner role;
+    the module's runtime role does not own them."""
     bed.require(*ALL_MODULES)
     for db in DBS:
         rows = bed.rows(db, f"""
             SELECT c.relname, pg_get_userbyid(c.relowner) AS owner FROM pg_class c
               JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = '{schema}' AND c.relkind IN ('r', 'p')""")
         assert rows, f"{db}: no tables in {schema}"
-        assert {r["owner"] for r in rows} == {role}, f"{db} {schema}: {rows}"
+        assert {r["owner"] for r in rows} == {f"{schema}_owner"}, f"{db} {schema}: {rows}"
 
 
 # inspector_ro

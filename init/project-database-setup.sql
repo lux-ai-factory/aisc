@@ -24,7 +24,8 @@ $setting$;
 -- platform_owner, and hands each to its owner through this function, which changes the owner of one of
 -- those five schemas, in a project database, and nothing else. The platform's runtime role keeps USAGE,
 -- which it had as the schema's owner (it counts what the engine's ledger outbox still holds before a
--- project is deleted). Only platform_owner may call it.
+-- project is deleted). The module's runtime role keeps USAGE and loses CREATE, which the template gave it:
+-- only the module's migrator, acting as the owner, makes tables there. Only platform_owner may call it.
 CREATE OR REPLACE FUNCTION aisc_setup.hand_schema_to_owner(schema_name text) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $fn$
 BEGIN
@@ -44,6 +45,9 @@ BEGIN
   END IF;
   EXECUTE format('ALTER SCHEMA %I OWNER TO %I', schema_name, schema_name || '_owner');
   EXECUTE format('GRANT USAGE ON SCHEMA %I TO platform_rw', schema_name);
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = schema_name || '_rw') THEN
+    EXECUTE format('REVOKE CREATE ON SCHEMA %I FROM %I', schema_name, schema_name || '_rw');
+  END IF;
 END
 $fn$;
 REVOKE ALL ON FUNCTION aisc_setup.hand_schema_to_owner(text) FROM PUBLIC;

@@ -223,10 +223,29 @@ def privileges_project(db, present):
         if role not in present:
             continue
         if schema in schemas:
-            for right in ("USAGE", "CREATE"):
-                if not one(db, "SELECT has_schema_privilege(%s, %s, %s)", (role, schema, right)):
+            if not one(db, "SELECT has_schema_privilege(%s, %s, 'USAGE')", (role, schema)):
+                ok = False
+                say("FAIL", "privileges", f"{db}: {role} lacks USAGE on its schema {schema}")
+            owner = f"{schema}_owner"
+            if owner in present:
+                # the module's migrator, acting as its owner role, changes the schema; its runtime role reads
+                # and writes rows only
+                if one(db, "SELECT has_schema_privilege(%s, %s, 'CREATE')", (role, schema)):
                     ok = False
-                    say("FAIL", "privileges", f"{db}: {role} lacks {right} on its schema {schema}")
+                    say("FAIL", "privileges", f"{db}: {role} may create in its schema {schema}; only {owner} may")
+                for table, table_owner in rows(db, """
+                        SELECT c.relname, pg_get_userbyid(c.relowner) FROM pg_class c
+                         WHERE c.relnamespace = %s::regnamespace AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
+                           AND pg_get_userbyid(c.relowner) <> %s ORDER BY 1""", (schema, owner)):
+                    ok = False
+                    say("FAIL", "privileges", f"{db}: {schema}.{table} belongs to {table_owner}, not {owner}")
+                for rel, right in sorted(table_rights(db, role, "n.nspname = '%s'" % schema)):
+                    if right not in WRITE_RIGHTS + ("SELECT", "USAGE"):          # USAGE: its sequences
+                        ok = False
+                        say("FAIL", "privileges", f"{db}: {role} has {right} on {rel}; it reads and writes rows only")
+            elif not one(db, "SELECT has_schema_privilege(%s, %s, 'CREATE')", (role, schema)):
+                ok = False
+                say("FAIL", "privileges", f"{db}: {role} lacks CREATE on its schema {schema}")
         if "project" in schemas and not one(db, "SELECT has_schema_privilege(%s, 'project', 'USAGE')", (role,)):
             ok = False
             say("FAIL", "privileges", f"{db}: {role} lacks USAGE on schema project")

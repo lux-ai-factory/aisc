@@ -6,7 +6,7 @@
 # project.system, and is refused the rest. `platform` keeps only the list of projects and their
 # members. These are the assertions that make that a fact rather than an intention, so a stray
 # privilege fails the suite. The module part runs in a throwaway project_<random hex> database on
-# the same cluster, made as the platform makes one (platform_rw, the project template) and
+# the same cluster, made as the platform makes one (platform_migrator, the project template) and
 # removed afterwards.
 set -uo pipefail
 . "$(dirname "$0")/lib/stack-name.sh"
@@ -48,6 +48,7 @@ pw() {
   esac
 }
 pw platform_rw; PLATFORM_PW=$PW
+pw platform_migrator; MIGRATOR_PW=$PW
 as_in() { pw "$1"; docker exec "$PGC" psql "postgresql://$1:$PW@$HOST:5432/$2" -v ON_ERROR_STOP=1 -At -c "$3" >/dev/null 2>&1; }
 as() { as_in "$1" "$DB" "$2"; }
 
@@ -104,12 +105,12 @@ done
 # the throwaway project database of sections 3 to 5
 PROBE_DB="project_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
 gone() {
-  docker exec "$PGC" psql "postgresql://platform_rw:$PLATFORM_PW@$HOST:5432/$DB" -At \
+  docker exec "$PGC" psql "postgresql://platform_migrator:$MIGRATOR_PW@$HOST:5432/$DB" -At \
     -c "drop database if exists \"$PROBE_DB\" with (force)" >/dev/null 2>&1
 }
 trap 'gone; unprobe' EXIT
 made=1
-docker exec "$PGC" psql "postgresql://platform_rw:$PLATFORM_PW@$HOST:5432/$DB" -v ON_ERROR_STOP=1 -At \
+docker exec "$PGC" psql "postgresql://platform_migrator:$MIGRATOR_PW@$HOST:5432/$DB" -v ON_ERROR_STOP=1 -At \
   -c "create database \"$PROBE_DB\"" >/dev/null 2>&1 || made=0
 if [ "$made" = 1 ]; then
   {
@@ -121,15 +122,15 @@ if [ "$made" = 1 ]; then
       echo "insert into provision.template_migration (name) values ('$(basename "$f")');"
     done
     echo "commit;"
-  } | docker exec -i "$PGC" psql "postgresql://platform_rw:$PLATFORM_PW@$HOST:5432/$PROBE_DB" -v ON_ERROR_STOP=1 -q -f - >/dev/null 2>&1 || made=0
+  } | docker exec -i "$PGC" psql "postgresql://platform_migrator:$MIGRATOR_PW@$HOST:5432/$PROBE_DB" -v ON_ERROR_STOP=1 -q -f - >/dev/null 2>&1 || made=0
 fi
-if [ "$made" = 1 ]; then ok "platform_rw: made a project database with the template"; else no "platform_rw: could not make a project database with the template"; fi
+if [ "$made" = 1 ]; then ok "platform_migrator: made a project database with the template"; else no "platform_migrator: could not make a project database with the template"; fi
 
-echo "3. in a project database, a module owns its own schema and reads the card versions"
+echo "3. in a project database, a module uses its own schema, which its owner role changes, and reads the card versions"
 for pair in qualification:qualification_rw control_objectives:control_objectives_rw controls:controls_rw \
             engine:engine_rw report_composer:report_composer_rw; do
   s=${pair%%:*}; r=${pair#*:}
-  allow_in "$r" "create table $s.probe_$$ (x int); insert into $s.probe_$$ values (1); drop table $s.probe_$$" "creates and writes in its schema $s"
+  deny_in  "$r" "create table $s.probe_$$ (x int)" "cannot create in its own schema $s: only its migrator does"
   allow_in "$r" "select count(*) from project.system" "reads project.system"
   deny_in  "$r" "insert into project.system (number, name) values (99, 'probe')" "cannot write project.system"
 done
