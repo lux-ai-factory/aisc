@@ -413,9 +413,9 @@ _ACTIONS = [
        per_request=None, details_keys=("plugin", "status_before", "status_after"),
        routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "update_plugin_timestamp"), ("engine", "apps/backend/aisc_backend/routers/internal.py", "mark_plugin_failed"))),
     # the measures themselves are the content (one row per measure, its dimensions only as a hash); a large
-    # recording comes as several events
+    # recording comes as several events, each saying which part it is of how many
     _a("engine.measures.recorded", 4, ("engine",), "evaluation", actor_kinds=("worker",), per_request=None,
-       details_keys=("count",), content_required=True, empty_content=True, routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "create_evaluation_measures"),)),
+       details_keys=("count", "part", "parts"), content_required=True, empty_content=True, routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "create_evaluation_measures"),)),
     _a("engine.artifact.uploaded", 4, ("engine",), "artifact", actor_kinds=("worker",), per_request=None,
        details_keys=("size", "sha256"), routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "upload_evaluation_artifact"),)),
     # the local model file a run was on: its name and hash, which keep the run apart from the AI card's

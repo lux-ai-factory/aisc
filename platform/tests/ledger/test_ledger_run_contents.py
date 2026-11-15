@@ -93,6 +93,18 @@ def test_the_relay_freezes_measure_content(client, project, memory_ledger, witne
     assert e.content_sha256 == secrets.content_digest(project["pid"], MEASURES)
 
 
+def test_a_recording_split_over_events_says_which_part_each_is(client, project, memory_ledger, witnessed):
+    run, request_id = started(client, project, witnessed)
+    for part in (1, 2):
+        send(client, project, request_id, "engine.measures.recorded", "evaluation", run, run_id=run,
+             details={"count": 1, "part": part, "parts": 2}, content=MEASURES)
+    relay_all(project["pid"])
+    assert rejected(memory_ledger, project["pid"]) == []
+    parts = [(e.details["part"], e.details["parts"]) for e in entries(memory_ledger, log_of(project["pid"]))
+             if e.action == "engine.measures.recorded"]
+    assert sorted(parts) == [(1, 2), (2, 2)]
+
+
 def test_a_run_rename_is_accepted_with_its_names(client, project, memory_ledger, witnessed):
     run = str(uuid.uuid4())
     request_id = witnessed(MEMBER, "PATCH", "engine", f"/api/v1/evaluations/{run}/name",
