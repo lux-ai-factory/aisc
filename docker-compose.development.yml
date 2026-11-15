@@ -559,6 +559,9 @@ services:
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # a template: {database} becomes project_<pid without hyphens>
       PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
+      # the migrations, as control_objectives_migrator (init/owner-roles.sql), acting as control_objectives_owner:
+      # the one-shot and a project made later, at its first open; every other query is control_objectives_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_MIGRATE_DATABASE_URL:-postgresql+psycopg://control_objectives_migrator:${CONTROL_OBJECTIVES_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:
@@ -605,6 +608,9 @@ services:
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # each project's assessments, in that project's database
       PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
+      # the migrations, as control_objectives_migrator (init/owner-roles.sql), acting as control_objectives_owner:
+      # the one-shot and a project made later, at its first open; every other query is control_objectives_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_MIGRATE_DATABASE_URL:-postgresql+psycopg://control_objectives_migrator:${CONTROL_OBJECTIVES_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
       # The model, named the way BAF names it: the same two variables the qualification
       # filler reads, so both services are configured alike.
       #

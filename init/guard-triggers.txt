@@ -22,3 +22,8 @@ qualification.card_history card_history_is_not_truncated
 qualification.qualification qualification_only_latest_changes
 qualification.qualification qualification_no_delete
 qualification.qualification qualification_no_truncate
+
+# what a card update replaced in step 2: the mapping archive only grows
+# (apps/control-objectives/alembic/versions/20261003000000_ledger_history.py)
+control_objectives.mapping_archive mapping_archive_is_append_only
+control_objectives.mapping_archive mapping_archive_is_never_truncated

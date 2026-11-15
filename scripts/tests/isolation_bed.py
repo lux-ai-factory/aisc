@@ -255,7 +255,9 @@ def migrate_modules(bed: IsoBed) -> None:
              {"PYTHONPATH": str(ROOT / "apps/control-objectives/src"),
               "DATABASE_URL": f"postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:{port}/platform",
               "PROJECT_DATABASE_URL": "postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:"
-                                      f"{port}/{{database}}"},
+                                      f"{port}/{{database}}",
+              "PROJECT_MIGRATE_DATABASE_URL": "postgresql+psycopg://control_objectives_migrator:"
+                                              f"control_objectives_migrator@127.0.0.1:{port}/{{database}}"},
              "python -m aisc_control_objectives.migrate_projects")
     # engine
     if "engine" not in bed.problems:
