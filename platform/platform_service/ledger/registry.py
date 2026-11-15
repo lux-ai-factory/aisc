@@ -228,7 +228,9 @@ _ACTIONS = [
        caused_by=(("qualification", "ACTION", _QU + r"/questionnaires(/.*)?$"),),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/questionnaires/actions.ts", "retireQuestionnaire"),)),
     _a("qualification.opened", 1, ("qualification",), "qualification", per_request=None,
-       caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),),
+       caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),
+                  # saving the card redirects to its page, which Next renders inside the save's own POST
+                  ("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$")),
        details_keys=("version", "read_only")),
     _a("qualification.created", 1, ("qualification",), "qualification",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page
