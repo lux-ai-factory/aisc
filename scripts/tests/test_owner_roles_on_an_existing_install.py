@@ -590,3 +590,32 @@ def test_a_versions_card_revision_is_the_one_its_cards_are_at(bed):
         assert _as(bed, DB_A, role, f"""
             SELECT 1 / (CASE WHEN card_revision = 1 THEN 1 ELSE 0 END) FROM project.saved_system
              WHERE pid = '{V2}';""") == "", role
+
+
+def test_a_version_is_described_as_its_cards_describe_it_while_the_platform_counted_ahead(bed):
+    """A correction the platform counted and rewrote its copy for, whose card was never stored, leaves the
+    version described as its card describes it, for the platform and for every reader: version 2's only card,
+    made before the upgrade, names it 'Card', release '1', provider 'c', description 'd'."""
+    described = ("SELECT 1 / (CASE WHEN (name, version, provider, description) = ('Card', '1', 'c', 'd')"
+                 f" THEN 1 ELSE 0 END) FROM project.saved_system WHERE pid = '{V2}';")
+    assert _as(bed, DB_A, "platform_rw", f"""
+        BEGIN;
+        UPDATE project.system SET card_revision = 2, name = 'Corrected', version = '9', provider = 'x',
+               description = 'y' WHERE pid = '{V2}';
+        {described}
+        ROLLBACK;""") == ""
+    _must(bed, DB_A, f"UPDATE project.system SET card_revision = 2, name = 'Corrected', provider = 'x'"
+                     f" WHERE pid = '{V2}'", role="platform_rw")
+    try:
+        for role in ("report_composer_rw", "controls_rw", "report_ro", "qualification_rw"):
+            assert _as(bed, DB_A, role, described) == "", role
+    finally:
+        _must(bed, DB_A, f"UPDATE project.system SET card_revision = 1, name = 'Card', provider = NULL"
+                         f" WHERE pid = '{V2}'", role="platform_rw")
+
+
+def test_a_version_whose_count_matches_its_cards_keeps_the_platforms_description(bed):
+    """When the platform's count is its card's, the platform's copy is that card's: it is read as it is."""
+    assert _as(bed, DB_A, "platform_rw", f"""
+        SELECT 1 / (CASE WHEN (name, version, provider) IS NOT DISTINCT FROM ('Card', NULL, NULL)
+                    THEN 1 ELSE 0 END) FROM project.saved_system WHERE pid = '{V2}';""") == ""

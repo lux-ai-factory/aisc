@@ -22,8 +22,12 @@ pytestmark = needs_database
 ALICE = "00000000-0000-0000-0000-00000000a11c"
 
 
+#: the version as its first card describes it
+FIRST = {"name": "MCAS", "version": "v1", "provider": "Eindhoven Engine", "description": "first"}
+
+
 def correction(**over):
-    return {"name": "MCAS", "version": "v1", "provider": "Eindhoven Engine", "description": "corrected",
+    return {"name": "MCAS 2", "version": "v1.1", "provider": "Eindhoven Engine B.V.", "description": "corrected",
             "reason": "provider name", "requested_by": "the provider", "expected_card_revision": 1, **over}
 
 
@@ -33,18 +37,24 @@ def version_with_its_first_card(client, as_user, project):
     superuser = os.environ.get("PLATFORM_TEST_SUPERUSER_URL")
     if not superuser:
         pytest.skip("PLATFORM_TEST_SUPERUSER_URL is not set")
-    made = client.post(f"/projects/{project['slug']}/system-versions", json={"name": "MCAS", "version": "v1"},
-                       headers=as_user(ALICE))
+    made = client.post(f"/projects/{project['slug']}/system-versions", json=FIRST, headers=as_user(ALICE))
     assert made.status_code == 201, made.text
     with psycopg.connect(make_conninfo(superuser, dbname=projectdb.database_name(project["pid"])),
                          autocommit=True) as conn:
         # the columns of qualification's card table that say which version and revision a card is
+        # and the system's identity it describes (as qualification's Prisma schema names the columns)
         conn.execute("create table if not exists qualification.qualification"
-                     " (id text primary key, system_id uuid not null, revision int not null default 1)")
-        # what qualification's migration lets the platform read of it
+                     " (id text primary key, system_id uuid not null, revision int not null default 1,"
+                     ' "systemName" text not null, "systemVersion" text not null, company text not null,'
+                     " description text not null)")
+        # what qualification's migrations let the platform read of it
         conn.execute("grant select (system_id, revision) on qualification.qualification to platform_rw")
-        conn.execute("insert into qualification.qualification (id, system_id, revision) values ('card-r1', %s, 1)",
-                     (made.json()["pid"],))
+        conn.execute('grant select ("systemName", "systemVersion", company, description)'
+                     " on qualification.qualification to platform_rw")
+        conn.execute("insert into qualification.qualification"
+                     ' (id, system_id, revision, "systemName", "systemVersion", company, description)'
+                     " values ('card-r1', %s, 1, %s, %s, %s, %s)",
+                     (made.json()["pid"], FIRST["name"], FIRST["version"], FIRST["provider"], FIRST["description"]))
     return made.json()
 
 
@@ -68,3 +78,38 @@ def test_the_next_correction_from_the_cards_revision_is_taken(client, as_user, p
                          json=correction(provider="Eindhoven Engine B.V."), headers=as_user(ALICE))
     assert retry.status_code == 200, (
         f"a correction from the card's own revision answered {retry.status_code}: {retry.text}")
+
+
+def test_a_correction_whose_card_was_never_written_leaves_the_version_described_as_its_cards_describe_it(
+        client, as_user, project, version_with_its_first_card):
+    pid = version_with_its_first_card["pid"]
+    counted = client.patch(f"/projects/{project['slug']}/system-versions/{pid}", json=correction(),
+                           headers=as_user(ALICE))
+    assert counted.status_code == 200, counted.text
+    # qualification's transaction failed here: the card still describes the version as revision 1 does
+    [kept] = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(ALICE)).json()
+    assert {k: kept[k] for k in FIRST} == FIRST, (
+        f"the version reads {({k: kept[k] for k in FIRST})} while its latest card describes it as {FIRST}")
+    latest = client.get(f"/projects/{project['slug']}/system-versions/latest", headers=as_user(ALICE))
+    if latest.status_code == 200:
+        assert {k: latest.json()[k] for k in FIRST} == FIRST
+
+
+def test_a_stored_correction_describes_the_version_as_its_new_card_does(
+        client, as_user, project, version_with_its_first_card):
+    pid = version_with_its_first_card["pid"]
+    corrected = correction()
+    stored = client.patch(f"/projects/{project['slug']}/system-versions/{pid}", json=corrected,
+                          headers=as_user(ALICE))
+    assert stored.status_code == 200, stored.text
+    superuser = os.environ["PLATFORM_TEST_SUPERUSER_URL"]
+    with psycopg.connect(make_conninfo(superuser, dbname=projectdb.database_name(project["pid"])),
+                         autocommit=True) as conn:
+        # qualification's transaction committed: its card at revision 2 says what the platform was sent
+        conn.execute("insert into qualification.qualification"
+                     ' (id, system_id, revision, "systemName", "systemVersion", company, description)'
+                     " values ('card-r2', %s, 2, %s, %s, %s, %s)",
+                     (pid, corrected["name"], corrected["version"], corrected["provider"], corrected["description"]))
+    [kept] = client.get(f"/projects/{project['slug']}/system-versions", headers=as_user(ALICE)).json()
+    assert kept["card_revision"] == 2
+    assert {k: kept[k] for k in FIRST} == {k: corrected[k] for k in FIRST}
