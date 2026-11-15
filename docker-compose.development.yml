@@ -236,10 +236,24 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       # decrypts the plugin settings the engine stores (aisc_eval/utils/encryption.py); never passed to a plugin
       ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
+      # Each plugin's own limits (aisc_eval/plugin_process.py plugin_limits), read at each run: address space,
+      # processes and threads of all plugins together (they share one user), the largest file it may write,
+      # the total of its output files, and the cores its CPU time is counted for (the test's soft time limit
+      # on each). Set in env.local and recreate the worker to change them.
+      PLUGIN_MAX_MEMORY_MB: ${PLUGIN_MAX_MEMORY_MB:-16384}
+      PLUGIN_MAX_PROCESSES: ${PLUGIN_MAX_PROCESSES:-1024}
+      PLUGIN_MAX_FILE_MB: ${PLUGIN_MAX_FILE_MB:-8192}
+      PLUGIN_OUTPUT_MAX_MB: ${PLUGIN_OUTPUT_MAX_MB:-1024}
+      PLUGIN_CPU_CORES: ${PLUGIN_CPU_CORES:-4}
     depends_on:
       - aisc-backend
       - rabbitmq
       - redis
+    # The worker's size: EVAL_WORKER_CONCURRENCY plugins at a time, in a container of EVAL_WORKER_MEM_LIMIT and
+    # EVAL_WORKER_CPUS; every process and thread inside counts against pids_limit.
+    mem_limit: ${EVAL_WORKER_MEM_LIMIT:-16g}
+    cpus: ${EVAL_WORKER_CPUS:-4}
+    pids_limit: 2048
     # plugins run as an unprivileged user (aisc_eval/plugin_process.py): nothing in the image may raise
     # them back up through a setuid program
     security_opt:
@@ -251,7 +265,10 @@ services:
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=info"
+      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      --concurrency=${EVAL_WORKER_CONCURRENCY:-4}
+      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
+      --beat --schedule=/tmp/aisc-eval-beat-schedule"
 
   aisc-eval-flower:
     # started only when asked (COMPOSE_PROFILES=inspect ./scripts/start.sh): it has no sign-in of its own, and
@@ -1081,7 +1098,7 @@ services:
       # The protocol endpoints a run reaches a connection through (AISC, OpenAI-compatible, A2A,
       # Open Inference Protocol) are announced at this internal URL; a run's key lasts this long.
       PLATFORM_INTERNAL_URL: http://platform:8000
-      CONNECTIONS_RUN_KEY_TTL_S: ${CONNECTIONS_RUN_KEY_TTL_S:-43200}
+      CONNECTIONS_RUN_KEY_TTL_S: ${CONNECTIONS_RUN_KEY_TTL_S:-24600}
       # Collect evidence: what steps 2 and 3 selected is read from each project database as the
       # report's read-only role ({database} is the project's database).
       EVIDENCE_READER_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
