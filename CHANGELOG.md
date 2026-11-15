@@ -3,6 +3,24 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Runs, limits and edges. Each plugin now runs under its own limits, read at every run from the worker's
+  settings (env.local, then recreate the worker): `PLUGIN_MAX_MEMORY_MB` (16384, address space; a StrongREJECT
+  process reserves about 4 GB to use 300 MB), `PLUGIN_MAX_PROCESSES` (1024, every process and thread of all plugins
+  running at once; a StrongREJECT run peaks at about 70 on a 20-CPU host), `PLUGIN_MAX_FILE_MB` (8192, the largest
+  file, room for a local model download), `PLUGIN_OUTPUT_MAX_MB` (1024, the total of its output files, refused
+  above) and `PLUGIN_CPU_CORES` (4: its CPU time is the test's soft time limit on each). The worker runs
+  `EVAL_WORKER_CONCURRENCY` (4) plugins at a time with beat (the sweep every five minutes), each child recycled past
+  `EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB` (2 GB), in a container of `EVAL_WORKER_MEM_LIMIT` (16g), `EVAL_WORKER_CPUS`
+  (4) and 2048 processes. A run pass lasts as long as a test may run plus five minutes (the worker sends `ttl_s`),
+  and run keys default to 24600 s (`CONNECTIONS_RUN_KEY_TTL_S`). A host that does not resolve is the error `dns`
+  on every door, with the restart that cures a stale DNS. A call answered after its pass ended still names its
+  test, and the pass's seal waits up to 20 s for calls in flight (past that, the last call seals it). The platform
+  stops a run after 3 failed questions in a row, or more than 5% of at least 20 questions: a plugin's retries of one
+  question count once. The webapp shows every Failed test with its reason or "Failed, no reason recorded.". The
+  results dashboard shows only the measures of Done runs, so run numbers after a failed run with measures move
+  down by one. Control objectives run one AI mapping of an assessment at a time (409 for a second). No migration.
+  Rebuild and recreate the platform, the eval worker (when no run is in flight), the webapp, the results dashboard
+  and control-objectives.
 - Runs, the worker. Each test now runs in one state machine: a test whose plugin ends well without a measure, or
   whose run the platform stopped (its calls kept failing), is Failed with the reason instead of Done; a start the
   engine refuses ends that copy quietly. The worker's calls to the engine are tried again while the engine cannot
