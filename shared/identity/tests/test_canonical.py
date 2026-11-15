@@ -21,7 +21,7 @@ def _canonical_module():
         pytest.fail("aisc_identity.canonical does not exist: canonical JSON still lives only in the platform")
 
 
-def test_sha256_of_is_the_digest_of_the_canonical_bytes():
+def test_the_digest_of_a_value_is_the_sha256_of_its_canonical_bytes():
     module = _canonical_module()
     expected = hashlib.sha256(b'{"a":[1.5,"x"],"b":1}').hexdigest()
     assert module.sha256_of({"b": 1, "a": [1.5, "x"]}) == expected
