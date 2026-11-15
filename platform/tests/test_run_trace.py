@@ -283,6 +283,7 @@ def test_ending_a_runs_pass_seals_its_calls_digest_in_the_ledger_in_the_same_ste
     assert r.status_code == 204
     with psycopg.connect(DSN) as conn:
         rows = conn.execute("SELECT project_pid::text, item_type, item_id, details, request_id::text, run_id::text, emitter"
-                            " FROM core.outbox WHERE action = 'run.trace.sealed'").fetchall()
+                            " FROM core.outbox WHERE action = 'run.trace.sealed' AND project_pid = %s",
+                            (project["pid"],)).fetchall()
     assert rows == [(project["pid"], "evaluation_plugin", plugin, {"calls": 2, "digest": seal["digest"]},
                      request_id, run_id, "platform")]

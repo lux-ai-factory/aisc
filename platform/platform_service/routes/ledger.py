@@ -429,15 +429,16 @@ def ledger_correction(body: CorrectionIn, caller: Caller = Depends(requires_role
 LEDGER_CALLERS = {"qualification_agents": "PLATFORM_LEDGER_AGENTS_TOKEN", "engine": "PLATFORM_LEDGER_ENGINE_TOKEN",
                   "dashboard": "PLATFORM_LEDGER_DASHBOARD_TOKEN"}
 _INTERNAL_COLUMNS = ("event_id", "request_id", "run_id", "action", "item_type", "item_id", "item_version",
-                     "card_version", "content", "before", "after", "details", "outcome", "model", "registry_version",
-                     "occurred_at")
+                     "card_version", "content", "before", "after", "details", "outcome", "model", "registry_version")
+#: Also taken from the body, as its own column: when the emitter says the event happened.
+_EMITTER_TIME = "occurred_at"
 
 
 def _occurred_at(event: dict):
     """When the emitter says the event happened (it may have queued it a while before sending), or None."""
     from datetime import datetime
 
-    value = event.get("occurred_at")
+    value = event.get(_EMITTER_TIME)
     if value is None:
         return None
     try:
@@ -585,7 +586,7 @@ def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
         # the relay would refuse it (run_window) after a 202 the emitter reads as delivered: refused here,
         # so the emitter keeps it as refused
         return _internal(409, {"detail": "the event comes after its run's window closed; it is not recorded"})
-    extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS}
+    extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS and k != _EMITTER_TIME}
     fields = dict(item_type=event.get("item_type"), item_id=event.get("item_id"), details=event.get("details") or {},
                   content=event.get("content"), before=event.get("before"), after=event.get("after"),
                   item_version=event.get("item_version"), card_version=event.get("card_version"),

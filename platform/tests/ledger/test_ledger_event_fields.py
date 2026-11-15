@@ -75,7 +75,8 @@ DEFAULTED_BY_THE_DATABASE = {"outcome", "registry_version"}
 def test_the_event_field_lists_agree():
     stored = _stored_in_sql()
     assert set(ledger_routes._INTERNAL_COLUMNS) == stored
-    assert _outbox_emit_columns() - PLATFORM_ONLY == stored
+    # core.outbox also takes the emitter's own time of the event (occurred_at), else the database's
+    assert _outbox_emit_columns() - PLATFORM_ONLY - {ledger_routes._EMITTER_TIME} == stored
     assert _identity_fields() | DEFAULTED_BY_THE_DATABASE == stored
 
 
