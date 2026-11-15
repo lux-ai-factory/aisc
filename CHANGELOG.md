@@ -3,6 +3,19 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Runs. The engine's migration `0032_measures_recorded_once` adds two unique rules: one observation per test and
+  one metric per name. Before adding them it reads the existing rows and, if a metric name or a test's observation
+  repeats, stops the upgrade and names them: merge those by an operator action first (check with
+  `SELECT name FROM engine.aisc_backend_metric GROUP BY name HAVING count(*) > 1` and
+  `SELECT evaluation_plugin_id FROM engine.aisc_backend_observation WHERE evaluation_plugin_id IS NOT NULL
+  GROUP BY 1 HAVING count(*) > 1` in each project database). `0033_evaluation_launch_key` adds an empty
+  `launch_key` column, unique among the runs that have one; no row changes. The engine now refuses with 409 a
+  second post of a test's measures and a second start of a test (or the start of one that has ended), turns a run
+  Processing only from Pending, stores a blank failure reason as "Failed, no reason recorded.", and fails a run
+  (and its tests) it could not hand to the worker, answering 503. The webapp sends each launch with its own
+  `Idempotency-Key` and keeps Launch off while one is sent; the engine answers the same key with the run it already
+  made. Back up first (`scripts/backup-databases.sh`), then rebuild and recreate aisc-backend, its one-shot and the
+  ledger sender together, and the webapp.
 - Card versions and revisions. The platform's template `0037_card_version_numbers_never_reused` adds
   `project.system_number`, a one-row counter that only goes up, started at the highest number the project's
   versions or its ledger outbox ever named: a version number removed by hand is not handed out again, and no
