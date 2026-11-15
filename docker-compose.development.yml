@@ -473,6 +473,9 @@ services:
     environment: &qualification-db-env
       # a template: {database} becomes project_<pid without hyphens>
       PROJECT_DATABASE_URL: ${QUALIFICATION_PROJECT_DATABASE_URL:-postgresql://qualification_rw:${QUALIFICATION_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2}
+      # the migrations, as qualification_migrator (init/owner-roles.sql), acting as qualification_owner: the
+      # one-shot above and a project made later, at its first open; every other query is qualification_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${QUALIFICATION_PROJECT_MIGRATE_DATABASE_URL:-postgresql://qualification_migrator:${QUALIFICATION_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2}
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:

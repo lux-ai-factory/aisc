@@ -62,7 +62,12 @@ WITH listed (table_name, trigger_name) AS (VALUES
     ('trace.call', 'call_append_only'),
     ('trace.call', 'call_no_truncate'),
     ('project.system', 'system_no_delete'),
-    ('project.system', 'system_no_truncate')
+    ('project.system', 'system_no_truncate'),
+    ('qualification.card_history', 'card_history_is_append_only'),
+    ('qualification.card_history', 'card_history_is_not_truncated'),
+    ('qualification.qualification', 'qualification_only_latest_changes'),
+    ('qualification.qualification', 'qualification_no_delete'),
+    ('qualification.qualification', 'qualification_no_truncate')
 ), unlisted AS (
     DELETE FROM aisc_setup.guard_trigger g
      WHERE NOT EXISTS (SELECT 1 FROM listed l WHERE l.table_name = g.table_name AND l.trigger_name = g.trigger_name)

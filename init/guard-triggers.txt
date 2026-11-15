@@ -14,3 +14,11 @@ trace.call call_no_truncate
 # the card versions: a version is never deleted (platform/project-template/0034_card_versions_kept.sql)
 project.system system_no_delete
 project.system system_no_truncate
+
+# an AI card: its history only grows, a card that is no longer the current one is kept as it was, and no card
+# is deleted (apps/qualification/prisma/migrations/20261115000000_owner_role)
+qualification.card_history card_history_is_append_only
+qualification.card_history card_history_is_not_truncated
+qualification.qualification qualification_only_latest_changes
+qualification.qualification qualification_no_delete
+qualification.qualification qualification_no_truncate

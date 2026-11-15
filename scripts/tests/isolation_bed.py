@@ -242,7 +242,9 @@ def migrate_modules(bed: IsoBed) -> None:
         bed.problems["qualification"] = "apps/qualification/scripts/migrate-projects.mjs missing"
     else:
         _run(bed, "qualification", ["node", str(q)], ROOT / "apps/qualification",
-             {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2")},
+             {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2"),
+              "PROJECT_MIGRATE_DATABASE_URL": bed.template("qualification_migrator",
+                                                           "?schema=qualification&connection_limit=2")},
              "qualification migrate-projects.mjs")
     # control objectives
     if "control_objectives" not in bed.problems:
