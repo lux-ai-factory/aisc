@@ -163,19 +163,23 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
 
 
 def outcome_fields(o: dict) -> dict:
-    """The fields of a generation's event (`report.generated` or `report.failed`), from its outcome."""
+    """The fields of a generation's event (`report.generated` or `report.failed`), from its outcome. A generated
+    report's event names the card revision it was made of and when it was pinned (empty for an outcome without
+    them)."""
     layout = {"id": o["layout"]["id"], "revision": o["layout"]["revision"]}
     if not o["ok"]:
         return {"item_type": "report", "item_id": o["report_id"], "card_version": o["system_id"],
                 "details": {"error": o["error_code"], "format": o["format"]}, "content": {"layout": layout}}
     anchor = o.get("anchor")
     return {"item_type": "report", "item_id": o["report_id"], "card_version": o["system_id"],
-            "details": {"card_version": o["system_id"], "ledger_head": anchor["seq"] if anchor else None,
+            "details": {"card_version": o["system_id"], "card_revision": o.get("card_revision"),
+                        "ledger_head": anchor["seq"] if anchor else None,
                         "blocks": len(o["block_statuses"]), "document_sha256": o["sha256"], "format": o["format"]},
             "content": {"anchor": anchor, "layout": layout, "status": o["status"],
                         "block_statuses": [{k: s.get(k) for k in ("instance_id", "block_type", "status")}
                                            for s in o["block_statuses"]],
-                        "fingerprint": o.get("fingerprint"), "selection": o.get("selection")}}
+                        "fingerprint": o.get("fingerprint"), "selection": o.get("selection"),
+                        "pinned_at": o.get("pinned_at")}}
 
 
 def _pdf_copy(renderer, snapshot) -> bytes | None:
@@ -204,6 +208,7 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
     with projects.connect(project["pid"]) as conn:
         report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor, declared)
     outcome = {"report_id": report_id, "system_id": snapshot["system_id"], "format": fmt,
+               "card_revision": snapshot.get("card_revision"), "pinned_at": snapshot.get("pinned_at"),
                "layout": snapshot["layout"], "anchor": anchor, "selection": snapshot.get("selection")}
 
     def failed(status, code, message, problems=(), **extra):

@@ -612,7 +612,8 @@ _ACTIONS = [
     # so the PDF and an export prove each other offline (verify-ledger-export.py --anchor, --document)
     _a("report.generated", 6, ("report_composer",), "report",
        caused_by=(("report_composer", "POST", _RC + rf"/layouts/{_P}/(reports|generate|download-report)$"),),
-       details_keys=("card_version", "ledger_head", "blocks", "document_sha256", "format"), content_required=True,
+       details_keys=("card_version", "card_revision", "ledger_head", "blocks", "document_sha256", "format"),
+       content_required=True,
        routes=(("report_composer", "apps/report-composer/report_composer/api.py", "post_report"),
                ("report_composer", "apps/report-composer/report_composer/pages.py", "generate_submit"),
                ("report_composer", "apps/report-composer/report_composer/pages.py", "download_report"))),
