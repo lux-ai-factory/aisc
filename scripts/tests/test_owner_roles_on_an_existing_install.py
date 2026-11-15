@@ -576,3 +576,17 @@ def test_platform_rw_advances_the_version_counter_but_never_lowers_it(bed):
         BEGIN;
         UPDATE project.system_number SET last = 1;
         ROLLBACK;""")
+
+
+def test_a_versions_card_revision_is_the_one_its_cards_are_at(bed):
+    """A correction the platform counted whose card was never stored leaves the version at its cards' revision,
+    for the platform and for every reader: version 2's only card, made before the upgrade, is revision 1."""
+    assert _as(bed, DB_A, "platform_rw", f"""
+        BEGIN;
+        UPDATE project.system SET card_revision = 2 WHERE pid = '{V2}';
+        SELECT 1 / (CASE WHEN card_revision = 1 THEN 1 ELSE 0 END) FROM project.saved_system WHERE pid = '{V2}';
+        ROLLBACK;""") == ""
+    for role in ("report_composer_rw", "controls_rw", "report_ro"):
+        assert _as(bed, DB_A, role, f"""
+            SELECT 1 / (CASE WHEN card_revision = 1 THEN 1 ELSE 0 END) FROM project.saved_system
+             WHERE pid = '{V2}';""") == "", role

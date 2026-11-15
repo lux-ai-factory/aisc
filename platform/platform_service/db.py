@@ -442,7 +442,7 @@ def revise_version(project: str, pid: str, name: str, version: str | None, provi
                    description: str | None, reason: str, requested_by: str, subject: str | None, *,
                    expected_card_revision: int) -> dict | None:
     """Correct the description of the project's latest card version in place: the same row and number, its
-    card_revision one higher, under the advisory lock create_version takes so a save and a revision (or two
+    card_revision one above the revision its cards are at, under the advisory lock create_version takes so a save and a revision (or two
     revisions) at once cannot interleave. `expected_card_revision` is the card revision the correction
     started from: when another correction came first, the version's card_revision is no longer that one and
     this correction would silently replace it, so it is refused. None: no such project. NoSuchVersion: no
@@ -463,11 +463,13 @@ def revise_version(project: str, pid: str, name: str, version: str | None, provi
             raise NoSuchVersion(pid)
         if str(latest["pid"]) != wanted or exists["card_revision"] != expected_card_revision:
             raise NotLatest(pid)
+        # the revision after the one the version's cards are at (project.saved_system reads it from the cards),
+        # not after the platform's own count, which a correction whose card was never stored left one ahead
         row = conn.execute(
             "update project.system set name = %s, version = %s, provider = %s, description = %s,"
-            " card_revision = card_revision + 1, updated_at = now() where pid = %s"
+            " card_revision = %s, updated_at = now() where pid = %s"
             f" returning {_STORED}",
-            (name, version, provider, description, wanted)).fetchone()
+            (name, version, provider, description, exists["card_revision"] + 1, wanted)).fetchone()
         from platform_service.ledger import outbox
 
         outbox.emit_project(conn, "card_version.revised", item_type="card_version", item_id=row["pid"],
