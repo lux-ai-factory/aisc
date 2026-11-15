@@ -14,6 +14,7 @@ recorded is answered 503 and its answer is withheld. A run whose calls keep fail
 next calls are not sent, recorded not_sent, and refused with the reason (403, a status no client retries)."""
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -48,6 +49,7 @@ class Opened(NamedTuple):
     secrets: list                 # the values never to answer back (secret_values)
     adapter: object = None        # the adapter of a connection of an adapter's kind (None: built-in, or not installed)
     key_hash: str = ""            # the run key's stored hash, to count its uses on
+    evaluation_plugin: str | None = None   # the test the run's pass names, read when the door opened
 
 
 def _facade_open(pid: str, name: str, request: Request):
@@ -65,8 +67,11 @@ def _facade_open(pid: str, name: str, request: Request):
         if run_key is None:
             return None, (401, "a run key is needed")
         # a key issued under a run's pass ends with it: revoked (its row deleted then), expired, or gone
-        if run_key["pass_hash"] is not None and not run_passes.is_live(run_key["pass_hash"]):
-            return None, (401, "the run's pass has ended")
+        evaluation_plugin = None
+        if run_key["pass_hash"] is not None:
+            live, evaluation_plugin = run_passes.live_evaluation_plugin(run_key["pass_hash"])
+            if not live:
+                return None, (401, "the run's pass has ended")
         row = connection_store.descriptor(pid, name, conn=conn)
     if row is None or row["deleted_at"] is not None:
         return None, (410, f"connection {name!r} was deleted")
@@ -77,7 +82,7 @@ def _facade_open(pid: str, name: str, request: Request):
     run_id = f"pass:{run_key['pass_hash']}" if run_key["pass_hash"] else f"key:{run_key['key_hash']}"
     adapter = adapters.get(row["kind"]) if row["kind"] not in adapters.BUILT_IN_KINDS else None
     return Opened(descriptor, run_id, bool(row.get("supports_tools")), secret_values(descriptor), adapter,
-                  run_key["key_hash"]), None
+                  run_key["key_hash"], evaluation_plugin), None
 
 
 def _facade_call(pid, opened: Opened, input, history=None, params=None, deadline=None):
@@ -201,17 +206,35 @@ async def _record(pid, opened: Opened, door: str, request: dict, outcome: str, a
         return json.loads(connection_facade.scrub(text, opened.secrets))
     try:
         await run_in_threadpool(run_trace.record, pid, opened.run_id, opened.descriptor.name, door, clean(request),
-                                outcome, clean(answer), clean(error), started_at or run_trace.now(), run_trace.now())
+                                outcome, clean(answer), clean(error), started_at or run_trace.now(), run_trace.now(),
+                                opened.evaluation_plugin)
     except Exception as exc:
         logger.error("connection %s of project %s: a call was not recorded in the run's trace (%s)",
                      opened.descriptor.name, pid, exc.__class__.__name__)
         raise HTTPException(503, UNRECORDED) from None
 
 
+PASS_ENDED = "the run's pass has ended"
+
+
+@contextlib.asynccontextmanager
+async def _in_flight(opened: Opened):
+    """A call under a run's pass, counted until its row is recorded, so the pass's seal waits for it
+    (run_passes.call_started); a pass that ended before the call was counted refuses it with a 401."""
+    flight = run_passes.call_started(opened.run_id)
+    try:
+        if flight is not None and not await run_in_threadpool(run_passes.is_live, flight.pass_hash):
+            raise HTTPException(401, PASS_ENDED)
+        yield
+    finally:
+        await run_in_threadpool(run_passes.call_ended, flight)
+
+
 async def _not_sent(pid, opened: Opened, door: str, body, detail: str) -> None:
     """A request the door refuses to send, recorded as it came with the reason."""
-    await _record(pid, opened, door, body if isinstance(body, dict) else {"body": body}, "not_sent",
-                  error={"code": "not_sent", "detail": detail})
+    async with _in_flight(opened):
+        await _record(pid, opened, door, body if isinstance(body, dict) else {"body": body}, "not_sent",
+                      error={"code": "not_sent", "detail": detail})
 
 
 async def _ask(pid, opened: Opened, input, history=None, params=None, *, door: str):
@@ -219,6 +242,11 @@ async def _ask(pid, opened: Opened, input, history=None, params=None, *, door: s
     before it is given back. A connection of an adapter's kind waits for one of the adapter's slots without
     holding a thread, and gets its answer within the caller's own wait (facade_timeout_s) or a timeout: an
     adapter that hangs never keeps a door open."""
+    async with _in_flight(opened):
+        return await _ask_in_flight(pid, opened, input, history, params, door=door)
+
+
+async def _ask_in_flight(pid, opened: Opened, input, history=None, params=None, *, door: str):
     request = {"input": input, "history": history or [], "params": params or {}}
     stopped = await run_in_threadpool(run_stop.reason, pid, opened.run_id)
     if stopped:                                       # the run's calls keep failing: this one is not sent
@@ -238,7 +266,6 @@ async def _ask(pid, opened: Opened, input, history=None, params=None, *, door: s
 async def _ask_unrecorded(pid, opened: Opened, input, history=None, params=None):
     if opened.descriptor.kind in adapters.BUILT_IN_KINDS:
         return await _in_facade_threads(opened.run_id, _facade_call, pid, opened, input, history, params)
-    import contextlib
     import time
 
     import anyio
@@ -456,6 +483,8 @@ def run_pass_trace(request: Request):
     if not run_pass.startswith(run_passes.PREFIX) or not run_passes.is_live(pass_hash):
         return _internal(401, {"detail": "a live run pass is needed"})
     projects = run_passes.projects_of(pass_hash)
+    # the plugin has ended: a call it left open is in its calls file once the door has recorded it
+    run_passes.wait_for_calls(pass_hash)
     text = "".join(run_trace.export(pid, f"pass:{pass_hash}") for pid in projects) if projects else \
         run_trace.empty_export()
     return PlainTextResponse(text, media_type="application/x-ndjson")
