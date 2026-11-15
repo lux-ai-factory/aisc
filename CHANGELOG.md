@@ -3,6 +3,18 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- The engine never imports plugin code. Every plugin page (configure, launch, results, the dashboards' charts)
+  answers from a manifest stored on the plugin's row (engine migration 0034: four empty columns, no row changed).
+  The eval worker reads it in its sandbox: it installs the plugin from a hashed lock that must name the wheel's
+  recorded hash, then has the plugin describe itself as a run user with no network. A form hook a plugin overrides
+  (`on_config_change`, `parse_config_from_dataset`, `get_metric_visualizations`) is run by the worker the same
+  way, within 30 seconds. A plugin installed before this has no manifest: the first page that needs it has the
+  worker read it then (the eval worker must be up; the first read installs the plugin and can take minutes), and
+  it is kept; a local plugin whose folder changed is read again. An install now waits for the worker
+  (`PLUGIN_MANIFEST_TIMEOUT_S` on the engine, 900 seconds; the platform waits as long), and a refresh whose wheel
+  changed on the index is refused. The worker keeps one environment per plugin version under
+  `/var/cache/aisc-plugin-envs` in its container (rebuilt after a recreate). The engine no longer installs plugin
+  wheels into its own environment.
 - A plugin test reaches the network only through the eval worker's egress proxy. The worker needs `NET_ADMIN`
   (compose adds it, with `init: true`) to set, at start, a firewall that lets the run users reach the proxy and
   nothing else, IPv6 and DNS included; without it the worker still starts but refuses every plugin test, saying
@@ -12,7 +24,8 @@
   empty, none), each on an address the project's network rule allows. **Before deploying, an operator checks
   `PLUGIN_EGRESS_ALLOWED_HOSTS` in env.local against what plugins download at run time**: a plugin that loads a
   Hugging Face model or dataset needs `.huggingface.co,.hf.co` added. Plugins run with
-  `LITELLM_LOCAL_MODEL_COST_MAP=True`, so LiteLLM reads the price map it ships with instead of fetching it. Hosted providers (OpenAI and the like) are reached when a helper or LLM
+  `LITELLM_LOCAL_MODEL_COST_MAP=True`, so LiteLLM reads the price map it ships with instead of fetching it.
+  Hosted providers (OpenAI and the like) are reached when a helper or LLM
   input names them; a plugin that calls one on its own, with no such input, now needs the host listed too. A
   test's home is its own and is removed with the test, so model and dataset caches under `~` are downloaded again
   on each run.
