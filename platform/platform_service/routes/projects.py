@@ -51,12 +51,37 @@ class MemberRoleIn(BaseModel):
     role: StrictStr = Field(max_length=32)
 
 
+def _uuid_text(value: str) -> str:
+    """`value` as a uuid's canonical text; a ValueError (422) when it is not one."""
+    import uuid
+
+    return str(uuid.UUID(value))
+
+
 class SystemIn(BaseModel):
     model_config = _STRICT
     name: StrictStr = Field(max_length=200)
     version: StrictStr | None = Field(default=None, max_length=100)
     provider: StrictStr | None = Field(default=None, max_length=200)
     description: StrictStr | None = Field(default=None, max_length=2000)
+    #: the caller's id for this save (a uuid), by which it withdraws the version when its card is not saved
+    attempt: StrictStr | None = Field(default=None, max_length=36)
+
+    @field_validator("attempt")
+    @classmethod
+    def _attempt_is_a_uuid(cls, value):
+        return None if value is None else _uuid_text(value)
+
+
+class SystemAbandonIn(BaseModel):
+    model_config = _STRICT
+    attempt: StrictStr = Field(max_length=36)
+    reason: StrictStr = Field(min_length=1, max_length=500)
+
+    @field_validator("attempt")
+    @classmethod
+    def _attempt_is_a_uuid(cls, value):
+        return _uuid_text(value)
 
 
 class SystemRevisionIn(SystemIn):
@@ -335,12 +360,35 @@ def create_system_version(
     name, version = system_key(body.name, body.version)
     try:
         made = db.create_version(project, name, version, body.provider, body.description,
-                                 caller.subject)
+                                 caller.subject, attempt=body.attempt)
     except db.ProjectDatabaseGone:
         raise no_project(project) from None
     if made is None:
         raise no_project(project)
     return made
+
+
+@router.post("/projects/{project}/system-versions/abandon")
+def abandon_system_version(
+    project: str, body: SystemAbandonIn, caller: Caller = Depends(caller_dependency)
+) -> dict:
+    """Withdraw the card version a save made (by its attempt) when the card itself was not saved: it is kept,
+    marked abandoned, and never the latest again. 404 when no version has that attempt, 409 when a newer
+    version exists or a card or a run names it. Changing the work: an editor."""
+    role_or_404(project, caller, needed="editor")
+    try:
+        gone = db.abandon_version(project, body.attempt, body.reason)
+    except db.ProjectDatabaseGone:
+        raise no_project(project) from None
+    except db.NotLatest:
+        raise HTTPException(status_code=409, detail="only the latest version can be withdrawn") from None
+    except db.VersionInUse:
+        raise HTTPException(status_code=409, detail="a card or a run names this version, so it is kept") from None
+    if gone is None:
+        if db.latest_version(project)[0] is False:
+            raise no_project(project)
+        raise HTTPException(status_code=404, detail="no card version was made by that attempt")
+    return gone
 
 
 @router.patch("/projects/{project}/system-versions/{pid}")

@@ -137,10 +137,17 @@ _ACTIONS = [
     _a("member.removed", 0, ("platform",), "member",
        caused_by=(("platform", "DELETE", _LAUNCH + r"/members/(?P<item>[^/]+)$"),), details_keys=("role",)),
     # a card version is saved by the platform, on step 1's submit
+    # its content freezes what the version says (number, name, version, provider, description)
     _a("card_version.created", 1, ("platform",), "card_version",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "POST", _LAUNCH + "/system-versions$")),
-       details_keys=("number", "name", "version", "provider")),
+       details_keys=("number", "name", "version", "provider"), content_required=True,
+       same_action=("card_version.abandoned",)),
+    # a version made for a card that was then not saved, withdrawn by the same submit: kept, never the latest
+    _a("card_version.abandoned", 1, ("platform",), "card_version",
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
+                  ("platform", "POST", _LAUNCH + "/system-versions/abandon$")),
+       details_keys=("number", "reason"), same_action=("card_version.created", "qualification.created")),
     _a("card_version.revised", 1, ("platform",), "card_version",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "PATCH", _LAUNCH + "/system-versions/(?P<item>[^/]+)$")),

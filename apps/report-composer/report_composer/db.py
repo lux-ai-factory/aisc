@@ -34,13 +34,13 @@ def _uuid(value) -> str | None:
         return None
 
 
-# Versions
+# Versions: the saved ones (project.saved_system leaves out a version withdrawn because its card was never saved)
 
 _SYSTEM = "pid::text AS pid, number, name, version AS release, card_revision"
 
 
 def systems(conn) -> list[dict]:
-    return conn.execute(f"SELECT {_SYSTEM} FROM project.system ORDER BY number DESC").fetchall()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system ORDER BY number DESC").fetchall()
 
 
 def system_of_project(conn, system_pid) -> dict | None:
@@ -48,11 +48,11 @@ def system_of_project(conn, system_pid) -> dict | None:
     s = _uuid(system_pid)
     if s is None:
         return None
-    return conn.execute(f"SELECT {_SYSTEM} FROM project.system WHERE pid = %s", (s,)).fetchone()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system WHERE pid = %s", (s,)).fetchone()
 
 
 def latest_system(conn) -> dict | None:
-    return conn.execute(f"SELECT {_SYSTEM} FROM project.system ORDER BY number DESC LIMIT 1").fetchone()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system ORDER BY number DESC LIMIT 1").fetchone()
 
 
 # Layouts

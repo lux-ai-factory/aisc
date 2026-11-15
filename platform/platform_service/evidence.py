@@ -65,8 +65,8 @@ DIMENSIONS = (
 _BY_SLUG = {slug: rid for rid, _, slug in DIMENSIONS}
 _TITLE = {rid: title for rid, title, _ in DIMENSIONS}
 
-#: The project's AI card versions, latest first (step 4's links belong to one of them).
-_VERSIONS = "SELECT pid::text AS pid, number FROM project.system ORDER BY number DESC"
+#: The project's saved AI card versions, latest first (step 4's links belong to one of them).
+_VERSIONS = "SELECT pid::text AS pid, number FROM project.saved_system ORDER BY number DESC"
 #: What one card version's assessment takes forward: its step 2 matrix.
 _SELECTED = (
     "SELECT sel.objective_ids, sel.priority_ids FROM control_objectives.objective_selection sel"
