@@ -285,8 +285,15 @@ def test_unlinking_every_evidence_link_is_content_not_a_missing_one():
     assert "content_required" in check(_event(name, details=details), emitter=_emitter(name))
 
 
+def test_a_recording_of_no_measures_is_content_not_a_missing_one():
+    name = "engine.measures.recorded"
+    assert "content_required" not in check(_event(name, details={"count": 0}, content=[]), emitter=_emitter(name))
+    assert "content_required" in check(_event(name, details={"count": 0}), emitter=_emitter(name))
+
+
 def test_other_actions_still_take_empty_content_as_missing():
-    others = [n for n, a in REGISTRY.items() if a.content_required and n != "evidence.links.saved"]
+    others = [n for n, a in REGISTRY.items() if a.content_required and not a.empty_content]
+    assert others
     for name in others:
         for empty in ({}, []):
             assert "content_required" in check(_event(name, content=empty), emitter=_emitter(name)), name
