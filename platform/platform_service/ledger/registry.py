@@ -113,6 +113,10 @@ _ACTIONS = [
        details_keys=("mode",)),
     _a("ledger.reanchored", 0, (), "ledger", origin="platform",
        caused_by=(("platform", "POST", r"^/api/ledger/reanchor$"),), details_keys=("old_head", "new_head", "project")),
+    # an admin's declaration of a project's data changed by hand, appended to that project's log by the platform
+    _a("operator.correction.declared", 0, (), "correction", origin="platform",
+       caused_by=(("platform", "POST", r"^/api/ledger/corrections$"),),
+       details_keys=("performed_at", "what", "why", "backup_ref", "items")),
     # browser-reported, through the beacon
     _a("page.opened", 0, ("platform",), "page", origin="browser", per_request=1, details_keys=("page",),
        caused_by=(("platform", "POST", r"^/api/ledger/beacon$"),)),

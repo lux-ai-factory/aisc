@@ -4,13 +4,15 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
+from datetime import datetime
+from typing import Annotated
 
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, ServiceRefused, identify
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, StringConstraints
 
 from platform_service import db
 from platform_service.projects import looks_like_pid
@@ -365,6 +367,61 @@ def ledger_reanchor(body: ReanchorIn, caller: Caller = Depends(requires_role(ADM
                             " re-anchor the platform log first") from None
     logger.warning("ledger %s re-anchored by %s: %s -> %s", log, caller.subject, old, new)
     return {"log": log, "old_head": old, "new_head": new, "recorded": seq}
+
+
+class CorrectionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    project: StrictStr                                                # its slug or pid
+    performed_at: datetime
+    what: Annotated[StrictStr, StringConstraints(min_length=1, max_length=2000)]
+    why: Annotated[StrictStr, StringConstraints(min_length=1, max_length=2000)]
+    backup_ref: Annotated[StrictStr, StringConstraints(max_length=300)] | None = None
+    items: Annotated[list[Annotated[StrictStr, StringConstraints(max_length=200)]], Field(max_length=50)] = []
+
+
+@router.post("/ledger/corrections", status_code=201)
+def ledger_correction(body: CorrectionIn, caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> dict:
+    """An operator's change of a project's data by hand (a run's status, a removed card version, runs moved),
+    declared by an admin: `operator.correction.declared` in that project's log, with the admin as its actor.
+    Appended by the platform itself under the log's relay lock, as the re-anchor is, since the request (on no
+    project's path) cannot bind the event to the project. Refused (422) when it holds a secret."""
+    from datetime import timezone
+
+    from platform_service import ledger
+    from platform_service.ledger import actors, outbox, provision, registry, relay
+    from platform_service.ledger.store import LedgerError, LedgerUnavailable
+
+    project = db.get_project(body.project)
+    if project is None:
+        raise no_project(body.project)
+    pid = str(project["pid"])
+    log = provision.database_for(pid)
+    if log is None:
+        raise HTTPException(status_code=409, detail="this project has no ledger yet, so nothing can be declared in it")
+    performed = body.performed_at if body.performed_at.tzinfo else body.performed_at.replace(tzinfo=timezone.utc)
+    event_id = str(uuid.uuid4())
+    details = {"performed_at": performed.isoformat(), "what": body.what, "why": body.why,
+               "backup_ref": body.backup_ref, "items": body.items}
+    problems = registry.check({"event_id": event_id, "action": "operator.correction.declared",
+                               "item_type": "correction", "item_id": event_id, "details": details})
+    if problems:
+        raise HTTPException(status_code=422, detail=f"the declaration cannot be recorded: {', '.join(problems)}")
+    entry = {"event_id": event_id, "occurred_at": relay._iso(datetime.now(timezone.utc)), "project_pid": pid,
+             "step": 0, "source_app": "platform", "action": "operator.correction.declared", "actor_kind": "user",
+             "actor_ref": actors.ref_for(pid, caller.subject, caller.username or caller.subject),
+             "request_id": outbox.current_request.get(), "item_type": "correction", "item_id": event_id,
+             "outcome": "ok", "details": details, "verified": True, "registry_version": registry.VERSION}
+    store = ledger.current()
+    try:
+        with relay._log_lock(log):
+            seq = store.append(log, entry)
+            relay._index(log, seq, entry, pid)
+    except LedgerUnavailable as exc:
+        raise _ledger_unavailable(exc) from None
+    except LedgerError as exc:
+        raise HTTPException(status_code=409, detail=f"the declaration could not be recorded ({exc.__class__.__name__})") from None
+    logger.warning("ledger %s: correction declared by %s (event %s)", log, caller.subject, event_id)
+    return {"event_id": event_id, "seq": seq}
 
 
 # The internal route: callers without an outbox. Each caller has its own token and
