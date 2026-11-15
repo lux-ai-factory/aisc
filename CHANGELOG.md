@@ -3,6 +3,21 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Append-only results and kept settings. The engine's migration `0029_append_only_results` makes measures and
+  observations append-only (never changed, removed or truncated, not even by the owner), writes the ledger outbox
+  only through `engine.ledger_outbox_append`, `engine.ledger_outbox_mark` (a delivery mark is set once) and
+  `engine.ledger_outbox_mask`, and lets a saved plugin configuration change only by masking a secret in it (its
+  name and description stay editable; it is never removed). `0030_settings_are_kept` marks a deleted project
+  setting deleted instead of removing it: the configurations that used it keep their link, and its key may be
+  given again. A setting's update records the value it had and the value it takes in the ledger (`before`,
+  `after`), its deletion the value it had; a secret's events still name only its key. The new guards are listed in
+  `init/guard-triggers.txt`, and `scripts/verify.sh --stack` runs `scripts/verify-guard-triggers.sh`, which reports
+  a guard trigger that is missing, disabled, or on a table its owner role no longer holds. Ledger copies of a
+  plugin configuration now hide what the plugin's form marks and what the stored rule takes for a secret, never a
+  value for its name alone (`tokens: 512` stays readable). The canonical JSON of the ledger lives in
+  `aisc_identity.canonical` (the vendored wheels of the backend and the eval worker carry it). Back up first
+  (`scripts/backup-databases.sh`), restart postgres-setup (the guard list), then rebuild and recreate the platform,
+  aisc-backend, its one-shot and the ledger sender.
 - Module owner roles. Each module now migrates its project databases as its migrator, acting as its owner role:
   `PROJECT_MIGRATE_DATABASE_URL` for qualification and controls (their one-shots and web apps) and for control
   objectives, `REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL` for the report composer, `DB_MIGRATE_USER` and
