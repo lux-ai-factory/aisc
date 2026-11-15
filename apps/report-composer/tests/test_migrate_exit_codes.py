@@ -3,7 +3,8 @@ qualification's and controls' migrate-projects.mjs, control objectives' migrate_
 engine's migrate_projects):
 
     0  the library and every project database are at their head
-    1  the platform database cannot be reached yet: the compose loop waits and runs it again
+    1  the platform database cannot be reached yet, or a project database's schema is still the platform's
+       (it waits for its owner role): the compose loop waits and runs it again
     2  a permanent failure (a missing setting, the library or a project database that failed): the loop
        stops, and report-composer does not start on a half-migrated set
 
@@ -17,7 +18,7 @@ import pytest
 from report_composer import migrate
 
 ENV = {"REPORT_COMPOSER_DATABASE_URL": "postgresql://report_composer_rw@127.0.0.1:1/platform",
-       "REPORT_COMPOSER_PROJECT_DATABASE_URL": "postgresql://report_composer_rw@127.0.0.1:1/{database}"}
+       "REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL": "postgresql://report_composer_migrator@127.0.0.1:1/{database}"}
 
 
 @pytest.fixture
@@ -56,3 +57,26 @@ def test_everything_at_its_head_is_0(monkeypatch, env):
     monkeypatch.setattr(migrate, "project_databases", lambda url: [])
     monkeypatch.setattr(migrate, "migrate_everything", lambda *a, **k: {"project_a": "ok", "project_b": "ok"})
     assert migrate.main([]) == 0
+
+
+def test_a_schema_not_yet_handed_to_its_owner_is_retried(monkeypatch, env):
+    monkeypatch.setattr(migrate, "project_databases", lambda url: [])
+    monkeypatch.setattr(migrate, "migrate_everything", lambda *a, **k: {"project_a": "waiting", "project_b": "ok"})
+    assert migrate.main([]) == 1
+
+
+def test_a_failure_beside_a_waiting_schema_is_permanent(monkeypatch, env):
+    monkeypatch.setattr(migrate, "project_databases", lambda url: [])
+    monkeypatch.setattr(migrate, "migrate_everything",
+                        lambda *a, **k: {"project_a": "waiting", "project_b": "failed: SchemaNotOwned"})
+    assert migrate.main([]) == 2
+
+
+def test_the_migrations_run_through_the_migrators_template(monkeypatch, env):
+    seen = []
+    monkeypatch.setenv("REPORT_COMPOSER_PROJECT_DATABASE_URL", "postgresql://report_composer_rw@127.0.0.1:1/{database}")
+    monkeypatch.setattr(migrate, "project_databases", lambda url: [])
+    monkeypatch.setattr(migrate, "migrate_everything", lambda platform, template: seen.append(template) or {})
+    assert migrate.main([]) == 0
+    assert seen == [ENV["REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL"]]
+

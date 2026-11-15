@@ -87,7 +87,9 @@ def e2e_client(full_bed, renderer_url, make_client, monkeypatch):
     def build():
         app = need("report_composer.app", "create_app")(
             database_url=full_bed.dsn("report_composer_rw", "platform"),
-            project_database_url=full_bed.project_db_template("report_composer_rw"), renderer=Http(url, token=TOKEN),
+            project_database_url=full_bed.project_db_template("report_composer_rw"),
+            project_migrate_database_url=full_bed.project_db_template("report_composer_migrator"),
+            renderer=Http(url, token=TOKEN),
             clock=lambda: FIXED_NOW)
         c = TestClient(app, base_url="http://localhost")
         c.__enter__()

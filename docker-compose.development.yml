@@ -663,6 +663,9 @@ services:
       REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # a template: {database} becomes project_<pid without hyphens>
       REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
+      # the migrations, as report_composer_migrator (init/owner-roles.sql), acting as report_composer_owner: the
+      # one-shot and a project made later, at its first open; every other query is report_composer_rw's
+      REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL: postgresql://report_composer_migrator:${REPORT_COMPOSER_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
       REPORT_RENDERER_URL: http://report-renderer:8001
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
       # the ledger: off unless switched on; the platform answers a report's ledger anchor

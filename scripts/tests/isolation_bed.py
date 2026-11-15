@@ -277,7 +277,8 @@ def migrate_modules(bed: IsoBed) -> None:
         _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], ROOT / "apps/report-composer",
              {"PYTHONPATH": str(ROOT / "apps/report-composer"),
               "REPORT_COMPOSER_DATABASE_URL": bed.dsn("report_composer_rw", "platform"),
-              "REPORT_COMPOSER_PROJECT_DATABASE_URL": bed.template("report_composer_rw")},
+              "REPORT_COMPOSER_PROJECT_DATABASE_URL": bed.template("report_composer_rw"),
+              "REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL": bed.template("report_composer_migrator")},
              "python -m report_composer.migrate (library + every project database)")
     # what the commands must have produced, per project database
     for pid in bed.projects:

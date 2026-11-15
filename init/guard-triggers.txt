@@ -27,3 +27,7 @@ qualification.qualification qualification_no_truncate
 # (apps/control-objectives/alembic/versions/20261003000000_ledger_history.py)
 control_objectives.mapping_archive mapping_archive_is_append_only
 control_objectives.mapping_archive mapping_archive_is_never_truncated
+
+# every saved revision of a report layout is kept (apps/report-composer/migrations/project/0004_layout_revisions.sql)
+report_composer.layout_revision layout_revision_is_append_only
+report_composer.layout_revision layout_revision_is_never_truncated
