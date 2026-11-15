@@ -173,7 +173,8 @@ apply_break() { # after-step
     qualification_fk:1) drop_fk_into_project_system qualification.qualification ;;
     co_fk:1)            drop_fk_into_project_system control_objectives.project ;;
     card_component:2)   tpg_su "$db" -c "DELETE FROM qualification.card_component" ;;
-    engine_stamp:4)     tpg_su "$db" -c "UPDATE engine.aisc_backend_evaluation SET system_id = NULL" ;;
+    # a run's card version is fixed by a guard trigger: only the superuser, skipping triggers, takes it away
+    engine_stamp:4)     tpg_su "$db" -c "SET session_replication_role = replica; UPDATE engine.aisc_backend_evaluation SET system_id = NULL" ;;
     controls_stamp:7)   tpg_su "$db" -c "UPDATE controls.submission_answer SET system_version_pid = NULL, system_version_number = NULL" ;;
   esac
 }
