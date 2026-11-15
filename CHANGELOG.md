@@ -3,6 +3,18 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Runs, the worker. Each test now runs in one state machine: a test whose plugin ends well without a measure, or
+  whose run the platform stopped (its calls kept failing), is Failed with the reason instead of Done; a start the
+  engine refuses ends that copy quietly. The worker's calls to the engine are tried again while the engine cannot
+  be reached (1, 2, 4, 8, 16 s), and a refused "test failed" mark raises, and is tried again on 502, 503 and 504.
+  The dispatcher claims a run once (`eval_tasks:<pid>`, set only when absent; Stop still reads that key), registers
+  it under `eval_run:<pid>` in the result backend's Redis, and shows it Processing. A new task,
+  `aisc_eval.run_sweep.sweep_runs`, fails the tests the worker lost, ran past their limit or never started, each with
+  its reason, and closes runs whose tests all ended; it runs once two minutes after the worker starts, and every
+  five minutes when the worker runs with beat. Runs started before the upgrade are not registered, so the sweep
+  does not see them. The engine saves a worker's report only under the row's lock and never over a Stop or a
+  failure that landed after its read. No migration. Rebuild and recreate aisc-backend (with its ledger sender) and
+  the eval worker together.
 - Runs. The engine's migration `0032_measures_recorded_once` adds two unique rules: one observation per test and
   one metric per name. Before adding them it reads the existing rows and, if a metric name or a test's observation
   repeats, stops the upgrade and names them: merge those by an operator action first (check with
