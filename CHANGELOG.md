@@ -3,6 +3,19 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Card versions and revisions. The platform's template `0037_card_version_numbers_never_reused` adds
+  `project.system_number`, a one-row counter that only goes up, started at the highest number the project's
+  versions or its ledger outbox ever named: a version number removed by hand is not handed out again, and no
+  existing version is renumbered. `0038_card_revision_follows_the_cards` makes `project.saved_system` read a
+  version's card revision from its cards (`project.card_revision_of`), so a correction the platform counted
+  whose card was never stored leaves no gap. Qualification's migrations `20261116000000_platform_reads_card_revision`
+  (platform_rw reads a card's revision) and `20261116100000_revision_author` (`amended_by`, who made a
+  correction) and controls' `20261116000000_answer_card_revision` (`system_card_revision` beside an answer's
+  version) add empty columns and a grant; no row changes. Controls now reads an answer's card version from the
+  project's database in the save's transaction instead of asking the platform. Back up first
+  (`scripts/backup-databases.sh`), then rebuild and recreate the platform (its start applies the template to
+  every project database), qualification (and its AI card renderer), controls, the report composer and the
+  homepage.
 - Append-only results and kept settings. The engine's migration `0029_append_only_results` makes measures and
   observations append-only (never changed, removed or truncated, not even by the owner), writes the ledger outbox
   only through `engine.ledger_outbox_append`, `engine.ledger_outbox_mark` (a delivery mark is set once) and
