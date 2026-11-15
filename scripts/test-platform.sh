@@ -43,6 +43,9 @@ export LEDGER_TEST_IMMUDB_URL=$TIMMU_URL LEDGER_TEST_IMMUDB_ADMIN_PASSWORD=$TIMM
   LEDGER_TEST_IMMUDB_PUBLIC_KEY=$TIMMU_PUBLIC_KEY
 uv run --extra dev python -c 'import os; from tests.ledger.immudb_box import wait_for; wait_for(os.environ["LEDGER_TEST_IMMUDB_URL"], os.environ["LEDGER_TEST_IMMUDB_ADMIN_PASSWORD"])'
 
+# The platform's commands, which tests also start as subprocesses, import aisc_identity as the container's
+# PYTHONPATH gives it.
+export PYTHONPATH="$ROOT/shared/identity${PYTHONPATH:+:$PYTHONPATH}"
 LEDGER_TESTS_REQUIRED=1 PLATFORM_TESTS_STRICT_SKIPS=1 \
 PLATFORM_TEST_DATABASE_URL=$(tpg_dsn platform_rw platform) \
 PLATFORM_TEST_MIGRATE_DATABASE_URL=$(tpg_dsn platform_migrator platform) \
