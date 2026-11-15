@@ -354,9 +354,9 @@ def _resolve(project: str):
 
 def create_version(project: str, name: str, version: str | None, provider: str | None,
                    description: str | None, subject: str | None, attempt: str | None = None) -> dict | None:
-    """The project's next card version, numbered max+1 under an advisory lock
-    taken in the project's database, so two saves at once get n and n+1 (an abandoned version's number
-    counts: a number is never given twice). `attempt`, the caller's id for this save, lets it withdraw the
+    """The project's next card version, numbered from the project's counter (project.system_number) under an
+    advisory lock taken in the project's database, so two saves at once get n and n+1. The counter only goes
+    up: a number is never given twice, not even after an abandoned or a removed version. `attempt`, the caller's id for this save, lets it withdraw the
     version when its card is not saved (abandon_version). The ledger event freezes what the version says.
     None: no such project. ProjectDatabaseGone: its database is gone."""
     pid = _resolve(project)
@@ -364,11 +364,14 @@ def create_version(project: str, name: str, version: str | None, provider: str |
         return None
     with project_connection(pid) as conn, conn.transaction():
         conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        number = conn.execute(
+            "update project.system_number set last = greatest(last, (select coalesce(max(number), 0)"
+            " from project.system)) + 1 returning last").fetchone()["last"]
         row = conn.execute(
             "insert into project.system (number, name, version, provider, description, created_by, attempt)"
-            " values ((select coalesce(max(number), 0) + 1 from project.system), %s, %s, %s, %s, %s, %s)"
+            " values (%s, %s, %s, %s, %s, %s, %s)"
             f" returning {_STORED}",
-            (name, version, provider, description, subject, attempt)).fetchone()
+            (number, name, version, provider, description, subject, attempt)).fetchone()
         from platform_service.ledger import outbox
 
         outbox.emit_project(conn, "card_version.created", item_type="card_version", item_id=row["pid"],

@@ -248,6 +248,10 @@ def bed():
             _must(b, db, SEED, role="platform_rw")
             for role, sql in MODULE_SEED.items():
                 _must(b, db, sql, role=role)
+        # project A once had a version 3 that was removed by hand: only its ledger event is left
+        _must(b, DB_A, "INSERT INTO ledger.outbox (event_id, db_role, action, item_type, item_id, item_version)"
+                       " VALUES (gen_random_uuid(), 'platform_rw', 'card_version.created', 'card_version',"
+                       " gen_random_uuid()::text, '3')")
         _must(b, "platform", "INSERT INTO ledger.state (db, tx_id, tx_hash) VALUES"
                              f" ('ledger{'c' * 32}', 7, '\\x{'d' * 64}')", role="platform_rw")
         b.require(*b.problems)                                       # the old install itself must build
@@ -553,4 +557,22 @@ def test_a_version_made_for_a_card_never_saved_is_withdrawn_and_the_one_before_i
         BEGIN;
         UPDATE project.system SET abandoned_at = now() WHERE pid = '{V2}';
         UPDATE project.system SET name = 'again' WHERE pid = '{V2}';
+        ROLLBACK;""")
+
+
+def test_the_version_counter_starts_past_every_number_handed_out(bed):
+    """No version is renumbered, and the next number is one nobody has had: past the versions kept, and past a
+    removed version that only its ledger event still names."""
+    assert bed.scalar(DB_A, "SELECT string_agg(number::text, ',' ORDER BY number) FROM project.system") == "1,2"
+    assert bed.scalar(DB_A, "SELECT last FROM project.system_number") == "3"
+
+
+def test_platform_rw_advances_the_version_counter_but_never_lowers_it(bed):
+    assert _as(bed, DB_A, "platform_rw", """
+        BEGIN;
+        UPDATE project.system_number SET last = last + 1;
+        ROLLBACK;""") == ""
+    assert "only goes up" in _as(bed, DB_A, "platform_rw", """
+        BEGIN;
+        UPDATE project.system_number SET last = 1;
         ROLLBACK;""")
