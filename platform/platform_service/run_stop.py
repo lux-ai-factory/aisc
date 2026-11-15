@@ -1,9 +1,11 @@
 """When the platform stops a run whose calls keep failing (routes/facade.py, before each call).
 
-Per run, from its trace (run_trace), counting only the calls actually sent to the system under test (outcome
-answered or failed; a request a door refused for its own reason does not count): the run is stopped when its last
-PLATFORM_RUN_STOP_IN_A_ROW sent calls all failed (default 3), or when at least PLATFORM_RUN_STOP_AFTER calls were
-sent (default 20) and more than PLATFORM_RUN_STOP_RATE of them failed (default 0.05). IN_A_ROW 0 or RATE 0
+Per run, from its trace (run_trace), counting questions: the calls actually sent to the system under test
+(outcome answered or failed; a request a door refused for its own reason does not count), one question per
+request, so a plugin that asks a question again after it failed (its own retry, the same input, history and
+params) asks one question, whose outcome is that of its latest call. The run is stopped when its last
+PLATFORM_RUN_STOP_IN_A_ROW questions all failed (default 3), or when at least PLATFORM_RUN_STOP_AFTER questions
+were sent (default 20) and more than PLATFORM_RUN_STOP_RATE of them failed (default 0.05). IN_A_ROW 0 or RATE 0
 turns that rule off; AFTER is only the rate rule's minimum count, so AFTER 0 lets it stop a run on its first
 failed call. Once
 stopped, a run stays stopped: its stopped calls are not sent, so its counts no longer change. A new run starts
@@ -42,6 +44,11 @@ def after() -> int:
     return _number("PLATFORM_RUN_STOP_AFTER", AFTER_DEFAULT, int)
 
 
+#: each question of the run once, as its latest sent call left it: the same request again is the same question
+_QUESTIONS = ("WITH questions AS (SELECT DISTINCT ON (md5(request::text)) seq, outcome, error FROM trace.call"
+              " WHERE run = %s AND outcome IN ('answered', 'failed') ORDER BY md5(request::text), seq DESC)")
+
+
 def _code(error) -> str:
     """A failed call's short code (auth, timeout, ...), as its trace row keeps it."""
     if isinstance(error, dict) and error.get("code"):
@@ -55,24 +62,22 @@ def reason(pid, run_id: str) -> str | None:
     if not row_limit and not share:
         return None
     with projectdb.connect(pid) as conn:
-        totals = conn.execute("SELECT count(*) AS sent, count(*) FILTER (WHERE outcome = 'failed') AS failed"
-                              " FROM trace.call WHERE run = %s AND outcome IN ('answered', 'failed')",
-                              (run_id,)).fetchone()
-        last = conn.execute("SELECT outcome, error FROM trace.call WHERE run = %s"
-                            " AND outcome IN ('answered', 'failed') ORDER BY seq DESC LIMIT %s",
+        rows = conn.execute(_QUESTIONS + " SELECT count(*) AS sent, count(*) FILTER (WHERE outcome = 'failed')"
+                            " AS failed FROM questions", (run_id,)).fetchone()
+        last = conn.execute(_QUESTIONS + " SELECT outcome, error FROM questions ORDER BY seq DESC LIMIT %s",
                             (run_id, max(row_limit, 1))).fetchall()
-    sent, failed = totals["sent"], totals["failed"]
-    if not failed:
-        return None
-    last_failed = next((r["error"] for r in last if r["outcome"] == "failed"), None)
-    if not last_failed:
-        with projectdb.connect(pid) as conn:
-            found = conn.execute("SELECT error FROM trace.call WHERE run = %s AND outcome = 'failed'"
+        sent, failed = rows["sent"], rows["failed"]
+        if not failed:
+            return None
+        last_failed = next((r["error"] for r in last if r["outcome"] == "failed"), None)
+        if not last_failed:
+            found = conn.execute(_QUESTIONS + " SELECT error FROM questions WHERE outcome = 'failed'"
                                  " ORDER BY seq DESC LIMIT 1", (run_id,)).fetchone()
-        last_failed = found["error"] if found else None
+            last_failed = found["error"] if found else None
     stopped = "the platform stopped this run: "
     if row_limit and len(last) >= row_limit and all(r["outcome"] == "failed" for r in last):
-        return f"{stopped}{row_limit} calls in a row failed; the last: {_code(last_failed)}"
+        return f"{stopped}{row_limit} questions in a row failed; the last: {_code(last_failed)}"
     if share and sent >= minimum and failed / sent > share:
-        return f"{stopped}{failed} of {sent} calls failed (more than {share:.0%}); the last: {_code(last_failed)}"
+        return (f"{stopped}{failed} of {sent} questions failed (more than {share:.0%}); "
+                f"the last: {_code(last_failed)}")
     return None
