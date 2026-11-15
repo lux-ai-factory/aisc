@@ -181,8 +181,16 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
             raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
         if exc.status == 404:
             raise no_project(slug)
-        raise HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
+        raise _not_installed(exc)
     return {"slug": entry, "package_name": info["package_name"], "version": version}
+
+
+def _not_installed(exc) -> HTTPException:
+    """The answer to an install the engine refused: its own reason when it was the eval worker that could not read
+    the test's manifest (503, a named reason), a bad gateway otherwise."""
+    if exc.status == 503 and exc.detail:
+        return HTTPException(status_code=503, detail=f"{exc}: {exc.detail}; nothing was installed")
+    return HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
 
 
 def _install_from_index(pid, token: str, entry: str, package: str, version: str, slug: str) -> dict:
@@ -204,7 +212,7 @@ def _install_from_index(pid, token: str, entry: str, package: str, version: str,
             raise HTTPException(status_code=403, detail=NOT_ADMIN_TO_INSTALL)
         if exc.status == 404:
             raise no_project(slug)
-        raise HTTPException(status_code=502, detail=f"{exc}; nothing was installed")
+        raise _not_installed(exc)
     return {"slug": entry, "package_name": package, "version": seen["version"]}
 
 

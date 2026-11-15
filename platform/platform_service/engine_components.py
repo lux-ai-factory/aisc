@@ -14,8 +14,9 @@ PROJECT_HEADER = "X-AISC-Project"
 REQUEST_HEADER = "X-AISC-Request-Id"
 TIMEOUT_S = 20
 #: an install has the eval worker install the test and read its manifest (the engine never imports plugin code):
-#: as long as the engine waits for the worker (its PLUGIN_MANIFEST_TIMEOUT_S, 900 by default)
-INSTALL_TIMEOUT_S = 900
+#: a minute longer than the engine waits for the worker (its PLUGIN_MANIFEST_TIMEOUT_S, 900 by default), so the
+#: engine's named reason reaches the person when the worker does not answer
+INSTALL_TIMEOUT_S = 960
 
 
 class EngineUnavailable(RuntimeError):
@@ -62,7 +63,7 @@ def _call(method: str, path: str, pid, token: str, body: dict | None = None, cit
     except httpx.HTTPError as exc:
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
-        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code)
+        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code, _detail_of(r))
     try:
         return r.json()
     except ValueError:

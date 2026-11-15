@@ -14,7 +14,8 @@
   their own (`plugin-declarations`), served one at a time by a new compose service, `aisc-eval-declarations-worker`
   (the eval image, kept apart as the run worker is), so a configure page never waits behind the runs: **start it
   with the stack**, or every plugin page that needs the worker waits and then answers 503. An install now waits for
-  the worker (`PLUGIN_MANIFEST_TIMEOUT_S` on the engine, 900 seconds), and a refresh whose wheel
+  the worker (`PLUGIN_MANIFEST_TIMEOUT_S` on the engine, 900 seconds; the platform waits 960, so a worker that
+  does not answer is reported with the engine's reason, as a 503), and a refresh whose wheel
   changed on the index is refused. The worker keeps one environment per plugin version under
   `/var/cache/aisc-plugin-envs` in its container (rebuilt after a recreate). The engine no longer installs plugin
   wheels into its own environment.
