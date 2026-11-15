@@ -413,6 +413,11 @@ _ACTIONS = [
        caused_by=(("engine", "POST", _EN + r"/evaluations/(?P<item>[^/]+)/stop$"),),
        details_keys=("status_before", "tests"),
        routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "stop_evaluation"),)),
+    # a run's name given afterwards (every test of the run takes it): the name it had and the one it takes
+    _a("engine.evaluation.renamed", 4, ("engine",), "evaluation",
+       caused_by=(("engine", "PATCH", _EN + r"/evaluations/(?P<item>[^/]+)/name$"),),
+       details_keys=("name_before", "name_after"),
+       routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "rename_evaluation"),)),
     _a("engine.plugin.configured", 4, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/(?P<item>[^/]+)/config$"),
                   ("engine", "POST", _EN + r"/plugins/(?P<item>[^/]+)/configs/[^/]+/restore$")),
