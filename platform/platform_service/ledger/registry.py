@@ -576,6 +576,17 @@ _ACTIONS = [
     _a("dashboard.comment.deleted", 5, ("dashboard",), "comment",
        caused_by=(("dashboard", "DELETE", _DB + r"/aisc_comment/(?P<item>[0-9]+)$"),), details_keys=("dashboard",),
        content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/comments/api.py", "delete"),)),
+    # a project's dashboard, chart or dataset deleted in Superset itself (its pages call its own API, one at a
+    # time or several with ?q=): the extension queues the deletion with the delete (aisc_ext/ledger.py)
+    _a("dashboard.dashboard.deleted", 5, ("dashboard",), "dashboard", per_request=None,
+       caused_by=(("dashboard", "DELETE", _DB + r"/dashboard/(?P<item>[0-9]+)$"),
+                  ("dashboard", "DELETE", _DB + r"/dashboard/?$")), details_keys=("dashboard",)),
+    _a("dashboard.chart.deleted", 5, ("dashboard",), "chart", per_request=None,
+       caused_by=(("dashboard", "DELETE", _DB + r"/chart/(?P<item>[0-9]+)$"),
+                  ("dashboard", "DELETE", _DB + r"/chart/?$")), details_keys=("dashboard",)),
+    _a("dashboard.dataset.deleted", 5, ("dashboard",), "dataset", per_request=None,
+       caused_by=(("dashboard", "DELETE", _DB + r"/dataset/(?P<item>[0-9]+)$"),
+                  ("dashboard", "DELETE", _DB + r"/dataset/?$"))),
     _a("dashboard.review.requested", 5, ("dashboard",), "review_request",
        caused_by=(("dashboard", "POST", _DB + r"/aisc_review_request/?$"),), details_keys=("assignee",),
        content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/reviews/api.py", "post"),)),
