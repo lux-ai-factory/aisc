@@ -164,7 +164,16 @@ MODULE_SEED = {
                FROM engine.aisc_backend_observation o, engine.aisc_backend_metric m
               WHERE o.name = 'seeded' AND m.name = 'accuracy';
         INSERT INTO engine.aisc_backend_ledgeroutbox (project_pid, event, queued_at)
-             VALUES ('{A}', '{{"action": "engine.plugin.configured"}}', now());""",
+             VALUES ('{A}', '{{"action": "engine.plugin.configured"}}', now());
+        INSERT INTO engine.aisc_backend_projectconfig (pid, name, description, created_at, key, project_id, category,
+               updated_at, encrypted_value, masked_value, json_value)
+             SELECT gen_random_uuid(), 'Threshold', '', now(), 'threshold', id, 'variables', now(), '', '',
+                    '{{"type": "number", "value": 0.5}}'
+               FROM engine.aisc_backend_project WHERE name = 'seeded';
+        INSERT INTO engine.aisc_backend_pluginconfigprojectconfig (pid, name, description, created_at,
+               plugin_config_id, project_config_id, plugin_config_key)
+             SELECT gen_random_uuid(), '', '', now(), c.id, s.id, 'threshold'
+               FROM engine.aisc_backend_pluginconfig c, engine.aisc_backend_projectconfig s;""",
 }
 
 SEED = f"""
@@ -487,3 +496,18 @@ def test_a_saved_configuration_is_kept_and_changes_only_by_masking(bed):
     assert "fixed" in _as(bed, DB_A, "engine_rw",
                           "UPDATE engine.aisc_backend_pluginconfig SET config = jsonb_set(config, '{tokens}', '9')")
     assert "never removed" in _as(bed, DB_A, "engine_migrator", "DELETE FROM engine.aisc_backend_pluginconfig")
+
+
+def test_a_setting_made_before_is_deleted_by_a_mark_and_its_key_given_again(bed):
+    """Deleting a setting marks it deleted: the link of the configuration that used it stays, and a new setting
+    may take its key."""
+    assert _as(bed, DB_A, "engine_rw", """
+        BEGIN;
+        UPDATE engine.aisc_backend_projectconfig SET deleted_at = now() WHERE key = 'threshold';
+        INSERT INTO engine.aisc_backend_projectconfig (pid, name, description, created_at, key, project_id, category,
+               updated_at, encrypted_value, masked_value, json_value)
+             SELECT gen_random_uuid(), 'Threshold', '', now(), 'threshold', project_id, 'variables', now(), '', '',
+                    '{"type": "number", "value": 0.9}'
+               FROM engine.aisc_backend_projectconfig WHERE key = 'threshold';
+        SELECT 1 / count(*)::int FROM engine.aisc_backend_pluginconfigprojectconfig;
+        ROLLBACK;""") == ""
