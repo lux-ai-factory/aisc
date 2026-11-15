@@ -379,7 +379,7 @@ _ACTIONS = [
        # operator's resend stands for (resend_refused_installs.py)
        caused_by=(("engine", "POST", _EN + r"/plugins/?$"),
                   ("platform", "POST", _LAUNCH + r"/catalogue/api/tool/[^/]+/install$")),
-       details_keys=("package", "version", "reused", "turned_off", "resends"),
+       details_keys=("package", "version", "reused", "turned_off", "wheel_sha256", "code_digest", "resends"),
        routes=(("engine", "apps/backend/aisc_backend/routers/plugin.py", "create_plugins"),)),
     _a("plugin.refreshed", 3, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/refresh$"),), details_keys=("package", "version"),
