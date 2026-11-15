@@ -467,6 +467,28 @@ def _judge_run(ev, app, action, log) -> dict:
             "model": ev.get("model"), "verified": bool(logged.get("verified"))}   # the start's
 
 
+def run_window_closed(pid: str, ev: dict, occurred_at: datetime) -> bool:
+    """Whether an AI or worker event at `occurred_at` comes after its run's window, judged against the run's
+    start already in the project's log. False when the start is not there yet: the relay judges it then."""
+    from platform_service.ledger import provision
+
+    action = registry.REGISTRY.get(ev.get("action"))
+    if action is None or not ({"ai", "worker"} & set(action.actor_kinds)) or "user" in action.actor_kinds:
+        return False
+    log = provision.database_for(pid)
+    if log is None or not ev.get("run_id") or not ev.get("request_id"):
+        return False
+    with _db().pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT action, occurred_at FROM ledger.event_index WHERE log = %s AND run_id = %s AND request_id = %s"
+            " AND reason IS NULL AND action NOT LIKE 'request.%%' ORDER BY seq",
+            (log, str(ev["run_id"]), str(ev["request_id"]))).fetchall()
+    start = next((r for r in rows if r["action"] in registry.REGISTRY and registry.REGISTRY[r["action"]].runs), None)
+    if start is None or ev["action"] not in registry.REGISTRY[start["action"]].runs:
+        return False
+    return occurred_at - start["occurred_at"] > registry.REGISTRY[start["action"]].window()
+
+
 def _witness(request_id: str) -> dict | None:
     with _db().pool().connection() as conn:
         return conn.execute("SELECT * FROM ledger.witness WHERE request_id = %s", (request_id,)).fetchone()

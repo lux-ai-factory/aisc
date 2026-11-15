@@ -513,13 +513,21 @@ def _with_config_masked(row: dict) -> dict:
 
 
 def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
+    from datetime import datetime, timezone
+
     from psycopg import errors as pg_errors
 
-    from platform_service.ledger import outbox
+    from platform_service.ledger import outbox, relay
 
     if db.get_project(pid) is None:
         return _internal(404, {"detail": f"no project {pid!r}"})
     occurred_at = _occurred_at(event)
+    with db.pool().connection() as conn:
+        queued = conn.execute("SELECT 1 FROM core.outbox WHERE event_id = %s", (event["event_id"],)).fetchone()
+    if queued is None and relay.run_window_closed(pid, event, occurred_at or datetime.now(timezone.utc)):
+        # the relay would refuse it (run_window) after a 202 the emitter reads as delivered: refused here,
+        # so the emitter keeps it as refused
+        return _internal(409, {"detail": "the event comes after its run's window closed; it is not recorded"})
     extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS}
     fields = dict(item_type=event.get("item_type"), item_id=event.get("item_id"), details=event.get("details") or {},
                   content=event.get("content"), before=event.get("before"), after=event.get("after"),

@@ -61,6 +61,31 @@ def test_the_seal_of_a_short_run_is_accepted(client, project, memory_ledger, wit
         "engine.evaluation.run_requested", "run.trace.sealed"]
 
 
+def test_late_measures_are_recorded_or_refused_at_the_door(client, project, memory_ledger, witnessed, monkeypatch):
+    from platform_service.ledger import settings
+
+    monkeypatch.setattr(settings, "RUN_WINDOW", timedelta(seconds=1))
+    run = str(uuid.uuid4())
+    request_id = witnessed(MEMBER, "POST", "engine", "/api/v1/evaluations/task", project_header=project["pid"])
+    started = post(client, project, {"event_id": str(uuid.uuid4()), "request_id": request_id, "run_id": run,
+                                     "action": "engine.evaluation.run_requested", "item_type": "evaluation",
+                                     "item_id": run, "details": {"plugins": ["DemoPlugin"]}})
+    assert started.status_code == 202, started.text
+    relay_all(project["pid"])
+    time.sleep(2)                                                 # past the run's window
+    late = post(client, project, {"event_id": str(uuid.uuid4()), "request_id": request_id, "run_id": run,
+                                  "action": "engine.measures.recorded", "item_type": "evaluation",
+                                  "item_id": run, "details": {"count": 1, "part": 1, "parts": 1},
+                                  "content": MEASURES})
+    relay_all(project["pid"])
+    recorded = [e for e in entries(memory_ledger, log_of(project["pid"])) if e.action == "engine.measures.recorded"]
+    if late.status_code == 409:
+        return                                                    # refused at the door: the engine keeps it
+    assert late.status_code == 202 and recorded, (
+        f"late measures answered {late.status_code} but the relay refused them: "
+        f"{rejected(memory_ledger, project['pid'])}")
+
+
 def test_a_seal_relayed_before_its_runs_start_arrives_waits_for_it(client, project, memory_ledger, witnessed):
     """The relay can pass between the platform's seal and the engine's delivery of the start: the seal waits."""
     from platform_service import db
