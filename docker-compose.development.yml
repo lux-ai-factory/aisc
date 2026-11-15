@@ -206,13 +206,13 @@ services:
     # The image's own check pings "celery@$$HOSTNAME", which in a Dockerfile is the shell's pid
     # followed by the word HOSTNAME, with a 3s timeout, so it never passes. This pings the worker
     # by its real name and gives it 20s.
-    healthcheck:
+    healthcheck: &eval-worker-healthcheck
       test: ["CMD-SHELL", "celery --app aisc_eval.celery_app inspect ping -t 20 -d \"celery@$${HOSTNAME}\""]
       interval: 30s
       timeout: 30s
       retries: 3
       start_period: 30s
-    environment:
+    environment: &eval-worker-env
       # Manage -> Connections: a plugin process inherits these and resolves the connection it was
       # given through the platform's internal route (aisc_plugin_interface.connections); the
       # answer carries the project's network rule too, so the worker has no allowlist of its own.
@@ -261,17 +261,17 @@ services:
     pids_limit: 2048
     # plugins run as unprivileged users (aisc_eval/plugin_process.py): nothing in the image may raise
     # them back up through a setuid program
-    security_opt:
+    security_opt: &eval-worker-security
       - no-new-privileges:true
     # only to set, at start, the firewall that keeps those users behind the egress proxy (docker-entrypoint.sh)
-    cap_add:
+    cap_add: &eval-worker-capabilities
       - NET_ADMIN
     # a first process that reaps what a plugin left (killed at the end of its test), so no zombie of a run
     # user counts against the next test's process cap
     init: true
-    networks:
+    networks: &eval-worker-networks
       - backend
-    volumes:
+    volumes: &eval-worker-volumes
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
     command: >
@@ -280,6 +280,41 @@ services:
       --concurrency=${EVAL_WORKER_CONCURRENCY:-4}
       --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
       --beat --schedule=/tmp/aisc-eval-beat-schedule"
+
+  # The eval worker's second process: it reads plugin manifests and runs the plugins' form hooks
+  # (aisc_eval.celery_app.PLUGIN_DECLARATIONS_QUEUE), one at a time, so a configure page never waits behind
+  # the runs. It runs plugin code as the run worker does, so it is kept apart the same way (same image,
+  # settings, firewall, reaper and egress hosts; no database credential). It runs no beat: the run worker
+  # runs the sweep.
+  aisc-eval-declarations-worker:
+    restart: unless-stopped
+    platform: linux/amd64
+    # the run worker's image, built there (two builds of one tag race)
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-declarations-worker
+    healthcheck: *eval-worker-healthcheck
+    environment: *eval-worker-env
+    depends_on:
+      - aisc-eval-worker
+      - aisc-backend
+      - rabbitmq
+      - redis
+    # one plugin at a time: its install, then its manifest or one form hook
+    mem_limit: ${EVAL_DECLARATIONS_WORKER_MEM_LIMIT:-8g}
+    cpus: ${EVAL_DECLARATIONS_WORKER_CPUS:-2}
+    pids_limit: 1024
+    security_opt: *eval-worker-security
+    cap_add: *eval-worker-capabilities
+    init: true
+    networks: *eval-worker-networks
+    volumes: *eval-worker-volumes
+    command: >
+      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
+      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      --queues=plugin-declarations
+      --concurrency=1
+      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}"
 
   aisc-eval-flower:
     # started only when asked (COMPOSE_PROFILES=inspect ./scripts/start.sh): it has no sign-in of its own, and

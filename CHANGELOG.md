@@ -10,8 +10,11 @@
   (`on_config_change`, `parse_config_from_dataset`, `get_metric_visualizations`) is run by the worker the same
   way, within 30 seconds. A plugin installed before this has no manifest: the first page that needs it has the
   worker read it then (the eval worker must be up; the first read installs the plugin and can take minutes), and
-  it is kept; a local plugin whose folder changed is read again. An install now waits for the worker
-  (`PLUGIN_MANIFEST_TIMEOUT_S` on the engine, 900 seconds; the platform waits as long), and a refresh whose wheel
+  it is kept; a local plugin whose folder changed is read again. Manifest reads and form hooks have a queue of
+  their own (`plugin-declarations`), served one at a time by a new compose service, `aisc-eval-declarations-worker`
+  (the eval image, kept apart as the run worker is), so a configure page never waits behind the runs: **start it
+  with the stack**, or every plugin page that needs the worker waits and then answers 503. An install now waits for
+  the worker (`PLUGIN_MANIFEST_TIMEOUT_S` on the engine, 900 seconds), and a refresh whose wheel
   changed on the index is refused. The worker keeps one environment per plugin version under
   `/var/cache/aisc-plugin-envs` in its container (rebuilt after a recreate). The engine no longer installs plugin
   wheels into its own environment.
