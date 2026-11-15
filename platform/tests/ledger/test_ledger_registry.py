@@ -214,6 +214,11 @@ def test_a_details_key_the_action_does_not_allow_is_a_problem():
     assert "details_key:colour" in check(_event(details={"colour": "red"}), emitter=_emitter())
 
 
+def test_opening_a_card_may_say_the_caller_is_a_viewer_apart_from_the_card_being_an_earlier_one():
+    event = _event("qualification.opened", details={"version": 3, "read_only": False, "viewer": True})
+    assert check(event, emitter=_emitter("qualification.opened")) == []
+
+
 @pytest.mark.parametrize("value", ["Bearer eyJhbGciOiJSUzI1NiJ9.e30.sig", "sk-abcdefghijklmnopqrstuvwx",
                                    "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln"])
 @pytest.mark.parametrize("where", ["details", "content"])

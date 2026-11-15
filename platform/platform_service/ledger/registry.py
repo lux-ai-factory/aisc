@@ -235,7 +235,7 @@ _ACTIONS = [
        caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),
                   # saving the card redirects to its page, which Next renders inside the save's own POST
                   ("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$")),
-       details_keys=("version", "read_only")),
+       details_keys=("version", "read_only", "viewer")),
     _a("qualification.created", 1, ("qualification",), "qualification",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page
        # the next version's review: what it took from the card before it (content.review names the nodes)
