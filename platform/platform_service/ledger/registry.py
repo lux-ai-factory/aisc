@@ -370,8 +370,12 @@ _ACTIONS = [
        routes=(("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/library_routes.py", "save_profile_form"), ("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/library_routes.py", "save_profile"))),
     # step 3: local installs
     _a("plugin.installed", 3, ("engine",), "plugin",
-       caused_by=(("engine", "POST", _EN + r"/plugins/?$"),),
-       details_keys=("package", "version", "reused", "turned_off"),
+       # the engine's own install route, and the platform's catalogue Install, which installs through it
+       # citing the person's request (engine_components.install_plugin); `resends`: the refused event an
+       # operator's resend stands for (resend_refused_installs.py)
+       caused_by=(("engine", "POST", _EN + r"/plugins/?$"),
+                  ("platform", "POST", _LAUNCH + r"/catalogue/api/tool/[^/]+/install$")),
+       details_keys=("package", "version", "reused", "turned_off", "resends"),
        routes=(("engine", "apps/backend/aisc_backend/routers/plugin.py", "create_plugins"),)),
     _a("plugin.refreshed", 3, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/refresh$"),), details_keys=("package", "version"),
