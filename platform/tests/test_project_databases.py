@@ -38,16 +38,19 @@ def test_making_a_project_makes_its_database(client, as_user, unique, dsn):
     name = projectdb.database_name(created["pid"])
     with psycopg.connect(dsn) as conn:
         assert conn.execute("select 1 from pg_database where datname = %s", (name,)).fetchone()
-    with _as(dsn, "controls_rw", name) as conn:
+    # controls' tables are made by its migrator, acting as controls_owner; controls_rw only reads and writes rows
+    with _as(dsn, "controls_migrator", name) as conn:
         conn.execute("create table controls.probe (x int)")
         conn.execute("drop table controls.probe")
+    with _as(dsn, "controls_rw", name) as conn:
+        assert conn.execute("select has_schema_privilege('controls', 'USAGE')").fetchone()[0]
 
 
 @needs_database
 def test_two_projects_share_nothing(client, as_user, unique, dsn):
     a = client.post("/projects", json={"name": unique("a")}, headers=as_user("alice")).json()
     b = client.post("/projects", json={"name": unique("b")}, headers=as_user("alice")).json()
-    with _as(dsn, "controls_rw", projectdb.database_name(a["pid"])) as conn:
+    with _as(dsn, "controls_migrator", projectdb.database_name(a["pid"])) as conn:
         conn.execute("create table controls.only_in_a (x int)")
     with _as(dsn, "controls_rw", projectdb.database_name(b["pid"])) as conn:
         found = conn.execute("select to_regclass('controls.only_in_a')").fetchone()[0]
