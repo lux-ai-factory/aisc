@@ -4,13 +4,15 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
+from datetime import datetime
+from typing import Annotated
 
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency, requires_role
 from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, ServiceRefused, identify
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, StringConstraints
 
 from platform_service import db
 from platform_service.projects import looks_like_pid
@@ -367,12 +369,83 @@ def ledger_reanchor(body: ReanchorIn, caller: Caller = Depends(requires_role(ADM
     return {"log": log, "old_head": old, "new_head": new, "recorded": seq}
 
 
+class CorrectionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    project: StrictStr                                                # its slug or pid
+    performed_at: datetime
+    what: Annotated[StrictStr, StringConstraints(min_length=1, max_length=2000)]
+    why: Annotated[StrictStr, StringConstraints(min_length=1, max_length=2000)]
+    backup_ref: Annotated[StrictStr, StringConstraints(max_length=300)] | None = None
+    items: Annotated[list[Annotated[StrictStr, StringConstraints(max_length=200)]], Field(max_length=50)] = []
+
+
+@router.post("/ledger/corrections", status_code=201)
+def ledger_correction(body: CorrectionIn, caller: Caller = Depends(requires_role(ADMIN_ROLE))) -> dict:
+    """An operator's change of a project's data by hand (a run's status, a removed card version, runs moved),
+    declared by an admin: `operator.correction.declared` in that project's log, with the admin as its actor.
+    Appended by the platform itself under the log's relay lock, as the re-anchor is, since the request (on no
+    project's path) cannot bind the event to the project. Refused (422) when it holds a secret."""
+    from datetime import timezone
+
+    from platform_service import ledger
+    from platform_service.ledger import actors, outbox, provision, registry, relay
+    from platform_service.ledger.store import LedgerError, LedgerUnavailable
+
+    project = db.get_project(body.project)
+    if project is None:
+        raise no_project(body.project)
+    pid = str(project["pid"])
+    log = provision.database_for(pid)
+    if log is None:
+        raise HTTPException(status_code=409, detail="this project has no ledger yet, so nothing can be declared in it")
+    performed = body.performed_at if body.performed_at.tzinfo else body.performed_at.replace(tzinfo=timezone.utc)
+    event_id = str(uuid.uuid4())
+    details = {"performed_at": performed.isoformat(), "what": body.what, "why": body.why,
+               "backup_ref": body.backup_ref, "items": body.items}
+    problems = registry.check({"event_id": event_id, "action": "operator.correction.declared",
+                               "item_type": "correction", "item_id": event_id, "details": details})
+    if problems:
+        raise HTTPException(status_code=422, detail=f"the declaration cannot be recorded: {', '.join(problems)}")
+    entry = {"event_id": event_id, "occurred_at": relay._iso(datetime.now(timezone.utc)), "project_pid": pid,
+             "step": 0, "source_app": "platform", "action": "operator.correction.declared", "actor_kind": "user",
+             "actor_ref": actors.ref_for(pid, caller.subject, caller.username or caller.subject),
+             "request_id": outbox.current_request.get(), "item_type": "correction", "item_id": event_id,
+             "outcome": "ok", "details": details, "verified": True, "registry_version": registry.VERSION}
+    store = ledger.current()
+    try:
+        with relay._log_lock(log):
+            seq = store.append(log, entry)
+            relay._index(log, seq, entry, pid)
+    except LedgerUnavailable as exc:
+        raise _ledger_unavailable(exc) from None
+    except LedgerError as exc:
+        raise HTTPException(status_code=409, detail=f"the declaration could not be recorded ({exc.__class__.__name__})") from None
+    logger.warning("ledger %s: correction declared by %s (event %s)", log, caller.subject, event_id)
+    return {"event_id": event_id, "seq": seq}
+
+
 # The internal route: callers without an outbox. Each caller has its own token and
 # is the event's emitter; the relay checks it may emit that action and that the run is real.
 LEDGER_CALLERS = {"qualification_agents": "PLATFORM_LEDGER_AGENTS_TOKEN", "engine": "PLATFORM_LEDGER_ENGINE_TOKEN",
                   "dashboard": "PLATFORM_LEDGER_DASHBOARD_TOKEN"}
 _INTERNAL_COLUMNS = ("event_id", "request_id", "run_id", "action", "item_type", "item_id", "item_version",
                      "card_version", "content", "before", "after", "details", "outcome", "model", "registry_version")
+#: Also taken from the body, as its own column: when the emitter says the event happened.
+_EMITTER_TIME = "occurred_at"
+
+
+def _occurred_at(event: dict):
+    """When the emitter says the event happened (it may have queued it a while before sending), or None."""
+    from datetime import datetime
+
+    value = event.get(_EMITTER_TIME)
+    if value is None:
+        return None
+    try:
+        at = datetime.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        at = None
+    return at if at is not None and at.tzinfo is not None else ValueError
 
 
 def _ledger_caller(request: Request) -> tuple[str | None, JSONResponse | None]:
@@ -426,6 +499,16 @@ def _malformed(event) -> str | None:
     if event.get("registry_version") is not None and (not isinstance(event["registry_version"], int)
                                                       or isinstance(event["registry_version"], bool)):
         return "registry_version: a number"
+    at = _occurred_at(event)
+    if at is ValueError:
+        return "occurred_at: an ISO 8601 time with its zone"
+    if at is not None:
+        from datetime import datetime, timezone
+
+        from platform_service.ledger import settings
+
+        if at > datetime.now(timezone.utc) + settings.CLOCK_SKEW:
+            return "occurred_at: a moment that has passed"
     if event.get("outcome", "ok") not in EMITTER_OUTCOMES:
         return f"outcome: one of {', '.join(EMITTER_OUTCOMES)}"
     if action is not None and {"ai", "worker"} & set(action.actor_kinds) and "user" not in action.actor_kinds:
@@ -488,13 +571,22 @@ def _with_config_masked(row: dict) -> dict:
 
 
 def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
+    from datetime import datetime, timezone
+
     from psycopg import errors as pg_errors
 
-    from platform_service.ledger import outbox
+    from platform_service.ledger import outbox, relay
 
     if db.get_project(pid) is None:
         return _internal(404, {"detail": f"no project {pid!r}"})
-    extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS}
+    occurred_at = _occurred_at(event)
+    with db.pool().connection() as conn:
+        queued = conn.execute("SELECT 1 FROM core.outbox WHERE event_id = %s", (event["event_id"],)).fetchone()
+    if queued is None and relay.run_window_closed(pid, event, occurred_at or datetime.now(timezone.utc)):
+        # the relay would refuse it (run_window) after a 202 the emitter reads as delivered: refused here,
+        # so the emitter keeps it as refused
+        return _internal(409, {"detail": "the event comes after its run's window closed; it is not recorded"})
+    extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS and k != _EMITTER_TIME}
     fields = dict(item_type=event.get("item_type"), item_id=event.get("item_id"), details=event.get("details") or {},
                   content=event.get("content"), before=event.get("before"), after=event.get("after"),
                   item_version=event.get("item_version"), card_version=event.get("card_version"),
@@ -504,7 +596,7 @@ def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
     with db.pool().connection() as conn:
         try:
             with conn.transaction():
-                outbox.emit(conn, event["action"], project_pid=pid, **fields)
+                outbox.emit(conn, event["action"], project_pid=pid, occurred_at=occurred_at, **fields)
             return _internal(202, {"queued": event["event_id"]})
         except pg_errors.UniqueViolation:
             pass

@@ -8,11 +8,11 @@ pytestmark = [pytest.mark.db, pytest.mark.usefixtures("clean_layouts")]
 
 def test_migrations_run_at_start(client, bed):
     client.get("/api/p/alpha/layouts")
-    # The migration history is in each project's database. There the schema belongs to the platform
-    # and the tables to the composer; the composer owns nothing in `platform`.
+    # The migration history is in each project's database. There the schema and the tables belong to
+    # report_composer_owner, the role the migrator acts as; the composer owns nothing in `platform`.
     assert bed.scalar(pdb_of("A"), "SELECT count(*) FROM report_composer.schema_migration") not in ("", "0")
     owner = bed.scalar(pdb_of("A"), "SELECT relowner::regrole FROM pg_class WHERE oid = 'report_composer.layout'::regclass")
-    assert owner == "report_composer_rw"
+    assert owner == "report_composer_owner"
     assert bed.scalar("platform", "SELECT count(*) FROM pg_namespace WHERE nspowner = 'report_composer_rw'::regrole") \
         == "0"
 

@@ -7,7 +7,8 @@ guards.guard has decided membership for that pid (the callers open it inside the
 
 One connection per call, one transaction, closed on exit: no pool. The first open of a database
 in this process migrates it first (lock 8_190_233_707 in that database, the history re-read inside the
-lock), unless the start loop already did.
+lock), unless the start loop already did; it migrates as report_composer_migrator, over
+REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL.
 """
 from __future__ import annotations
 
@@ -42,9 +43,12 @@ def dsn_for(template: str, name: str) -> str:
 
 
 class ProjectDatabases:
-    def __init__(self, template: str, platform_url: str) -> None:
+    def __init__(self, template: str, platform_url: str, migrate_template: str | None = None) -> None:
         self.template = template or ""
         self.platform_url = platform_url
+        #: the migrator's template (REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL): a database is migrated
+        #: through it and queried through `template`; None migrates on the query role (a scratch bed)
+        self.migrate_template = migrate_template or None
         self._migrated: set[str] = set()
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
@@ -80,9 +84,10 @@ class ProjectDatabases:
             return ApiError(404, "not_found", NO_PROJECT)
         return ApiError(503, "unavailable", UNAVAILABLE)
 
-    def _open(self, pid: str):
+    def _open(self, pid: str, *, migrating: bool = False):
         try:
-            dsn = self.dsn(pid)
+            dsn = (dsn_for(self.migrate_template, database_name(pid)) if migrating and self.migrate_template
+                   else self.dsn(pid))
         except ValueError:  # the template has no {database}: a configuration error, not the caller's
             raise ApiError(503, "unavailable", UNAVAILABLE) from None
         try:
@@ -97,11 +102,11 @@ class ProjectDatabases:
         with self._lock_for(name):
             if name in self._migrated:
                 return
-            conn = self._open(pid)
+            conn = self._open(pid, migrating=True)
             try:
                 with conn:
                     migrate.migrate_project(conn)
-            except migrate.SchemaMissing:
+            except (migrate.SchemaMissing, migrate.SchemaNotOwned):
                 raise ApiError(503, "unavailable", UNAVAILABLE) from None
             finally:
                 conn.close()

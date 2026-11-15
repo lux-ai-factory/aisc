@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 
+import psycopg
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors
+from psycopg.rows import dict_row
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from platform_service import dashboard_bridge, db, projectdb, proof_store, targets
@@ -49,12 +51,37 @@ class MemberRoleIn(BaseModel):
     role: StrictStr = Field(max_length=32)
 
 
+def _uuid_text(value: str) -> str:
+    """`value` as a uuid's canonical text; a ValueError (422) when it is not one."""
+    import uuid
+
+    return str(uuid.UUID(value))
+
+
 class SystemIn(BaseModel):
     model_config = _STRICT
     name: StrictStr = Field(max_length=200)
     version: StrictStr | None = Field(default=None, max_length=100)
     provider: StrictStr | None = Field(default=None, max_length=200)
     description: StrictStr | None = Field(default=None, max_length=2000)
+    #: the caller's id for this save (a uuid), by which it withdraws the version when its card is not saved
+    attempt: StrictStr | None = Field(default=None, max_length=36)
+
+    @field_validator("attempt")
+    @classmethod
+    def _attempt_is_a_uuid(cls, value):
+        return None if value is None else _uuid_text(value)
+
+
+class SystemAbandonIn(BaseModel):
+    model_config = _STRICT
+    attempt: StrictStr = Field(max_length=36)
+    reason: StrictStr = Field(min_length=1, max_length=500)
+
+    @field_validator("attempt")
+    @classmethod
+    def _attempt_is_a_uuid(cls, value):
+        return _uuid_text(value)
 
 
 class SystemRevisionIn(SystemIn):
@@ -121,12 +148,12 @@ def provision_or_undo(pid) -> None:
     behind either.
     """
     try:
-        projectdb.provision(db.dsn(), pid)
+        projectdb.provision(db.migrate_dsn(), pid)
         proof_store.make_project_bucket(pid)
     except Exception:
         db.delete_project(pid)
         try:
-            projectdb.drop(db.dsn(), pid)
+            projectdb.drop(db.migrate_dsn(), pid)
         except Exception:
             logger.exception("could not drop the half-made database of project %s; drop it by hand", pid)
         raise HTTPException(status_code=503, detail="the project's database could not be made; nothing was created")
@@ -153,15 +180,15 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
     # The dashboard lets go of the project's database before it is dropped.
     dashboard_bridge.unregister(found["pid"])
     try:
-        projectdb.drop(db.dsn(), found["pid"])
+        projectdb.drop(db.migrate_dsn(), found["pid"])
     except Exception as exc:
         # the project is still there with its data: the apps may connect again and its dashboard comes back
         _reopen(found["pid"], closed_to)
         if not dashboard_bridge.register(found["pid"], found["slug"], found["name"]):
             db.remember_unregistered(found["pid"])
         if isinstance(exc, errors.InsufficientPrivilege):
-            logger.error("project %s: its database can't be dropped while apps hold sessions: platform_rw lacks"
-                         " pg_signal_backend (postgres-setup applies init/platform-role.sql)", found["pid"])
+            logger.error("project %s: its database can't be dropped while apps hold sessions: platform_migrator may"
+                         " not end them (postgres-setup applies init/owner-roles.sql)", found["pid"])
             raise HTTPException(status_code=503, detail="the project's database is in use and can't be closed now:"
                                 " the platform's database role is not set up to close it") from None
         raise
@@ -179,7 +206,7 @@ def _reopen(pid, grantees: list[str]) -> None:
     the roles, which then need `GRANT CONNECT` by hand."""
     name = projectdb.database_name(pid)
     try:
-        with db.pool().connection() as conn:
+        with psycopg.connect(db.migrate_dsn(), autocommit=True) as conn:
             for grantee in grantees:
                 conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {grantee}')
     except Exception:
@@ -191,13 +218,15 @@ def _ledger_drain_or_refuse(pid) -> list[str]:
     outbox there (aisc-backend-ledger sends it): the drop would destroy what hasn't been delivered.
     Platform-database rows (members, this delete's own event) don't block: they outlive the drop.
 
-    No event may commit after the count: CONNECT is revoked first, so no new app
-    session starts, and a session another role still holds makes the delete wait (409): the platform
-    can't end another role's session, and that session could still commit. A count that fails while
-    the database exists is never "nothing to lose" (503). On a refusal the database is opened again.
+    No event may commit after the count: CONNECT is revoked first, so no new app session starts, and the
+    apps' sessions are ended (as platform_migrator, the database's owner, through
+    aisc_setup.end_project_sessions); a session that is still there makes the delete wait (409), since it could
+    still commit. platform_rw keeps CONNECT: it counts the outbox. A count that fails while the database exists
+    is never "nothing to lose" (503). On a refusal the database is opened again.
 
     Returns the roles CONNECT was taken from, for the caller to give it back if the drop then fails."""
-    from platform_service.ledger import relay, witness as ledger_witness
+    from platform_service.ledger import relay
+    from platform_service.ledger import witness as ledger_witness
     from platform_service.ledger.store import LedgerError
 
     if ledger_witness.mode() == "off":
@@ -209,27 +238,28 @@ def _ledger_drain_or_refuse(pid) -> list[str]:
         raise HTTPException(status_code=409, detail="the project has no ledger yet (the pool was empty when it was"
                             " made): it gets one at the stack's next start, or now with scripts/ledger-pool.sh")
     name = projectdb.database_name(pid)
-    with db.pool().connection() as conn:
+    with psycopg.connect(db.migrate_dsn(), autocommit=True, row_factory=dict_row) as conn:
         if conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone() is None:
             return []                                                 # no project database: nothing to lose
-        # every role that may connect but the owner (each module role has its own grant, PUBLIC may too)
+        # every role that may connect but the owner and the platform's own (each module role has its own grant,
+        # PUBLIC may too)
         grantees = [r["grantee"] for r in conn.execute(
             "SELECT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(r.rolname) END AS grantee"
             " FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a LEFT JOIN pg_roles r ON r.oid = a.grantee"
-            " WHERE d.datname = %s AND a.privilege_type = 'CONNECT' AND a.grantee <> d.datdba", (name,))]
+            " WHERE d.datname = %s AND a.privilege_type = 'CONNECT' AND a.grantee <> d.datdba"
+            " AND r.rolname IS DISTINCT FROM 'platform_rw'", (name,))]
         for grantee in grantees:
             conn.execute(f'REVOKE CONNECT ON DATABASE "{name}" FROM {grantee}')
     try:
         import time
 
         for _ in range(10):
-            with db.pool().connection() as conn:
+            with psycopg.connect(db.migrate_dsn(), autocommit=True, row_factory=dict_row) as conn:
                 # no new session can start (CONNECT is revoked); the apps' pooled ones are ended, so none
-                # can commit an event after the count (platform_rw holds pg_signal_backend)
-                conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s"
-                             " AND usename IS DISTINCT FROM current_user", (name,))
+                # can commit an event after the count
+                conn.execute("SELECT aisc_setup.end_project_sessions(%s)", (name,))
                 others = conn.execute("SELECT count(*) AS n FROM pg_stat_activity WHERE datname = %s"
-                                      " AND usename IS DISTINCT FROM current_user", (name,)).fetchone()["n"]
+                                      " AND usename <> 'platform_rw'", (name,)).fetchone()["n"]
             if not others:
                 break
             time.sleep(0.2)
@@ -330,12 +360,35 @@ def create_system_version(
     name, version = system_key(body.name, body.version)
     try:
         made = db.create_version(project, name, version, body.provider, body.description,
-                                 caller.subject)
+                                 caller.subject, attempt=body.attempt)
     except db.ProjectDatabaseGone:
         raise no_project(project) from None
     if made is None:
         raise no_project(project)
     return made
+
+
+@router.post("/projects/{project}/system-versions/abandon")
+def abandon_system_version(
+    project: str, body: SystemAbandonIn, caller: Caller = Depends(caller_dependency)
+) -> dict:
+    """Withdraw the card version a save made (by its attempt) when the card itself was not saved: it is kept,
+    marked abandoned, and never the latest again. 404 when no version has that attempt, 409 when a newer
+    version exists or a card or a run names it. Changing the work: an editor."""
+    role_or_404(project, caller, needed="editor")
+    try:
+        gone = db.abandon_version(project, body.attempt, body.reason)
+    except db.ProjectDatabaseGone:
+        raise no_project(project) from None
+    except db.NotLatest:
+        raise HTTPException(status_code=409, detail="only the latest version can be withdrawn") from None
+    except db.VersionInUse:
+        raise HTTPException(status_code=409, detail="a card or a run names this version, so it is kept") from None
+    if gone is None:
+        if db.latest_version(project)[0] is False:
+            raise no_project(project)
+        raise HTTPException(status_code=404, detail="no card version was made by that attempt")
+    return gone
 
 
 @router.patch("/projects/{project}/system-versions/{pid}")

@@ -283,6 +283,9 @@ def make_client(bed, key, monkeypatch):
     monkeypatch.setenv("PLATFORM_ORIGIN", ORIGIN)
     monkeypatch.setenv("REPORT_COMPOSER_DATABASE_URL", bed.dsn("report_composer_rw", "platform"))
     monkeypatch.setenv("REPORT_COMPOSER_PROJECT_DATABASE_URL", bed.project_db_template("report_composer_rw"))
+    # the migrations run as report_composer_migrator, acting as report_composer_owner, as in the stack
+    monkeypatch.setenv("REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL",
+                       bed.project_db_template("report_composer_migrator"))
     monkeypatch.setenv("REPORT_SERVICE_TOKEN", "composer-test-token-0123456789")
     import aisc_identity.service
 
@@ -295,7 +298,9 @@ def make_client(bed, key, monkeypatch):
         def build():
             app = need("report_composer.app", "create_app")(
                 database_url=bed.dsn("report_composer_rw", "platform"),
-                project_database_url=bed.project_db_template("report_composer_rw"), renderer=renderer, clock=clock)
+                project_database_url=bed.project_db_template("report_composer_rw"),
+                project_migrate_database_url=bed.project_db_template("report_composer_migrator"),
+                renderer=renderer, clock=clock)
             c = TestClient(app, base_url="http://localhost")
             c.__enter__()
             opened.append(c)

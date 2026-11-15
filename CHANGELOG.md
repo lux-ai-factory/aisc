@@ -3,6 +3,65 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Card versions and revisions. The platform's template `0037_card_version_numbers_never_reused` adds
+  `project.system_number`, a one-row counter that only goes up, started at the highest number the project's
+  versions or its ledger outbox ever named: a version number removed by hand is not handed out again, and no
+  existing version is renumbered. `0038_card_revision_follows_the_cards` makes `project.saved_system` read a
+  version's card revision from its cards (`project.card_revision_of`), so a correction the platform counted
+  whose card was never stored leaves no gap. Qualification's migrations `20261116000000_platform_reads_card_revision`
+  (platform_rw reads a card's revision) and `20261116100000_revision_author` (`amended_by`, who made a
+  correction) and controls' `20261116000000_answer_card_revision` (`system_card_revision` beside an answer's
+  version) add empty columns and a grant; no row changes. Controls now reads an answer's card version from the
+  project's database in the save's transaction instead of asking the platform. Back up first
+  (`scripts/backup-databases.sh`), then rebuild and recreate the platform (its start applies the template to
+  every project database), qualification (and its AI card renderer), controls, the report composer and the
+  homepage.
+- Append-only results and kept settings. The engine's migration `0029_append_only_results` makes measures and
+  observations append-only (never changed, removed or truncated, not even by the owner), writes the ledger outbox
+  only through `engine.ledger_outbox_append`, `engine.ledger_outbox_mark` (a delivery mark is set once) and
+  `engine.ledger_outbox_mask`, and lets a saved plugin configuration change only by masking a secret in it (its
+  name and description stay editable; it is never removed). `0030_settings_are_kept` marks a deleted project
+  setting deleted instead of removing it: the configurations that used it keep their link, and its key may be
+  given again. A setting's update records the value it had and the value it takes in the ledger (`before`,
+  `after`), its deletion the value it had; a secret's events still name only its key. The new guards are listed in
+  `init/guard-triggers.txt`, and `scripts/verify.sh --stack` runs `scripts/verify-guard-triggers.sh`, which reports
+  a guard trigger that is missing, disabled, or on a table its owner role no longer holds. Ledger copies of a
+  plugin configuration now hide what the plugin's form marks and what the stored rule takes for a secret, never a
+  value for its name alone (`tokens: 512` stays readable). The canonical JSON of the ledger lives in
+  `aisc_identity.canonical` (the vendored wheels of the backend and the eval worker carry it). Back up first
+  (`scripts/backup-databases.sh`), restart postgres-setup (the guard list), then rebuild and recreate the platform,
+  aisc-backend, its one-shot and the ledger sender.
+- Module owner roles. Each module now migrates its project databases as its migrator, acting as its owner role:
+  `PROJECT_MIGRATE_DATABASE_URL` for qualification and controls (their one-shots and web apps) and for control
+  objectives, `REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL` for the report composer, `DB_MIGRATE_USER` and
+  `DB_MIGRATE_PASSWORD` for the engine (aisc-backend, its one-shot and the ledger sender); compose builds them
+  from the `*_MIGRATOR_PASSWORD` values of `scripts/secrets.sh`. At the first start each module's new migration
+  hands the tables its runtime role made to its owner role (`REASSIGN OWNED`), takes `CREATE` on the schema from
+  the runtime role and leaves it `SELECT`, `INSERT`, `UPDATE` and `DELETE` (only `INSERT` and `SELECT` on the card
+  history, the form versions, the mapping archive and the layout revisions). References to a card version restrict
+  its deletion in every module; an AI card is never deleted; a run's card version is fixed when it starts. The
+  guards that keep an AI card, its history, the mapping archive, the layout revisions and a run's card version are
+  listed in `init/guard-triggers.txt`, so not even a migration lifts them. A module migrates a project database
+  only once its schema is its owner role's: while the platform has not handed it over yet, the one-shot waits
+  and tries again. Back up first (`scripts/backup-databases.sh`), restart postgres-setup, start the platform, then
+  rebuild and recreate every module.
+- Owner roles. Run `scripts/secrets.sh` first: it adds the six `*_MIGRATOR_PASSWORD` values, which
+  postgres-setup applies and `PLATFORM_MIGRATE_DATABASE_URL` uses (the platform refuses to start without it).
+  postgres-setup now makes NOLOGIN owner roles (`<module>_owner`) and their migrator logins
+  (`init/owner-roles.sql`), takes `CREATEDB` and `pg_signal_backend` from `platform_rw`, and installs
+  `init/project-database-setup.sql` in `template1` and every project database (the functions that hand a module
+  schema to its owner and end a project's sessions, and the alarm that refuses disabling or dropping a listed
+  guard trigger, `init/guard-triggers.txt`). At its next start the platform migrates as `platform_migrator`:
+  its own tables, the project databases and the platform's schemas in them pass from `platform_rw` to
+  `platform_owner`, and each module schema to its module's owner role; `platform_rw` keeps reading and writing
+  rows, nothing more (no `DELETE` on card versions, insert and read only on the run trace and the verified
+  ledger state). Card versions refuse `DELETE` and `TRUNCATE` for everyone (a card is corrected through a
+  revision; a project leaves by dropping its database), and evidence restricts instead of cascading. The
+  verified ledger state becomes a log that only grows (`ledger.state_log`; `ledger.state` is copied once and
+  kept read-only). The database inspector reads by schema, never a project's `connection`, `llm` or `helper`;
+  nobody connects to the platform database through `PUBLIC`. Back up first (`scripts/backup-databases.sh`), then
+  restart postgres-setup and rebuild and recreate the platform; the modules keep their roles until their own
+  migrations move to their owners.
 - Addresses are checked at the call. Loopback and the unspecified address (`0.0.0.0`, `::`, mapped forms) are
   reached only by hosts in `CONNECTIONS_ALLOWED_HOSTS` (and, for model addresses, the host of
   `PLATFORM_OLLAMA_BASE_URL`), even when a project allows the name; every address that is not globally routable

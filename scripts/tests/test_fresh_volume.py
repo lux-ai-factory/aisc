@@ -98,7 +98,8 @@ def _post_project(bed) -> dict:
             "c = TestClient(app); r = c.post('/projects', json={'name': 'fresh volume probe'})\n"
             "print(json.dumps({'status': r.status_code, 'body': r.json() if r.content else None}))\n")
     env = {**os.environ, "PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
-           "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform"), "AUTH_ENABLED": "false",
+           "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform"),
+           "PLATFORM_MIGRATE_DATABASE_URL": bed.dsn("platform_migrator", "platform"), "AUTH_ENABLED": "false",
            "DASHBOARD_BRIDGE_URL": "", "AISC_BRIDGE_TOKEN": "",
            "PYTHONPATH": f"{ROOT / 'platform'}:{ROOT / 'shared/identity'}"}
     r = subprocess.run(["uv", "run", "--quiet", "--extra", "dev", "python", "-c", code], cwd=ROOT / "platform",
@@ -132,13 +133,14 @@ def test_init_files_and_migrations_apply_on_a_fresh_volume(fresh):
 
 
 def test_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
-    """`platform` holds core, the ledger's own schema and an empty public (forms are per project, so there is
+    """`platform` holds core, the ledger's own schema, aisc_setup (the superuser's functions the owner roles call,
+    init/owner-roles.sql) and an empty public (forms are per project, so there is
     no form library; the catalogue is per project too, and there is no report library); core holds the projects, their members, the migration
     history, the platform's ledger outbox, the run passes it issued and the connections those runs reached."""
     fresh.require("init")
     schemas = {r["nspname"] for r in fresh.rows("platform", """
         SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'""")}
-    assert schemas == {"core", "ledger", "public"}, f"platform schemas: {sorted(schemas)}"
+    assert schemas == {"core", "ledger", "public", "aisc_setup"}, f"platform schemas: {sorted(schemas)}"
     core = {r["relname"] for r in fresh.rows("platform", """
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'core' AND c.relkind = 'r'""")}

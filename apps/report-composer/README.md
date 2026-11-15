@@ -101,6 +101,7 @@ stack. `aisc_identity` is not installed: it is read from `../../shared/identity`
 cd apps/report-composer
 uv sync --extra dev
 REPORT_COMPOSER_DATABASE_URL=... REPORT_COMPOSER_PROJECT_DATABASE_URL=... \
+REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL=... \
 REPORT_RENDERER_URL=... REPORT_SERVICE_TOKEN=... \
 PYTHONPATH=.:../../shared/identity \
 uv run uvicorn report_composer.app:app --host 127.0.0.1 --port 8095 --proxy-headers
@@ -114,6 +115,7 @@ uv run uvicorn report_composer.app:app --host 127.0.0.1 --port 8095 --proxy-head
 |---|---|---|---|
 | `REPORT_COMPOSER_DATABASE_URL` | the `platform` database as `report_composer_rw` (membership) | none, required | `postgresql://report_composer_rw:...@postgres:5432/platform` |
 | `REPORT_COMPOSER_PROJECT_DATABASE_URL` | the same kind of DSN with `{database}` in place of the name, for each project's database | none, required | `...@postgres:5432/{database}` |
+| `REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL` | the same template as `report_composer_migrator`, whose sessions act as `report_composer_owner`, the owner of the composer's tables: the migrations only (the one-shot, the start loop and a project's first open), once a project database's `report_composer` schema is that role's | none, required by the one-shot; the service migrates as its query role without it (a scratch bed) | `postgresql://report_composer_migrator:...@postgres:5432/{database}` |
 | `REPORT_RENDERER_URL` | the renderer | `http://report-renderer:8001` | same |
 | `REPORT_SERVICE_TOKEN` | the token shared with the renderer | empty | from `env.secrets` |
 | `REPORT_COMPOSER_ROOT_PATH` | the prefix Caddy strips | empty | `/report-composer` |

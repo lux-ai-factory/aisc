@@ -10,9 +10,10 @@ erroring in a fixture:
     bed.stop()
 
 Steps, in the stack's order:
- 1. init/platform-db.sql, init/project-databases.sql, init/inspector-role.sql, init/report-roles.sql
+ 1. init/platform-db.sql, init/project-databases.sql, init/inspector-role.sql, init/report-roles.sql,
+    init/owner-roles.sql, then init/project-database-setup.sql in template1
     (superuser; a file that fails is a problem, not an error)
- 2. platform migrations as platform_rw (scripts/pipeline_chain/throwaway.platform_migration)
+ 2. platform migrations as platform_migrator (scripts/pipeline_chain/throwaway.platform_migration)
  3. two projects A and B in core.project (platform_rw), their databases made by the platform's own
     `projectdb.provision` (so every template file is applied)
  4. each module's migrate command against every project database:
@@ -38,7 +39,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/pipeline_chain"))
-from throwaway import SU, Throwaway, platform_migration  # noqa: E402
+from throwaway import SU, Throwaway, platform_migration, platform_role  # noqa: E402
 
 A = "a0000000-0000-4000-8000-00000000000a"
 B = "b0000000-0000-4000-8000-00000000000b"
@@ -209,7 +210,7 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
     code = ("import sys; from platform_service import projectdb\n"
             "for p in sys.argv[2:]: projectdb.provision(sys.argv[1], p)\n")
     _run(bed, "provision", ["uv", "run", "--quiet", "--extra", "dev", "python", "-c", code,
-                            bed.dsn("platform_rw", "platform"), *pids],
+                            bed.dsn(platform_role(bed.t), "platform"), *pids],
          ROOT / "platform", {"PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
                              "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform")},
          "projectdb.provision")
@@ -220,58 +221,69 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
         bed.problems["templates"] = "template files missing: " + ", ".join(lacking)
 
 
-def migrate_modules(bed: IsoBed) -> None:
+def migrate_modules(bed: IsoBed, modules: Path = ROOT) -> None:
     """Each module's own command for every project database (the -migrate one-shots of the stack), except
-    for a module whose environment is missing: its problem is then the line naming the fix."""
+    for a module whose environment is missing: its problem is then the line naming the fix.
+
+    `modules` is the tree whose apps/<module> code runs (this checkout by default); another tree, such as the
+    modules as an older install ran them, uses this checkout's environments (node_modules, .venv) linked in."""
     port = bed.port
+    apps = modules / "apps"
     bed.problems.update(environment_problems())
     if "environment" in bed.problems:
         for key in ENVIRONMENT_KEYS.values():
             bed.problems.setdefault(key, bed.problems["environment"])
     # controls
     if "controls" not in bed.problems:
-        _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
-             {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls")},
+        _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], apps / "controls",
+             {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls"),
+              "PROJECT_MIGRATE_DATABASE_URL": bed.template("controls_migrator", "?schema=controls")},
              "controls migrate-projects.mjs")
     # qualification: every project database (no form library: forms are per project)
-    q = ROOT / "apps/qualification/scripts/migrate-projects.mjs"
+    q = apps / "qualification/scripts/migrate-projects.mjs"
     if "qualification" in bed.problems:
         pass
     elif not q.exists():
         bed.problems["qualification"] = "apps/qualification/scripts/migrate-projects.mjs missing"
     else:
-        _run(bed, "qualification", ["node", str(q)], ROOT / "apps/qualification",
-             {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2")},
+        _run(bed, "qualification", ["node", str(q)], apps / "qualification",
+             {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2"),
+              "PROJECT_MIGRATE_DATABASE_URL": bed.template("qualification_migrator",
+                                                           "?schema=qualification&connection_limit=2")},
              "qualification migrate-projects.mjs")
     # control objectives
     if "control_objectives" not in bed.problems:
         py = _python("apps/control-objectives")
         _run(bed, "control_objectives", [py, "-m", "aisc_control_objectives.migrate_projects"],
-             ROOT / "apps/control-objectives",
-             {"PYTHONPATH": str(ROOT / "apps/control-objectives/src"),
+             apps / "control-objectives",
+             {"PYTHONPATH": str(apps / "control-objectives/src"),
               "DATABASE_URL": f"postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:{port}/platform",
               "PROJECT_DATABASE_URL": "postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:"
-                                      f"{port}/{{database}}"},
+                                      f"{port}/{{database}}",
+              "PROJECT_MIGRATE_DATABASE_URL": "postgresql+psycopg://control_objectives_migrator:"
+                                              f"control_objectives_migrator@127.0.0.1:{port}/{{database}}"},
              "python -m aisc_control_objectives.migrate_projects")
     # engine
     if "engine" not in bed.problems:
         py = _python("apps/backend")
-        _run(bed, "engine", [py, "manage.py", "migrate_projects"], ROOT / "apps/backend",
+        _run(bed, "engine", [py, "manage.py", "migrate_projects"], apps / "backend",
              # migrate_projects (aisc_backend/deployment.py) only migrates a database per
              # project in configurator mode, which is what this bed's engine runs as.
              # (configurator mode also needs the run tickets' key, a throwaway one, and AUTH_ENABLED)
              {"AISC_DEPLOYMENT": "configurator", "RUN_TICKET_KEY": secrets.token_hex(16), "AUTH_ENABLED": "true",
               "DB_ENGINE": "django.db.backends.postgresql", "DB_NAME": "platform", "DB_USER": "engine_rw",
               "DB_PASSWORD": "engine_rw", "DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_SCHEMA": "engine",
+              "DB_MIGRATE_USER": "engine_migrator", "DB_MIGRATE_PASSWORD": "engine_migrator",
               "PYTHONPATH": f"{ROOT}/shared/plugin-interface/src:{ROOT}/shared/plugin-manager/src:{ROOT}/shared/identity"},
              "manage.py migrate_projects")
     # report composer
     if "report_composer" not in bed.problems:
         py = _python("apps/report-composer")
-        _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], ROOT / "apps/report-composer",
-             {"PYTHONPATH": str(ROOT / "apps/report-composer"),
+        _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], apps / "report-composer",
+             {"PYTHONPATH": str(apps / "report-composer"),
               "REPORT_COMPOSER_DATABASE_URL": bed.dsn("report_composer_rw", "platform"),
-              "REPORT_COMPOSER_PROJECT_DATABASE_URL": bed.template("report_composer_rw")},
+              "REPORT_COMPOSER_PROJECT_DATABASE_URL": bed.template("report_composer_rw"),
+              "REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL": bed.template("report_composer_migrator")},
              "python -m report_composer.migrate (library + every project database)")
     # what the commands must have produced, per project database
     for pid in bed.projects:
@@ -290,8 +302,9 @@ def build(label: str, *, projects: tuple[str, ...] = (A, B), modules: bool = Tru
     bed = IsoBed(t)
     try:
         _su_file(bed, "postgres", ROOT / "init/platform-db.sql", "init")
-        for f in ("project-databases", "inspector-role", "report-roles"):
+        for f in ("project-databases", "inspector-role", "report-roles", "owner-roles"):
             _su_file(bed, "platform", ROOT / f"init/{f}.sql", f"init-{f}")
+        _su_file(bed, "template1", ROOT / "init/project-database-setup.sql", "init-project-database-setup")
         for m in sorted((ROOT / "platform/migrations").glob("*.sql")):
             try:
                 platform_migration(t, m)

@@ -14,7 +14,7 @@ from psycopg.conninfo import make_conninfo
 
 from platform_service import projectdb
 from platform_service.ledger.registry import REGISTRY
-from tests.conftest import DSN, needs_database
+from tests.conftest import DSN, MIGRATE_DSN, needs_database
 
 pytestmark = needs_database
 
@@ -35,7 +35,7 @@ def exists(name: str) -> bool:
 def test_provision_then_drop_from_the_command_line():
     pid = str(uuid.uuid4())
     name = projectdb.database_name(pid)
-    done = cli("provision", pid, "--dsn", DSN)
+    done = cli("provision", pid, "--dsn", MIGRATE_DSN)
     try:
         assert done.returncode == 0, done.stderr[-2000:]
         assert done.stdout.strip() == name
@@ -45,7 +45,7 @@ def test_provision_then_drop_from_the_command_line():
         assert applied == {p.name for p in projectdb.TEMPLATE.glob("*.sql")}
         assert actions == {n for n, a in REGISTRY.items() if a.origin != "app"}
     finally:
-        gone = cli("drop", pid, "--dsn", DSN)
+        gone = cli("drop", pid, "--dsn", MIGRATE_DSN)
     assert gone.returncode == 0, gone.stderr[-2000:]
     assert not exists(name)
 

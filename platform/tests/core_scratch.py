@@ -4,7 +4,8 @@ A migration test needs a database in a known state: fresh, or shaped like the
 live one before a migration ran. The shared test database has already been
 migrated by the time those tests run, so each of them makes its own database
 next to it, prepared the way the live one was (init/platform-db.sql as the
-superuser, then platform migrations as platform_rw), and drops it afterwards.
+superuser, then platform migrations: those before the owner roles as platform_rw,
+as they were applied, the later ones as platform_migrator), and drops it afterwards.
 
 Making a database and running init/platform-db.sql take the superuser, so these
 tests need PLATFORM_TEST_SUPERUSER_URL (the throwaway container's superuser
@@ -94,24 +95,38 @@ def scratch_database(old_layout: bool = False):
     try:
         with psycopg.connect(su, autocommit=True) as conn:
             conn.execute(platform_db_sql_for(name, old_layout))
+            # as init/owner-roles.sql gives platform_owner the database `platform`
+            if conn.execute("SELECT 1 FROM pg_roles WHERE rolname = 'platform_owner'").fetchone():
+                conn.execute(sql.SQL("GRANT CONNECT, CREATE ON DATABASE {} TO platform_owner").format(
+                    sql.Identifier(name)))
         yield su, rw
     finally:
         with psycopg.connect(SUPERUSER_DSN, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
 
 
+#: The first migration of the owner roles: the ones before it ran as platform_rw on every install, it and
+#: the later ones run as platform_migrator (its sessions act as platform_owner).
+FIRST_MIGRATION_AS_OWNER = "0015"
+
+
 def apply_platform_migrations(rw_dsn: str, upto: str | None = None) -> list[str]:
-    """Run platform migrations as platform_rw, as platform_service does.
+    """Run platform migrations as platform_service does: those before the owner roles as platform_rw, the
+    later ones as platform_migrator (the throwaway's password is the role's name).
     `upto` is the last file name to include (e.g. "0002"); None means all."""
-    if upto is None:
-        with psycopg.connect(rw_dsn) as conn:
-            return migrate(conn)
-    tmp = Path(tempfile.mkdtemp(prefix="pytest-migrations-"))
-    try:
-        for path in sorted(MIGRATIONS.glob("*.sql")):
-            if path.name[: len(upto)] <= upto:
-                shutil.copy(path, tmp / path.name)
-        with psycopg.connect(rw_dsn) as conn:
-            return migrate(conn, tmp)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    ran: list[str] = []
+    migrator_dsn = make_conninfo(rw_dsn, user="platform_migrator", password="platform_migrator")
+    for dsn, keep in ((rw_dsn, lambda n: n < FIRST_MIGRATION_AS_OWNER),
+                      (migrator_dsn, lambda n: n >= FIRST_MIGRATION_AS_OWNER)):
+        tmp = Path(tempfile.mkdtemp(prefix="pytest-migrations-"))
+        try:
+            for path in sorted(MIGRATIONS.glob("*.sql")):
+                if keep(path.name) and (upto is None or path.name[: len(upto)] <= upto):
+                    shutil.copy(path, tmp / path.name)
+            if not any(tmp.iterdir()):
+                continue
+            with psycopg.connect(dsn) as conn:
+                ran += migrate(conn, tmp)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return ran

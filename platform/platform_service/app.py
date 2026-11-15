@@ -59,7 +59,16 @@ def record_ledger_mode_at_start() -> None:
         logger.error("ledger: the mode at start could not be recorded: %s", exc)
 
 
-app.router.on_startup.extend([check_switches_at_start, record_ledger_mode_at_start, _ledger_worker.start])
+def check_migrator_address_at_start() -> None:
+    """Refuse to start without PLATFORM_MIGRATE_DATABASE_URL: migrations, making and dropping project databases
+    run as platform_migrator, never as the role the requests use."""
+    from platform_service import db
+
+    db.migrate_dsn()
+
+
+app.router.on_startup.extend([check_switches_at_start, check_migrator_address_at_start, record_ledger_mode_at_start,
+                              _ledger_worker.start])
 
 #: What the ledger's defence in depth checks: every write, but not the internal and authz routes,
 #: which carry service tokens or are Caddy's own.

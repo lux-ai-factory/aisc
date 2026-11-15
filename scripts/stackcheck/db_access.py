@@ -70,7 +70,8 @@ def checks(stack: Stack) -> list[Check]:
                            lambda r=role: deny(rolled_back(r, "create table public.sneaky (x int)"),
                                                control=there(r, "core.project"))))
     found += [
-        Check("platform_rw: can create a database", creates_databases("platform_rw", "t")),
+        Check("platform_migrator: can create a database", creates_databases("platform_migrator", "t")),
+        Check("platform_rw: the platform's requests cannot create a database", creates_databases("platform_rw", "f")),
         Check("controls_rw: a module cannot create a database", creates_databases("controls_rw", "f")),
         Check("engine_rw: nor can the engine", creates_databases("engine_rw", "f")),
     ]

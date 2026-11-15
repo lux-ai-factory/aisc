@@ -241,7 +241,7 @@ def _gone(project) -> bool:
 def test_a_delete_while_an_app_is_connected_ends_its_session_and_deletes(project, call, memory_ledger, mode,
                                                                          ledger):
     """An app holds pooled sessions on every project database it has opened. The delete closes the database
-    to new sessions, ends the apps' sessions (platform_rw holds pg_signal_backend: init/platform-role.sql),
+    to new sessions, ends the apps' sessions (as platform_migrator, through aisc_setup.end_project_sessions),
     delivers what the outbox holds when the ledger is on, then drops it: 204, never a 500 or a wait."""
     from psycopg.conninfo import make_conninfo
 

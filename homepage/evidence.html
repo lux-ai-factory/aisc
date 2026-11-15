@@ -422,8 +422,13 @@
         var tile = el('div', 'tile'), main = el('div', 'tile-main');
         main.appendChild(el('div', 'tile-name', plural(d.count, 'report') + ' generated'));
         var made = new Date(d.latest.created_at).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'});
+        // the card revision it is pinned to, when the card was corrected ("Version 1, revision 2")
+        var pinned = d.latest.card_revision > 1 ? ' · revision ' + d.latest.card_revision : '';
         main.appendChild(el('div', 'tile-runs', 'Latest: ' + d.latest.layout_name + ' · ' + made + ' · ' +
-          d.latest.format.toUpperCase() + (d.latest.status === 'partial' ? ' · partial' : '')));
+          d.latest.format.toUpperCase() + pinned + (d.latest.status === 'partial' ? ' · partial' : '')));
+        if (d.latest.of_an_earlier_card_revision) {
+          main.appendChild(el('div', 'tile-runs', 'Of an earlier revision of this version\'s card: generate it again for the corrected card'));
+        }
         tile.appendChild(main);
         tile.appendChild(tileLink('Open', 'Download the latest report, ' + d.latest.layout_name,
           ENGINE + '/report-composer' + d.latest.download));

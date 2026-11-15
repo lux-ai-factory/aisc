@@ -113,6 +113,10 @@ _ACTIONS = [
        details_keys=("mode",)),
     _a("ledger.reanchored", 0, (), "ledger", origin="platform",
        caused_by=(("platform", "POST", r"^/api/ledger/reanchor$"),), details_keys=("old_head", "new_head", "project")),
+    # an admin's declaration of a project's data changed by hand, appended to that project's log by the platform
+    _a("operator.correction.declared", 0, (), "correction", origin="platform",
+       caused_by=(("platform", "POST", r"^/api/ledger/corrections$"),),
+       details_keys=("performed_at", "what", "why", "backup_ref", "items")),
     # browser-reported, through the beacon
     _a("page.opened", 0, ("platform",), "page", origin="browser", per_request=1, details_keys=("page",),
        caused_by=(("platform", "POST", r"^/api/ledger/beacon$"),)),
@@ -137,10 +141,17 @@ _ACTIONS = [
     _a("member.removed", 0, ("platform",), "member",
        caused_by=(("platform", "DELETE", _LAUNCH + r"/members/(?P<item>[^/]+)$"),), details_keys=("role",)),
     # a card version is saved by the platform, on step 1's submit
+    # its content freezes what the version says (number, name, version, provider, description)
     _a("card_version.created", 1, ("platform",), "card_version",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "POST", _LAUNCH + "/system-versions$")),
-       details_keys=("number", "name", "version", "provider")),
+       details_keys=("number", "name", "version", "provider"), content_required=True,
+       same_action=("card_version.abandoned",)),
+    # a version made for a card that was then not saved, withdrawn by the same submit: kept, never the latest
+    _a("card_version.abandoned", 1, ("platform",), "card_version",
+       caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
+                  ("platform", "POST", _LAUNCH + "/system-versions/abandon$")),
+       details_keys=("number", "reason"), same_action=("card_version.created", "qualification.created")),
     _a("card_version.revised", 1, ("platform",), "card_version",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),     # the form's page
                   ("platform", "PATCH", _LAUNCH + "/system-versions/(?P<item>[^/]+)$")),
@@ -221,7 +232,9 @@ _ACTIONS = [
        caused_by=(("qualification", "ACTION", _QU + r"/questionnaires(/.*)?$"),),
        routes=(("qualification", "apps/qualification/src/app/p/[project]/questionnaires/actions.ts", "retireQuestionnaire"),)),
     _a("qualification.opened", 1, ("qualification",), "qualification", per_request=None,
-       caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),),
+       caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),
+                  # saving the card redirects to its page, which Next renders inside the save's own POST
+                  ("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$")),
        details_keys=("version", "read_only")),
     _a("qualification.created", 1, ("qualification",), "qualification",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page
@@ -361,8 +374,12 @@ _ACTIONS = [
        routes=(("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/library_routes.py", "save_profile_form"), ("control_objectives", "apps/control-objectives/src/aisc_control_objectives/api/library_routes.py", "save_profile"))),
     # step 3: local installs
     _a("plugin.installed", 3, ("engine",), "plugin",
-       caused_by=(("engine", "POST", _EN + r"/plugins/?$"),),
-       details_keys=("package", "version", "reused", "turned_off"),
+       # the engine's own install route, and the platform's catalogue Install, which installs through it
+       # citing the person's request (engine_components.install_plugin); `resends`: the refused event an
+       # operator's resend stands for (resend_refused_installs.py)
+       caused_by=(("engine", "POST", _EN + r"/plugins/?$"),
+                  ("platform", "POST", _LAUNCH + r"/catalogue/api/tool/[^/]+/install$")),
+       details_keys=("package", "version", "reused", "turned_off", "resends"),
        routes=(("engine", "apps/backend/aisc_backend/routers/plugin.py", "create_plugins"),)),
     _a("plugin.refreshed", 3, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/refresh$"),), details_keys=("package", "version"),
@@ -372,20 +389,24 @@ _ACTIONS = [
        routes=(("engine", "apps/backend/aisc_backend/routers/plugin.py", "delete_plugin"),)),
     _a("control.installed", 3, ("controls",), "checklist",
        caused_by=(("controls", "ACTION", _CT + r"/install$"),
-                  ("controls", "ACTION", r"^/controls/install$"),
-                  ("controls", "POST", r"^/controls/api/install$")), details_keys=("package", "questions"),
-       # the catalogue's Install button (api/install) and the /install page; the controls app has no
-       # catalogue page of its own
+                  ("controls", "POST", _CT + r"/api/install$")), details_keys=("package", "questions"),
+       # the catalogue's Install button (api/install) and the install page, both under the project's address,
+       # where the witness binds the request to the project; the controls app has no catalogue page of its own
        routes=(("controls", "apps/controls/src/app/p/[project]/install/actions.ts", "installFromCatalogue"),
-               ("controls", "apps/controls/src/app/api/install/route.ts", "POST"))),
+               ("controls", "apps/controls/src/app/p/[project]/api/install/route.ts", "POST"))),
     # step 4: evidence, engine, controls
     _a("evidence.links.saved", 4, ("platform",), "evidence",
        caused_by=(("platform", "PUT", _LAUNCH + "/evidence/links$"),),
        details_keys=("added", "removed", "carried", "notes_changed"), content_required=True, empty_content=True),
     _a("evidence.map.reviewed", 4, ("platform",), "evidence",
        caused_by=(("platform", "POST", _LAUNCH + "/evidence/review$"),), details_keys=("links",)),
+    # what the run is made of: its card version (the event's card_version), each plugin's package, version,
+    # configuration and its hash, and the settings it is given (a secret by key only); the stored file and hash of
+    # each file input; the local model files; the endpoint each target or connection would reach (a fingerprint).
+    # An older start names its plugins as a list of names.
     _a("engine.evaluation.run_requested", 4, ("engine",), "evaluation",
-       caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),), details_keys=("plugins", "local_models"),
+       caused_by=(("engine", "POST", _EN + r"/evaluations/task$"),),
+       details_keys=("plugins", "local_models", "connections", "inputs"),
        runs=("engine.evaluation.status_changed", "engine.evaluation.plugin_status_changed", "engine.measures.recorded",
              "engine.artifact.uploaded", "engine.evaluation.input_marked_local", "run.trace.sealed"),
        routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "create_evaluation_task"),)),
@@ -400,8 +421,10 @@ _ACTIONS = [
     _a("engine.evaluation.plugin_status_changed", 4, ("engine",), "evaluation", actor_kinds=("worker",),
        per_request=None, details_keys=("plugin", "status_before", "status_after"),
        routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "update_plugin_timestamp"), ("engine", "apps/backend/aisc_backend/routers/internal.py", "mark_plugin_failed"))),
+    # the measures themselves are the content (one row per measure, its dimensions only as a hash); a large
+    # recording comes as several events, each saying which part it is of how many
     _a("engine.measures.recorded", 4, ("engine",), "evaluation", actor_kinds=("worker",), per_request=None,
-       details_keys=("count",), routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "create_evaluation_measures"),)),
+       details_keys=("count", "part", "parts"), content_required=True, empty_content=True, routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "create_evaluation_measures"),)),
     _a("engine.artifact.uploaded", 4, ("engine",), "artifact", actor_kinds=("worker",), per_request=None,
        details_keys=("size", "sha256"), routes=(("engine", "apps/backend/aisc_backend/routers/internal.py", "upload_evaluation_artifact"),)),
     # the local model file a run was on: its name and hash, which keep the run apart from the AI card's
@@ -413,6 +436,11 @@ _ACTIONS = [
        caused_by=(("engine", "POST", _EN + r"/evaluations/(?P<item>[^/]+)/stop$"),),
        details_keys=("status_before", "tests"),
        routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "stop_evaluation"),)),
+    # a run's name given afterwards (every test of the run takes it): the name it had and the one it takes
+    _a("engine.evaluation.renamed", 4, ("engine",), "evaluation",
+       caused_by=(("engine", "PATCH", _EN + r"/evaluations/(?P<item>[^/]+)/name$"),),
+       details_keys=("name_before", "name_after"),
+       routes=(("engine", "apps/backend/aisc_backend/routers/evaluation.py", "rename_evaluation"),)),
     _a("engine.plugin.configured", 4, ("engine",), "plugin",
        caused_by=(("engine", "POST", _EN + r"/plugins/(?P<item>[^/]+)/config$"),
                   ("engine", "POST", _EN + r"/plugins/(?P<item>[^/]+)/configs/[^/]+/restore$")),
@@ -439,7 +467,7 @@ _ACTIONS = [
        caused_by=(("engine", "PATCH", _EN + r"/components/(?P<item>[^/]+)$"),), details_keys=("changed",),
        routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "update_component"),)),
     _a("engine.component.file_uploaded", 4, ("engine",), "component",
-       caused_by=(("engine", "PUT", _EN + r"/components/(?P<item>[^/]+)/data$"),), details_keys=("size",),
+       caused_by=(("engine", "PUT", _EN + r"/components/(?P<item>[^/]+)/data$"),), details_keys=("size", "sha256"),
        routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "upload_component_file"),)),
     _a("engine.component.deleted", 4, ("engine",), "component",
        caused_by=(("engine", "DELETE", _EN + r"/components/(?P<item>[^/]+)$"),), details_keys=("component_type",),
@@ -556,6 +584,17 @@ _ACTIONS = [
     _a("dashboard.comment.deleted", 5, ("dashboard",), "comment",
        caused_by=(("dashboard", "DELETE", _DB + r"/aisc_comment/(?P<item>[0-9]+)$"),), details_keys=("dashboard",),
        content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/comments/api.py", "delete"),)),
+    # a project's dashboard, chart or dataset deleted in Superset itself (its pages call its own API, one at a
+    # time or several with ?q=): the extension queues the deletion with the delete (aisc_ext/ledger.py)
+    _a("dashboard.dashboard.deleted", 5, ("dashboard",), "dashboard", per_request=None,
+       caused_by=(("dashboard", "DELETE", _DB + r"/dashboard/(?P<item>[0-9]+)$"),
+                  ("dashboard", "DELETE", _DB + r"/dashboard/?$")), details_keys=("dashboard",)),
+    _a("dashboard.chart.deleted", 5, ("dashboard",), "chart", per_request=None,
+       caused_by=(("dashboard", "DELETE", _DB + r"/chart/(?P<item>[0-9]+)$"),
+                  ("dashboard", "DELETE", _DB + r"/chart/?$")), details_keys=("dashboard",)),
+    _a("dashboard.dataset.deleted", 5, ("dashboard",), "dataset", per_request=None,
+       caused_by=(("dashboard", "DELETE", _DB + r"/dataset/(?P<item>[0-9]+)$"),
+                  ("dashboard", "DELETE", _DB + r"/dataset/?$"))),
     _a("dashboard.review.requested", 5, ("dashboard",), "review_request",
        caused_by=(("dashboard", "POST", _DB + r"/aisc_review_request/?$"),), details_keys=("assignee",),
        content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/reviews/api.py", "post"),)),
@@ -600,7 +639,8 @@ _ACTIONS = [
     # so the PDF and an export prove each other offline (verify-ledger-export.py --anchor, --document)
     _a("report.generated", 6, ("report_composer",), "report",
        caused_by=(("report_composer", "POST", _RC + rf"/layouts/{_P}/(reports|generate|download-report)$"),),
-       details_keys=("card_version", "ledger_head", "blocks", "document_sha256", "format"), content_required=True,
+       details_keys=("card_version", "card_revision", "ledger_head", "blocks", "document_sha256", "format"),
+       content_required=True,
        routes=(("report_composer", "apps/report-composer/report_composer/api.py", "post_report"),
                ("report_composer", "apps/report-composer/report_composer/pages.py", "generate_submit"),
                ("report_composer", "apps/report-composer/report_composer/pages.py", "download_report"))),

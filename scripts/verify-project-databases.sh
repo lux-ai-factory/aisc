@@ -12,7 +12,7 @@
 #                module; the readers (report_ro, dashboard_ro) read exactly READER_TABLES and nothing by a
 #                default privilege; PUBLIC may not connect; inspector_ro writes nothing
 #   placement    the retired module schemas of platform (and core.system) are unreachable by
-#                every role but the superuser and inspector_ro (pg_read_all_data, by design); with
+#                every role but the superuser and inspector_ro (it reads by schema, by design); with
 #                --final-layout platform has exactly PLATFORM_SCHEMAS and core exactly CORE_TABLES
 #   databases    every project has its database, with every template file, every module at its head,
 #                unique positive card version numbers, and every system_id resolving in the same database
@@ -126,7 +126,8 @@ PLATFORM_TABLES["report_ro"] = {("core.project", "SELECT")}
 #: the platform schema each of these roles holds by design (its owner, or made for it)
 HOLDS: dict[str, str] = {}
 #: the schemas of platform in the final layout
-PLATFORM_SCHEMAS = {"core", "ledger", "public"}   # ledger: the platform's own (pool, witness, index)
+# ledger: the platform's own (pool, witness, index); aisc_setup: the superuser's functions the owner roles call
+PLATFORM_SCHEMAS = {"core", "ledger", "public", "aisc_setup"}
 CORE_TABLES = {"project", "project_member", "schema_migration", "outbox"}   # outbox: the platform's ledger events (0008)
 #: module schema of a project database -> its role
 MODULES = {"qualification": "qualification_rw", "control_objectives": "control_objectives_rw",
@@ -134,7 +135,7 @@ MODULES = {"qualification": "qualification_rw", "control_objectives": "control_o
 READERS = ("report_ro", "dashboard_ro")
 #: what the readers may read, exhaustive
 READER_TABLES = {
-    "project": ["system"],
+    "project": ["system", "saved_system"],
     "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer", "submission_answer_file"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
@@ -222,10 +223,29 @@ def privileges_project(db, present):
         if role not in present:
             continue
         if schema in schemas:
-            for right in ("USAGE", "CREATE"):
-                if not one(db, "SELECT has_schema_privilege(%s, %s, %s)", (role, schema, right)):
+            if not one(db, "SELECT has_schema_privilege(%s, %s, 'USAGE')", (role, schema)):
+                ok = False
+                say("FAIL", "privileges", f"{db}: {role} lacks USAGE on its schema {schema}")
+            owner = f"{schema}_owner"
+            if owner in present:
+                # the module's migrator, acting as its owner role, changes the schema; its runtime role reads
+                # and writes rows only
+                if one(db, "SELECT has_schema_privilege(%s, %s, 'CREATE')", (role, schema)):
                     ok = False
-                    say("FAIL", "privileges", f"{db}: {role} lacks {right} on its schema {schema}")
+                    say("FAIL", "privileges", f"{db}: {role} may create in its schema {schema}; only {owner} may")
+                for table, table_owner in rows(db, """
+                        SELECT c.relname, pg_get_userbyid(c.relowner) FROM pg_class c
+                         WHERE c.relnamespace = %s::regnamespace AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
+                           AND pg_get_userbyid(c.relowner) <> %s ORDER BY 1""", (schema, owner)):
+                    ok = False
+                    say("FAIL", "privileges", f"{db}: {schema}.{table} belongs to {table_owner}, not {owner}")
+                for rel, right in sorted(table_rights(db, role, "n.nspname = '%s'" % schema)):
+                    if right not in WRITE_RIGHTS + ("SELECT", "USAGE"):          # USAGE: its sequences
+                        ok = False
+                        say("FAIL", "privileges", f"{db}: {role} has {right} on {rel}; it reads and writes rows only")
+            elif not one(db, "SELECT has_schema_privilege(%s, %s, 'CREATE')", (role, schema)):
+                ok = False
+                say("FAIL", "privileges", f"{db}: {role} lacks CREATE on its schema {schema}")
         if "project" in schemas and not one(db, "SELECT has_schema_privilege(%s, 'project', 'USAGE')", (role,)):
             ok = False
             say("FAIL", "privileges", f"{db}: {role} lacks USAGE on schema project")
@@ -331,8 +351,8 @@ def placement(present):
             ok = False
             say("FAIL", "placement", f"core has {', '.join(sorted(core))}, not exactly {', '.join(sorted(CORE_TABLES))}")
     if ok:
-        say("PASS", "placement", "the retired schemas are unreachable (inspector_ro reads everything through"
-                             " pg_read_all_data by design, and is not counted)"
+        say("PASS", "placement", "the retired schemas are unreachable (inspector_ro reads by schema"
+                             " (init/inspector-role.sql), and is not counted)"
                              + ("; platform has exactly the layout of PLATFORM_SCHEMAS" if FINAL_LAYOUT else ""))
 
 

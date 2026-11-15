@@ -125,7 +125,7 @@ def test_a_generated_report_records_its_document_and_the_anchor_it_prints(client
     assert fake_renderer.snapshots[-1]["document"]["ledger_anchor"] == {"seq": 41, "entry_sha256": "ab" * 32}
     [generated] = outbox(bed, report_id)
     assert generated["action"] == "report.generated" and generated["request_id"] == REQUEST
-    assert generated["details"] == {"card_version": IDS["A_V2"], "ledger_head": 41, "blocks": 1,
+    assert generated["details"] == {"card_version": IDS["A_V2"], "card_revision": 1, "ledger_head": 41, "blocks": 1,
                                     "document_sha256": hashlib.sha256(PDF).hexdigest(), "format": "pdf"}
     assert generated["content"]["anchor"] == {"seq": 41, "entry_sha256": "ab" * 32}
     assert generated["content"]["layout"] == {"id": lay["id"], "revision": 1}

@@ -13,6 +13,7 @@ qualification_prefill	apps/qualification/services/prefill/app.py	questionnaires_
 qualification_ontology	apps/qualification/services/ontology/app.py	build	stateless: builds a graph from what it is sent; keeps nothing
 qualification_pdf	apps/qualification/services/system_card_renderer/app.py	render_pdf	stateless: renders the card it is sent; the download is card.pdf_downloaded
 controls	apps/controls/src/app/install/actions.ts	installChosen	delegates to installFromCatalogue (p/[project]/install/actions.ts), which records control.installed
+controls	apps/controls/src/app/api/install/route.ts	POST	refuses every install (410) before anything is installed: installs are posted under the project (p/[project]/api/install/route.ts)
 controls	apps/controls/services/pdf_renderer/app.py	render_html	stateless: renders the submission it is sent; keeps nothing
 controls	apps/controls/services/pdf_renderer/app.py	render_pdf	stateless: renders the submission it is sent; keeps nothing
 report_composer	apps/report-composer/report_composer/api.py	outline	computes the editor's outline (numbers, depths, hints) for an unsaved block order; nothing is stored
@@ -42,6 +43,7 @@ platform	platform/platform_service/routes/projects.py	set_project_member_role	it
 platform	platform/platform_service/routes/projects.py	remove_project_member	its event is written one layer down, in the change's own transaction: member.removed (db.remove_member)
 platform	platform/platform_service/routes/projects.py	create_system_version	its event is written one layer down, in the change's own transaction: card_version.created (db.create_version)
 platform	platform/platform_service/routes/projects.py	revise_system_version	its event is written one layer down, in the change's own transaction: card_version.revised (db.revise_version)
+platform	platform/platform_service/routes/projects.py	abandon_system_version	its event is written one layer down, in the change's own transaction: card_version.abandoned (db.abandon_version)
 platform	platform/platform_service/routes/connections.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
 platform	platform/platform_service/routes/connections.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
 platform	platform/platform_service/routes/llm.py	save_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.saved (llm_store.save_provider)
@@ -61,6 +63,7 @@ platform	platform/platform_service/routes/evidence.py	put_evidence_links	its eve
 platform	platform/platform_service/routes/evidence.py	review_evidence_map	its event is written one layer down, in the change's own transaction: evidence.map.reviewed (evidence.mark_reviewed)
 platform	platform/platform_service/routes/ledger.py	ledger_internal_event	the ledger's own intake: queues the event a caller without an outbox sends, which is then recorded as itself
 platform	platform/platform_service/routes/ledger.py	ledger_reanchor	writes ledger.reanchored straight to the platform log before it moves the trusted state (no outbox: the log is the record)
+platform	platform/platform_service/routes/ledger.py	ledger_correction	writes operator.correction.declared straight to the project's log (no outbox: the request names no project, so the relay could not bind it)
 platform	platform/platform_service/routes/ledger.py	ledger_beacon	a browser's page.opened or page.left, kept in ledger.page_view for 90 days and deliberately never in the ledger
 platform	platform/platform_service/routes/facade.py	facade_aisc_ask	forwards a plugin's call to the system under test with a run key; changes nothing on the platform
 platform	platform/platform_service/routes/facade.py	facade_openai_chat	forwards a plugin's call to the system under test with a run key; changes nothing on the platform
@@ -79,5 +82,5 @@ platform	platform/platform_service/routes/connectivity.py	run_agent_on	its event
 platform	platform/platform_service/routes/connectivity.py	stop_agent_choice	its event is written one layer down, in the change's own transaction: connection.use.removed (llm_store.remove_agent)
 platform	platform/platform_service/routes/connectivity.py	use_as_tool	its event is written one layer down, in the change's own transaction: connection.use.saved (helper_store.use_as_tool)
 platform	platform/platform_service/routes/connectivity.py	stop_tool	its event is written one layer down, in the change's own transaction: connection.use.removed (helper_store.stop_tool)
-engine	apps/backend/aisc_backend/routers/evaluation.py	rename_evaluation	not recorded in the ledger yet: the engine audit log keeps who renamed the run and when (log_action)
 dashboard	apps/results-dashboard/aisc_ext/assistant/api.py	start	nothing of the project changes: the conversation and its mock database are the assistant's; a chart is recorded when it is validated (dashboard.assistant.validated)
+platform	platform/platform_service/routes/engine.py	connection_fingerprints	changes nothing: the engine reads the endpoint fingerprints of a run's references, which the engine's run_requested then records

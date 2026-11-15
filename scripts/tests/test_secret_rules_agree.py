@@ -74,8 +74,12 @@ def copies():
 
 def test_the_three_copies_have_the_same_patterns(copies):
     shapes = {(m.SECRET_SHAPE.pattern, m.SECRET_SHAPE.flags) for m in copies.values()}
-    names = {(m.LEDGER_SECRET_NAME.pattern, m.LEDGER_SECRET_NAME.flags) for m in copies.values()}
     assert len(shapes) == 1, shapes
+
+
+def test_both_ledger_copies_judge_names_alike(copies):
+    names = {(frozenset(m.STRONG_LAST), frozenset(m.STRONG_PAIRS), frozenset(m.WEAK_LAST), m.WEAK_MIN_LENGTH)
+             for name, m in copies.items() if name != "eval"}
     assert len(names) == 1, names
 
 

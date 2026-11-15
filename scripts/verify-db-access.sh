@@ -6,7 +6,7 @@
 # project.system, and is refused the rest. `platform` keeps only the list of projects and their
 # members. These are the assertions that make that a fact rather than an intention, so a stray
 # privilege fails the suite. The module part runs in a throwaway project_<random hex> database on
-# the same cluster, made as the platform makes one (platform_rw, the project template) and
+# the same cluster, made as the platform makes one (platform_migrator, the project template) and
 # removed afterwards.
 set -uo pipefail
 . "$(dirname "$0")/lib/stack-name.sh"
@@ -29,6 +29,7 @@ CONTROLS_RW_PASSWORD=${CONTROLS_RW_PASSWORD:-$(awk 'index($0, "CONTROLS_RW_PASSW
 ENGINE_RW_PASSWORD=${ENGINE_RW_PASSWORD:-$(awk 'index($0, "ENGINE_RW_PASSWORD=") == 1 { print substr($0, 20); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 REPORT_COMPOSER_PASSWORD=${REPORT_COMPOSER_PASSWORD:-$(awk 'index($0, "REPORT_COMPOSER_PASSWORD=") == 1 { print substr($0, 26); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 REPORT_RO_PASSWORD=${REPORT_RO_PASSWORD:-$(awk 'index($0, "REPORT_RO_PASSWORD=") == 1 { print substr($0, 20); exit }' "$ROOT/env.runtime" 2>/dev/null)}
+PLATFORM_MIGRATOR_PASSWORD=${PLATFORM_MIGRATOR_PASSWORD:-$(awk 'index($0, "PLATFORM_MIGRATOR_PASSWORD=") == 1 { print substr($0, 28); exit }' "$ROOT/env.runtime" 2>/dev/null)}
 # pw ROLE sets PW to the role's password (never printed): platform_rw's, qualification_rw's,
 # control_objectives_rw's, controls_rw's, engine_rw's, dashboard_ro's, report_composer_rw's
 # and report_ro's are generated (each falls back to its own name, the default before it had one)
@@ -42,10 +43,12 @@ pw() {
     engine_rw) PW=${ENGINE_RW_PASSWORD:-engine_rw} ;;
     report_composer_rw) PW=${REPORT_COMPOSER_PASSWORD:-report_composer_rw} ;;
     report_ro) PW=${REPORT_RO_PASSWORD:-report_ro} ;;
+    platform_migrator) PW=${PLATFORM_MIGRATOR_PASSWORD:-platform_migrator} ;;
     *) PW=$1 ;;
   esac
 }
 pw platform_rw; PLATFORM_PW=$PW
+pw platform_migrator; MIGRATOR_PW=$PW
 as_in() { pw "$1"; docker exec "$PGC" psql "postgresql://$1:$PW@$HOST:5432/$2" -v ON_ERROR_STOP=1 -At -c "$3" >/dev/null 2>&1; }
 as() { as_in "$1" "$DB" "$2"; }
 
@@ -102,12 +105,12 @@ done
 # the throwaway project database of sections 3 to 5
 PROBE_DB="project_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
 gone() {
-  docker exec "$PGC" psql "postgresql://platform_rw:$PLATFORM_PW@$HOST:5432/$DB" -At \
+  docker exec "$PGC" psql "postgresql://platform_migrator:$MIGRATOR_PW@$HOST:5432/$DB" -At \
     -c "drop database if exists \"$PROBE_DB\" with (force)" >/dev/null 2>&1
 }
 trap 'gone; unprobe' EXIT
 made=1
-docker exec "$PGC" psql "postgresql://platform_rw:$PLATFORM_PW@$HOST:5432/$DB" -v ON_ERROR_STOP=1 -At \
+docker exec "$PGC" psql "postgresql://platform_migrator:$MIGRATOR_PW@$HOST:5432/$DB" -v ON_ERROR_STOP=1 -At \
   -c "create database \"$PROBE_DB\"" >/dev/null 2>&1 || made=0
 if [ "$made" = 1 ]; then
   {
@@ -119,15 +122,15 @@ if [ "$made" = 1 ]; then
       echo "insert into provision.template_migration (name) values ('$(basename "$f")');"
     done
     echo "commit;"
-  } | docker exec -i "$PGC" psql "postgresql://platform_rw:$PLATFORM_PW@$HOST:5432/$PROBE_DB" -v ON_ERROR_STOP=1 -q -f - >/dev/null 2>&1 || made=0
+  } | docker exec -i "$PGC" psql "postgresql://platform_migrator:$MIGRATOR_PW@$HOST:5432/$PROBE_DB" -v ON_ERROR_STOP=1 -q -f - >/dev/null 2>&1 || made=0
 fi
-if [ "$made" = 1 ]; then ok "platform_rw: made a project database with the template"; else no "platform_rw: could not make a project database with the template"; fi
+if [ "$made" = 1 ]; then ok "platform_migrator: made a project database with the template"; else no "platform_migrator: could not make a project database with the template"; fi
 
-echo "3. in a project database, a module owns its own schema and reads the card versions"
+echo "3. in a project database, a module uses its own schema, which its owner role changes, and reads the card versions"
 for pair in qualification:qualification_rw control_objectives:control_objectives_rw controls:controls_rw \
             engine:engine_rw report_composer:report_composer_rw; do
   s=${pair%%:*}; r=${pair#*:}
-  allow_in "$r" "create table $s.probe_$$ (x int); insert into $s.probe_$$ values (1); drop table $s.probe_$$" "creates and writes in its schema $s"
+  deny_in  "$r" "create table $s.probe_$$ (x int)" "cannot create in its own schema $s: only its migrator does"
   allow_in "$r" "select count(*) from project.system" "reads project.system"
   deny_in  "$r" "insert into project.system (number, name) values (99, 'probe')" "cannot write project.system"
 done
@@ -163,10 +166,11 @@ for r in qualification_rw engine_rw dashboard_ro platform_rw; do
   deny "$r" "create table public.sneaky_$$ (x int)" "cannot create in public"
 done
 
-echo "7. the platform service makes project databases, and nobody else does"
+echo "7. the platform makes project databases as platform_migrator (platform_owner), and nobody else does"
 probe="probe_db_$$"
-allow platform_rw "create database $probe" "can create a database"
-allow platform_rw "drop database $probe"   "and drop the one it made"
+allow platform_migrator "create database $probe" "can create a database"
+allow platform_migrator "drop database $probe"   "and drop the one it made"
+deny  platform_rw "create database ${probe}_r" "the platform's requests cannot create a database"
 deny  controls_rw "create database ${probe}_x" "a module cannot create a database"
 deny  engine_rw   "create database ${probe}_y" "nor can the engine"
 

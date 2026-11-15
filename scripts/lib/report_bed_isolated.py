@@ -20,7 +20,8 @@ What it does, in order:
     whose Django keys have no ON DELETE), `project_id` is dropped from the five root tables in
     DROPPED_PROJECT_ID, core.system becomes project.system (the foreign keys follow it), and schema
     core goes.
- 4. Owners and grants: schemas owned by platform_rw, tables by their module role; the reader list
+ 4. Owners and grants: module schemas owned by their owner role (platform_rw where the cluster has none),
+    tables by their module role; the reader list
     (READERS) for report_ro and dashboard_ro. When the platform's template files 0006..0010 exist they
     are applied by step 2 and this step only adds what the modules' migrations would add; when they
     do not, the bed stands in for them and records it in `bed.applied["templates 0006..0010"] = False`.
@@ -51,7 +52,7 @@ NEW_TEMPLATES = ("0006_project_system.sql", "0007_qualification.sql", "0008_cont
                  "0009_engine.sql", "0010_report_composer.sql")
 #: the one reader list for report_ro and dashboard_ro
 READERS = {
-    "project": ["system"],
+    "project": ["system", "saved_system"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
                       "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],
@@ -184,7 +185,7 @@ def _isolate_one(bed, pid, schemas, templates_applied) -> None:
                     " LANGUAGE sql STABLE AS $f$ SELECT EXISTS (SELECT 1 FROM project.system s"
                     " WHERE s.pid = version_pid AND s.number = (SELECT max(o.number) FROM project.system o)) $f$")
             conn.execute("DROP SCHEMA core CASCADE")
-            # owners: schemas platform_rw, tables the module role, project.system platform_rw
+            # owners: project and project.system platform_rw, module schemas their owner role, tables the module role
             conn.execute("ALTER SCHEMA project OWNER TO platform_rw")
             conn.execute("ALTER TABLE project.system OWNER TO platform_rw")
             for s in MOVING:
@@ -195,7 +196,11 @@ def _isolate_one(bed, pid, schemas, templates_applied) -> None:
                     conn.execute("CREATE SCHEMA IF NOT EXISTS report_composer")
                 if conn.execute("SELECT 1 FROM pg_namespace WHERE nspname = %s", (s,)).fetchone() is None:
                     continue
-                conn.execute(f"ALTER SCHEMA {s} OWNER TO platform_rw")
+                # the platform hands a module schema to its owner role (template 0033) when postgres-setup
+                # made it; the tables stay the module role's, as on an install migrated before the owner roles,
+                # until the module's own migration hands them over too
+                owner = f"{s}_owner" if f"{s}_owner" in roles else "platform_rw"
+                conn.execute(f"ALTER SCHEMA {s} OWNER TO {owner}")
                 for (t,) in conn.execute("SELECT c.oid::regclass::text FROM pg_class c WHERE c.relkind IN ('r', 'p')"
                                          " AND c.relnamespace = %s::regnamespace", (s,)).fetchall():
                     conn.execute(f"ALTER TABLE {t} OWNER TO {role}")

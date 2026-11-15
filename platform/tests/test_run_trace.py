@@ -11,7 +11,7 @@ import psycopg
 import pytest
 
 from platform_service import run_trace
-from tests.conftest import needs_database, project_db
+from tests.conftest import MIGRATE_DSN, needs_database, project_db
 from tests.connection_support import CONNECTIONS_TOKEN
 from tests.test_run_passes import _env, made_with_endpoints, stub, with_pass  # noqa: F401  (fixtures)
 
@@ -165,7 +165,11 @@ def test_a_recorded_call_cannot_be_changed_or_deleted(client, project, stub, dsn
     run_pass = mint(client, project)
     client.post(door(project, "/aisc/ask"), json={"input": "q"}, headers=keyed(run_key(client, project, run_pass)))
     for statement in ("UPDATE trace.call SET answer = '{}'::jsonb", "DELETE FROM trace.call"):
-        with project_db(dsn, project) as conn, pytest.raises(psycopg.Error, match="append-only"):
+        # the role the platform's requests use may only insert and read
+        with project_db(dsn, project) as conn, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute(statement)
+        # and the table's owner is stopped by its trigger
+        with project_db(MIGRATE_DSN, project) as conn, pytest.raises(psycopg.Error, match="append-only"):
             conn.execute(statement)
 
 
@@ -279,6 +283,7 @@ def test_ending_a_runs_pass_seals_its_calls_digest_in_the_ledger_in_the_same_ste
     assert r.status_code == 204
     with psycopg.connect(DSN) as conn:
         rows = conn.execute("SELECT project_pid::text, item_type, item_id, details, request_id::text, run_id::text, emitter"
-                            " FROM core.outbox WHERE action = 'run.trace.sealed'").fetchall()
+                            " FROM core.outbox WHERE action = 'run.trace.sealed' AND project_pid = %s",
+                            (project["pid"],)).fetchall()
     assert rows == [(project["pid"], "evaluation_plugin", plugin, {"calls": 2, "digest": seal["digest"]},
                      request_id, run_id, "platform")]

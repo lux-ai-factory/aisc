@@ -22,15 +22,20 @@ STATIC = Path(__file__).resolve().parent / "static"
 logger = logging.getLogger(__name__)
 
 
-def create_app(*, database_url=None, project_database_url=None, renderer=None, clock=None) -> FastAPI:
+def create_app(*, database_url=None, project_database_url=None, project_migrate_database_url=None,
+               renderer=None, clock=None) -> FastAPI:
     """database_url: REPORT_COMPOSER_DATABASE_URL, `platform` (core.project and core.project_member).
     project_database_url: REPORT_COMPOSER_PROJECT_DATABASE_URL, the same kind of
     DSN with `{database}` in place of the name, for everything of a project. Nothing connects here.
+    project_migrate_database_url: REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL, the same template as
+    report_composer_migrator, for the migrations only (the start loop and a project's first open).
     A bad AUTH_ENABLED or LEDGER_MODE raises SwitchInvalid first, so the service does not start."""
     check_environment()
     database_url = database_url or os.environ.get("REPORT_COMPOSER_DATABASE_URL", "")
     project_database_url = project_database_url or os.environ.get("REPORT_COMPOSER_PROJECT_DATABASE_URL", "")
-    projects = ProjectDatabases(project_database_url, database_url)
+    project_migrate_database_url = (project_migrate_database_url
+                                    or os.environ.get("REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL", ""))
+    projects = ProjectDatabases(project_database_url, database_url, project_migrate_database_url)
     if renderer is None:
         renderer = HttpRendererClient(os.environ.get("REPORT_RENDERER_URL", "http://report-renderer:8001"),
                                       os.environ.get("REPORT_SERVICE_TOKEN", ""))
@@ -39,7 +44,8 @@ def create_app(*, database_url=None, project_database_url=None, renderer=None, c
     @asynccontextmanager
     async def lifespan(app):
         # every project database; one that fails is logged and migrated again on its first open
-        for name, result in migrate.migrate_everything(database_url, project_database_url).items():
+        for name, result in migrate.migrate_everything(
+                database_url, project_migrate_database_url or project_database_url).items():
             if result == "ok":
                 projects.mark_migrated(name)
             else:

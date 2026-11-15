@@ -106,8 +106,13 @@ def catalogue(monkeypatch):
     evidence.forget_titles()
 
 
+#: The modules' stand-in: the tables of the module schemas, which belong to the modules' owner roles and no
+#: longer to platform_rw, are made and written as the throwaway's superuser (the platform's own tables too).
+SUPERUSER = os.environ.get("PLATFORM_TEST_SUPERUSER_URL", "")
+
+
 def sql(dsn, pid, statement, params=()):
-    with psycopg.connect(make_conninfo(dsn, dbname=projectdb.database_name(pid))) as conn:
+    with psycopg.connect(make_conninfo(SUPERUSER or dsn, dbname=projectdb.database_name(pid))) as conn:
         cur = conn.execute(statement, params)
         return cur.fetchall() if cur.description else None
 
@@ -591,11 +596,13 @@ def test_links_and_their_event_are_written_together_or_not_at_all(client, as_use
     assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link") == [(0,)]
 
 
-def test_deleting_a_version_deletes_its_links(client, as_user, evidence_project, dsn):
+def test_a_version_with_links_is_kept_and_so_are_its_links(client, as_user, evidence_project, dsn):
     put(client, as_user, evidence_project, [LB])
     sql(dsn, evidence_project["pid"], "DELETE FROM control_objectives.project WHERE system_id = %s", (V2,))
-    sql(dsn, evidence_project["pid"], "DELETE FROM project.system WHERE pid = %s", (V2,))
-    assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link") == [(0,)]
+    with pytest.raises(psycopg.errors.RaiseException, match="is kept"):
+        sql(dsn, evidence_project["pid"], "DELETE FROM project.system WHERE pid = %s", (V2,))
+    assert sql(dsn, evidence_project["pid"], "SELECT count(*) FROM evidence.link WHERE system_id = %s",
+               (V2,)) == [(1,)]
 
 
 def test_template_0019_gives_every_link_its_version(evidence_project, dsn):

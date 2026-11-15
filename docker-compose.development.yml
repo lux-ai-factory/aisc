@@ -14,6 +14,10 @@ x-backend-env: &backend-env
   DB_USER: ${DB_USER}
   # engine_rw's generated password (init/engine-role.sql)
   DB_PASSWORD: ${ENGINE_RW_PASSWORD:?run scripts/secrets.sh first}
+  # the migrations, as engine_migrator (init/owner-roles.sql), acting as engine_owner: the one-shot and a
+  # project made later, at its first open; every other query is engine_rw's
+  DB_MIGRATE_USER: engine_migrator
+  DB_MIGRATE_PASSWORD: ${ENGINE_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
   DB_HOST: ${DB_HOST}
   DB_PORT: ${DB_PORT}
   DB_ENGINE: ${DB_ENGINE}
@@ -164,6 +168,9 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${ENGINE_RW_PASSWORD:?run scripts/secrets.sh first}
+      # it opens a project made since the one-shot ran, which migrates it first: as engine_migrator
+      DB_MIGRATE_USER: engine_migrator
+      DB_MIGRATE_PASSWORD: ${ENGINE_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_ENGINE: ${DB_ENGINE}
@@ -309,6 +316,9 @@ services:
     environment:
       # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
       PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
+      # the migrations, as controls_migrator (init/owner-roles.sql), acting as controls_owner: controls-migrate
+      # and a project made later, at its first open; every other query is controls_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROLS_PROJECT_MIGRATE_DATABASE_URL:-postgresql://controls_migrator:${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
       # the env file's launcher address is the usual port's; this one follows the install's, as controls-web's
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
     depends_on:
@@ -333,6 +343,9 @@ services:
     environment:
       # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
       PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
+      # the migrations, as controls_migrator (init/owner-roles.sql), acting as controls_owner: controls-migrate
+      # and a project made later, at its first open; every other query is controls_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROLS_PROJECT_MIGRATE_DATABASE_URL:-postgresql://controls_migrator:${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
       # The ledger: each change records its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}
       # The gateway's token, verified here (src/vendor/aisc-ledger/gatewayToken.ts): the request id the
@@ -473,6 +486,9 @@ services:
     environment: &qualification-db-env
       # a template: {database} becomes project_<pid without hyphens>
       PROJECT_DATABASE_URL: ${QUALIFICATION_PROJECT_DATABASE_URL:-postgresql://qualification_rw:${QUALIFICATION_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2}
+      # the migrations, as qualification_migrator (init/owner-roles.sql), acting as qualification_owner: the
+      # one-shot above and a project made later, at its first open; every other query is qualification_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${QUALIFICATION_PROJECT_MIGRATE_DATABASE_URL:-postgresql://qualification_migrator:${QUALIFICATION_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2}
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:
@@ -550,6 +566,9 @@ services:
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # a template: {database} becomes project_<pid without hyphens>
       PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
+      # the migrations, as control_objectives_migrator (init/owner-roles.sql), acting as control_objectives_owner:
+      # the one-shot and a project made later, at its first open; every other query is control_objectives_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_MIGRATE_DATABASE_URL:-postgresql+psycopg://control_objectives_migrator:${CONTROL_OBJECTIVES_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:
@@ -596,6 +615,9 @@ services:
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # each project's assessments, in that project's database
       PROJECT_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_DATABASE_URL:-postgresql+psycopg://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
+      # the migrations, as control_objectives_migrator (init/owner-roles.sql), acting as control_objectives_owner:
+      # the one-shot and a project made later, at its first open; every other query is control_objectives_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROL_OBJECTIVES_PROJECT_MIGRATE_DATABASE_URL:-postgresql+psycopg://control_objectives_migrator:${CONTROL_OBJECTIVES_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}}
       # The model, named the way BAF names it: the same two variables the qualification
       # filler reads, so both services are configured alike.
       #
@@ -648,6 +670,9 @@ services:
       REPORT_COMPOSER_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # a template: {database} becomes project_<pid without hyphens>
       REPORT_COMPOSER_PROJECT_DATABASE_URL: postgresql://report_composer_rw:${REPORT_COMPOSER_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
+      # the migrations, as report_composer_migrator (init/owner-roles.sql), acting as report_composer_owner: the
+      # one-shot and a project made later, at its first open; every other query is report_composer_rw's
+      REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL: postgresql://report_composer_migrator:${REPORT_COMPOSER_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}
       REPORT_RENDERER_URL: http://report-renderer:8001
       REPORT_SERVICE_TOKEN: ${REPORT_SERVICE_TOKEN:?run scripts/secrets.sh first}
       # the ledger: off unless switched on; the platform answers a report's ledger anchor
@@ -1011,6 +1036,8 @@ services:
       S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
       # platform_rw's generated password: postgres-setup applies the same value to the role
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      # platform_migrator (init/owner-roles.sql): migrations, making and dropping project databases, as platform_owner
+      PLATFORM_MIGRATE_DATABASE_URL: postgresql://platform_migrator:${PLATFORM_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
       # A project belongs to the people in it, so this service has to know who
       # is asking. Verified here rather than taken on the gateway's word.

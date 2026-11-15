@@ -195,7 +195,8 @@ PORTED = {
     "dashboard_ro: cannot write core", "dashboard_ro: cannot create tables in platform",
     *(f"{role}: cannot create in public" for role in ("qualification_rw", "engine_rw", "dashboard_ro",
                                                       "platform_rw")),
-    "platform_rw: can create a database", "controls_rw: a module cannot create a database",
+    "platform_migrator: can create a database", "platform_rw: the platform's requests cannot create a database",
+    "controls_rw: a module cannot create a database",
     "engine_rw: nor can the engine",
 }
 
@@ -207,7 +208,8 @@ def test_the_group_carries_every_read_only_check_of_the_bash_script(tmp_path):
     bash = (ROOT / "scripts/verify-db-access.sh").read_text()
     for what in ("reads core.project_member", "cannot write core.project", "cannot remove members",
                  "cannot write core", "cannot create tables in platform", "cannot create in public",
-                 "can create a database", "a module cannot create a database", "nor can the engine"):
+                 "can create a database", "the platform's requests cannot create a database",
+                 "a module cannot create a database", "nor can the engine"):
         assert what in bash, what
 
 

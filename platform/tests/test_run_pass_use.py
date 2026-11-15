@@ -164,4 +164,4 @@ def test_no_role_but_the_platforms_own_reads_the_uses(client, project):
             " WHERE table_schema = 'core' AND table_name = 'run_pass_use'").fetchall()}
         owner = conn.execute("SELECT tableowner FROM pg_tables WHERE schemaname = 'core'"
                              " AND tablename = 'run_pass_use'").fetchone()["tableowner"]
-    assert grantees <= {owner}, grantees
+    assert grantees <= {owner, "platform_rw"}, grantees      # its owner, and the role its requests use

@@ -59,7 +59,7 @@ def test_a_layout_saved_with_numbering_off_is_numbered_after_the_migration(iso_b
                      " ALTER TABLE report_composer.layout ALTER COLUMN numbering SET DEFAULT false;"
                      " INSERT INTO report_composer.layout (name, created_by, updated_by, numbering)"
                      " VALUES ('Old one', 'alice', 'alice', false);")
-    dsn = project_db_template(iso_bed).format(database=db)
+    dsn = project_db_template(iso_bed, "report_composer_migrator").format(database=db)
     with psycopg.connect(dsn) as conn:
         assert migrate_project(conn) == ["0003_numbering_on.sql"]
     assert iso_bed.scalar(db, "SELECT numbering FROM report_composer.layout WHERE name = 'Old one'") == "t"

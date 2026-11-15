@@ -89,8 +89,8 @@ def new_project(bed, pid: str, slug: str, owner: str = "alice") -> str:
     return name
 
 
-def project_db_template(bed) -> str:
-    return f"postgresql://report_composer_rw:report_composer_rw@127.0.0.1:{bed.port}/{{database}}"
+def project_db_template(bed, role: str = "report_composer_rw") -> str:
+    return f"postgresql://{role}:{role}@127.0.0.1:{bed.port}/{{database}}"
 
 
 @pytest.fixture
@@ -104,6 +104,9 @@ def iso_make_client(iso_bed, key, monkeypatch):
     monkeypatch.setenv("PLATFORM_ORIGIN", ORIGIN)
     monkeypatch.setenv("REPORT_COMPOSER_DATABASE_URL", platform)
     monkeypatch.setenv("REPORT_COMPOSER_PROJECT_DATABASE_URL", template)
+    # the migrations run as report_composer_migrator, acting as report_composer_owner, as in the stack
+    monkeypatch.setenv("REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL",
+                       project_db_template(iso_bed, "report_composer_migrator"))
     monkeypatch.setenv("REPORT_SERVICE_TOKEN", "composer-test-token-0123456789")
     import aisc_identity.service
 

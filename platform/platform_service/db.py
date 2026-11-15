@@ -59,6 +59,17 @@ def dsn() -> str:
     )
 
 
+def migrate_dsn() -> str:
+    """The platform database as platform_migrator, whose sessions act as platform_owner: the only role that
+    migrates core, makes and drops project databases and applies their template. platform_rw, the role every
+    request runs as (dsn()), owns nothing. No default: without it the service does not start."""
+    url = os.environ.get("PLATFORM_MIGRATE_DATABASE_URL", "")
+    if not url:
+        raise RuntimeError("PLATFORM_MIGRATE_DATABASE_URL is not set: the platform migrates, makes and drops project"
+                           " databases as platform_migrator (scripts/secrets.sh makes its password)")
+    return url
+
+
 def bootstrap_subjects() -> list[str]:
     """Who owns the projects that predate membership.
 
@@ -158,7 +169,7 @@ def _setup(p: ConnectionPool) -> None:
     not done, so the next pool() call does it again."""
     global _migrated
     if not _migrated:
-        with p.connection() as conn:
+        with psycopg.connect(migrate_dsn()) as conn:
             migrate(conn)
         bootstrap_owners(bootstrap_subjects())
         _migrated = True
@@ -250,7 +261,7 @@ def _provision_pending(current: set[str]) -> None:
     _last_attempt = time.monotonic()
     for pid in sorted(_unprovisioned):
         try:
-            projectdb.provision(dsn(), pid)
+            projectdb.provision(migrate_dsn(), pid)
         except Exception:
             logger.exception("could not provision the database of project %s; trying again later", pid)
             continue
@@ -298,6 +309,10 @@ class NoSuchVersion(LookupError):
     """The project has no card version with this pid."""
 
 
+class VersionInUse(Exception):
+    """A card or a run names this card version, so it cannot be withdrawn."""
+
+
 #: The order of a version in every response.
 _VERSION_COLUMNS = ("pid, project_id, number, name, version, provider, description, created_at, created_by,"
                     " card_revision")
@@ -338,34 +353,96 @@ def _resolve(project: str):
 
 
 def create_version(project: str, name: str, version: str | None, provider: str | None,
-                   description: str | None, subject: str | None) -> dict | None:
-    """The project's next card version, numbered max+1 under an advisory lock
-    taken in the project's database, so two saves at once get n and n+1.
+                   description: str | None, subject: str | None, attempt: str | None = None) -> dict | None:
+    """The project's next card version, numbered from the project's counter (project.system_number) under an
+    advisory lock taken in the project's database, so two saves at once get n and n+1. The counter only goes
+    up: a number is never given twice, not even after an abandoned or a removed version. `attempt`, the caller's id for this save, lets it withdraw the
+    version when its card is not saved (abandon_version). The ledger event freezes what the version says.
     None: no such project. ProjectDatabaseGone: its database is gone."""
     pid = _resolve(project)
     if pid is None:
         return None
     with project_connection(pid) as conn, conn.transaction():
         conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        number = conn.execute(
+            "update project.system_number set last = greatest(last, (select coalesce(max(number), 0)"
+            " from project.system)) + 1 returning last").fetchone()["last"]
         row = conn.execute(
-            "insert into project.system (number, name, version, provider, description, created_by)"
-            " values ((select coalesce(max(number), 0) + 1 from project.system), %s, %s, %s, %s, %s)"
+            "insert into project.system (number, name, version, provider, description, created_by, attempt)"
+            " values (%s, %s, %s, %s, %s, %s, %s)"
             f" returning {_STORED}",
-            (name, version, provider, description, subject)).fetchone()
+            (number, name, version, provider, description, subject, attempt)).fetchone()
         from platform_service.ledger import outbox
 
         outbox.emit_project(conn, "card_version.created", item_type="card_version", item_id=row["pid"],
                             item_version=row["number"],
                             details={"number": row["number"], "name": name, "version": version,
-                                     "provider": provider})
+                                     "provider": provider},
+                            content={"number": row["number"], "name": name, "version": version,
+                                     "provider": provider, "description": description})
     return _as_version(row, pid)
+
+
+#: The tables whose rows name a card version, as (table, column): a version one of them names is not withdrawn.
+#: platform_rw reads only that column of each (the modules' owner-role migrations grant it).
+_NAMERS = (("qualification.qualification", "system_id"), ("engine.aisc_backend_evaluation", "system_id"))
+
+
+def _named_elsewhere(conn, pid: str) -> bool:
+    """Whether a row of _NAMERS names version `pid`. A table the platform may not read counts as naming it:
+    the version is then kept rather than withdrawn on a guess."""
+    for table, column in _NAMERS:
+        if not conn.execute("select to_regclass(%s) is not null as here", (table,)).fetchone()["here"]:
+            continue
+        if not conn.execute("select has_column_privilege(%s, %s, 'SELECT') as readable",
+                            (table, column)).fetchone()["readable"]:
+            return True
+        if conn.execute(f"select exists (select 1 from {table} where {column} = %s) as named",
+                        (pid,)).fetchone()["named"]:
+            return True
+    return False
+
+
+def abandon_version(project: str, attempt: str, reason: str) -> dict | None:
+    """Withdraw the card version made by save `attempt` whose card was not saved: the row is kept, marked
+    abandoned with `reason`, and is never the latest again; card_version.abandoned is written with it. A
+    version already withdrawn is answered as it is. None: no version has that attempt (or no such project).
+    NotLatest: a newer version exists. VersionInUse: a card or a run names it. ProjectDatabaseGone: its database
+    is gone."""
+    project_pid = _resolve(project)
+    if project_pid is None:
+        return None
+    try:
+        attempt = str(uuid.UUID(str(attempt)))
+    except ValueError:
+        return None
+    with project_connection(project_pid) as conn, conn.transaction():
+        conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        row = conn.execute(f"select {_STORED}, abandoned_at from project.system where attempt = %s",
+                           (attempt,)).fetchone()
+        if row is None:
+            return None
+        if row["abandoned_at"] is not None:
+            return _as_version(row, project_pid)
+        latest = conn.execute("select pid from project.saved_system order by number desc limit 1").fetchone()
+        if latest is None or latest["pid"] != row["pid"]:
+            raise NotLatest(str(row["pid"]))
+        if _named_elsewhere(conn, row["pid"]):
+            raise VersionInUse(str(row["pid"]))
+        row = conn.execute("update project.system set abandoned_at = now(), abandoned_reason = %s"
+                           f" where pid = %s returning {_STORED}", (reason, row["pid"])).fetchone()
+        from platform_service.ledger import outbox
+
+        outbox.emit_project(conn, "card_version.abandoned", item_type="card_version", item_id=row["pid"],
+                            item_version=row["number"], details={"number": row["number"], "reason": reason})
+    return _as_version(row, project_pid)
 
 
 def revise_version(project: str, pid: str, name: str, version: str | None, provider: str | None,
                    description: str | None, reason: str, requested_by: str, subject: str | None, *,
                    expected_card_revision: int) -> dict | None:
     """Correct the description of the project's latest card version in place: the same row and number, its
-    card_revision one higher, under the advisory lock create_version takes so a save and a revision (or two
+    card_revision one above the revision its cards are at, under the advisory lock create_version takes so a save and a revision (or two
     revisions) at once cannot interleave. `expected_card_revision` is the card revision the correction
     started from: when another correction came first, the version's card_revision is no longer that one and
     this correction would silently replace it, so it is refused. None: no such project. NoSuchVersion: no
@@ -380,17 +457,19 @@ def revise_version(project: str, pid: str, name: str, version: str | None, provi
         raise NoSuchVersion(pid) from None
     with project_connection(project_pid) as conn, conn.transaction():
         conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
-        latest = conn.execute("select pid from project.system order by number desc limit 1").fetchone()
-        exists = conn.execute("select card_revision from project.system where pid = %s", (wanted,)).fetchone()
+        latest = conn.execute("select pid from project.saved_system order by number desc limit 1").fetchone()
+        exists = conn.execute("select card_revision from project.saved_system where pid = %s", (wanted,)).fetchone()
         if exists is None:
             raise NoSuchVersion(pid)
         if str(latest["pid"]) != wanted or exists["card_revision"] != expected_card_revision:
             raise NotLatest(pid)
+        # the revision after the one the version's cards are at (project.saved_system reads it from the cards),
+        # not after the platform's own count, which a correction whose card was never stored left one ahead
         row = conn.execute(
             "update project.system set name = %s, version = %s, provider = %s, description = %s,"
-            " card_revision = card_revision + 1, updated_at = now() where pid = %s"
+            " card_revision = %s, updated_at = now() where pid = %s"
             f" returning {_STORED}",
-            (name, version, provider, description, wanted)).fetchone()
+            (name, version, provider, description, exists["card_revision"] + 1, wanted)).fetchone()
         from platform_service.ledger import outbox
 
         outbox.emit_project(conn, "card_version.revised", item_type="card_version", item_id=row["pid"],
@@ -401,22 +480,23 @@ def revise_version(project: str, pid: str, name: str, version: str | None, provi
 
 
 def list_versions(project: str) -> list[dict] | None:
-    """Every saved card version of the project, highest number first. None: no such project."""
+    """Every saved card version of the project (an abandoned one left out), highest number first. None: no such
+    project."""
     pid = _resolve(project)
     if pid is None:
         return None
     with project_connection(pid) as conn:
-        rows = conn.execute(f"select {_STORED} from project.system order by number desc").fetchall()
+        rows = conn.execute(f"select {_STORED} from project.saved_system order by number desc").fetchall()
     return [_as_version(r, pid) for r in rows]
 
 
 def latest_version(project: str) -> tuple[bool, dict | None]:
-    """(whether the project exists, its highest-numbered card version or None)."""
+    """(whether the project exists, its highest-numbered saved card version or None)."""
     pid = _resolve(project)
     if pid is None:
         return False, None
     with project_connection(pid) as conn:
-        row = conn.execute(f"select {_STORED} from project.system order by number desc limit 1").fetchone()
+        row = conn.execute(f"select {_STORED} from project.saved_system order by number desc limit 1").fetchone()
     return True, _as_version(row, pid)
 
 

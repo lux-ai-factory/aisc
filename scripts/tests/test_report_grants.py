@@ -211,13 +211,14 @@ def test_read_only_even_when_the_session_asks_otherwise(bed):
 
 
 def test_d6b_a_new_module_table_is_not_readable(bed):
-    """No default privileges, so a table engine_rw creates later in a project database is not
-    readable by report_ro (while the listed ones are), not even after report-grants.sh repairs the list."""
+    """No default privileges, so a table a later engine migration creates in a project database (as
+    engine_migrator, acting as engine_owner) is not readable by report_ro (while the listed ones are), not even
+    after report-grants.sh repairs the list."""
     db = db_of("A")
     assert ok(as_ro(bed, db, "SELECT 1 FROM engine.aisc_backend_evaluation LIMIT 1")), \
         "missing feature: report_ro cannot read engine.aisc_backend_evaluation"
     name = f"probe_{uuid.uuid4().hex[:8]}"
-    r = bed.psql(db, f"CREATE TABLE engine.{name} (x int)", role="engine_rw", check=False)
+    r = bed.psql(db, f"CREATE TABLE engine.{name} (x int)", role="engine_migrator", check=False)
     assert ok(r), r.stderr
     r = as_ro(bed, db, f"SELECT 1 FROM engine.{name}")
     assert not ok(r) and "permission denied" in r.stderr
@@ -264,14 +265,16 @@ def test_d6b_grants_sql_skips_tables_that_do_not_exist_yet():
 
 
 def test_composer_role_owns_nothing_in_platform_and_uses_its_project_schema(bed):
-    """In platform the composer owns no schema; in a project database its schema
-    report_composer is the template's (owner platform_rw) with USAGE, CREATE for the composer."""
+    """In platform the composer owns no schema; in a project database its schema report_composer belongs to
+    report_composer_owner, with USAGE for the composer's role and CREATE only for the owner role."""
     assert bed.rows("platform", "SELECT nspname FROM pg_namespace WHERE pg_get_userbyid(nspowner) = 'report_composer_rw'") == []
     assert bed.scalar("platform", "SELECT to_regnamespace('report_composer') IS NULL") == "t"
     for key in PROJECTS:
         db = db_of(key)
-        for priv in ("USAGE", "CREATE"):
-            assert bed.scalar(db, f"SELECT has_schema_privilege('report_composer_rw', 'report_composer', '{priv}')") == "t"
+        assert bed.scalar(db, "SELECT has_schema_privilege('report_composer_rw', 'report_composer', 'USAGE')") == "t"
+        assert bed.scalar(db, "SELECT has_schema_privilege('report_composer_rw', 'report_composer', 'CREATE')") == "f"
+        assert bed.scalar(db, "SELECT has_schema_privilege('report_composer_owner', 'report_composer', 'CREATE')") \
+            == "t"
 
 
 def test_composer_role_search_path(bed):
@@ -289,12 +292,11 @@ def test_composer_role_search_path(bed):
 
 
 def test_composer_role_can_reference_its_card_versions(bed):
-    """The composer may create its tables with a foreign key to project.system
-    (REFERENCES), in its own schema of a project database."""
+    """The composer's migrations may create its tables with a foreign key to project.system (REFERENCES),
+    in its own schema of a project database: as report_composer_migrator, acting as report_composer_owner."""
     name = f"probe_{uuid.uuid4().hex[:8]}"
-    r = as_composer(bed, db_of("A"),
-                    f"CREATE TABLE report_composer.{name} (s uuid REFERENCES project.system(pid));"
-                    f" DROP TABLE report_composer.{name};")
+    r = bed.psql(db_of("A"), f"CREATE TABLE report_composer.{name} (s uuid REFERENCES project.system(pid));"
+                             f" DROP TABLE report_composer.{name};", role="report_composer_migrator", check=False)
     assert ok(r), r.stderr
 
 

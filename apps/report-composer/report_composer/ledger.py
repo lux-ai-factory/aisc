@@ -11,14 +11,25 @@ import hashlib
 import json
 
 from aisc_identity.ledger_events import EMIT_SQL, NotLedgerSafe, RequestId, current_request, event, on
+from aisc_identity.switches import ledger_mode
+
+from .errors import ApiError
 
 __all__ = ["NotLedgerSafe", "RequestId", "current_request", "emit", "layout_state", "on", "template_state"]
 
+UNWITNESSED = ("This change did not come through the platform's gateway, so it cannot be recorded in the "
+               "project's ledger. Nothing was changed.")
+
 
 def emit(conn, action: str, **fields) -> str | None:
-    """Queue one event on `conn`, inside its open transaction. None while the ledger is off."""
+    """Queue one event on `conn`, inside its open transaction. None while the ledger is off.
+
+    With the ledger enforced, a change whose request the gateway did not witness (no request id) is refused
+    here, inside its transaction, so it is rolled back: a change the ledger would refuse never lands."""
     if not on():
         return None
+    if current_request.get() is None and ledger_mode() == "enforce":
+        raise ApiError(403, "not_witnessed", UNWITNESSED)
     body = event(action, **fields)
     conn.execute(EMIT_SQL, (json.dumps(body, allow_nan=False),))
     return body["event_id"]

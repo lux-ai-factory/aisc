@@ -34,13 +34,13 @@ def _uuid(value) -> str | None:
         return None
 
 
-# Versions
+# Versions: the saved ones (project.saved_system leaves out a version withdrawn because its card was never saved)
 
 _SYSTEM = "pid::text AS pid, number, name, version AS release, card_revision"
 
 
 def systems(conn) -> list[dict]:
-    return conn.execute(f"SELECT {_SYSTEM} FROM project.system ORDER BY number DESC").fetchall()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system ORDER BY number DESC").fetchall()
 
 
 def system_of_project(conn, system_pid) -> dict | None:
@@ -48,11 +48,11 @@ def system_of_project(conn, system_pid) -> dict | None:
     s = _uuid(system_pid)
     if s is None:
         return None
-    return conn.execute(f"SELECT {_SYSTEM} FROM project.system WHERE pid = %s", (s,)).fetchone()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system WHERE pid = %s", (s,)).fetchone()
 
 
 def latest_system(conn) -> dict | None:
-    return conn.execute(f"SELECT {_SYSTEM} FROM project.system ORDER BY number DESC LIMIT 1").fetchone()
+    return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system ORDER BY number DESC LIMIT 1").fetchone()
 
 
 # Layouts
@@ -292,10 +292,16 @@ def finish_report(conn, report_id, *, status, finished_at, pdf=None, sha256=None
          fingerprint, pdf_copy, pdf_copy_sha256, report_id))
 
 
+#: the card revision a report is pinned to, from its snapshot; NULL for a report made before reports were pinned
+_PINNED_CARD_REVISION = ("CASE WHEN r.snapshot->>'card_revision' ~ '^[0-9]{1,9}$'"
+                         " THEN (r.snapshot->>'card_revision')::int END")
+
+
 def list_reports(conn, layout_id) -> list[dict]:
     return conn.execute("SELECT r.id::text AS id, r.layout_revision, r.status, r.created_at, r.created_by,"
                         " r.size_bytes, r.format, r.fingerprint, r.sha256, s.number AS system_number,"
                         " r.period_from, r.period_to, r.other_versions, c.number AS compare_number,"
+                        f" {_PINNED_CARD_REVISION} AS card_revision,"
                         " (r.pdf IS NOT NULL AND (coalesce(r.format, 'pdf') = 'pdf' OR r.pdf_copy IS NOT NULL))"
                         " AS has_pdf"
                         " FROM report_composer.generated_report r"
@@ -313,14 +319,18 @@ def project_name(conn, pid) -> str:
 
 def reports_of_version(conn, system_id) -> tuple[int, dict | None]:
     """How many reports of this AI card version finished (done or partial; failed ones not counted), and the
-    newest of them with its layout, as the sandbox page shows them."""
+    newest of them with its layout, as the sandbox page shows them: with the card revision it is pinned to
+    and the revision the version's card is at now (a report made before reports were pinned was made of
+    revision 1, since no version had been corrected then)."""
     sid = _uuid(system_id)
     if sid is None:
         return 0, None
     rows = conn.execute(
         "SELECT r.id::text AS id, r.status, r.format, r.created_at, l.name AS layout_name,"
-        " coalesce(l.builtin_id, l.id::text) AS layout_id"
+        f" coalesce(l.builtin_id, l.id::text) AS layout_id, {_PINNED_CARD_REVISION} AS card_revision,"
+        " s.card_revision AS current_card_revision"
         " FROM report_composer.generated_report r JOIN report_composer.layout l ON l.id = r.layout_id"
+        " LEFT JOIN project.saved_system s ON s.pid = r.system_id"
         " WHERE r.system_id = %s AND r.status IN ('done', 'partial')"
         " ORDER BY r.created_at DESC, r.id", (sid,)).fetchall()
     return len(rows), (rows[0] if rows else None)

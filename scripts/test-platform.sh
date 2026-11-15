@@ -4,7 +4,9 @@
 #   scripts/test-platform.sh [pytest args]
 #
 # The throwaway server is set up as scripts/test-pipeline-chain.sh sets up its own: init/platform-db.sql,
-# init/project-databases.sql, the reader roles, then every platform migration. A throwaway immudb (with a
+# init/project-databases.sql, the owner roles and the project database setup in template1, the reader roles,
+# then every platform migration as platform_migrator (PLATFORM_TEST_MIGRATE_DATABASE_URL, which the platform
+# also provisions and drops project databases with). A throwaway immudb (with a
 # signing key) runs the ledger store, export checker and route tests. Everything is removed on exit.
 #
 # A skip fails the run unless its reason is in tests/skip_guard.py's ALLOWED_SKIPS (the opt-in drills, the
@@ -41,8 +43,12 @@ export LEDGER_TEST_IMMUDB_URL=$TIMMU_URL LEDGER_TEST_IMMUDB_ADMIN_PASSWORD=$TIMM
   LEDGER_TEST_IMMUDB_PUBLIC_KEY=$TIMMU_PUBLIC_KEY
 uv run --extra dev python -c 'import os; from tests.ledger.immudb_box import wait_for; wait_for(os.environ["LEDGER_TEST_IMMUDB_URL"], os.environ["LEDGER_TEST_IMMUDB_ADMIN_PASSWORD"])'
 
+# The platform's commands, which tests also start as subprocesses, import aisc_identity as the container's
+# PYTHONPATH gives it.
+export PYTHONPATH="$ROOT/shared/identity${PYTHONPATH:+:$PYTHONPATH}"
 LEDGER_TESTS_REQUIRED=1 PLATFORM_TESTS_STRICT_SKIPS=1 \
 PLATFORM_TEST_DATABASE_URL=$(tpg_dsn platform_rw platform) \
+PLATFORM_TEST_MIGRATE_DATABASE_URL=$(tpg_dsn platform_migrator platform) \
 EVIDENCE_TEST_READER_URL="postgresql://report_ro:report_ro@127.0.0.1:${PORT}/{database}" \
 PLATFORM_TEST_SUPERUSER_URL="postgresql://${TPG_SU}:${TPG_PW}@127.0.0.1:${PORT}/platform" \
   uv run --extra dev pytest -p no:cacheprovider -p tests.skip_guard -rs "$@"

@@ -118,7 +118,7 @@ def test_start_migrates_every_project_database(iso_client, iso_bed):
         assert _names(iso_bed, db, "SELECT string_agg(name, ',') FROM report_composer.schema_migration") \
             == ["0001_project_database.sql", "0002_layouts_without_data.sql", "0003_numbering_on.sql",
                "0004_layout_revisions.sql", "0005_layouts_soft_deleted.sql",
-               "0006_pdf_copy.sql", "0007_builtin_reports.sql"], key
+               "0006_pdf_copy.sql", "0007_builtin_reports.sql", "0008_owner_role.sql"], key
         for t in MODULE_TABLES:
             assert iso_bed.scalar(db, f"SELECT to_regclass('report_composer.{t}') IS NOT NULL") == "t", (key, t)
 
@@ -126,7 +126,7 @@ def test_start_migrates_every_project_database(iso_client, iso_bed):
 @pytest.mark.db
 def test_the_project_tables_have_no_project_id_and_keys_on_project_system(iso_client, iso_bed):
     """No project_id in layout, template, generated_report; the report's version keys
-    (system_id, compare_to) reference project.system(pid) with NO ACTION, and a layout has none;
+    (system_id, compare_to) reference project.system(pid) and restrict, and a layout has none;
     layout_block and generated_report follow their layout."""
     iso_client.get("/api/p/alpha/layouts")
     db = pdb(A)
@@ -138,7 +138,7 @@ def test_the_project_tables_have_no_project_id_and_keys_on_project_system(iso_cl
                               " || confdeltype::text, ',' ORDER BY 1) FROM pg_constraint WHERE contype = 'f'"
                               " AND connamespace = 'report_composer'::regnamespace"
                               " AND confrelid = 'project.system'::regclass")
-    assert set(keys.split(",")) == {"report_composer.generated_report>project.system:a"}, keys
+    assert set(keys.split(",")) == {"report_composer.generated_report>project.system:r"}, keys
 
 
 @pytest.mark.db
@@ -181,7 +181,8 @@ def test_the_platform_connection_reads_only_core(iso_client, auth, spy):
         (on_platform if db == "platform" else on_alpha if db == pdb(A) else set()).update(tables_named(sql))
     allowed = {"core.project", "core.project_member"}
     assert on_platform <= allowed, on_platform - allowed
-    assert {"project.system", "report_composer.layout", "report_composer.template",
+    # the versions as the composer offers them: the saved ones (project.saved_system, a view of project.system)
+    assert {"project.saved_system", "report_composer.layout", "report_composer.template",
             "report_composer.generated_report"} <= on_alpha, on_alpha
 
 
@@ -252,7 +253,8 @@ def test_a_project_made_after_start_is_migrated_on_first_open(iso_client, iso_be
     assert r.status_code == 200 and r.json() == [], r.text[:300]
     assert iso_bed.scalar(db, "SELECT string_agg(name, ',' ORDER BY name) FROM report_composer.schema_migration") \
         == ("0001_project_database.sql,0002_layouts_without_data.sql,0003_numbering_on.sql,"
-            "0004_layout_revisions.sql,0005_layouts_soft_deleted.sql,0006_pdf_copy.sql,0007_builtin_reports.sql")
+            "0004_layout_revisions.sql,0005_layouts_soft_deleted.sql,0006_pdf_copy.sql,0007_builtin_reports.sql,"
+            "0008_owner_role.sql")
 
 
 @pytest.mark.db

@@ -176,7 +176,16 @@ services:
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?run scripts/secrets.sh first}
       SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?run scripts/secrets.sh first}
       ASSISTANT_MOCK_PASSWORD: ${ASSISTANT_MOCK_PASSWORD:?run scripts/secrets.sh first}
+      # the migrator logins of the owner roles (init/owner-roles.sql)
+      QUALIFICATION_MIGRATOR_PASSWORD: ${QUALIFICATION_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
+      CONTROLS_MIGRATOR_PASSWORD: ${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
+      CONTROL_OBJECTIVES_MIGRATOR_PASSWORD: ${CONTROL_OBJECTIVES_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
+      REPORT_COMPOSER_MIGRATOR_PASSWORD: ${REPORT_COMPOSER_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
+      ENGINE_MIGRATOR_PASSWORD: ${ENGINE_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
+      PLATFORM_MIGRATOR_PASSWORD: ${PLATFORM_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
     volumes:
+      - ./init/owner-roles.sql:/setup/owner-roles.sql:ro,Z
+      - ./init/project-database-setup.sql:/setup/project-database-setup.sql:ro,Z
       - ./init/chart-assistant-role.sql:/setup/chart-assistant-role.sql:ro,Z
       - ./init/project-databases.sql:/setup/project-databases.sql:ro,Z
       - ./init/report-roles.sql:/setup/report-roles.sql:ro,Z
@@ -192,6 +201,12 @@ services:
     command: >
       sh -c "until pg_isready -q; do sleep 1; done
       && psql -v ON_ERROR_STOP=1 -f /setup/project-databases.sql
+      && psql -v ON_ERROR_STOP=1 -v qualification_migrator_password=\"$$QUALIFICATION_MIGRATOR_PASSWORD\"
+      -v controls_migrator_password=\"$$CONTROLS_MIGRATOR_PASSWORD\"
+      -v control_objectives_migrator_password=\"$$CONTROL_OBJECTIVES_MIGRATOR_PASSWORD\"
+      -v report_composer_migrator_password=\"$$REPORT_COMPOSER_MIGRATOR_PASSWORD\"
+      -v engine_migrator_password=\"$$ENGINE_MIGRATOR_PASSWORD\"
+      -v platform_migrator_password=\"$$PLATFORM_MIGRATOR_PASSWORD\" -f /setup/owner-roles.sql
       && psql -v ON_ERROR_STOP=1 -v report_ro_password=\"$$REPORT_RO_PASSWORD\"
       -v report_composer_password=\"$$REPORT_COMPOSER_PASSWORD\" -f /setup/report-roles.sql
       && psql -v ON_ERROR_STOP=1 -v inspector_password=\"$$INSPECTOR_PASSWORD\" -f /setup/inspector-role.sql
@@ -203,7 +218,10 @@ services:
       && psql -v ON_ERROR_STOP=1 -v engine_rw_password=\"$$ENGINE_RW_PASSWORD\" -f /setup/engine-role.sql
       && psql -v ON_ERROR_STOP=1 -v app_password=\"$$KEYCLOAK_DB_PASSWORD\" -f /setup/keycloak-role.sql
       && psql -v ON_ERROR_STOP=1 -v app_password=\"$$SUPERSET_DB_PASSWORD\" -f /setup/superset-role.sql
-      && psql -v ON_ERROR_STOP=1 -v assistant_mock_password=\"$$ASSISTANT_MOCK_PASSWORD\" -f /setup/chart-assistant-role.sql"
+      && psql -v ON_ERROR_STOP=1 -v assistant_mock_password=\"$$ASSISTANT_MOCK_PASSWORD\" -f /setup/chart-assistant-role.sql
+      && psql -v ON_ERROR_STOP=1 -d template1 -f /setup/project-database-setup.sql
+      && for db in $$(psql -tAc \"SELECT datname FROM pg_database WHERE datname ~ '^project_[0-9a-f]{32}$$'\");
+      do psql -v ON_ERROR_STOP=1 -d $$db -f /setup/project-database-setup.sql || exit 1; done"
     depends_on:
       - postgres
     restart: "no"

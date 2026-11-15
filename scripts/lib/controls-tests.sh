@@ -38,4 +38,5 @@ tpg_su postgres -f - < "$ROOT/init/report-roles.sql" >/dev/null
 cd "$ROOT/apps/controls"
 CONTROLS_TEST_PG_CONTAINER=$TPG_NAME \
 PROJECT_DATABASE_URL="$(tpg_dsn controls_rw '{database}')?schema=controls&connection_limit=2" \
+PROJECT_MIGRATE_DATABASE_URL="$(tpg_dsn controls_migrator '{database}')?schema=controls&connection_limit=2" \
   npx vitest run "${files[@]}" ${options[@]+"${options[@]}"}

@@ -11,6 +11,7 @@ import os
 import httpx
 
 PROJECT_HEADER = "X-AISC-Project"
+REQUEST_HEADER = "X-AISC-Request-Id"
 TIMEOUT_S = 20
 
 
@@ -37,10 +38,23 @@ def _base() -> str:
     return (os.environ.get("ENGINE_URL") or "http://aisc-backend:8000").rstrip("/")
 
 
-def _call(method: str, path: str, pid, token: str, body: dict | None = None) -> dict:
+def _headers(pid, token: str, cite_request: bool) -> dict:
+    """The person's token and the project. With `cite_request`, inside a witnessed request also its id, so
+    the engine's event for this call cites the request the person made (the ledger registry names the
+    platform's route as a cause of that event)."""
+    from platform_service.ledger import outbox
+
+    headers = {"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid)}
+    request_id = outbox.current_request.get() if cite_request else None
+    if request_id:
+        headers[REQUEST_HEADER] = request_id
+    return headers
+
+
+def _call(method: str, path: str, pid, token: str, body: dict | None = None, cite_request: bool = False) -> dict:
     try:
         r = httpx.request(method, f"{_base()}{path}", json=body, timeout=TIMEOUT_S,
-                          headers={"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid)})
+                          headers=_headers(pid, token, cite_request))
     except httpx.HTTPError as exc:
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
@@ -75,7 +89,8 @@ def install_plugin(pid, token: str, package: str, version: str, slug: str) -> No
     entry it came from: the engine's own POST /api/v1/plugins, which takes the admin role."""
     engine_pid = engine_project(pid, token)
     _call("POST", "/api/v1/plugins", pid, token, {"package_name": package, "version": version,
-                                                  "project_uuid": engine_pid, "catalogue_slug": slug})
+                                                  "project_uuid": engine_pid, "catalogue_slug": slug},
+          cite_request=True)
 
 
 def components(pid, token: str, engine_pid: str | None = None) -> list[dict]:

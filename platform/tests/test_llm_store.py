@@ -46,12 +46,12 @@ def columns(dsn, project, table):
 # The template file
 
 
-def test_schema_llm_is_owned_by_platform_rw_and_closed_to_everyone_else(project, dsn):
+def test_schema_llm_is_owned_by_platform_owner_and_closed_to_everyone_else(project, dsn):
     owner, acl = one(dsn, project,
                      "select pg_get_userbyid(nspowner), nspacl::text from pg_namespace where nspname = 'llm'")
-    assert owner == "platform_rw"
+    assert owner == "platform_owner"
     grantees = set(re.findall(r'(?:^|[{,])"?([^=,{}"]*)=', acl or ""))
-    assert grantees <= {"platform_rw"}, f"llm schema ACL grants others: {acl}"
+    assert grantees <= {"platform_owner", "platform_rw"}, f"llm schema ACL grants others: {acl}"
     for role in ("controls_rw", "dashboard_ro", "public"):
         if role == "public":
             continue
@@ -169,7 +169,8 @@ def test_module_roles_cannot_read_the_llm_tables(project, dsn, role):
                 conn.execute(f"select * from {table}")
 
 
-def test_the_inspector_reads_only_ciphertext(client, admin, project, dsn):
+def test_the_inspector_does_not_read_the_keys_at_all(client, admin, project, dsn):
+    """The inspector reads by schema, and the connection schema, which holds the keys, is not given to it."""
     key = new_key()
     assert client.put(f"/projects/{project['slug']}/llm/providers/openai", json={"api_key": key},
                       headers=admin).status_code == 200
@@ -177,9 +178,8 @@ def test_the_inspector_reads_only_ciphertext(client, admin, project, dsn):
         conn = project_db(dsn, project, "inspector_ro")
     except psycopg.OperationalError:
         pytest.skip("inspector_ro is not in this throwaway database (apply init/inspector-role.sql)")
-    with conn:
-        found = conn.execute("select row_to_json(p)::text from connection.endpoint p").fetchall()
-    assert found and all(key not in r[0] for r in found)
+    with conn, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        conn.execute("select row_to_json(p)::text from connection.endpoint p").fetchall()
 
 
 # Fernet at rest

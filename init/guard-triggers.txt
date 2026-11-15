@@ -1,0 +1,49 @@
+# The guard triggers of a project database: one `schema.table trigger` per line.
+#
+# A listed trigger may not be disabled or dropped by anyone but the superuser: the event trigger
+# aisc_guard_triggers_stay (init/project-database-setup.sql) refuses it, in every project database.
+# init/project-database-setup.sql holds the same list (scripts/tests/test_owner_roles.py checks
+# that the two agree), since the test beds run that file from standard input, where it cannot read this one.
+#
+# A migration that changes a listed trigger uses CREATE OR REPLACE TRIGGER, never DROP and CREATE.
+
+# the run trace: every call a run made, append-only
+trace.call call_append_only
+trace.call call_no_truncate
+
+# the card versions: a version is never deleted (platform/project-template/0034_card_versions_kept.sql)
+project.system system_no_delete
+project.system system_no_truncate
+
+# an AI card: its history only grows, a card that is no longer the current one is kept as it was, and no card
+# is deleted (apps/qualification/prisma/migrations/20261115000000_owner_role)
+qualification.card_history card_history_is_append_only
+qualification.card_history card_history_is_not_truncated
+qualification.qualification qualification_only_latest_changes
+qualification.qualification qualification_no_delete
+qualification.qualification qualification_no_truncate
+
+# what a card update replaced in step 2: the mapping archive only grows
+# (apps/control-objectives/alembic/versions/20261003000000_ledger_history.py)
+control_objectives.mapping_archive mapping_archive_is_append_only
+control_objectives.mapping_archive mapping_archive_is_never_truncated
+
+# every saved revision of a report layout is kept (apps/report-composer/migrations/project/0004_layout_revisions.sql)
+report_composer.layout_revision layout_revision_is_append_only
+report_composer.layout_revision layout_revision_is_never_truncated
+
+# a run's card version is the one it started on (apps/backend/aisc_backend/migrations/0028_owner_role.py)
+engine.aisc_backend_evaluation evaluation_system_is_fixed
+
+# measures and observations are never changed or removed; the ledger outbox is written and marked once through
+# its functions; a saved plugin configuration changes only by masking a secret in it
+# (apps/backend/aisc_backend/migrations/0029_append_only_results.py)
+engine.aisc_backend_measurement aisc_backend_measurement_append_only
+engine.aisc_backend_measurement aisc_backend_measurement_no_truncate
+engine.aisc_backend_observation aisc_backend_observation_append_only
+engine.aisc_backend_observation aisc_backend_observation_no_truncate
+engine.aisc_backend_ledgeroutbox ledgeroutbox_only_marks
+engine.aisc_backend_ledgeroutbox ledgeroutbox_no_delete
+engine.aisc_backend_ledgeroutbox ledgeroutbox_no_truncate
+engine.aisc_backend_pluginconfig pluginconfig_is_fixed
+engine.aisc_backend_pluginconfig pluginconfig_no_truncate

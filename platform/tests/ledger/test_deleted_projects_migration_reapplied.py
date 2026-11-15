@@ -7,7 +7,7 @@ from pathlib import Path
 
 import psycopg
 
-from tests.conftest import DSN
+from tests.conftest import DSN, MIGRATE_DSN
 from tests.ledger.conftest import needs_db
 
 pytestmark = needs_db
@@ -34,14 +34,20 @@ def _closing_state(conn, request, event, kept_request) -> tuple:
     return (*closed, *sent, kept_open)
 
 
+def _migrate() -> None:
+    """The migration again, as the platform runs its migrations: platform_migrator."""
+    with psycopg.connect(MIGRATE_DSN, autocommit=True) as conn:
+        conn.execute(MIGRATION.read_text())
+
+
 def test_the_migration_runs_again_without_changing_what_it_closed(project):
     gone = str(uuid.uuid4())
     with psycopg.connect(DSN, autocommit=True) as conn:
         request, event = _leftovers(conn, gone)
         kept_request, _ = _leftovers(conn, project["pid"])
-        conn.execute(MIGRATION.read_text())
+        _migrate()
         first = _closing_state(conn, request, event, kept_request)
-        conn.execute(MIGRATION.read_text())
+        _migrate()
         again = _closing_state(conn, request, event, kept_request)
     assert first[0] is not None and first[-1] is True, "the first run did not close the leftovers only"
     assert again == first

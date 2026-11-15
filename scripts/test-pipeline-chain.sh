@@ -101,14 +101,14 @@ migrate_project_database() {
   [ -n "$pid" ] || { echo "no project_pid in $CHAIN_JSON (step 1 writes it)"; return 1; }
   db=$(tpg_project_db "$pid") || return 1
   (cd "$ROOT/apps/qualification" && \
-     PROJECT_DATABASE_URL="postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification&connection_limit=2" \
+     PROJECT_MIGRATE_DATABASE_URL="postgresql://qualification_migrator:qualification_migrator@127.0.0.1:$PORT/{database}?schema=qualification&connection_limit=2" \
      node scripts/migrate-projects.mjs) || return 1
   (cd "$ROOT/apps/controls" && \
-     PROJECT_DATABASE_URL="postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls" \
+     PROJECT_MIGRATE_DATABASE_URL="postgresql://controls_migrator:controls_migrator@127.0.0.1:$PORT/{database}?schema=controls" \
      node scripts/migrate-projects.mjs) || return 1
   (cd "$ROOT/apps/control-objectives" && PYTHONPATH="$ROOT/apps/control-objectives/src" \
      DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform" \
-     PROJECT_DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}" \
+     PROJECT_MIGRATE_DATABASE_URL="postgresql+psycopg://control_objectives_migrator:control_objectives_migrator@127.0.0.1:$PORT/{database}" \
      .venv/bin/python -m aisc_control_objectives.migrate_projects) || return 1
   # migrate_projects (aisc_backend/deployment.py) only migrates a database per project in
   # configurator mode, which is what this chain runs the engine as.
@@ -116,10 +116,11 @@ migrate_project_database() {
   (cd "$BACKEND" && AISC_DEPLOYMENT=configurator AUTH_ENABLED=true \
      DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw \
      DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
+     DB_MIGRATE_USER=engine_migrator DB_MIGRATE_PASSWORD=engine_migrator \
      PYTHONPATH="$SHARED_PYTHONPATH" .venv/bin/python manage.py migrate_projects) || return 1
   (cd "$ROOT/apps/report-composer" && PYTHONPATH="$ROOT/apps/report-composer" \
      REPORT_COMPOSER_DATABASE_URL="$(tpg_dsn report_composer_rw platform)" \
-     REPORT_COMPOSER_PROJECT_DATABASE_URL="postgresql://report_composer_rw:report_composer_rw@127.0.0.1:$PORT/{database}" \
+     REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL="postgresql://report_composer_migrator:report_composer_migrator@127.0.0.1:$PORT/{database}" \
      .venv/bin/python -m report_composer.migrate) || return 1
   python3 -c "import json,sys; d=json.load(open(sys.argv[1])); d['project_db']=sys.argv[2]; json.dump(d, open(sys.argv[1],'w'))" "$CHAIN_JSON" "$db"
 }
@@ -127,15 +128,15 @@ migrate_project_database() {
 # step N -> command (run from the repo root); a runner exit status and output are judged below
 step_cmd() {
   local n=$1
-  local plat="cd platform && PLATFORM_TEST_DATABASE_URL=$(tpg_dsn platform_rw platform) uv run --extra dev pytest -q -p no:cacheprovider -m chain -k chain_step$n"
-  local ctrl="cd apps/controls && PROJECT_DATABASE_URL='postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls' npx vitest run -t chain_step$n"
+  local plat="cd platform && PLATFORM_TEST_DATABASE_URL=$(tpg_dsn platform_rw platform) PLATFORM_TEST_MIGRATE_DATABASE_URL=$(tpg_dsn platform_migrator platform) uv run --extra dev pytest -q -p no:cacheprovider -m chain -k chain_step$n"
+  local ctrl="cd apps/controls && PROJECT_DATABASE_URL='postgresql://controls_rw:controls_rw@127.0.0.1:$PORT/{database}?schema=controls' PROJECT_MIGRATE_DATABASE_URL='postgresql://controls_migrator:controls_migrator@127.0.0.1:$PORT/{database}?schema=controls' npx vitest run -t chain_step$n"
   case $n in
     1|6) echo "$plat" ;;
-    2) echo "cd apps/qualification && PROJECT_DATABASE_URL='postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification' npx vitest run -t chain_step$n" ;;
+    2) echo "cd apps/qualification && PROJECT_DATABASE_URL='postgresql://qualification_rw:qualification_rw@127.0.0.1:$PORT/{database}?schema=qualification' PROJECT_MIGRATE_DATABASE_URL='postgresql://qualification_migrator:qualification_migrator@127.0.0.1:$PORT/{database}?schema=qualification' npx vitest run -t chain_step$n" ;;
     3) echo "cd apps/control-objectives && DATABASE_URL=postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform PROJECT_DATABASE_URL='postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/{database}' uv run pytest -q -p no:cacheprovider -m chain -k chain_step$n" ;;
     # the label narrows the run to the chain module (the whole suite's other DB tests need a test database)
     # The engine runs in configurator mode, as the stack runs it (project databases, the door).
-    4) echo "cd apps/backend && AISC_DEPLOYMENT=configurator AUTH_ENABLED=true DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
+    4) echo "cd apps/backend && AISC_DEPLOYMENT=configurator AUTH_ENABLED=true DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw DB_MIGRATE_USER=engine_migrator DB_MIGRATE_PASSWORD=engine_migrator DB_HOST=127.0.0.1 DB_PORT=$PORT DB_SCHEMA=engine PYTHONPATH=$SHARED_PYTHONPATH .venv/bin/python manage.py test aisc_backend.tests.test_chain --tag chain -k chain_step$n" ;;
     5|7) echo "$ctrl" ;;
     8) echo "uv run --quiet --no-project --with pytest --with pyyaml python -m pytest -q -p no:cacheprovider scripts/pipeline_chain/test_dashboard_queries.py" ;;
   esac
@@ -172,7 +173,8 @@ apply_break() { # after-step
     qualification_fk:1) drop_fk_into_project_system qualification.qualification ;;
     co_fk:1)            drop_fk_into_project_system control_objectives.project ;;
     card_component:2)   tpg_su "$db" -c "DELETE FROM qualification.card_component" ;;
-    engine_stamp:4)     tpg_su "$db" -c "UPDATE engine.aisc_backend_evaluation SET system_id = NULL" ;;
+    # a run's card version is fixed by a guard trigger: only the superuser, skipping triggers, takes it away
+    engine_stamp:4)     tpg_su "$db" -c "SET session_replication_role = replica; UPDATE engine.aisc_backend_evaluation SET system_id = NULL" ;;
     controls_stamp:7)   tpg_su "$db" -c "UPDATE controls.submission_answer SET system_version_pid = NULL, system_version_number = NULL" ;;
   esac
 }

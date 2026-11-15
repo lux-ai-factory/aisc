@@ -95,17 +95,35 @@ tpg_dsn() { # role, db, [password]
 
 # init/platform-db.sql and init/project-databases.sql, as the superuser, as
 # the image's initdb and the postgres-setup service run them.
+# A tree that has the owner roles (init/owner-roles.sql) also gets them, then
+# init/project-database-setup.sql in template1, in postgres-setup's order.
 tpg_init_platform() { # tree (a checkout root holding init/)
   local tree=$1
   tpg_su postgres -f - < "$tree/init/platform-db.sql" >/dev/null
   tpg_su platform -f - < "$tree/init/project-databases.sql" >/dev/null
+  if [ -f "$tree/init/owner-roles.sql" ]; then
+    tpg_su platform -f - < "$tree/init/owner-roles.sql" >/dev/null
+    tpg_su template1 -f - < "$tree/init/project-database-setup.sql" >/dev/null
+  fi
+}
+
+# The role the platform migrates and provisions as: platform_migrator once the
+# owner roles exist (its sessions act as platform_owner), platform_rw on a
+# cluster set up from an older tree.
+tpg_platform_role() {
+  if [ "$(tpg_su platform -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'platform_migrator'")" = 1 ]; then
+    echo platform_migrator
+  else
+    echo platform_rw
+  fi
 }
 
 # Apply one platform migration the way platform_service.migrate does: in one
-# transaction as platform_rw, recorded in core.schema_migration.
+# transaction as the platform's migrating role, recorded in core.schema_migration.
 tpg_platform_migration() { # db, file
-  local db=$1 file=$2 name
+  local db=$1 file=$2 name role
   name=$(basename "$file")
+  role=$(tpg_platform_role)
   {
     echo "SET search_path = core;"
     echo "CREATE TABLE IF NOT EXISTS core.schema_migration (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());"
@@ -114,7 +132,7 @@ tpg_platform_migration() { # db, file
     echo ";"
     echo "INSERT INTO core.schema_migration (name) VALUES ('$name');"
     echo "COMMIT;"
-  } | tpg_as "$db" platform_rw -f -
+  } | tpg_as "$db" "$role" -f -
 }
 
 # A database-scoped role setting (search_path) is keyed by database, so a copy
@@ -130,7 +148,7 @@ tpg_copy_db() { # template, new
 }
 
 # A project's database, made by the platform's own code (python -m platform_service.projectdb provision, as
-# platform_rw): created, every pending file of the project template applied and tracked in
+# platform_migrator, or platform_rw on a cluster without the owner roles): created, every pending file of the project template applied and tracked in
 # provision.template_migration, and ledger.platform_action filled from the registry, exactly as the platform
 # provisions one. Idempotent: a second call applies only files added since. Needs uv (the platform's Python
 # environment) on the host. The cluster needs init/project-databases.sql first (tpg_init_platform): templates
@@ -142,5 +160,5 @@ tpg_project_db() { # pid
     echo "tpg_project_db: not a project pid: '${1:-}'" >&2; return 1
   fi
   (cd "$TPG_ROOT/platform" && uv run --quiet python -m platform_service.projectdb provision "$pid" \
-     --dsn "$(tpg_dsn platform_rw platform)")
+     --dsn "$(tpg_dsn "$(tpg_platform_role)" platform)")
 }
