@@ -309,6 +309,9 @@ services:
     environment:
       # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
       PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
+      # the migrations, as controls_migrator (init/owner-roles.sql), acting as controls_owner: controls-migrate
+      # and a project made later, at its first open; every other query is controls_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROLS_PROJECT_MIGRATE_DATABASE_URL:-postgresql://controls_migrator:${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
       # the env file's launcher address is the usual port's; this one follows the install's, as controls-web's
       LAUNCHER_URL: ${LAUNCHER_EXTERNAL_URL:-http://localhost:8100/}
     depends_on:
@@ -333,6 +336,9 @@ services:
     environment:
       # over the env file's development default: controls_rw's generated password (init/controls-role.sql)
       PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
+      # the migrations, as controls_migrator (init/owner-roles.sql), acting as controls_owner: controls-migrate
+      # and a project made later, at its first open; every other query is controls_rw's
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROLS_PROJECT_MIGRATE_DATABASE_URL:-postgresql://controls_migrator:${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2}
       # The ledger: each change records its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}
       # The gateway's token, verified here (src/vendor/aisc-ledger/gatewayToken.ts): the request id the

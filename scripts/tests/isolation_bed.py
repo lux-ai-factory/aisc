@@ -232,7 +232,8 @@ def migrate_modules(bed: IsoBed) -> None:
     # controls
     if "controls" not in bed.problems:
         _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
-             {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls")},
+             {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls"),
+              "PROJECT_MIGRATE_DATABASE_URL": bed.template("controls_migrator", "?schema=controls")},
              "controls migrate-projects.mjs")
     # qualification: every project database (no form library: forms are per project)
     q = ROOT / "apps/qualification/scripts/migrate-projects.mjs"
