@@ -76,7 +76,16 @@ WITH listed (table_name, trigger_name) AS (VALUES
     ('control_objectives.mapping_archive', 'mapping_archive_is_never_truncated'),
     ('report_composer.layout_revision', 'layout_revision_is_append_only'),
     ('report_composer.layout_revision', 'layout_revision_is_never_truncated'),
-    ('engine.aisc_backend_evaluation', 'evaluation_system_is_fixed')
+    ('engine.aisc_backend_evaluation', 'evaluation_system_is_fixed'),
+    ('engine.aisc_backend_measurement', 'aisc_backend_measurement_append_only'),
+    ('engine.aisc_backend_measurement', 'aisc_backend_measurement_no_truncate'),
+    ('engine.aisc_backend_observation', 'aisc_backend_observation_append_only'),
+    ('engine.aisc_backend_observation', 'aisc_backend_observation_no_truncate'),
+    ('engine.aisc_backend_ledgeroutbox', 'ledgeroutbox_only_marks'),
+    ('engine.aisc_backend_ledgeroutbox', 'ledgeroutbox_no_delete'),
+    ('engine.aisc_backend_ledgeroutbox', 'ledgeroutbox_no_truncate'),
+    ('engine.aisc_backend_pluginconfig', 'pluginconfig_is_fixed'),
+    ('engine.aisc_backend_pluginconfig', 'pluginconfig_no_truncate')
 ), unlisted AS (
     DELETE FROM aisc_setup.guard_trigger g
      WHERE NOT EXISTS (SELECT 1 FROM listed l WHERE l.table_name = g.table_name AND l.trigger_name = g.trigger_name)

@@ -115,6 +115,8 @@ for pid in sys.argv[3:]:
 """
 
 CARD = "c" + "0" * 31
+#: a key in a plugin configuration saved before the upgrade (a fake value)
+SAVED_KEY = "lb-0123456789abcdef"
 #: a row of each module that names a card version, written as each module's runtime role before the upgrade
 MODULE_SEED = {
     "qualification_rw": f"""
@@ -136,6 +138,33 @@ MODULE_SEED = {
              VALUES ('a1', 'Card', '', now(), now(), '{V1}');""",
     "report_composer_rw": """
         INSERT INTO report_composer.layout (name, created_by, updated_by) VALUES ('Kept layout', 'alice', 'alice');""",
+    # a finished run with a measure, a saved plugin configuration and a queued ledger event
+    "engine_rw": f"""
+        INSERT INTO engine.aisc_backend_project (pid, name, description, status, created_at)
+             VALUES (gen_random_uuid(), 'seeded', '', 'Created', now());
+        INSERT INTO engine.aisc_backend_plugin (pid, name, description, created_at, package_name, version,
+               display_name, project_id, enabled)
+             SELECT gen_random_uuid(), 'A', '', now(), 'aisc-plugin-a', '0.1.0', 'A', id, true
+               FROM engine.aisc_backend_project WHERE name = 'seeded';
+        INSERT INTO engine.aisc_backend_pluginconfig (pid, name, description, created_at, plugin_id, config)
+             SELECT gen_random_uuid(), 'saved', '', now(), id, '{{"api_key": "{SAVED_KEY}", "tokens": 512}}'
+               FROM engine.aisc_backend_plugin WHERE name = 'A';
+        INSERT INTO engine.aisc_backend_evaluation (pid, status, project_id, system_id, created_at)
+             SELECT gen_random_uuid(), 'Done', id, '{V1}', now() FROM engine.aisc_backend_project
+              WHERE name = 'seeded';
+        INSERT INTO engine.aisc_backend_observation (pid, name, description, created_at, observer, tool,
+               evaluation_id)
+             SELECT gen_random_uuid(), 'seeded', '', now(), 'AISC System', 'A', id FROM engine.aisc_backend_evaluation
+              WHERE system_id = '{V1}';
+        INSERT INTO engine.aisc_backend_metric (pid, name, description, created_at, type_spec)
+             VALUES (gen_random_uuid(), 'accuracy', '', now(), 'float');
+        INSERT INTO engine.aisc_backend_measurement (pid, name, description, created_at, unit, time, direction,
+               score, error, uncertainty, observation_id, metric_id, dimensions)
+             SELECT gen_random_uuid(), 'accuracy', '', now(), 'N/A', now(), '', 0.75, 'N/A', 0, o.id, m.id, '{{}}'
+               FROM engine.aisc_backend_observation o, engine.aisc_backend_metric m
+              WHERE o.name = 'seeded' AND m.name = 'accuracy';
+        INSERT INTO engine.aisc_backend_ledgeroutbox (project_pid, event, queued_at)
+             VALUES ('{A}', '{{"action": "engine.plugin.configured"}}', now());""",
 }
 
 SEED = f"""
@@ -413,3 +442,48 @@ def test_the_platform_drops_a_project_database_an_app_still_holds(bed):
         assert bed.scalar("platform", f"SELECT count(*) FROM pg_database WHERE datname = '{DB_B}'") == "0"
     finally:
         held.close()
+
+
+def test_a_run_is_recorded_again_and_its_results_are_kept_as_they_were(bed):
+    """Re-running an evaluation writes new results; the results of the run before stay as they were."""
+    assert _as(bed, DB_A, "engine_rw", """
+        BEGIN;
+        INSERT INTO engine.aisc_backend_observation (pid, name, description, created_at, observer, tool,
+               evaluation_id)
+             SELECT gen_random_uuid(), 'again', '', now(), 'AISC System', 'A', evaluation_id
+               FROM engine.aisc_backend_observation WHERE name = 'seeded';
+        INSERT INTO engine.aisc_backend_measurement (pid, name, description, created_at, unit, time, direction,
+               score, error, uncertainty, observation_id, metric_id, dimensions)
+             SELECT gen_random_uuid(), 'accuracy', '', now(), 'N/A', now(), '', 0.8, 'N/A', 0, o.id, m.metric_id, '{}'
+               FROM engine.aisc_backend_observation o, engine.aisc_backend_measurement m WHERE o.name = 'again';
+        ROLLBACK;""") == ""
+    assert "permission denied" in _as(bed, DB_A, "engine_rw", "UPDATE engine.aisc_backend_measurement SET score = 0")
+    assert "permission denied" in _as(bed, DB_A, "engine_rw", "DELETE FROM engine.aisc_backend_observation")
+    for sql in ("UPDATE engine.aisc_backend_measurement SET score = 0", "DELETE FROM engine.aisc_backend_observation",
+                "TRUNCATE engine.aisc_backend_measurement"):
+        assert "append-only" in _as(bed, DB_A, "engine_migrator", sql), sql
+
+
+def test_the_ledger_outbox_is_written_and_marked_once_through_its_functions(bed):
+    assert "permission denied" in _as(bed, DB_A, "engine_rw", f"""
+        INSERT INTO engine.aisc_backend_ledgeroutbox (project_pid, event, queued_at) VALUES ('{A}', '{{}}', now())""")
+    assert _as(bed, DB_A, "engine_rw", f"""
+        BEGIN;
+        SELECT engine.ledger_outbox_append('{A}', '{{"action": "engine.run.requested"}}');
+        SELECT 1 / engine.ledger_outbox_mark(id, true, NULL)::int FROM engine.aisc_backend_ledgeroutbox
+         WHERE event ->> 'action' = 'engine.plugin.configured';
+        SELECT 1 / (1 - engine.ledger_outbox_mark(id, false, 422)::int) FROM engine.aisc_backend_ledgeroutbox
+         WHERE event ->> 'action' = 'engine.plugin.configured';
+        ROLLBACK;""") == ""
+    assert "never removed" in _as(bed, DB_A, "engine_migrator", "DELETE FROM engine.aisc_backend_ledgeroutbox")
+
+
+def test_a_saved_configuration_is_kept_and_changes_only_by_masking(bed):
+    assert _as(bed, DB_A, "engine_rw", """
+        BEGIN;
+        UPDATE engine.aisc_backend_pluginconfig SET name = 'renamed', description = 'd';
+        UPDATE engine.aisc_backend_pluginconfig SET config = config - 'api_key';
+        ROLLBACK;""") == ""
+    assert "fixed" in _as(bed, DB_A, "engine_rw",
+                          "UPDATE engine.aisc_backend_pluginconfig SET config = jsonb_set(config, '{tokens}', '9')")
+    assert "never removed" in _as(bed, DB_A, "engine_migrator", "DELETE FROM engine.aisc_backend_pluginconfig")
