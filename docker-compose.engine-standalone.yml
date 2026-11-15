@@ -86,8 +86,8 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY}
       # what a plugin may reach through the worker's egress proxy (aisc_eval/egress.py): host, host:port or
-      # .domain, comma separated; without the platform, nothing else
-      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS:-}
+      # .domain, comma separated; unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none
+      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
     # only to set, at start, the firewall that keeps plugin tests behind the egress proxy
     cap_add:
       - NET_ADMIN

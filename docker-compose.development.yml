@@ -248,7 +248,8 @@ services:
       # A plugin reaches the network only through the worker's egress proxy (aisc_eval/egress.py): the platform,
       # its helpers' endpoints and these hosts, comma separated (host, host:port, or .domain for the domain and
       # every host under it, public addresses only), for example a dataset or model a plugin downloads at run time.
-      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS:-}
+      # Unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none.
+      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
     depends_on:
       - aisc-backend
       - rabbitmq
