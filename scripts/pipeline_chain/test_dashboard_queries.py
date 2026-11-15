@@ -134,6 +134,7 @@ def _standalone() -> Ctx:
     env = dict(os.environ, AISC_DEPLOYMENT="configurator",
                DB_ENGINE="django.db.backends.postgresql", DB_NAME="platform",
                DB_USER="engine_rw", DB_PASSWORD="engine_rw", DB_HOST="127.0.0.1",
+               DB_MIGRATE_USER="engine_migrator", DB_MIGRATE_PASSWORD="engine_migrator",
                DB_PORT=str(t.port), DB_SCHEMA="engine", PYTHONPATH=SHARED_PYTHONPATH)
     subprocess.run([str(ROOT / "apps/backend/.venv/bin/python"), "manage.py", "migrate_projects"],
                    cwd=ROOT / "apps/backend", env=env, check=True, capture_output=True)
@@ -144,8 +145,8 @@ def _standalone() -> Ctx:
                                 + r.stderr.strip().splitlines()[-1])
             return ctx
 
-    # P's controls, with the controls migrations
-    menv = dict(os.environ, DATABASE_URL=t.dsn("controls_rw", db) + "?schema=controls")
+    # P's controls, with the controls migrations, as the controls migrator runs them
+    menv = dict(os.environ, DATABASE_URL=t.dsn("controls_migrator", db) + "?schema=controls")
     subprocess.run([str(ROOT / "apps/controls/node_modules/.bin/prisma"), "migrate", "deploy"],
                    cwd=ROOT / "apps/controls", env=menv, check=True, capture_output=True)
     if not _has_column(t, db, "controls", "submission_answer", "system_version_number"):
