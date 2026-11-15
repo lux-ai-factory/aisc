@@ -52,7 +52,7 @@ NEW_TEMPLATES = ("0006_project_system.sql", "0007_qualification.sql", "0008_cont
                  "0009_engine.sql", "0010_report_composer.sql")
 #: the one reader list for report_ro and dashboard_ro
 READERS = {
-    "project": ["system"],
+    "project": ["system", "saved_system"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
                       "question", "questionnaire", "questionnaire_version", "questionnaire_version_item"],

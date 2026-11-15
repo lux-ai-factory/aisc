@@ -181,7 +181,8 @@ def test_the_platform_connection_reads_only_core(iso_client, auth, spy):
         (on_platform if db == "platform" else on_alpha if db == pdb(A) else set()).update(tables_named(sql))
     allowed = {"core.project", "core.project_member"}
     assert on_platform <= allowed, on_platform - allowed
-    assert {"project.system", "report_composer.layout", "report_composer.template",
+    # the versions as the composer offers them: the saved ones (project.saved_system, a view of project.system)
+    assert {"project.saved_system", "report_composer.layout", "report_composer.template",
             "report_composer.generated_report"} <= on_alpha, on_alpha
 
 

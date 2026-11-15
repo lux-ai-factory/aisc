@@ -46,7 +46,7 @@ DECLARE
     -- exhaustive: the one reader list, for report_ro and dashboard_ro; it must equal READER_TABLES of
     -- scripts/verify-project-databases.sh (scripts/tests/test_report_grants.py checks)
     listed text[] := ARRAY[
-        'project.system',
+        'project.system', 'project.saved_system',
         'target.target',
         'controls.checklist', 'controls.checklist_question', 'controls.source', 'controls.submission',
         'controls.submission_answer', 'controls.submission_answer_file',

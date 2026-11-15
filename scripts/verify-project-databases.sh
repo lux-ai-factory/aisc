@@ -135,7 +135,7 @@ MODULES = {"qualification": "qualification_rw", "control_objectives": "control_o
 READERS = ("report_ro", "dashboard_ro")
 #: what the readers may read, exhaustive
 READER_TABLES = {
-    "project": ["system"],
+    "project": ["system", "saved_system"],
     "controls": ["checklist", "checklist_question", "source", "submission", "submission_answer", "submission_answer_file"],
     "qualification": ["qualification", "qualification_answer", "qualification_risk", "knowledge_graph",
                       "card_component", "question_set", "question_set_version", "question_set_version_item",
