@@ -87,7 +87,7 @@ def test_the_platform_names_its_internal_url_for_the_protocol_endpoints_and_the_
     services, _ = config()
     env = services["platform"]["environment"]
     assert env["PLATFORM_INTERNAL_URL"] == "http://platform:8000"
-    assert int(env["CONNECTIONS_RUN_KEY_TTL_S"]) == 43200
+    assert int(env["CONNECTIONS_RUN_KEY_TTL_S"]) == 24600
 
 
 def test_the_eval_worker_gets_the_platform_url_the_token_and_the_allowlist():

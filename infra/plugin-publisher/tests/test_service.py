@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import subprocess
 import threading
@@ -75,7 +76,8 @@ def test_publish_builds_checks_and_uploads_one_repo(client, github, index, build
     status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
 
     assert status == 200
-    assert body == {"package": PACKAGE, "version": "1.2.0", "published": True, "replaced": False}
+    assert body == {"package": PACKAGE, "version": "1.2.0", "published": True,
+                    "sha256": hashlib.sha256(build.content).hexdigest()}
     assert build.calls == 1
     assert index.uploads == [["aisc_plugin_demo-1.2.0-py3-none-any.whl"]]
     # the clone and the build lived in a temporary folder that is gone
@@ -90,36 +92,21 @@ def test_a_version_on_the_index_with_the_same_content_is_not_uploaded(client, gi
     status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
 
     assert status == 200
-    assert body == {"package": PACKAGE, "version": "1.1.0", "published": False, "replaced": False}
+    assert body == {"package": PACKAGE, "version": "1.1.0", "published": False,
+                    "sha256": hashlib.sha256(b"wheel").hexdigest()}
     assert build.calls == 1
     assert index.uploads == []
 
 
-def test_a_version_on_the_index_whose_content_changed_is_replaced(client, github, index, build, caplog):
-    github(REPO, {"main": (PACKAGE, "1.1.0")})
-    index.versions[PACKAGE] = {"1.1.0"}
-    index.files[(PACKAGE, "1.1.0")] = b"wheel"
-    build.content = b"wheel v2"
-
-    with caplog.at_level(logging.INFO):
-        status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
-
-    assert status == 200
-    assert body == {"package": PACKAGE, "version": "1.1.0", "published": True, "replaced": True}
-    assert index.uploads == [["aisc_plugin_demo-1.1.0-py3-none-any.whl"]]
-    assert index.files[(PACKAGE, "1.1.0")] == b"wheel v2"
-    assert f"replaced {PACKAGE} 1.1.0 on the index: its content changed" in caplog.text
-
-
-def test_a_version_listed_on_the_index_whose_wheel_cannot_be_read_is_uploaded(client, github, index, build):
+def test_a_version_listed_on_the_index_whose_wheel_cannot_be_read_is_refused(client, github, index, build):
     github(REPO, {"main": (PACKAGE, "1.1.0")})
     index.versions[PACKAGE] = {"1.1.0"}
 
     status, body = client.post("/publish", {"repo": REPO, "package": PACKAGE})
 
-    assert status == 200
-    assert body == {"package": PACKAGE, "version": "1.1.0", "published": True, "replaced": True}
-    assert index.uploads == [["aisc_plugin_demo-1.1.0-py3-none-any.whl"]]
+    assert status == 502
+    assert "could not be read to compare" in body["detail"] and "nothing was published" in body["detail"]
+    assert index.uploads == []
 
 
 def test_a_build_of_another_package_is_refused_before_upload(client, github, index):
@@ -291,26 +278,6 @@ def test_the_interface_is_published_at_start_unless_on_the_index_with_the_same_c
                         build=build, workdir=workdir, sleep=clock.sleep, clock=clock)
     failing.publish_interface()  # logged, never raised
     assert start(failing).get("/health", token=None) == (200, {"interface_published": False})
-
-
-def test_an_interface_whose_content_changed_is_replaced_at_start(interface, index, build, workdir, caplog):
-    index.versions["aisc-plugin-interface"] = {"0.2.8"}
-    index.files[("aisc-plugin-interface", "0.2.8")] = b"wheel"
-    build.content = b"wheel v2"
-
-    def publisher():
-        return Publisher(upload=index.upload, versions_on_index=index.versions_on_index,
-                         wheel_on_index=index.wheel_on_index, build=build, workdir=workdir)
-
-    with caplog.at_level(logging.INFO):
-        publisher().publish_interface()
-    assert index.uploads == [["aisc_plugin_interface-0.2.8-py3-none-any.whl"]]
-    assert "plugin interface aisc-plugin-interface 0.2.8 replaced on the index: its content changed" in caplog.text
-
-    again = publisher()
-    again.publish_interface()
-    assert len(index.uploads) == 1
-    assert again.interface_published is True
 
 
 def test_wheel_content_ignores_timestamps_and_member_order():

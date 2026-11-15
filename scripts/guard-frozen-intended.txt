@@ -29,7 +29,8 @@
 #   retire        a dataset deleted while evaluations used it is retired, not removed: it leaves the test data
 #                 list and the run forms, Show retired lists it with Restore
 #   launch        a relaunch keeps the last run's helper models (its judge); a refused launch says the engine's
-#                 reason once; with no connection for a helper role the run form sends the person to Connectivity
+#                 reason once; with no connection for a helper role the run form sends the person to Connectivity;
+#                 a launch is sent once: the button is off while it is sent and each click carries its own key
 #   testdata      Delete on test data asks first; a refused add or edit, or a file the engine could not store, is
 #                 said with the engine's reason and the dialog stays open
 #   filetypes     a dataset or model file picker offers only the extensions the engine takes for that type
@@ -66,9 +67,10 @@ webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place test
 webapp src/pages/PluginEvaluations.tsx reports, errors: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. Failed runs listed with their error
 webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words
 webapp src/pages/evaluationOutcome.test.ts errors: its tests
+webapp src/pages/failedTestReason.test.ts errors: every Failed test on a run's card says why, or that no reason was recorded
 webapp src/models/models.tsx errors, names, retire: a run's plugin entry carries error_message; a configuration carries its name; a component carries retired_at
 webapp src/pages/PluginEvaluations.noReport.test.ts reports: no source of the app links to /report any more
-webapp src/pages/PluginStartEvaluation.tsx wording, project, identity, retire, launch: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name; a retired dataset is not offered for a new run; the last run's helper models come back while the project still offers them; a refused launch says the engine's reason once
+webapp src/pages/PluginStartEvaluation.tsx wording, project, identity, retire, launch: the start button and its tooltip say Launch Evaluation (Create Evaluation upstream), the error toasts Failed to launch evaluation; selections saved per project; selections and the run name each plugin by package and name; a retired dataset is not offered for a new run; the last run's helper models come back while the project still offers them; a refused launch says the engine's reason once; Launch is off while a launch is sent and each click carries its own Idempotency-Key
 webapp src/pages/PluginStartEvaluation.launch.test.ts wording: the start button says Launch Evaluation
 webapp src/pages/PluginStartEvaluation.test.tsx project, identity: the saved selections are per project (start-eval-selections:<projectUUID>, keyed by package and name), so switching projects in one tab never restores another's
 webapp src/pages/PluginStartEvaluation.identity.test.tsx identity: two plugins of the same name are selected and run apart
@@ -108,6 +110,8 @@ webapp src/components/AISystemSettings.retire.test.tsx retire, testdata: Delete,
 webapp src/components/plugin/PluginEvaluationForm.retired.test.tsx retire: the run form offers no retired dataset
 webapp src/pages/PluginStartEvaluation.relaunch.test.tsx launch: a relaunch keeps the last run's judge
 webapp src/pages/PluginStartEvaluation.refusal.test.tsx launch: a refused launch says the engine's reason once
+webapp src/pages/launchOnce.ts launch: each launch carries its own Idempotency-Key, so a launch sent twice makes one run
+webapp src/pages/launchOnce.test.ts launch: its tests, and the Launch button is off while a launch is sent
 webapp src/components/plugin/PluginEvaluationForm.connectivity.test.tsx launch: the run form points to Connectivity for a helper role
 webapp src/components/AISystemSettings.saveFailures.test.tsx testdata: Delete asks first; refused saves say why and keep the dialog open
 webapp src/components/addProjectWizard.tsx filetypes: the dataset picker offers only the engine's dataset extensions (it took any file)

@@ -64,13 +64,19 @@ def _evaluation_plugin(run: str) -> str | None:
     return row["e"] if row else None
 
 
+#: record's default: the evaluation plugin is read from the run's pass when the call is recorded
+_FROM_THE_PASS = object()
+
+
 def record(pid, run: str, connection: str, door: str, request: dict, outcome: str, answer: dict | None,
-           error: dict | None, started_at: datetime, ended_at: datetime) -> dict:
+           error: dict | None, started_at: datetime, ended_at: datetime, evaluation_plugin=_FROM_THE_PASS) -> dict:
     """Append one call to its run's chain and give back the row as exported. Raises when it cannot (a value
-    jsonb cannot keep, among others: see `storable`)."""
+    jsonb cannot keep, among others: see `storable`). The doors pass the evaluation plugin they read when the
+    call opened: the pass may have ended by the time its answer comes back."""
     if outcome not in OUTCOMES:
         raise ValueError(f"outcome: one of {', '.join(OUTCOMES)}")
-    evaluation_plugin = _evaluation_plugin(run)
+    if evaluation_plugin is _FROM_THE_PASS:
+        evaluation_plugin = _evaluation_plugin(run)
     with projectdb.connect(pid) as conn:
         with conn.transaction():
             # one writer per run at a time, so seq and prev_hash follow each other

@@ -3,7 +3,9 @@
 - GET /health: {"interface_published": bool}, without a token;
 - GET /sources/{repo}: the branch, package and version at the head of that repo;
 - POST /publish {"repo", "package"}: fetch, build and check that one plugin, and upload it unless the index
-  already holds that version with the same content;
+  already holds that version: with the same content nothing is uploaded, with other content the publish is
+  refused (a version on the index is never replaced). The answer names the sha256 of the wheel the index serves
+  for that version;
 - POST /publish {"local": true, "package"}: the same for the folder of local_plugins/ (LOCAL_PLUGINS_DIR) that
   builds that package.
 
@@ -61,6 +63,15 @@ class Refused(Exception):
     def __init__(self, status: int, detail: str):
         super().__init__(detail)
         self.status, self.detail = status, detail
+
+
+class OnIndexWithOtherContent(Refused):
+    """The index holds this version with other content. The index never has a version replaced, so trying
+    again cannot help: the package needs a new version."""
+
+    def __init__(self, package: str, version: str):
+        super().__init__(409, f"{package} {version} is on the index with other content: give the plugin a new "
+                              "version; nothing was published")
 
 
 # What a build may see of the environment: a repo's build backend, setup.py and build requirements
@@ -227,9 +238,10 @@ def wheel_content(data: bytes) -> dict[str, str]:
 
 class Publisher:
     """Publishes one repo at a time per repo: a lock per repo, a build on every publish, and an upload
-    only when the index lacks that version or holds it with another content (builds are not byte for
-    byte reproducible, so wheels are compared member by member), so two installs of one plugin upload
-    it once and a change released without a version bump still reaches the index."""
+    only when the index lacks that version. A version already there is compared with the build member by
+    member (builds are not byte for byte reproducible): the same content is not uploaded again, so two
+    installs of one plugin upload it once; other content is refused, so a change released without a
+    version bump never replaces what earlier installs recorded."""
 
     def __init__(self, upload=twine_upload, versions_on_index=index_versions,
                  wheel_on_index=index_wheel, build=python_build, workdir=None,
@@ -270,10 +282,8 @@ class Publisher:
                 raise Refused(409, f"{repo} builds the package {name}, not {package}; "
                                    "nothing was published")
             with self._lock(repo):
-                published, replaced = self._build_and_publish(src, Path(tmp) / "dist", package, version, repo)
-        if replaced:
-            logger.info("replaced %s %s on the index: its content changed", package, version)
-        return {"package": package, "version": version, "published": published, "replaced": replaced}
+                published, sha256 = self._build_and_publish(src, Path(tmp) / "dist", package, version, repo)
+        return {"package": package, "version": version, "published": published, "sha256": sha256}
 
     def publish_local(self, package: str) -> dict:
         """publish, from the folder of local_plugins/ that builds `package` instead of a repo."""
@@ -290,15 +300,15 @@ class Publisher:
                 raise Refused(exc.status, exc.detail) from None
             name, version = read_project(src, label)
             with self._lock(f"local:{dist(package)}"):
-                published, replaced = self._build_and_publish(src, Path(tmp) / "dist", package, version, label)
-        if replaced:
-            logger.info("replaced %s %s on the index: its content changed", package, version)
-        return {"package": package, "version": version, "published": published, "replaced": replaced}
+                published, sha256 = self._build_and_publish(src, Path(tmp) / "dist", package, version, label)
+        return {"package": package, "version": version, "published": published, "sha256": sha256}
 
     def _build_and_publish(self, src: Path, out: Path, package: str, version: str,
-                           label: str) -> tuple[bool, bool]:
-        """Builds, checks, then uploads unless the index holds this version with the same wheel content:
-        (published, replaced), replaced meaning the version was on the index already."""
+                           label: str) -> tuple[bool, str]:
+        """Builds, checks, then uploads unless the index holds this version: (published, the sha256 of the wheel
+        the index serves for it). A version on the index with the same wheel content is not uploaded again; with
+        other content, or a wheel that cannot be read to compare, it is refused, since the index never has a
+        version replaced."""
         out.mkdir()
         with self._build_lock:
             # the build user's processes are stopped whether the build worked, failed or timed out;
@@ -324,10 +334,14 @@ class Publisher:
                 wheels = [p for p in built if p.name.endswith(".whl")]
                 if not wheels:
                     raise SourceError("build", label, "the build produced no wheel")
-                on_index = self._on_index(package, version)
-                if on_index and wheel_content(wheels[0].read_bytes()) == wheel_content(
-                        self.wheel_on_index(package, version) or b""):
-                    return False, False
+                if self._on_index(package, version):
+                    held = self.wheel_on_index(package, version)
+                    if held is None:
+                        raise Refused(502, f"{package} {version} is on the index but its wheel could not be read "
+                                           "to compare; nothing was published")
+                    if wheel_content(wheels[0].read_bytes()) != wheel_content(held):
+                        raise OnIndexWithOtherContent(package, version)
+                    return False, hashlib.sha256(held).hexdigest()
                 try:
                     self.upload(built)
                 except StepFailed as exc:
@@ -335,7 +349,7 @@ class Publisher:
                 except Exception as exc:
                     raise SourceError("upload", label, str(exc)) from None
                 logger.info("published %s", ", ".join(p.name for p in built))
-                return True, on_index
+                return True, hashlib.sha256(wheels[0].read_bytes()).hexdigest()
 
     def _stop_builds_quietly(self) -> None:
         try:
@@ -363,8 +377,9 @@ class Publisher:
         """Every run resolves the plugin interface from the index, so it is published at start
         unless that version is already there with the same content. A failure (devpi still starting, most often) is
         logged and tried again with a growing wait, for about INTERFACE_GIVE_UP_AFTER_S; /health
-        says interface_published false until it succeeds. Run in the background, it never holds
-        up the HTTP server."""
+        says interface_published false until it succeeds. That version on the index with other content is
+        never replaced: it is logged once, naming what to do, and not tried again (/health stays false). Run
+        in the background, it never holds up the HTTP server."""
         started, wait = self.clock(), INTERFACE_FIRST_WAIT_S
         while not self._publish_interface_once():
             if self.clock() - started + wait > INTERFACE_GIVE_UP_AFTER_S:
@@ -376,18 +391,20 @@ class Publisher:
             wait = min(wait * 2, INTERFACE_LONGEST_WAIT_S)
 
     def _publish_interface_once(self) -> bool:
+        """True when there is nothing more to try: published (or there with the same content), or there with
+        other content, which no retry changes."""
         path = Path(os.environ.get("INTERFACE_PATH") or "/interface")
         try:
             package, version = read_project(path, "the plugin interface")
             with self._lock(f"interface:{package}"):
                 with tempfile.TemporaryDirectory(dir=self.workdir, prefix="interface-") as tmp:
-                    _, replaced = self._build_and_publish(path, Path(tmp) / "dist", package, version,
-                                                          "the plugin interface")
-            if replaced:
-                logger.info("plugin interface %s %s replaced on the index: its content changed",
-                            package, version)
+                    self._build_and_publish(path, Path(tmp) / "dist", package, version, "the plugin interface")
             self.interface_published = True
             logger.info("plugin interface %s %s is on the index", package, version)
+            return True
+        except OnIndexWithOtherContent:
+            logger.error("plugin interface %s %s is on the index with other content, which stays: give the "
+                         "interface a new version (and move every pin to it)", package, version)
             return True
         except (SourceError, Refused) as exc:
             logger.error("%s: %s", exc, tail(getattr(exc, "output", "")))

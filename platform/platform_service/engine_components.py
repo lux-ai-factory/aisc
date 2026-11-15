@@ -13,6 +13,10 @@ import httpx
 PROJECT_HEADER = "X-AISC-Project"
 REQUEST_HEADER = "X-AISC-Request-Id"
 TIMEOUT_S = 20
+#: an install has the eval worker install the test and read its manifest (the engine never imports plugin code):
+#: a minute longer than the engine waits for the worker (its PLUGIN_MANIFEST_TIMEOUT_S, 900 by default), so the
+#: engine's named reason reaches the person when the worker does not answer
+INSTALL_TIMEOUT_S = 960
 
 
 class EngineUnavailable(RuntimeError):
@@ -51,14 +55,15 @@ def _headers(pid, token: str, cite_request: bool) -> dict:
     return headers
 
 
-def _call(method: str, path: str, pid, token: str, body: dict | None = None, cite_request: bool = False) -> dict:
+def _call(method: str, path: str, pid, token: str, body: dict | None = None, cite_request: bool = False,
+          timeout_s: float = TIMEOUT_S) -> dict:
     try:
-        r = httpx.request(method, f"{_base()}{path}", json=body, timeout=TIMEOUT_S,
+        r = httpx.request(method, f"{_base()}{path}", json=body, timeout=timeout_s,
                           headers=_headers(pid, token, cite_request))
     except httpx.HTTPError as exc:
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
-        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code)
+        raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code, _detail_of(r))
     try:
         return r.json()
     except ValueError:
@@ -84,13 +89,16 @@ def engine_project(pid, token: str) -> str:
     return str(_call("POST", f"/api/v1/projects/for-platform/{pid}", pid, token)["pid"])
 
 
-def install_plugin(pid, token: str, package: str, version: str, slug: str) -> None:
+def install_plugin(pid, token: str, package: str, version: str, slug: str,
+                   wheel_sha256: str | None = None) -> None:
     """Install a test into this platform project's engine side, at this version, recording the catalogue
-    entry it came from: the engine's own POST /api/v1/plugins, which takes the admin role."""
+    entry it came from: the engine's own POST /api/v1/plugins, which takes the admin role. `wheel_sha256`, the
+    hash of the wheel the publisher published, makes the engine install that wheel and no other."""
     engine_pid = engine_project(pid, token)
-    _call("POST", "/api/v1/plugins", pid, token, {"package_name": package, "version": version,
-                                                  "project_uuid": engine_pid, "catalogue_slug": slug},
-          cite_request=True)
+    body = {"package_name": package, "version": version, "project_uuid": engine_pid, "catalogue_slug": slug}
+    if wheel_sha256:
+        body["wheel_sha256"] = wheel_sha256
+    _call("POST", "/api/v1/plugins", pid, token, body, cite_request=True, timeout_s=INSTALL_TIMEOUT_S)
 
 
 def components(pid, token: str, engine_pid: str | None = None) -> list[dict]:

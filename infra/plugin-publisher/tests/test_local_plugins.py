@@ -1,6 +1,7 @@
 """A plugin of the install's own (a folder in local_plugins/, mounted read-only at LOCAL_PLUGINS_DIR) is published
 like a repo: found by the package its pyproject.toml names, built from a copy without the folder's git, virtual
 environment or old build output, checked and uploaded."""
+import hashlib
 import os
 from pathlib import Path
 
@@ -35,7 +36,8 @@ def test_a_local_plugin_is_built_from_its_folder_and_uploaded(client, local_plug
     local_plugins("homegrown")
     status, body = client.post("/publish", {"local": True, "package": PACKAGE})
     assert status == 200, body
-    assert body == {"package": PACKAGE, "version": "0.3.0", "published": True, "replaced": False}
+    assert body == {"package": PACKAGE, "version": "0.3.0", "published": True,
+                    "sha256": hashlib.sha256(build.content).hexdigest()}
     assert index.uploads == [["aisc_plugin_homegrown-0.3.0-py3-none-any.whl"]]
     assert list(workdir.iterdir()) == []
 

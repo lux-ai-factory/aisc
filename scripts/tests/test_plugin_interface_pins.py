@@ -1,4 +1,4 @@
-"""The engine's Python packages (backend, eval worker, plugin-manager) ask for plugin interface 0.4.0 and their
+"""The engine's Python packages (backend, eval worker, plugin-manager) ask for plugin interface 0.5.0 and their
 locks take it from one wheel committed under each repo's vendor/, never from PyPI (whose latest, 0.3.0, has
 no assesses, helpers or connections). The backend and the eval worker also take the plugin-manager and
 aisc_identity from wheels under vendor/, so an image built from their Dockerfile alone holds this checkout's
@@ -21,7 +21,7 @@ from conftest import ROOT
 
 INTERFACE = "aisc-plugin-interface"
 INTERFACE_SRC = ROOT / "shared/plugin-interface"
-WHEEL = "aisc_plugin_interface-0.4.0-py3-none-any.whl"
+WHEEL = "aisc_plugin_interface-0.5.0-py3-none-any.whl"
 WHEEL_SOURCE = {"path": f"vendor/{WHEEL}"}
 
 #: the three packages of the engine that name the interface
@@ -98,9 +98,9 @@ def _assert_lock_takes_vendored(repo: Path, name: str, version: str, wheel: str)
 # the plugin interface
 
 @pytest.mark.parametrize("package", ENGINE_PACKAGES)
-def test_each_engine_package_pins_the_interface_at_0_4_0(package):
+def test_each_engine_package_pins_the_interface_at_0_5_0(package):
     deps = _toml(ROOT / package / "pyproject.toml")["project"]["dependencies"]
-    assert [d for d in deps if _name(d) == INTERFACE] == ["aisc-plugin-interface>=0.4.0"]
+    assert [d for d in deps if _name(d) == INTERFACE] == ["aisc-plugin-interface>=0.5.0"]
 
 
 @pytest.mark.parametrize("package", ENGINE_PACKAGES)
@@ -111,8 +111,8 @@ def test_each_engine_package_takes_the_interface_from_its_vendored_wheel(package
 
 
 @pytest.mark.parametrize("package", ENGINE_PACKAGES)
-def test_each_lock_names_0_4_0_from_vendor_and_never_pypi(package):
-    _assert_lock_takes_vendored(ROOT / package, INTERFACE, "0.4.0", WHEEL)
+def test_each_lock_names_0_5_0_from_vendor_and_never_pypi(package):
+    _assert_lock_takes_vendored(ROOT / package, INTERFACE, "0.5.0", WHEEL)
 
 
 def test_the_three_vendored_wheels_are_one_file():
@@ -132,7 +132,7 @@ def test_the_vendored_wheel_is_the_submodule():
     differ = sorted(n for n in source if source[n] != packed[n])
     assert not differ, f"the wheel's copy differs from the submodule's: {differ}"
     meta = _wheel_metadata(wheel)
-    assert re.search(r"^Version: 0\.4\.0$", meta, re.M)
+    assert re.search(r"^Version: 0\.5\.0$", meta, re.M)
     requires = set(re.findall(r"^Requires-Dist: (.+)$", meta, re.M))
     expected = set(_toml(INTERFACE_SRC / "pyproject.toml")["project"]["dependencies"])
     assert expected == {"pydantic>=2.13.5", "rich>=15.0.0"}
@@ -194,11 +194,11 @@ def test_the_vendored_local_wheel_is_this_checkouts_code(name):
     assert not differ, f"the wheel's copy differs from {folder.relative_to(ROOT)}: {differ}"
 
 
-def test_the_vendored_plugin_manager_asks_for_interface_0_4_0():
+def test_the_vendored_plugin_manager_asks_for_interface_0_5_0():
     wheel = ROOT / "apps/backend/vendor" / _local_wheel("aisc-plugin-manager")
     assert wheel.is_file(), f"apps/backend/vendor/{wheel.name} is missing"
     requires = re.findall(r"^Requires-Dist: (.+)$", _wheel_metadata(wheel), re.M)
-    assert [r for r in requires if _name(r) == INTERFACE] == ["aisc-plugin-interface>=0.4.0"]
+    assert [r for r in requires if _name(r) == INTERFACE] == ["aisc-plugin-interface>=0.5.0"]
 
 
 def test_the_plugin_manager_has_a_version_of_its_own():

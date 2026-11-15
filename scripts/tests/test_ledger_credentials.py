@@ -25,10 +25,11 @@ HOLDERS = {
 }
 #: Credentials a process that runs plugin code may hold anyway, and through which service only.
 PLUGIN_HOLDER_ACCEPTED = {"ENGINE_IMMUDB_PASSWORD": {"aisc-backend"}}
-#: Processes that run or import plugin code: the eval worker runs it, the engine backend imports
-#: plugin packages to read their configuration (shared/plugin-manager loader), and the publisher runs a
-#: plugin repo's build code (its build backend, setup.py) when it builds it.
-RUNS_PLUGINS = {"aisc-eval-worker", "plugin-publisher", "aisc-eval-flower", "aisc-backend"}
+#: Processes that run or import plugin code: the eval worker runs it (its second process reads manifests and runs
+#: form hooks), the engine backend imports plugin packages to read their configuration (shared/plugin-manager
+#: loader), and the publisher runs a plugin repo's build code (its build backend, setup.py) when it builds it.
+RUNS_PLUGINS = {"aisc-eval-worker", "aisc-eval-declarations-worker", "plugin-publisher", "aisc-eval-flower",
+                "aisc-backend"}
 
 
 def services() -> dict:

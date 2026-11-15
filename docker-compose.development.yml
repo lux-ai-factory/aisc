@@ -206,13 +206,13 @@ services:
     # The image's own check pings "celery@$$HOSTNAME", which in a Dockerfile is the shell's pid
     # followed by the word HOSTNAME, with a 3s timeout, so it never passes. This pings the worker
     # by its real name and gives it 20s.
-    healthcheck:
+    healthcheck: &eval-worker-healthcheck
       test: ["CMD-SHELL", "celery --app aisc_eval.celery_app inspect ping -t 20 -d \"celery@$${HOSTNAME}\""]
       interval: 30s
       timeout: 30s
       retries: 3
       start_period: 30s
-    environment:
+    environment: &eval-worker-env
       # Manage -> Connections: a plugin process inherits these and resolves the connection it was
       # given through the platform's internal route (aisc_plugin_interface.connections); the
       # answer carries the project's network rule too, so the worker has no allowlist of its own.
@@ -236,22 +236,91 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       # decrypts the plugin settings the engine stores (aisc_eval/utils/encryption.py); never passed to a plugin
       ENGINE_SECRETS_KEY: ${ENGINE_SECRETS_KEY:?run scripts/secrets.sh first}
+      # Each plugin's own limits (aisc_eval/plugin_process.py plugin_limits), read at each run: address space,
+      # processes and threads of one test (each runs as a user of its own), the largest file it may write,
+      # the total of its output files, and the cores its CPU time is counted for (the test's soft time limit
+      # on each). Set in env.local and recreate the worker to change them.
+      PLUGIN_MAX_MEMORY_MB: ${PLUGIN_MAX_MEMORY_MB:-16384}
+      PLUGIN_MAX_PROCESSES: ${PLUGIN_MAX_PROCESSES:-400}
+      PLUGIN_MAX_FILE_MB: ${PLUGIN_MAX_FILE_MB:-8192}
+      PLUGIN_OUTPUT_MAX_MB: ${PLUGIN_OUTPUT_MAX_MB:-1024}
+      PLUGIN_CPU_CORES: ${PLUGIN_CPU_CORES:-4}
+      # A plugin reaches the network only through the worker's egress proxy (aisc_eval/egress.py): the platform,
+      # its helpers' endpoints and these hosts, comma separated (host, host:port, or .domain for the domain and
+      # every host under it, public addresses only), for example a dataset or model a plugin downloads at run time.
+      # Unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none.
+      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
+      # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
+      # never overlapping, since the kernel counts a uid's processes across containers
+      PLUGIN_RUN_UIDS: "10100-10199"
     depends_on:
       - aisc-backend
       - rabbitmq
       - redis
-    # plugins run as an unprivileged user (aisc_eval/plugin_process.py): nothing in the image may raise
+    # The worker's size: EVAL_WORKER_CONCURRENCY plugins at a time, in a container of EVAL_WORKER_MEM_LIMIT and
+    # EVAL_WORKER_CPUS; every process and thread inside counts against pids_limit.
+    mem_limit: ${EVAL_WORKER_MEM_LIMIT:-16g}
+    cpus: ${EVAL_WORKER_CPUS:-4}
+    pids_limit: 2048
+    # plugins run as unprivileged users (aisc_eval/plugin_process.py): nothing in the image may raise
     # them back up through a setuid program
-    security_opt:
+    security_opt: &eval-worker-security
       - no-new-privileges:true
-    networks:
+    # only to set, at start, the firewall that keeps those users behind the egress proxy (docker-entrypoint.sh)
+    cap_add: &eval-worker-capabilities
+      - NET_ADMIN
+    # a first process that reaps what a plugin left (killed at the end of its test), so no zombie of a run
+    # user counts against the next test's process cap
+    init: true
+    networks: &eval-worker-networks
       - backend
-    volumes:
+    volumes: &eval-worker-volumes
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=info"
+      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      --concurrency=${EVAL_WORKER_CONCURRENCY:-4}
+      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
+      --beat --schedule=/tmp/aisc-eval-beat-schedule"
+
+  # The eval worker's second process: it reads plugin manifests and runs the plugins' form hooks
+  # (aisc_eval.celery_app.PLUGIN_DECLARATIONS_QUEUE), one at a time, so a configure page never waits behind
+  # the runs. It runs plugin code as the run worker does, so it is kept apart the same way (same image,
+  # settings, firewall, reaper and egress hosts; no database credential). It runs no beat: the run worker
+  # runs the sweep.
+  aisc-eval-declarations-worker:
+    restart: unless-stopped
+    platform: linux/amd64
+    # the run worker's image, built there (two builds of one tag race)
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-declarations-worker
+    healthcheck: *eval-worker-healthcheck
+    environment:
+      <<: *eval-worker-env
+      # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
+      PLUGIN_RUN_UIDS: "10200-10209"
+    depends_on:
+      - aisc-eval-worker
+      - aisc-backend
+      - rabbitmq
+      - redis
+    # one plugin at a time: its install, then its manifest or one form hook
+    mem_limit: ${EVAL_DECLARATIONS_WORKER_MEM_LIMIT:-8g}
+    cpus: ${EVAL_DECLARATIONS_WORKER_CPUS:-2}
+    pids_limit: 1024
+    security_opt: *eval-worker-security
+    cap_add: *eval-worker-capabilities
+    init: true
+    networks: *eval-worker-networks
+    volumes: *eval-worker-volumes
+    command: >
+      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
+      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      --queues=plugin-declarations
+      --concurrency=1
+      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}"
 
   aisc-eval-flower:
     # started only when asked (COMPOSE_PROFILES=inspect ./scripts/start.sh): it has no sign-in of its own, and
@@ -1081,7 +1150,7 @@ services:
       # The protocol endpoints a run reaches a connection through (AISC, OpenAI-compatible, A2A,
       # Open Inference Protocol) are announced at this internal URL; a run's key lasts this long.
       PLATFORM_INTERNAL_URL: http://platform:8000
-      CONNECTIONS_RUN_KEY_TTL_S: ${CONNECTIONS_RUN_KEY_TTL_S:-43200}
+      CONNECTIONS_RUN_KEY_TTL_S: ${CONNECTIONS_RUN_KEY_TTL_S:-24600}
       # Collect evidence: what steps 2 and 3 selected is read from each project database as the
       # report's read-only role ({database} is the project's database).
       EVIDENCE_READER_DATABASE_URL: postgresql://report_ro:${REPORT_RO_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}

@@ -57,7 +57,7 @@ services:
   aisc-eval-worker:
     image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
     container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker
-    environment:
+    environment: &eval-worker-env
       API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
@@ -66,22 +66,54 @@ services:
       CORS_ORIGINS: "*"
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-    volumes:
+      # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
+      # never overlapping, since the kernel counts a uid's processes across containers
+      PLUGIN_RUN_UIDS: "10100-10199"
+    volumes: &eval-worker-volumes
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
       - aisc-backend
       - rabbitmq
       - redis
     command: "celery -A aisc_eval.celery_worker worker --loglevel=info"
-    healthcheck:
+    healthcheck: &eval-worker-healthcheck
       test:
         - "CMD-SHELL"
         - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
       interval: 30s
       timeout: 10s
       retries: 5
-    networks:
+    networks: &eval-worker-networks
       - backend
+
+  # The eval worker's second process: it reads plugin manifests and runs the plugins' form hooks
+  # (aisc_eval.celery_app.PLUGIN_DECLARATIONS_QUEUE), one at a time, so a configure page never waits behind
+  # the runs. It runs plugin code, so it sets the plugin firewall (NET_ADMIN), reaps what a plugin leaves
+  # (init) and keeps plugins to the egress hosts below; it holds no database credential.
+  aisc-eval-declarations-worker:
+    image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-declarations-worker
+    environment:
+      <<: *eval-worker-env
+      # what a plugin may reach through the worker's egress proxy (aisc_eval/egress.py); unset,
+      # raw.githubusercontent.com; set empty, none
+      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
+      # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
+      PLUGIN_RUN_UIDS: "10200-10209"
+    volumes: *eval-worker-volumes
+    depends_on:
+      - aisc-eval-worker
+      - aisc-backend
+      - rabbitmq
+      - redis
+    security_opt:
+      - no-new-privileges:true
+    cap_add:
+      - NET_ADMIN
+    init: true
+    command: "celery -A aisc_eval.celery_worker worker --loglevel=info --queues=plugin-declarations --concurrency=1"
+    healthcheck: *eval-worker-healthcheck
+    networks: *eval-worker-networks
 
   aisc-eval-flower:
     image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins

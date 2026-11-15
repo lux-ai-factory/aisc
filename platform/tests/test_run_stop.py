@@ -1,8 +1,11 @@
-"""The platform stops a run whose calls keep failing, whatever the plugin: after 3 failed calls in a row, or once
-more than 5% of at least 20 calls failed, the next call of that run is not sent to the system under test. It is
-recorded not_sent with the reason and refused to the plugin (403, never a status a client retries). Only calls
-actually sent count; a new run starts from zero. Runs on the throwaway; the system under test is a local stub."""
+"""The platform stops a run whose questions keep failing, whatever the plugin: after 3 failed questions in a row, or
+once more than 5% of at least 20 questions failed, the next call of that run is not sent to the system under test.
+It is recorded not_sent with the reason and refused to the plugin (403, never a status a client retries). Only
+calls actually sent count, the same request again counting once (test_run_stop_counts_questions.py); a new run
+starts from zero. Runs on the throwaway; the system under test is a local stub."""
 from __future__ import annotations
+
+import itertools
 
 import pytest
 
@@ -15,8 +18,13 @@ pytestmark = needs_database
 OK, FAILED = (200, {"answer": "Humanitas Eindhoven."}), (401, {"detail": "bad key"})
 
 
+_numbers = itertools.count(1)
+
+
 def ask(client, project, key, body=None):
-    return client.post(door(project, "/aisc/ask"), json=body or {"input": "Who helps with debts?"}, headers=keyed(key))
+    """One call; with no body, a question of its own, so each call is another question."""
+    body = body or {"input": f"Who helps with debts? ({next(_numbers)})"}
+    return client.post(door(project, "/aisc/ask"), json=body, headers=keyed(key))
 
 
 def sent(stub):
@@ -37,7 +45,7 @@ def test_three_failed_calls_in_a_row_stop_the_run_before_the_fourth_is_sent(clie
 
     assert r.status_code == 403, r.text
     assert r.json()["error"] == "run_stopped"
-    assert r.json()["detail"].startswith("the platform stopped this run: 3 calls in a row failed; the last: auth")
+    assert r.json()["detail"].startswith("the platform stopped this run: 3 questions in a row failed; the last: auth")
     assert sent(stub) == 3
     last = calls_of(trace(client, run_pass))[-1]
     assert (last["outcome"], last["error"]["code"]) == ("not_sent", "run_stopped")

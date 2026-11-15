@@ -32,7 +32,8 @@ from platform_service import connection_store
 #: checks it against the compose files.
 STACK_SERVICES = frozenset({
     "aisc-backend", "aisc-backend-ledger", "aisc-backend-migrate", "aisc-backend-standalone", "aisc-eval", "aisc-eval-flower",
-    "aisc-eval-worker", "aisc-eval-worker-standalone", "aisc-webapp", "aisc-webapp-standalone",
+    "aisc-eval-worker", "aisc-eval-worker-standalone", "aisc-eval-declarations-worker",
+    "aisc-eval-declarations-worker-standalone", "aisc-webapp", "aisc-webapp-standalone",
     "backend", "caddy", "catalogue-private", "chart-assistant", "control-objectives", "control-objectives-migrate", "controls-migrate",
     "controls-pdf", "controls-web", "dashboard", "dashboard-migrate", "dashboard-redis", "devpi", "devpi-standalone",
     "eval", "immudb", "immudb-key", "isolate", "keycloak", "ledger-pool", "make_buckets", "minio", "minio-standalone",

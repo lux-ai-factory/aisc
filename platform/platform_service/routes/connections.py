@@ -689,17 +689,24 @@ def _internal_gate(pid: str, request: Request, kind: str = "", name: str = "") -
 def mint_run_pass(body: dict, request: Request) -> JSONResponse:
     """A pass for one plugin run, naming the run's target and connection references, all of the run's own
     project (``project``, its platform pid); the worker asks for it with the stack's connections token and
-    hands it to the plugin in place of that token."""
+    hands it to the plugin in place of that token. ``ttl_s``, when sent, is how long it lasts: as long as the
+    worker's test may run, never longer than CONNECTIONS_RUN_KEY_TTL_S."""
     if _behind_gateway(request):
         return _internal(404, {"detail": "not here"})
     try:
         identify(request.headers.get(SERVICE_TOKEN_HEADER), {"worker": "PLATFORM_CONNECTIONS_TOKEN"})
     except ServiceRefused as refused:
         return _internal(refused.status, {"detail": refused.detail})
+    body = body if isinstance(body, dict) else {}
+    ttl_s = body.get("ttl_s")
+    if ttl_s is not None:
+        longest = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
+        # bool is an int to Python, and a pass of True seconds is no lifetime the worker meant
+        if not isinstance(ttl_s, int) or isinstance(ttl_s, bool) or not 60 <= ttl_s <= longest:
+            return _internal(422, {"detail": f"ttl_s: whole seconds from 60 to {longest}"})
     try:
-        body = body if isinstance(body, dict) else {}
         run_pass, expires = run_passes.mint(body.get("refs"), evaluation_plugin=body.get("evaluation_plugin"),
-                                            project=body.get("project"))
+                                            project=body.get("project"), ttl_s=ttl_s)
     except run_passes.Refused as refused:
         return _internal(refused.status, {"detail": refused.detail})
     return _internal(201, {"pass": run_pass, "expires_at": expires.isoformat()})

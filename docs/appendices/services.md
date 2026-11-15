@@ -62,6 +62,7 @@ platform.
 | `aisc-backend-migrate` | *One-shot.* Brings every project database's `engine` schema up to date and grants the readers. | `postgres` |
 | `aisc-backend-ledger` | Every 10 seconds, sends the engine's ledger events from each project database to the platform. | `postgres` (each project database's engine outbox), `platform` |
 | `aisc-eval-worker` | Runs tests (Celery): installs a test's package in a fresh environment, runs it, sends the results back. | `rabbitmq`, `redis`, `aisc-backend`, `devpi`, `platform` (run pass, connections, helper models), helper model endpoints |
+| `aisc-eval-declarations-worker` | The eval worker's second process: reads a test's manifest and runs its form hooks, one at a time, so a configure page never waits behind the runs. | `rabbitmq`, `redis`, `devpi` |
 | `aisc-eval-flower` | The monitor of the test runs' task queue, for admins. Runs only when asked (`COMPOSE_PROFILES=inspect ./scripts/start.sh`). | `rabbitmq`, `redis` |
 | `rabbitmq` | The queue that carries test runs to the worker. | |
 | `redis` | Where the worker keeps task results. | |

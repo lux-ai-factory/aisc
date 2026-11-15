@@ -3,6 +3,104 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- The plugin index is immutable: devpi's `root/public` is created non-volatile, and a volume an earlier image
+  made volatile is made non-volatile at the next start (`devpi: index root/public made non-volatile`). A version
+  on the index is never replaced or deleted: the publisher refuses to publish a version that is already there
+  with other content (409, "give the plugin a new version; nothing was published"), the plugin interface at its
+  start included, and its answers name the sha256 of the wheel the index serves (`sha256`, no more `replaced`).
+  The platform hands that hash to the engine at a catalogue install, the engine records it (and a local plugin's
+  folder digest) in the ledger's `plugin.installed` (`wheel_sha256`, `code_digest`). **A plugin whose code
+  changes needs a new version.**
+- The plugin interface is 0.5.0 (0.4.0's code, released under a version of its own, since 0.4.0 can no longer be
+  replaced on the index): the engine, the eval worker and the plugin-manager pin `aisc-plugin-interface>=0.5.0`
+  from their `vendor/` wheels, and the publisher puts 0.5.0 on the index at its start. Plugins that pin
+  `>=0.4.0` (the pilots' and the local ones) resolve 0.5.0 from the index; the 0.4.0 already there stays.
+- Every run installs its plugin only from the hashes the engine recorded for it (engine migration 0035: four
+  empty columns on each run's plugin, no row changed): the wheel's sha256 and the hashed lock of its
+  dependencies, sent with the run (`pins`) and installed with `--require-hashes --no-deps`. A catalogue plugin
+  whose row has no recorded hash is refused before anything is installed ("open its page once so its
+  declarations are read"); the launch reads it first, so this happens only when that read failed. The run keeps
+  the wheel hash it ran, a local plugin's folder digest, git commit and dirty flag, and its environment as the
+  file `plugin-environment.txt` (its sha256 is in the ledger's `engine.artifact.uploaded`).
+- The engine never imports plugin code. Every plugin page (configure, launch, results, the dashboards' charts)
+  answers from a manifest stored on the plugin's row (engine migration 0034: four empty columns, no row changed).
+  The eval worker reads it in its sandbox: it installs the plugin from a hashed lock that must name the wheel's
+  recorded hash, then has the plugin describe itself as a run user with no network. A form hook a plugin overrides
+  (`on_config_change`, `parse_config_from_dataset`, `get_metric_visualizations`) is run by the worker the same
+  way, within 30 seconds. A plugin installed before this has no manifest: the first page that needs it has the
+  worker read it then (the eval worker must be up; the first read installs the plugin and can take minutes), and
+  it is kept; a local plugin whose folder changed is read again. Manifest reads and form hooks have a queue of
+  their own (`plugin-declarations`), served one at a time by a new compose service, `aisc-eval-declarations-worker`
+  (the eval image, kept apart as the run worker is), so a configure page never waits behind the runs: **start it
+  with the stack**, or every plugin page that needs the worker waits and then answers 503. An install now waits for
+  the worker (`PLUGIN_MANIFEST_TIMEOUT_S` on the engine, 900 seconds; the platform waits 960, so a worker that
+  does not answer is reported with the engine's reason, as a 503), and a refresh whose wheel
+  changed on the index is refused. The worker keeps one environment per plugin version under
+  `/var/cache/aisc-plugin-envs` in its container (rebuilt after a recreate). The engine no longer installs plugin
+  wheels into its own environment.
+- A plugin test reaches the network only through the eval worker's egress proxy. The worker needs `NET_ADMIN`
+  (compose adds it, with `init: true`) to set, at start, a firewall that lets the run users reach the proxy and
+  nothing else, IPv6 and DNS included; without it the worker still starts but refuses every plugin test, saying
+  why. A test may reach the platform (its facade and resolve routes), its helpers' and LLM inputs' endpoints, and
+  `PLUGIN_EGRESS_ALLOWED_HOSTS` (new: `host`, `host:port` or `.domain` for the domain and every host under it,
+  public addresses only; `raw.githubusercontent.com` when it is not set, where StrongREJECT reads its datasets; set
+  empty, none), each on an address the project's network rule allows. **Before deploying, an operator checks
+  `PLUGIN_EGRESS_ALLOWED_HOSTS` in env.local against what plugins download at run time**: a plugin that loads a
+  Hugging Face model or dataset needs `.huggingface.co,.hf.co` added. Plugins run with
+  `LITELLM_LOCAL_MODEL_COST_MAP=True`, so LiteLLM reads the price map it ships with instead of fetching it.
+  Hosted providers (OpenAI and the like) are reached when a helper or LLM
+  input names them; a plugin that calls one on its own, with no such input, now needs the host listed too. A
+  test's home is its own and is removed with the test, so model and dataset caches under `~` are downloaded again
+  on each run.
+- One user per plugin test. A root eval worker runs each test as a uid of its own from 10100-10199 (no passwd
+  entry; the plugin gets its run's `HOME`, `TMPDIR`, `USER` and `LOGNAME`), in folders only that user can read,
+  and kills whatever that user left running before the uid goes to the next test. At most 100 tests run at once
+  on one worker. `PLUGIN_MAX_PROCESSES` now counts one test's processes and threads, not all plugins together, and
+  defaults to 400 (four tests at their cap stay under the container's 2048). A plugin cannot write in its working
+  folder any more: it writes to its output folder (the artifact callback), its home or its tmp.
+- Runs, limits and edges. Each plugin now runs under its own limits, read at every run from the worker's
+  settings (env.local, then recreate the worker): `PLUGIN_MAX_MEMORY_MB` (16384, address space; a StrongREJECT
+  process reserves about 4 GB to use 300 MB), `PLUGIN_MAX_PROCESSES` (1024, every process and thread of all plugins
+  running at once; a StrongREJECT run peaks at about 70 on a 20-CPU host), `PLUGIN_MAX_FILE_MB` (8192, the largest
+  file, room for a local model download), `PLUGIN_OUTPUT_MAX_MB` (1024, the total of its output files, refused
+  above) and `PLUGIN_CPU_CORES` (4: its CPU time is the test's soft time limit on each). The worker runs
+  `EVAL_WORKER_CONCURRENCY` (4) plugins at a time with beat (the sweep every five minutes), each child recycled past
+  `EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB` (2 GB), in a container of `EVAL_WORKER_MEM_LIMIT` (16g), `EVAL_WORKER_CPUS`
+  (4) and 2048 processes. A run pass lasts as long as a test may run plus five minutes (the worker sends `ttl_s`),
+  and run keys default to 24600 s (`CONNECTIONS_RUN_KEY_TTL_S`). A host that does not resolve is the error `dns`
+  on every door, with the restart that cures a stale DNS. A call answered after its pass ended still names its
+  test, and the pass's seal waits up to 20 s for calls in flight (past that, the last call seals it). The platform
+  stops a run after 3 failed questions in a row, or more than 5% of at least 20 questions: a plugin's retries of one
+  question count once. The webapp shows every Failed test with its reason or "Failed, no reason recorded.". The
+  results dashboard shows only the measures of Done runs, so run numbers after a failed run with measures move
+  down by one. Control objectives run one AI mapping of an assessment at a time (409 for a second). No migration.
+  Rebuild and recreate the platform, the eval worker (when no run is in flight), the webapp, the results dashboard
+  and control-objectives.
+- Runs, the worker. Each test now runs in one state machine: a test whose plugin ends well without a measure, or
+  whose run the platform stopped (its calls kept failing), is Failed with the reason instead of Done; a start the
+  engine refuses ends that copy quietly. The worker's calls to the engine are tried again while the engine cannot
+  be reached (1, 2, 4, 8, 16 s), and a refused "test failed" mark raises, and is tried again on 502, 503 and 504.
+  The dispatcher claims a run once (`eval_tasks:<pid>`, set only when absent; Stop still reads that key), registers
+  it under `eval_run:<pid>` in the result backend's Redis, and shows it Processing. A new task,
+  `aisc_eval.run_sweep.sweep_runs`, fails the tests the worker lost, ran past their limit or never started, each with
+  its reason, and closes runs whose tests all ended; it runs once two minutes after the worker starts, and every
+  five minutes when the worker runs with beat. Runs started before the upgrade are not registered, so the sweep
+  does not see them. The engine saves a worker's report only under the row's lock and never over a Stop or a
+  failure that landed after its read. No migration. Rebuild and recreate aisc-backend (with its ledger sender) and
+  the eval worker together.
+- Runs. The engine's migration `0032_measures_recorded_once` adds two unique rules: one observation per test and
+  one metric per name. Before adding them it reads the existing rows and, if a metric name or a test's observation
+  repeats, stops the upgrade and names them: merge those by an operator action first (check with
+  `SELECT name FROM engine.aisc_backend_metric GROUP BY name HAVING count(*) > 1` and
+  `SELECT evaluation_plugin_id FROM engine.aisc_backend_observation WHERE evaluation_plugin_id IS NOT NULL
+  GROUP BY 1 HAVING count(*) > 1` in each project database). `0033_evaluation_launch_key` adds an empty
+  `launch_key` column, unique among the runs that have one; no row changes. The engine now refuses with 409 a
+  second post of a test's measures and a second start of a test (or the start of one that has ended), turns a run
+  Processing only from Pending, stores a blank failure reason as "Failed, no reason recorded.", and fails a run
+  (and its tests) it could not hand to the worker, answering 503. The webapp sends each launch with its own
+  `Idempotency-Key` and keeps Launch off while one is sent; the engine answers the same key with the run it already
+  made. Back up first (`scripts/backup-databases.sh`), then rebuild and recreate aisc-backend, its one-shot and the
+  ledger sender together, and the webapp.
 - Card versions and revisions. The platform's template `0037_card_version_numbers_never_reused` adds
   `project.system_number`, a one-row counter that only goes up, started at the highest number the project's
   versions or its ledger outbox ever named: a version number removed by hand is not handed out again, and no

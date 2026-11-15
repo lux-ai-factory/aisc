@@ -72,7 +72,7 @@ services:
       context: apps/eval/
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker-standalone
-    environment:
+    environment: &eval-worker-env
       API_URL: http://aisc-backend:8000
       API_PREFIX: ${API_PREFIX:-/api/v1/internal}
       REDIS_BACKEND_URL: redis://redis:6379
@@ -85,14 +85,50 @@ services:
       PACKAGE_REGISTRY_INDEX: ${PACKAGE_REGISTRY_INDEX:-root/public}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY}
+      # what a plugin may reach through the worker's egress proxy (aisc_eval/egress.py): host, host:port or
+      # .domain, comma separated; unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none
+      PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
+      # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
+      # never overlapping, since the kernel counts a uid's processes across containers
+      PLUGIN_RUN_UIDS: "10100-10199"
+    # only to set, at start, the firewall that keeps plugin tests behind the egress proxy
+    cap_add: &eval-worker-capabilities
+      - NET_ADMIN
+    init: true
     depends_on:
       - aisc-backend
       - rabbitmq
       - redis
-    volumes:
+    volumes: &eval-worker-volumes
       - ${PLUGIN_PATH:-./def_plugins}:/app/plugins:z
-    networks:
+    networks: &eval-worker-networks
       - engine-standalone
+
+  # The eval worker's second process: it reads plugin manifests and runs the plugins' form hooks
+  # (aisc_eval.celery_app.PLUGIN_DECLARATIONS_QUEUE), one at a time, so a configure page never waits behind
+  # the runs. It runs plugin code as the run worker does, so it is kept apart the same way (same image,
+  # settings, firewall, reaper and egress hosts; no database credential).
+  aisc-eval-declarations-worker:
+    platform: linux/amd64
+    # the run worker's image, built there (two builds of one tag race)
+    image: aisc-eval:${AISC_IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: ${CONTAINER_PREFIX:-}aisc-eval-declarations-worker-standalone
+    environment:
+      <<: *eval-worker-env
+      # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
+      PLUGIN_RUN_UIDS: "10200-10209"
+    cap_add: *eval-worker-capabilities
+    init: true
+    depends_on:
+      - aisc-eval-worker
+      - aisc-backend
+      - rabbitmq
+      - redis
+    volumes: *eval-worker-volumes
+    networks: *eval-worker-networks
+    command: ["uv", "run", "celery", "-A", "aisc_eval.celery_worker:celery_app", "worker", "--loglevel=info",
+              "--queues=plugin-declarations", "--concurrency=1"]
 
   aisc-webapp:
     build: apps/webapp/
