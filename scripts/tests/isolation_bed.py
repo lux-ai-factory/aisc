@@ -221,28 +221,32 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
         bed.problems["templates"] = "template files missing: " + ", ".join(lacking)
 
 
-def migrate_modules(bed: IsoBed) -> None:
+def migrate_modules(bed: IsoBed, modules: Path = ROOT) -> None:
     """Each module's own command for every project database (the -migrate one-shots of the stack), except
-    for a module whose environment is missing: its problem is then the line naming the fix."""
+    for a module whose environment is missing: its problem is then the line naming the fix.
+
+    `modules` is the tree whose apps/<module> code runs (this checkout by default); another tree, such as the
+    modules as an older install ran them, uses this checkout's environments (node_modules, .venv) linked in."""
     port = bed.port
+    apps = modules / "apps"
     bed.problems.update(environment_problems())
     if "environment" in bed.problems:
         for key in ENVIRONMENT_KEYS.values():
             bed.problems.setdefault(key, bed.problems["environment"])
     # controls
     if "controls" not in bed.problems:
-        _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], ROOT / "apps/controls",
+        _run(bed, "controls", ["node", "scripts/migrate-projects.mjs"], apps / "controls",
              {"PROJECT_DATABASE_URL": bed.template("controls_rw", "?schema=controls"),
               "PROJECT_MIGRATE_DATABASE_URL": bed.template("controls_migrator", "?schema=controls")},
              "controls migrate-projects.mjs")
     # qualification: every project database (no form library: forms are per project)
-    q = ROOT / "apps/qualification/scripts/migrate-projects.mjs"
+    q = apps / "qualification/scripts/migrate-projects.mjs"
     if "qualification" in bed.problems:
         pass
     elif not q.exists():
         bed.problems["qualification"] = "apps/qualification/scripts/migrate-projects.mjs missing"
     else:
-        _run(bed, "qualification", ["node", str(q)], ROOT / "apps/qualification",
+        _run(bed, "qualification", ["node", str(q)], apps / "qualification",
              {"PROJECT_DATABASE_URL": bed.template("qualification_rw", "?schema=qualification&connection_limit=2"),
               "PROJECT_MIGRATE_DATABASE_URL": bed.template("qualification_migrator",
                                                            "?schema=qualification&connection_limit=2")},
@@ -251,8 +255,8 @@ def migrate_modules(bed: IsoBed) -> None:
     if "control_objectives" not in bed.problems:
         py = _python("apps/control-objectives")
         _run(bed, "control_objectives", [py, "-m", "aisc_control_objectives.migrate_projects"],
-             ROOT / "apps/control-objectives",
-             {"PYTHONPATH": str(ROOT / "apps/control-objectives/src"),
+             apps / "control-objectives",
+             {"PYTHONPATH": str(apps / "control-objectives/src"),
               "DATABASE_URL": f"postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:{port}/platform",
               "PROJECT_DATABASE_URL": "postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:"
                                       f"{port}/{{database}}",
@@ -262,7 +266,7 @@ def migrate_modules(bed: IsoBed) -> None:
     # engine
     if "engine" not in bed.problems:
         py = _python("apps/backend")
-        _run(bed, "engine", [py, "manage.py", "migrate_projects"], ROOT / "apps/backend",
+        _run(bed, "engine", [py, "manage.py", "migrate_projects"], apps / "backend",
              # migrate_projects (aisc_backend/deployment.py) only migrates a database per
              # project in configurator mode, which is what this bed's engine runs as.
              # (configurator mode also needs the run tickets' key, a throwaway one, and AUTH_ENABLED)
@@ -275,8 +279,8 @@ def migrate_modules(bed: IsoBed) -> None:
     # report composer
     if "report_composer" not in bed.problems:
         py = _python("apps/report-composer")
-        _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], ROOT / "apps/report-composer",
-             {"PYTHONPATH": str(ROOT / "apps/report-composer"),
+        _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], apps / "report-composer",
+             {"PYTHONPATH": str(apps / "report-composer"),
               "REPORT_COMPOSER_DATABASE_URL": bed.dsn("report_composer_rw", "platform"),
               "REPORT_COMPOSER_PROJECT_DATABASE_URL": bed.template("report_composer_rw"),
               "REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL": bed.template("report_composer_migrator")},
