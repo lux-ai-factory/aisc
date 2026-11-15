@@ -442,6 +442,8 @@ def get_reports_of_version(request: Request, system_id: str, g: Guarded = Depend
         "id": newest["id"], "layout_id": newest["layout_id"], "layout_name": newest["layout_name"],
         "format": newest["format"] or "pdf", "status": newest["status"],
         "created_at": newest["created_at"].isoformat(),
+        "card_revision": newest["card_revision"],
+        "of_an_earlier_card_revision": (newest["card_revision"] or 1) < (newest["current_card_revision"] or 1),
         "download": f"/api/p/{g.project['slug']}/reports/{newest['id']}/download"}}
 
 
