@@ -209,7 +209,9 @@ def test_project_system_has_exactly_the_card_version_columns(project, dsn):
             " where i.indrelid = 'project.system'::regclass and i.indisunique and i.indnatts = 1"
             " and a.attname = 'number'").fetchone()
     assert set(cols) == {"pid", "number", "name", "version", "provider", "description",
-                         "created_at", "updated_at", "created_by", "card_revision"}, f"columns are {sorted(cols)}"
+                         "created_at", "updated_at", "created_by", "card_revision",
+                         # a version withdrawn because its card was never saved (0036)
+                         "attempt", "abandoned_at", "abandoned_reason"}, f"columns are {sorted(cols)}"
     assert "project_id" not in cols, "project.system has no project_id: the database is the project"
     assert cols["pid"][0] == "uuid" and "gen_random_uuid" in (cols["pid"][2] or "")
     assert cols["number"][:2] == ("integer", "NO")
