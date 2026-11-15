@@ -22,7 +22,7 @@ What it builds, in order (each step as the stack does it):
  4. the module schemas from the read-only dumps in scripts/tests/fixtures/report/, each restored
     as its own module role (so ownership is as on the stack), and superset's as the superuser
  5. project databases of Alpha, Beta, Echo, Mike and Delta as platform_migrator with platform/project-template/*.sql
-    (every template file, 0003_report.sql included), then schema controls as controls_rw
+    (every template file, 0003_report.sql included), then schema controls as controls_migrator
  6. scripts/report-grants.sh, when present and report_files is on, run inside the container
     like the stack's report-grants one-shot: PG* env, init/report-ro-grants.sql copied to /setup
  7. the seed (fixtures/report/seed_*.sql), as the superuser
@@ -226,11 +226,12 @@ def _project_database(t: Throwaway, pid: str) -> str:
     for f in sorted(PROJECT_TEMPLATE.glob("*.sql")):
         t.psql(name, f.read_text() + f"\n;\nINSERT INTO provision.template_migration (name) VALUES ('{f.name}');",
                role="platform_migrator")
-    _as_file(t, name, "controls_rw", FIXTURES / "schema_controls.sql")
+    # as controls' migrations run: controls_migrator, acting as controls_owner, the owner of its tables
+    _as_file(t, name, "controls_migrator", FIXTURES / "schema_controls.sql")
     # What controls' own migration 20260926000100_readers_read_the_listed_tables grants, as the
     # tables' owner: the fixture above is the schema only. A default privilege in template1 must not
     # do this for every later database (report-grants.sh removes such a privilege).
-    _run(t, name, CONTROLS_READERS_SQL, "controls_rw", "controls reader grants")
+    _run(t, name, CONTROLS_READERS_SQL, "controls_migrator", "controls reader grants")
     return name
 
 
