@@ -173,7 +173,13 @@ MODULE_SEED = {
         INSERT INTO engine.aisc_backend_pluginconfigprojectconfig (pid, name, description, created_at,
                plugin_config_id, project_config_id, plugin_config_key)
              SELECT gen_random_uuid(), '', '', now(), c.id, s.id, 'threshold'
-               FROM engine.aisc_backend_pluginconfig c, engine.aisc_backend_projectconfig s;""",
+               FROM engine.aisc_backend_pluginconfig c, engine.aisc_backend_projectconfig s;
+        INSERT INTO engine.aisc_backend_aisystem (pid, name, description, created_at, project_id)
+             SELECT gen_random_uuid(), 'seeded', '', now(), id FROM engine.aisc_backend_project WHERE name = 'seeded';
+        INSERT INTO engine.aisc_backend_aicomponent (pid, name, description, created_at, data, storage_container,
+               system_id, component_type, json_value)
+             SELECT gen_random_uuid(), 'questions', '', now(), 'old-rows.csv', 'datasets', id, 'dataset', '{{}}'
+               FROM engine.aisc_backend_aisystem WHERE name = 'seeded';""",
 }
 
 SEED = f"""
@@ -511,3 +517,40 @@ def test_a_setting_made_before_is_deleted_by_a_mark_and_its_key_given_again(bed)
                FROM engine.aisc_backend_projectconfig WHERE key = 'threshold';
         SELECT 1 / count(*)::int FROM engine.aisc_backend_pluginconfigprojectconfig;
         ROLLBACK;""") == ""
+
+
+def test_a_file_uploaded_before_has_no_hash_and_a_new_upload_keeps_one(bed):
+    """A component's file from before the hash was taken keeps its file and an empty hash (a run names it with
+    an empty hash); a new upload stores the hash."""
+    assert bed.scalar(DB_A, "SELECT data || ':' || data_sha256 FROM engine.aisc_backend_aicomponent"
+                            " WHERE name = 'questions'") == "old-rows.csv:"
+    assert _as(bed, DB_A, "engine_rw", f"""
+        BEGIN;
+        UPDATE engine.aisc_backend_aicomponent SET data = 'new-rows.csv', data_sha256 = '{'e' * 64}'
+         WHERE name = 'questions';
+        ROLLBACK;""") == ""
+
+
+@pytest.mark.parametrize("role", ["platform_rw", "qualification_rw", "control_objectives_rw", "controls_rw",
+                                  "engine_rw", "report_composer_rw", "report_ro", "dashboard_ro", "inspector_ro"])
+def test_every_reader_reads_the_saved_card_versions(bed, role):
+    """Every card version made before is a saved one (none abandoned), and every role that reads the versions
+    reads the saved ones."""
+    assert _as(bed, DB_A, role, "SELECT 1 / (count(*)::int - 1) FROM project.saved_system;") == ""
+
+
+def test_a_version_made_for_a_card_never_saved_is_withdrawn_and_the_one_before_is_latest_again(bed):
+    """platform_rw withdraws the latest version (kept, marked), which then never changes, and the version before
+    it may be corrected again; a version is still never deleted."""
+    assert _as(bed, DB_A, "platform_rw", f"""
+        BEGIN;
+        UPDATE project.system SET abandoned_at = now(), abandoned_reason = 'the card was not saved'
+         WHERE pid = '{V2}';
+        SELECT 1 / (2 - count(*)::int) FROM project.saved_system;
+        UPDATE project.system SET card_revision = card_revision + 1 WHERE pid = '{V1}';
+        ROLLBACK;""") == ""
+    assert "cannot change" in _as(bed, DB_A, "platform_rw", f"""
+        BEGIN;
+        UPDATE project.system SET abandoned_at = now() WHERE pid = '{V2}';
+        UPDATE project.system SET name = 'again' WHERE pid = '{V2}';
+        ROLLBACK;""")
