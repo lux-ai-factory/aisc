@@ -451,7 +451,7 @@ _ACTIONS = [
        caused_by=(("engine", "PATCH", _EN + r"/components/(?P<item>[^/]+)$"),), details_keys=("changed",),
        routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "update_component"),)),
     _a("engine.component.file_uploaded", 4, ("engine",), "component",
-       caused_by=(("engine", "PUT", _EN + r"/components/(?P<item>[^/]+)/data$"),), details_keys=("size",),
+       caused_by=(("engine", "PUT", _EN + r"/components/(?P<item>[^/]+)/data$"),), details_keys=("size", "sha256"),
        routes=(("engine", "apps/backend/aisc_backend/routers/component.py", "upload_component_file"),)),
     _a("engine.component.deleted", 4, ("engine",), "component",
        caused_by=(("engine", "DELETE", _EN + r"/components/(?P<item>[^/]+)$"),), details_keys=("component_type",),
