@@ -87,8 +87,8 @@ def test_the_declarations_worker_is_kept_apart_as_the_run_worker_is(name):
     assert env.get("PLUGIN_EGRESS_ALLOWED_HOSTS") == environment(run).get(
         "PLUGIN_EGRESS_ALLOWED_HOSTS", "${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}")
     assert sorted(n for n in env if DATABASE_NAME.search(n)) == []
-    assert {n: v for n, v in env.items() if n != "PLUGIN_EGRESS_ALLOWED_HOSTS"} == {
-        n: v for n, v in environment(run).items() if n != "PLUGIN_EGRESS_ALLOWED_HOSTS"}
+    own = {"PLUGIN_EGRESS_ALLOWED_HOSTS", "PLUGIN_RUN_UIDS"}
+    assert {n: v for n, v in env.items() if n not in own} == {n: v for n, v in environment(run).items() if n not in own}
     assert declarations.get("volumes") == run.get("volumes")
     assert declarations.get("networks") == run.get("networks")
 
@@ -98,3 +98,21 @@ def test_the_declarations_worker_runs_the_run_workers_image_without_building_it_
     s = services(name)
     assert s[DECLARATIONS_WORKER]["image"] == s[RUN_WORKER]["image"]
     assert "build" not in s[DECLARATIONS_WORKER], "two builds of one tag race"
+
+
+def uid_pool(service: dict) -> range:
+    first, _, last = str(environment(service).get("PLUGIN_RUN_UIDS") or "").partition("-")
+    return range(int(first), int(last) + 1)
+
+
+@pytest.mark.parametrize("name", FILES)
+def test_each_worker_leases_run_users_from_a_pool_of_its_own(name):
+    """The kernel counts a uid's processes across containers, and a shared volume would show one owner for two
+    runs: the two workers never lease the same uid. Each names its pool; both stay above the image's users."""
+    s = services(name)
+    for worker in (RUN_WORKER, DECLARATIONS_WORKER):
+        assert environment(s[worker]).get("PLUGIN_RUN_UIDS"), f"{worker} names no run-uid pool in {name}"
+    run, declarations = uid_pool(s[RUN_WORKER]), uid_pool(s[DECLARATIONS_WORKER])
+    assert not set(run) & set(declarations), (run, declarations)
+    assert min(run.start, declarations.start) > 10003
+    assert len(declarations) >= int(option(argv(s[DECLARATIONS_WORKER]), "-c", "--concurrency")[0])

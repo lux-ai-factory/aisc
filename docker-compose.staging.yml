@@ -66,6 +66,9 @@ services:
       CORS_ORIGINS: "*"
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
+      # never overlapping, since the kernel counts a uid's processes across containers
+      PLUGIN_RUN_UIDS: "10100-10199"
     volumes: &eval-worker-volumes
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
@@ -95,6 +98,8 @@ services:
       # what a plugin may reach through the worker's egress proxy (aisc_eval/egress.py); unset,
       # raw.githubusercontent.com; set empty, none
       PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
+      # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
+      PLUGIN_RUN_UIDS: "10200-10209"
     volumes: *eval-worker-volumes
     depends_on:
       - aisc-eval-worker

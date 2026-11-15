@@ -250,6 +250,9 @@ services:
       # every host under it, public addresses only), for example a dataset or model a plugin downloads at run time.
       # Unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none.
       PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
+      # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
+      # never overlapping, since the kernel counts a uid's processes across containers
+      PLUGIN_RUN_UIDS: "10100-10199"
     depends_on:
       - aisc-backend
       - rabbitmq
@@ -294,7 +297,10 @@ services:
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}aisc-eval-declarations-worker
     healthcheck: *eval-worker-healthcheck
-    environment: *eval-worker-env
+    environment:
+      <<: *eval-worker-env
+      # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
+      PLUGIN_RUN_UIDS: "10200-10209"
     depends_on:
       - aisc-eval-worker
       - aisc-backend
