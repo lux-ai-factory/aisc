@@ -42,6 +42,7 @@ platform	platform/platform_service/routes/projects.py	set_project_member_role	it
 platform	platform/platform_service/routes/projects.py	remove_project_member	its event is written one layer down, in the change's own transaction: member.removed (db.remove_member)
 platform	platform/platform_service/routes/projects.py	create_system_version	its event is written one layer down, in the change's own transaction: card_version.created (db.create_version)
 platform	platform/platform_service/routes/projects.py	revise_system_version	its event is written one layer down, in the change's own transaction: card_version.revised (db.revise_version)
+platform	platform/platform_service/routes/projects.py	abandon_system_version	its event is written one layer down, in the change's own transaction: card_version.abandoned (db.abandon_version)
 platform	platform/platform_service/routes/connections.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
 platform	platform/platform_service/routes/connections.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
 platform	platform/platform_service/routes/llm.py	save_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.saved (llm_store.save_provider)
@@ -79,5 +80,5 @@ platform	platform/platform_service/routes/connectivity.py	run_agent_on	its event
 platform	platform/platform_service/routes/connectivity.py	stop_agent_choice	its event is written one layer down, in the change's own transaction: connection.use.removed (llm_store.remove_agent)
 platform	platform/platform_service/routes/connectivity.py	use_as_tool	its event is written one layer down, in the change's own transaction: connection.use.saved (helper_store.use_as_tool)
 platform	platform/platform_service/routes/connectivity.py	stop_tool	its event is written one layer down, in the change's own transaction: connection.use.removed (helper_store.stop_tool)
-engine	apps/backend/aisc_backend/routers/evaluation.py	rename_evaluation	not recorded in the ledger yet: the engine audit log keeps who renamed the run and when (log_action)
 dashboard	apps/results-dashboard/aisc_ext/assistant/api.py	start	nothing of the project changes: the conversation and its mock database are the assistant's; a chart is recorded when it is validated (dashboard.assistant.validated)
+platform	platform/platform_service/routes/engine.py	connection_fingerprints	changes nothing: the engine reads the endpoint fingerprints of a run's references, which the engine's run_requested then records
