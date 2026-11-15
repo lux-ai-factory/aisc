@@ -31,3 +31,6 @@ control_objectives.mapping_archive mapping_archive_is_never_truncated
 # every saved revision of a report layout is kept (apps/report-composer/migrations/project/0004_layout_revisions.sql)
 report_composer.layout_revision layout_revision_is_append_only
 report_composer.layout_revision layout_revision_is_never_truncated
+
+# a run's card version is the one it started on (apps/backend/aisc_backend/migrations/0028_owner_role.py)
+engine.aisc_backend_evaluation evaluation_system_is_fixed

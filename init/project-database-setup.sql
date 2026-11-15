@@ -71,7 +71,8 @@ WITH listed (table_name, trigger_name) AS (VALUES
     ('control_objectives.mapping_archive', 'mapping_archive_is_append_only'),
     ('control_objectives.mapping_archive', 'mapping_archive_is_never_truncated'),
     ('report_composer.layout_revision', 'layout_revision_is_append_only'),
-    ('report_composer.layout_revision', 'layout_revision_is_never_truncated')
+    ('report_composer.layout_revision', 'layout_revision_is_never_truncated'),
+    ('engine.aisc_backend_evaluation', 'evaluation_system_is_fixed')
 ), unlisted AS (
     DELETE FROM aisc_setup.guard_trigger g
      WHERE NOT EXISTS (SELECT 1 FROM listed l WHERE l.table_name = g.table_name AND l.trigger_name = g.trigger_name)

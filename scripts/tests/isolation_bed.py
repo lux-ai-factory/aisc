@@ -269,6 +269,7 @@ def migrate_modules(bed: IsoBed) -> None:
              {"AISC_DEPLOYMENT": "configurator", "RUN_TICKET_KEY": secrets.token_hex(16), "AUTH_ENABLED": "true",
               "DB_ENGINE": "django.db.backends.postgresql", "DB_NAME": "platform", "DB_USER": "engine_rw",
               "DB_PASSWORD": "engine_rw", "DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_SCHEMA": "engine",
+              "DB_MIGRATE_USER": "engine_migrator", "DB_MIGRATE_PASSWORD": "engine_migrator",
               "PYTHONPATH": f"{ROOT}/shared/plugin-interface/src:{ROOT}/shared/plugin-manager/src:{ROOT}/shared/identity"},
              "manage.py migrate_projects")
     # report composer

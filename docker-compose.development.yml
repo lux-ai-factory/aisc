@@ -14,6 +14,10 @@ x-backend-env: &backend-env
   DB_USER: ${DB_USER}
   # engine_rw's generated password (init/engine-role.sql)
   DB_PASSWORD: ${ENGINE_RW_PASSWORD:?run scripts/secrets.sh first}
+  # the migrations, as engine_migrator (init/owner-roles.sql), acting as engine_owner: the one-shot and a
+  # project made later, at its first open; every other query is engine_rw's
+  DB_MIGRATE_USER: engine_migrator
+  DB_MIGRATE_PASSWORD: ${ENGINE_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
   DB_HOST: ${DB_HOST}
   DB_PORT: ${DB_PORT}
   DB_ENGINE: ${DB_ENGINE}
@@ -164,6 +168,9 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${ENGINE_RW_PASSWORD:?run scripts/secrets.sh first}
+      # it opens a project made since the one-shot ran, which migrates it first: as engine_migrator
+      DB_MIGRATE_USER: engine_migrator
+      DB_MIGRATE_PASSWORD: ${ENGINE_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_ENGINE: ${DB_ENGINE}

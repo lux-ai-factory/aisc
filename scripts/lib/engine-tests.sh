@@ -149,6 +149,7 @@ env -u DATABASE_URL \
   PLATFORM_TEST_DATABASE_URL="postgresql://platform_rw:platform_rw@127.0.0.1:$PORT/platform" \
   AISC_DEPLOYMENT=configurator \
   DB_ENGINE=django.db.backends.postgresql DB_NAME=platform DB_USER=engine_rw DB_PASSWORD=engine_rw \
+  DB_MIGRATE_USER=engine_migrator DB_MIGRATE_PASSWORD=engine_migrator \
   DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
   "${RUNNER[@]}" "${labels[@]}" ${options[@]+"${options[@]}"} 2>&1 | tee "$output" || status=$?
 summary=$(grep -E '^(OK|FAILED)( \(|$)' "$output" | tail -1 || true)
