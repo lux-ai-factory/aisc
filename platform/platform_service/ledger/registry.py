@@ -381,12 +381,11 @@ _ACTIONS = [
        routes=(("engine", "apps/backend/aisc_backend/routers/plugin.py", "delete_plugin"),)),
     _a("control.installed", 3, ("controls",), "checklist",
        caused_by=(("controls", "ACTION", _CT + r"/install$"),
-                  ("controls", "ACTION", r"^/controls/install$"),
-                  ("controls", "POST", r"^/controls/api/install$")), details_keys=("package", "questions"),
-       # the catalogue's Install button (api/install) and the /install page; the controls app has no
-       # catalogue page of its own
+                  ("controls", "POST", _CT + r"/api/install$")), details_keys=("package", "questions"),
+       # the catalogue's Install button (api/install) and the install page, both under the project's address,
+       # where the witness binds the request to the project; the controls app has no catalogue page of its own
        routes=(("controls", "apps/controls/src/app/p/[project]/install/actions.ts", "installFromCatalogue"),
-               ("controls", "apps/controls/src/app/api/install/route.ts", "POST"))),
+               ("controls", "apps/controls/src/app/p/[project]/api/install/route.ts", "POST"))),
     # step 4: evidence, engine, controls
     _a("evidence.links.saved", 4, ("platform",), "evidence",
        caused_by=(("platform", "PUT", _LAUNCH + "/evidence/links$"),),
