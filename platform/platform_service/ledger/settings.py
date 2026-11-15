@@ -10,6 +10,9 @@ WINDOW = timedelta(minutes=5)
 CLOCK_SKEW = timedelta(seconds=2)
 #: How long an AI or worker run may keep producing events after its start event.
 RUN_WINDOW = timedelta(hours=24)
+#: How long the platform's own event about a run (the seal of its calls) waits for the run's start, which
+#: another app delivers on its own schedule.
+RUN_START_WAIT = timedelta(minutes=10)
 #: Leeway on a token's exp and nbf.
 LEEWAY = timedelta(seconds=30)
 #: How long an action from a newer registry is held before it is rejected.

@@ -372,7 +372,22 @@ def ledger_reanchor(body: ReanchorIn, caller: Caller = Depends(requires_role(ADM
 LEDGER_CALLERS = {"qualification_agents": "PLATFORM_LEDGER_AGENTS_TOKEN", "engine": "PLATFORM_LEDGER_ENGINE_TOKEN",
                   "dashboard": "PLATFORM_LEDGER_DASHBOARD_TOKEN"}
 _INTERNAL_COLUMNS = ("event_id", "request_id", "run_id", "action", "item_type", "item_id", "item_version",
-                     "card_version", "content", "before", "after", "details", "outcome", "model", "registry_version")
+                     "card_version", "content", "before", "after", "details", "outcome", "model", "registry_version",
+                     "occurred_at")
+
+
+def _occurred_at(event: dict):
+    """When the emitter says the event happened (it may have queued it a while before sending), or None."""
+    from datetime import datetime
+
+    value = event.get("occurred_at")
+    if value is None:
+        return None
+    try:
+        at = datetime.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        at = None
+    return at if at is not None and at.tzinfo is not None else ValueError
 
 
 def _ledger_caller(request: Request) -> tuple[str | None, JSONResponse | None]:
@@ -426,6 +441,16 @@ def _malformed(event) -> str | None:
     if event.get("registry_version") is not None and (not isinstance(event["registry_version"], int)
                                                       or isinstance(event["registry_version"], bool)):
         return "registry_version: a number"
+    at = _occurred_at(event)
+    if at is ValueError:
+        return "occurred_at: an ISO 8601 time with its zone"
+    if at is not None:
+        from datetime import datetime, timezone
+
+        from platform_service.ledger import settings
+
+        if at > datetime.now(timezone.utc) + settings.CLOCK_SKEW:
+            return "occurred_at: a moment that has passed"
     if event.get("outcome", "ok") not in EMITTER_OUTCOMES:
         return f"outcome: one of {', '.join(EMITTER_OUTCOMES)}"
     if action is not None and {"ai", "worker"} & set(action.actor_kinds) and "user" not in action.actor_kinds:
@@ -494,6 +519,7 @@ def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
 
     if db.get_project(pid) is None:
         return _internal(404, {"detail": f"no project {pid!r}"})
+    occurred_at = _occurred_at(event)
     extra = {k: v for k, v in event.items() if k not in _INTERNAL_COLUMNS}
     fields = dict(item_type=event.get("item_type"), item_id=event.get("item_id"), details=event.get("details") or {},
                   content=event.get("content"), before=event.get("before"), after=event.get("after"),
@@ -504,7 +530,7 @@ def _queue_internal(pid: str, caller: str, event: dict) -> JSONResponse:
     with db.pool().connection() as conn:
         try:
             with conn.transaction():
-                outbox.emit(conn, event["action"], project_pid=pid, **fields)
+                outbox.emit(conn, event["action"], project_pid=pid, occurred_at=occurred_at, **fields)
             return _internal(202, {"queued": event["event_id"]})
         except pg_errors.UniqueViolation:
             pass

@@ -443,6 +443,10 @@ def _judge_run(ev, app, action, log) -> dict:
     # the start is the first accepted event of the run whose action starts runs
     start = next((r for r in rows if r["action"] in registry.REGISTRY and registry.REGISTRY[r["action"]].runs), None)
     if start is None:
+        # the platform's own event about a run (its seal) can come before the app that started the run has
+        # delivered the start: it waits for it, for RUN_START_WAIT at most
+        if app == "platform" and datetime.now(timezone.utc) - ev["occurred_at"] < settings.RUN_START_WAIT:
+            raise _Hold()
         raise _Rejected("run")
     logged = _store().get(log, start["seq"]).as_dict()               # the person comes from the log
     if (logged.get("action"), logged.get("actor_ref"), logged.get("run_id"), logged.get("request_id")) != \
