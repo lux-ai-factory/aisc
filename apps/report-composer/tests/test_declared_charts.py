@@ -63,22 +63,15 @@ def test_fetch_asks_the_platform_with_the_callers_token(monkeypatch):
 
     from report_composer import declared_charts
 
+    import httpx
+
     seen = {}
 
-    class Client:
-        def __init__(self, timeout):
-            seen["timeout"] = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def get(self, url, headers):
-            seen["url"], seen["auth"] = url, headers["Authorization"]
-            return SimpleNamespace(status_code=200, json=lambda: DECLARED)
-    monkeypatch.setattr(declared_charts.httpx, "Client", Client)
+    def request(self, method, url, headers=None, timeout=None, **kw):
+        seen["timeout"], seen["url"], seen["auth"] = timeout, url, headers["Authorization"]
+        return SimpleNamespace(status_code=200, json=lambda: DECLARED)
+    # every call of the service client: the one GET of the declared charts
+    monkeypatch.setattr(httpx.Client, "request", request)
     monkeypatch.setenv("PLATFORM_URL", "http://platform:8000/")
     request = SimpleNamespace(headers={"authorization": "Bearer tok"})
     assert declared_charts.fetch(request, {"slug": "alpha", "pid": "p"}) == DECLARED

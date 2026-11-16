@@ -55,11 +55,11 @@ for repo in "$@"; do
 done
 
 # The other local packages a target may take from vendor/: name, the folder its wheel is built from, and the
-# importable packages inside that folder (space-separated: shared/identity ships the secret rule aisc_redact
-# beside aisc_identity).
+# importable packages inside that folder (space-separated: shared/identity ships the secret rule aisc_redact and
+# the service client aisc_service_client beside aisc_identity).
 LOCAL_NAMES=(aisc-plugin-manager aisc-identity)
 local_folder() { case "$1" in aisc-plugin-manager) echo shared/plugin-manager ;; aisc-identity) echo shared/identity ;; esac; }
-local_package() { case "$1" in aisc-plugin-manager) echo src/aisc_plugin_manager ;; aisc-identity) echo aisc_identity aisc_redact ;; esac; }
+local_package() { case "$1" in aisc-plugin-manager) echo src/aisc_plugin_manager ;; aisc-identity) echo aisc_identity aisc_redact aisc_service_client ;; esac; }
 
 source_path() {  # source_path PYPROJECT DIST: the path its [tool.uv.sources] entry gives, or nothing
   python3 - "$1" "$2" <<'PY'

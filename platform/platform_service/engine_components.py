@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-import httpx
+from aisc_service_client import Response, ServiceClient, ServiceTimeout, ServiceUnreachable
 
 PROJECT_HEADER = "X-AISC-Project"
 REQUEST_HEADER = "X-AISC-Request-Id"
@@ -32,7 +32,7 @@ class EngineUnavailable(RuntimeError):
         self.unconfirmed = unconfirmed
 
 
-def _detail_of(r: httpx.Response) -> str | None:
+def _detail_of(r: Response) -> str | None:
     """The `detail` of an engine refusal, when its body is JSON that has one."""
     try:
         detail = r.json().get("detail")
@@ -45,17 +45,19 @@ def _base() -> str:
     return (os.environ.get("ENGINE_URL") or "http://aisc-backend:8000").rstrip("/")
 
 
+def _engine(timeout_s: float) -> ServiceClient:
+    return ServiceClient(_base(), timeout=timeout_s, service="the engine")
+
+
 def _headers(pid, token: str, cite_request: bool) -> dict:
     """The person's token and the project. With `cite_request`, inside a witnessed request also its id, so
     the engine's event for this call cites the request the person made (the ledger registry names the
     platform's route as a cause of that event)."""
     from platform_service.ledger import outbox
 
-    headers = {"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid)}
+    # the request id only of a witnessed request, and only when asked: never the log's id of the call
     request_id = outbox.current_request.get() if cite_request else None
-    if request_id:
-        headers[REQUEST_HEADER] = request_id
-    return headers
+    return {"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid), REQUEST_HEADER: request_id or None}
 
 
 def _call(method: str, path: str, pid, token: str, body: dict | None = None, cite_request: bool = False,
@@ -63,16 +65,15 @@ def _call(method: str, path: str, pid, token: str, body: dict | None = None, cit
     """`doing` names a write the engine may finish after the wait (an install): a timeout then says it is not
     confirmed rather than not reached."""
     try:
-        r = httpx.request(method, f"{_base()}{path}", json=body, timeout=timeout_s,
-                          headers=_headers(pid, token, cite_request))
-    except httpx.ReadTimeout:
-        if doing is None:
-            raise EngineUnavailable("the engine could not be reached (ReadTimeout)") from None
+        r = _engine(timeout_s).request(method, path, json=body, headers=_headers(pid, token, cite_request))
+    except ServiceTimeout as exc:
+        if doing is None or exc.cause != "ReadTimeout":
+            raise EngineUnavailable(f"the engine could not be reached ({exc.cause})") from None
         # sent, and not answered in time: the engine may still be doing it
         raise EngineUnavailable(f"the engine did not confirm {doing} within {timeout_s:g} s",
                                 unconfirmed=True) from None
-    except httpx.HTTPError as exc:
-        raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
+    except ServiceUnreachable as exc:
+        raise EngineUnavailable(f"the engine could not be reached ({exc.cause})") from None
     if r.status_code >= 300:
         raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code, _detail_of(r))
     try:
@@ -141,11 +142,12 @@ UPLOAD_TIMEOUT_S = 900
 def upload(pid, token: str, component: str, file_name: str, stream) -> None:
     """The bytes of `stream` as the file of `component`, through the engine's own upload route."""
     try:
-        r = httpx.put(f"{_base()}/api/v1/components/{component}/data", timeout=UPLOAD_TIMEOUT_S,
-                      files={"file": (file_name, stream, "application/octet-stream")},
-                      headers={"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid)})
-    except httpx.HTTPError as exc:
-        raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
+        r = _engine(UPLOAD_TIMEOUT_S).put(f"/api/v1/components/{component}/data",
+                                          files={"file": (file_name, stream, "application/octet-stream")},
+                                          headers={"Authorization": f"Bearer {token}", PROJECT_HEADER: str(pid),
+                                                   REQUEST_HEADER: None})
+    except (ServiceUnreachable, ServiceTimeout) as exc:
+        raise EngineUnavailable(f"the engine could not be reached ({exc.cause})") from None
     if r.status_code >= 300:
         raise EngineUnavailable(f"the engine answered {r.status_code}", r.status_code, _detail_of(r))
 

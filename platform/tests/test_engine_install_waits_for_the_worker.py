@@ -25,7 +25,7 @@ def test_an_install_waits_longer_than_the_engine_waits_for_the_worker(monkeypatc
         seen.append((method, url.rsplit("/api/v1", 1)[1], kwargs["timeout"]))
         return _Answer()
 
-    monkeypatch.setattr(httpx, "request", request)
+    monkeypatch.setattr(httpx.Client, "request", lambda self, method, url, **kw: request(method, url, **kw))
     engine_components.install_plugin("p1", "token", "demo-pkg", "1.0", "demo")
     timeouts = {path: timeout for method, path, timeout in seen}
     assert timeouts["/plugins"] >= ENGINE_WAITS_S + 60

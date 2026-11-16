@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-import httpx
+from aisc_service_client import ServiceClient, ServiceError
 
 from platform_service.targets import GATEWAY_TOKEN_HEADER
 
@@ -23,10 +23,11 @@ def of_version(slug: str, version_pid: str, token: str) -> dict:
     """{"count", "latest"}: how many reports of the version finished, and the newest with its layout and
     its download path on the composer (None when there is none)."""
     try:
-        r = httpx.get(f"{_base()}/api/p/{slug}/reports", params={"system_id": version_pid}, timeout=TIMEOUT_S,
-                      headers={"Authorization": f"Bearer {token}", GATEWAY_TOKEN_HEADER: token})
-    except httpx.HTTPError as exc:
-        raise ComposerUnavailable(f"could not be reached ({type(exc).__name__})") from None
+        r = ServiceClient(_base(), timeout=TIMEOUT_S, service="the report composer").get(
+            f"/api/p/{slug}/reports", params={"system_id": version_pid},
+            headers={"Authorization": f"Bearer {token}", GATEWAY_TOKEN_HEADER: token})
+    except ServiceError as exc:
+        raise ComposerUnavailable(f"could not be reached ({exc.cause})") from None
     if r.status_code != 200:
         raise ComposerUnavailable(f"answered {r.status_code}")
     try:

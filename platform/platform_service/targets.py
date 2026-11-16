@@ -236,14 +236,15 @@ def card_components(graph) -> list[tuple[str, str, str]]:
 
 def _fetch_card(pid, version_pid: str, token: str):
     """The card graph of one version, or None when that version has no card."""
-    import httpx
+    from aisc_service_client import ServiceClient, ServiceError
 
     base = (os.environ.get("QUALIFICATION_URL") or "http://qualification-web:3000/qualification").rstrip("/")
-    url = f"{base}/p/{pid}/api/system-versions/{version_pid}/ontology.jsonld"
     try:
-        r = httpx.get(url, timeout=20, headers={"Authorization": f"Bearer {token}", GATEWAY_TOKEN_HEADER: token})
-    except httpx.HTTPError as exc:
-        raise CardUnreadable(f"qualification could not be reached ({type(exc).__name__})") from None
+        r = ServiceClient(base, timeout=20, service="qualification").get(
+            f"/p/{pid}/api/system-versions/{version_pid}/ontology.jsonld",
+            headers={"Authorization": f"Bearer {token}", GATEWAY_TOKEN_HEADER: token})
+    except ServiceError as exc:
+        raise CardUnreadable(f"qualification could not be reached ({exc.cause})") from None
     if r.status_code == 404:
         return None
     if r.status_code != 200:
