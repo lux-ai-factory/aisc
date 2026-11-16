@@ -167,7 +167,10 @@
 
   function $(id) { return document.getElementById(id); }
 
-  // The only request helper: same origin, the session cookie, JSON bodies. Resolves {ok, status, body}.
+  var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
+
+  // The only request helper: same origin, the session cookie, JSON bodies. Resolves {ok, status, body}, never
+  // rejects: nothing answering is status 0.
   function api(path, method, body) {
     return fetch(path, {
       method: method || 'GET', credentials: 'same-origin',
@@ -177,12 +180,44 @@
       return res.json().catch(function () { return null; }).then(function (b) {
         return {ok: res.ok, status: res.status, body: b};
       });
+    }, function () {
+      return {ok: false, status: 0, body: null};
     });
   }
 
+  // the platform's own words: its sentence, or its field errors listed (FastAPI's 422)
   function refusal(r) {
+    if (r.status === 0) return NOT_ANSWERING;
     var d = r.body && r.body.detail;
-    return typeof d === 'string' ? d : 'Refused (HTTP ' + r.status + ')';
+    if (typeof d === 'string' && d) return d;
+    if (Array.isArray(d) && d.length) {
+      return d.map(function (e) {
+        var field = e && Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : '';
+        return (field ? field + ': ' : '') + (e && e.msg ? e.msg : String(e));
+      }).join('; ');
+    }
+    return 'Refused (HTTP ' + r.status + ')';
+  }
+
+  // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
+  // its own words, with a reload to try again after a failure
+  function notOpened(status, body) {
+    if (status === 404) return 'No such project: ' + slug + '.';
+    if (status === 0) return NOT_ANSWERING;
+    var detail = body && body.detail;
+    var why = typeof detail === 'string' && detail ? detail.replace(/\.$/, '') : 'HTTP ' + status;
+    if (status >= 500) return 'The platform could not open this project just now (' + why + '). Reload the page to try again.';
+    return typeof detail === 'string' && detail ? why + '.' : 'The project could not be opened (' + why + ').';
+  }
+
+  // A save under way: its button is off and its message says so until the platform answers.
+  function saving(button, msgId, done) {
+    if (button) button.disabled = true;
+    say(msgId, 'Saving\u2026');
+    return done.then(function (r) {
+      if (button) button.disabled = false;
+      return r;
+    });
   }
 
   function say(id, text, isError) { $(id).textContent = text || ''; $(id).className = isError ? 'msg err' : 'msg'; }
@@ -275,7 +310,7 @@
       pick.addEventListener('change', function () { fillModels(pick.value, choices, note); });
       fillModels(pick.value, choices, note);
       var save = el('button', 'b ghost', 'Save'); save.type = 'button';
-      save.addEventListener('click', function () { saveAgent(a.id, pick.value, model.value); });
+      save.addEventListener('click', function () { saveAgent(a.id, pick.value, model.value, save); });
       var modelCell = el('div'); modelCell.appendChild(model); modelCell.appendChild(choices); modelCell.appendChild(note);
       cell(tr, pick); cell(tr, modelCell); cell(tr, save);
       body.appendChild(tr);
@@ -294,7 +329,7 @@
       var models = (r.ok && r.body && r.body.models) || [];
       models.forEach(function (m) { choices.appendChild(el('option')).value = m; });
       if (models.length) { note.textContent = models.length + ' models: click the box to pick one.'; return; }
-      var why = (r.body && (r.body.error || r.body.detail)) || ('HTTP ' + r.status);
+      var why = (r.body && (r.body.error || r.body.detail)) || (r.status ? 'HTTP ' + r.status : 'the platform is not answering');
       note.textContent = 'The list could not be read (' + why + '): type the model name.';
     });
   }
@@ -364,7 +399,7 @@
       var roles = ticked();
       if (!roles.length && current.length && !confirm('Nothing is ticked for ' + c.label + '. Saving removes it as a '
           + 'test tool: every test that uses it as ' + current.join(', ') + ' no longer can. Remove it?')) return;
-      saveTool(c.name, roles);
+      saveTool(c.name, roles, save);
     });
     box.appendChild(save);
     box.appendChild(marker);
@@ -410,19 +445,19 @@
   }
 
   // ---- writes: each one through the platform, then the page reads everything again ----
-  function saveAgent(agent, connection, model) {
+  function saveAgent(agent, connection, model, button) {
     var done = connection ? api(base + '/agents/' + enc(agent), 'PUT', {connection: connection, model: model})
                           : api(base + '/agents/' + enc(agent), 'DELETE');
-    done.then(function (r) {
+    saving(button, 'agents-msg', done).then(function (r) {
       if (!r.ok && !(r.status === 404 && !connection)) { say('agents-msg', refusal(r), true); return; }
       say('agents-msg', 'Saved.'); reload();
     });
   }
 
-  function saveTool(name, roles) {
+  function saveTool(name, roles, button) {
     var path = base + '/connections/' + enc(name) + '/tool';
     var done = roles.length ? api(path, 'PUT', {roles: roles}) : api(path, 'DELETE');
-    done.then(function (r) {
+    saving(button, 'connections-msg', done).then(function (r) {
       if (!r.ok && !(r.status === 404 && !roles.length)) { say('connections-msg', refusal(r), true); return; }
       delete unsavedRoles[name];
       say('connections-msg', 'Saved.'); reload();
@@ -434,7 +469,8 @@
     var sent = {label: $('n-label').value, kind: 'provider', provider: $('n-provider').value};
     if ($('n-base-url').value) sent.base_url = $('n-base-url').value;
     if ($('n-secret').value) sent.secret = $('n-secret').value;
-    api(base + '/connections/' + enc($('n-name').value), 'PUT', sent).then(function (r) {
+    var button = $('new-provider').querySelector('button');
+    saving(button, 'n-msg', api(base + '/connections/' + enc($('n-name').value), 'PUT', sent)).then(function (r) {
       if (!r.ok) { say('n-msg', refusal(r), true); return; }
       $('n-secret').value = '';
       say('n-msg', 'Saved.'); reload();
@@ -444,14 +480,14 @@
   // ---- start: the project, then the page's one read ----
   $('back').href = '/p/' + enc(slug);
   api(base).then(function (r) {
-    if (!r.ok) { $('page-message').textContent = 'No such project: ' + slug + '.'; $('page-message').hidden = false; return; }
+    if (!r.ok) { $('page-message').textContent = notOpened(r.status, r.body); $('page-message').hidden = false; return; }
     $('project-name').textContent = r.body.name;
     document.title = r.body.name + ' - Connectivity';
     $('who').textContent = 'signed in';
     show(location.hash.slice(1));
     return reload();
   }).catch(function () {
-    $('page-message').textContent = 'The platform is not answering. Nothing was saved.';
+    $('page-message').textContent = NOT_ANSWERING;
     $('page-message').hidden = false;
   });
 </script>
