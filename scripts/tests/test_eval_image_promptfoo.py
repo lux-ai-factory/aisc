@@ -23,7 +23,7 @@ import pytest
 from conftest import ROOT
 
 DOCKERFILE = ROOT / "apps/eval/Dockerfile"
-NODE_STAGE = re.compile(r"^FROM node:(\d+)\.(\d+)\.(\d+)-bookworm-slim AS node$", re.M)
+NODE_STAGE = re.compile(r"^FROM node:(\d+)\.(\d+)\.(\d+)-bookworm-slim(?:@sha256:[0-9a-f]{64})? AS node$", re.M)
 IMAGE = "aisc-must-fixes-eval:check"
 
 

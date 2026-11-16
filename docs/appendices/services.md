@@ -22,6 +22,7 @@ start, does its job and exits.
 | `ledger-pool` | *One-shot.* Makes immudb databases ahead of time (only immudb's superuser may, and the platform never holds that password), gives waiting projects theirs, and makes the engine's own immudb account. | `immudb`, `postgres` |
 | `plugin-publisher` | Builds a test's package, from its repository on github.com/lux-ai-factory or from your folder in `local_plugins/`, as an unprivileged user with no secrets, and uploads it to `devpi`. At start it publishes the plugin interface. | github.com, `devpi` |
 | `devpi` | The stack's own package index, where tests are installed from. Kept in the volume `devpi_data`. | |
+| `devpi-data-owner` | *One-shot*, before `devpi`: hands the volume `devpi_data` to devpi's user (uid 10001), so a volume an older image filled as root still starts. No network. | |
 
 ## Step 1: qualification (`apps/qualification`)
 
@@ -67,6 +68,7 @@ platform.
 | `rabbitmq` | The queue that carries test runs to the worker. | |
 | `redis` | Where the worker keeps task results. | |
 | `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`, which `make_buckets` (*one-shot*) creates, and one bucket `proof-<pid>` per project for the checklists' proof files, which the platform makes with the project. | |
+| `minio-data-owner` | *One-shot*, before `minio`: hands the volume `minio_data` to MinIO's user (uid 10030), so a volume an older install made as root still starts. No network. | |
 | `dashboard` | Superset with AISC's extension: one dashboard per test per project, comments and review requests. | `postgres` (database `superset`, the project databases read-only), `dashboard-redis`, `platform` |
 | `dashboard-migrate` | *One-shot.* Superset's migrations. | `postgres` |
 | `chart-assistant` | Builds a chart from a description of a project's data, for the dashboard's assistant, on a mock database of invented rows until a person validates the chart. Its role `assistant_mock` may create databases (`CREATEDB`) and makes one `assistant_mock_<pid>_<digest>` per project and description, dropping the project's older ones; it holds no credential of a project database. | `postgres` as `assistant_mock` (database `postgres` and its own mock databases), `platform` (the project's model) |
