@@ -5,7 +5,8 @@ when the project is deleted, so its files are as separate from other projects' a
 controls app never holds credentials for these buckets: it sends the platform a file and is told what it stored
 (POST /internal/projects/{pid}/proof-files), and reads it back the same way. The platform reaches them with its
 own MinIO account (S3_USER/S3_PASSWORD, aisc-platform in the stack), which may use the proof-* buckets only, and
-in the engine's buckets list and delete files but not read them (infra/minio/policies/platform.json). The engine
+in the engine's buckets list and delete files but not read them (infra/minio/policies/platform.json): a deleted
+run's or project's files leave the shared buckets through `remove_objects`. The engine
 backend's account cannot reach the proof buckets.
 
 A stored file is never replaced and never deleted while its project exists. Each one is stored under an id
@@ -116,6 +117,24 @@ class MinioStore:
         except S3Error as exc:
             if exc.code != "NoSuchBucket":
                 raise
+
+    def remove_objects(self, bucket: str, names: list[str]) -> list[str]:
+        """Remove these files from the bucket; the names it could not remove. A name that is not there, or a
+        bucket that is not there, counts as removed."""
+        from minio.deleteobjects import DeleteObject
+        from minio.error import S3Error
+
+        if not names:
+            return []
+        try:
+            errors = self._call("remove_objects", lambda: list(self._client.remove_objects(
+                bucket, (DeleteObject(n) for n in names))))
+        except S3Error as exc:
+            if exc.code == "NoSuchBucket":
+                return []
+            raise
+        kept = {e.name for e in errors if e.code not in ("NoSuchKey", "NoSuchObject", "NoSuchBucket")}
+        return [n for n in names if n in kept]
 
     def put(self, bucket: str, key: str, data: bytes, mime: str, meta: dict[str, str]) -> None:
         """Write a new object; FileExistsError if `key` is taken (an object is never replaced)."""

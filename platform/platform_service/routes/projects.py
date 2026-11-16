@@ -177,6 +177,8 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
     if body.confirm_name != found["name"]:
         raise HTTPException(status_code=422, detail="type the project's name exactly to delete it")
     closed_to = _ledger_drain_or_refuse(found["pid"])
+    # the project's files in the shared buckets are named by its database only: read them before it goes
+    stored = _stored_files(found["pid"])
     try:
         # the drop ends the dashboard's sessions on the database too
         projectdb.drop(db.migrate_dsn(), found["pid"])
@@ -193,12 +195,31 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
     # only now that the data is gone do the dashboards and charts made on it go too
     dashboard_bridge.unregister(found["pid"])
     db.delete_project(found["pid"])
+    # and its files in the shared buckets; one the store keeps waits in core.leftover_object for the sweep
+    for bucket, names in stored.items():
+        run_purge.remove_files(found["pid"], bucket, names)
     # its proof files go with it; the project is gone either way, so a bucket left behind is only logged
     try:
         proof_store.remove_project_bucket(found["pid"])
     except Exception:
         logger.exception("project %s: its proof-file bucket %s could not be removed; remove it by hand",
                          found["pid"], proof_store.bucket_name(found["pid"]))
+
+
+def _stored_files(pid) -> dict[str, list[str]]:
+    """The project's files in the engine's shared buckets, by bucket, as the engine names them
+    (engine.stored_objects). None yet: a project whose engine never migrated has no files there."""
+    out: dict[str, list[str]] = {}
+    try:
+        with projectdb.connect(pid, row_factory=None) as conn:
+            if conn.execute("SELECT to_regprocedure('engine.stored_objects()')").fetchone()[0] is None:
+                return out
+            for bucket, name in conn.execute("SELECT bucket, name FROM engine.stored_objects()"):
+                if bucket and name:
+                    out.setdefault(bucket, []).append(name)
+    except db.ProjectDatabaseGone:
+        return out
+    return out
 
 
 def _reopen(pid, grantees: list[str]) -> None:
