@@ -180,6 +180,14 @@
     if (o.stale || item.stale) return false;
     return !o.dimension || !item.dimensions || item.dimensions.indexOf(o.dimension) >= 0;
   }
+  // why a link cannot be made, in words, or '' when it can (or the reason is the stale mark shown already)
+  var NO_DIMENSIONS = 'No dimensions yet: an admin ticks them on its catalogue entry (Save dimensions); until then ' +
+                      'it cannot be linked to an objective that has a dimension.';
+  function whyNot(o, item) {
+    if (o.stale || item.stale || canLink(o, item)) return '';
+    if (!item.dimensions.length) return NO_DIMENSIONS;
+    return 'Not in ' + o.dimension + ': it is in ' + item.dimensions.join(', ') + '.';
+  }
   function items() {
     var linked = {};
     saved().forEach(function (l) { linked[l.kind + '|' + l.key] = true; });
@@ -206,7 +214,10 @@
       var th = el('th', 'item');
       th.appendChild(el('span', 'kind', c.kind === 'test' ? 'Test' : 'Checklist'));
       th.appendChild(el('span', null, c.item.label));
-      th.appendChild(el('span', 'dims', (c.item.dimensions || []).join(' ')));
+      var dims = el('span', 'dims', c.item.dimensions && !c.item.dimensions.length ? 'no dimensions'
+                                      : (c.item.dimensions || []).join(' '));
+      if (c.item.dimensions && !c.item.dimensions.length) dims.title = NO_DIMENSIONS;
+      th.appendChild(dims);
       if (c.item.stale) th.appendChild(el('span', 'stale', c.item.stale));
       tr.appendChild(th);
     });
@@ -246,7 +257,10 @@
       });
       td.appendChild(add);
     } else {
-      td.appendChild(el('span', 'off', canLink(o, c.item) ? '\u2610' : '\u00b7'));
+      var off = el('span', 'off', canLink(o, c.item) ? '\u2610' : '\u00b7');
+      var why = whyNot(o, c.item);
+      if (why) { off.title = why; off.setAttribute('aria-label', why); }
+      td.appendChild(off);
     }
     return td;
   }
