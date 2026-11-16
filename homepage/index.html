@@ -183,7 +183,10 @@
     try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ''; }
   }
 
+  var listed = {};   // the slugs the page listed when it opened: a create that found one of them made nothing new
+
   function render(projects) {
+    projects.forEach(function (p) { if (p && p.slug) listed[p.slug] = true; });
     if (!projects.length) {
       list.innerHTML = '<div class="empty">No projects yet. Create one to begin an assessment.</div>';
       return;
@@ -219,25 +222,73 @@
   document.getElementById('new-project').addEventListener('click', function () { dialog.showModal(); });
   document.getElementById('cancel').addEventListener('click', function () { dialog.close(); });
 
+  // the platform's own words for a refused create: its sentence, or its field errors listed (FastAPI's 422)
+  function refusalOf(status, body) {
+    var d = body && body.detail;
+    if (typeof d === 'string' && d) return d;
+    if (Array.isArray(d) && d.length) {
+      return d.map(function (x) {
+        var field = x && Array.isArray(x.loc) ? x.loc[x.loc.length - 1] : '';
+        return (field ? field + ': ' : '') + (x && x.msg ? x.msg : String(x));
+      }).join('; ');
+    }
+    return 'The project could not be created (HTTP ' + status + ').';
+  }
+
+  function openProject(slug) { window.location.href = '/p/' + encodeURIComponent(slug); }
+
+  // Nothing answered, or the gateway gave up (a create makes a database and a bucket, so it can be slow): the
+  // project may exist all the same, so the list is read again before saying it was not created.
+  function afterNoAnswer(name, status) {
+    var said = (status ? 'The platform did not confirm the create (HTTP ' + status + ')'
+                       : 'The platform is not answering') + ', and no project named ' + name
+               + ' is listed yet. Reload the page in a moment before trying again.';
+    return fetch('/api/projects', {credentials: 'same-origin'})
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (projects) {
+        var made = (projects || []).filter(function (p) { return p && p.name === name && !listed[p.slug]; })[0];
+        if (made) { openProject(made.slug); return null; }
+        return said;
+      }, function () { return said; });
+  }
+
+  var creating = false;
   document.getElementById('new-form').addEventListener('submit', function (e) {
     e.preventDefault();
+    if (creating) return;   // one create at a time: a second click sends nothing
     var err = document.getElementById('err');
-    err.textContent = '';
+    var button = document.querySelector('#new-form button[type="submit"]');
     var data = new FormData(e.target);
+    var name = String(data.get('name') || '').trim();
+    creating = true;
+    if (button) button.disabled = true;
+    err.textContent = 'Creating the project\u2026';
+    function done(text) {
+      creating = false;
+      if (button) button.disabled = false;
+      err.textContent = text || '';
+    }
     fetch('/api/projects', {
       method: 'POST',
       credentials: 'same-origin',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        name: data.get('name'),
+        name: name,
         description: data.get('description') || null
       })
     }).then(function (r) {
-      return r.json().then(function (body) {
-        if (!r.ok) throw new Error(body.detail || 'could not create the project');
-        window.location.href = '/p/' + encodeURIComponent(body.slug);
+      return r.text().catch(function () { return ''; }).then(function (text) {
+        var body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (x) { body = null; }
+        if (r.ok && body && body.slug) { openProject(body.slug); return; }
+        // a platform that answered in words said what happened (a 503 that made nothing says so)
+        var worded = body && body.detail;
+        if ((r.status >= 500 && !worded) || (r.ok && !(body && body.slug))) return afterNoAnswer(name, r.status).then(done);
+        done(refusalOf(r.status, body));
       });
-    }).catch(function (e2) { err.textContent = e2.message; });
+    }, function () {
+      return afterNoAnswer(name, 0).then(done);
+    });
   });
 </script>
 <script>
