@@ -96,3 +96,4 @@ def test_each_account_reaches_only_its_buckets_in_a_real_minio():
                                "read_proof": False, "admin": False}
     assert probe["platform"] == {"make_proof_bucket": True, "list_artifacts": True, "read_artifact": False,
                                  "put_artifacts": False, "admin": False}
+    assert probe["encrypted"] == {"datasets": True, "artifacts": True, "models": True}, "a bucket stores unencrypted"

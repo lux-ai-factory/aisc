@@ -94,6 +94,11 @@ class MinioStore:
         except S3Error as exc:
             if exc.code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):    # made meanwhile
                 raise
+        # every file stored in it is encrypted at rest with MinIO's key (MINIO_KMS_SECRET_KEY)
+        from minio.sseconfig import Rule, SSEConfig
+
+        self._call("set_bucket_encryption", self._client.set_bucket_encryption, bucket,
+                   SSEConfig(Rule.new_sse_s3_rule()))
 
     def has_bucket(self, bucket: str) -> bool:
         return bool(self._call("bucket_exists", self._client.bucket_exists, bucket))

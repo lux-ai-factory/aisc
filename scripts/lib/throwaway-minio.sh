@@ -5,7 +5,7 @@
 #   echo "$TMINIO_URL"           # http://127.0.0.1:<port>, user TMINIO_USER, password TMINIO_PASSWORD
 #
 # The stack's MinIO holds live files and is never used by a test. This is a container of its own, with
-# its own random credentials and no volume, removed by tminio_cleanup (call it from the caller's EXIT trap).
+# its own random credentials and encryption key and no volume, removed by tminio_cleanup (call it from the caller's EXIT trap).
 # It runs the stack's own image (aisc-minio, built from source by infra/minio/Dockerfile); when that image
 # is not built, tminio_start returns 1 and starts nothing.
 
@@ -36,6 +36,7 @@ tminio_start() { # label
   fi
   docker run --rm -d --name "$TMINIO_NAME" -p "127.0.0.1:${port}:9000" \
     -e MINIO_ROOT_USER="$TMINIO_USER" -e MINIO_ROOT_PASSWORD="$TMINIO_PASSWORD" \
+    -e MINIO_KMS_SECRET_KEY="tminio-key:$(python3 -c 'import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())')" \
     --entrypoint /usr/bin/minio "$TMINIO_IMAGE" server /data >/dev/null || return 1
   TMINIO_URL="http://127.0.0.1:${port}"
   for i in $(seq 1 60); do

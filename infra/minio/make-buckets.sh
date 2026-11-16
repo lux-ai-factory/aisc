@@ -1,5 +1,6 @@
 #!/bin/sh
-# Makes the stack's buckets and the services' own MinIO accounts, then exits. Run by the one-shot make_buckets
+# Makes the stack's buckets, turns on their server-side encryption (SSE-S3, MinIO's key from MINIO_KMS_SECRET_KEY),
+# and the services' own MinIO accounts, then exits. Run by the one-shot make_buckets
 # on every start, as MinIO's root account, which no other service holds:
 #   - the engine's three buckets (datasets, artifacts, models), kept when they exist;
 #   - aisc-engine, the engine backend's account: read, write and delete files in those three buckets only;
@@ -20,6 +21,14 @@ export MC_HOST_minio="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@${MINIO_A
 for bucket in datasets artifacts models; do
   mc mb --ignore-existing "minio/$bucket"
 done
+mc encrypt set sse-s3 minio/datasets >/dev/null
+mc encrypt set sse-s3 minio/artifacts >/dev/null
+mc encrypt set sse-s3 minio/models >/dev/null
+# the projects' proof-file buckets the platform made before it set their encryption itself
+for bucket in $(mc ls minio | awk '{print $NF}' | tr -d / | grep '^proof-' || true); do
+  mc encrypt set sse-s3 "minio/$bucket" >/dev/null
+done
+echo "server-side encryption on for every bucket (objects stored before stay as they were)"
 
 account() { # service, password
   mc admin policy create minio "aisc-$1" "$POLICIES/$1.json"

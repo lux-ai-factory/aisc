@@ -38,7 +38,13 @@ platform_read=$(can $p "$platform" "mc cat x/artifacts/a")
 platform_put=$(can $p "$platform" "mc cp /tmp/file x/artifacts/b")
 platform_list=$(can $p "$platform" "mc ls x/artifacts")
 platform_admin=$(can $p "$platform" "mc admin user list x")
-printf '{"engine": {"put_artifacts": %s, "read_datasets": %s, "make_bucket": %s, "read_proof": %s, "admin": %s},' \
+encrypted() { # bucket: whether it encrypts what it stores by default
+  if docker exec -e MC_HOST_x="http://$TMINIO_USER:$TMINIO_PASSWORD@127.0.0.1:9000" "$name" \
+      mc encrypt info "x/$1" 2>/dev/null | grep -qi 'sse-s3'; then printf true; else printf false; fi
+}
+printf '{"encrypted": {"datasets": %s, "artifacts": %s, "models": %s},' \
+  "$(encrypted datasets)" "$(encrypted artifacts)" "$(encrypted models)"
+printf ' "engine": {"put_artifacts": %s, "read_datasets": %s, "make_bucket": %s, "read_proof": %s, "admin": %s},' \
   "$put_artifacts" "$read_datasets" "$engine_bucket" "$engine_proof" "$engine_admin"
 printf ' "platform": {"make_proof_bucket": %s, "list_artifacts": %s, "read_artifact": %s, "put_artifacts": %s, "admin": %s}}\n' \
   "$make_proof" "$platform_list" "$platform_read" "$platform_put" "$platform_admin"
