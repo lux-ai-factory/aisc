@@ -1,0 +1,9 @@
+# Rule changes are reviewed like code changes: the invariants, the ADRs and the
+# guards are the architecture. See ARCHITECTURE.md and docs/adr/README.md.
+
+/ARCHITECTURE.md            @sean-blevins
+/AGENTS.md                  @sean-blevins
+/docs/refactor-plan.md      @sean-blevins
+/docs/unified-modules-and-pilot-brief.md @sean-blevins
+/docs/adr/                  @sean-blevins
+/tests/architecture/        @sean-blevins
