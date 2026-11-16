@@ -172,4 +172,6 @@ def test_the_image_starts_the_server_through_the_script_and_the_bucket_job_keeps
         s = yaml.safe_load((ROOT / f).read_text())["services"]
         assert "entrypoint" not in s["minio"], f
         assert s["minio"]["command"].startswith("server /data"), f
-        assert s["make_buckets"]["entrypoint"].strip().startswith("/bin/sh -c"), f
+        job = s["make_buckets"]["entrypoint"]
+        # its own entrypoint: the bucket script baked into the image, or an inline shell
+        assert job == ["/usr/local/bin/make-buckets.sh"] or job.strip().startswith("/bin/sh -c"), f

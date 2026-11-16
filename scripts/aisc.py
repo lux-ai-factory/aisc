@@ -183,6 +183,10 @@ SECRETS = [
     ("S3_PASSWORD", "rand"),
     ("RABBITMQ_PASSWORD", "rand"),
     ("KEYCLOAK_ADMIN_PASSWORD", "rand"),
+    # the engine's and the platform's own MinIO accounts (aisc-engine, aisc-platform): make_buckets sets them
+    # on every start (infra/minio/make-buckets.sh), so they are not volume-bound and --rotate renews them
+    ("S3_ENGINE_PASSWORD", "rand"),
+    ("S3_PLATFORM_PASSWORD", "rand"),
     # the realm's two development accounts, admin and user: the realm import puts these into it, and its
     # database keeps them after, so they are volume-bound too. admin / admin and user / user on a local install,
     # generated on one served to others over https (account below)
@@ -312,7 +316,8 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "PLATFORM_LEDGER_DASHBOARD_TOKEN", "PLATFORM_LEDGER_AGENTS_TOKEN", "PLUGIN_PUBLISHER_TOKEN",
                    "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN", "PLATFORM_MIGRATOR_PASSWORD",
                    "QUALIFICATION_MIGRATOR_PASSWORD", "CONTROLS_MIGRATOR_PASSWORD", "CONTROL_OBJECTIVES_MIGRATOR_PASSWORD",
-                   "REPORT_COMPOSER_MIGRATOR_PASSWORD", "ENGINE_MIGRATOR_PASSWORD")
+                   "REPORT_COMPOSER_MIGRATOR_PASSWORD", "ENGINE_MIGRATOR_PASSWORD", "S3_ENGINE_PASSWORD",
+                   "S3_PLATFORM_PASSWORD")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
 ROTATE_ONE = ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD")
 LEDGER_KEYS = re.compile(r"v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*")

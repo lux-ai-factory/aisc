@@ -8,8 +8,9 @@ x-backend-env: &backend-env
   S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
   S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
   S3_URL: ${S3_URL}
-  S3_USER: ${S3_USER}
-  S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
+  # the engine's own MinIO account, limited to its three buckets (infra/minio/make-buckets.sh makes it)
+  S3_USER: aisc-engine
+  S3_PASSWORD: ${S3_ENGINE_PASSWORD:?run scripts/secrets.sh first}
   DB_NAME: ${DB_NAME}
   DB_USER: ${DB_USER}
   # engine_rw's generated password (init/engine-role.sql)
@@ -107,6 +108,9 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
+      # its MinIO account exists before it starts
+      make_buckets:
+        condition: service_completed_successfully
       immudb:
         condition: service_healthy
         # A restart of immudb ends the engine's login token; its clerk logs in again on the next write,
@@ -1111,8 +1115,10 @@ services:
       # two that holds MinIO's credentials (the stack's S3 settings).
       PLATFORM_CONTROLS_TOKEN: ${PLATFORM_CONTROLS_TOKEN:?run scripts/secrets.sh first}
       S3_URL: ${S3_URL}
-      S3_USER: ${S3_USER}
-      S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
+      # the platform's own MinIO account: the projects' proof-* buckets, and deleting files in the engine's
+      # buckets (infra/minio/make-buckets.sh makes it)
+      S3_USER: aisc-platform
+      S3_PASSWORD: ${S3_PLATFORM_PASSWORD:?run scripts/secrets.sh first}
       # platform_rw's generated password: postgres-setup applies the same value to the role
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # platform_migrator (init/owner-roles.sql): migrations, making and dropping project databases, as platform_owner
@@ -1179,6 +1185,9 @@ services:
       postgres:
         condition: service_started
       postgres-setup:
+        condition: service_completed_successfully
+      # its MinIO account (aisc-platform) exists before it starts
+      make_buckets:
         condition: service_completed_successfully
     restart: unless-stopped
     networks:

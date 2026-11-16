@@ -67,7 +67,7 @@ platform.
 | `aisc-eval-flower` | The monitor of the test runs' task queue, for admins. Runs only when asked (`COMPOSE_PROFILES=inspect ./scripts/start.sh`). | `rabbitmq`, `redis` |
 | `rabbitmq` | The queue that carries test runs to the worker. | |
 | `redis` | Where the worker keeps task results. | |
-| `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`, which `make_buckets` (*one-shot*) creates, and one bucket `proof-<pid>` per project for the checklists' proof files, which the platform makes with the project. | |
+| `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`, which `make_buckets` (*one-shot*, on every start) creates, and one bucket `proof-<pid>` per project for the checklists' proof files, which the platform makes with the project. `make_buckets` also makes the services' own accounts: `aisc-engine` (the engine's three buckets) and `aisc-platform` (the `proof-*` buckets; listing and deleting in the engine's). Only `minio` and `make_buckets` hold MinIO's root account. | |
 | `minio-data-owner` | *One-shot*, before `minio`: hands the volume `minio_data` to MinIO's user (uid 10030), so a volume an older install made as root still starts. No network. | |
 | `dashboard` | Superset with AISC's extension: one dashboard per test per project, comments and review requests. | `postgres` (database `superset`, the project databases read-only), `dashboard-redis`, `platform` |
 | `dashboard-migrate` | *One-shot.* Superset's migrations. | `postgres` |

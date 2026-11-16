@@ -83,7 +83,9 @@ services:
     networks:
       - backend
 
-  # Creates the buckets once MinIO is up, then exits
+  # Creates the buckets and the services' own MinIO accounts once MinIO is up, then exits (on every start,
+  # infra/minio/make-buckets.sh). With MinIO itself, the only holder of MinIO's root account: the engine backend
+  # is aisc-engine, the platform aisc-platform, each limited to its buckets (infra/minio/policies).
   make_buckets:
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
@@ -94,15 +96,12 @@ services:
         condition: service_healthy
     environment:
       MINIO_ROOT_USER: ${S3_USER}
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set minio http://minio:9000 ${S3_USER} ${S3_PASSWORD} &&
-      /usr/bin/mc mb --ignore-existing minio/datasets;
-      /usr/bin/mc mb --ignore-existing minio/artifacts;
-      /usr/bin/mc mb --ignore-existing minio/models &&
-      exit 0;
-      "
+      MINIO_ROOT_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
+      # the services' passwords, set again on every start (scripts/aisc.py makes them)
+      S3_ENGINE_PASSWORD: ${S3_ENGINE_PASSWORD:?run scripts/secrets.sh first}
+      S3_PLATFORM_PASSWORD: ${S3_PLATFORM_PASSWORD:?run scripts/secrets.sh first}
+    entrypoint: ["/usr/local/bin/make-buckets.sh"]
+    restart: "no"
     networks:
       - backend
 

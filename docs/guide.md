@@ -352,6 +352,7 @@ likely to change:
 | `KEYCLOAK_ADMIN` | `env.plugin_downloader` | Keycloak's bootstrap admin | `admin` |
 | `GATEWAY_COOKIE_SECURE` | `env.plugin_downloader` | the gateway's session cookie is Secure: `true` when `CADDY_DOMAIN` is `https://` | `false` |
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
+| `S3_ENGINE_PASSWORD`, `S3_PLATFORM_PASSWORD` | `env.secrets` (`make_buckets`, `aisc-backend`, `platform`) | the engine's and the platform's own MinIO accounts (`aisc-engine`, `aisc-platform`), each limited to its buckets; `make_buckets` sets them on every start, so `--rotate` renews them and an older install gets them on its next start | generated |
 | `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | `admin` / `user` on a local http install, generated on an install served over https |
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
 | `GITHUB_TOKEN` | `plugin-publisher` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: installing a private plugin fails |

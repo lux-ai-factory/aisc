@@ -22,6 +22,10 @@ COPY --from=build /out/mc /usr/bin/mc
 # starts the server and sets aside a stored config written by another MinIO version (see the script)
 COPY entrypoint.sh /usr/local/bin/minio-entrypoint.sh
 RUN chmod 755 /usr/local/bin/minio-entrypoint.sh
+# the bucket job (make_buckets): the buckets, and the engine's and the platform's own accounts with their policies
+COPY make-buckets.sh /usr/local/bin/make-buckets.sh
+COPY policies/ /policies/
+RUN chmod 755 /usr/local/bin/make-buckets.sh && chmod 644 /policies/*.json
 # its own user, with a home for mc's settings; an older volume made by root is handed over by the one-shot
 # minio-data-owner before the server starts
 RUN adduser -D -u 10030 -h /home/minio minio && mkdir -p /data && chown minio:minio /data
