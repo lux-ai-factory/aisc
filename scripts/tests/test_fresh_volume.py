@@ -144,7 +144,8 @@ def test_platform_has_exactly_the_shared_schemas_on_a_fresh_volume(fresh):
     core = {r["relname"] for r in fresh.rows("platform", """
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'core' AND c.relkind = 'r'""")}
-    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}, f"core has {sorted(core)}"
+    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use",
+                    "leftover_object", "project_retention"}, f"core has {sorted(core)}"
 
 
 
