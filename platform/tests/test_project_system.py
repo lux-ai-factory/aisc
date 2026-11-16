@@ -393,8 +393,8 @@ def test_two_saves_at_once_get_n_and_n_plus_1_in_the_project_database(client, as
 
 
 @needs_database
-def test_delete_unregisters_then_drops_then_deletes_the_row(client, as_user, project, monkeypatch):
-    """Deleting a project unregisters it, drops its database, then deletes its row, in that order."""
+def test_delete_drops_then_unregisters_then_deletes_the_row(client, as_user, project, monkeypatch):
+    """Deleting a project drops its database, unregisters its dashboards, then deletes its row, in that order."""
     from platform_service import dashboard_bridge
 
     calls = []
@@ -406,7 +406,7 @@ def test_delete_unregisters_then_drops_then_deletes_the_row(client, as_user, pro
     response = client.request("DELETE", f"/projects/{project['slug']}",
                               json={"confirm_name": project["name"]}, headers=admin)
     assert response.status_code == 204
-    assert calls == ["unregister", "drop", "delete"]
+    assert calls == ["drop", "unregister", "delete"]
 
 
 @needs_database

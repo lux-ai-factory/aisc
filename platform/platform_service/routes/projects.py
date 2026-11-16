@@ -177,21 +177,21 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
     if body.confirm_name != found["name"]:
         raise HTTPException(status_code=422, detail="type the project's name exactly to delete it")
     closed_to = _ledger_drain_or_refuse(found["pid"])
-    # The dashboard lets go of the project's database before it is dropped.
-    dashboard_bridge.unregister(found["pid"])
     try:
+        # the drop ends the dashboard's sessions on the database too
         projectdb.drop(db.migrate_dsn(), found["pid"])
     except Exception as exc:
-        # the project is still there with its data: the apps may connect again and its dashboard comes back
+        # the project is still there with its data, and its dashboards and charts were never touched:
+        # the apps may connect again
         _reopen(found["pid"], closed_to)
-        if not dashboard_bridge.register(found["pid"], found["slug"], found["name"]):
-            db.remember_unregistered(found["pid"])
         if isinstance(exc, errors.InsufficientPrivilege):
             logger.error("project %s: its database can't be dropped while apps hold sessions: platform_migrator may"
                          " not end them (postgres-setup applies init/owner-roles.sql)", found["pid"])
             raise HTTPException(status_code=503, detail="the project's database is in use and can't be closed now:"
                                 " the platform's database role is not set up to close it") from None
         raise
+    # only now that the data is gone do the dashboards and charts made on it go too
+    dashboard_bridge.unregister(found["pid"])
     db.delete_project(found["pid"])
     # its proof files go with it; the project is gone either way, so a bucket left behind is only logged
     try:

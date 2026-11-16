@@ -315,15 +315,15 @@ def _connect_grants(project) -> set:
 @pytest.mark.parametrize("failure", [psycopg.errors.InsufficientPrivilege, psycopg.OperationalError])
 def test_a_drop_that_fails_after_the_drain_opens_the_database_again(project, call, memory_ledger, monkeypatch,
                                                                     failure):
-    """The drain closed the database to the apps and the dashboard let go of it; the drop then fails, so
-    the project is still there with its data: the apps may connect again and its dashboard is back."""
+    """The drain closed the database to the apps; the drop then fails, so the project is still there with
+    its data: the apps may connect again, and its dashboard was never touched."""
     from platform_service import dashboard_bridge, projectdb
 
     grants = _connect_grants(project)
     assert grants, "the project database grants CONNECT to nobody: nothing to check"
-    registered = []
-    monkeypatch.setattr(dashboard_bridge, "unregister", lambda pid: True)
-    monkeypatch.setattr(dashboard_bridge, "register", lambda pid, slug, name: registered.append(str(pid)) or True)
+    bridge_calls = []
+    monkeypatch.setattr(dashboard_bridge, "unregister", lambda pid: bridge_calls.append("unregister") or True)
+    monkeypatch.setattr(dashboard_bridge, "register", lambda pid, slug, name: bridge_calls.append("register") or True)
 
     def fails(_dsn, _pid):
         raise failure("the drop failed (test)")
@@ -334,7 +334,7 @@ def test_a_drop_that_fails_after_the_drain_opens_the_database_again(project, cal
         status = 500                                                    # the test client re-raises it
     assert status in (500, 503)
     assert _connect_grants(project) == grants
-    assert registered == [str(project["pid"])]
+    assert bridge_calls == []
     with psycopg.connect(DSN) as conn:
         assert conn.execute("SELECT 1 FROM core.project WHERE pid = %s", (project["pid"],)).fetchone()
 
