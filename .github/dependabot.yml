@@ -1,0 +1,29 @@
+# Version updates for the root repository's own locks, its submodule pointers and its workflow actions. Each
+# submodule has its own dependabot.yml for its locks. Security alerts come regardless of this file; the
+# advisories job of ci.yml and the weekly scan fail on a high one.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /platform
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /shared/identity
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /apps/report-composer
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /apps/chart-assistant
+    schedule:
+      interval: weekly
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
