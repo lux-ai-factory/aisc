@@ -240,7 +240,8 @@ def bed():
                                  f" VALUES ('{pid}', 'alice', 'owner')", role="platform_rw")
         ib._run(b, "old-provision", ["uv", "run", "--quiet", "--extra", "dev", "python", "-c", OLD_PROVISION,
                                      b.dsn("platform_rw", "platform"), FIRST_TEMPLATE_WITH_OWNERS, A, B],
-                ROOT / "platform", {}, "provision as before the owner roles")
+                ROOT / "platform", {"PYTHONPATH": str(ROOT / "shared/identity")},  # the rules the platform imports
+                "provision as before the owner roles")
         b.projects += [A, B]
         before = modules_before_their_owner_roles(Path(tempfile.mkdtemp(prefix="modules-before-")))
         ib.migrate_modules(b, before)
