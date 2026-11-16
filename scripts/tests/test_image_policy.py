@@ -77,17 +77,15 @@ ROOT_USERS = {
     "aisc-eval-worker": FROZEN,
     "aisc-webapp": FROZEN,
     **{service: NEEDS_A_LIVE_START for service in (
-        "minio", "controls-pdf", "controls-web", "qualification-prefill", "qualification-agents",
-        "qualification-ontology", "qualification-pdf", "control-objectives", "report-composer", "plugin-publisher",
-        "platform", "devpi")},
+        "controls-pdf", "controls-web", "qualification-prefill", "qualification-agents",
+        "qualification-ontology", "qualification-pdf", "control-objectives", "plugin-publisher", "devpi")},
 }
 
 #: build contexts without a .dockerignore, with why each is allowed for now
 NO_DOCKERIGNORE = {
     "apps/webapp": FROZEN,
     **{context: "sends the whole folder to the daemon until it has one" for context in (
-        "infra/minio", "inspector/schema-docs", "apps/qualification/services/agents", "apps/report-composer",
-        "apps/results-dashboard", "platform", "apps/catalogue/devpi")},
+        "apps/qualification/services/agents", "apps/results-dashboard", "apps/catalogue/devpi")},
 }
 
 #: Dockerfiles nothing builds, with why each is kept

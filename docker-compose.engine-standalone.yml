@@ -145,12 +145,33 @@ services:
       - engine-standalone
 
   # Infrastructure, as in the engine's own docker-compose-infra.yml
+  # Hands MinIO's volume to MinIO's user (uid 10030) before MinIO starts: a volume an older install made as root
+  # would otherwise stop the server. Changes nothing once the folder is MinIO's; no network.
+  minio-data-owner:
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    # no build: the same image as minio, built once there
+    pull_policy: never
+    user: "0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    volumes:
+      - engine_minio_data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['[ "$$(stat -c %u /data)" = 10030 ] || chown -R 10030:10030 /data']
+    restart: "no"
+
   minio:
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     build: ./infra/minio
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}minio-standalone
+    # its own user (the image's minio); minio-data-owner hands it the volume first
+    user: "10030"
+    depends_on:
+      minio-data-owner:
+        condition: service_completed_successfully
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_USER:-s3-user}

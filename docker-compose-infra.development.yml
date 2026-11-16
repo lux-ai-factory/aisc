@@ -38,6 +38,22 @@ services:
       # to reach pgadmin and schema-docs, which are on no other network
       - inspector
 
+  # Hands MinIO's volume to MinIO's user (uid 10030) before MinIO starts: a volume an older install made as root
+  # would otherwise stop the server. Changes nothing once the folder is MinIO's; no network.
+  minio-data-owner:
+    image: aisc-minio:${AISC_IMAGE_TAG:-latest}
+    # no build: the same image as minio, built once there
+    pull_policy: never
+    user: "0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    volumes:
+      - minio_data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['[ "$$(stat -c %u /data)" = 10030 ] || chown -R 10030:10030 /data']
+    restart: "no"
+
   # MinIO, the S3-compatible object storage for models, datasets and artifacts
   minio:
     restart: unless-stopped
@@ -46,6 +62,11 @@ services:
     build: ./infra/minio
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}minio
+    # its own user (the image's minio); minio-data-owner hands it the volume first
+    user: "10030"
+    depends_on:
+      minio-data-owner:
+        condition: service_completed_successfully
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"

@@ -76,11 +76,11 @@ def test_the_platform_gets_the_token_the_engine_url_the_allowlist_and_the_client
     assert env["PLATFORM_CONNECTIONS_TOKEN"] == "dummy"
     assert env["ENGINE_URL"] == "http://aisc-backend:8000"
     assert "CONNECTIONS_ALLOWED_HOSTS" in env
-    mounts = {v["target"]: v for v in p["volumes"]}
-    src = mounts.get("/app/shared/plugin-interface/src")
-    assert src and src["source"] == str(ROOT / "shared/plugin-interface/src") and src.get("read_only"), mounts.keys()
-    assert "/app/shared/plugin-interface/src" in env["PYTHONPATH"].split(":")
-    assert "/app/shared/identity" in env["PYTHONPATH"].split(":")
+    # the client and aisc_identity are in the platform's image, from the shared build context
+    assert p["build"]["additional_contexts"]["shared"] == str(ROOT / "shared")
+    dockerfile = (ROOT / "platform/Dockerfile").read_text()
+    assert "COPY --from=shared plugin-interface/src /app/shared/plugin-interface/src" in dockerfile
+    assert "ENV PYTHONPATH=/app/shared/identity:/app/shared/plugin-interface/src" in dockerfile
 
 
 def test_the_platform_names_its_internal_url_for_the_protocol_endpoints_and_the_run_key_ttl():

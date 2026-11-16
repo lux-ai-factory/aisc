@@ -22,5 +22,9 @@ COPY --from=build /out/mc /usr/bin/mc
 # starts the server and sets aside a stored config written by another MinIO version (see the script)
 COPY entrypoint.sh /usr/local/bin/minio-entrypoint.sh
 RUN chmod 755 /usr/local/bin/minio-entrypoint.sh
+# its own user, with a home for mc's settings; an older volume made by root is handed over by the one-shot
+# minio-data-owner before the server starts
+RUN adduser -D -u 10030 -h /home/minio minio && mkdir -p /data && chown minio:minio /data
+USER minio
 EXPOSE 9000 9001
 ENTRYPOINT ["/usr/local/bin/minio-entrypoint.sh"]

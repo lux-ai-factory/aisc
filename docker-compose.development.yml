@@ -1058,17 +1058,18 @@ services:
   # API keys, connections), evidence, and the ledger. It verifies the caller's token itself
   # (AUTH_ENABLED) and answers each request by the caller's role in the project.
   platform:
-    build: platform
+    build:
+      context: platform
+      # aisc_identity and the plugin-side connection client go into the image from here (platform/Dockerfile)
+      additional_contexts:
+        shared: ./shared
     image: aisc-platform:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}platform
     volumes:
       - ./immudb-signing.pub:/keys/immudb-signing.pub:ro,Z
-      # aisc_identity: who is calling, answered the same way by every Python
-      # service. Mounted rather than copied, so one fix reaches all of them.
-      - ./shared/identity:/app/shared/identity:ro,z
-      # Manage -> Connections tests a connection with the same client the plugins use
-      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
+      # aisc_identity (who is calling) and the client Manage -> Connections tests a connection with are in the
+      # image, from shared/: a change there needs `docker compose build platform`
       # core is this service's to migrate, and the files are read at startup.
       - ./platform/migrations:/app/migrations:ro,z
       # what every new project database starts with, one file per module
@@ -1107,7 +1108,6 @@ services:
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # platform_migrator (init/owner-roles.sql): migrations, making and dropping project databases, as platform_owner
       PLATFORM_MIGRATE_DATABASE_URL: postgresql://platform_migrator:${PLATFORM_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
-      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
       # A project belongs to the people in it, so this service has to know who
       # is asking. Verified here rather than taken on the gateway's word.
       AUTH_ENABLED: "true"
@@ -1192,10 +1192,6 @@ services:
       LEDGER_IMMUDB_PASSWORD: ${LEDGER_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
       ENGINE_IMMUDB_PASSWORD: ${ENGINE_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
-      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
-    volumes:
-      - ./shared/identity:/app/shared/identity:ro,z
-      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
     depends_on:
       postgres-setup:
         condition: service_completed_successfully

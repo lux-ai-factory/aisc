@@ -9,6 +9,8 @@ RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/req.txt \
 COPY report_composer ./report_composer
 COPY migrations ./migrations
 ENV PYTHONPATH=/app:/app/shared/identity
+RUN useradd --system --uid 10021 --no-create-home composer
+USER composer
 EXPOSE 8095
 CMD ["uvicorn", "report_composer.app:app", "--host", "0.0.0.0", "--port", "8095", "--proxy-headers"]
 
