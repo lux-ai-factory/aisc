@@ -685,7 +685,11 @@ services:
     # every project database the role may enter; exit 2 is a permanent error
     command: >
       sh -c "until python -m aisc_control_objectives.migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[control-objectives] waiting for postgres'; sleep 2; done"
+    volumes:
+      # aisc_identity: a project's database is named by the shared rule (aisc_identity.projectdb)
+      - ./shared/identity:/app/shared/identity:ro,z
     environment:
+      PYTHONPATH: /app/src:/app/shared/identity
       # membership only (core.project, core.project_member)
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # a template: {database} becomes project_<pid without hyphens>

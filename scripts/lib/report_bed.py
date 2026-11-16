@@ -130,7 +130,7 @@ DSN_ENV_VARS = (
 
 
 def hex_of(pid: str) -> str:
-    return pid.replace("-", "")
+    return pid.lower().replace("-", "")
 
 
 def project_db(pid: str) -> str:
