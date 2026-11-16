@@ -711,6 +711,7 @@ def test_keycloak_gets_the_engine_address_for_its_realm(tmp_path):
 
 # What runs once and exits: these must not come back after a restart.
 ONE_SHOT = ("aisc-backend-migrate", "control-objectives-migrate", "controls-migrate", "dashboard-migrate",
+            "devpi-data-owner",
             "immudb-key", "ledger-pool", "make_buckets", "minio-data-owner", "postgres-setup",
             "qualification-migrate", "report-composer-migrate", "report-grants")
 

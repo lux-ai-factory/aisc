@@ -1472,7 +1472,7 @@ def sync_sign_in() -> None:
 ONE_SHOT_SERVICES = frozenset({
     "make_buckets", "postgres-setup", "immudb-key", "ledger-pool", "report-grants", "aisc-backend-migrate",
     "controls-migrate", "qualification-migrate", "control-objectives-migrate", "report-composer-migrate",
-    "dashboard-migrate", "minio-data-owner",
+    "dashboard-migrate", "minio-data-owner", "devpi-data-owner",
 })
 #: a log line holding one of these is hidden whole: it is a secret's name or the secret itself
 SECRET_WORDS = re.compile(r"PASSWORD|TOKEN|SECRET|KEY=", re.IGNORECASE)

@@ -1233,11 +1233,30 @@ services:
   # backend runs here. The engine installs from this devpi (PACKAGE_REGISTRY_URL in
   # env.plugin_downloader), which plugin-publisher fills: a plugin when an admin installs it. Its
   # image is built from the catalogue submodule's devpi folder.
+  # Hands devpi's volume to devpi's user (uid 10001) before devpi starts: a volume an older image filled as root
+  # would otherwise stop the server, which no longer starts as root. Changes nothing once the folder is devpi's.
+  devpi-data-owner:
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
+    # no build: the same image as devpi, built once there
+    pull_policy: never
+    user: "0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    volumes:
+      - devpi_data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['[ "$$(stat -c %u /data)" = 10001 ] || chown -R 10001:10001 /data']
+    restart: "no"
+
   devpi:
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}devpi
+    depends_on:
+      devpi-data-owner:
+        condition: service_completed_successfully
     environment:
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
       # root's password, set by the image's entrypoint at start: whoever is root can publish what the

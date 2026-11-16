@@ -35,9 +35,6 @@ FROZEN = "the engine's image (apps/backend, apps/eval, apps/webapp) is upstream'
 SUBMODULE_BASE = "a submodule's base image: pinned in that repository's own commit"
 #: a root Dockerfile's base: pinned in the next root commit that touches it
 ROOT_BASE = "a root image's base: pinned in the next root commit that touches its Dockerfile"
-#: needs a live start of the service once it runs unprivileged: it may write inside the image or to a volume
-#: made by root
-NEEDS_A_LIVE_START = "runs as root until a USER is added and the service is started live with it"
 
 #: (file, image) pairs whose tag floats, with why each is allowed for now
 FLOATING_TAGS = {
@@ -73,17 +70,11 @@ FLOATING_TAGS = {
 #: services whose image runs as root, with why each is allowed for now
 ROOT_USERS = {
     "aisc-eval-worker": "switches to a uid of its own for each run, which only root can do",
-    **{service: NEEDS_A_LIVE_START for service in (
-        "controls-pdf", "controls-web", "qualification-prefill", "qualification-agents",
-        "qualification-ontology", "qualification-pdf", "control-objectives", "plugin-publisher", "devpi")},
+    "plugin-publisher": "builds each plugin as an unprivileged builder user, which only root can switch to",
 }
 
 #: build contexts without a .dockerignore, with why each is allowed for now
-NO_DOCKERIGNORE = {
-    "apps/webapp": FROZEN,
-    **{context: "sends the whole folder to the daemon until it has one" for context in (
-        "apps/qualification/services/agents", "apps/results-dashboard", "apps/catalogue/devpi")},
-}
+NO_DOCKERIGNORE: dict[str, str] = {}
 
 #: Dockerfiles nothing builds, with why each is kept
 UNBUILT: dict[str, str] = {

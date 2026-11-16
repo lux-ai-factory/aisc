@@ -243,10 +243,29 @@ services:
       - engine-standalone
 
   # The package index a plugin is installed from (no catalogue runs here).
+  # Hands devpi's volume to devpi's user (uid 10001) before devpi starts: a volume an older image filled as root
+  # would otherwise stop the server, which no longer starts as root. Changes nothing once the folder is devpi's.
+  devpi-data-owner:
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
+    # no build: the same image as devpi, built once there
+    pull_policy: never
+    user: "0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    volumes:
+      - engine_devpi_data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['[ "$$(stat -c %u /data)" = 10001 ] || chown -R 10001:10001 /data']
+    restart: "no"
+
   devpi:
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_PREFIX:-}devpi-standalone
+    depends_on:
+      devpi-data-owner:
+        condition: service_completed_successfully
     environment:
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
       DEVPI_ROOT_PASSWORD: ${DEVPI_ROOT_PASSWORD:?set DEVPI_ROOT_PASSWORD}
