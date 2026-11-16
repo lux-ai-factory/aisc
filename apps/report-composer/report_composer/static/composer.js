@@ -421,18 +421,51 @@
   }
 
   // Generate and download: of the saved revision only, which the page names; unsaved changes are saved first
-  // when the person says so.
-  let askedFirst = false;
-  main.addEventListener("submit", async function (ev) {
+  // when the person says so. The report is listed and the old failure cleared without a reload.
+  async function redrawReports() {
+    let html = null;
+    try {
+      const r = await fetch(location.pathname + location.search, { credentials: "same-origin" });
+      if (r.ok) html = await r.text();
+    } catch (e) { html = null; }
+    const now = document.getElementById("reports");
+    const fresh = html && new DOMParser().parseFromString(html, "text/html").getElementById("reports");
+    if (now && fresh) now.replaceWith(fresh);
+  }
+  function clearReportError() {
+    const old = main.querySelector("[data-report-error]");
+    if (old) old.remove();
+    const u = new URL(location.href);
+    if (u.searchParams.has("report_error")) { u.searchParams.delete("report_error"); history.replaceState(null, "", u.toString()); }
+  }
+  async function generateAndDownload(form, format) {
+    if (unsaved) {
+      const go = await ask("This layout has unsaved changes. Generate and download makes the report of the saved " +
+                           "revision " + revision + ", not of the preview of your changes. Save the changes and " +
+                           "generate the report of the new revision?", "Save and generate");
+      if (!go || !(await save())) return;
+    }
+    const data = new FormData(form);
+    const body = { format: format, revision: revision, other_versions: data.get("other_versions") === "on" };
+    ["system_id", "period_from", "period_to"].forEach(function (k) { if (data.get(k)) body[k] = data.get(k); });
+    say("Generating the report…", true);
+    const res = await call("POST", "/layouts/" + layoutId + "/reports", body);
+    if (!res.ok) { say("The report was not generated: " + errorText(res)); redrawReports(); return; }
+    say("");
+    clearReportError();
+    const link = document.createElement("a");
+    link.href = api + "/reports/" + encodeURIComponent(res.data.id) + "/download";
+    link.download = "";
+    document.body.appendChild(link); link.click(); link.remove();
+    redrawReports();
+  }
+  main.addEventListener("submit", function (ev) {
     const by = ev.submitter;
-    if (askedFirst || !unsaved || !by || !layoutId || !(by.getAttribute("formaction") || "").endsWith("/download-report")) return;
+    if (!by || !layoutId || !(by.getAttribute("formaction") || "").endsWith("/download-report")) return;
     ev.preventDefault();
-    const go = await ask("This layout has unsaved changes. Generate and download makes the report of the saved " +
-                         "revision " + revision + ", not of the preview of your changes. Save the changes and " +
-                         "generate the report of the new revision?", "Save and generate");
-    if (!go || !(await save())) return;
-    askedFirst = true;
-    try { ev.target.requestSubmit(by); } finally { askedFirst = false; }
+    const menu = control("download-report");
+    if (menu) menu.open = false;
+    generateAndDownload(ev.target, by.value);
   });
 
   // A new section from the "+ Add a section" menu: its row and its form, from the palette's template
