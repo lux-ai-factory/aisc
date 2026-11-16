@@ -187,6 +187,12 @@ SECRETS = [
     # on every start (infra/minio/make-buckets.sh), so they are not volume-bound and --rotate renews them
     ("S3_ENGINE_PASSWORD", "rand"),
     ("S3_PLATFORM_PASSWORD", "rand"),
+    # the RabbitMQ accounts of the engine, the workers and Flower (aisc-engine, aisc-worker, aisc-flower), none an
+    # administrator: rabbitmq-setup sets them on every start (infra/rabbitmq/setup_users.py), so --rotate renews
+    # them; RABBITMQ_PASSWORD, the administrator's, is for operators only
+    ("RABBITMQ_ENGINE_PASSWORD", "rand"),
+    ("RABBITMQ_WORKER_PASSWORD", "rand"),
+    ("RABBITMQ_FLOWER_PASSWORD", "rand"),
     # the realm's two development accounts, admin and user: the realm import puts these into it, and its
     # database keeps them after, so they are volume-bound too. admin / admin and user / user on a local install,
     # generated on one served to others over https (account below)
@@ -283,7 +289,7 @@ SECRETS = [
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
                 "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
 # What env.runtime defines first, from env.secrets only: compose expands a setting built from one of these with the
-# values defined above it (CELERY_BROKER_URL holds $RABBITMQ_PASSWORD, REDIS_BACKEND_URL $REDIS_PASSWORD).
+# values defined above it (REDIS_BACKEND_URL holds $REDIS_PASSWORD).
 FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
 # DEVPI_ROOT_PASSWORD: devpi's volume holds root's password and devpi refuses to start on another one.
@@ -317,7 +323,8 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN", "PLATFORM_MIGRATOR_PASSWORD",
                    "QUALIFICATION_MIGRATOR_PASSWORD", "CONTROLS_MIGRATOR_PASSWORD", "CONTROL_OBJECTIVES_MIGRATOR_PASSWORD",
                    "REPORT_COMPOSER_MIGRATOR_PASSWORD", "ENGINE_MIGRATOR_PASSWORD", "S3_ENGINE_PASSWORD",
-                   "S3_PLATFORM_PASSWORD")
+                   "S3_PLATFORM_PASSWORD", "RABBITMQ_ENGINE_PASSWORD", "RABBITMQ_WORKER_PASSWORD",
+                   "RABBITMQ_FLOWER_PASSWORD")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
 ROTATE_ONE = ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD")
 LEDGER_KEYS = re.compile(r"v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*")
@@ -566,8 +573,8 @@ def make_signing_key() -> None:
 def write_runtime() -> None:
     """compose takes one --env-file, so the settings and the secrets are combined into one. Also git-ignored,
     also made again from its two sources. The infrastructure passwords come from env.secrets only (a value still
-    in the tracked file is dropped), and first: compose expands a setting built from one (CELERY_BROKER_URL holds
-    $RABBITMQ_PASSWORD) with the values defined above it in the file."""
+    in the tracked file is dropped), and first: compose expands a setting built from one (REDIS_BACKEND_URL holds
+    $REDIS_PASSWORD) with the values defined above it in the file."""
     def infra(line: str) -> bool:
         name = line.split("=", 1)[0]
         return " " not in name and name in FIRST_IN_RUNTIME
@@ -1477,7 +1484,7 @@ def sync_sign_in() -> None:
 ONE_SHOT_SERVICES = frozenset({
     "make_buckets", "postgres-setup", "immudb-key", "ledger-pool", "report-grants", "aisc-backend-migrate",
     "controls-migrate", "qualification-migrate", "control-objectives-migrate", "report-composer-migrate",
-    "dashboard-migrate", "minio-data-owner", "devpi-data-owner",
+    "dashboard-migrate", "minio-data-owner", "devpi-data-owner", "rabbitmq-setup",
 })
 #: a log line holding one of these is hidden whole: it is a secret's name or the secret itself
 SECRET_WORDS = re.compile(r"PASSWORD|TOKEN|SECRET|KEY=", re.IGNORECASE)

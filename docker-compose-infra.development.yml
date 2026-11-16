@@ -119,6 +119,38 @@ services:
       - ./infra/rabbitmq/conf.d/10-aisc.conf:/etc/rabbitmq/conf.d/10-aisc.conf:ro
     networks:
       - backend
+    # rabbitmq-setup waits for it to answer before it makes the services' accounts
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+    networks:
+      - backend
+
+  # Makes the services' own RabbitMQ accounts (aisc-engine, aisc-worker, aisc-flower), none an administrator,
+  # through the management API, then exits (infra/rabbitmq/setup_users.py, on every start). The administrator
+  # account (RABBITMQ_USERNAME) is for operators and this one-shot only; no service holds it.
+  rabbitmq-setup:
+    image: python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+    container_name: ${CONTAINER_PREFIX:-}rabbitmq-setup
+    user: "65534"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+      RABBITMQ_ADMIN_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_ADMIN_PASSWORD: ${RABBITMQ_PASSWORD:?run scripts/secrets.sh first}
+      # the services' passwords, set again on every start (scripts/aisc.py makes them)
+      RABBITMQ_ENGINE_PASSWORD: ${RABBITMQ_ENGINE_PASSWORD:?run scripts/secrets.sh first}
+      RABBITMQ_WORKER_PASSWORD: ${RABBITMQ_WORKER_PASSWORD:?run scripts/secrets.sh first}
+      RABBITMQ_FLOWER_PASSWORD: ${RABBITMQ_FLOWER_PASSWORD:?run scripts/secrets.sh first}
+    volumes:
+      - ./infra/rabbitmq/setup_users.py:/setup/setup_users.py:ro,Z
+    command: ["python", "/setup/setup_users.py"]
+    restart: "no"
 
   # Redis, where the worker's Celery results are kept
   redis:

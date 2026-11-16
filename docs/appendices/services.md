@@ -65,7 +65,8 @@ platform.
 | `aisc-eval-worker` | Runs tests (Celery): installs a test's package in a fresh environment, runs it, sends the results back. | `rabbitmq`, `redis`, `aisc-backend`, `devpi`, `platform` (run pass, connections, helper models), helper model endpoints |
 | `aisc-eval-declarations-worker` | The eval worker's second process: reads a test's manifest and runs its form hooks, one at a time, so a configure page never waits behind the runs. | `rabbitmq`, `redis`, `devpi` |
 | `aisc-eval-flower` | The monitor of the test runs' task queue, for admins. Runs only when asked (`COMPOSE_PROFILES=inspect ./scripts/start.sh`). | `rabbitmq`, `redis` |
-| `rabbitmq` | The queue that carries test runs to the worker. | |
+| `rabbitmq` | The queue that carries test runs to the worker. Its administrator account is for operators and `rabbitmq-setup` only. | |
+| `rabbitmq-setup` | *One-shot*, once `rabbitmq` is healthy, on every start: makes the services' own accounts through the management API, none an administrator: `aisc-engine` (the engine and its migration), `aisc-worker` (both workers), `aisc-flower`. | `rabbitmq` |
 | `redis` | Where the worker keeps task results. | |
 | `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`, which `make_buckets` (*one-shot*, on every start) creates, and one bucket `proof-<pid>` per project for the checklists' proof files, which the platform makes with the project. `make_buckets` also makes the services' own accounts: `aisc-engine` (the engine's three buckets) and `aisc-platform` (the `proof-*` buckets; listing and deleting in the engine's). Only `minio` and `make_buckets` hold MinIO's root account. | |
 | `minio-data-owner` | *One-shot*, before `minio`: hands the volume `minio_data` to MinIO's user (uid 10030), so a volume an older install made as root still starts. No network. | |

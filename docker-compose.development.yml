@@ -31,7 +31,8 @@ x-backend-env: &backend-env
   # the eval worker, which holds DJANGO_SECRET_KEY and runs plugin code
   RUN_TICKET_KEY: ${RUN_TICKET_KEY:?run scripts/secrets.sh first}
   ENABLE_SSL_PROXY: true
-  CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+  # the engine's own RabbitMQ account, no administrator (infra/rabbitmq/setup_users.py makes it)
+  CELERY_BROKER_URL: amqp://aisc-engine:${RABBITMQ_ENGINE_PASSWORD:?run scripts/secrets.sh first}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
   REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
   PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
   PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
@@ -120,6 +121,9 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      # its RabbitMQ account exists before it starts
+      rabbitmq-setup:
+        condition: service_completed_successfully
       # the engine's tables live in each project's database; the one-shot below
       # migrates them all before the engine serves
       aisc-backend-migrate:
@@ -223,7 +227,8 @@ services:
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       # the worker builds its Redis URL from this (aisc_eval/utils/env.py); never passed to a plugin
       REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      # the workers' own RabbitMQ account, no administrator (infra/rabbitmq/setup_users.py makes it)
+      CELERY_BROKER_URL: amqp://aisc-worker:${RABBITMQ_WORKER_PASSWORD:?run scripts/secrets.sh first}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
       PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
@@ -347,7 +352,8 @@ services:
       AISC_DEPLOYMENT: configurator
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      # Flower's own RabbitMQ account, no administrator (infra/rabbitmq/setup_users.py makes it)
+      CELERY_BROKER_URL: amqp://aisc-flower:${RABBITMQ_FLOWER_PASSWORD:?run scripts/secrets.sh first}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
       FLOWER_URL_PREFIX: flower
     depends_on:
       - aisc-eval-worker
