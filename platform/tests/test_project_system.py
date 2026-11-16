@@ -484,7 +484,10 @@ def test_a_fresh_platform_database_has_no_module_schema_and_no_core_system():
         f"platform-db.sql still makes module schemas: {sorted(schemas)}"
     # core.outbox is the platform's own ledger outbox (migration 0008), core.run_pass the plugin runs' passes
     # (migration 0012) and core.run_pass_use the connections those runs reached (0013); none is a module's table
-    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}, \
+    # core.leftover_object the stored files a deletion could not remove yet (0017), core.project_retention how
+    # long a project keeps its runs (0018)
+    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use",
+                    "leftover_object", "project_retention"}, \
         f"core has {sorted(core)}"
     # forms, catalogues and report layouts are per project: no library of any of them in platform
     assert not schemas & {"form_library", "report_library", "catalogue"}, sorted(schemas)
