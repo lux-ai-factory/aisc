@@ -385,8 +385,8 @@ def test_a_container_restarting_for_over_ninety_seconds_stops_start_whatever_its
     from datetime import datetime, timedelta, timezone
     aisc = aisc_module(monkeypatch)
     began = datetime(2026, 10, 23, 16, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(aisc, "docker_now", lambda: began + timedelta(seconds=seconds_since_began))
-    monkeypatch.setattr(aisc, "docker_in_time", lambda argv, wait: subprocess.CompletedProcess(argv, 0, "2\n", ""))
+    monkeypatch.setattr(aisc.stack, "docker_now", lambda: began + timedelta(seconds=seconds_since_began))
+    monkeypatch.setattr(aisc.stack, "docker_in_time", lambda argv, wait: subprocess.CompletedProcess(argv, 0, "2\n", ""))
     stuck, restarting = aisc.stuck_services("minio\tRestarting (1) 4 seconds ago\tc-min\n", {"minio"}, None, began)
     assert (stuck == ["minio"]) is stops and restarting == {"minio"}
 

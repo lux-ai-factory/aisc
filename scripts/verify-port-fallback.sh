@@ -406,7 +406,7 @@ section "The copy"
 if [ -n "$(git -C "$ROOT" status --porcelain --ignore-submodules=none)" ]; then
   echo "Note: this checkout has uncommitted changes; the copy is the commit $(git -C "$ROOT" rev-parse --short HEAD) without them."
 fi
-branch=$(sed -n 's/^BRANCH = "\(.*\)"/\1/p' "$ROOT/scripts/aisc.py")
+branch=$(sed -n 's/^BRANCH = "\(.*\)"/\1/p' "$ROOT/scripts/aisc/stack.py")
 # the copy is on the branch start insists on, at this checkout's commit, whatever this checkout is on
 if git clone -q --no-checkout "$ROOT" "$CLONE" && git -C "$CLONE" checkout -q -B "$branch" "$(git -C "$ROOT" rev-parse HEAD)" \
    && git -C "$CLONE" submodule init -q; then

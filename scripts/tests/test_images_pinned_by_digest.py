@@ -50,7 +50,7 @@ def test_every_base_image_carries_a_version_and_a_digest():
 
 def test_the_images_the_scripts_pull_are_pinned_too():
     pg = re.search(r"TPG_IMAGE=\$\{TPG_IMAGE:-([^}]+)\}", (ROOT / "scripts/lib/throwaway-pg.sh").read_text()).group(1)
-    probe = re.search(r'^PROBE_IMAGE = "([^"]+)"', (ROOT / "scripts/aisc.py").read_text(), re.M).group(1)
+    probe = re.search(r'^PROBE_IMAGE = "([^"]+)"', (ROOT / "scripts/aisc/ports.py").read_text(), re.M).group(1)
     assert pinned(pg), f"the throwaway Postgres runs {pg}"
     assert pinned(probe), f"the port probe runs {probe}"
 

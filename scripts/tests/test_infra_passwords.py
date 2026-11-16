@@ -190,7 +190,7 @@ def test_a_service_that_refuses_the_change_leaves_env_secrets_as_it_was(install)
     assert (root / "env.secrets").read_text() == before
 
 
-@pytest.mark.parametrize("path", ["README.md", "scripts/aisc.py"])
+@pytest.mark.parametrize("path", ["README.md", "scripts/aisc/stack.py"])
 def test_the_first_sign_in_names_admin_admin_and_where_a_server_install_keeps_its_password(path):
     """A local install signs in as admin / admin; one served over https has generated passwords, read
     from env.secrets."""

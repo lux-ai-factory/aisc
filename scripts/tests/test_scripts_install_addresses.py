@@ -9,7 +9,8 @@ from conftest import ROOT
 #: or the end of the line; or the launcher, the dashboard or the sign-in on their default ports
 BROWSER_PORT = re.compile(r"""http://localhost(?=[/"'\s$]|$)|localhost:(8100|8188|8081)\b""")
 #: the two places that know the default addresses: where start sets them, and where the checks read them
-DEFINE_IT = {"scripts/aisc.py", "scripts/lib/install-addresses.sh"}
+DEFINE_IT = {"scripts/aisc/ports.py", "scripts/aisc/keycloak.py", "scripts/aisc/stack.py",
+             "scripts/lib/install-addresses.sh"}
 
 
 def test_no_check_script_names_a_browser_port():

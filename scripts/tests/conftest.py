@@ -23,8 +23,9 @@ GUARD = ROOT / "scripts/guard-frozen.sh"
 CHAIN = ROOT / "scripts/test-pipeline-chain.sh"
 
 
-#: the install scripts: the bash wrappers, scripts/aisc.py they run, and the helper that runs it with uv
-INSTALL_SCRIPTS = ("scripts/aisc.py", "scripts/secrets.sh", "scripts/start.sh", "scripts/rotate-infra-password.sh",
+#: the install scripts: the bash wrappers, scripts/aisc.py they run (and its package, scripts/aisc/), and the helper
+#: that runs it with uv
+INSTALL_SCRIPTS = ("scripts/aisc.py", "scripts/aisc", "scripts/secrets.sh", "scripts/start.sh", "scripts/rotate-infra-password.sh",
                    "scripts/lib/aisc-py.sh",
                    # start reads the realm's account lockout from it
                    "keycloak/aisc-realm.json")
@@ -34,7 +35,10 @@ def copy_install_scripts(dest: Path) -> None:
     """The install scripts into a scratch copy of the repo, where they run as in a clone."""
     for path in INSTALL_SCRIPTS:
         (dest / path).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / path, dest / path)
+        if (ROOT / path).is_dir():
+            shutil.copytree(ROOT / path, dest / path, ignore=shutil.ignore_patterns("__pycache__"))
+        else:
+            shutil.copy2(ROOT / path, dest / path)
 
 
 def aisc_py(root: Path = ROOT):
