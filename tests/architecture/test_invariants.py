@@ -327,15 +327,12 @@ def test_i10_core_does_not_import_optional():
     for pattern in ("apps/backend/aisc_backend/**/*.py", "apps/eval/aisc_eval/**/*.py",
                     "apps/webapp/src/**/*.ts", "apps/webapp/src/**/*.tsx"):
         for path in _files(pattern):
-            relative = str(path.relative_to(ROOT))
-            if _allowlisted("I10", relative):
-                continue
             text = path.read_text(encoding="utf-8", errors="ignore")
             for name in _OPTIONAL:
                 if re.search(rf"(^|\s)(from|import)\s+{name}\b", text, re.MULTILINE) or re.search(
                     rf"from\s+['\"][^'\"]*{name}", text
                 ):
-                    bad.append(f"{relative} -> {name}")
+                    bad.append(f"{path.relative_to(ROOT)} -> {name}")
     assert not bad, "core code depends on an optional domain: " + ", ".join(sorted(set(bad)))
 
 

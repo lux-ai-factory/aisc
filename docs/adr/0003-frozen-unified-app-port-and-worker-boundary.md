@@ -1,8 +1,8 @@
 # 0003. Frozen unified-app port and worker boundary
 
-**Status:** accepted
+**Status:** proposed
 **Invariant:** I10 — waived (time-boxed, named files only); I1/I2/I7 — enforced by the frozen merge
-**Owner:** Platform architecture (authored by INT-01; CORE-01 #109 owns the I10 fold)
+**Owner:** Platform architecture — drafted by INT-01 as a placeholder for the missing mandated input; NOT accepted. The I10 fold is CORE-01 (#109)
 **Date:** 2026-11-16
 
 ## Context

@@ -1,8 +1,8 @@
 # 0001. Mainline-first consolidation
 
-**Status:** accepted
+**Status:** proposed
 **Invariant:** I9 — changed (process decision; the layer/domain split is unchanged)
-**Owner:** Platform architecture (authored by INT-01 for ratification by DOC-01)
+**Owner:** DOC-01 (#121) — drafted by INT-01 as a placeholder for the missing mandated input; NOT accepted
 **Date:** 2026-11-16
 
 ## Context

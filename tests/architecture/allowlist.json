@@ -1,21 +1,3 @@
 {
-  "_comment": "ADR-backed waivers for architectural guards. An entry is {path, adr, reason}. See docs/adr/README.md. The I10 entries are the E0 baseline waiver in ADR 0003 (the frozen optional domains); CORE-01 (#109) removes them.",
-  "I10": [
-    {"path": "apps/backend/aisc_backend/routers/control_objectives.py", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "control-objectives router imports the optional control_objectives service; folded by CORE-01 #109"},
-    {"path": "apps/backend/aisc_backend/services/assessment_coverage.py", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "coverage service imports the optional control_objectives module; folded by CORE-01 #109"},
-    {"path": "apps/backend/aisc_backend/services/report_snapshot.py", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "report snapshot imports the optional control_objectives module; folded by CORE-01 #109"},
-    {"path": "apps/backend/aisc_backend/tests/routers/test_control_objectives_service.py", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "test of the optional control-objectives router; folded by CORE-01 #109"},
-    {"path": "apps/webapp/src/components/AICardView.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "core component imports the Json type from the optional qualification lib; type moves coreward in CORE-01 #109"},
-    {"path": "apps/webapp/src/components/CardGraph.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "core component imports the Json type from the optional qualification lib; type moves coreward in CORE-01 #109"},
-    {"path": "apps/webapp/src/components/NodeEditorDialog.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "core component imports the Json type from the optional qualification lib; type moves coreward in CORE-01 #109"},
-    {"path": "apps/webapp/src/components/ReportSettings.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "report feature component imports the optional report lib; becomes a webapp feature in CORE-01 #109"},
-    {"path": "apps/webapp/src/components/RiskRegisterSection.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "qualification feature component imports the optional qualification lib; becomes a webapp feature in CORE-01 #109"},
-    {"path": "apps/webapp/src/components/cardFigure.ts", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "core helper imports the Json type from the optional qualification lib; type moves coreward in CORE-01 #109"},
-    {"path": "apps/webapp/src/lib/overview.ts", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "core lib imports the Qualification type from the optional qualification lib; de-coupled in CORE-01 #109"},
-    {"path": "apps/webapp/src/lib/qualification.test.ts", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "test of the optional qualification lib; moves into the qualification feature in CORE-01 #109"},
-    {"path": "apps/webapp/src/lib/report.test.ts", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "test of the optional report lib; moves into the report feature in CORE-01 #109"},
-    {"path": "apps/webapp/src/pages/ControlObjectivesPage.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "control-objectives page imports the optional qualification lib; becomes a webapp feature in CORE-01 #109"},
-    {"path": "apps/webapp/src/pages/QualificationPage.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "qualification page imports the optional qualification lib; becomes a webapp feature in CORE-01 #109"},
-    {"path": "apps/webapp/src/pages/ReportPage.tsx", "adr": "0003-frozen-unified-app-port-and-worker-boundary.md", "reason": "report page imports the optional report lib; becomes a webapp feature in CORE-01 #109"}
-  ]
+  "_comment": "ADR-backed waivers for architectural guards. An entry is {path, adr, reason}. See docs/adr/README.md. Empty by design: the refactor removes the smells rather than waiving them."
 }
