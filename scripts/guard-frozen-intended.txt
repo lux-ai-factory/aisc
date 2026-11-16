@@ -34,6 +34,8 @@
 #   testdata      Delete on test data asks first; a refused add or edit, or a file the engine could not store, is
 #                 said with the engine's reason and the dialog stays open
 #   filetypes     a dataset or model file picker offers only the extensions the engine takes for that type
+#   images        the image installs exactly what package-lock.json pins (npm ci) and serves as nginx's
+#                 unprivileged user
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -44,7 +46,7 @@ base webapp ab9f19d
 webapp .env modes: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
 webapp .env.development modes: standalone mode and launcher URL for dev
 webapp .env.test modes: the mode for plain vitest runs
-webapp Dockerfile modes: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's
+webapp Dockerfile modes, images: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's; npm ci, and nginx-unprivileged owning the bundle env.sh rewrites (scripts/tests/test_engine_services_unprivileged.py, test_images_run_as_users.py)
 webapp src/DeploymentGate.tsx modes: error page for an unknown mode
 webapp src/MyApp.tsx modes: Tasks route standalone only
 webapp src/api/installProjectHeader.test.ts modes: the start-up wrapper names the project on fetch and axios

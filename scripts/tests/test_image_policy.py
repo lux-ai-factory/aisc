@@ -51,7 +51,6 @@ FLOATING_TAGS = {
     ("apps/eval/Dockerfile", "ghcr.io/astral-sh/uv:python3.12-bookworm-slim"): FROZEN,
     ("apps/eval/Dockerfile.dev", "python:3.12-slim-bookworm"): FROZEN,
     ("apps/webapp/Dockerfile", "node:22-alpine"): FROZEN,
-    ("apps/webapp/Dockerfile", "nginx:stable-alpine"): FROZEN,
     ("apps/webapp/Dockerfile.dev", "node:22-alpine"): FROZEN,
     ("apps/catalogue/frontend/Dockerfile", "nginxinc/nginx-unprivileged:1.27-alpine"): SUBMODULE_BASE,
     ("apps/catalogue/frontend/Dockerfile", "node:22-alpine"): SUBMODULE_BASE,
@@ -73,9 +72,7 @@ FLOATING_TAGS = {
 
 #: services whose image runs as root, with why each is allowed for now
 ROOT_USERS = {
-    "aisc-backend": FROZEN,
-    "aisc-eval-worker": FROZEN,
-    "aisc-webapp": FROZEN,
+    "aisc-eval-worker": "switches to a uid of its own for each run, which only root can do",
     **{service: NEEDS_A_LIVE_START for service in (
         "controls-pdf", "controls-web", "qualification-prefill", "qualification-agents",
         "qualification-ontology", "qualification-pdf", "control-objectives", "plugin-publisher", "devpi")},

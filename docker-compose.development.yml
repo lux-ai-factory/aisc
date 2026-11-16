@@ -123,12 +123,11 @@ services:
       # Its immudb account exists before it starts (ledger-pool makes it): fails closed
       ledger-pool:
         condition: service_completed_successfully
+    # read only: the plugin-manager, plugin interface and aisc_identity come in the image (apps/backend/vendor), so
+    # nothing is installed at start
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface -e /app/shared/identity
-      && uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-access-log"
+      - ${PLUGIN_PATH}:/app/plugins:ro,z
+    command: ["uv", "run", "uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
 
   # Migrates the engine's schema in every project database engine_rw may enter,
   # then grants the readers. Exit 2 is a permanent error: no retry.
@@ -140,8 +139,7 @@ services:
     environment:
       <<: *backend-env
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
+      - ${PLUGIN_PATH}:/app/plugins:ro,z
     networks:
       - backend
     depends_on:
@@ -151,8 +149,7 @@ services:
         condition: service_started
     restart: "no"
     command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface -e /app/shared/identity
-      && until uv run manage.py migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[engine] waiting for postgres'; sleep 2; done"
+      sh -c "until uv run manage.py migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[engine] waiting for postgres'; sleep 2; done"
 
   # Sends the engine's ledger events from each project database's outbox to the platform, every 10 s.
   # The only engine process with the engine's ledger token: it never imports plugin code and has no
@@ -180,8 +177,6 @@ services:
       PLATFORM_URL: http://platform:8000
       PLATFORM_LEDGER_ENGINE_TOKEN: ${PLATFORM_LEDGER_ENGINE_TOKEN:?run scripts/secrets.sh first}
       LEDGER_MODE: ${LEDGER_MODE:-record}
-    volumes:
-      - ./shared:/app/shared:z
     networks:
       - backend
     depends_on:
@@ -190,9 +185,7 @@ services:
       platform:
         condition: service_started
     restart: unless-stopped
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface -e /app/shared/identity
-      && uv run manage.py deliver_ledger_events --every 10"
+    command: ["uv", "run", "manage.py", "deliver_ledger_events", "--every", "10"]
 
   # The evaluation worker (apps/eval): a Celery worker that runs the plugins
   aisc-eval-worker:
@@ -266,23 +259,35 @@ services:
     # them back up through a setuid program
     security_opt: &eval-worker-security
       - no-new-privileges:true
-    # only to set, at start, the firewall that keeps those users behind the egress proxy (docker-entrypoint.sh)
+    # Root, to switch to a run user per test, with only what that needs: change uid and gid (SETUID, SETGID),
+    # stop a test's processes (KILL), hand its folders over and clean them up (CHOWN, FOWNER, DAC_OVERRIDE),
+    # and set, at start, the firewall that keeps those users behind the egress proxy (NET_ADMIN,
+    # docker-entrypoint.sh). Every other default capability is dropped.
+    user: "0"
+    cap_drop: &eval-worker-dropped
+      - ALL
     cap_add: &eval-worker-capabilities
+      - SETUID
+      - SETGID
+      - KILL
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
       - NET_ADMIN
     # a first process that reaps what a plugin left (killed at the end of its test), so no zombie of a run
     # user counts against the next test's process cap
     init: true
     networks: &eval-worker-networks
       - backend
+    # read only: the plugin-manager and plugin interface come in the image (apps/eval/vendor); a local plugin is
+    # copied before it is installed
     volumes: &eval-worker-volumes
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
+      - ${PLUGIN_PATH}:/app/plugins:ro,z
     command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      celery -A aisc_eval.celery_worker worker --loglevel=info
       --concurrency=${EVAL_WORKER_CONCURRENCY:-4}
       --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
-      --beat --schedule=/tmp/aisc-eval-beat-schedule"
+      --beat --schedule=/tmp/aisc-eval-beat-schedule
 
   # The eval worker's second process: it reads plugin manifests and runs the plugins' form hooks
   # (aisc_eval.celery_app.PLUGIN_DECLARATIONS_QUEUE), one at a time, so a configure page never waits behind
@@ -311,16 +316,18 @@ services:
     cpus: ${EVAL_DECLARATIONS_WORKER_CPUS:-2}
     pids_limit: 1024
     security_opt: *eval-worker-security
+    # root with the run worker's capabilities only, for the same reason: it runs plugin code as a run user
+    user: "0"
+    cap_drop: *eval-worker-dropped
     cap_add: *eval-worker-capabilities
     init: true
     networks: *eval-worker-networks
     volumes: *eval-worker-volumes
     command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      celery -A aisc_eval.celery_worker worker --loglevel=info
       --queues=plugin-declarations
       --concurrency=1
-      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}"
+      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
 
   aisc-eval-flower:
     # started only when asked (COMPOSE_PROFILES=inspect ./scripts/start.sh): it has no sign-in of its own, and
@@ -344,11 +351,8 @@ services:
       - rabbitmq
       - redis
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins
-      - ./shared:/app/shared
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker flower"
+      - ${PLUGIN_PATH}:/app/plugins:ro
+    command: ["celery", "-A", "aisc_eval.celery_worker", "flower"]
     # Flower's own health endpoint: pinging "celery@<flower's hostname>" would ask for a worker
     # that does not exist.
     healthcheck:
@@ -1020,6 +1024,11 @@ services:
     container_name: ${CONTAINER_PREFIX:-}plugin-publisher
     # processes a build leaves behind are reaped instead of staying as zombies
     init: true
+    # Root, to hand a build's folder to the builder user and run the build as it, with only what that needs:
+    # switch to it (SETUID, SETGID), stop a build that overruns (KILL), hand its folder over and remove it
+    # afterwards (CHOWN, DAC_OVERRIDE; root owns /tmp, so removing builder's folder there needs no FOWNER).
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE]
     volumes:
       # published too: a plugin's run installs its dependencies from PyPI and this index, and takes
       # the plugin interface from here (the first index that has it), not PyPI's release of that name
