@@ -93,7 +93,9 @@ _ON_RECORD = engine_runs.NOT_ARCHIVED + " AND " + engine_runs.NOT_LOCAL
 _RUNS = (
     "SELECT pl.package_name, count(*) FILTER (WHERE ep.status = 'Done') AS executed,"
     " count(*) FILTER (WHERE ep.status = 'Failed') AS failed,"
-    " count(*) FILTER (WHERE ep.status IN ('Pending', 'Running')) AS running"
+    " count(*) FILTER (WHERE ep.status IN ('Pending', 'Running')) AS running,"
+    " (array_agg(ep.status ORDER BY e.created_at DESC, ep.id DESC)"
+    "   FILTER (WHERE ep.status IN ('Done', 'Failed')))[1] = 'Failed' AS latest_failed"
     " FROM engine.aisc_backend_evaluationplugin ep"
     " JOIN engine.aisc_backend_evaluation e ON e.id = ep.evaluation_id"
     " JOIN engine.aisc_backend_pluginconfig pc ON pc.id = ep.plugin_config_id"
@@ -237,6 +239,8 @@ class Choices:
     plugin_names: dict[str, str | None] = field(default_factory=dict)
     #: package_name -> {"executed", "failed", "running"} on the card version asked for
     runs: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: the packages whose latest finished run on the card version asked for failed
+    latest_failed: set[str] = field(default_factory=set)
     #: every engine plugin, one row each (id, package_name, name, display_name, enabled), by label
     engine_plugins: list[dict] = field(default_factory=list)
     #: engine plugin id -> {"executed", "failed", "running"} on the card version asked for
@@ -332,6 +336,7 @@ def choices(pid, version_pid: str | None) -> Choices:
         risks=by_objective,
         plugin_names={r["package_name"]: r.get("name") for r in plugins},
         runs={r["package_name"]: {k: r[k] for k in ("executed", "failed", "running")} for r in runs},
+        latest_failed={r["package_name"] for r in runs if r["latest_failed"]},
         engine_plugins=plugins,
         plugin_runs={r["plugin_id"]: {k: r[k] for k in ("executed", "failed", "running")} for r in plugin_runs},
         workspace=workspace[0]["name"] if workspace else None,
@@ -601,11 +606,12 @@ def link_stale(found: Choices, objective_id: str, kind: str, key: str) -> str | 
 
 
 def item_evidence(found: Choices, kind: str, key: str) -> str | None:
-    """What a test or control gave on the version shown: "attention" (a failed run, or answers whose mean score
-    is below 3, readiness under 50%), "evidence" (a finished run, or answers), None (nothing yet)."""
+    """What a test or control gave on the version shown: "attention" (the test's latest finished run failed, or
+    answers whose mean score is below 3, readiness under 50%), "evidence" (a finished run, or answers), None
+    (nothing yet). Failed runs followed by a Done one (a setup error put right) are evidence."""
     if kind == "test":
         runs = found.runs.get(key) or {}
-        if runs.get("failed"):
+        if key in found.latest_failed:
             return "attention"
         return "evidence" if runs.get("executed") else None
     answers = found.submissions.get(key)
