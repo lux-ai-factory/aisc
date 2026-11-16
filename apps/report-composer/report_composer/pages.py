@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import uuid
 
+from datetime import timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
@@ -133,8 +134,12 @@ def _report_view(row: dict) -> dict:
         period = f"{start or 'the start'} to {last or 'today'}"
     else:
         period = "All runs"
+    created = row["created_at"].astimezone(timezone.utc) if row.get("created_at") else None
     return {**row, "period": period, "other": "Yes" if row.get("other_versions") else "No",
-            "compare": f"Version {row['compare_number']}" if row.get("compare_number") else ""}
+            "compare": f"Version {row['compare_number']}" if row.get("compare_number") else "",
+            # named with its zone: the sandbox shows report times in the browser's own
+            "created": created.strftime("%Y-%m-%d %H:%M UTC") if created else "",
+            "created_iso": created.isoformat() if created else ""}
 
 
 def _preview_query(request: Request) -> dict:
