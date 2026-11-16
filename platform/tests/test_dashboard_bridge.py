@@ -62,7 +62,7 @@ def test_making_a_project_registers_it_with_the_dashboard_bridge(client, as_user
     assert posts[0].header("X-AISC-Bridge-Token") == TOKEN
 
 
-def test_deleting_a_project_unregisters_it_before_its_database_is_dropped(
+def test_deleting_a_project_unregisters_it_once_its_database_is_dropped(
         client, as_user, make_project, bridge, monkeypatch):
     created = make_project(prefix="dash")
     order = []
@@ -77,7 +77,7 @@ def test_deleting_a_project_unregisters_it_before_its_database_is_dropped(
     deletes = bridge.requests("DELETE")
     assert [c.path for c in deletes] == [f"/api/v1/aisc_project/{created['pid']}"]
     assert deletes[0].header("X-AISC-Bridge-Token") == TOKEN
-    assert order == [("drop", 1)], "the bridge is told before the database is dropped"
+    assert order == [("drop", 0)], "the bridge is told only once the database is dropped"
 
 
 def test_a_bridge_that_is_down_does_not_stop_making_or_deleting_a_project(

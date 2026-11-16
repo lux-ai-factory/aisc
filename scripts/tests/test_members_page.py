@@ -52,3 +52,11 @@ def test_the_manage_menu_links_the_members_page_for_owners_and_admins():
     wiring = script.find(f"getElementById('{entry.group(1)}').href")
     assert wiring > gate, "the Members link is set inside the owner block"
     assert pages[0].name in script[wiring:wiring + 200], "the Members entry opens the members page"
+
+
+def test_an_owner_sets_how_long_the_project_keeps_its_runs_on_the_members_page():
+    page = (HOMEPAGE / "members.html").read_text()
+    script = script_of(page)
+    assert "/retention" in script, "the owner's page has no way to set how long runs are kept"
+    assert "retention_days" in script, "the page does not show the period the project keeps"
+    assert re.search(r'id="retention-days"[^>]*min="1"[^>]*max="3650"', page), "the field takes 1 to 3650 days"

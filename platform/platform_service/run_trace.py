@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from datetime import datetime, timezone
 
 from platform_service import db, projectdb
@@ -108,6 +109,22 @@ def calls(pid, run: str) -> list[dict]:
             "SELECT seq, connection, door, started_at, ended_at, request, outcome, answer, error, prev_hash, hash"
             " FROM trace.call WHERE run = %s ORDER BY seq", (run,)).fetchall()
     return [{**r, "started_at": _iso(r["started_at"]), "ended_at": _iso(r["ended_at"])} for r in rows]
+
+
+def seqs_with_text(pid, evaluation_plugin: str, sha256: str) -> list[int]:
+    """The seq of each call of that test whose request or answer holds a JSON string with this SHA-256 digest
+    (of its UTF-8 text): where a measure's trace reference (`trace:<test>#sha256=<digest>`) leads."""
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256 or ""):
+        return []
+    with projectdb.connect(pid) as conn:
+        rows = conn.execute(
+            "SELECT c.seq FROM trace.call c WHERE c.evaluation_plugin = %s::uuid AND EXISTS ("
+            " SELECT 1 FROM jsonb_path_query(jsonb_build_array(c.request, coalesce(c.answer, 'null'::jsonb)),"
+            "  'strict $.**') v"
+            " WHERE jsonb_typeof(v) = 'string'"
+            "  AND encode(sha256(convert_to(v #>> '{}', 'UTF8')), 'hex') = %s)"
+            " ORDER BY c.run, c.seq", (str(evaluation_plugin), sha256)).fetchall()
+    return [r["seq"] for r in rows]
 
 
 def export(pid, run: str) -> str:

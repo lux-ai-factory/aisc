@@ -25,6 +25,12 @@ class FakeStore:
         self._check()
         self.buckets.pop(bucket, None)
 
+    def remove_objects(self, bucket: str, names: list[str]) -> list[str]:
+        self._check()
+        for name in names:
+            self.buckets.get(bucket, {}).pop(name, None)
+        return []
+
     def has_bucket(self, bucket: str) -> bool:
         self._check()
         return bucket in self.buckets

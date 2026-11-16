@@ -133,6 +133,9 @@ _ACTIONS = [
        details_keys=("name",)),
     _a("project.deleted", 0, ("platform",), "project",
        caused_by=(("platform", "DELETE", _LAUNCH + "$"),), details_keys=("members", "versions")),
+    # an owner set how long the project keeps its runs (None: for ever)
+    _a("project.retention_set", 0, ("platform",), "project",
+       caused_by=(("platform", "PUT", _LAUNCH + "/retention$"),), details_keys=("days_before", "days_after")),
     _a("member.added", 0, ("platform",), "member",
        caused_by=(("platform", "POST", _LAUNCH + "/members$"),), details_keys=("role",)),
     _a("member.role_changed", 0, ("platform",), "member",
@@ -415,6 +418,12 @@ _ACTIONS = [
     # last hash its export must end with (platform_service/run_trace.py), one per project the run reached
     _a("run.trace.sealed", 4, ("platform",), "evaluation_plugin", actor_kinds=("worker",), per_request=None,
        details_keys=("calls", "digest")),
+    # an owner deleted a run (or the project's retention period did): its measures, artifacts and recorded calls
+    # went; what it removed, the trace's last hash per run and the stored files that stayed for the sweep
+    _a("run.purged", 4, ("platform",), "evaluation", actor_kinds=("user", "system"), per_request=None,
+       caused_by=(("platform", "DELETE", _LAUNCH + r"/runs/(?P<item>[^/]+)$"),),
+       details_keys=("reason", "artifacts", "measures", "calls", "trace_digests", "leftover_objects"),
+       content_required=True),
     # the worker's: written by the engine when the worker reports, citing the run its evaluation started
     _a("engine.evaluation.status_changed", 4, ("engine",), "evaluation", actor_kinds=("worker",),
        per_request=None, details_keys=("status_before", "status_after"),

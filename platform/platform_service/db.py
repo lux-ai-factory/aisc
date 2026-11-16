@@ -44,7 +44,8 @@ _retrying = False
 _retry_thread: threading.Thread | None = None
 
 
-_PROJECT = "pid, name, slug, description, created_at, updated_at"
+_PROJECT = ("pid, name, slug, description, created_at, updated_at,"
+            " (select r.days from core.project_retention r where r.pid = core.project.pid) as retention_days")
 
 
 def _key_column(identifier: str) -> str:
@@ -229,7 +230,36 @@ def delete_project(pid) -> None:
                                (pid,)).fetchone()
         outbox.emit(conn, "project.deleted", project_pid=pid, item_type="project", item_id=pid,
                     details={"members": members["n"] if members else 0})
+        conn.execute("delete from core.project_retention where pid = %s", (pid,))
         conn.execute("delete from core.project where pid = %s", (pid,))
+
+
+def set_retention(pid, days: int | None, by: str) -> tuple[int | None, int | None]:
+    """Set how many days the project keeps its runs (None: for ever); (days before, days after). The ledger's
+    project.retention_set is written in the same transaction, only when the period changes."""
+    from platform_service.ledger import outbox
+
+    with pool().connection() as conn, conn.transaction():
+        conn.execute("select pid from core.project where pid = %s for update", (pid,))
+        row = conn.execute("select days from core.project_retention where pid = %s", (pid,)).fetchone()
+        before = row["days"] if row else None
+        if days is None:
+            conn.execute("delete from core.project_retention where pid = %s", (pid,))
+        else:
+            conn.execute("insert into core.project_retention (pid, days, set_by) values (%s, %s, %s)"
+                         " on conflict (pid) do update set days = excluded.days, set_at = clock_timestamp(),"
+                         " set_by = excluded.set_by", (pid, days, by))
+        if before != days:
+            outbox.emit(conn, "project.retention_set", project_pid=pid, item_type="project", item_id=pid,
+                        details={"days_before": before, "days_after": days})
+    return before, days
+
+
+def retention_periods() -> list[dict]:
+    """[{pid, days}] of every project that keeps its runs for a set period."""
+    with pool().connection() as conn:
+        return conn.execute("select r.pid, r.days from core.project_retention r"
+                            " join core.project p on p.pid = r.pid order by r.pid").fetchall()
 
 
 def provision_all() -> list[str]:

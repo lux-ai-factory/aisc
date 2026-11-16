@@ -81,6 +81,15 @@
       <div class="row"><button class="b" type="submit">Add member</button></div>
       <span class="msg" id="m-msg" role="status"></span>
     </form>
+
+    <form class="new" id="retention" autocomplete="off">
+      <strong>How long runs are kept</strong>
+      <label>Days after a run ended before it is deleted, with its measures, files and recorded calls (empty: kept
+        for ever, the default). A daily sweep deletes older runs; each leaves a tombstone and a ledger event.
+        <input id="retention-days" type="number" min="1" max="3650" step="1"/></label>
+      <div class="row"><button class="b" type="submit">Save</button></div>
+      <span class="msg" id="retention-msg" role="status"></span>
+    </form>
   </div>
 </main>
 
@@ -177,6 +186,18 @@
 
   aisc.call('/api/projects/' + enc(slug)).then(function (answer) {
     $('project-name').textContent = answer.ok && answer.data ? answer.data.name : slug;
+    if (answer.ok && answer.data) $('retention-days').value = answer.data.retention_days || '';
+  });
+
+  $('retention').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var typed = $('retention-days').value.trim();
+    var days = typed === '' ? null : Number(typed);
+    aisc.call('/api/projects/' + enc(slug) + '/retention', {method: 'PUT', body: {days: days}}).then(function (answer) {
+      if (!answer.ok) { say('retention-msg', refused(answer, 'The period was not changed'), true); return; }
+      var kept = answer.data.retention_days;
+      say('retention-msg', kept ? 'Runs are now kept ' + kept + ' days after they end.' : 'Runs are now kept for ever.');
+    });
   });
   load();
 

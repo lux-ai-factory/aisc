@@ -393,8 +393,8 @@ def test_two_saves_at_once_get_n_and_n_plus_1_in_the_project_database(client, as
 
 
 @needs_database
-def test_delete_unregisters_then_drops_then_deletes_the_row(client, as_user, project, monkeypatch):
-    """Deleting a project unregisters it, drops its database, then deletes its row, in that order."""
+def test_delete_drops_then_unregisters_then_deletes_the_row(client, as_user, project, monkeypatch):
+    """Deleting a project drops its database, unregisters its dashboards, then deletes its row, in that order."""
     from platform_service import dashboard_bridge
 
     calls = []
@@ -406,7 +406,7 @@ def test_delete_unregisters_then_drops_then_deletes_the_row(client, as_user, pro
     response = client.request("DELETE", f"/projects/{project['slug']}",
                               json={"confirm_name": project["name"]}, headers=admin)
     assert response.status_code == 204
-    assert calls == ["unregister", "drop", "delete"]
+    assert calls == ["drop", "unregister", "delete"]
 
 
 @needs_database
@@ -484,7 +484,10 @@ def test_a_fresh_platform_database_has_no_module_schema_and_no_core_system():
         f"platform-db.sql still makes module schemas: {sorted(schemas)}"
     # core.outbox is the platform's own ledger outbox (migration 0008), core.run_pass the plugin runs' passes
     # (migration 0012) and core.run_pass_use the connections those runs reached (0013); none is a module's table
-    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}, \
+    # core.leftover_object the stored files a deletion could not remove yet (0017), core.project_retention how
+    # long a project keeps its runs (0018)
+    assert core == {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use",
+                    "leftover_object", "project_retention"}, \
         f"core has {sorted(core)}"
     # forms, catalogues and report layouts are per project: no library of any of them in platform
     assert not schemas & {"form_library", "report_library", "catalogue"}, sorted(schemas)

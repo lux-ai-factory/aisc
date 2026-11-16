@@ -86,6 +86,15 @@ def test_removing_a_bucket_removes_its_objects(store):
     store.remove_bucket(name)                                         # gone already: harmless
 
 
+def test_removing_files_names_none_left_when_all_went(store, bucket):
+    store.put(bucket, "a", b"x", "text/plain", {})
+    store.put(bucket, "b", b"y", "text/plain", {})
+    assert store.remove_objects(bucket, ["a", "missing"]) == []
+    assert store.open(bucket, "a") is None
+    assert store.open(bucket, "b") is not None
+    assert store.remove_objects("proof-" + "f" * 32, ["a"]) == []          # no such bucket: nothing is left
+
+
 def test_an_unreachable_minio_is_storage_unavailable():
     unreachable = proof_store.MinioStore("http://127.0.0.1:9", "user", "password")
     with pytest.raises(proof_store.StorageUnavailable):

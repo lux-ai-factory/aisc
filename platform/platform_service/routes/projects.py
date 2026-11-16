@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 import psycopg
 from aisc_identity import Caller
@@ -9,9 +10,9 @@ from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors
 from psycopg.rows import dict_row
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
 
-from platform_service import dashboard_bridge, db, projectdb, proof_store, targets
+from platform_service import dashboard_bridge, db, projectdb, proof_store, run_purge, targets
 from platform_service.membership import validate_role
 from platform_service.projects import normalise_name, slug_for, validate_slug
 from platform_service.routes.admission import ADMIN_ROLE, last_owner, no_project, owner_or_403, role_or_404
@@ -177,28 +178,49 @@ def remove_project(slug: str, body: DeleteProjectIn, caller: Caller = Depends(ca
     if body.confirm_name != found["name"]:
         raise HTTPException(status_code=422, detail="type the project's name exactly to delete it")
     closed_to = _ledger_drain_or_refuse(found["pid"])
-    # The dashboard lets go of the project's database before it is dropped.
-    dashboard_bridge.unregister(found["pid"])
+    # the project's files in the shared buckets are named by its database only: read them before it goes
+    stored = _stored_files(found["pid"])
     try:
+        # the drop ends the dashboard's sessions on the database too
         projectdb.drop(db.migrate_dsn(), found["pid"])
     except Exception as exc:
-        # the project is still there with its data: the apps may connect again and its dashboard comes back
+        # the project is still there with its data, and its dashboards and charts were never touched:
+        # the apps may connect again
         _reopen(found["pid"], closed_to)
-        if not dashboard_bridge.register(found["pid"], found["slug"], found["name"]):
-            db.remember_unregistered(found["pid"])
         if isinstance(exc, errors.InsufficientPrivilege):
             logger.error("project %s: its database can't be dropped while apps hold sessions: platform_migrator may"
                          " not end them (postgres-setup applies init/owner-roles.sql)", found["pid"])
             raise HTTPException(status_code=503, detail="the project's database is in use and can't be closed now:"
                                 " the platform's database role is not set up to close it") from None
         raise
+    # only now that the data is gone do the dashboards and charts made on it go too
+    dashboard_bridge.unregister(found["pid"])
     db.delete_project(found["pid"])
+    # and its files in the shared buckets; one the store keeps waits in core.leftover_object for the sweep
+    for bucket, names in stored.items():
+        run_purge.remove_files(found["pid"], bucket, names)
     # its proof files go with it; the project is gone either way, so a bucket left behind is only logged
     try:
         proof_store.remove_project_bucket(found["pid"])
     except Exception:
         logger.exception("project %s: its proof-file bucket %s could not be removed; remove it by hand",
                          found["pid"], proof_store.bucket_name(found["pid"]))
+
+
+def _stored_files(pid) -> dict[str, list[str]]:
+    """The project's files in the engine's shared buckets, by bucket, as the engine names them
+    (engine.stored_objects). None yet: a project whose engine never migrated has no files there."""
+    out: dict[str, list[str]] = {}
+    try:
+        with projectdb.connect(pid, row_factory=None) as conn:
+            if conn.execute("SELECT to_regprocedure('engine.stored_objects()')").fetchone()[0] is None:
+                return out
+            for bucket, name in conn.execute("SELECT bucket, name FROM engine.stored_objects()"):
+                if bucket and name:
+                    out.setdefault(bucket, []).append(name)
+    except db.ProjectDatabaseGone:
+        return out
+    return out
 
 
 def _reopen(pid, grantees: list[str]) -> None:
@@ -440,3 +462,76 @@ def latest_system_version(project: str, caller: Caller = Depends(caller_dependen
     if not exists:
         raise no_project(project)
     return found
+
+
+class PurgeRunIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: why the run goes (a data subject's request, a mistaken upload); kept in the tombstone and the ledger
+    reason: StrictStr = Field(min_length=1, max_length=500)
+    #: the run's id again, so a run is deleted only when named twice
+    confirm: StrictStr
+
+    @field_validator("reason")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be empty")
+        return value
+
+
+@router.delete("/projects/{slug}/runs/{evaluation_pid}")
+def purge_run(slug: str, evaluation_pid: str, body: PurgeRunIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Delete one run: its measures, artifacts and recorded calls. Only an owner, only with a reason and the
+    run's id typed again. The run's row stays, marked purged, and the trace keeps a tombstone per run."""
+    owner_or_403(slug, caller)
+    if body.confirm.strip().lower() != evaluation_pid.lower():
+        raise HTTPException(status_code=422, detail="type the run's id exactly to delete it")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    try:
+        return run_purge.purge_run(found["pid"], evaluation_pid, caller.subject, body.reason)
+    except run_purge.NoSuchRun:
+        raise HTTPException(status_code=404, detail="the project has no such run") from None
+    except run_purge.EngineNotReady:
+        raise HTTPException(status_code=503, detail="the engine has not set up this project's database yet") from None
+    except errors.InvalidTextRepresentation:
+        raise HTTPException(status_code=404, detail="the project has no such run") from None
+
+
+class RetentionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: how many days the project keeps a run after it ended; None keeps runs for ever (the default)
+    days: Annotated[StrictInt, Field(ge=1, le=3650)] | None
+
+
+@router.put("/projects/{slug}/retention")
+def set_project_retention(slug: str, body: RetentionIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Only an owner sets how long the project keeps its runs; the daily sweep deletes older ones."""
+    owner_or_403(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    before, after = db.set_retention(found["pid"], body.days, caller.subject)
+    return {"retention_days": after, "retention_days_before": before}
+
+
+@router.get("/projects/{slug}/runs/{evaluation_plugin}/trace-ref/{sha256}")
+def follow_trace_reference(slug: str, evaluation_plugin: str, sha256: str,
+                           caller: Caller = Depends(caller_dependency)) -> dict:
+    """Where a measure's trace reference (`trace:<test>#sha256=<digest>`) leads: the seq of each recorded call of
+    that test holding the text with that digest. Owners and editors only, as the trace itself."""
+    from uuid import UUID
+
+    from platform_service import run_trace
+
+    role_or_404(slug, caller, "editor")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    try:
+        test = str(UUID(evaluation_plugin))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="no such test") from None
+    return {"seqs": run_trace.seqs_with_text(found["pid"], test, sha256.lower())}

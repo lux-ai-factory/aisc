@@ -207,6 +207,9 @@ SECRETS = [
     # on every start (infra/minio/make-buckets.sh), so they are not volume-bound and --rotate renews them
     ("S3_ENGINE_PASSWORD", "rand"),
     ("S3_PLATFORM_PASSWORD", "rand"),
+    # MinIO's key for what it stores (server-side encryption of every bucket): made once and kept, --rotate
+    # included, since every object written under it is unreadable without it
+    ("MINIO_KMS_SECRET_KEY", "minio_kms"),
     # the RabbitMQ accounts of the engine, the workers and Flower (aisc-engine, aisc-worker, aisc-flower), none an
     # administrator: rabbitmq-setup sets them on every start (infra/rabbitmq/setup_users.py), so --rotate renews
     # them; RABBITMQ_PASSWORD, the administrator's, is for operators only
@@ -319,12 +322,13 @@ FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 # it, so it stays kept until every stored value has been encrypted again under ENGINE_SECRETS_KEY.
 KEPT_ON_ROTATE = ("PLATFORM_SECRETS_KEY", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD", "PLATFORM_LEDGER_KEYS",
                   "DEVPI_ROOT_PASSWORD", "SUPERSET_SECRET_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY",
-                  *VOLUME_BOUND)
+                  "MINIO_KMS_SECRET_KEY", *VOLUME_BOUND)
 # The keys that open what is stored: an emptied line for one of them is refused, never made again, since every value
 # encrypted or signed under the old key would become unreadable or unverifiable. PLATFORM_SECRETS_KEY opens the stored
 # LLM keys, ENGINE_SECRETS_KEY and DJANGO_SECRET_KEY the engine's stored credentials, PLATFORM_LEDGER_KEYS checks the
-# ledger's past signatures.
-NEVER_MADE_AGAIN = ("PLATFORM_SECRETS_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY", "PLATFORM_LEDGER_KEYS")
+# ledger's past signatures, MINIO_KMS_SECRET_KEY the files MinIO stores.
+NEVER_MADE_AGAIN = ("PLATFORM_SECRETS_KEY", "DJANGO_SECRET_KEY", "ENGINE_SECRETS_KEY", "PLATFORM_LEDGER_KEYS",
+                    "MINIO_KMS_SECRET_KEY")
 # What --rotate replaces: every other secret, named here so that a secret added to SECRETS is put in one of the
 # two by a decision (scripts/tests/test_aisc_py.py fails until it is), never fresh by default.
 FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_API_KEY", "SUPERSET_GUEST_TOKEN_SECRET",
@@ -364,6 +368,11 @@ def fernet() -> str:
     return base64.urlsafe_b64encode(random_source.token_bytes(32)).decode()
 
 
+def minio_kms() -> str:
+    # MinIO's single static key: "<key name>:<base64 of 32 bytes>"
+    return "aisc-key:" + base64.b64encode(random_source.token_bytes(32)).decode()
+
+
 def immudbpw() -> str:
     # immudb refuses a password without an upper and a lower case letter, a digit and a symbol, or over 32
     # characters: 24 random hex (96 bits) behind a fixed prefix that has one of each.
@@ -394,7 +403,8 @@ def warn_known_account_passwords(path: str) -> None:
 
 def fresh(kind: str, name: str) -> str:
     """A new value of this kind; the ledger's master key list starts at version 1."""
-    return {"cookie": cookie, "fernet": fernet, "immudbpw": immudbpw, "ledgerkey": lambda: "v1:" + rand(),
+    return {"cookie": cookie, "fernet": fernet, "immudbpw": immudbpw, "minio_kms": minio_kms,
+            "ledgerkey": lambda: "v1:" + rand(),
             "account": lambda: account(name)}.get(kind, rand)()
 
 

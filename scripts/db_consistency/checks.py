@@ -65,8 +65,10 @@ KNOWN_PLATFORM_SCHEMAS = {"core", "ledger", "public", "aisc_setup"}
 RETIRED_PLATFORM_SCHEMAS = {"engine", "qualification", "control_objectives", "report_composer"}
 #: core's tables once the cutover has dropped the rest.
 #: outbox: ledger events (0008); run_pass: plugin runs' passes (0012);
-#: run_pass_use: which connection each run reached (0013).
-CORE_TABLES = {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use"}
+#: run_pass_use: which connection each run reached (0013); leftover_object: stored files a deletion could not
+#: remove yet (0017); project_retention: how long a project keeps its runs (0018).
+CORE_TABLES = {"project", "project_member", "schema_migration", "outbox", "run_pass", "run_pass_use",
+               "leftover_object", "project_retention"}
 
 
 def out_of_scope(name: str) -> bool:
