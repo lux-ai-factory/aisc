@@ -325,6 +325,7 @@
       hint(set, "data-pick-one", Array.isArray(v) && v.length === 0 ? PICK_ONE : "", "inline-problem");
     });
   }
+  let problemsSaid = false;                           // the region holds problems showProblems put there
   function showProblems(problems) {                   // in the section's form, and a flag on its row
     if (bodies) bodies.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
     list.querySelectorAll('[data-flag="problems"]').forEach(function (f) { f.remove(); });
@@ -339,7 +340,8 @@
       if (!mark) mark = li.querySelector("[data-flags]").appendChild(makeFlag({ name: "problems", label: PROBLEMS }));
       mark.title = (mark.title ? mark.title + "; " : "") + text;
     });
-    say(loose.join(" "));
+    // a message something else said (a refused save, a failed report) stays until it is closed or replaced
+    if (loose.length || problemsSaid) { say(loose.join(" ")); problemsSaid = loose.length > 0; }
   }
 
   // show-if: a field is shown only while the option it names has one of the listed values; a text box per choice
@@ -403,6 +405,15 @@
       return true;
     }
     const err = res.data && res.data.error;
+    if (res.status === 409 && err && err.code === "stale_revision") {
+      // saved meanwhile (elsewhere, or a look deleted): keep this draft and offer to save it over the newer one
+      const current = ((err.details || [])[0] || {}).current_revision;
+      problemsSaid = false;
+      say(errorText(res) + " Your changes here are kept until you save or leave; reloading shows revision " +
+          current + " and drops them.", false,
+          current ? { label: "Save over revision " + current, run: function () { revision = current; save(); } } : null);
+      return false;
+    }
     showProblems(err && err.details && err.details.length ? err.details : [{ message: errorText(res) }]);
     return false;
   }
