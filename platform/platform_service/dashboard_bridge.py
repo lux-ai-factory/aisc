@@ -58,8 +58,9 @@ class BridgeUnavailable(RuntimeError):
 
 
 def sync_plugin(pid, body: dict) -> dict:
-    """Make or update one plugin's tile from its default charts :
-    PUT /api/v1/aisc_project/<pid>/plugins. {"slug", "charts"}; BridgeUnavailable when it is not taken."""
+    """Make or update one plugin's tile from its default charts (with body["again"], make again one someone
+    deleted): PUT /api/v1/aisc_project/<pid>/plugins. {"slug", "charts", "deleted"}; BridgeUnavailable when it is
+    not taken."""
     base = (os.environ.get("DASHBOARD_BRIDGE_URL") or "").rstrip("/")
     if not base:
         raise BridgeUnavailable("no dashboard is configured (DASHBOARD_BRIDGE_URL)")
@@ -74,4 +75,4 @@ def sync_plugin(pid, body: dict) -> dict:
         logger.warning("the dashboard did not take %s of project %s", body.get("plugin"), pid, exc_info=True)
         raise BridgeUnavailable(f"the dashboard did not take {body.get('label') or body.get('plugin')}: "
                                 f"{type(exc).__name__}") from None
-    return {"slug": answer["slug"], "charts": int(answer.get("charts", 0))}
+    return {"slug": answer["slug"], "charts": int(answer.get("charts", 0)), "deleted": answer.get("deleted") is True}

@@ -158,7 +158,10 @@
         tr.appendChild(cell([e.item_type, e.item_id].filter(Boolean).join(' '), 'mono'));
         tr.appendChild(cell(STEPS[e.step] || e.step));
         tr.appendChild(cell(e.source_app, 'mono'));
-        var out = cell(e.outcome === 'refused' ? 'refused: ' + ((e.details || {}).reason || '') : e.outcome, 'mono');
+        // a refusal says why, and an entry of the ledger's own refusal also what it refused (an install, a save)
+        var d = e.details || {};
+        var out = cell(e.outcome === 'refused'
+          ? 'refused: ' + (d.reason || '') + (d.refused_action ? ' (' + d.refused_action + ')' : '') : e.outcome, 'mono');
         if (e.outcome === 'refused') out.className += ' refused';
         tr.appendChild(out);
         rows.appendChild(tr);

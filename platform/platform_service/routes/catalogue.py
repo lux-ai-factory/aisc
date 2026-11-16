@@ -190,7 +190,12 @@ def catalogue_install_test(slug: str, entry: str, request: Request,
 
 def _not_installed(exc) -> HTTPException:
     """The answer to an install the engine refused: its own reason when it was the eval worker that could not read
-    the test's manifest (503, a named reason), a bad gateway otherwise."""
+    the test's manifest (503, a named reason), a bad gateway otherwise. An install the engine did not confirm in
+    time is not said to have installed nothing: it may still finish (504)."""
+    if getattr(exc, "unconfirmed", False):
+        return HTTPException(status_code=504, detail=(
+            f"{exc}: the install may still finish. Reload the installed tests in a few minutes before "
+            "installing it again"))
     if exc.status == 503 and exc.detail:
         return HTTPException(status_code=503, detail=f"{exc}: {exc.detail}; nothing was installed")
     return HTTPException(status_code=502, detail=f"{exc}; nothing was installed")

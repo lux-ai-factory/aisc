@@ -118,7 +118,8 @@ def test_start_migrates_every_project_database(iso_client, iso_bed):
         assert _names(iso_bed, db, "SELECT string_agg(name, ',') FROM report_composer.schema_migration") \
             == ["0001_project_database.sql", "0002_layouts_without_data.sql", "0003_numbering_on.sql",
                "0004_layout_revisions.sql", "0005_layouts_soft_deleted.sql",
-               "0006_pdf_copy.sql", "0007_builtin_reports.sql", "0008_owner_role.sql"], key
+               "0006_pdf_copy.sql", "0007_builtin_reports.sql", "0008_owner_role.sql",
+               "0009_pdf_copy_error.sql"], key
         for t in MODULE_TABLES:
             assert iso_bed.scalar(db, f"SELECT to_regclass('report_composer.{t}') IS NOT NULL") == "t", (key, t)
 
@@ -254,7 +255,7 @@ def test_a_project_made_after_start_is_migrated_on_first_open(iso_client, iso_be
     assert iso_bed.scalar(db, "SELECT string_agg(name, ',' ORDER BY name) FROM report_composer.schema_migration") \
         == ("0001_project_database.sql,0002_layouts_without_data.sql,0003_numbering_on.sql,"
             "0004_layout_revisions.sql,0005_layouts_soft_deleted.sql,0006_pdf_copy.sql,0007_builtin_reports.sql,"
-            "0008_owner_role.sql")
+            "0008_owner_role.sql,0009_pdf_copy_error.sql")
 
 
 @pytest.mark.db

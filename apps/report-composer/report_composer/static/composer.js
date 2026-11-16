@@ -325,6 +325,7 @@
       hint(set, "data-pick-one", Array.isArray(v) && v.length === 0 ? PICK_ONE : "", "inline-problem");
     });
   }
+  let problemsSaid = false;                           // the region holds problems showProblems put there
   function showProblems(problems) {                   // in the section's form, and a flag on its row
     if (bodies) bodies.querySelectorAll("[data-problems]").forEach(function (p) { p.textContent = ""; });
     list.querySelectorAll('[data-flag="problems"]').forEach(function (f) { f.remove(); });
@@ -339,7 +340,8 @@
       if (!mark) mark = li.querySelector("[data-flags]").appendChild(makeFlag({ name: "problems", label: PROBLEMS }));
       mark.title = (mark.title ? mark.title + "; " : "") + text;
     });
-    say(loose.join(" "));
+    // a message something else said (a refused save, a failed report) stays until it is closed or replaced
+    if (loose.length || problemsSaid) { say(loose.join(" ")); problemsSaid = loose.length > 0; }
   }
 
   // show-if: a field is shown only while the option it names has one of the listed values; a text box per choice
@@ -395,6 +397,8 @@
     if (res.ok && !layoutId) { unsaved = false; location.href = main.dataset.base + "/layouts/" + res.data.id; return true; }
     if (res.ok) {
       revision = res.data.revision;
+      const asked = main.querySelector("[data-generate-revision]");
+      if (asked) asked.value = String(revision);
       unsaved = false;
       showProblems([]);
       if (state) state.textContent = "Saved (revision " + revision + ")";
@@ -403,9 +407,64 @@
       return true;
     }
     const err = res.data && res.data.error;
+    if (res.status === 409 && err && err.code === "stale_revision") {
+      // saved meanwhile (elsewhere, or a look deleted): keep this draft and offer to save it over the newer one
+      const current = ((err.details || [])[0] || {}).current_revision;
+      problemsSaid = false;
+      say(errorText(res) + " Your changes here are kept until you save or leave; reloading shows revision " +
+          current + " and drops them.", false,
+          current ? { label: "Save over revision " + current, run: function () { revision = current; save(); } } : null);
+      return false;
+    }
     showProblems(err && err.details && err.details.length ? err.details : [{ message: errorText(res) }]);
     return false;
   }
+
+  // Generate and download: of the saved revision only, which the page names; unsaved changes are saved first
+  // when the person says so. The report is listed and the old failure cleared without a reload.
+  async function redrawReports() {
+    let html = null;
+    try {
+      const r = await fetch(location.pathname + location.search, { credentials: "same-origin" });
+      if (r.ok) html = await r.text();
+    } catch (e) { html = null; }
+    const now = document.getElementById("reports");
+    const fresh = html && new DOMParser().parseFromString(html, "text/html").getElementById("reports");
+    if (now && fresh) now.replaceWith(fresh);
+  }
+  function clearReportError() {
+    const old = main.querySelector("[data-report-error]");
+    if (old) old.remove();
+    const u = new URL(location.href);
+    if (u.searchParams.has("report_error")) { u.searchParams.delete("report_error"); history.replaceState(null, "", u.toString()); }
+  }
+  async function generateAndDownload(form, format) {
+    if (unsaved) {
+      const go = await ask("This layout has unsaved changes. Generate and download makes the report of the saved " +
+                           "revision " + revision + ", not of the preview of your changes. Save the changes and " +
+                           "generate the report of the new revision?", "Save and generate");
+      if (!go || !(await save())) return;
+    }
+    const data = new FormData(form);
+    const body = { format: format, revision: revision, other_versions: data.get("other_versions") === "on" };
+    ["system_id", "period_from", "period_to"].forEach(function (k) { if (data.get(k)) body[k] = data.get(k); });
+    say("Generating the report…", true);
+    const res = await call("POST", "/layouts/" + layoutId + "/reports", body);
+    if (!res.ok) { say("The report was not generated: " + errorText(res)); redrawReports(); return; }
+    say("");
+    clearReportError();
+    // an attachment: the browser downloads it under the name the composer gives and stays on the page
+    location.assign(api + "/reports/" + encodeURIComponent(res.data.id) + "/download");
+    redrawReports();
+  }
+  main.addEventListener("submit", function (ev) {
+    const by = ev.submitter;
+    if (!by || !layoutId || !(by.getAttribute("formaction") || "").endsWith("/download-report")) return;
+    ev.preventDefault();
+    const menu = control("download-report");
+    if (menu) menu.open = false;
+    generateAndDownload(ev.target, by.value);
+  });
 
   // A new section from the "+ Add a section" menu: its row and its form, from the palette's template
   function add(typeId) {

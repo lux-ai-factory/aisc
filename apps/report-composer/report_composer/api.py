@@ -416,7 +416,8 @@ def export_layout(request: Request, layout_id: str, keep_text: bool = False,
 @router.post("/p/{ref}/layouts/{layout_id}/reports")
 def post_report(request: Request, layout_id: str, body: dict | None = Body(None),
                 g: Guarded = Depends(project_guard("editor"))):
-    """A report of the layout for a chosen version, period, other-versions switch and compare version."""
+    """A report of the layout for a chosen version, period, other-versions switch and compare version; with
+    `revision`, only of that layout revision (409 when it was saved since)."""
     body = body or {}
     fmt = body.get("format") or "pdf"
     if fmt not in reports.FORMATS:
@@ -424,7 +425,9 @@ def post_report(request: Request, layout_id: str, body: dict | None = Body(None)
                        [{"pointer": "/format", "message": "must be one of pdf, docx"}])
     choice = {k: body.get(k) for k in ("system_id", "period_from", "period_to", "compare_to")}
     choice["other_versions"] = body.get("other_versions") is True
+    expected = reports.expected_revision(body.get("revision"))
     status, answer = reports.generate(request, g.project, layout_id, g.caller, fmt, choice=choice,
+                                      expected_revision=expected,
                                       record=lambda conn, o: ledger.emit(
                                           conn, "report.generated" if o["ok"] else "report.failed",
                                           **reports.outcome_fields(o)))
@@ -452,9 +455,10 @@ def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_g
     with _project_db(request, g) as conn:
         if builtin_layouts.get(layout_id, block_types(request)) is not None:     # a built-in's reports
             record = builtin_reports.record_of(conn, layout_id)
-            return [reports.report_row(r) for r in db.list_reports(conn, record)] if record else []
+            return [reports.report_row(r) for r in db.list_reports(conn, record, reports.cut_off_before(request))] \
+                if record else []
         layout = layout_or_404(conn, layout_id)
-        return [reports.report_row(r) for r in db.list_reports(conn, layout["id"])]
+        return [reports.report_row(r) for r in db.list_reports(conn, layout["id"], reports.cut_off_before(request))]
 
 
 def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool, record=None) -> Response:

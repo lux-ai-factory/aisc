@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import uuid
 
+from datetime import timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
@@ -133,8 +134,12 @@ def _report_view(row: dict) -> dict:
         period = f"{start or 'the start'} to {last or 'today'}"
     else:
         period = "All runs"
+    created = row["created_at"].astimezone(timezone.utc) if row.get("created_at") else None
     return {**row, "period": period, "other": "Yes" if row.get("other_versions") else "No",
-            "compare": f"Version {row['compare_number']}" if row.get("compare_number") else ""}
+            "compare": f"Version {row['compare_number']}" if row.get("compare_number") else "",
+            # named with its zone: the sandbox shows report times in the browser's own
+            "created": created.strftime("%Y-%m-%d %H:%M UTC") if created else "",
+            "created_iso": created.isoformat() if created else ""}
 
 
 def _preview_query(request: Request) -> dict:
@@ -157,10 +162,11 @@ def editor_page(request: Request, ref: str, layout_id: str):
             layout, report_rows = dict(EMPTY_LAYOUT), []
         elif builtin is not None:
             record = builtin_reports.record_of(conn, layout_id)
-            layout, report_rows = builtin, (db.list_reports(conn, record) if record else [])
+            layout, report_rows = builtin, (db.list_reports(conn, record, reports.cut_off_before(request))
+                                            if record else [])
         else:
             layout = layout_or_404(conn, layout_id)
-            report_rows = db.list_reports(conn, layout["id"])
+            report_rows = db.list_reports(conn, layout["id"], reports.cut_off_before(request))
         systems = db.systems(conn)
         templates = _templates(conn)
         asked = _preview_query(request)
@@ -251,8 +257,10 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
     choice["other_versions"] = typed["other_versions"]
     fmt = typed["format"] if typed["format"] in reports.FORMATS else "pdf"
     try:
+        expected = reports.expected_revision(form.get("revision"))
         status, body = await run_in_threadpool(
             reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
+            expected_revision=expected,
             record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
                                                **reports.outcome_fields(o)))
     except ApiError as e:
@@ -292,8 +300,10 @@ async def download_report(request: Request, ref: str, layout_id: str):
         return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}?{query}#reports",
                                 status_code=303)
     try:
+        expected = reports.expected_revision(form.get("revision"))
         status, body = await run_in_threadpool(
             reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
+            expected_revision=expected,
             record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
                                                **reports.outcome_fields(o)))
     except ApiError as e:

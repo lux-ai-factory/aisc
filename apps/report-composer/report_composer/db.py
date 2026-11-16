@@ -282,14 +282,15 @@ def insert_report(conn, *, layout_id, layout_revision, system_id, snapshot, crea
 
 def finish_report(conn, report_id, *, status, finished_at, pdf=None, sha256=None, size_bytes=None,
                   block_statuses=(), error_ref=None, error_code=None, fingerprint=None, pdf_copy=None,
-                  pdf_copy_sha256=None) -> None:
-    """`pdf` holds the document in its own format; `pdf_copy` a Word report's PDF from the same generation."""
+                  pdf_copy_sha256=None, pdf_copy_error=None) -> None:
+    """`pdf` holds the document in its own format; `pdf_copy` a Word report's PDF from the same generation, and
+    `pdf_copy_error` why it has none."""
     conn.execute(
         "UPDATE report_composer.generated_report SET status = %s, pdf = %s, sha256 = %s, size_bytes = %s,"
         " block_statuses = %s, error_ref = %s, error_code = %s, finished_at = %s, fingerprint = %s,"
-        " pdf_copy = %s, pdf_copy_sha256 = %s WHERE id = %s",
+        " pdf_copy = %s, pdf_copy_sha256 = %s, pdf_copy_error = %s WHERE id = %s",
         (status, pdf, sha256, size_bytes, Jsonb(list(block_statuses)), error_ref, error_code, finished_at,
-         fingerprint, pdf_copy, pdf_copy_sha256, report_id))
+         fingerprint, pdf_copy, pdf_copy_sha256, pdf_copy_error, report_id))
 
 
 #: the card revision a report is pinned to, from its snapshot; NULL for a report made before reports were pinned
@@ -297,18 +298,22 @@ _PINNED_CARD_REVISION = ("CASE WHEN r.snapshot->>'card_revision' ~ '^[0-9]{1,9}$
                          " THEN (r.snapshot->>'card_revision')::int END")
 
 
-def list_reports(conn, layout_id) -> list[dict]:
-    return conn.execute("SELECT r.id::text AS id, r.layout_revision, r.status, r.created_at, r.created_by,"
+def list_reports(conn, layout_id, cut_off_before=None) -> list[dict]:
+    """A layout's reports, newest first. A report still running that started before `cut_off_before` was cut off
+    half way (a restart or a crash during the render left it so) and is listed as interrupted."""
+    return conn.execute("SELECT r.id::text AS id, r.layout_revision,"
+                        " CASE WHEN r.status = 'running' AND r.created_at <= %s THEN 'interrupted' ELSE r.status END"
+                        " AS status, r.created_at, r.created_by,"
                         " r.size_bytes, r.format, r.fingerprint, r.sha256, s.number AS system_number,"
                         " r.period_from, r.period_to, r.other_versions, c.number AS compare_number,"
                         f" {_PINNED_CARD_REVISION} AS card_revision,"
                         " (r.pdf IS NOT NULL AND (coalesce(r.format, 'pdf') = 'pdf' OR r.pdf_copy IS NOT NULL))"
-                        " AS has_pdf"
+                        " AS has_pdf, r.pdf_copy_error"
                         " FROM report_composer.generated_report r"
                         " LEFT JOIN project.system s ON s.pid = r.system_id"
                         " LEFT JOIN project.system c ON c.pid = r.compare_to"
                         " WHERE r.layout_id = %s ORDER BY r.created_at DESC, r.id",
-                        (layout_id,)).fetchall()
+                        (cut_off_before, layout_id)).fetchall()
 
 
 def project_name(conn, pid) -> str:

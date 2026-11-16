@@ -63,7 +63,10 @@ webapp src/deployment.ts modes: APP_DEPLOYMENT read per call
 webapp src/main.tsx modes: DeploymentGate mounted; the project-header wrapper installed before render in configurator
 webapp src/pages/GlobalHome.tsx modes: the launcher's project in configurator
 webapp src/pages/Plugins.modes.test.tsx modes: the Plugins page by mode (configurator lists only the project's installed tests)
-webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place tests are found in configurator; upstream's package index standalone; uses pluginToggle
+webapp src/pages/Plugins.tsx modes, errors: the catalogue is the only place tests are found in configurator; upstream's package index standalone; uses pluginToggle; a refused package on, off or refresh says the engine's reason instead of success
+webapp src/pages/Plugins.refreshRefused.test.tsx errors: a refused refresh is said with the engine's reason, not as refreshed
+webapp src/pages/Settings.tsx errors: a refused project rename says the engine's reason and keeps the typed name; a rename that worked moves the page to the new name
+webapp src/pages/Settings.rename.test.tsx errors: its tests
 webapp src/pages/PluginEvaluations.tsx reports, errors: the report links (Download Report, per evaluation) removed: they went to /report, which the AISC stack never serves; the report is the report composer. Failed runs listed with their error
 webapp src/pages/evaluationOutcome.ts errors: which runs Results lists (Done and Failed), a failed run's label and its plugin errors in words
 webapp src/pages/evaluationOutcome.test.ts errors: its tests
@@ -81,13 +84,13 @@ webapp src/platform/gatewaySession.ts modes: the gateway's session
 webapp src/pluginCatalogue/PluginInstallContext.tsx modes: install target by mode
 webapp src/pluginCatalogue/installUri.ts modes: catalogue slug of an install link
 webapp src/pluginCatalogue/testing.tsx modes: test helpers without a new dependency
-webapp src/upstreamFilesUnchanged.test.ts modes, names: the upstream files the configurator no longer edits equal master; PluginEvaluations.tsx and PluginStartEvaluation.tsx are not among them (reports, wording), nor ConfigHistory.tsx and PluginsConfig.tsx (names)
+webapp src/upstreamFilesUnchanged.test.ts modes, names, errors: the upstream files the configurator no longer edits equal master; PluginEvaluations.tsx and PluginStartEvaluation.tsx are not among them (reports, wording), nor ConfigHistory.tsx and PluginsConfig.tsx (names), nor Settings.tsx (errors)
 webapp README.md docs: what the branch changes and how the frontend runs inside AISC
 webapp src/pages/OpenPluginFromUrl.tsx modes: the execution page opens the test ?plugin= names (step 4's E link)
 webapp src/pages/OpenPluginFromUrl.test.tsx modes: its test
 webapp package-lock.json dependencies: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.8, form-data 4.0.6, react-router/-dom 7.18.4)
 webapp src/patchedDependencies.test.ts dependencies: each shipped dependency above its vulnerable range
-webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin
+webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin; a refused package action's reason
 webapp src/pages/pluginToggle.test.ts errors: its test
 webapp src/api/projectHelpers.ts helpers, launch: the project's helper models, read from the platform for the run form (configurator); the last run's helper model, while the project still offers it for the role
 webapp src/components/AISystemSettings.tsx helpers, retire, testdata, filetypes: the AI System offers no LLM components; models a test uses as tools are the project's helper models; Delete says whether a dataset was deleted, retired or could not be removed, Show retired lists retired ones with Restore; Delete asks first; a refused add or edit, or a file not stored, says the reason and keeps the dialog open; the add and edit file pickers offer only the engine's extensions for the type

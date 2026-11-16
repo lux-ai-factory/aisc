@@ -104,7 +104,7 @@ _ACTIONS = [
     _a("flower.request", 0, (), "request", origin="platform", per_request=None),
     _a("pgadmin.request", 0, (), "request", origin="platform", per_request=None),
     _a("ledger.rejected", 0, (), "event", origin="platform", actor_kinds=("system",), per_request=None,
-       details_keys=("reason", "digest")),
+       details_keys=("reason", "digest", "refused_action")),
     # a frozen content redacted on the operator's word (secret_cleanup.py), appended by the platform itself
     _a("ledger.content.redacted", 0, (), "ledger", origin="platform", actor_kinds=("system",), per_request=None,
        details_keys=("event_ids", "reason", "count")),
@@ -235,7 +235,7 @@ _ACTIONS = [
        caused_by=(("qualification", "GET", _QU + r"/qualify/(?P<item>[^/]+)$"),
                   # saving the card redirects to its page, which Next renders inside the save's own POST
                   ("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$")),
-       details_keys=("version", "read_only")),
+       details_keys=("version", "read_only", "viewer")),
     _a("qualification.created", 1, ("qualification",), "qualification",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),),     # the form's page
        # the next version's review: what it took from the card before it (content.review names the nodes)
@@ -397,7 +397,8 @@ _ACTIONS = [
     # step 4: evidence, engine, controls
     _a("evidence.links.saved", 4, ("platform",), "evidence",
        caused_by=(("platform", "PUT", _LAUNCH + "/evidence/links$"),),
-       details_keys=("added", "removed", "carried", "notes_changed"), content_required=True, empty_content=True),
+       details_keys=("added", "removed", "carried", "notes_changed", "review_voided"), content_required=True,
+       empty_content=True),
     _a("evidence.map.reviewed", 4, ("platform",), "evidence",
        caused_by=(("platform", "POST", _LAUNCH + "/evidence/review$"),), details_keys=("links",)),
     # what the run is made of: its card version (the event's card_version), each plugin's package, version,

@@ -543,6 +543,12 @@ def _accepted_count(log: str, request_id: str, action: str) -> int:
                             " AND action = %s AND reason IS NULL", (log, request_id, action)).fetchone()["n"]
 
 
+def _refused_action(ev) -> str | None:
+    """The action a refused event names, when it is a plain name; None when it is missing or not text."""
+    action = ev.get("action")
+    return action[:128] if isinstance(action, str) and action else None
+
+
 def _reject(item, ev, app, pid, log, project, reason: str, stats: RelayStats) -> None:
     digest = hashlib.sha256(_row_digest(ev)).hexdigest()
     entry = {
@@ -550,7 +556,9 @@ def _reject(item, ev, app, pid, log, project, reason: str, stats: RelayStats) ->
         "project_pid": ev.get("project_pid"), "step": 0, "source_app": app, "action": "ledger.rejected",
         "actor_kind": "system", "actor_ref": None, "program": "relay", "request_id": ev.get("request_id"),
         "item_type": "event", "item_id": ev["event_id"], "outcome": "refused",
-        "details": {"reason": reason, "digest": digest}, "registry_version": registry.VERSION,
+        # the refused event's action, so whoever reads the log sees what was refused (an install, a save...)
+        "details": {"reason": reason, "digest": digest, "refused_action": _refused_action(ev)},
+        "registry_version": registry.VERSION,
     }
     seq = _store().append(log, entry)
     _index(log, seq, entry, pid, reason=reason, row_digest=digest)
