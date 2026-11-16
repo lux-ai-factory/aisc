@@ -67,8 +67,10 @@ def check_migrator_address_at_start() -> None:
     db.migrate_dsn()
 
 
+from platform_service import retention as _retention  # noqa: E402
+
 app.router.on_startup.extend([check_switches_at_start, check_migrator_address_at_start, record_ledger_mode_at_start,
-                              _ledger_worker.start])
+                              _ledger_worker.start, _retention.start])
 
 #: What the ledger's defence in depth checks: every write, but not the internal and authz routes,
 #: which carry service tokens or are Caddy's own.

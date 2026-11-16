@@ -133,6 +133,9 @@ _ACTIONS = [
        details_keys=("name",)),
     _a("project.deleted", 0, ("platform",), "project",
        caused_by=(("platform", "DELETE", _LAUNCH + "$"),), details_keys=("members", "versions")),
+    # an owner set how long the project keeps its runs (None: for ever)
+    _a("project.retention_set", 0, ("platform",), "project",
+       caused_by=(("platform", "PUT", _LAUNCH + "/retention$"),), details_keys=("days_before", "days_after")),
     _a("member.added", 0, ("platform",), "member",
        caused_by=(("platform", "POST", _LAUNCH + "/members$"),), details_keys=("role",)),
     _a("member.role_changed", 0, ("platform",), "member",

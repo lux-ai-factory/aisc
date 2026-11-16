@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 import psycopg
 from aisc_identity import Caller
@@ -9,7 +10,7 @@ from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg import errors
 from psycopg.rows import dict_row
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
 
 from platform_service import dashboard_bridge, db, projectdb, proof_store, run_purge, targets
 from platform_service.membership import validate_role
@@ -497,3 +498,20 @@ def purge_run(slug: str, evaluation_pid: str, body: PurgeRunIn, caller: Caller =
         raise HTTPException(status_code=503, detail="the engine has not set up this project's database yet") from None
     except errors.InvalidTextRepresentation:
         raise HTTPException(status_code=404, detail="the project has no such run") from None
+
+
+class RetentionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: how many days the project keeps a run after it ended; None keeps runs for ever (the default)
+    days: Annotated[StrictInt, Field(ge=1, le=3650)] | None
+
+
+@router.put("/projects/{slug}/retention")
+def set_project_retention(slug: str, body: RetentionIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Only an owner sets how long the project keeps its runs; the daily sweep deletes older ones."""
+    owner_or_403(slug, caller)
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    before, after = db.set_retention(found["pid"], body.days, caller.subject)
+    return {"retention_days": after, "retention_days_before": before}
