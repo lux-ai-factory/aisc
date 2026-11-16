@@ -515,3 +515,23 @@ def set_project_retention(slug: str, body: RetentionIn, caller: Caller = Depends
         raise no_project(slug)
     before, after = db.set_retention(found["pid"], body.days, caller.subject)
     return {"retention_days": after, "retention_days_before": before}
+
+
+@router.get("/projects/{slug}/runs/{evaluation_plugin}/trace-ref/{sha256}")
+def follow_trace_reference(slug: str, evaluation_plugin: str, sha256: str,
+                           caller: Caller = Depends(caller_dependency)) -> dict:
+    """Where a measure's trace reference (`trace:<test>#sha256=<digest>`) leads: the seq of each recorded call of
+    that test holding the text with that digest. Owners and editors only, as the trace itself."""
+    from uuid import UUID
+
+    from platform_service import run_trace
+
+    role_or_404(slug, caller, "editor")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    try:
+        test = str(UUID(evaluation_plugin))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="no such test") from None
+    return {"seqs": run_trace.seqs_with_text(found["pid"], test, sha256.lower())}
