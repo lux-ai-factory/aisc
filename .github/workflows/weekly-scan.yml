@@ -1,0 +1,84 @@
+# Once a week, every lock of the checkout (submodules included) against published advisories, and every image the
+# stack builds against known vulnerabilities: a high or critical finding fails. The locks are checked as on every
+# push (scripts/audit-dependencies.sh); the images are built from the development compose files and scanned with
+# Grype, one job per image, counting only findings a newer package fixes. A schedule fires only from the
+# repository's default branch: to scan another branch, run it by hand (Actions > weekly scan > Run workflow).
+# Every action is pinned by commit.
+name: weekly scan
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # no job reads Git LFS content: the submodules' LFS files (eval's test data) stay pointers
+  GIT_LFS_SKIP_SMUDGE: "1"
+  COMPOSE: docker compose --env-file env.runtime -f docker-compose-infra.development.yml -f docker-compose.development.yml
+
+jobs:
+  locks:
+    name: dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: bash scripts/audit-dependencies.sh
+
+  # the services that build an image, one per image (a service that reuses another's image is left out)
+  built-images:
+    name: images the stack builds
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.list.outputs.services }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      # compose needs the secrets to read its files: throwaway ones, made on the runner and never kept
+      - run: scripts/secrets.sh
+      - id: list
+        run: |
+          $COMPOSE config --format json | python3 -c '
+          import json, sys
+          services, seen = [], set()
+          for name, svc in sorted(json.load(sys.stdin)["services"].items()):
+              if "build" in svc and svc["image"] not in seen:
+                  seen.add(svc["image"])
+                  services.append({"service": name, "image": svc["image"]})
+          print("services=" + json.dumps(services))
+          ' >> "$GITHUB_OUTPUT"
+
+  image:
+    name: image ${{ matrix.image }}
+    needs: built-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.built-images.outputs.services) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: scripts/secrets.sh
+      - run: $COMPOSE build ${{ matrix.service }}
+      - uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ matrix.image }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
