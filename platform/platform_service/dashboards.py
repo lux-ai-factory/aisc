@@ -107,10 +107,10 @@ def tiles_to_make(runs: list[dict]) -> list[dict]:
 
 
 def sync(pid, project_name: str, token: str) -> dict:
-    """The tiles of the plugins that get one, made or updated: {"dashboards": [{plugin, label, slug, url, charts}],
-    "warnings"}. Every plugin is listed; slug and url are None for one with no tile (none due, or deleted by
-    someone), so a link to it opens the list of tiles. dashboard_bridge.BridgeUnavailable when the dashboard does
-    not take them."""
+    """The tiles of the plugins that get one, made or updated: {"dashboards": [{plugin, label, slug, url, charts,
+    deleted}], "warnings"}. Every plugin is listed; slug and url are None for one with no tile (none due, or
+    deleted by someone: then deleted is true). dashboard_bridge.BridgeUnavailable when the dashboard does not take
+    them."""
     dashboards, warnings = [], []
     runs = latest_runs(pid)
     made = {}
@@ -129,8 +129,31 @@ def sync(pid, project_name: str, token: str) -> dict:
         slug = tile.get("slug")
         dashboards.append({"plugin": plugin, "label": label, "slug": slug,
                            "url": f"{public_url()}/superset/dashboard/{slug}/" if slug else None,
-                           "charts": tile.get("charts", 0)})
+                           "charts": tile.get("charts", 0), "deleted": bool(tile.get("deleted"))})
     return {"dashboards": dashboards, "warnings": warnings}
+
+
+class NoSuchTile(LookupError):
+    """The project has no plugin of that name that gets a tile."""
+
+
+def make_again(pid, project_name: str, token: str, plugin: str) -> str:
+    """Make again the tile of `plugin` (its package::name) that someone deleted, from its latest run's default
+    charts, and answer the tile's address with the project named for its "Back". NoSuchTile when the project has
+    no such plugin with a tile due; dashboard_bridge.BridgeUnavailable when the dashboard does not take it."""
+    run = next((r for r in tiles_to_make(latest_runs(pid)) if r["plugin"] == plugin), None)
+    if run is None:
+        raise NoSuchTile(f"no test {plugin!r} with a run in this project")
+    try:
+        charts = visualizations(pid, token, run)
+    except engine_components.EngineUnavailable:
+        charts = []
+    tile = dashboard_bridge.sync_plugin(pid, {"plugin": run["plugin"], "label": run["label"],
+                                              "version": run["version"], "project_name": project_name,
+                                              "visualizations": charts, "again": True})
+    if not tile.get("slug"):
+        raise dashboard_bridge.BridgeUnavailable(f"the dashboard did not make the tile of {run['label']} again")
+    return f"{public_url()}/superset/dashboard/{tile['slug']}/?aisc_project={quote(str(pid), safe='')}"
 
 
 def _rison(value: str) -> str:
@@ -154,10 +177,12 @@ def target_mask(label: str, version: int | None = None) -> str:
 
 
 def open_url(dashboards: list[dict], plugin_label: str | None, target: str | None, pid: str,
-             version: int | None = None) -> str | None:
+             version: int | None = None, *, slug: str | None = None) -> str | None:
     """Where to send the person: the plugin's tile (with the target and the AI card version set), or every tile
-    of theirs when no plugin is named or the plugin has no tile; None for a plugin the project does not have. The link names the project
-    (aisc_project), so the dashboard's "← Back" returns to its AI Assessment Sandbox."""
+    of theirs when no plugin is named or the plugin has no tile due; None for a plugin the project does not have.
+    A tile someone deleted sends the person to the project's sandbox page (`slug`), which says so and offers to
+    make it again. The link names the project (aisc_project), so the dashboard's "← Back" returns to its AI
+    Assessment Sandbox."""
     back = f"aisc_project={quote(str(pid), safe='')}"
     if not plugin_label:
         return f"{public_url()}/dashboard/list/?viewMode=card&{back}"
@@ -165,7 +190,10 @@ def open_url(dashboards: list[dict], plugin_label: str | None, target: str | Non
     if not named:
         return None
     found = next((d for d in named if d.get("url")), None)
-    if found is None:                                 # no tile (none due, or deleted): the tiles there are
+    deleted = next((d for d in named if d.get("deleted")), None)
+    if found is None and deleted is not None and slug:
+        return f"/evidence.html?project={quote(slug, safe='')}&tile_deleted={quote(deleted['plugin'], safe='')}"
+    if found is None:                                 # no tile due: the tiles there are
         return f"{public_url()}/dashboard/list/?viewMode=card&{back}"
     if not target and version is None:
         return f"{found['url']}?{back}"

@@ -99,10 +99,36 @@ def open_dashboards(slug: str, request: Request, plugin: str | None = None, targ
     """Sync, then go to the plugin's tile (with the Target and Version filters set), or to the person's tiles when
     no plugin is named: what the sandbox's Visualisation button and the results page's links open."""
     synced = sync_dashboards(slug, request, caller)
-    url = dashboards.open_url(synced["dashboards"], plugin, target, db.get_project(slug)["pid"], version)
+    url = dashboards.open_url(synced["dashboards"], plugin, target, db.get_project(slug)["pid"], version, slug=slug)
     if url is None:
         raise HTTPException(status_code=404, detail=f"no test {plugin!r} in this project")
     return RedirectResponse(url, status_code=303)
+
+
+class TileAgainIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: the plugin whose tile was deleted, as the sync names it (<package>::<name>)
+    plugin: StrictStr = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/projects/{slug}/dashboards/again")
+def make_tile_again(slug: str, body: TileAgainIn, request: Request,
+                    caller: Caller = Depends(caller_dependency)) -> dict:
+    """Make again a plugin's tile someone deleted in the results dashboard: an editor or owner, since it undoes
+    that deletion. {"url"}: the new tile, which the page then opens."""
+    role_or_404(slug, caller, "editor")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    try:
+        url = dashboards.make_again(found["pid"], found["name"], token_from_headers(request.headers) or "",
+                                    body.plugin)
+    except dashboards.NoSuchTile as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except dashboard_bridge.BridgeUnavailable as exc:
+        raise HTTPException(status_code=502, detail=f"the results dashboard did not answer: {exc}") from None
+    logger.info("project %s: the tile of %s made again", found["pid"], body.plugin)
+    return {"url": url}
 
 
 @router.get("/projects/{slug}/evidence")

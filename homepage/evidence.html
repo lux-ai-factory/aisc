@@ -189,6 +189,7 @@
     </div>
   </div>
   <p class="note" id="page-message" hidden></p>
+  <p class="note" id="tile-deleted" hidden></p>
 
   <section>
     <div class="ways">
@@ -229,6 +230,8 @@
   if (!slug) { location.replace('/'); throw new Error('no project'); }
   // the AI card version shown (the tiles count its runs); none is the latest
   var version = params.get('version');
+  // a test whose dashboard tile someone deleted, when the platform sent the person here to open it
+  var deletedTile = params.get('tile_deleted');
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering.';
   var data = null;                          // the platform's answer: tests, controls, targets, versions
@@ -468,7 +471,43 @@
         data = r.d;
         versionBar();
         render();
+        tileDeleted();
       });
+  }
+
+  // The tile of a test was deleted in the results dashboard, so Visualisation had nothing to open: say so, and
+  // let an editor or owner have it made again (it undoes that deletion), then open it.
+  function tileDeleted() {
+    if (!deletedTile) return;
+    var box = $('tile-deleted');
+    box.textContent = '';
+    var tile = (data.plugins || []).filter(function (it) { return it.key + '::' + it.engine_name === deletedTile; })[0];
+    var name = tile ? tile.label : deletedTile.split('::').slice(-1)[0];
+    box.appendChild(el('span', null, 'The dashboard tile of ' + name +
+                       ' was deleted in the results dashboard, so there is nothing to open. '));
+    if (!data.can_edit) {
+      box.appendChild(el('span', null, 'You can read this project but not change it: an editor or owner can make the tile again.'));
+      box.hidden = false;
+      return;
+    }
+    var button = el('button', null, 'Make the tile again');
+    button.type = 'button';
+    var said = el('span');
+    button.addEventListener('click', function () {
+      button.disabled = true;
+      said.textContent = ' Making the tile…';
+      api('/api/projects/' + enc(slug) + '/dashboards/again', {method: 'POST', body: {plugin: deletedTile}})
+        .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); })
+        .then(function (r) {
+          if (r.res.ok && r.d && r.d.url) { location.href = r.d.url; return; }
+          said.textContent = ' Not made: ' + refusal(r.res, r.d);
+          button.disabled = false;
+        })
+        .catch(function () { said.textContent = ' ' + NOT_ANSWERING; button.disabled = false; });
+    });
+    box.appendChild(button);
+    box.appendChild(said);
+    box.hidden = false;
   }
 
   // which card version this is, and the others to look at
