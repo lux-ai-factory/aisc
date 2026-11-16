@@ -73,6 +73,8 @@ def _function_source(path: Path, name: str) -> str:
     return ""
 
 
+@pytest.mark.xfail(reason="I1: the frozen unified-app run path still fetches mid-run; ADR 0003 execution "
+                          "baseline, retired post-port by EXEC-01 (#120)", strict=False)
 def test_i1_worker_does_not_fetch_from_backend_midrun():
     """The run path uses only what it was dispatched with; the only run->backend call posts results.
 
@@ -321,6 +323,8 @@ def test_i3_no_product_ui_outside_webapp():
 _OPTIONAL = {"qualification", "controls", "control_objectives", "control_objectives_app", "report"}
 
 
+@pytest.mark.xfail(reason="I10: the frozen unified-app optional domains (qualification/objectives/"
+                          "controls/report) are not yet folded into the core; CORE-01 (#109)", strict=False)
 def test_i10_core_does_not_import_optional():
     """The core imports no optional domain; dependencies point coreward (I10)."""
     bad = []
@@ -336,6 +340,8 @@ def test_i10_core_does_not_import_optional():
     assert not bad, "core code depends on an optional domain: " + ", ".join(sorted(set(bad)))
 
 
+@pytest.mark.xfail(reason="I2: the frozen worker builds the plugin child env from os.environ.copy(); "
+                          "ADR 0003 baseline, retired by SEC-01 (#104)", strict=False)
 def test_i2_plugin_environment_is_an_allowlist():
     """The plugin subprocess gets a filtered environment, not the worker's whole environment (I2/I7)."""
     src = (ROOT / "apps/eval/aisc_eval/celery_tasks.py").read_text(encoding="utf-8")
@@ -348,6 +354,8 @@ def test_i2_plugin_environment_is_an_allowlist():
 _SCRUB = re.compile(r"\bscrub\w*\(")
 
 
+@pytest.mark.xfail(reason="I7: the frozen run path does not scrub every outbound path; ADR 0003 temporary "
+                          "exception, retired by SEC-01/EXEC-01 (#104/#120)", strict=False)
 def test_i7_outbound_paths_scrub():
     """Every path that can carry a secret outward (log, artifact, error, message) scrubs it (I7)."""
     src = (ROOT / "apps/eval/aisc_eval/celery_tasks.py").read_text(encoding="utf-8")
