@@ -21,7 +21,7 @@ from platform_service import db, proof_store
 from platform_service.projects import looks_like_pid
 from platform_service.proof_types import MAX_BYTES, NameRefused, Refused
 from platform_service.routes.admission import _internal
-from platform_service.routes.connections import _behind_gateway
+from platform_service.routes.run_passes import _behind_gateway
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

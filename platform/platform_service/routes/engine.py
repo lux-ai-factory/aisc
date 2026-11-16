@@ -15,7 +15,8 @@ from fastapi.responses import JSONResponse
 from platform_service import connection_allowlist, connection_store, db, helper_store, llm_catalogue, llm_store, target_store, targets
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
-from platform_service.routes.connections import CONNECTION_NAME, _behind_gateway, _fingerprint_of, descriptor_of
+from platform_service.connections import CONNECTION_NAME, _fingerprint_of, descriptor_of
+from platform_service.routes.run_passes import _behind_gateway
 
 router = APIRouter()
 

@@ -88,7 +88,9 @@ SUITES = (
           " && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD:/w:ro\" -w /w/services/system_card_renderer"
           " aisc-t-qpdf sh -lc 'pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider'"),
     Suite("qualification agents", "apps/qualification", "node_modules", ("docker",), False,
-          "cd apps/qualification && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD:/w:ro\" python:3.12-slim"
+          "cd apps/qualification && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD:/w:ro\""
+          " -v \"$PWD/../../shared/identity/redaction-cases.json:/cases/redaction-cases.json:ro\""
+          " -e AISC_REDACTION_CASES=/cases/redaction-cases.json python:3.12-slim"
           " sh -lc 'mkdir -p /tmp/q && cp -r /w/services /w/src /tmp/q/ && cd /tmp/q/services/agents"
           " && pip install -q uv && uv pip install --system -q -r requirements.txt --override overrides.txt pytest"
           " && python -m pytest -q -p no:cacheprovider'"),

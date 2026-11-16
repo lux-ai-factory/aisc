@@ -103,7 +103,7 @@ def answer(monkeypatch):
         import httpx
 
         def stream(self, method, url, **kw):
-            seen.append((method, url, kw.get("json"), self.timeout.read))
+            seen.append((method, url, kw.get("json"), kw["timeout"]))
             response = httpx.Response(status, json=body, request=httpx.Request(method, url))
 
             class Streamed:

@@ -9,8 +9,9 @@ connection, are the model's generation settings from OPENAI_PARAMS), OpenAI Chat
 REST API. A request the platform will not send is a BadRequest (a 400); what the system did is a 502
 whose detail is the client's message with every key scrubbed (ask_failure).
 
-It imports only the standard library and aisc_plugin_interface: the integrator's trial gateway loads this
-file by its path, so the trial and the platform translate with the same code.
+It imports only the standard library, aisc_plugin_interface and aisc_redact (the shared secret rule, whose
+secret_forms and without_forms take a connection's secrets out of what the system said): the integrator's trial
+gateway loads this file by its path, so the trial and the platform translate with the same code.
 """
 from __future__ import annotations
 
@@ -20,6 +21,8 @@ import socket
 import time
 import uuid
 from urllib.parse import urlsplit
+
+from aisc_redact import secret_forms, without_forms
 
 A2A_VERSION = "1.0"
 
@@ -177,46 +180,15 @@ def error_code(exc) -> str:
 # not echo credentials; the platform's answer and error scrub is a safety net, not a guarantee.
 def scrub(text: str, secrets: list) -> str:
     """`text` (an error text: a door's 502 detail, a warning log, the Test button's failure) with every form
-    of each secret value (secret_forms) replaced by ***, the longest first; empty values skipped. Not taken
-    out: hex, unpadded base64, double encodings, case changes, a secret split across output items or calls;
-    the target must not echo credentials, and this scrub is a safety net, not a guarantee."""
-    for form in secret_forms(secrets):
-        text = text.replace(form, "***")
-    return text
-
-
-def secret_forms(secrets: list) -> list[str]:
-    """Each secret value as a system may echo it: as it is, base64 (standard and URL-safe), URL-encoded
-    (with and without "/" kept, and with "+" for spaces) and JSON-escaped; the longest first. No other form:
-    not hex, unpadded base64, double encodings or case changes, and a secret split across output items or
-    calls is missed; the target must not echo credentials, the scrub is a safety net, not a guarantee."""
-    import base64
-    import urllib.parse
-
-    forms = set()
-    for value in (v for v in secrets or [] if v):
-        raw = value.encode()
-        forms.update((value, base64.b64encode(raw).decode(), base64.urlsafe_b64encode(raw).decode(),
-                      urllib.parse.quote(value, safe=""), urllib.parse.quote(value),
-                      urllib.parse.quote_plus(value), json.dumps(value)[1:-1]))
-    return sorted(forms, key=len, reverse=True)
-
-
-def _scrubbed(value, forms: list):
-    if isinstance(value, str):
-        for form in forms:
-            value = value.replace(form, "***")
-        return value
-    if isinstance(value, dict):
-        return {_scrubbed(k, forms): _scrubbed(v, forms) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_scrubbed(v, forms) for v in value]
-    return value
+    of each secret value (aisc_redact.secret_forms) replaced by ***, the longest first; empty values skipped.
+    Not taken out: hex, unpadded base64, double encodings, case changes, a secret split across output items or
+    calls; the target must not echo credentials, and this scrub is a safety net, not a guarantee."""
+    return without_forms(text, secret_forms(secrets))
 
 
 def scrub_answer(answer, secrets: list):
     """A copy of a successful answer (the interface's Answer) with every form of each secret value
-    (secret_forms) replaced by *** in its output, its refusal reason and its tool calls: a system that
+    (aisc_redact.secret_forms) replaced by *** in its output, its refusal reason and its tool calls: a system that
     echoes its key or a secret header never hands it to the caller. An answer without them is unchanged.
     A safety net, not a guarantee: the target must not echo credentials, and hex, unpadded base64, double
     encodings, case changes and a secret split across output items or calls get through."""
@@ -225,9 +197,9 @@ def scrub_answer(answer, secrets: list):
     forms = secret_forms(secrets)
     if not forms:
         return answer
-    changes = {"text": _scrubbed(answer.text, forms), "refusal_reason": _scrubbed(answer.refusal_reason, forms)}
+    changes = {"text": without_forms(answer.text, forms), "refusal_reason": without_forms(answer.refusal_reason, forms)}
     if getattr(answer, "tool_calls", None) is not None:
-        changes["tool_calls"] = _scrubbed(answer.tool_calls, forms)
+        changes["tool_calls"] = without_forms(answer.tool_calls, forms)
     return dataclasses.replace(answer, **changes)
 
 

@@ -113,7 +113,7 @@ def test_the_dashboard_reaches_everything_by_service_name():
 
 
 def test_secrets_sh_needs_no_acl_and_writes_no_realm_copy():
-    text = (ROOT / "scripts/aisc.py").read_text()
+    text = "\n".join(p.read_text() for p in [ROOT / "scripts/aisc.py", *sorted((ROOT / "scripts/aisc").glob("*.py"))])
     code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
     assert "setfacl" not in code
     assert "aisc-realm.local.json" not in code

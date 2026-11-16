@@ -10,10 +10,10 @@ the caller and tried again by `db.provision_all`.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
-import urllib.request
+
+from aisc_service_client import ServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,23 +24,21 @@ def _call(method: str, pid: str, body: dict | None = None) -> bool:
     base = (os.environ.get("DASHBOARD_BRIDGE_URL") or "").rstrip("/")
     if not base:
         return True  # no dashboard configured: nothing to tell
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    request = urllib.request.Request(
-        f"{base}/api/v1/aisc_project/{pid}",
-        data=data,
-        method=method,
-        headers={
-            "Content-Type": "application/json",
-            "X-AISC-Bridge-Token": os.environ.get("DASHBOARD_BRIDGE_TOKEN", ""),
-        },
-    )
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
-            response.read()
+        bridge = _bridge(base, TIMEOUT_SECONDS)
+        bridge.checked(bridge.request(method, f"/api/v1/aisc_project/{pid}", json=body, headers=_headers()))
         return True
     except Exception:
         logger.warning("the dashboard bridge did not take %s of project %s", method, pid, exc_info=True)
         return False
+
+
+def _bridge(base: str, timeout: float) -> ServiceClient:
+    return ServiceClient(base, timeout=timeout, service="the dashboard bridge")
+
+
+def _headers() -> dict:
+    return {"Content-Type": "application/json", "X-AISC-Bridge-Token": os.environ.get("DASHBOARD_BRIDGE_TOKEN", "")}
 
 
 def register(pid, slug: str, name: str) -> bool:
@@ -64,13 +62,11 @@ def sync_plugin(pid, body: dict) -> dict:
     base = (os.environ.get("DASHBOARD_BRIDGE_URL") or "").rstrip("/")
     if not base:
         raise BridgeUnavailable("no dashboard is configured (DASHBOARD_BRIDGE_URL)")
-    request = urllib.request.Request(
-        f"{base}/api/v1/aisc_project/{pid}/plugins", data=json.dumps(body).encode("utf-8"), method="PUT",
-        headers={"Content-Type": "application/json", "X-AISC-Bridge-Token": os.environ.get("DASHBOARD_BRIDGE_TOKEN", "")})
     try:
         # a sync imports through Superset: longer than registration's few seconds
-        with urllib.request.urlopen(request, timeout=60) as response:
-            answer = json.loads(response.read() or b"{}")
+        bridge = _bridge(base, 60)
+        response = bridge.checked(bridge.put(f"/api/v1/aisc_project/{pid}/plugins", json=body, headers=_headers()))
+        answer = response.json() if response.content else {}
     except Exception as exc:                                    # noqa: BLE001
         logger.warning("the dashboard did not take %s of project %s", body.get("plugin"), pid, exc_info=True)
         raise BridgeUnavailable(f"the dashboard did not take {body.get('label') or body.get('plugin')}: "

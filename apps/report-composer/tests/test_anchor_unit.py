@@ -26,7 +26,7 @@ def platform(monkeypatch, answer):
         seen.append(request)
         return answer(request)
     real = httpx.Client
-    monkeypatch.setattr(anchor.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     return seen
 
 

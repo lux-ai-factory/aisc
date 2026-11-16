@@ -4,7 +4,7 @@
 `secret_header_names`). Both are Fernet tokens made with the same key list as the LLM keys
 (secret_box.fernet), and rotated with them (`python -m platform_service.llm_store rotate`).
 
-Only `descriptor` selects the ciphertext. Only routes/connections.call_descriptor_of decrypts it, for the
+Only `descriptor` selects the ciphertext. Only connections.call_descriptor_of decrypts it, for the
 protocol doors and the Test button, to call the system; the resolve route answers without it.
 """
 from __future__ import annotations

@@ -20,22 +20,14 @@ from psycopg import errors, sql
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 
+# A project's database is named by the one shared rule: `project_` and the pid's 32 lowercase hex digits, only for
+# a pid in its canonical form. NotAPid is the shared class (a ValueError).
+from aisc_identity.projectdb import NotAPid, database_name, pid_of  # noqa: F401 (the platform's names)
 from platform_service.migrate import migrate
-from platform_service.projects import PID
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "project-template"
 TRACKING_TABLE = "provision.template_migration"
 
-
-class NotAPid(ValueError):
-    """Only a project id may name a database: anything else is refused unread."""
-
-
-def database_name(pid: str | UUID) -> str:
-    text = str(pid).lower()
-    if not PID.fullmatch(text):
-        raise NotAPid(f"not a project id: {text!r}")
-    return "project_" + text.replace("-", "")
 
 
 def connect(pid: str | UUID, *, autocommit: bool = False, row_factory=dict_row) -> psycopg.Connection:

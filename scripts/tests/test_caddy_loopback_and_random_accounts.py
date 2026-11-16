@@ -18,7 +18,7 @@ def _host_ports(services: dict) -> list[tuple[str, str, str]]:
 
 def test_the_accounts_get_random_passwords_on_every_install(monkeypatch):
     m = aisc_py()
-    monkeypatch.setattr(m, "served_over_https", lambda: False)
+    monkeypatch.setattr(m.settings, "served_over_https", lambda: False)
     a, u = m.account("AISC_ADMIN_PASSWORD"), m.account("AISC_USER_PASSWORD")
     assert a not in KNOWN and u not in KNOWN, "an install over plain http gets admin/admin and user/user"
     assert len(a) == 64 and a != u
@@ -27,7 +27,7 @@ def test_the_accounts_get_random_passwords_on_every_install(monkeypatch):
 def test_caddy_listens_on_the_loopback_unless_the_lan_is_asked_for(monkeypatch):
     m = aisc_py()
     assert hasattr(m, "caddy_bind_address"), "scripts/aisc.py has no caddy_bind_address: Caddy listens everywhere"
-    monkeypatch.setattr(m, "served_over_https", lambda: False)
+    monkeypatch.setattr(m.settings, "served_over_https", lambda: False)
     monkeypatch.delenv("AISC_LAN", raising=False)
     assert m.caddy_bind_address() == "127.0.0.1"
     monkeypatch.setenv("AISC_LAN", "on")
@@ -40,7 +40,7 @@ def test_an_install_served_over_https_listens_on_the_network(monkeypatch):
     m = aisc_py()
     assert hasattr(m, "caddy_bind_address"), "scripts/aisc.py has no caddy_bind_address"
     monkeypatch.delenv("AISC_LAN", raising=False)
-    monkeypatch.setattr(m, "served_over_https", lambda: True)
+    monkeypatch.setattr(m.settings, "served_over_https", lambda: True)
     assert m.caddy_bind_address() == "0.0.0.0"
 
 

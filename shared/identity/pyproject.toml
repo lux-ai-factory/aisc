@@ -5,6 +5,8 @@ description = "Who is calling, what they may do, and how a change is cited in th
 requires-python = ">=3.11"
 dependencies = [
     "pyjwt[crypto]>=2.8",
+    # aisc_service_client: one way to call another service of the stack
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -15,7 +17,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["aisc_identity"]
+packages = ["aisc_identity", "aisc_redact", "aisc_service_client"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

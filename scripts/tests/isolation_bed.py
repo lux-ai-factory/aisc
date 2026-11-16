@@ -211,7 +211,8 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
             "for p in sys.argv[2:]: projectdb.provision(sys.argv[1], p)\n")
     _run(bed, "provision", ["uv", "run", "--quiet", "--extra", "dev", "python", "-c", code,
                             bed.dsn(platform_role(bed.t), "platform"), *pids],
-         ROOT / "platform", {"PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
+         ROOT / "platform", {"PYTHONPATH": str(ROOT / "shared/identity"),
+                             "PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
                              "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform")},
          "projectdb.provision")
     bed.projects += [p for p in pids if p not in bed.projects]
@@ -256,7 +257,7 @@ def migrate_modules(bed: IsoBed, modules: Path = ROOT) -> None:
         py = _python("apps/control-objectives")
         _run(bed, "control_objectives", [py, "-m", "aisc_control_objectives.migrate_projects"],
              apps / "control-objectives",
-             {"PYTHONPATH": str(apps / "control-objectives/src"),
+             {"PYTHONPATH": f"{apps / 'control-objectives/src'}:{ROOT / 'shared/identity'}",
               "DATABASE_URL": f"postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:{port}/platform",
               "PROJECT_DATABASE_URL": "postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:"
                                       f"{port}/{{database}}",
@@ -280,7 +281,7 @@ def migrate_modules(bed: IsoBed, modules: Path = ROOT) -> None:
     if "report_composer" not in bed.problems:
         py = _python("apps/report-composer")
         _run(bed, "report_composer", [py, "-m", "report_composer.migrate"], apps / "report-composer",
-             {"PYTHONPATH": str(apps / "report-composer"),
+             {"PYTHONPATH": f"{apps / 'report-composer'}:{ROOT / 'shared/identity'}",
               "REPORT_COMPOSER_DATABASE_URL": bed.dsn("report_composer_rw", "platform"),
               "REPORT_COMPOSER_PROJECT_DATABASE_URL": bed.template("report_composer_rw"),
               "REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL": bed.template("report_composer_migrator")},

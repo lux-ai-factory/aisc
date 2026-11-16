@@ -12,28 +12,29 @@ REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL.
 """
 from __future__ import annotations
 
-import re
 import threading
 from contextlib import contextmanager
 from typing import Iterator
 
 import psycopg
+from aisc_identity.projectdb import NotAPid
+from aisc_identity.projectdb import database_name as shared_database_name
 from psycopg.rows import dict_row
 
 from . import db, migrate
 from .errors import ApiError
 
-_PID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 PLACEHOLDER = "{database}"
 NO_PROJECT = "No such project."
 UNAVAILABLE = "This project's reports cannot be reached just now."
 
 
 def database_name(pid: str) -> str:
-    """project_<32 lowercase hex digits>; anything but a canonical uuid is refused."""
-    if not isinstance(pid, str) or not _PID.match(pid):
-        raise ValueError("not a project pid")
-    return "project_" + pid.replace("-", "").lower()
+    """project_<32 lowercase hex digits>, by the shared rule; anything but a canonical uuid is refused with a
+    ValueError (aisc_identity.projectdb.NotAPid)."""
+    if not isinstance(pid, str):
+        raise NotAPid("not a project pid")
+    return shared_database_name(pid)
 
 
 def dsn_for(template: str, name: str) -> str:

@@ -71,7 +71,7 @@ def retry_seen(monkeypatch):
                      "compose": compose.returncode == 0})
         return real(argv, env)
 
-    monkeypatch.setattr(m, "run_and_watch", watched)
+    monkeypatch.setattr(m.docker, "run_and_watch", watched)
     yield m, seen
     m.end_helper_bypass()      # as start does when it ends
 

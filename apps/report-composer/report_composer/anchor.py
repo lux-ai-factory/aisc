@@ -15,7 +15,7 @@ import logging
 import os
 import re
 
-import httpx
+from aisc_service_client import ServiceClient, ServiceError
 
 from . import ledger
 
@@ -41,13 +41,12 @@ def fetch(request, project: dict) -> dict | None:
     if not base or not token:
         return None
     try:
-        with httpx.Client(timeout=TIMEOUT_S) as http:
-            r = http.get(f"{base}/projects/{project['slug']}/ledger/head",
-                         headers={"Authorization": f"Bearer {token}"})
+        r = ServiceClient(base, timeout=TIMEOUT_S, service="the platform").get(
+            f"/projects/{project['slug']}/ledger/head", headers={"Authorization": f"Bearer {token}"})
         if r.status_code != 200:
             return None
         head = r.json()
-    except (httpx.HTTPError, ValueError):
+    except (ServiceError, ValueError):
         _log.warning("project %s: the ledger head could not be read; the report prints none", project["pid"])
         return None
     if not isinstance(head.get("seq"), int) or not _HEX64.match(str(head.get("entry_sha256") or "")):

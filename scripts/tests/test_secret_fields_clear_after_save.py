@@ -23,9 +23,9 @@ def _function(script: str, head: str) -> str:
 def test_the_helper_form_clears_the_key_only_after_a_save():
     html = HELPERS.read_text()
     handler = _function(html, r"getElementById\('helper-form'\)\.addEventListener\('submit'")
-    before_call = handler.split("api(helpersPath(", 1)[0]
+    before_call = handler.split("aisc.call(helpersPath(", 1)[0]
     assert "f-key').value = ''" not in before_call, "the key is cleared before the platform answered"
-    after = handler.split("if (!res.ok)", 1)[1]
+    after = handler.split("if (!answer.ok)", 1)[1]
     assert "clearForm()" in after
 
 

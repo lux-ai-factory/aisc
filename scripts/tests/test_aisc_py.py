@@ -186,7 +186,7 @@ def test_a_port_someone_listens_on_is_not_free():
 def test_a_port_below_1024_without_root_is_judged_by_connecting(monkeypatch):
     """Linux refuses the bind itself without root; then whether something answers decides."""
     m = aisc_py()
-    monkeypatch.setattr(m, "ON_WINDOWS", False)
+    monkeypatch.setattr(m.ports, "ON_WINDOWS", False)
 
     def refused(self, address):
         raise PermissionError(13, "Permission denied")
@@ -494,7 +494,7 @@ def test_a_reserved_port_on_windows_is_taken(monkeypatch):
         raise PermissionError(10013, "access forbidden")
 
     monkeypatch.setattr(socket.socket, "bind", refused)
-    monkeypatch.setattr(m, "ON_WINDOWS", True)
+    monkeypatch.setattr(m.ports, "ON_WINDOWS", True)
     assert not m.port_is_free(51234, "0.0.0.0")
 
 
@@ -716,7 +716,7 @@ def test_unhealthy_and_failed_services_are_found(tmp_path):
 def test_a_log_docker_does_not_answer_still_ends_in_the_refusal(tmp_path, monkeypatch):
     copy_install_scripts(tmp_path)
     module = aisc_py(tmp_path)
-    monkeypatch.setattr(module, "docker_in_time", lambda argv, wait_s: None)
+    monkeypatch.setattr(module.docker, "docker_in_time", lambda argv, wait_s: None)
     module.show_failing_logs(module.Stack(module.COMPOSE))   # returns, prints nothing it cannot get
 
 
@@ -731,7 +731,7 @@ def test_the_failing_services_last_lines_are_shown(tmp_path, monkeypatch, capsys
             return subprocess.CompletedProcess(argv, 0, "\n".join(json.dumps(o) for o in PS_OBJECTS), "")
         return subprocess.CompletedProcess(argv, 0, f"found invalid keys ({argv[-1]})\n", "")
 
-    monkeypatch.setattr(module, "docker_in_time", answer)
+    monkeypatch.setattr(module.docker, "docker_in_time", answer)
     module.show_failing_logs(module.Stack(module.COMPOSE))
     err = capsys.readouterr().err
     assert "minio" in err and "found invalid keys (minio)" in err and "found invalid keys (postgres-setup)" in err

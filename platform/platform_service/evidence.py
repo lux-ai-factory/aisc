@@ -29,11 +29,11 @@ import math
 import os
 import re
 import time
-import urllib.request
 from urllib.parse import quote, urlencode
 from dataclasses import dataclass, field
 
 import psycopg
+from aisc_service_client import ServiceClient, ServiceError
 from psycopg.rows import dict_row
 
 from platform_service import connection_store, engine_runs, projectdb, run_passes
@@ -465,6 +465,13 @@ def _objective_order(objective_id: str) -> tuple:
     return (0 if code == "O" else 1, code, int(number), "")
 
 
+def _read_json(base: str, path: str, timeout: float, service: str):
+    """The JSON answer of a catalogue's GET; ServiceError when it cannot be reached or refuses, ValueError when
+    the answer is not JSON."""
+    catalogue = ServiceClient(base, timeout=timeout, service=service)
+    return json.loads(catalogue.checked(catalogue.get(path)).content)
+
+
 def forget_titles() -> None:
     _titles.update(at=0.0, by_id={}, macros={}, dims={}, modes={})
 
@@ -475,13 +482,12 @@ def titles() -> dict[str, str]:
         return _titles["by_id"]
     base = os.environ.get("CONTROL_OBJECTIVES_URL", DEFAULT_CATALOGUE).rstrip("/")
     try:
-        with urllib.request.urlopen(f"{base}/api/control-objectives", timeout=3) as res:
-            listed = json.loads(res.read())
+        listed = _read_json(base, "/api/control-objectives", 3, "the control objectives catalogue")
         by_id = {o["id"]: o.get("sub_requirement_label") or "" for o in listed}
         macros = {o["macro_id"]: o["macro_title"] for o in listed if o.get("macro_id") and o.get("macro_title")}
         dims = {o["id"]: o["macro_id"] for o in listed if o.get("macro_id")}
         modes = {o["id"]: o["assessment_mode"] for o in listed if o.get("assessment_mode")}
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (ServiceError, OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("the control objectives catalogue did not answer: %s", exc)
         return {}
     _titles.update(at=time.monotonic(), by_id=by_id, macros=macros, dims=dims, modes=modes)
@@ -553,9 +559,8 @@ def tool_dimensions(pid=None, token: str = "") -> tuple[dict, dict] | None:
         logger.warning("CATALOGUE_URL is not set: the dimensions of tests and controls are unknown")
         return None
     try:
-        with urllib.request.urlopen(f"{base}/tool/?detailed=true", timeout=5) as res:
-            by_slug, by_package = _by_tags(json.loads(res.read()))
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+        by_slug, by_package = _by_tags(_read_json(base, "/tool/?detailed=true", 5, "the tools catalogue"))
+    except (ServiceError, OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("the tools catalogue did not answer: %s", exc)
         return None
     # local controls (local_controls/): their own dimension, unless the catalogue has the slug

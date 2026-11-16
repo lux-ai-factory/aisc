@@ -106,7 +106,7 @@ migrate_project_database() {
   (cd "$ROOT/apps/controls" && \
      PROJECT_MIGRATE_DATABASE_URL="postgresql://controls_migrator:controls_migrator@127.0.0.1:$PORT/{database}?schema=controls" \
      node scripts/migrate-projects.mjs) || return 1
-  (cd "$ROOT/apps/control-objectives" && PYTHONPATH="$ROOT/apps/control-objectives/src" \
+  (cd "$ROOT/apps/control-objectives" && PYTHONPATH="$ROOT/apps/control-objectives/src:$ROOT/shared/identity" \
      DATABASE_URL="postgresql+psycopg://control_objectives_rw:control_objectives_rw@127.0.0.1:$PORT/platform" \
      PROJECT_MIGRATE_DATABASE_URL="postgresql+psycopg://control_objectives_migrator:control_objectives_migrator@127.0.0.1:$PORT/{database}" \
      .venv/bin/python -m aisc_control_objectives.migrate_projects) || return 1
@@ -118,7 +118,7 @@ migrate_project_database() {
      DB_PASSWORD=engine_rw DB_HOST=127.0.0.1 DB_PORT="$PORT" DB_SCHEMA=engine \
      DB_MIGRATE_USER=engine_migrator DB_MIGRATE_PASSWORD=engine_migrator \
      PYTHONPATH="$SHARED_PYTHONPATH" .venv/bin/python manage.py migrate_projects) || return 1
-  (cd "$ROOT/apps/report-composer" && PYTHONPATH="$ROOT/apps/report-composer" \
+  (cd "$ROOT/apps/report-composer" && PYTHONPATH="$ROOT/apps/report-composer:$ROOT/shared/identity" \
      REPORT_COMPOSER_DATABASE_URL="$(tpg_dsn report_composer_rw platform)" \
      REPORT_COMPOSER_PROJECT_MIGRATE_DATABASE_URL="postgresql://report_composer_migrator:report_composer_migrator@127.0.0.1:$PORT/{database}" \
      .venv/bin/python -m report_composer.migrate) || return 1

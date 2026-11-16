@@ -31,7 +31,8 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
-    assert len(scripts) == 1 and "src" not in scripts[0].lower()
+    # page.js (how every launcher page calls the platform), then the page's own script
+    assert [s.strip() for s in scripts] == ['src="/assets/page.js"', '']
 
 
 def test_non_admins_are_told_and_nothing_is_asked_before_the_role_is_known():
@@ -93,9 +94,10 @@ def test_csp_and_injection_safe():
     assert "addEventListener" in script and not re.search(r"\.on[a-z]+\s*=", script)
     assert "innerHTML" not in html and "outerHTML" not in html and "insertAdjacentHTML" not in html
     assert "document.write" not in script and "eval(" not in script
-    calls = re.findall(r"fetch\(\s*([^,)]+)", script)
+    # every call goes through page.js (same-origin, with the person's sign-in), to the platform's own paths
+    calls = re.findall(r"aisc\.call\(\s*([^,)]+)", script)
     assert calls and all(not re.search(r"https?:", a) for a in calls)
-    assert script.count("credentials: 'same-origin'") >= len(calls)
+    assert "fetch(" not in script
 
 
 # the a2a and oip kinds
@@ -382,7 +384,7 @@ def test_connections_are_tried_and_made_from_the_rows_only():
 
 def test_connections_that_cannot_be_read_still_leave_the_admin_the_targets():
     reload_fn = re.search(r"function reload\(\) \{.*?\n  \}\n", script_of(read(PAGE)), re.S).group(0)
-    assert "if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }" in reload_fn
+    assert "if (!answer.ok) { show('page-message', refusal(answer)); reloadTargets(false); return; }" in reload_fn
     assert ".catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });" in reload_fn
 
 
@@ -525,7 +527,7 @@ def test_the_file_goes_as_the_body_to_the_targets_file_route_named_in_the_query(
     script = script_of(read(PAGE))
     upload = re.search(r"function uploadFile\(.*?\n  \}\n", script, re.S).group(0)
     assert "'/api/projects/' + enc(slug) + '/targets/' + enc(t.key) + '/file?name=' + enc(file.name)" in upload
-    assert "method: 'PUT'" in upload and "body: file" in upload
+    assert "method: 'PUT'" in upload and "file: file" in upload
     assert "JSON.stringify" not in upload
     assert "reloadTargets(false)" in upload
 

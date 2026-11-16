@@ -9,7 +9,7 @@ import json as jsonlib
 import threading
 import time
 
-import httpx
+from aisc_service_client import ServiceClient, ServiceTimeout, ServiceUnreachable
 
 
 class RendererError(Exception):
@@ -57,22 +57,22 @@ class HttpRendererClient:
         ends the call once passed while the answer's body is still arriving."""
         timeout = self.timeout if timeout is None else timeout
         headers = {"X-Report-Token": self.__token}
+        renderer = ServiceClient(self.base_url, timeout=timeout, service="the renderer")
         try:
-            with httpx.Client(timeout=timeout) as http:
-                if deadline is None:
-                    r = http.request(method, self.base_url + path, json=json, headers=headers)
-                    return self._answer(r.status_code, r.content)
-                with http.stream(method, self.base_url + path, json=json, headers=headers) as r:
-                    body = bytearray()
-                    for chunk in r.iter_bytes():
-                        if time.monotonic() > deadline:
-                            raise RendererTimeout("the answer did not arrive in time")
-                        body += chunk
-                    return self._answer(r.status_code, bytes(body))
-        except httpx.TimeoutException:
-            raise RendererTimeout(f"no answer within {timeout:g} s") from None
-        except httpx.HTTPError as exc:
-            raise RendererUnavailable(f"renderer not reachable ({type(exc).__name__})") from None
+            if deadline is None:
+                r = renderer.request(method, path, json=json, headers=headers)
+                return self._answer(r.status_code, r.content)
+            with renderer.stream(method, path, json=json, headers=headers) as r:
+                body = bytearray()
+                for chunk in r.iter_bytes():
+                    if time.monotonic() > deadline:
+                        raise RendererTimeout("the answer did not arrive in time")
+                    body += chunk
+                return self._answer(r.status_code, bytes(body))
+        except (ServiceTimeout, ServiceUnreachable) as exc:
+            if isinstance(exc, ServiceTimeout) or exc.cause == "ConnectTimeout":
+                raise RendererTimeout(f"no answer within {timeout:g} s") from None
+            raise RendererUnavailable(f"renderer not reachable ({exc.cause})") from None
 
     @staticmethod
     def _answer(status: int, content: bytes):

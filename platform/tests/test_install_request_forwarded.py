@@ -31,7 +31,7 @@ def test_catalogue_install_forwards_the_witnessed_request(monkeypatch):
         sent.append((method, url, kw.get("headers") or {}))
         return _Answer({"pid": str(uuid.uuid4())})
 
-    monkeypatch.setattr(httpx, "request", fake_request)
+    monkeypatch.setattr(httpx.Client, "request", lambda self, method, url, **kw: fake_request(method, url, **kw))
     witnessed = str(uuid.uuid4())
     token = outbox.current_request.set(witnessed)
     try:
@@ -46,7 +46,7 @@ def test_catalogue_install_forwards_the_witnessed_request(monkeypatch):
 
 def test_an_engine_call_outside_a_request_sends_no_request_id(monkeypatch):
     sent = []
-    monkeypatch.setattr(httpx, "request",
-                        lambda method, url, **kw: sent.append(kw.get("headers") or {}) or _Answer([]))
+    monkeypatch.setattr(httpx.Client, "request",
+                        lambda self, method, url, **kw: sent.append(kw.get("headers") or {}) or _Answer([]))
     engine_components.available_plugins(str(uuid.uuid4()), "person-token")
     assert "X-AISC-Request-Id" not in sent[-1]

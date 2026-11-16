@@ -21,9 +21,9 @@ def test_remove_offers_a_backup_before_deleting_the_volumes(tmp_path, monkeypatc
         return tmp_path.name
 
     monkeypatch.setattr("builtins.input", asked)
-    monkeypatch.setattr(aisc, "own_compose", lambda verb: ["docker", "compose", "-p", "aisc-t-remove"])
-    monkeypatch.setattr(aisc, "run_compose", lambda argv: events.append(("compose", " ".join(argv))))
-    monkeypatch.setattr(aisc, "ROOT", tmp_path)
+    monkeypatch.setattr(aisc.stack, "own_compose", lambda verb: ["docker", "compose", "-p", "aisc-t-remove"])
+    monkeypatch.setattr(aisc.stack, "run_compose", lambda argv: events.append(("compose", " ".join(argv))))
+    monkeypatch.setattr(aisc.stack, "ROOT", tmp_path)
     try:
         aisc.remove([])
     except Exception:  # noqa: BLE001 - a refusal is fine here: what was offered first is what counts

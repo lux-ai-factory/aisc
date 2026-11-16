@@ -89,6 +89,14 @@ def test_a_body_is_sent_as_json_with_the_sign_in(tmp_path):
                                       "body": json.dumps({"name": "Demo"}, separators=(",", ":"))}
 
 
+def test_a_file_is_sent_as_it_is_for_an_upload(tmp_path):
+    out = call(tmp_path, {"status": 200, "body": "{}"}, path="/api/projects/p/targets/system/file?name=m.onnx",
+               opts={"method": "PUT", "file": "the file's own bytes"})
+    assert out["sent"][0]["init"] == {"method": "PUT", "credentials": "same-origin",
+                                      "headers": {"Content-Type": "application/octet-stream"},
+                                      "body": "the file's own bytes"}
+
+
 def test_an_empty_answer_is_no_data(tmp_path):
     assert call(tmp_path, {"status": 204})["answer"] == {"ok": True, "status": 204, "data": None, "message": None}
 

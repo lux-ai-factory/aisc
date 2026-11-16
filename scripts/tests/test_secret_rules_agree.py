@@ -1,6 +1,7 @@
-"""The secret rule lives in three packages that must not import each other: the engine's backend
+"""The secret rule lives in one module, aisc_redact (shared/identity), which the engine's backend
 (aisc_backend/config_secrets.py), the platform (platform_service/ledger/config_secrets.py) and the worker
-(aisc_eval/scrub.py). Each is loaded here by its file path, with no package import, and the three are held equal:
+(aisc_eval/scrub.py) import under their own names. Each is loaded here by its file path, with shared/identity on
+the path and no package import of its own, and the three are held equal:
 the same patterns, the same answers on shared inputs, and a shape rule that finds whatever the platform
 registry refuses, a bare `Token` or `Basic` credential included."""
 
@@ -57,7 +58,12 @@ TEXT_INPUTS = [
 ]
 
 
+SHARED_RULE = ROOT / "shared/identity/aisc_redact/__init__.py"
+
+
 def load(name, path):
+    if str(ROOT / "shared/identity") not in sys.path:
+        sys.path.insert(0, str(ROOT / "shared/identity"))
     if not path.exists():
         pytest.fail(f"{path.relative_to(ROOT)} does not exist")
     spec = importlib.util.spec_from_file_location(f"secret_rule_{name}", path)
@@ -175,9 +181,8 @@ def test_the_backend_and_the_worker_have_the_same_assignment_rule(copies):
         copies["eval"].SECRET_ASSIGNMENT.pattern, copies["eval"].SECRET_ASSIGNMENT.flags)
 
 
-@pytest.mark.parametrize("name", sorted(FILES))
-def test_each_copy_says_what_the_rule_does_not_catch(name):
-    source = FILES[name].read_text()
+def test_the_shared_rule_says_what_it_does_not_catch():
+    source = SHARED_RULE.read_text()
     assert "base64" in source
     assert re.search(r"(split|broken) across lines", source)
 

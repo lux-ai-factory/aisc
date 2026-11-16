@@ -165,8 +165,9 @@ def test_ask_answer_has_tool_calls():
         "output": "t", "refused": False, "refusal_reason": None, "status": 200, "latency_ms": 5, "tool_calls": None}
 
 
-def test_the_module_imports_only_the_standard_library_and_the_interface():
-    """The integrator's trial gateway loads it by file path, outside the platform."""
+def test_the_module_imports_only_the_standard_library_the_interface_and_the_secret_rule():
+    """The integrator's trial gateway loads it by file path, outside the platform: besides the interface, it needs
+    only aisc_redact (shared/identity), the shared secret rule, which is itself standard library only."""
     import ast
     from pathlib import Path
 
@@ -180,8 +181,13 @@ def test_the_module_imports_only_the_standard_library_and_the_interface():
         elif isinstance(node, ast.ImportFrom):
             roots.add("." * node.level + (node.module or ""))
     import sys
-    outside = {r for r in roots if r != "aisc_plugin_interface" and r not in sys.stdlib_module_names}
+    outside = {r for r in roots if r not in ("aisc_plugin_interface", "aisc_redact") and r not in sys.stdlib_module_names}
     assert outside <= {"__future__"}, outside
+    import aisc_redact
+    rule = ast.parse(Path(aisc_redact.__file__).read_text())
+    rule_roots = {a.name.split(".")[0] for n in ast.walk(rule) if isinstance(n, ast.Import) for a in n.names} | {
+        n.module.split(".")[0] for n in ast.walk(rule) if isinstance(n, ast.ImportFrom) and n.level == 0}
+    assert {r for r in rule_roots if r not in sys.stdlib_module_names} <= {"__future__"}
 
 
 # The A2A and OIP doors' requests

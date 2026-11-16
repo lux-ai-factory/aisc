@@ -105,33 +105,18 @@
 
 </div>
 
+<script src="/assets/page.js"></script>
 <script>
-  var slug = new URLSearchParams(location.search).get('project') || '';
+  var slug = aisc.project();
   // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
   // one ended on '/p/', "No project with the handle ."); throwing stops the rest of this script
   if (!slug) { location.replace('/'); throw new Error('no project'); }
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
 
-  // The only request helper: same origin, the session cookie, JSON bodies.
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(path, {
-      method: opts.method || 'GET',
-      credentials: 'same-origin',
-      headers: opts.body ? {'Content-Type': 'application/json'} : {},
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    });
-  }
-
-  function bodyOf(res) {
-    return res.json().catch(function () { return null; });
-  }
-
-  // What went wrong, in the platform's words when it gave some.
-  function refusal(res, d) {
-    if (d && typeof d.detail === 'string') return d.detail;
-    return 'Refused (HTTP ' + res.status + ')';
+  // What went wrong, in the platform's words when it gave some (aisc.call's message), or that nothing answered.
+  function refusal(answer) {
+    return answer.status ? answer.message : NOT_ANSWERING;
   }
 
   function say(el, text, isError) {
@@ -165,22 +150,20 @@
   // First the project and whether the caller is an admin; nothing else is asked before that.
   function boot() {
     document.getElementById('back').href = '/p/' + enc(slug);
-    api('/api/projects/' + enc(slug))
-      .then(function (res) {
-        if (!res.ok) {
-          return res.json().catch(function () { return null; }).then(function (body) {
-            show('page-message', notOpened(res.status, body));
-            return null;
-          });
+    aisc.call('/api/projects/' + enc(slug))
+      .then(function (answer) {
+        if (!answer.ok) {
+          show('page-message', answer.status ? notOpened(answer.status, answer.data) : NOT_ANSWERING);
+          return null;
         }
-        return res.json();
+        return answer.data;
       })
       .then(function (p) {
         if (!p) return null;
         document.getElementById('project-name').textContent = p.name;
         document.title = p.name + ' - AI assistant models and keys';
-        return api('/api/authz/projects/' + enc(slug)).then(function (res) {
-          return res.ok ? res.json() : null;
+        return aisc.call('/api/authz/projects/' + enc(slug)).then(function (answer) {
+          return answer.ok ? answer.data : null;
         });
       })
       .then(function (a) {
@@ -208,13 +191,12 @@
   }
 
   function reload() {
-    return api(settingsPath())
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { show('page-message', refusal(res, d)); return; }
-          renderProviders(d.providers);
-          renderSystems(d.systems, d.providers);
-        });
+    return aisc.call(settingsPath())
+      .then(function (answer) {
+        var d = answer.data;
+        if (!answer.ok) { show('page-message', refusal(answer)); return; }
+        renderProviders(d.providers);
+        renderSystems(d.systems, d.providers);
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
   }
@@ -285,13 +267,11 @@
   // A write, then a fresh listing; a refusal stays next to the control that caused it.
   function write(method, path, body, msg, alreadyDone) {
     say(msg, 'Saving...');
-    return api(path, {method: method, body: body})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (res.status === 404 && alreadyDone) { say(msg, alreadyDone); return; }
-          if (!res.ok) { say(msg, refusal(res, d), true); return; }
-          return reload();
-        });
+    return aisc.call(path, {method: method, body: body === null ? undefined : body})
+      .then(function (answer) {
+        if (answer.status === 404 && alreadyDone) { say(msg, alreadyDone); return; }
+        if (!answer.ok) { say(msg, refusal(answer), true); return; }
+        return reload();
       })
       .catch(function () { say(msg, NOT_ANSWERING, true); });
   }
@@ -341,19 +321,18 @@
         if (!id) { say(status, ''); return; }
         var wanted = chosen && chosen.provider === id ? chosen.model : '';
         say(status, 'Loading models...');
-        api(settingsPath() + '/providers/' + enc(id) + '/models')
-          .then(function (res) {
-            return bodyOf(res).then(function (d) {
-              if (!res.ok) { freeText(wanted, refusal(res, d)); return; }
-              if (d.error) { freeText(wanted, d.error); return; }
-              if (!d.models.length) { freeText(wanted, 'The provider listed no models; type the model id.'); return; }
-              modelSelect.replaceChildren();
-              d.models.forEach(function (m) { modelSelect.appendChild(new Option(m, m)); });
-              if (wanted && d.models.indexOf(wanted) === -1) modelSelect.appendChild(new Option(wanted, wanted));
-              if (wanted) modelSelect.value = wanted;
-              modelSelect.hidden = false;
-              say(status, d.models.length + ' models, listed live by the provider.');
-            });
+        aisc.call(settingsPath() + '/providers/' + enc(id) + '/models')
+          .then(function (answer) {
+            var d = answer.data;
+            if (!answer.ok) { freeText(wanted, refusal(answer)); return; }
+            if (d.error) { freeText(wanted, d.error); return; }
+            if (!d.models.length) { freeText(wanted, 'The provider listed no models; type the model id.'); return; }
+            modelSelect.replaceChildren();
+            d.models.forEach(function (m) { modelSelect.appendChild(new Option(m, m)); });
+            if (wanted && d.models.indexOf(wanted) === -1) modelSelect.appendChild(new Option(wanted, wanted));
+            if (wanted) modelSelect.value = wanted;
+            modelSelect.hidden = false;
+            say(status, d.models.length + ' models, listed live by the provider.');
           })
           .catch(function () { freeText(wanted, NOT_ANSWERING); });
       }

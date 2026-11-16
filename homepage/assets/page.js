@@ -3,10 +3,11 @@
 //
 // aisc.project() is the project's handle from /p/<slug> or ?project=<slug>, or null when the address names
 // none or names something that is not a handle (a malformed escape too: it never throws).
-// aisc.call(path, {method, body}) calls with the person's sign-in and always settles, never rejects, on
+// aisc.call(path, {method, body, file}) calls with the person's sign-in and always settles, never rejects, on
 // {ok, status, data, message}: data is the JSON answer or null (empty, or not JSON, as Caddy's 502 while
 // the platform is down); message is null when ok, else the platform's own words (FastAPI's detail, a
-// sentence or a list of field errors) or 'Refused (HTTP n)'. Status 0 is nothing answering.
+// sentence or a list of field errors) or 'Refused (HTTP n)'. Status 0 is nothing answering. body is sent as
+// JSON; file (a File or Blob, for an upload) is sent as it is, as application/octet-stream.
 (function () {
   // the platform's rule for a handle (platform_service/projects.py, _SLUG_RE and SLUG_MAX)
   var HANDLE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -39,7 +40,10 @@
   function call(path, opts) {
     opts = opts || {};
     var init = {method: opts.method || 'GET', credentials: 'same-origin', headers: {}};
-    if (opts.body !== undefined) {
+    if (opts.file !== undefined) {
+      init.headers['Content-Type'] = 'application/octet-stream';
+      init.body = opts.file;
+    } else if (opts.body !== undefined) {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(opts.body);
     }

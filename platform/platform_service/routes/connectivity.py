@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, StrictStr
 
 from platform_service import connection_store, helper_store, llm_catalogue, llm_store, target_store, targets
 from platform_service.routes.admission import allowed_actions, project_for
-from platform_service.routes.connections import connection_view
+from platform_service.connections import connection_view
 from platform_service.routes.llm import clean_model, known_system
 
 router = APIRouter()

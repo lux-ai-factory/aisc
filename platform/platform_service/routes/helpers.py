@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from platform_service import connection_allowlist, db, helper_store, llm_store, secret_box
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal, allowed_actions, project_for, secrets_unavailable
-from platform_service.routes.connections import _behind_gateway
+from platform_service.routes.run_passes import _behind_gateway
 from platform_service.routes.llm import clean_base_url, clean_key, clean_model
 
 router = APIRouter()

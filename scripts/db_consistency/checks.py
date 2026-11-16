@@ -31,7 +31,7 @@ def project_databases(cl: Cluster) -> list[str]:
 def core_projects(cl: Cluster) -> dict[str, tuple[str, str]]:
     """Every core.project: the database name it should have, to (pid, slug)."""
     rows = cl.rows(cl.platform_db, "SELECT pid::text, slug FROM core.project ORDER BY slug")
-    return {"project_" + pid.replace("-", ""): (pid, slug) for pid, slug in rows}
+    return {"project_" + pid.lower().replace("-", ""): (pid, slug) for pid, slug in rows}
 
 
 def _dbs(cl: Cluster) -> list[tuple[str, str, str]]:

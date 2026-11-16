@@ -230,8 +230,9 @@
 
 </div>
 
+<script src="/assets/page.js"></script>
 <script>
-  var slug = new URLSearchParams(location.search).get('project') || '';
+  var slug = aisc.project();
   // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
   // one ended on '/p/', "No project with the handle ."); throwing stops the rest of this script
   if (!slug) { location.replace('/'); throw new Error('no project'); }
@@ -244,21 +245,8 @@
   var editTarget = null;                    // the target whose row the editor is open under
   var nameTyped = false;                    // the person typed a name: the label no longer makes it
 
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(path, {
-      method: opts.method || 'GET',
-      credentials: 'same-origin',
-      headers: opts.body ? {'Content-Type': 'application/json'} : {},
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    });
-  }
-  function bodyOf(res) { return res.json().catch(function () { return null; }); }
-  function refusal(res, d) {
-    if (d && typeof d.detail === 'string') return d.detail;
-    if (d && Array.isArray(d.detail)) return d.detail.map(function (e) { return (e.loc || []).slice(-1)[0] + ': ' + e.msg; }).join('; ');
-    return 'Refused (HTTP ' + res.status + ')';
-  }
+  // what the platform said when it refused (aisc.call's message), or that nothing answered
+  function refusal(answer) { return answer.status ? answer.message : NOT_ANSWERING; }
   function say(node, text, isError) { node.textContent = text || ''; node.className = isError ? 'msg err' : 'msg'; }
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -285,21 +273,19 @@
 
   function boot() {
     $('back').href = '/p/' + enc(slug);
-    api('/api/projects/' + enc(slug))
-      .then(function (res) {
-        if (!res.ok) {
-          return res.json().catch(function () { return null; }).then(function (body) {
-            show('page-message', notOpened(res.status, body));
-            return null;
-          });
+    aisc.call('/api/projects/' + enc(slug))
+      .then(function (answer) {
+        if (!answer.ok) {
+          show('page-message', answer.status ? notOpened(answer.status, answer.data) : NOT_ANSWERING);
+          return null;
         }
-        return res.json();
+        return answer.data;
       })
       .then(function (p) {
         if (!p) return null;
         $('project-name').textContent = p.name;
         document.title = p.name + ' - Components and connections';
-        return api('/api/authz/projects/' + enc(slug)).then(function (res) { return res.ok ? res.json() : null; });
+        return aisc.call('/api/authz/projects/' + enc(slug)).then(function (answer) { return answer.ok ? answer.data : null; });
       })
       .then(function (a) {
         if (!a || !(a.admin || a.role === 'owner')) {
@@ -333,15 +319,14 @@
   function reload() {
     // a save or a delete changes which targets have an endpoint: read them again too, once the
     // connections are known (each target's row shows its own)
-    return api(base())
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { show('page-message', refusal(res, d)); reloadTargets(false); return; }
-          connectionsByTarget = {};
-          d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
-          unlinked = d.connections.filter(function (c) { return !c.target && c.kind !== 'provider'; });
-          reloadTargets(false);                   // draws the connections without a target too
-        });
+    return aisc.call(base())
+      .then(function (answer) {
+        var d = answer.data;
+        if (!answer.ok) { show('page-message', refusal(answer)); reloadTargets(false); return; }
+        connectionsByTarget = {};
+        d.connections.forEach(function (c) { if (c.target) connectionsByTarget[c.target.key] = c; });
+        unlinked = d.connections.filter(function (c) { return !c.target && c.kind !== 'provider'; });
+        reloadTargets(false);                   // draws the connections without a target too
       })
       .catch(function () { show('page-message', NOT_ANSWERING); reloadTargets(false); });
   }
@@ -396,22 +381,21 @@
     // a JSON object is sent as one, for a structured system (a scorer takes an applicant)
     var sent = input || 'ping';
     if (/^\s*\{/.test(sent)) { try { sent = JSON.parse(sent); } catch (e) { /* plain text, as typed */ } }
-    api(base() + '/' + enc(name) + '/test', {method: 'POST', body: {input: sent}})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say(result, refusal(res, d), true); return; }
-          if (!d.ok) { say(result, 'Failed (' + d.error + '): ' + (d.detail || ''), true); }
-          else if (d.reachable_only) { say(result, 'OK, ' + d.detail); }
-          else if (d.refused) { say(result, 'The system refused: ' + (d.refusal_reason || '(no reason given)') + ' (' + d.latency_ms + ' ms)'); }
-          else {
-            var checked = '';
-            if (d.capabilities && d.capabilities.tools) checked += '; tools: OK';
-            if (d.capabilities && d.capabilities.logprobs) checked += '; log probabilities: accepted';
-            say(result, 'What a test gets: ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer)) + ' (' + d.latency_ms + ' ms)' + checked);
-          }
-          lastTry.textContent = (d.ok ? 'last try OK ' : 'last try failed ') + 'just now';
-          lastTry.className = d.ok ? 'ok' : 'bad';
-        });
+    aisc.call(base() + '/' + enc(name) + '/test', {method: 'POST', body: {input: sent}})
+      .then(function (answer) {
+        var d = answer.data;
+        if (!answer.ok) { say(result, refusal(answer), true); return; }
+        if (!d.ok) { say(result, 'Failed (' + d.error + '): ' + (d.detail || ''), true); }
+        else if (d.reachable_only) { say(result, 'OK, ' + d.detail); }
+        else if (d.refused) { say(result, 'The system refused: ' + (d.refusal_reason || '(no reason given)') + ' (' + d.latency_ms + ' ms)'); }
+        else {
+          var checked = '';
+          if (d.capabilities && d.capabilities.tools) checked += '; tools: OK';
+          if (d.capabilities && d.capabilities.logprobs) checked += '; log probabilities: accepted';
+          say(result, 'What a test gets: ' + (typeof d.answer === 'string' ? d.answer : JSON.stringify(d.answer)) + ' (' + d.latency_ms + ' ms)' + checked);
+        }
+        lastTry.textContent = (d.ok ? 'last try OK ' : 'last try failed ') + 'just now';
+        lastTry.className = d.ok ? 'ok' : 'bad';
       })
       .catch(function () { say(result, NOT_ANSWERING, true); });
   }
@@ -425,13 +409,11 @@
 
   function write(method, path, body, msg) {
     say(msg, 'Saving...');
-    return api(path, {method: method, body: body})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say(msg, refusal(res, d), true); return false; }
-          reload();
-          return true;
-        });
+    return aisc.call(path, {method: method, body: body === null ? undefined : body})
+      .then(function (answer) {
+        if (!answer.ok) { say(msg, refusal(answer), true); return false; }
+        reload();
+        return true;
       })
       .catch(function () { say(msg, NOT_ANSWERING, true); return false; });
   }
@@ -446,8 +428,8 @@
 
   /** The installed adapters, added to the Protocol menu after the built-in protocols. */
   function loadProtocols() {
-    return api(base() + '/protocols')
-      .then(function (res) { return res.ok ? res.json() : {protocols: []}; })
+    return aisc.call(base() + '/protocols')
+      .then(function (answer) { return answer.ok && answer.data ? answer.data : {protocols: []}; })
       .then(function (d) {
         (d.protocols || []).forEach(function (p) {
           if (!p.adapter || ADAPTERS[p.name]) return;
@@ -824,14 +806,12 @@
   /** The file as the body of PUT .../targets/<key>/file, named in the query; the targets are read again. */
   function uploadFile(t, file, msg) {
     say(msg, 'Uploading ' + file.name + '...');
-    fetch('/api/projects/' + enc(slug) + '/targets/' + enc(t.key) + '/file?name=' + enc(file.name),
-          {method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/octet-stream'}, body: file})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say(msg, refusal(res, d), true); return; }
-          say(msg, 'Uploaded.');
-          reloadTargets(false);
-        });
+    aisc.call('/api/projects/' + enc(slug) + '/targets/' + enc(t.key) + '/file?name=' + enc(file.name),
+              {method: 'PUT', file: file})
+      .then(function (answer) {
+        if (!answer.ok) { say(msg, refusal(answer), true); return; }
+        say(msg, 'Uploaded.');
+        reloadTargets(false);
       })
       .catch(function () { say(msg, NOT_ANSWERING, true); });
   }
@@ -884,17 +864,15 @@
 
   function reloadTargets(sync) {
     // the installed tests that can assess each target come with them (from what each test declares)
-    var listed = api(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
-                     sync ? {method: 'POST', body: {}} : undefined)
-      .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); });
-    var tests = api('/api/projects/' + enc(slug) + '/targets/assessable-by')
-      .then(function (res) { return res.ok ? bodyOf(res) : null; })
-      .catch(function () { return null; });
+    var listed = aisc.call(sync ? '/api/projects/' + enc(slug) + '/targets/sync' : '/api/projects/' + enc(slug) + '/targets',
+                           sync ? {method: 'POST', body: {}} : undefined);
+    var tests = aisc.call('/api/projects/' + enc(slug) + '/targets/assessable-by')
+      .then(function (answer) { return answer.ok ? answer.data : null; });
     return Promise.all([listed, tests])
       .then(function (both) {
-        var res = both[0].res, d = both[0].d;
-        if (!res.ok) { say($('targets-msg'), refusal(res, d), true); return; }
-        renderTargets(d, both[1]);
+        var answer = both[0];
+        if (!answer.ok) { say($('targets-msg'), refusal(answer), true); return; }
+        renderTargets(answer.data, both[1]);
       })
       .catch(function () { say($('targets-msg'), NOT_ANSWERING, true); });
   }
@@ -921,9 +899,9 @@
       b.type = 'button';
       b.addEventListener('click', function () {
         say($('allow-msg'), 'Removing...');
-        api(allowBase() + '/' + enc(host), {method: 'DELETE'}).then(function (res) {
-          if (res.ok) { say($('allow-msg'), ''); reloadAllowlist(); return; }
-          return bodyOf(res).then(function (d) { say($('allow-msg'), refusal(res, d), true); });
+        aisc.call(allowBase() + '/' + enc(host), {method: 'DELETE'}).then(function (answer) {
+          if (answer.ok) { say($('allow-msg'), ''); reloadAllowlist(); return; }
+          say($('allow-msg'), refusal(answer), true);
         }).catch(function () { say($('allow-msg'), NOT_ANSWERING, true); });
       });
       act.appendChild(b);
@@ -933,22 +911,21 @@
   }
 
   function reloadAllowlist() {
-    return api(allowBase())
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say($('allow-msg'), refusal(res, d), true); return; }
-          var rows = $('allow-rows');
-          rows.replaceChildren();
-          (d.floor || []).forEach(function (h) { rows.appendChild(allowRow(h, 'set by the deployment', '', false, null)); });
-          (d.entries || []).forEach(function (e) {
-            var when = e.updated_at ? String(e.updated_at).slice(0, 16).replace('T', ' ') + ' by ' + e.updated_by : '';
-            rows.appendChild(allowRow(e.host, e.note, when, true, e.denied));
-          });
-          if (!(d.floor || []).length && !(d.entries || []).length) {
-            var tr0 = el('tr'); var td0 = el('td', '', 'No internal host allowed.'); td0.colSpan = 4;
-            tr0.appendChild(td0); rows.appendChild(tr0);
-          }
+    return aisc.call(allowBase())
+      .then(function (answer) {
+        var d = answer.data;
+        if (!answer.ok) { say($('allow-msg'), refusal(answer), true); return; }
+        var rows = $('allow-rows');
+        rows.replaceChildren();
+        (d.floor || []).forEach(function (h) { rows.appendChild(allowRow(h, 'set by the deployment', '', false, null)); });
+        (d.entries || []).forEach(function (e) {
+          var when = e.updated_at ? String(e.updated_at).slice(0, 16).replace('T', ' ') + ' by ' + e.updated_by : '';
+          rows.appendChild(allowRow(e.host, e.note, when, true, e.denied));
         });
+        if (!(d.floor || []).length && !(d.entries || []).length) {
+          var tr0 = el('tr'); var td0 = el('td', '', 'No internal host allowed.'); td0.colSpan = 4;
+          tr0.appendChild(td0); rows.appendChild(tr0);
+        }
       })
       .catch(function () { say($('allow-msg'), NOT_ANSWERING, true); });
   }
@@ -958,14 +935,12 @@
     var host = $('f-allow-host').value.trim();
     if (!host) { say($('allow-msg'), 'Enter a host or host:port.', true); return; }
     say($('allow-msg'), 'Saving...');
-    api(allowBase() + '/' + enc(host), {method: 'PUT', body: {note: $('f-allow-note').value.trim() || null}})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say($('allow-msg'), refusal(res, d), true); return; }
-          $('f-allow-host').value = ''; $('f-allow-note').value = '';
-          say($('allow-msg'), 'Allowed ' + d.host + '.');
-          reloadAllowlist();
-        });
+    aisc.call(allowBase() + '/' + enc(host), {method: 'PUT', body: {note: $('f-allow-note').value.trim() || null}})
+      .then(function (answer) {
+        if (!answer.ok) { say($('allow-msg'), refusal(answer), true); return; }
+        $('f-allow-host').value = ''; $('f-allow-note').value = '';
+        say($('allow-msg'), 'Allowed ' + answer.data.host + '.');
+        reloadAllowlist();
       })
       .catch(function () { say($('allow-msg'), NOT_ANSWERING, true); });
   });

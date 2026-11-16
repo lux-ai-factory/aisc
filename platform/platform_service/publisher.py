@@ -8,10 +8,9 @@ from __future__ import annotations
 import os
 from urllib.parse import quote, urlsplit
 
-import httpx
+from aisc_service_client import Response, ServiceClient, ServiceTimeout, ServiceUnreachable
 
-#: the header aisc_identity.service_tokens reads; not imported from there, because catalogue.py, which
-#: uses this module, also runs on its own from scripts/start.sh where aisc_identity is not installed
+#: the header aisc_identity.service_tokens reads
 SERVICE_TOKEN_HEADER = "X-AISC-Service-Token"
 
 #: reading a source clones the repo; publishing builds it too, and may wait behind another build
@@ -43,7 +42,7 @@ def _headers() -> dict:
     return {SERVICE_TOKEN_HEADER: token}
 
 
-def _detail(r: httpx.Response) -> str:
+def _detail(r: Response) -> str:
     try:
         found = r.json().get("detail")
     except (ValueError, AttributeError):
@@ -51,22 +50,23 @@ def _detail(r: httpx.Response) -> str:
     return str(found) if found else f"the plugin publisher answered {r.status_code}"
 
 
-def _call(method: str, path: str, timeout: float, body: dict | None = None) -> httpx.Response:
+def _call(method: str, path: str, timeout: float, body: dict | None = None) -> Response:
     base = _base()
     headers = _headers()
     try:
-        return httpx.request(method, f"{base}{path}", json=body, headers=headers, timeout=timeout)
-    except httpx.TimeoutException:
+        return ServiceClient(base, timeout=timeout, service="the plugin publisher").request(
+            method, path, json=body, headers=headers)
+    except ServiceTimeout:
         raise PublisherError(f"the plugin publisher at {_shown(base)} did not answer within {timeout:g} s") from None
-    except httpx.HTTPError as exc:
+    except ServiceUnreachable as exc:
         raise PublisherError(f"the plugin publisher at {_shown(base)} is not reachable "
-                             f"({type(exc).__name__})") from None
+                             f"({exc.cause})") from None
 
 
 UNREADABLE = "the plugin publisher answered something unreadable"
 
 
-def _answer(r: httpx.Response) -> dict:
+def _answer(r: Response) -> dict:
     """A 200's body, which must be a JSON object with a version in it."""
     try:
         body = r.json()

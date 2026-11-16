@@ -1,80 +1,31 @@
-"""Manage → Connections, the assessment targets, and each project's allowed internal hosts."""
+"""Manage → Connections: list, save, link to a target, test and delete a project's connections, and the
+internal routes that resolve one by name and issue its run keys. The rules of a connection live in
+platform_service.connections; the targets, the run passes and the allowed hosts have routers of their own."""
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import os
-import re
-import secrets
-import uuid
-from urllib.parse import urlsplit
 
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from aisc_identity.headers import token_from_headers
-from aisc_identity.service_tokens import HEADER as SERVICE_TOKEN_HEADER, ServiceRefused, identify
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-import psycopg
 from psycopg import errors
-from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictStr
 
 from platform_service import (adapters, connection_allowlist, connection_facade, connection_store, db, llm_store,
                               run_passes, secret_box, target_store, targets)
-from platform_service.projects import looks_like_pid
+from platform_service.connections import (_PROBE_ERRORS, CONNECTION_NAME, ConnectionIn, _capability_checks,
+                                          _fingerprint_of, _invalid_connection, _merged_secret_headers,
+                                          _reached_by_ping, call_descriptor_of, connection_fields, connection_view,
+                                          descriptor_of, retire_engine_component, secret_values)
 from platform_service.routes.admission import _internal, project_for, secrets_unavailable
+from platform_service.routes.run_passes import _internal_gate, _issue_run_key, _record_use
 
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
-
-
-# The systems a project assesses over the network. An admin registers, tests and deletes them;
-# the engine sees each as a `resource` component `connection:<pid>/<name>`; the plugin-side
-# client (aisc_plugin_interface.connections) resolves one on the internal route below.
-
-CONNECTION_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-_HEADER_NAME = re.compile(r"^[A-Za-z0-9-]{1,64}$")
-_SECRET_HEADERS = {"authorization", "proxy-authorization", "cookie", "x-api-key"}
-#: a plain header with a name like these is refused: its value would be stored and shown in the clear
-_CREDENTIAL_LIKE = re.compile(r"(?i)(token|secret|passw|api[-_]?key|auth|session|cookie|signature|credential)")
-MAX_SECRET_HEADERS = 20
-MASK = "***"
-
-
-class ConnectionIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    label: StrictStr
-    kind: StrictStr
-    #: required for every kind but `provider`, where only a self-hosted model server has one
-    base_url: StrictStr = ""
-    #: a provider connection's provider, a key of llm_catalogue.PROVIDERS (kind `provider` only)
-    provider: StrictStr | None = None
-    method: StrictStr = "POST"
-    path: StrictStr = ""
-    headers: dict[str, StrictStr] = {}
-    secret_header: StrictStr | None = None
-    body_template: object | None = None
-    response_path: StrictStr | None = None
-    refusal: dict | None = None
-    model: StrictStr | None = None
-    timeout_s: int = 60
-    protocol_version: StrictStr | None = None
-    secret: StrictStr | None = None
-    #: credentials in headers of the connection's own choosing, write-only like `secret`: absent keeps the
-    #: stored set, {name: value} sets that header, {name: ""} removes it, names not mentioned are kept
-    secret_headers: dict[str, StrictStr] | None = None
-    #: an OpenAI-compatible connection's function calling and log probabilities (a PUT without them: false)
-    supports_tools: StrictBool = False
-    supports_logprobs: StrictBool = False
-    #: the assessment target this is the endpoint of ('system' or 'component:<key>'); set once
-    target: StrictStr | None = None
-    #: an adapter connection's plain fields, {name: value}, as its adapter declares them (stored in body_template)
-    settings: dict[str, StrictStr] | None = None
-    #: an adapter connection's secret fields, write-only like secret_headers (and stored with them): absent
-    #: keeps the stored set, {name: value} sets one, {name: ""} removes it
-    secret_settings: dict[str, StrictStr] | None = None
 
 
 class ProbeIn(BaseModel):
@@ -83,167 +34,11 @@ class ProbeIn(BaseModel):
     input: StrictStr | dict = "ping"
 
 
-def _invalid_connection(detail: str) -> HTTPException:
-    return HTTPException(status_code=422, detail=detail)
-
-
-def connection_fields(body: ConnectionIn) -> dict:
-    """The columns to store, after every check; nothing is written when one fails."""
-    label = body.label.strip()
-    if not 1 <= len(label) <= 120:
-        raise _invalid_connection("label: 1 to 120 characters")
-    if body.kind not in adapters.BUILT_IN_KINDS and adapters.get(body.kind) is None:
-        raise _invalid_connection(f"kind: {', '.join(adapters.BUILT_IN_KINDS)} or an installed adapter"
-                                  f" ({', '.join(adapters.registry()) or 'none installed'})")
-    parts = urlsplit(body.base_url.strip())
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise _invalid_connection("base_url: an http(s) URL with a host")
-    method = body.method.upper()
-    if method not in ("GET", "POST", "PUT"):
-        raise _invalid_connection("method: GET, POST or PUT")
-    for name, value in body.headers.items():
-        if not _HEADER_NAME.fullmatch(name):
-            raise _invalid_connection(f"headers: {name!r} is not a header name")
-        if "\r" in value or "\n" in value:
-            raise _invalid_connection(f"headers: {name}: a header value on one line")
-        if name.lower() in _SECRET_HEADERS:
-            raise _invalid_connection(f"headers: {name} carries a credential; put it in secret_header")
-        if _CREDENTIAL_LIKE.search(name):
-            raise _invalid_connection(f"headers: {name} looks like a credential; mark it secret (secret_headers)")
-    if body.secret_header is not None:
-        if "\r" in body.secret_header or "\n" in body.secret_header:
-            raise _invalid_connection("secret_header: 'Name: ...{{secret}}...' on one line")
-        name, sep, value = body.secret_header.partition(":")
-        if not sep or not _HEADER_NAME.fullmatch(name.strip()) or "{{secret}}" not in value:
-            raise _invalid_connection("secret_header: 'Name: ...{{secret}}...'")
-    plain = {h.lower() for h in body.headers}
-    key_header = body.secret_header.partition(":")[0].strip().lower() if body.secret_header else None
-    for name, value in (body.secret_headers or {}).items():
-        if not _HEADER_NAME.fullmatch(name):
-            raise _invalid_connection(f"secret_headers: {name!r} is not a header name")
-        if "\r" in value or "\n" in value or len(value) > 4096:
-            raise _invalid_connection(f"secret_headers: {name}: a header value on one line, up to 4096 characters")
-        if name.lower() in plain:
-            raise _invalid_connection(f"secret_headers: {name} is also a plain header")
-        if name.lower() == key_header:
-            raise _invalid_connection(f"secret_headers: {name} is where the key goes (secret_header)")
-    if not 1 <= body.timeout_s <= 600:
-        raise _invalid_connection("timeout_s: 1 to 600")
-    adapter = adapters.get(body.kind) if body.kind not in adapters.BUILT_IN_KINDS else None
-    if adapter is not None:
-        return _adapter_connection_fields(body, adapter, label)
-    if body.settings is not None or body.secret_settings is not None:
-        raise _invalid_connection("settings and secret_settings: only for a connection of an adapter's kind")
-    if body.refusal is not None:
-        status = body.refusal.get("status")
-        if (not isinstance(status, list) or not status
-                or not all(isinstance(x, int) and 100 <= x <= 599 for x in status)
-                or not isinstance(body.refusal.get("path", ""), str)
-                or not isinstance(body.refusal.get("match", {}), dict)
-                or set(body.refusal) - {"status", "path", "match"}):
-            raise _invalid_connection("refusal: {status: [codes], path?: str, match?: {path: value}}")
-    if body.kind == "rest":
-        if not (body.response_path or "").strip():
-            raise _invalid_connection("response_path: where the answer is in the response")
-        if body.body_template is None and method != "GET":
-            raise _invalid_connection("body_template: the request body, with {{input}}")
-    if body.kind in ("openai", "oip") and not (body.model or "").strip():
-        raise _invalid_connection("model: the model the endpoint serves")
-    if body.protocol_version is not None and (body.kind != "a2a" or body.protocol_version not in ("1.0", "0.3")):
-        raise _invalid_connection("protocol_version: 1.0 or 0.3, for an a2a connection")
-    if body.supports_tools and body.kind != "openai":
-        raise _invalid_connection("supports_tools: only an OpenAI-compatible connection carries tools")
-    if body.supports_logprobs and body.kind != "openai":
-        raise _invalid_connection("supports_logprobs: only an OpenAI-compatible connection carries log probabilities")
-    return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": method,
-            "path": body.path.strip(), "headers": dict(body.headers), "secret_header": body.secret_header,
-            "body_template": body.body_template, "response_path": body.response_path,
-            "refusal": body.refusal, "model": body.model, "timeout_s": body.timeout_s,
-            "protocol_version": body.protocol_version, "supports_tools": body.supports_tools,
-            "supports_logprobs": body.supports_logprobs}
-
-
-#: what a connection of an adapter's kind leaves at its default: the adapter, not the platform, builds the request
-_BUILT_IN_ONLY = {"method": "POST", "path": "", "headers": {}, "secret_header": None, "body_template": None,
-                  "response_path": None, "refusal": None, "model": None, "protocol_version": None,
-                  "secret": None, "secret_headers": None, "supports_tools": False, "supports_logprobs": False}
-MAX_SETTING_CHARS = 4096
-
-
-def _setting_values(what: str, values: dict, allowed: dict, allow_empty: bool) -> None:
-    for name, value in values.items():
-        if name not in allowed:
-            raise _invalid_connection(f"{what}: {name!r} is not one of the adapter's"
-                                      f" {'secret ' if what == 'secret_settings' else ''}fields"
-                                      f" ({', '.join(allowed) or 'none'})")
-        if "\r" in value or "\n" in value or len(value) > MAX_SETTING_CHARS:
-            raise _invalid_connection(f"{what}: {name}: a value on one line, up to {MAX_SETTING_CHARS} characters")
-        if not value and not allow_empty:
-            raise _invalid_connection(f"{what}: {name}: empty")
-
-
-def _adapter_connection_fields(body: ConnectionIn, adapter, label: str) -> dict:
-    """The columns of a connection of an adapter's kind: the common ones, and the plain fields in body_template
-    (part of the fingerprint). Built-in-only settings are refused; the secret fields are checked here and
-    stored by save_connection."""
-    for key, default in _BUILT_IN_ONLY.items():
-        if key in body.model_fields_set and getattr(body, key) not in (default, None):
-            raise _invalid_connection(f"{key}: not a setting of a {adapter.name} connection (its adapter builds"
-                                      " the request)")
-    plain = {f.name: f for f in adapter.fields if not f.secret}
-    secret = {f.name: f for f in adapter.fields if f.secret}
-    settings = dict(body.settings or {})
-    _setting_values("settings", settings, plain, allow_empty=False)
-    _setting_values("secret_settings", body.secret_settings or {}, secret, allow_empty=True)
-    missing = [f.name for f in plain.values() if f.required and f.name not in settings]
-    if missing:
-        raise _invalid_connection(f"settings: {', '.join(missing)} required")
-    return {"label": label, "kind": body.kind, "base_url": body.base_url.strip().rstrip("/"), "method": "POST",
-            "path": "", "headers": {}, "secret_header": None, "body_template": settings, "response_path": None,
-            "refusal": None, "model": None, "timeout_s": body.timeout_s, "protocol_version": None,
-            "supports_tools": False, "supports_logprobs": False}
-
-
-def connection_view(row: dict) -> dict:
-    out = {k: row.get(k) for k in connection_store.PUBLIC}
-    for k in ("updated_at", "last_test_at"):
-        out[k] = row[k].isoformat() if row.get(k) else None
-    out["engine_component"] = str(row["engine_component"]) if row.get("engine_component") else None
-    out["has_secret"] = bool(row.get("has_secret"))
-    out["secret_headers"] = list(out.pop("secret_header_names", None) or [])
-    target = target_store.get(row["pid"], row["target_key"]) if row.get("target_key") and row.get("pid") else None
-    out["target"] = {"key": target["key"], "kind": target["kind"], "label": target["label"]} if target else None
-    out.pop("target_key", None)
-    if row.get("kind") not in adapters.BUILT_IN_KINDS and row.get("kind") != "provider":
-        # an adapter's connection: its plain fields, and its secret fields by name only
-        out["settings"] = out.pop("body_template", None) or {}
-        out["secret_settings"], out["secret_headers"] = out["secret_headers"], []
-    return out
-
-
 def admin_connection(slug: str, caller: Caller, name: str, action: str = "connection.write") -> str:
     pid = project_for(slug, caller, action)["pid"]
     if not CONNECTION_NAME.fullmatch(name):
         raise HTTPException(status_code=422, detail="name: lower-case letters, digits and hyphens, up to 63")
     return pid
-
-
-LEGACY_MIRROR = "Legacy connection: {label}, pick its target instead"
-
-
-def retire_engine_component(pid: str, row: dict, request: Request) -> None:
-    """A connection made before targets had an engine component of its own; evaluations now pick
-    the target's instead (O1). The old one is kept, for the evaluations that used it, and renamed
-    so the evaluation form says what to pick instead."""
-    if row.get("engine_component") is None:
-        return
-    from platform_service import engine_components
-    try:
-        engine_components.rename(pid, token_from_headers(request.headers) or "", str(row["engine_component"]),
-                                 LEGACY_MIRROR.format(label=row["label"]))
-    except engine_components.EngineUnavailable as exc:
-        logger.warning("legacy engine component of connection %s (project %s) not renamed: %s",
-                       row["name"], pid, exc)
 
 
 def _with_pid(pid: str, row: dict | None) -> dict | None:
@@ -449,35 +244,6 @@ def link_target(slug: str, name: str, body: TargetIn, request: Request,
     return JSONResponse(status_code=200, content=connection_view(_with_pid(pid, row)))
 
 
-def _stored_secret_headers(row: dict | None) -> dict[str, str]:
-    """The decrypted secret headers of a stored connection; {} without any."""
-    token = (row or {}).get("secret_headers_ciphertext")
-    return json.loads(llm_store.decrypt((row or {}).get("name") or "", token)) if token else {}
-
-
-def _merged_secret_headers(pid: str, name: str, change: dict[str, str]):
-    """(names, ciphertext) of the stored set with `change` applied ("" removes a name), or (names, KEEP)
-    when nothing changes. 503 without the secrets key, 409 for a stored set no key decrypts, 422 over
-    MAX_SECRET_HEADERS."""
-    try:
-        values = _stored_secret_headers(connection_store.descriptor(pid, name))
-        merged = dict(values)
-        for header, value in change.items():
-            if value:
-                merged[header] = value
-            else:
-                merged.pop(header, None)
-        if len(merged) > MAX_SECRET_HEADERS:
-            raise _invalid_connection(f"secret_headers: up to {MAX_SECRET_HEADERS}")
-        if merged == values:
-            return sorted(values), connection_store.KEEP
-        return sorted(merged), (llm_store.encrypt(json.dumps(merged, sort_keys=True)) if merged else None)
-    except llm_store.SecretsKeyError as exc:
-        raise secrets_unavailable(exc) from None
-    except llm_store.KeyUnreadable as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-
-
 def _rename_targets(pid, request: Request) -> None:
     """The target dropdown names say whether and how each target is connected: refresh them when one is
     bound or removed. An engine that doesn't answer leaves the old names until the next refresh."""
@@ -498,69 +264,6 @@ def delete_connection(slug: str, name: str, request: Request, caller: Caller = D
     if was and was.get("target_key"):
         _rename_targets(pid, request)
     return Response(status_code=204)
-
-
-def descriptor_of(row: dict, pid: str | None = None) -> dict:
-    """What anyone the internal routes let in may see of a connection: every setting, whether it has a key
-    (`has_secret`), never the key itself, and the target it is the endpoint of (part of what the
-    connection is, so of its fingerprint). Nothing is decrypted here."""
-    # `provider` is left out: only a provider connection has one, and it never reaches the assessed system (and so
-    # the view, and the fingerprint made of it, stay what they were before provider connections existed)
-    out = {k: row.get(k) for k in connection_store.PUBLIC if k not in ("engine_component", "last_test_at",
-                                                                       "last_test_ok", "last_test_detail",
-                                                                       "target_key", "provider")}
-    out["updated_at"] = row["updated_at"].isoformat() if row.get("updated_at") else None
-    # the secret headers by name, their values masked: the fingerprint and the client's copy hold none
-    out["headers"] = {**(out.get("headers") or {}), **{h: MASK for h in out.pop("secret_header_names", None) or []}}
-    out["has_secret"] = row.get("secret_ciphertext") is not None
-    out["target"] = _target_of(pid, row) if pid else None
-    return out
-
-
-def call_descriptor_of(row: dict, pid: str | None = None):
-    """The plugin-interface Descriptor to call the system with, the key decrypted: the one place a key is
-    read back, for the protocol doors and the Test button. Raises llm_store.SecretsKeyError or
-    llm_store.KeyUnreadable."""
-    from aisc_plugin_interface import connections as client
-
-    out = descriptor_of(row, pid)
-    out["secret"] = llm_store.decrypt(row["name"], row["secret_ciphertext"]) if row.get("secret_ciphertext") else None
-    secret_headers = _stored_secret_headers(row)
-    out["headers"] = {**out["headers"], **secret_headers}
-    descriptor = client.Descriptor.from_dict(out)
-    descriptor.secret_header_names = sorted(secret_headers)       # for secret_values
-    return descriptor
-
-
-def adapter_connection_of(descriptor) -> dict:
-    """What an adapter is given of its connection: the common settings, its plain fields and its secret ones
-    (decrypted: call_descriptor_of put them among the headers)."""
-    headers = descriptor.headers or {}
-    return {"name": descriptor.name, "label": descriptor.label, "base_url": descriptor.base_url,
-            "timeout_s": descriptor.timeout_s, "settings": dict(descriptor.body_template or {}),
-            "secrets": {n: headers[n] for n in getattr(descriptor, "secret_header_names", []) if n in headers}}
-
-
-def secret_values(descriptor) -> list[str]:
-    """The values to scrub from any error text of a call with this descriptor: its key and the values of
-    its secret headers."""
-    headers = descriptor.headers or {}
-    values = [descriptor.secret] + [headers.get(h) for h in getattr(descriptor, "secret_header_names", [])]
-    return [v for v in values if v]
-
-
-_PROBE_ERRORS = connection_facade.ERROR_CODES
-
-
-def _reached_by_ping(descriptor, sent, exc) -> bool:
-    """A `ping` checks that the system is reached and takes the key. A chat answers it; a system whose whole
-    request body is the input (a scorer) answers a 4xx, since "ping" is not a request it understands: that
-    answer comes from the system itself, after the key was accepted. 401, 403 and 404 are still failures."""
-    whole_body = descriptor.kind == "rest" and isinstance(descriptor.body_template, str) \
-        and descriptor.body_template.strip() == "{{input}}"
-    status = getattr(exc, "status", None)
-    return sent == "ping" and whole_body and status is not None and 400 <= status < 500 \
-        and status not in (401, 403, 404)
 
 
 @router.post("/projects/{slug}/connections/{name}/test")
@@ -621,164 +324,6 @@ def test_connection(slug: str, name: str, body: ProbeIn, caller: Caller = Depend
     return out
 
 
-#: the function the Test button asks a connection that carries tools to call
-PROBE_TOOL = {"type": "function", "function": {"name": "aisc_probe", "description": "Answers that the endpoint calls tools.",
-                                               "parameters": {"type": "object", "properties": {}}}}
-
-
-def _capability_checks(pid: str, row: dict, descriptor) -> dict:
-    """One more probe per capability the connection says it has, tools before logprobs: {name: {ok, detail}};
-    {} without any."""
-    from aisc_plugin_interface import connections as client
-
-    checks = {}
-    secrets = secret_values(descriptor)
-    if row.get("supports_tools"):
-        try:
-            answer = client.call(descriptor, "Call the function aisc_probe.", None, params={
-                "tools": [PROBE_TOOL], "tool_choice": {"type": "function", "function": {"name": "aisc_probe"}}},
-                waits=(), **connection_allowlist.rule(pid))
-            called = any(isinstance(c, dict) and (c.get("function") or {}).get("name") == "aisc_probe"
-                         for c in answer.tool_calls or [])
-            checks["tools"] = {"ok": True, "detail": "called aisc_probe"} if called else {
-                "ok": False, "detail": "tools: the endpoint answered without calling the function it was asked to call"}
-        except client.EndpointError as exc:
-            checks["tools"] = {"ok": False, "detail": f"tools: {connection_facade.error_code(exc)}: "
-                                                      f"{connection_facade.scrub(str(exc), secrets)}"}
-    if row.get("supports_logprobs"):
-        try:
-            client.call(descriptor, "ping", None, params={"logprobs": True, "top_logprobs": 1}, waits=(),
-                        **connection_allowlist.rule(pid))
-            checks["logprobs"] = {"ok": True,
-                                  "detail": "the endpoint accepted logprobs: true; the log probabilities are not read"}
-        except client.EndpointError as exc:
-            status = getattr(exc, "status", None)
-            checks["logprobs"] = {"ok": False, "detail": (
-                f"logprobs: the endpoint refused logprobs: true ({status})" if status is not None else
-                f"logprobs: {connection_facade.error_code(exc)}: {connection_facade.scrub(str(exc), secrets)}")}
-    return checks
-
-
-def _behind_gateway(request: Request) -> bool:
-    return "x-forwarded-for" in request.headers or "x-forwarded-host" in request.headers
-
-
-def _internal_gate(pid: str, request: Request, kind: str = "", name: str = "") -> JSONResponse | None:
-    """The internal routes' guards: not through the gateway, then either a plugin run's pass that names
-    this target or connection (run_passes), or the stack's connections token compared in constant time,
-    and a known project."""
-    if _behind_gateway(request):
-        return _internal(404, {"detail": "not here"})
-    run_pass = request.headers.get(run_passes.HEADER)
-    if run_pass is not None:
-        try:
-            run_passes.check(run_pass, pid, kind, name)
-        except run_passes.Refused as refused:
-            return _internal(refused.status, {"detail": refused.detail})
-    else:
-        try:
-            identify(request.headers.get(SERVICE_TOKEN_HEADER), {"worker": "PLATFORM_CONNECTIONS_TOKEN"})
-        except ServiceRefused as refused:
-            return _internal(refused.status, {"detail": refused.detail})
-    if not looks_like_pid(pid) or db.get_project(pid) is None:
-        return _internal(404, {"detail": f"no project {pid!r}"})
-    return None
-
-
-@router.post("/internal/run-passes")
-def mint_run_pass(body: dict, request: Request) -> JSONResponse:
-    """A pass for one plugin run, naming the run's target and connection references, all of the run's own
-    project (``project``, its platform pid); the worker asks for it with the stack's connections token and
-    hands it to the plugin in place of that token. ``ttl_s``, when sent, is how long it lasts: as long as the
-    worker's test may run, never longer than CONNECTIONS_RUN_KEY_TTL_S."""
-    if _behind_gateway(request):
-        return _internal(404, {"detail": "not here"})
-    try:
-        identify(request.headers.get(SERVICE_TOKEN_HEADER), {"worker": "PLATFORM_CONNECTIONS_TOKEN"})
-    except ServiceRefused as refused:
-        return _internal(refused.status, {"detail": refused.detail})
-    body = body if isinstance(body, dict) else {}
-    ttl_s = body.get("ttl_s")
-    if ttl_s is not None:
-        longest = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
-        # bool is an int to Python, and a pass of True seconds is no lifetime the worker meant
-        if not isinstance(ttl_s, int) or isinstance(ttl_s, bool) or not 60 <= ttl_s <= longest:
-            return _internal(422, {"detail": f"ttl_s: whole seconds from 60 to {longest}"})
-    try:
-        run_pass, expires = run_passes.mint(body.get("refs"), evaluation_plugin=body.get("evaluation_plugin"),
-                                            project=body.get("project"), ttl_s=ttl_s)
-    except run_passes.Refused as refused:
-        return _internal(refused.status, {"detail": refused.detail})
-    return _internal(201, {"pass": run_pass, "expires_at": expires.isoformat()})
-
-
-def _uuid_or_none(value: str | None) -> str | None:
-    try:
-        return str(uuid.UUID(value)) if value else None
-    except ValueError:
-        return None
-
-
-@router.delete("/internal/run-passes")
-def revoke_run_pass(request: Request) -> Response:
-    """The worker ends a run's pass when the run ends, and with it the run keys issued under it in every
-    project it named; an unknown or already ended pass is no error. The run's call trace is sealed in the
-    ledger with it (run_passes.revoke), citing X-AISC-Request-Id and X-AISC-Run-Id when the worker sends them."""
-    if _behind_gateway(request):
-        return _internal(404, {"detail": "not here"})
-    run_pass = request.headers.get(run_passes.HEADER) or ""
-    # the run's request and id, which its trace's seal cites (an id that is not a uuid is left out)
-    request_id, run_id = (_uuid_or_none(request.headers.get(h)) for h in ("X-AISC-Request-Id", "X-AISC-Run-Id"))
-    for pid in run_passes.revoke(run_pass, request_id=request_id, run_id=run_id):
-        # the keys issued under it; one left by a database that fails here is refused at use anyway
-        try:
-            connection_store.revoke_run_keys(pid, run_passes.hash_of(run_pass))
-        except psycopg.Error as exc:
-            logger.warning("run keys of project %s for an ended pass not deleted: %s", pid, exc)
-    return Response(status_code=204)
-
-
-def _endpoint_of_target(pid: str, key: str) -> tuple[str | None, JSONResponse | None]:
-    """The name of the connection that is this target's endpoint, or the answer why there is none."""
-    target = target_store.get(pid, key) if targets.is_key(key) else None
-    if target is None:
-        return None, _internal(404, {"detail": f"no target {key!r}"})
-    name = connection_store.holder_of(pid, key)
-    if name is None:
-        # reason: the one 404 a plugin may read as "skip an optional target" (plugin-interface is_no_endpoint)
-        return None, _internal(404, {"detail": f"{target['label']} has no endpoint: set one under Manage,"
-                                               " Components and connections", "reason": "no_endpoint"})
-    return name, None
-
-
-def _target_of(pid: str, row: dict) -> dict | None:
-    target = target_store.get(pid, row["target_key"]) if row.get("target_key") else None
-    if target is None:
-        return None
-    return {"key": target["key"], "kind": target["kind"], "component_kind": target["component_kind"],
-            "label": target["label"], "last_card_number": target["last_card_number"]}
-
-
-@router.get("/internal/projects/{pid}/targets/{key}/connection")
-def resolve_target_connection(pid: str, key: str, request: Request) -> JSONResponse:
-    """The endpoint of an assessment target, as resolve_connection gives a connection by name."""
-    refused = _internal_gate(pid, request, "target", key)
-    if refused:
-        return refused
-    name, missing = _endpoint_of_target(pid, key)
-    return missing or _resolve_connection(pid, name, request.headers.get(run_passes.HEADER))
-
-
-@router.post("/internal/projects/{pid}/targets/{key}/run-keys")
-def issue_target_run_key(pid: str, key: str, request: Request) -> JSONResponse:
-    """A run key for the endpoint of an assessment target."""
-    refused = _internal_gate(pid, request, "target", key)
-    if refused:
-        return refused
-    name, missing = _endpoint_of_target(pid, key)
-    return missing or _issue_run_key(pid, name, request.headers.get(run_passes.HEADER))
-
-
 @router.get("/internal/projects/{pid}/connections/{name}")
 def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
     """A connection's descriptor without its key (`has_secret` says whether it has one), for the
@@ -789,19 +334,6 @@ def resolve_connection(pid: str, name: str, request: Request) -> JSONResponse:
     (401). A deleted connection is 410."""
     return _internal_gate(pid, request, "connection", name) or _resolve_connection(
         pid, name, request.headers.get(run_passes.HEADER))
-
-
-def _fingerprint_of(descriptor: dict) -> str:
-    """The plugin-side Descriptor fingerprint of a connection as descriptor_of gives it, what a run key
-    and a recorded use both carry."""
-    from aisc_plugin_interface import connections as client
-    return client.Descriptor.from_dict(descriptor).fingerprint()
-
-
-def _record_use(run_pass: str | None, pid: str, row: dict, fingerprint: str) -> None:
-    """A run reached this connection under its pass (run_passes.record); the key never goes in."""
-    if run_pass is not None:
-        run_passes.record(run_pass, pid, row["name"], row["kind"], fingerprint)
 
 
 def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
@@ -822,195 +354,6 @@ def _resolve_connection(pid: str, name: str, run_pass: str | None = None) -> JSO
     return _internal(200, out)
 
 
-# ── Assessment targets ────────────────────────────────────────────────────────
-# What each evaluation is about: the system, or one component of its AI card. Any member reads
-# them; an editor refreshes them from the card (the card's own editors add components); the
-# qualification app calls the refresh after every card save. Every call to another module is made
-# with the caller's own token.
-
-def _targets_answer(pid: str, synced: dict | None = None) -> dict:
-    from platform_service import db as _db
-
-    _exists, latest = _db.latest_version(str(pid))
-    number = latest["number"] if latest else None
-    return {"targets": targets.view(pid, number), "latest_card": number,
-            "reason": (synced or {}).get("reason")}
-
-
-@router.get("/projects/{slug}/targets")
-def list_targets(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
-    found = project_for(slug, caller, "target.read")
-    targets.ensure_system(found["pid"], found["name"])
-    return _targets_answer(found["pid"])
-
-
-@router.post("/projects/{slug}/targets/sync")
-def sync_targets(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
-    found = project_for(slug, caller, "target.sync")
-    targets.ensure_system(found["pid"], found["name"])
-    synced = targets.sync(found["pid"], token_from_headers(request.headers) or "")
-    return _targets_answer(found["pid"], synced)
-
-
-#: the largest file that may reach a target, in MB (TARGET_FILE_MAX_MB)
-TARGET_FILE_MAX_MB = 2048
-#: the engine's answers that refuse the file itself (too large, wrong type, empty): passed on as they are
-ENGINE_FILE_REFUSALS = frozenset({413, 415, 422})
-#: what a target file's name may be: the name the person's file had, without folders
-TARGET_FILE_NAME = re.compile(r"[^/\\\x00-\x1f]{1,255}")
-
-
-def target_file_name_ok(name: str) -> bool:
-    """A target file's name is the person's file name, without folders, and never "." or ".." (spaces around
-    them included), which name a folder rather than a file."""
-    return bool(TARGET_FILE_NAME.fullmatch(name)) and name.strip() not in {".", ".."}
-
-
-def _target_file_cap() -> int:
-    try:
-        return int(os.environ.get("TARGET_FILE_MAX_MB") or TARGET_FILE_MAX_MB) * 1024 * 1024
-    except ValueError:
-        return TARGET_FILE_MAX_MB * 1024 * 1024
-
-
-@router.put("/projects/{slug}/targets/{key}/file")
-async def upload_target_file(slug: str, key: str, request: Request, name: str = "",
-                             caller: Caller = Depends(caller_dependency)) -> dict:
-    """Reach a model or data component of the AI card by an uploaded file (the body, named `name`) instead
-    of an endpoint. Who manages connections may. Read once, hashed as it comes and never more than the
-    cap kept; the engine then holds the bytes (targets.upload_file)."""
-    import tempfile
-
-    from starlette.concurrency import run_in_threadpool
-
-    from platform_service import engine_components
-
-    pid = (await run_in_threadpool(project_for, slug, caller, "target.file"))["pid"]
-    if not target_file_name_ok(name or ""):
-        raise HTTPException(status_code=422, detail="name: the file's name, without folders, up to 255 characters")
-    if not targets.is_key(key):
-        raise HTTPException(status_code=404, detail=f"no target {key} in this project")
-    cap = _target_file_cap()
-    digest, size = hashlib.sha256(), 0
-    with tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024) as spool:
-        async for chunk in request.stream():
-            size += len(chunk)
-            if size > cap:
-                raise HTTPException(status_code=413, detail=f"a file is at most {cap // (1024 * 1024)} MB")
-            digest.update(chunk)
-            spool.write(chunk)
-        if size == 0:
-            raise HTTPException(status_code=422, detail="the file is empty")
-        spool.seek(0)
-        try:
-            await run_in_threadpool(targets.upload_file, pid, key, token_from_headers(request.headers) or "", name,
-                                    spool, size, digest.hexdigest(), caller.subject)
-        except targets.NoSuchTarget:
-            raise HTTPException(status_code=404, detail=f"no target {key} in this project") from None
-        except targets.TakesNoFile:
-            raise HTTPException(status_code=422, detail=f"{key} is reached through an endpoint only: only a model"
-                                                        " or a data component takes a file") from None
-        except engine_components.EngineUnavailable as exc:
-            logger.warning("file of target %s of project %s not stored: %s", key, pid, exc)
-            if exc.status in ENGINE_FILE_REFUSALS:
-                raise HTTPException(status_code=exc.status, detail="the engine refused the file: "
-                                    + (exc.detail or f"it answered {exc.status}")[:200]) from None
-            raise HTTPException(status_code=502, detail="the engine did not take the file: try again later") from None
-    return {"key": key, "name": name, "size": size, "sha256": digest.hexdigest()}
-
-
-@router.get("/projects/{slug}/targets/assessable-by")
-def targets_assessable_by(slug: str, request: Request, caller: Caller = Depends(caller_dependency)) -> dict:
-    """Per target, the installed tests that can assess it, from what the engine says each declares
-    (asked with the caller's own token), and whether some of them call their target (so need a
-    connection). An engine that does not answer lists none, and says so."""
-    from platform_service import engine_components
-
-    found = project_for(slug, caller, "target.read")
-    targets.ensure_system(found["pid"], found["name"])
-    rows = targets.view(found["pid"], None)
-    try:
-        plugins = engine_components.plugin_declarations(found["pid"], token_from_headers(request.headers) or "")
-    except engine_components.EngineUnavailable as exc:
-        logger.warning("installed tests of project %s not read: %s", found["pid"], exc)
-        return {"assessable_by": {t["key"]: [] for t in rows}, "some_need_a_connection": False,
-                "reason": "the installed tests could not be read: try again later"}
-    return {"assessable_by": targets.assessable_by(rows, plugins),
-            "some_need_a_connection": targets.some_need_a_connection(plugins), "reason": None}
-
-
-# ── Allowed internal hosts ────────────────────────────────────────────────────
-# Per project; its owners and platform admins edit it. The deployment's CONNECTIONS_ALLOWED_HOSTS
-# is a floor shown read-only; the stack's own services, loopback and metadata are never allowed
-# here (connection_allowlist).
-
-class AllowedHostIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    note: StrictStr | None = None
-
-
-def _allowed_view(row: dict) -> dict:
-    return {"host": row["host"], "note": row["note"], "updated_by": row["updated_by"],
-            "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
-            "denied": connection_allowlist.why_denied(row["host"])}
-
-
-def _entry_or_422(entry: str) -> str:
-    try:
-        return connection_allowlist.normalise(entry)
-    except connection_allowlist.InvalidEntry as exc:
-        raise HTTPException(status_code=422, detail=f"{entry!r}: {exc}") from None
-
-
-def _not_the_floor(host: str) -> None:
-    if host in {connection_allowlist.normalise(h) for h in connection_allowlist.floor()
-                if connection_allowlist._valid(h)}:
-        raise HTTPException(status_code=409, detail=f"{host} is allowed by the deployment (CONNECTIONS_ALLOWED_HOSTS)"
-                                                    " and is changed there, not here")
-
-
-@router.get("/projects/{slug}/allowed-hosts")
-def list_allowed_hosts(slug: str, caller: Caller = Depends(caller_dependency)) -> dict:
-    pid = project_for(slug, caller, "allowlist.read")["pid"]
-    return {"floor": connection_allowlist.floor(),
-            "entries": [_allowed_view(r) for r in connection_allowlist.entries(pid)]}
-
-
-@router.put("/projects/{slug}/allowed-hosts/{entry}")
-def put_allowed_host(slug: str, entry: str, body: AllowedHostIn,
-                     caller: Caller = Depends(caller_dependency)) -> dict:
-    pid = project_for(slug, caller, "allowlist.write")["pid"]
-    host = _entry_or_422(entry)
-    _not_the_floor(host)
-    note = (body.note or "").strip() or None
-    if note is not None and len(note) > 200:
-        raise HTTPException(status_code=422, detail="note: up to 200 characters")
-    try:
-        row = connection_allowlist.put(pid, host, note, caller.username or caller.subject)
-    except connection_allowlist.DeniedEntry as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
-    logger.info("project %s allows %s for its connections", pid, host)
-    return _allowed_view(row)
-
-
-@router.delete("/projects/{slug}/allowed-hosts/{entry}", status_code=204)
-def delete_allowed_host(slug: str, entry: str, caller: Caller = Depends(caller_dependency)) -> Response:
-    pid = project_for(slug, caller, "allowlist.write")["pid"]
-    host = _entry_or_422(entry)
-    _not_the_floor(host)
-    if not connection_allowlist.remove(pid, host):
-        raise HTTPException(status_code=404, detail=f"{host} is not allowed in this project")
-    logger.info("project %s no longer allows %s", pid, host)
-    return Response(status_code=204)
-
-
-RUN_KEY_PREFIX = "aisc-run-"
-
-
-def _key_hash(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
-
-
 @router.post("/internal/projects/{pid}/connections/{name}/run-keys")
 def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
     """A key for one evaluation run to reach one connection through the protocol endpoints; only its
@@ -1018,31 +361,3 @@ def issue_run_key(pid: str, name: str, request: Request) -> JSONResponse:
     no longer than the pass, and deleted when the pass is revoked."""
     return _internal_gate(pid, request, "connection", name) or _issue_run_key(
         pid, name, request.headers.get(run_passes.HEADER))
-
-
-def _issue_run_key(pid: str, name: str, run_pass: str | None = None) -> JSONResponse:
-    """issue_run_key past the gate, for a caller that has run it; a use is recorded under `run_pass`."""
-    row = connection_store.descriptor(pid, name) if CONNECTION_NAME.fullmatch(name) else None
-    if row is None or row["deleted_at"] is not None:
-        return _internal(404, {"detail": f"no connection {name!r}"})
-    fingerprint = _fingerprint_of(descriptor_of(row, pid))
-    key = RUN_KEY_PREFIX + secrets.token_hex(32)
-    ttl = int(os.environ.get("CONNECTIONS_RUN_KEY_TTL_S") or 12 * 3600)
-    # under a pass, the key ends with it: never after it, and deleted when the worker revokes it
-    pass_hash = run_passes.hash_of(run_pass) if run_pass is not None else None
-    not_after = run_passes.expires_at(run_pass) if run_pass is not None else None
-    expires = connection_store.issue_run_key(pid, name, _key_hash(key), fingerprint, ttl, pass_hash, not_after)
-    _record_use(run_pass, pid, row, fingerprint)
-    root = f"{os.environ.get('PLATFORM_INTERNAL_URL', 'http://platform:8000').rstrip('/')}/internal/facade/{pid}/{name}"
-    logger.info("run key issued for connection %s of project %s", name, pid)
-    # What the platform's endpoints carry: text and a history, and tools on an OpenAI-compatible connection
-    # that carries them; a plugin that needs more refuses the run before it starts.
-    return _internal(201, {"key": key, "expires_at": expires.isoformat(), "connection": name,
-                           "capabilities": connection_facade.capabilities(
-                               row["kind"], bool(row.get("supports_tools")),
-                               adapters.get(row["kind"]) if row["kind"] not in adapters.BUILT_IN_KINDS else None),
-                           "target": _target_of(pid, row), "endpoints": {
-        "aisc": {"ask_url": f"{root}/aisc/ask"},
-        "openai": {"base_url": f"{root}/openai/v1", "model": name},
-        "a2a": {"agent_card_url": f"{root}/a2a/.well-known/agent-card.json", "rpc_url": f"{root}/a2a"},
-        "oip": {"base_url": f"{root}/oip", "model": name}}})

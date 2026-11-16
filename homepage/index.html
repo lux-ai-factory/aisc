@@ -175,6 +175,7 @@
 </dialog>
 
 <script src="/assets/origins.js"></script>
+<script src="/assets/page.js"></script>
 <script>
   var list = document.getElementById('projects');
   var dialog = document.getElementById('dialog');
@@ -207,10 +208,10 @@
   }
 
   // a refusal (500, 403, 503) is not an empty list: say so, or someone creates a project that exists
-  fetch('/api/projects', {credentials: 'same-origin'})
-    .then(function (r) {
-      if (!r.ok) { var e = new Error('refused'); e.status = r.status; throw e; }
-      return r.json();
+  aisc.call('/api/projects')
+    .then(function (answer) {
+      if (!answer.ok) { var e = new Error('refused'); e.status = answer.status; throw e; }
+      return answer.data;
     })
     .then(render)
     .catch(function (e) {
@@ -222,19 +223,6 @@
   document.getElementById('new-project').addEventListener('click', function () { dialog.showModal(); });
   document.getElementById('cancel').addEventListener('click', function () { dialog.close(); });
 
-  // the platform's own words for a refused create: its sentence, or its field errors listed (FastAPI's 422)
-  function refusalOf(status, body) {
-    var d = body && body.detail;
-    if (typeof d === 'string' && d) return d;
-    if (Array.isArray(d) && d.length) {
-      return d.map(function (x) {
-        var field = x && Array.isArray(x.loc) ? x.loc[x.loc.length - 1] : '';
-        return (field ? field + ': ' : '') + (x && x.msg ? x.msg : String(x));
-      }).join('; ');
-    }
-    return 'The project could not be created (HTTP ' + status + ').';
-  }
-
   function openProject(slug) { window.location.href = '/p/' + encodeURIComponent(slug); }
 
   // Nothing answered, or the gateway gave up (a create makes a database and a bucket, so it can be slow): the
@@ -243,13 +231,12 @@
     var said = (status ? 'The platform did not confirm the create (HTTP ' + status + ')'
                        : 'The platform is not answering') + ', and no project named ' + name
                + ' is listed yet. Reload the page in a moment before trying again.';
-    return fetch('/api/projects', {credentials: 'same-origin'})
-      .then(function (r) { return r.ok ? r.json() : []; })
-      .then(function (projects) {
-        var made = (projects || []).filter(function (p) { return p && p.name === name && !listed[p.slug]; })[0];
+    return aisc.call('/api/projects')
+      .then(function (answer) {
+        var made = ((answer.ok && answer.data) || []).filter(function (p) { return p && p.name === name && !listed[p.slug]; })[0];
         if (made) { openProject(made.slug); return null; }
         return said;
-      }, function () { return said; });
+      });
   }
 
   var creating = false;
@@ -268,27 +255,17 @@
       if (button) button.disabled = false;
       err.textContent = text || '';
     }
-    fetch('/api/projects', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        name: name,
-        description: data.get('description') || null
-      })
-    }).then(function (r) {
-      return r.text().catch(function () { return ''; }).then(function (text) {
-        var body = null;
-        try { body = text ? JSON.parse(text) : null; } catch (x) { body = null; }
+    aisc.call('/api/projects', {method: 'POST', body: {name: name, description: data.get('description') || null}})
+      .then(function (r) {
+        if (!r.status) return afterNoAnswer(name, 0).then(done);
+        var body = r.data;
         if (r.ok && body && body.slug) { openProject(body.slug); return; }
-        // a platform that answered in words said what happened (a 503 that made nothing says so)
+        // a platform that answered in words said what happened (a 503 that made nothing says so): its sentence,
+        // or its field errors listed (FastAPI's 422)
         var worded = body && body.detail;
         if ((r.status >= 500 && !worded) || (r.ok && !(body && body.slug))) return afterNoAnswer(name, r.status).then(done);
-        done(refusalOf(r.status, body));
+        done(worded ? r.message : 'The project could not be created (HTTP ' + r.status + ').');
       });
-    }, function () {
-      return afterNoAnswer(name, 0).then(done);
-    });
   });
 </script>
 <script>
@@ -301,8 +278,8 @@
     if (e.key === 'Escape' && menu) menu.open = false;
   });
 
-  fetch('/oauth2/userinfo', {credentials:'same-origin'})
-    .then(function(r){ return r.ok ? r.json() : null; })
+  aisc.call('/oauth2/userinfo')
+    .then(function(r){ return r.ok ? r.data : null; })
     .then(function(d){
       if (d) document.getElementById('who').textContent =
         d.preferredUsername || d.user || d.email || 'user';

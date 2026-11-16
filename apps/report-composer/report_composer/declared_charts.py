@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import os
 
-import httpx
+from aisc_service_client import ServiceClient, ServiceError
 
 from .anchor import _token
 
@@ -34,13 +34,12 @@ def fetch(request, project: dict) -> dict | None:
     if not base or not token:
         return None
     try:
-        with httpx.Client(timeout=TIMEOUT_S) as http:
-            r = http.get(f"{base}/projects/{project['slug']}/declared-charts",
-                         headers={"Authorization": f"Bearer {token}"})
+        r = ServiceClient(base, timeout=TIMEOUT_S, service="the platform").get(
+            f"/projects/{project['slug']}/declared-charts", headers={"Authorization": f"Bearer {token}"})
         if r.status_code != 200:
             return None
         answer = r.json()
-    except (httpx.HTTPError, ValueError):
+    except (ServiceError, ValueError):
         _log.warning("project %s: the declared charts could not be read; Test results draws none", project["pid"])
         return None
     if not isinstance(answer, dict) or not isinstance(answer.get("configs"), dict):

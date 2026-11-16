@@ -18,6 +18,8 @@ from conftest import ROOT
 
 sys.path.insert(0, str(ROOT / "platform"))
 
+sys.path.insert(0, str(ROOT / "shared/identity"))   # the rules the platform imports
+
 import os
 from pathlib import Path
 

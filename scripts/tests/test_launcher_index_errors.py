@@ -18,8 +18,11 @@ const [source, answer] = [process.argv[2], JSON.parse(process.argv[3])];
 const els = {};
 const el = (id) => els[id] || (els[id] = {id, innerHTML: '', textContent: '', addEventListener() {}, showModal() {}});
 const fetch = () => answer === null ? Promise.reject(new TypeError('Failed to fetch'))
-  : Promise.resolve({ok: answer.status < 400, status: answer.status, json: () => Promise.resolve(answer.body)});
-const ctx = {document: {getElementById: el, createElement: () => ({})}, fetch, window: {location: {}}, console};
+  : Promise.resolve({ok: answer.status < 400, status: answer.status, json: () => Promise.resolve(answer.body),
+                     text: () => Promise.resolve(JSON.stringify(answer.body))});
+const ctx = {document: {getElementById: el, createElement: () => ({})}, fetch, location: {pathname: '/', search: ''},
+             console, JSON, URLSearchParams, decodeURIComponent};
+ctx.window = ctx;   // a page's globals and window's are one, so the shared script's window.aisc is seen as aisc
 vm.createContext(ctx);
 vm.runInContext(source, ctx);
 setTimeout(() => console.log(JSON.stringify(el('projects').innerHTML)), 50);
@@ -27,8 +30,11 @@ setTimeout(() => console.log(JSON.stringify(el('projects').innerHTML)), 50);
 
 
 def _list_script():
+    """The list's script, after the shared launcher script when the page loads it."""
     html = (ROOT / "homepage/index.html").read_text()
-    return next(s for s in re.findall(r"<script>(.*?)</script>", html, re.S) if "var list = " in s)
+    own = next(s for s in re.findall(r"<script>(.*?)</script>", html, re.S) if "var list = " in s)
+    shared = (ROOT / "homepage/assets/page.js").read_text() if 'src="/assets/page.js"' in html else ""
+    return shared + "\n" + own
 
 
 def _rendered(tmp_path, answer):

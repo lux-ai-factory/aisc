@@ -685,7 +685,11 @@ services:
     # every project database the role may enter; exit 2 is a permanent error
     command: >
       sh -c "until python -m aisc_control_objectives.migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[control-objectives] waiting for postgres'; sleep 2; done"
+    volumes:
+      # aisc_identity: a project's database is named by the shared rule (aisc_identity.projectdb)
+      - ./shared/identity:/app/shared/identity:ro,z
     environment:
+      PYTHONPATH: /app/src:/app/shared/identity
       # membership only (core.project, core.project_member)
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # a template: {database} becomes project_<pid without hyphens>
@@ -956,10 +960,13 @@ services:
       BRANDING_PRIMARY: ${BRANDING_PRIMARY:-}
       BRANDING_SECONDARY: ${BRANDING_SECONDARY:-}
       EMBED_ALLOWED_ORIGINS: ${EMBED_ALLOWED_ORIGINS:-}
+      # aisc_identity beside the image's own pythonpath: the ledger's shared delivery loop
+      PYTHONPATH: /app/pythonpath:/app/pythonpath_identity
     volumes:
       - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
       - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
       - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
+      - ./shared/identity:/app/pythonpath_identity:ro,z
     depends_on:
       # ready and set up (postgres-setup waits for pg_isready, then makes the databases)
       postgres-setup:
@@ -1013,6 +1020,7 @@ services:
       - ./apps/results-dashboard/superset_config.py:/app/pythonpath/superset_config.py:ro,Z
       - ./apps/results-dashboard/aisc_ext:/app/pythonpath/aisc_ext:ro,Z
       - ./apps/results-dashboard/branding:/app/superset/static/assets/branding:ro,Z
+      - ./shared/identity:/app/pythonpath_identity:ro,z
       - ./dashboard-gateway:/app/pythonpath_gateway:ro,Z
       # Superset's hook for a deployment's own code: Save to report and the chart assistant panel
       - ./apps/results-dashboard/templates_override/tail_js_custom_extra.html:/app/superset/templates/tail_js_custom_extra.html:ro,Z
