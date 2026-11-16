@@ -46,8 +46,8 @@ platform	platform/platform_service/routes/projects.py	revise_system_version	its 
 platform	platform/platform_service/routes/projects.py	abandon_system_version	its event is written one layer down, in the change's own transaction: card_version.abandoned (db.abandon_version)
 platform	platform/platform_service/routes/projects.py	purge_run	its event is written one layer down, in the change's own transaction: run.purged (run_purge.purge_run)
 platform	platform/platform_service/routes/projects.py	set_project_retention	its event is written one layer down, in the change's own transaction: project.retention_set (db.set_retention)
-platform	platform/platform_service/routes/connections.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
-platform	platform/platform_service/routes/connections.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
+platform	platform/platform_service/routes/targets.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
+platform	platform/platform_service/routes/targets.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
 platform	platform/platform_service/routes/llm.py	save_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.saved (llm_store.save_provider)
 platform	platform/platform_service/routes/llm.py	remove_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.removed (llm_store.delete_provider)
 platform	platform/platform_service/routes/llm.py	save_llm_choice	its event is written one layer down, in the change's own transaction: llm.choice.saved (llm_store.save_choice)
@@ -56,8 +56,8 @@ platform	platform/platform_service/routes/connections.py	save_connection	its eve
 platform	platform/platform_service/routes/connections.py	link_target	its event is written one layer down, in the change's own transaction: connection.saved (connection_store.link_target)
 platform	platform/platform_service/routes/connections.py	delete_connection	its event is written one layer down, in the change's own transaction: connection.deleted (connection_store.delete)
 platform	platform/platform_service/routes/connections.py	test_connection	its event is written one layer down, in the change's own transaction: connection.tested (connection_store.record_test)
-platform	platform/platform_service/routes/connections.py	put_allowed_host	its event is written one layer down, in the change's own transaction: allowlist.host.allowed (connection_allowlist.put)
-platform	platform/platform_service/routes/connections.py	delete_allowed_host	its event is written one layer down, in the change's own transaction: allowlist.host.removed (connection_allowlist.remove)
+platform	platform/platform_service/routes/allowed_hosts.py	put_allowed_host	its event is written one layer down, in the change's own transaction: allowlist.host.allowed (connection_allowlist.put)
+platform	platform/platform_service/routes/allowed_hosts.py	delete_allowed_host	its event is written one layer down, in the change's own transaction: allowlist.host.removed (connection_allowlist.remove)
 platform	platform/platform_service/routes/helpers.py	save_helper	its event is written one layer down, in the change's own transaction: helper.model.saved (helper_store.save)
 platform	platform/platform_service/routes/helpers.py	remove_helper	its event is written one layer down, in the change's own transaction: helper.model.removed (helper_store.remove)
 platform	platform/platform_service/routes/helpers.py	test_helper	its event is written one layer down, in the change's own transaction: helper.model.tested (helper_store.record_test)
@@ -73,12 +73,12 @@ platform	platform/platform_service/routes/facade.py	facade_a2a_rpc	forwards a pl
 platform	platform/platform_service/routes/facade.py	facade_oip_infer	forwards a plugin's call to the system under test with a run key; changes nothing on the platform
 platform	platform/platform_service/routes/catalogue.py	catalogue_install_test	installs the plugin through the engine, whose own event is plugin.installed
 platform	platform/platform_service/routes/connections.py	issue_run_key	not recorded yet: a short-lived key for one evaluation run to reach one connection
-platform	platform/platform_service/routes/connections.py	issue_target_run_key	not recorded yet: a short-lived key for one evaluation run to reach one target's connection
+platform	platform/platform_service/routes/targets.py	issue_target_run_key	not recorded yet: a short-lived key for one evaluation run to reach one target's connection
 platform	platform/platform_service/routes/catalogue.py	choose_catalogue	not recorded yet: the project's one-time choice of the public or a private catalogue
 platform	platform/platform_service/routes/catalogue.py	update_catalogue	not recorded yet: an admin refreshes the private catalogue's copy of the public one
 platform	platform/platform_service/routes/catalogue.py	put_local_dimensions	not recorded yet: an admin assigns requirement dimensions to a local plugin package
-platform	platform/platform_service/routes/connections.py	mint_run_pass	the worker asks for a run's pass before the plugin starts; nothing of the project changes (the run's own events are the engine's)
-platform	platform/platform_service/routes/connections.py	revoke_run_pass	the worker ends a run's pass when the run ends; its event is written one layer down, in the same transaction: run.trace.sealed (run_passes.revoke), a worker event of the run, not a person's act
+platform	platform/platform_service/routes/run_passes.py	mint_run_pass	the worker asks for a run's pass before the plugin starts; nothing of the project changes (the run's own events are the engine's)
+platform	platform/platform_service/routes/run_passes.py	revoke_run_pass	the worker ends a run's pass when the run ends; its event is written one layer down, in the same transaction: run.trace.sealed (run_passes.revoke), a worker event of the run, not a person's act
 platform	platform/platform_service/routes/proof_files.py	store_proof_file	its event is the controls app's: control.proof.attached, written when it links the stored file to the answer
 platform	platform/platform_service/routes/connectivity.py	run_agent_on	its event is written one layer down, in the change's own transaction: connection.use.saved (llm_store.save_agent)
 platform	platform/platform_service/routes/connectivity.py	stop_agent_choice	its event is written one layer down, in the change's own transaction: connection.use.removed (llm_store.remove_agent)
