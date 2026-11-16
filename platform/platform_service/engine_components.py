@@ -21,12 +21,15 @@ INSTALL_TIMEOUT_S = 960
 
 class EngineUnavailable(RuntimeError):
     """The engine did not accept the call. `status` is its answer's status, None when it did not answer;
-    `detail` the reason it gave, when it gave one."""
+    `detail` the reason it gave, when it gave one. `unconfirmed`: the call was sent and the engine did not answer
+    in time, so what it did is not known (it may still finish)."""
 
-    def __init__(self, message: str, status: int | None = None, detail: str | None = None):
+    def __init__(self, message: str, status: int | None = None, detail: str | None = None,
+                 unconfirmed: bool = False):
         super().__init__(message)
         self.status = status
         self.detail = detail
+        self.unconfirmed = unconfirmed
 
 
 def _detail_of(r: httpx.Response) -> str | None:
@@ -56,10 +59,18 @@ def _headers(pid, token: str, cite_request: bool) -> dict:
 
 
 def _call(method: str, path: str, pid, token: str, body: dict | None = None, cite_request: bool = False,
-          timeout_s: float = TIMEOUT_S) -> dict:
+          timeout_s: float = TIMEOUT_S, doing: str | None = None) -> dict:
+    """`doing` names a write the engine may finish after the wait (an install): a timeout then says it is not
+    confirmed rather than not reached."""
     try:
         r = httpx.request(method, f"{_base()}{path}", json=body, timeout=timeout_s,
                           headers=_headers(pid, token, cite_request))
+    except httpx.ReadTimeout:
+        if doing is None:
+            raise EngineUnavailable("the engine could not be reached (ReadTimeout)") from None
+        # sent, and not answered in time: the engine may still be doing it
+        raise EngineUnavailable(f"the engine did not confirm {doing} within {timeout_s:g} s",
+                                unconfirmed=True) from None
     except httpx.HTTPError as exc:
         raise EngineUnavailable(f"the engine could not be reached ({type(exc).__name__})") from None
     if r.status_code >= 300:
@@ -98,7 +109,8 @@ def install_plugin(pid, token: str, package: str, version: str, slug: str,
     body = {"package_name": package, "version": version, "project_uuid": engine_pid, "catalogue_slug": slug}
     if wheel_sha256:
         body["wheel_sha256"] = wheel_sha256
-    _call("POST", "/api/v1/plugins", pid, token, body, cite_request=True, timeout_s=INSTALL_TIMEOUT_S)
+    _call("POST", "/api/v1/plugins", pid, token, body, cite_request=True, timeout_s=INSTALL_TIMEOUT_S,
+          doing="the install")
 
 
 def components(pid, token: str, engine_pid: str | None = None) -> list[dict]:
