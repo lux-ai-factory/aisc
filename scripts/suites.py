@@ -90,7 +90,8 @@ SUITES = (
     Suite("qualification agents", "apps/qualification", "node_modules", ("docker",), False,
           "cd apps/qualification && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD:/w:ro\" python:3.12-slim"
           " sh -lc 'mkdir -p /tmp/q && cp -r /w/services /w/src /tmp/q/ && cd /tmp/q/services/agents"
-          " && pip install -q -r requirements.txt pytest && python -m pytest -q -p no:cacheprovider'"),
+          " && pip install -q uv && uv pip install --system -q -r requirements.txt --override overrides.txt pytest"
+          " && python -m pytest -q -p no:cacheprovider'"),
     Suite("controls pdf", "apps/controls/services/pdf_renderer", "", ("docker",), False,
           "cd apps/controls/services/pdf_renderer && docker build -q -t aisc-t-cpdf . >/dev/null"
           " && docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v \"$PWD:/w:ro\" -w /w aisc-t-cpdf"

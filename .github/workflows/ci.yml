@@ -191,6 +191,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - working-directory: ${{ matrix.service }}
         run: |
+          if [ -f overrides.txt ]; then
+            # as its image installs: overrides.txt raises pins of requirements.txt's packages, which uv run cannot
+            uv venv -q --python 3.12 "$RUNNER_TEMP/service"
+            VIRTUAL_ENV="$RUNNER_TEMP/service" uv pip install -q -r requirements.txt --override overrides.txt pytest httpx
+            "$RUNNER_TEMP/service/bin/python" -m pytest -q -p no:cacheprovider -p no:warnings
+            exit
+          fi
           dev=""
           [ -f requirements-dev.txt ] && dev="--with-requirements requirements-dev.txt"
           # shellcheck disable=SC2086

@@ -92,7 +92,7 @@ webapp src/upstreamFilesUnchanged.test.ts modes, names, errors: the upstream fil
 webapp README.md docs: what the branch changes and how the frontend runs inside AISC
 webapp src/pages/OpenPluginFromUrl.tsx modes: the execution page opens the test ?plugin= names (step 4's E link)
 webapp src/pages/OpenPluginFromUrl.test.tsx modes: its test
-webapp package-lock.json dependencies: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.8, form-data 4.0.6, react-router/-dom 7.18.4)
+webapp package-lock.json dependencies: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.9, follow-redirects 1.16.2, form-data 4.0.6, react-router/-dom 7.18.4; scripts/tests/test_dependency_floors.py)
 webapp src/patchedDependencies.test.ts dependencies: each shipped dependency above its vulnerable range
 webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin; a refused package action's reason
 webapp src/pages/pluginToggle.test.ts errors: its test
