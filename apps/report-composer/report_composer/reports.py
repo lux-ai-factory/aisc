@@ -112,6 +112,12 @@ def check_choice(conn, choice: dict):
     return system, sel
 
 
+def cut_off_before(request):
+    """Before this time a report still running was cut off half way: no generation runs longer than the window
+    in which a running one blocks the next (GENERATION_WINDOW_MINUTES)."""
+    return request.app.state.clock() - timedelta(minutes=GENERATION_WINDOW_MINUTES)
+
+
 def report_row(row: dict) -> dict:
     """A generated report as the reports list answers it, with the inclusive last day of its period."""
     return {**row, "last_day": (lambda d: d.isoformat() if d else None)(data_selection.last_day(row.get("period_to")))}

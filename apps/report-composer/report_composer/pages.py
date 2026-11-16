@@ -162,10 +162,11 @@ def editor_page(request: Request, ref: str, layout_id: str):
             layout, report_rows = dict(EMPTY_LAYOUT), []
         elif builtin is not None:
             record = builtin_reports.record_of(conn, layout_id)
-            layout, report_rows = builtin, (db.list_reports(conn, record) if record else [])
+            layout, report_rows = builtin, (db.list_reports(conn, record, reports.cut_off_before(request))
+                                            if record else [])
         else:
             layout = layout_or_404(conn, layout_id)
-            report_rows = db.list_reports(conn, layout["id"])
+            report_rows = db.list_reports(conn, layout["id"], reports.cut_off_before(request))
         systems = db.systems(conn)
         templates = _templates(conn)
         asked = _preview_query(request)

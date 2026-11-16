@@ -452,9 +452,10 @@ def get_reports(request: Request, layout_id: str, g: Guarded = Depends(project_g
     with _project_db(request, g) as conn:
         if builtin_layouts.get(layout_id, block_types(request)) is not None:     # a built-in's reports
             record = builtin_reports.record_of(conn, layout_id)
-            return [reports.report_row(r) for r in db.list_reports(conn, record)] if record else []
+            return [reports.report_row(r) for r in db.list_reports(conn, record, reports.cut_off_before(request))] \
+                if record else []
         layout = layout_or_404(conn, layout_id)
-        return [reports.report_row(r) for r in db.list_reports(conn, layout["id"])]
+        return [reports.report_row(r) for r in db.list_reports(conn, layout["id"], reports.cut_off_before(request))]
 
 
 def _document(request: Request, g: Guarded, report_id: str, only_pdf: bool, record=None) -> Response:

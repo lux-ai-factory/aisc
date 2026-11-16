@@ -297,8 +297,12 @@ _PINNED_CARD_REVISION = ("CASE WHEN r.snapshot->>'card_revision' ~ '^[0-9]{1,9}$
                          " THEN (r.snapshot->>'card_revision')::int END")
 
 
-def list_reports(conn, layout_id) -> list[dict]:
-    return conn.execute("SELECT r.id::text AS id, r.layout_revision, r.status, r.created_at, r.created_by,"
+def list_reports(conn, layout_id, cut_off_before=None) -> list[dict]:
+    """A layout's reports, newest first. A report still running that started before `cut_off_before` was cut off
+    half way (a restart or a crash during the render left it so) and is listed as interrupted."""
+    return conn.execute("SELECT r.id::text AS id, r.layout_revision,"
+                        " CASE WHEN r.status = 'running' AND r.created_at <= %s THEN 'interrupted' ELSE r.status END"
+                        " AS status, r.created_at, r.created_by,"
                         " r.size_bytes, r.format, r.fingerprint, r.sha256, s.number AS system_number,"
                         " r.period_from, r.period_to, r.other_versions, c.number AS compare_number,"
                         f" {_PINNED_CARD_REVISION} AS card_revision,"
@@ -308,7 +312,7 @@ def list_reports(conn, layout_id) -> list[dict]:
                         " LEFT JOIN project.system s ON s.pid = r.system_id"
                         " LEFT JOIN project.system c ON c.pid = r.compare_to"
                         " WHERE r.layout_id = %s ORDER BY r.created_at DESC, r.id",
-                        (layout_id,)).fetchall()
+                        (cut_off_before, layout_id)).fetchall()
 
 
 def project_name(conn, pid) -> str:
