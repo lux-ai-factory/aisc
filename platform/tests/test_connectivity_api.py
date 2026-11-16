@@ -33,7 +33,7 @@ def _env(monkeypatch):
     monkeypatch.setenv("PLATFORM_ENGINE_TOKEN", ENGINE_TOKEN)
     monkeypatch.delenv("CONNECTIONS_ALLOWED_HOSTS", raising=False)
     real = client._addresses
-    monkeypatch.setattr(client, "_addresses", lambda host, port: [ipaddress.ip_address("93.184.216.34")]
+    monkeypatch.setattr(client.transport, "_addresses", lambda host, port: [ipaddress.ip_address("93.184.216.34")]
                         if host.endswith("example.com") else real(host, port))
 
 

@@ -117,7 +117,7 @@ def _env(monkeypatch, stub):
 
     real = client._addresses
     known = {"one.example.com": "93.184.216.34", "two.example.com": "93.184.216.35"}
-    monkeypatch.setattr(client, "_addresses",
+    monkeypatch.setattr(client.transport, "_addresses",
                         lambda host, port: [ipaddress.ip_address(known[host])] if host in known else real(host, port))
 
 

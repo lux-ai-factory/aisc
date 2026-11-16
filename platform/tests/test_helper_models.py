@@ -44,7 +44,7 @@ def _names_resolve(monkeypatch):
 
     real = client._addresses
     known = {"judge.example.com": "93.184.216.34", "postgres": "172.18.0.2"}
-    monkeypatch.setattr(client, "_addresses",
+    monkeypatch.setattr(client.transport, "_addresses",
                         lambda host, port: [ipaddress.ip_address(known[host])] if host in known else real(host, port))
 
 
