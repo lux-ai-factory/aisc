@@ -34,6 +34,8 @@
 #   testdata      Delete on test data asks first; a refused add or edit, or a file the engine could not store, is
 #                 said with the engine's reason and the dialog stays open
 #   filetypes     a dataset or model file picker offers only the extensions the engine takes for that type
+#   images        the image installs exactly what package-lock.json pins (npm ci) and serves as nginx's
+#                 unprivileged user
 #
 # Derived with `git diff --name-only <base> HEAD` in apps/webapp.
 # A new change goes in here with its reason, in the same commit as the gitlink that brings it.
@@ -44,7 +46,9 @@ base webapp ab9f19d
 webapp .env modes: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
 webapp .env.development modes: standalone mode and launcher URL for dev
 webapp .env.test modes: the mode for plain vitest runs
-webapp Dockerfile modes: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's
+webapp Dockerfile modes, images: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's; npm ci, and nginx-unprivileged owning the bundle env.sh rewrites, base images pinned by version and digest (scripts/tests/test_engine_services_unprivileged.py, test_images_run_as_users.py)
+webapp .dockerignore images: the host's node_modules, build and keys stay out of the image's build (scripts/tests/test_images_run_as_users.py)
+webapp Dockerfile.dev images: its base image pinned by version and digest (scripts/tests/test_images_pinned_by_digest.py)
 webapp src/DeploymentGate.tsx modes: error page for an unknown mode
 webapp src/MyApp.tsx modes: Tasks route standalone only
 webapp src/api/installProjectHeader.test.ts modes: the start-up wrapper names the project on fetch and axios
@@ -88,7 +92,8 @@ webapp src/upstreamFilesUnchanged.test.ts modes, names, errors: the upstream fil
 webapp README.md docs: what the branch changes and how the frontend runs inside AISC
 webapp src/pages/OpenPluginFromUrl.tsx modes: the execution page opens the test ?plugin= names (step 4's E link)
 webapp src/pages/OpenPluginFromUrl.test.tsx modes: its test
-webapp package-lock.json dependencies: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.8, form-data 4.0.6, react-router/-dom 7.18.4)
+webapp package-lock.json dependencies: npm audit high fixes within majors (axios 1.20.0, fast-uri 3.1.9, follow-redirects 1.16.2, form-data 4.0.6, react-router/-dom 7.18.4; scripts/tests/test_dependency_floors.py)
+webapp .github/dependabot.yml dependencies: dependabot watches the npm lock as well as the actions (scripts/tests/test_dependency_advisories_in_ci.py)
 webapp src/patchedDependencies.test.ts dependencies: each shipped dependency above its vulnerable range
 webapp src/pages/pluginToggle.ts errors: the plugin on/off switch says when it takes the admin role (403) instead of taking the refusal for the plugin; a refused package action's reason
 webapp src/pages/pluginToggle.test.ts errors: its test

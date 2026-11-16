@@ -51,9 +51,13 @@ made, so:
   tracked value), never a new one. Such an install is on well-known passwords until rotate-infra-password
   changes each, in its service and then in env.secrets; a new install gets random ones.
 
-The realm's two accounts are admin / admin and user / user on a local install: its sign-in is reached from this
-machine only (Keycloak is published on 127.0.0.1). An install served to others (CADDY_DOMAIN https://, from the
-environment or env.plugin_downloader) gets generated passwords for them.
+The realm's two accounts, admin and user, get generated passwords on every new install (`password` prints
+them). An install made before that may still be on admin / admin and user / user: start says so, naming the
+rotate-infra-password command for each, never the value.
+
+Caddy publishes the browser ports on this machine only (127.0.0.1) unless the install asks for the network:
+AISC_LAN=on (in the environment or env.local), or an install served over https. env.runtime then gets
+CADDY_BIND_ADDRESS=0.0.0.0; a CADDY_BIND_ADDRESS line in env.local (an address of this machine) is taken over both.
 """
 from __future__ import annotations
 
@@ -143,6 +147,22 @@ def admin_ports_asked() -> bool:
     return asked == "on"
 
 
+def lan_asked() -> bool:
+    """AISC_LAN=on in the shell, or else in env.local (its last line for it), as admin_ports_asked reads it."""
+    asked = os.environ.get("AISC_LAN")
+    local = ROOT / LOCAL
+    if asked is None and local.is_file():
+        lines = [line for line in lines_of(str(local)) if line.startswith("AISC_LAN=")]
+        asked = lines[-1].split("=", 1)[1].strip().strip('"\'') if lines else None
+    return asked == "on"
+
+
+def caddy_bind_address() -> str:
+    """The host address Caddy publishes the browser ports on: every interface for an install served over https
+    or one that asked for the local network (AISC_LAN=on), else this machine only."""
+    return "0.0.0.0" if served_over_https() or lan_asked() else "127.0.0.1"
+
+
 def served_over_https() -> bool:
     # the checkout's own file, not the current folder's: COMPOSE asks this on import, before main moves there
     tracked = ROOT / TRACKED
@@ -183,9 +203,18 @@ SECRETS = [
     ("S3_PASSWORD", "rand"),
     ("RABBITMQ_PASSWORD", "rand"),
     ("KEYCLOAK_ADMIN_PASSWORD", "rand"),
-    # the realm's two development accounts, admin and user: the realm import puts these into it, and its
-    # database keeps them after, so they are volume-bound too. admin / admin and user / user on a local install,
-    # generated on one served to others over https (account below)
+    # the engine's and the platform's own MinIO accounts (aisc-engine, aisc-platform): make_buckets sets them
+    # on every start (infra/minio/make-buckets.sh), so they are not volume-bound and --rotate renews them
+    ("S3_ENGINE_PASSWORD", "rand"),
+    ("S3_PLATFORM_PASSWORD", "rand"),
+    # the RabbitMQ accounts of the engine, the workers and Flower (aisc-engine, aisc-worker, aisc-flower), none an
+    # administrator: rabbitmq-setup sets them on every start (infra/rabbitmq/setup_users.py), so --rotate renews
+    # them; RABBITMQ_PASSWORD, the administrator's, is for operators only
+    ("RABBITMQ_ENGINE_PASSWORD", "rand"),
+    ("RABBITMQ_WORKER_PASSWORD", "rand"),
+    ("RABBITMQ_FLOWER_PASSWORD", "rand"),
+    # the realm's two accounts, admin and user: the realm import puts these into it, and its database keeps them
+    # after, so they are volume-bound too. Generated on every new install (account below)
     ("AISC_ADMIN_PASSWORD", "account"),
     ("AISC_USER_PASSWORD", "account"),
     ("GATEWAY_COOKIE_SECRET", "cookie"),
@@ -279,7 +308,7 @@ SECRETS = [
 VOLUME_BOUND = ("POSTGRES_PASSWORD", "S3_PASSWORD", "RABBITMQ_PASSWORD", "KEYCLOAK_ADMIN_PASSWORD",
                 "AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD")
 # What env.runtime defines first, from env.secrets only: compose expands a setting built from one of these with the
-# values defined above it (CELERY_BROKER_URL holds $RABBITMQ_PASSWORD, REDIS_BACKEND_URL $REDIS_PASSWORD).
+# values defined above it (REDIS_BACKEND_URL holds $REDIS_PASSWORD).
 FIRST_IN_RUNTIME = (*VOLUME_BOUND, "REDIS_PASSWORD")
 # What --rotate keeps: replacing any of these would make stored data unreadable or unverifiable.
 # DEVPI_ROOT_PASSWORD: devpi's volume holds root's password and devpi refuses to start on another one.
@@ -312,7 +341,9 @@ FRESH_ON_ROTATE = ("GATEWAY_COOKIE_SECRET", "GATEWAY_CLIENT_SECRET", "INTERNAL_A
                    "PLATFORM_LEDGER_DASHBOARD_TOKEN", "PLATFORM_LEDGER_AGENTS_TOKEN", "PLUGIN_PUBLISHER_TOKEN",
                    "PLATFORM_ENGINE_TOKEN", "PLATFORM_CONTROLS_TOKEN", "PLATFORM_MIGRATOR_PASSWORD",
                    "QUALIFICATION_MIGRATOR_PASSWORD", "CONTROLS_MIGRATOR_PASSWORD", "CONTROL_OBJECTIVES_MIGRATOR_PASSWORD",
-                   "REPORT_COMPOSER_MIGRATOR_PASSWORD", "ENGINE_MIGRATOR_PASSWORD")
+                   "REPORT_COMPOSER_MIGRATOR_PASSWORD", "ENGINE_MIGRATOR_PASSWORD", "S3_ENGINE_PASSWORD",
+                   "S3_PLATFORM_PASSWORD", "RABBITMQ_ENGINE_PASSWORD", "RABBITMQ_WORKER_PASSWORD",
+                   "RABBITMQ_FLOWER_PASSWORD")
 # The immudb passwords the stack brings to a new value itself (--rotate-one).
 ROTATE_ONE = ("IMMUDB_ADMIN_PASSWORD", "LEDGER_IMMUDB_PASSWORD", "ENGINE_IMMUDB_PASSWORD")
 LEDGER_KEYS = re.compile(r"v[1-9][0-9]*:[0-9a-f]{64}(,v[1-9][0-9]*:[0-9a-f]{64})*")
@@ -340,9 +371,25 @@ def immudbpw() -> str:
 
 
 def account(name: str) -> str:
-    if served_over_https():
-        return rand()
-    return {"AISC_ADMIN_PASSWORD": "admin", "AISC_USER_PASSWORD": "user"}.get(name) or rand()
+    """A realm account's password: random on every install, served over https or not (the realm's sign-in is
+    reached through Caddy, which may be on the network)."""
+    return rand()
+
+
+#: each realm account's setting, its name, and the password it had on a local install before they were generated
+KNOWN_ACCOUNT_PASSWORDS = {"AISC_ADMIN_PASSWORD": ("admin", "admin"), "AISC_USER_PASSWORD": ("user", "user")}
+
+
+def warn_known_account_passwords(path: str) -> None:
+    """Tells an install whose env.secrets still holds a realm account's well-known password which command changes
+    it. Names the setting and the command, never the value."""
+    if not Path(path).is_file():
+        return
+    for name, (account_name, known) in KNOWN_ACCOUNT_PASSWORDS.items():
+        if value_in(name, path).strip("'\"") == known:
+            warn(f"The realm account '{account_name}' still has the well-known password this install was made with. "
+                 f"Anyone who reaches the sign-in can use it. Change it with: scripts/aisc.py rotate-infra-password "
+                 f"{name}")
 
 
 def fresh(kind: str, name: str) -> str:
@@ -561,8 +608,8 @@ def make_signing_key() -> None:
 def write_runtime() -> None:
     """compose takes one --env-file, so the settings and the secrets are combined into one. Also git-ignored,
     also made again from its two sources. The infrastructure passwords come from env.secrets only (a value still
-    in the tracked file is dropped), and first: compose expands a setting built from one (CELERY_BROKER_URL holds
-    $RABBITMQ_PASSWORD) with the values defined above it in the file."""
+    in the tracked file is dropped), and first: compose expands a setting built from one (REDIS_BACKEND_URL holds
+    $REDIS_PASSWORD) with the values defined above it in the file."""
     def infra(line: str) -> bool:
         name = line.split("=", 1)[0]
         return " " not in name and name in FIRST_IN_RUNTIME
@@ -570,8 +617,10 @@ def write_runtime() -> None:
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
     local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
+    # where Caddy publishes the browser ports (caddy_bind_address), before env.local so a line there wins
     combined = ([line for line in secret_lines if infra(line)] + [line for line in tracked if not infra(line)]
-                + [line for line in secret_lines if not infra(line)] + local)
+                + [line for line in secret_lines if not infra(line)]
+                + [f"CADDY_BIND_ADDRESS={caddy_bind_address()}"] + local)
     prefix = container_prefix(install_id())
     if prefix:
         combined.append(f"CONTAINER_PREFIX={prefix}")
@@ -742,7 +791,7 @@ def held_by_aisc() -> set[int]:
 
 
 #: the image the probe runs: the stack's own Caddy, which publishes these ports, so `up` would pull it anyway
-PROBE_IMAGE = "caddy:2.10.2"
+PROBE_IMAGE = "caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb"
 #: the name every probe container starts with, so one left behind (a probe cut short) is found and removed
 PROBE_PREFIX = "aisc-port-probe-"
 #: how long one probe may take: a container that only binds and exits needs well under a second
@@ -1412,9 +1461,19 @@ def realm_lockout() -> dict:
     return {name: realm[name] for name in LOCKOUT_SETTINGS if name in realm}
 
 
+def realm_hardening_commands() -> list[list[str]]:
+    """kcadm's commands that put the realm file's password policy and the lockout on realms made before them:
+    the aisc realm (its people's sign-in) and the master realm (Keycloak's own admin console and kcadm). The
+    master realm takes Keycloak's default lockout settings; only the switch is set there."""
+    realm = json.loads((ROOT / "keycloak" / "aisc-realm.json").read_text())
+    return [["update", "realms/aisc", "-s", "bruteForceProtected=true", "-s",
+             "passwordPolicy=" + realm["passwordPolicy"]],
+            ["update", "realms/master", "-s", "bruteForceProtected=true"]]
+
+
 def sync_sign_in() -> None:
     """Tells Keycloak the addresses this install has now, the gateway client's current secret and the realm
-    file's account lockout. The realm import put the addresses, the secret and the lockout of its first start
+    file's account lockout and password policy (and turns the lockout on in the master realm too). The realm import put the addresses, the secret and the lockout of its first start
     into the realm's database and is never run again, so a port that moved since would leave the sign-in sending
     people to an address nothing answers on, a rotated secret would leave oauth2-proxy refused, and a realm made
     before the lockout was turned on would take any number of wrong passwords. Run on every start once the realm answers; Keycloak may
@@ -1455,6 +1514,10 @@ def sync_sign_in() -> None:
         locked = kcadm(DOCKER, container, admin, "update", "realms/aisc", "-f", "-", stdin=json.dumps(lockout))
         if locked.returncode != 0:
             return locked.stderr.strip() or "kcadm could not update the realm's account lockout"
+        for command in realm_hardening_commands():
+            hardened = kcadm(DOCKER, container, admin, *command)
+            if hardened.returncode != 0:
+                return hardened.stderr.strip() or f"kcadm could not {' '.join(command[:2])}"
         return ""
 
     for attempt in range(tries):
@@ -1472,7 +1535,7 @@ def sync_sign_in() -> None:
 ONE_SHOT_SERVICES = frozenset({
     "make_buckets", "postgres-setup", "immudb-key", "ledger-pool", "report-grants", "aisc-backend-migrate",
     "controls-migrate", "qualification-migrate", "control-objectives-migrate", "report-composer-migrate",
-    "dashboard-migrate",
+    "dashboard-migrate", "minio-data-owner", "devpi-data-owner", "rabbitmq-setup",
 })
 #: a log line holding one of these is hidden whole: it is a secret's name or the secret itself
 SECRET_WORDS = re.compile(r"PASSWORD|TOKEN|SECRET|KEY=", re.IGNORECASE)
@@ -1722,6 +1785,7 @@ def start_steps() -> None:
 
     # 2. The secrets
     make_secrets([], hint=False)
+    warn_known_account_passwords(OUT)
 
     # Only one install runs at a time: refuse before the ports are looked at, so the other stack's are never taken
     # for ours to move. PROJECT is this install's stack by now. No answer from Docker: carry on.

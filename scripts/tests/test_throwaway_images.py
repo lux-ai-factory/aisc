@@ -38,7 +38,7 @@ def test_the_bed_uses_the_stacks_postgres_image(bed):
     path = ROOT / bed
     if not path.is_file():
         pytest.skip(f"{bed} is not checked out")
-    named = set(re.findall(r"\bpostgres:[0-9][\w.-]*", path.read_text()))
+    named = set(re.findall(r"\bpostgres:[0-9][\w.-]*(?:@sha256:[0-9a-f]{64})?", path.read_text()))
     assert named, f"{bed} names no postgres image: if it now takes it from elsewhere, check it here"
     assert named == {stack_image()}, f"{bed}: {sorted(named)}, the stack runs {stack_image()}"
 

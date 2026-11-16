@@ -109,14 +109,16 @@ services:
   #   1. add a DNS record for KEYCLOAK_URL_EXTERNAL and a Caddy route to http://keycloak:8080;
   #   2. the imported realm's client redirect URIs are the localhost ones: add the staging URLs
   #      (https://aisctest.uni.lux/*) to each client in the Keycloak admin, or ship a staging realm file;
-  #   3. for a production realm, remove the dev users (admin, user).
+  #   3. make the realm's accounts and set the aisc-gateway client's secret in the Keycloak admin: the realm
+  #      imported here (keycloak/aisc-realm.staging.json) is the development one without its accounts and
+  #      without a client secret.
   keycloak:
     image: quay.io/keycloak/keycloak:26.6.3
     container_name: ${CONTAINER_PREFIX:-}keycloak
     restart: always
     command: start --import-realm
     volumes:
-      - ./keycloak/aisc-realm.json:/opt/keycloak/data/import/aisc-realm.json:ro
+      - ./keycloak/aisc-realm.staging.json:/opt/keycloak/data/import/aisc-realm.json:ro
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}

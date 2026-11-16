@@ -47,7 +47,7 @@ def test_secrets_makes_every_secret_the_runtime_env_and_the_signing_key(tmp_path
     made = values(d / "env.secrets")
     assert [name for name in made if name != "AISC_INSTALL"] == [name for name, _ in aisc_py().SECRETS]
     assert all(made.values()), "an empty secret"
-    assert made["AISC_ADMIN_PASSWORD"] == "admin" and made["AISC_USER_PASSWORD"] == "user"
+    assert all(re.fullmatch(r"[0-9a-f]{64}", made[n]) for n in ("AISC_ADMIN_PASSWORD", "AISC_USER_PASSWORD"))
     assert len(made["GATEWAY_COOKIE_SECRET"]) == 43 and len(made["PLATFORM_SECRETS_KEY"]) == 44
     runtime = values(d / "env.runtime")
     assert {k: runtime[k] for k in made} == made
@@ -77,7 +77,8 @@ def test_password_shows_the_accounts_of_this_install(tmp_path):
     assert run(d, "secrets").returncode == 0
     r = run(d, "password")
     assert r.returncode == 0, r.stderr
-    assert r.stdout.split() == ["admin", "admin", "user", "user"]
+    made = values(d / "env.secrets")
+    assert r.stdout.split() == ["admin", made["AISC_ADMIN_PASSWORD"], "user", made["AISC_USER_PASSWORD"]]
 
 
 def test_password_before_any_secret_says_what_to_run(tmp_path):

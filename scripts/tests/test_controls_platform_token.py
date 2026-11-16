@@ -25,14 +25,15 @@ def test_only_the_platform_and_the_controls_app_hold_the_controls_token(tmp_path
 
 @pytest.mark.parametrize("files, profiles", RUNS, ids=IDS)
 def test_the_platform_holds_the_minio_credentials_and_the_controls_app_does_not(tmp_path, files, profiles):
-    held = holders(tmp_path, files, profiles, "S3_PASSWORD")
+    # the platform's own MinIO account; make_buckets sets its password
+    held = holders(tmp_path, files, profiles, "S3_PLATFORM_PASSWORD")
     assert "platform" in held and "controls-web" not in held
 
 
-def test_the_platform_reaches_minio_with_the_stack_s3_settings(tmp_path):
+def test_the_platform_reaches_minio_with_the_stack_s3_address_and_its_own_account(tmp_path):
     env = compose_cfg.config(tmp_path, env={"S3_URL": "http://minio:9000", "S3_USER": "minio-user"})[
         "services"]["platform"]["environment"]
-    assert env["S3_URL"] == "http://minio:9000" and env["S3_USER"] == "minio-user"
+    assert env["S3_URL"] == "http://minio:9000" and env["S3_USER"] == "aisc-platform"
 
 
 def test_the_controls_app_reaches_the_platform(tmp_path):

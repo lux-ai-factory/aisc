@@ -3,9 +3,10 @@
 A project's bucket is `proof-<pid without dashes>`, made when the project's database is made and removed
 when the project is deleted, so its files are as separate from other projects' as its database is. The
 controls app never holds credentials for these buckets: it sends the platform a file and is told what it stored
-(POST /internal/projects/{pid}/proof-files), and reads it back the same way. The platform reaches them with the
-stack's MinIO account (S3_USER/S3_PASSWORD), which the engine backend also holds, so until the platform gets a
-MinIO account of its own that account reaches every project's proof files.
+(POST /internal/projects/{pid}/proof-files), and reads it back the same way. The platform reaches them with its
+own MinIO account (S3_USER/S3_PASSWORD, aisc-platform in the stack), which may use the proof-* buckets only, and
+in the engine's buckets list and delete files but not read them (infra/minio/policies/platform.json). The engine
+backend's account cannot reach the proof buckets.
 
 A stored file is never replaced and never deleted while its project exists. Each one is stored under an id
 the platform makes; there is no route that writes to an id that exists, and none that deletes one.

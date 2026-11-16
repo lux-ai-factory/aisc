@@ -1,7 +1,7 @@
 # MinIO server and client built from source. MinIO stopped publishing community images in late
 # 2025 (quay.io/minio/* and minio/* are refused), so the stack builds its own from the last source
 # releases. One image serves both the server (minio) and the bucket job (mc).
-FROM golang:1.24-alpine AS build
+FROM golang:1.24.13-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS build
 ARG MINIO_RELEASE=RELEASE.2025-10-15T17-29-55Z
 ARG MC_RELEASE=RELEASE.2025-08-13T08-35-41Z
 RUN apk add --no-cache git
@@ -15,12 +15,20 @@ RUN git clone --depth 1 --branch "$MINIO_RELEASE" https://github.com/minio/minio
 RUN git clone --depth 1 --branch "$MC_RELEASE" https://github.com/minio/mc /src/mc \
  && cd /src/mc && go build -trimpath -ldflags "-s -w" -o /out/mc .
 
-FROM alpine:3.22
+FROM alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/minio /usr/bin/minio
 COPY --from=build /out/mc /usr/bin/mc
 # starts the server and sets aside a stored config written by another MinIO version (see the script)
 COPY entrypoint.sh /usr/local/bin/minio-entrypoint.sh
 RUN chmod 755 /usr/local/bin/minio-entrypoint.sh
+# the bucket job (make_buckets): the buckets, and the engine's and the platform's own accounts with their policies
+COPY make-buckets.sh /usr/local/bin/make-buckets.sh
+COPY policies/ /policies/
+RUN chmod 755 /usr/local/bin/make-buckets.sh && chmod 644 /policies/*.json
+# its own user, with a home for mc's settings; an older volume made by root is handed over by the one-shot
+# minio-data-owner before the server starts
+RUN adduser -D -u 10030 -h /home/minio minio && mkdir -p /data && chown minio:minio /data
+USER minio
 EXPOSE 9000 9001
 ENTRYPOINT ["/usr/local/bin/minio-entrypoint.sh"]

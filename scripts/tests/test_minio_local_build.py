@@ -53,5 +53,12 @@ def test_the_server_keeps_its_command_healthcheck_and_bucket_names():
         assert "server /data" in str(s["minio"]["command"])
         assert "mc" in str(s["minio"]["healthcheck"]["test"])
         job = s["make_buckets"]
+        if job["entrypoint"] == ["/usr/local/bin/make-buckets.sh"]:
+            # the bucket script baked into the image (infra/minio/make-buckets.sh)
+            script = (ROOT / "infra/minio/make-buckets.sh").read_text()
+            assert 'mc mb --ignore-existing "minio/$bucket"' in script, f
+            assert "for bucket in datasets artifacts models; do" in script, f
+            assert "COPY make-buckets.sh /usr/local/bin/make-buckets.sh" in DOCKERFILE.read_text()
+            continue
         for bucket in ("datasets", "artifacts", "models"):
             assert f"mc mb --ignore-existing minio/{bucket}" in job["entrypoint"], (f, bucket)

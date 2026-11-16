@@ -46,6 +46,7 @@
   "maxDeltaTimeSeconds": 43200,
   "failureFactor": 5,
   "maxSecondaryAuthFailures": 0,
+  "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(3)",
   "roles": {
     "realm": [
       {

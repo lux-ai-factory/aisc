@@ -186,8 +186,8 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   volume is first made. An install made before they were generated keeps the values it runs on (its
   `env.runtime`'s, else the old committed ones): `secrets.sh` writes those into `env.secrets`, never new
   ones, so such an install stays on well-known passwords until each is rotated. A new install gets
-  random ones, except the realm's two accounts on a local (http) install: they are `admin` / `admin` and
-  `user` / `user`, and random only on an install served over https.
+  random ones, the realm's two accounts included (`uv run scripts/aisc.py password` prints them). An install
+  still on `admin` / `admin` or `user` / `user` is told so at every start, with the command that changes each.
 - **Rotating an infrastructure password.** `./scripts/rotate-infra-password.sh NAME` (one of the six
   above) sets a new value in the running service first (`ALTER ROLE`, `rabbitmqctl change_password`,
   Keycloak's `kcadm.sh`), then in `env.secrets` and `env.runtime`; a service that refuses leaves both files
@@ -232,6 +232,11 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   passwords `AISC_ADMIN_PASSWORD` and `AISC_USER_PASSWORD` from `env.secrets`; the checks sign in with
   them too (`scripts/lib/dev-accounts.sh`). The Keycloak console's account is `admin` with
   `KEYCLOAK_ADMIN_PASSWORD` from `env.secrets`. The console is on `127.0.0.1:8081` only.
+  The realm asks for passwords of 12 characters or more that are not the user name or e-mail and not one of
+  the last three, and locks an account for a while after 5 wrong passwords (`keycloak/aisc-realm.json`). Every
+  `start` puts both on a realm made before, and turns the lockout on in the master realm (the console). Staging
+  imports `keycloak/aisc-realm.staging.json`: the same realm without its accounts and without the gateway
+  client's secret.
 - **Checks.** `./scripts/verify.sh --stack` runs `verify-db-access.sh`, `verify-project-databases.sh`,
   `verify-sso.sh`, `verify-rbac.sh`, `verify-plugins.sh` and `verify-switches.sh`, then `stackcheck db-access`
   (`scripts/stackcheck`), against the running stack.
@@ -328,6 +333,17 @@ plugins. To develop one of the engine's apps on the host, see that submodule's R
 `docker-compose-infra.staging.yml` and `docker-compose.staging.yml` are older deployment files for the
 engine alone and are not used by the stack above.
 
+### Logs and limits
+
+Every service in the development and engine-standalone files keeps its log in Docker's `json-file` driver,
+rotated at 10 MB with five files kept, and runs within memory, CPU and process limits in three sizes (the
+`x-size-*` anchors at the top of each file): small (256 MB, half a CPU, 128 processes) for Caddy, the two
+Redis, oauth2-proxy and the webapp; large (2 GB, two CPUs, 512 processes) for the engine backend, PostgreSQL,
+Keycloak, the dashboard, the agents and control objectives; medium (1 GB, one CPU, 256 processes) for every
+other service and one-shot. The two eval workers keep their own (`EVAL_WORKER_MEM_LIMIT`, `EVAL_WORKER_CPUS`,
+`EVAL_DECLARATIONS_WORKER_MEM_LIMIT`, `EVAL_DECLARATIONS_WORKER_CPUS`). A service that needs more gets it by
+an override file that sets its `mem_limit`, `cpus` or `pids_limit`.
+
 ### PostgreSQL 15
 
 Every stack runs PostgreSQL 15 (the backend requires it): development, the standalone engine and
@@ -352,7 +368,9 @@ likely to change:
 | `KEYCLOAK_ADMIN` | `env.plugin_downloader` | Keycloak's bootstrap admin | `admin` |
 | `GATEWAY_COOKIE_SECURE` | `env.plugin_downloader` | the gateway's session cookie is Secure: `true` when `CADDY_DOMAIN` is `https://` | `false` |
 | `KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_PASSWORD`, `RABBITMQ_PASSWORD` | `env.secrets` | the infrastructure's own passwords, generated; kept by `--rotate`; an install made before keeps the values it runs on; changed by `rotate-infra-password.sh` | generated |
-| `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above | `admin` / `user` on a local http install, generated on an install served over https |
+| `S3_ENGINE_PASSWORD`, `S3_PLATFORM_PASSWORD` | `env.secrets` (`make_buckets`, `aisc-backend`, `platform`) | the engine's and the platform's own MinIO accounts (`aisc-engine`, `aisc-platform`), each limited to its buckets; `make_buckets` sets them on every start, so `--rotate` renews them and an older install gets them on its next start | generated |
+| `RABBITMQ_ENGINE_PASSWORD`, `RABBITMQ_WORKER_PASSWORD`, `RABBITMQ_FLOWER_PASSWORD` | `env.secrets` (`rabbitmq-setup`, `aisc-backend`, both workers, `aisc-eval-flower`) | the services' own RabbitMQ accounts (`aisc-engine`, `aisc-worker`, `aisc-flower`), none an administrator; `rabbitmq-setup` sets them on every start, so `--rotate` renews them | generated |
+| `AISC_ADMIN_PASSWORD`, `AISC_USER_PASSWORD` | `env.secrets` (keycloak, the checks) | the realm's `admin` and `user` accounts, put into the realm at import; like the row above; start warns an install still on `admin` / `user` | generated |
 | `DASHBOARD_INTERNAL_PORT` | `caddy`, `platform`, `dashboard` | Superset's port on the compose network (`dashboard:<port>`), not published | `8189` |
 | `GITHUB_TOKEN` | `plugin-publisher` (you add it to `env.secrets`) | a GitHub token that can read lux-ai-factory's private plugin repos | empty: installing a private plugin fails |
 | `PLUGIN_PUBLISHER_TOKEN` | `platform`, `plugin-publisher` (made by `start`) | the token the platform presents when it asks the publisher to fetch a plugin | generated |
@@ -373,6 +391,8 @@ likely to change:
 | `AISC_IMAGE_TAG` | all built images | the tag of locally built images | `latest` |
 | `ENGINE_PORT`, `HOMEPAGE_PORT_EXTERNAL`, `DASHBOARD_PORT_EXTERNAL`, `KEYCLOAK_PORT_EXTERNAL` | `env.local` (written by `aisc.py start`, git-ignored) | the four browser ports: steps 1 and 2, the launcher, the dashboard and the sign-in. `start` checks them before building. When one is taken, an install not served over https moves to a free one and keeps it; an https install stops instead. Edit `env.local` to choose a port yourself | `80`, `8100`, `8188`, `8081` |
 | `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`, `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL` | `env.local` | the address of each browser port, as the browser reaches it. `start` writes the address next to a port it moved, on plain http only. `env.local` comes last in `env.runtime`, so it wins over `env.plugin_downloader`. For an install served from another host, set these four in `env.plugin_downloader` (an https install does so; `start` writes no address for it) | `http://localhost`, `http://localhost:8100/`, `http://localhost:8188`, `http://localhost:8081` |
+| `AISC_LAN` | the environment or `env.local` | `on` publishes Caddy's browser ports (80, 8100, 8188, and 443 over https) on every interface, so other machines can reach the install; an install served over https does so anyway | unset: on `127.0.0.1` only |
+| `CADDY_BIND_ADDRESS` | `env.runtime` (written by `start`), or `env.local` to choose an address of this machine | the host address Caddy's browser ports are published on | `127.0.0.1`, or `0.0.0.0` with `AISC_LAN=on` or over https |
 | `AISC_ADMIN_PORTS` | the environment or `env.local` | `on` adds `docker-compose.admin-ports.yml`, which publishes PostgreSQL (5432), Redis (6379), RabbitMQ (5672), MinIO (9000) and immudb (3322) on `127.0.0.1`, for tools on the host such as pgAdmin or psql. Nothing else needs them | unset: not published |
 | `ENGINE_HTTPS_PORT` | `env.local` | port 443's setting, in `docker-compose.https.yml`. `start` adds that file only when `CADDY_DOMAIN` is an https address, so a taken 443 never stops an install on plain http | `443` |
 | `AISC_INSTALL` | `env.secrets` (written with it by `start` or `secrets.sh`) | this install's id, six hex characters: its stack is `aisc-<id>`, its volumes `aisc-<id>_*`, its containers `aisc-<id>-<service>`. Kept by `--rotate`; do not edit or delete it (the install would fall back to the stack `aisc` and lose sight of its data). An install made before ids has none and keeps the stack `aisc` and the bare container names | generated for a new install |

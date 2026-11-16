@@ -1,0 +1,3 @@
+# Advisories accepted for a time: "<advisory id> <package> <reason> until=YYYY-MM-DD", one per line.
+# scripts/audit-dependencies.sh skips each until its date has passed, then fails and names it.
+GHSA-wj6h-64fc-37mp ecdsa immudb-py verifies the immudb server's state signatures with it and signs nothing; the timing attack recovers a signing key, and no release fixes it until=2027-02-16

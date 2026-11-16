@@ -8,8 +8,9 @@ x-backend-env: &backend-env
   S3_DATASETS_BUCKET: ${S3_DATASETS_BUCKET}
   S3_ARTIFACTS_BUCKET: ${S3_ARTIFACTS_BUCKET}
   S3_URL: ${S3_URL}
-  S3_USER: ${S3_USER}
-  S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
+  # the engine's own MinIO account, limited to its three buckets (infra/minio/make-buckets.sh makes it)
+  S3_USER: aisc-engine
+  S3_PASSWORD: ${S3_ENGINE_PASSWORD:?run scripts/secrets.sh first}
   DB_NAME: ${DB_NAME}
   DB_USER: ${DB_USER}
   # engine_rw's generated password (init/engine-role.sql)
@@ -30,7 +31,8 @@ x-backend-env: &backend-env
   # the eval worker, which holds DJANGO_SECRET_KEY and runs plugin code
   RUN_TICKET_KEY: ${RUN_TICKET_KEY:?run scripts/secrets.sh first}
   ENABLE_SSL_PROXY: true
-  CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+  # the engine's own RabbitMQ account, no administrator (infra/rabbitmq/setup_users.py makes it)
+  CELERY_BROKER_URL: amqp://aisc-engine:${RABBITMQ_ENGINE_PASSWORD:?run scripts/secrets.sh first}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
   REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
   PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
   PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
@@ -46,9 +48,34 @@ x-backend-env: &backend-env
   KEYCLOAK_JWKS_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
   MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
 
+# Every service's log is rotated at 10 MB, five files kept, and every service runs within memory, CPU and process
+# limits in one of three sizes: small for the proxies and caches, large for the engine, the databases, Keycloak, the
+# dashboard and the agents, medium for the rest (the one-shots included). The workers set their own limits.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+x-size-small: &size-small
+  logging: *logging
+  mem_limit: 256m
+  cpus: 0.5
+  pids_limit: 128
+x-size-medium: &size-medium
+  logging: *logging
+  mem_limit: 1g
+  cpus: 1.0
+  pids_limit: 256
+x-size-large: &size-large
+  logging: *logging
+  mem_limit: 2g
+  cpus: 2.0
+  pids_limit: 512
+
 services:
   # The engine's web frontend (apps/webapp)
   aisc-webapp:
+    <<: *size-small
     restart: unless-stopped
     build: apps/webapp/
     image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
@@ -72,6 +99,7 @@ services:
       - frontend
 
   aisc-backend:
+    <<: *size-large
     restart: unless-stopped
     build: apps/backend/
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
@@ -107,6 +135,9 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
+      # its MinIO account exists before it starts
+      make_buckets:
+        condition: service_completed_successfully
       immudb:
         condition: service_healthy
         # A restart of immudb ends the engine's login token; its clerk logs in again on the next write,
@@ -116,6 +147,9 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      # its RabbitMQ account exists before it starts
+      rabbitmq-setup:
+        condition: service_completed_successfully
       # the engine's tables live in each project's database; the one-shot below
       # migrates them all before the engine serves
       aisc-backend-migrate:
@@ -123,16 +157,16 @@ services:
       # Its immudb account exists before it starts (ledger-pool makes it): fails closed
       ledger-pool:
         condition: service_completed_successfully
+    # read only: the plugin-manager, plugin interface and aisc_identity come in the image (apps/backend/vendor), so
+    # nothing is installed at start
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface -e /app/shared/identity
-      && uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-access-log"
+      - ${PLUGIN_PATH}:/app/plugins:ro,z
+    command: ["uv", "run", "uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
 
   # Migrates the engine's schema in every project database engine_rw may enter,
   # then grants the readers. Exit 2 is a permanent error: no retry.
   aisc-backend-migrate:
+    <<: *size-medium
     # no build: the same image as its main service, built once there (parallel builds of one tag race)
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -140,8 +174,7 @@ services:
     environment:
       <<: *backend-env
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
+      - ${PLUGIN_PATH}:/app/plugins:ro,z
     networks:
       - backend
     depends_on:
@@ -151,13 +184,13 @@ services:
         condition: service_started
     restart: "no"
     command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface -e /app/shared/identity
-      && until uv run manage.py migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[engine] waiting for postgres'; sleep 2; done"
+      sh -c "until uv run manage.py migrate_projects; do s=$$?; [ $$s -eq 2 ] && exit 2; echo '[engine] waiting for postgres'; sleep 2; done"
 
   # Sends the engine's ledger events from each project database's outbox to the platform, every 10 s.
   # The only engine process with the engine's ledger token: it never imports plugin code and has no
   # plugin folder.
   aisc-backend-ledger:
+    <<: *size-medium
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}aisc-backend-ledger
@@ -180,8 +213,6 @@ services:
       PLATFORM_URL: http://platform:8000
       PLATFORM_LEDGER_ENGINE_TOKEN: ${PLATFORM_LEDGER_ENGINE_TOKEN:?run scripts/secrets.sh first}
       LEDGER_MODE: ${LEDGER_MODE:-record}
-    volumes:
-      - ./shared:/app/shared:z
     networks:
       - backend
     depends_on:
@@ -190,12 +221,11 @@ services:
       platform:
         condition: service_started
     restart: unless-stopped
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface -e /app/shared/identity
-      && uv run manage.py deliver_ledger_events --every 10"
+    command: ["uv", "run", "manage.py", "deliver_ledger_events", "--every", "10"]
 
   # The evaluation worker (apps/eval): a Celery worker that runs the plugins
   aisc-eval-worker:
+    logging: *logging
     restart: unless-stopped
     platform: linux/amd64
     build:
@@ -226,7 +256,8 @@ services:
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       # the worker builds its Redis URL from this (aisc_eval/utils/env.py); never passed to a plugin
       REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      # the workers' own RabbitMQ account, no administrator (infra/rabbitmq/setup_users.py makes it)
+      CELERY_BROKER_URL: amqp://aisc-worker:${RABBITMQ_WORKER_PASSWORD:?run scripts/secrets.sh first}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
       PLUGIN_PATH: /app/plugins   # where the volume below mounts the install's PLUGIN_PATH folder
       PACKAGE_REGISTRY_URL: ${PACKAGE_REGISTRY_URL}
       PACKAGE_REGISTRY_USER: ${PACKAGE_REGISTRY_USER}
@@ -266,23 +297,35 @@ services:
     # them back up through a setuid program
     security_opt: &eval-worker-security
       - no-new-privileges:true
-    # only to set, at start, the firewall that keeps those users behind the egress proxy (docker-entrypoint.sh)
+    # Root, to switch to a run user per test, with only what that needs: change uid and gid (SETUID, SETGID),
+    # stop a test's processes (KILL), hand its folders over and clean them up (CHOWN, FOWNER, DAC_OVERRIDE),
+    # and set, at start, the firewall that keeps those users behind the egress proxy (NET_ADMIN,
+    # docker-entrypoint.sh). Every other default capability is dropped.
+    user: "0"
+    cap_drop: &eval-worker-dropped
+      - ALL
     cap_add: &eval-worker-capabilities
+      - SETUID
+      - SETGID
+      - KILL
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
       - NET_ADMIN
     # a first process that reaps what a plugin left (killed at the end of its test), so no zombie of a run
     # user counts against the next test's process cap
     init: true
     networks: &eval-worker-networks
       - backend
+    # read only: the plugin-manager and plugin interface come in the image (apps/eval/vendor); a local plugin is
+    # copied before it is installed
     volumes: &eval-worker-volumes
-      - ${PLUGIN_PATH}:/app/plugins:z
-      - ./shared:/app/shared:z
+      - ${PLUGIN_PATH}:/app/plugins:ro,z
     command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      celery -A aisc_eval.celery_worker worker --loglevel=info
       --concurrency=${EVAL_WORKER_CONCURRENCY:-4}
       --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
-      --beat --schedule=/tmp/aisc-eval-beat-schedule"
+      --beat --schedule=/tmp/aisc-eval-beat-schedule
 
   # The eval worker's second process: it reads plugin manifests and runs the plugins' form hooks
   # (aisc_eval.celery_app.PLUGIN_DECLARATIONS_QUEUE), one at a time, so a configure page never waits behind
@@ -290,6 +333,7 @@ services:
   # settings, firewall, reaper and egress hosts; no database credential). It runs no beat: the run worker
   # runs the sweep.
   aisc-eval-declarations-worker:
+    logging: *logging
     restart: unless-stopped
     platform: linux/amd64
     # the run worker's image, built there (two builds of one tag race)
@@ -311,18 +355,21 @@ services:
     cpus: ${EVAL_DECLARATIONS_WORKER_CPUS:-2}
     pids_limit: 1024
     security_opt: *eval-worker-security
+    # root with the run worker's capabilities only, for the same reason: it runs plugin code as a run user
+    user: "0"
+    cap_drop: *eval-worker-dropped
     cap_add: *eval-worker-capabilities
     init: true
     networks: *eval-worker-networks
     volumes: *eval-worker-volumes
     command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker worker --loglevel=info
+      celery -A aisc_eval.celery_worker worker --loglevel=info
       --queues=plugin-declarations
       --concurrency=1
-      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}"
+      --max-memory-per-child=${EVAL_WORKER_MAX_MEMORY_PER_CHILD_KB:-2097152}
 
   aisc-eval-flower:
+    <<: *size-medium
     # started only when asked (COMPOSE_PROFILES=inspect ./scripts/start.sh): it has no sign-in of its own, and
     # any container on the backend network (the eval worker, where every project's plugins run) could read
     # every project's task arguments and results from it; Caddy says how to start it when it is off
@@ -336,7 +383,8 @@ services:
       AISC_DEPLOYMENT: configurator
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?run scripts/secrets.sh first}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      # Flower's own RabbitMQ account, no administrator (infra/rabbitmq/setup_users.py makes it)
+      CELERY_BROKER_URL: amqp://aisc-flower:${RABBITMQ_FLOWER_PASSWORD:?run scripts/secrets.sh first}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
       FLOWER_URL_PREFIX: flower
     depends_on:
       - aisc-eval-worker
@@ -344,11 +392,8 @@ services:
       - rabbitmq
       - redis
     volumes:
-      - ${PLUGIN_PATH}:/app/plugins
-      - ./shared:/app/shared
-    command: >
-      sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
-      && celery -A aisc_eval.celery_worker flower"
+      - ${PLUGIN_PATH}:/app/plugins:ro
+    command: ["celery", "-A", "aisc_eval.celery_worker", "flower"]
     # Flower's own health endpoint: pinging "celery@<flower's hostname>" would ask for a worker
     # that does not exist.
     healthcheck:
@@ -361,6 +406,7 @@ services:
 
   # Controls (apps/controls): the AI-compliance checklists
   controls-pdf:
+    <<: *size-medium
     build: apps/controls/services/pdf_renderer
     image: aisc-controls-pdf:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -373,6 +419,7 @@ services:
       - backend
 
   controls-migrate:
+    <<: *size-medium
     # no build: the same image as controls-web, built once there (as control-objectives-migrate)
     image: aisc-controls-web:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -401,6 +448,7 @@ services:
       - backend
 
   controls-web:
+    <<: *size-medium
     build:
       context: apps/controls
       args:
@@ -450,6 +498,7 @@ services:
   # nothing, and needs no model: the Annex headings and the usual labels are
   # the signal.
   qualification-prefill:
+    <<: *size-medium
     build:
       # the app root, because the field mapping lives with the form
       context: apps/qualification
@@ -468,6 +517,7 @@ services:
   # The card agent: drafts the prose-fed nodes of an AI card (its techniques) with the
   # project's model (through BAF), and publishes the draft to qualification-web.
   qualification-agents:
+    <<: *size-large
     build:
       context: apps/qualification/services/agents
       dockerfile: Dockerfile.stack
@@ -514,6 +564,7 @@ services:
   # the system's AI card. Pure computation, no model: without it the app can
   # collect answers but cannot export a card, which is what step 2 reads.
   qualification-ontology:
+    <<: *size-medium
     build:
       # The app root, because the picker vocabulary in src/data is shared with
       # the form, which is what its own Dockerfile says.
@@ -532,6 +583,7 @@ services:
 
   # System-card PDF renderer sidecar.
   qualification-pdf:
+    <<: *size-medium
     build: apps/qualification/services/system_card_renderer
     image: aisc-qualification-pdf:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -544,6 +596,7 @@ services:
       - backend
 
   qualification-migrate:
+    <<: *size-medium
     build: apps/qualification
     image: aisc-qualification-migrate:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -569,6 +622,7 @@ services:
       - backend
 
   qualification-web:
+    <<: *size-medium
     build:
       context: apps/qualification
       args:
@@ -623,6 +677,7 @@ services:
   # schema of each project's own database (the template makes the schema, its
   # migrations the tables); on platform it reads only who is in which project.
   control-objectives-migrate:
+    <<: *size-medium
     # no build: the same image as its main service, built once there (parallel builds of one tag race)
     image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -649,6 +704,7 @@ services:
       - backend
 
   control-objectives:
+    <<: *size-large
     build: apps/control-objectives/
     image: aisc-control-objectives:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -720,6 +776,7 @@ services:
 
   # The report: the composer assembles a report from modules, the renderer draws it
   report-composer:
+    <<: *size-medium
     build: apps/report-composer
     image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -766,6 +823,7 @@ services:
   # The preset library on platform, then every project database. Exit 2 is a
   # permanent error: no retry; any other failure (postgres not up yet) is retried.
   report-composer-migrate:
+    <<: *size-medium
     image: aisc-report-composer:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}report-composer-migrate
@@ -785,6 +843,7 @@ services:
       - backend
 
   report-renderer:
+    <<: *size-medium
     build:
       # both are submodules of this repository; the bundled report plugins (plugins/) are built in
       context: ${REPORT_GENERATOR_DIR:-./apps/report-generator}
@@ -822,7 +881,8 @@ services:
 
   # SELECT for report_ro on what the report reads, granted again on every start
   report-grants:
-    image: postgres:15-alpine
+    <<: *size-medium
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     container_name: ${CONTAINER_PREFIX:-}report-grants
     environment:
       PGHOST: postgres
@@ -865,6 +925,7 @@ services:
   # created by init/superset-db.sql and its read-only role dashboard_ro by
   # init/platform-db.sql, on a fresh volume.
   dashboard-migrate:
+    <<: *size-medium
     # no build: the same image as its main service, built once there (parallel builds of one tag race)
     image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -915,7 +976,8 @@ services:
   # in the dashboard. The shared `redis` is reachable by the eval worker, which runs plugin code.
   # A cache: nothing is kept on disk, nothing is published.
   dashboard-redis:
-    image: redis:7.4.11-alpine
+    <<: *size-small
+    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     container_name: ${CONTAINER_PREFIX:-}dashboard-redis
     restart: unless-stopped
     environment:
@@ -928,6 +990,7 @@ services:
       - dashboard
 
   dashboard:
+    <<: *size-large
     build: apps/results-dashboard
     image: aisc-results-dashboard:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -991,6 +1054,7 @@ services:
   # them in the dashboard. It reaches the platform (for the
   # project's model) and its mock databases only: it holds no credential of a project database.
   chart-assistant:
+    <<: *size-medium
     build: apps/chart-assistant
     image: aisc-chart-assistant:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
@@ -1014,12 +1078,18 @@ services:
   # package devpi lacks; it builds it and uploads it to the stack's devpi, the index the engine
   # installs from. At its own start it publishes the shared plugin interface. Start fetches nothing.
   plugin-publisher:
+    <<: *size-medium
     build: infra/plugin-publisher
     image: aisc-plugin-publisher:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}plugin-publisher
     # processes a build leaves behind are reaped instead of staying as zombies
     init: true
+    # Root, to hand a build's folder to the builder user and run the build as it, with only what that needs:
+    # switch to it (SETUID, SETGID), stop a build that overruns (KILL), hand its folder over and remove it
+    # afterwards (CHOWN, DAC_OVERRIDE; root owns /tmp, so removing builder's folder there needs no FOWNER).
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE]
     volumes:
       # published too: a plugin's run installs its dependencies from PyPI and this index, and takes
       # the plugin interface from here (the first index that has it), not PyPI's release of that name
@@ -1058,17 +1128,19 @@ services:
   # API keys, connections), evidence, and the ledger. It verifies the caller's token itself
   # (AUTH_ENABLED) and answers each request by the caller's role in the project.
   platform:
-    build: platform
+    <<: *size-medium
+    build:
+      context: platform
+      # aisc_identity and the plugin-side connection client go into the image from here (platform/Dockerfile)
+      additional_contexts:
+        shared: ./shared
     image: aisc-platform:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}platform
     volumes:
       - ./immudb-signing.pub:/keys/immudb-signing.pub:ro,Z
-      # aisc_identity: who is calling, answered the same way by every Python
-      # service. Mounted rather than copied, so one fix reaches all of them.
-      - ./shared/identity:/app/shared/identity:ro,z
-      # Manage -> Connections tests a connection with the same client the plugins use
-      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
+      # aisc_identity (who is calling) and the client Manage -> Connections tests a connection with are in the
+      # image, from shared/: a change there needs `docker compose build platform`
       # core is this service's to migrate, and the files are read at startup.
       - ./platform/migrations:/app/migrations:ro,z
       # what every new project database starts with, one file per module
@@ -1101,13 +1173,14 @@ services:
       # two that holds MinIO's credentials (the stack's S3 settings).
       PLATFORM_CONTROLS_TOKEN: ${PLATFORM_CONTROLS_TOKEN:?run scripts/secrets.sh first}
       S3_URL: ${S3_URL}
-      S3_USER: ${S3_USER}
-      S3_PASSWORD: ${S3_PASSWORD:?run scripts/secrets.sh first}
+      # the platform's own MinIO account: the projects' proof-* buckets, and deleting files in the engine's
+      # buckets (infra/minio/make-buckets.sh makes it)
+      S3_USER: aisc-platform
+      S3_PASSWORD: ${S3_PLATFORM_PASSWORD:?run scripts/secrets.sh first}
       # platform_rw's generated password: postgres-setup applies the same value to the role
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
       # platform_migrator (init/owner-roles.sql): migrations, making and dropping project databases, as platform_owner
       PLATFORM_MIGRATE_DATABASE_URL: postgresql://platform_migrator:${PLATFORM_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
-      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
       # A project belongs to the people in it, so this service has to know who
       # is asking. Verified here rather than taken on the gateway's word.
       AUTH_ENABLED: "true"
@@ -1171,6 +1244,9 @@ services:
         condition: service_started
       postgres-setup:
         condition: service_completed_successfully
+      # its MinIO account (aisc-platform) exists before it starts
+      make_buckets:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - backend
@@ -1183,6 +1259,7 @@ services:
   # account (aisc_engine, on auditdb) and, after a rotation, gives aisc_ledger and aisc_engine their new
   # passwords.
   ledger-pool:
+    <<: *size-medium
     image: aisc-platform:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     command: ["python", "-m", "platform_service.ledger.pool", "top-up", "--wait", "300", "${LEDGER_POOL:-50}"]
@@ -1192,10 +1269,6 @@ services:
       LEDGER_IMMUDB_PASSWORD: ${LEDGER_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
       ENGINE_IMMUDB_PASSWORD: ${ENGINE_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
-      PYTHONPATH: /app/shared/identity:/app/shared/plugin-interface/src
-    volumes:
-      - ./shared/identity:/app/shared/identity:ro,z
-      - ./shared/plugin-interface/src:/app/shared/plugin-interface/src:ro,z
     depends_on:
       postgres-setup:
         condition: service_completed_successfully
@@ -1212,6 +1285,7 @@ services:
   # launcher's origin, where /api/ is the platform, so they read the project's catalogue (a private
   # copy, or the hosted one live) with the person's own sign-in. Read-only: no add or delete.
   catalogue-private:
+    <<: *size-medium
     build:
       context: apps/catalogue/frontend
       args:
@@ -1228,11 +1302,32 @@ services:
   # backend runs here. The engine installs from this devpi (PACKAGE_REGISTRY_URL in
   # env.plugin_downloader), which plugin-publisher fills: a plugin when an admin installs it. Its
   # image is built from the catalogue submodule's devpi folder.
+  # Hands devpi's volume to devpi's user (uid 10001) before devpi starts: a volume an older image filled as root
+  # would otherwise stop the server, which no longer starts as root. Changes nothing once the folder is devpi's.
+  devpi-data-owner:
+    <<: *size-medium
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
+    # no build: the same image as devpi, built once there
+    pull_policy: never
+    user: "0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    volumes:
+      - devpi_data:/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['[ "$$(stat -c %u /data)" = 10001 ] || chown -R 10001:10001 /data']
+    restart: "no"
+
   devpi:
+    <<: *size-medium
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}devpi
+    depends_on:
+      devpi-data-owner:
+        condition: service_completed_successfully
     environment:
       DEVPI_INDEX: ${DEVPI_INDEX:-root/public}
       # root's password, set by the image's entrypoint at start: whoever is root can publish what the

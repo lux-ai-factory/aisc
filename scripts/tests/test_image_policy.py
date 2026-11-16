@@ -1,7 +1,7 @@
 """The rules every image of the stack keeps, checked over the compose files and every Dockerfile in the checkout.
 
 - Every third-party image, in compose and on a FROM line, carries an exact tag (major.minor.patch, or major.minor
-  for an image released that way) or a digest, so a rebuild or a pull next month runs what was tested.
+  for an image released that way) and its digest, so a rebuild or a pull next month runs what was tested.
 - Every image the stack builds ends as a user other than root: a USER in its last stage, a compose `user:`, or a
   base image known to run unprivileged.
 - Every build context has a .dockerignore (or a <Dockerfile>.dockerignore beside its Dockerfile), so a build does
@@ -27,68 +27,30 @@ COMPOSE_FILES = sorted(ROOT.glob("docker-compose*.yml"))
 
 #: base images whose own last USER is not root
 UNPRIVILEGED_BASES = ("nginxinc/nginx-unprivileged",)
-#: images whose releases are numbered major.minor, with no patch number: that tag is exact
-TWO_PART_RELEASES = ("dpage/pgadmin4",)
+#: images whose releases are numbered major.minor, with no patch number (PostgreSQL since 10): that tag is exact
+TWO_PART_RELEASES = ("dpage/pgadmin4", "postgres")
 
 FROZEN = "the engine's image (apps/backend, apps/eval, apps/webapp) is upstream's: report only"
-#: a submodule's own Dockerfile: pinned there, in a commit of that repository, which takes it off this list
-SUBMODULE_BASE = "a submodule's base image: pinned in that repository's own commit"
-#: a root Dockerfile's base: pinned in the next root commit that touches it
-ROOT_BASE = "a root image's base: pinned in the next root commit that touches its Dockerfile"
-#: needs a live start of the service once it runs unprivileged: it may write inside the image or to a volume
-#: made by root
-NEEDS_A_LIVE_START = "runs as root until a USER is added and the service is started live with it"
+#: upstream's staging files are not edited here: their images are listed in the upstream coordination note
+UPSTREAM_STAGING = "upstream's staging file: listed in upstream-coordination.md"
 
-#: (file, image) pairs whose tag floats, with why each is allowed for now
+#: (file, image) pairs not pinned by version and digest, with why each is allowed
 FLOATING_TAGS = {
-    **{(f, "postgres:15-alpine"): "the stack's Postgres: pinned together with every throwaway bed "
-                                  "(test_throwaway_images.py), whose dumps are compared with the stack's"
-       for f in ("docker-compose-infra.development.yml", "docker-compose-infra.staging.yml",
-                 "docker-compose.development.yml", "docker-compose.engine-standalone.yml")},
-    **{("docker-compose.staging.yml", f"ghcr.io/lux-ai-factory/aisc-{name}:wip-plugins"): FROZEN
+    **{("docker-compose-infra.staging.yml", image): UPSTREAM_STAGING for image in (
+        "caddy:2.10.2", "rabbitmq:3.13.7-management", "redis:7.4.11-alpine", "postgres:15-alpine",
+        "quay.io/keycloak/keycloak:26.6.3")},
+    **{("docker-compose.staging.yml", f"ghcr.io/lux-ai-factory/aisc-{name}:wip-plugins"): UPSTREAM_STAGING
        for name in ("webapp", "backend", "eval")},
-    ("apps/backend/Dockerfile", "ghcr.io/astral-sh/uv:python3.12-alpine"): FROZEN,
-    ("apps/eval/Dockerfile", "ghcr.io/astral-sh/uv:python3.12-bookworm-slim"): FROZEN,
-    ("apps/eval/Dockerfile.dev", "python:3.12-slim-bookworm"): FROZEN,
-    ("apps/webapp/Dockerfile", "node:22-alpine"): FROZEN,
-    ("apps/webapp/Dockerfile", "nginx:stable-alpine"): FROZEN,
-    ("apps/webapp/Dockerfile.dev", "node:22-alpine"): FROZEN,
-    ("apps/catalogue/frontend/Dockerfile", "nginxinc/nginx-unprivileged:1.27-alpine"): SUBMODULE_BASE,
-    ("apps/catalogue/frontend/Dockerfile", "node:22-alpine"): SUBMODULE_BASE,
-    ("apps/control-objectives/Dockerfile", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/controls/Dockerfile", "node:20-bookworm-slim"): SUBMODULE_BASE,
-    ("apps/controls/services/pdf_renderer/Dockerfile", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/qualification/Dockerfile", "node:20-alpine"): SUBMODULE_BASE,
-    ("apps/qualification/services/agents/Dockerfile.stack", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/qualification/services/ontology/Dockerfile", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/qualification/services/prefill/Dockerfile", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/qualification/services/system_card_renderer/Dockerfile", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/report-generator/Dockerfile", "python:3.12-slim"): SUBMODULE_BASE,
-    ("apps/report-composer/Dockerfile", "python:3.12-slim"): ROOT_BASE,
-    ("infra/minio/Dockerfile", "alpine:3.22"): ROOT_BASE,
-    ("infra/minio/Dockerfile", "golang:1.24-alpine"): ROOT_BASE,
-    ("infra/plugin-publisher/Dockerfile", "python:3.12-slim"): ROOT_BASE,
-    ("platform/Dockerfile", "python:3.12-slim-bookworm"): ROOT_BASE,
 }
 
 #: services whose image runs as root, with why each is allowed for now
 ROOT_USERS = {
-    "aisc-backend": FROZEN,
-    "aisc-eval-worker": FROZEN,
-    "aisc-webapp": FROZEN,
-    **{service: NEEDS_A_LIVE_START for service in (
-        "minio", "controls-pdf", "controls-web", "qualification-prefill", "qualification-agents",
-        "qualification-ontology", "qualification-pdf", "control-objectives", "report-composer", "plugin-publisher",
-        "platform", "devpi")},
+    "aisc-eval-worker": "switches to a uid of its own for each run, which only root can do",
+    "plugin-publisher": "builds each plugin as an unprivileged builder user, which only root can switch to",
 }
 
 #: build contexts without a .dockerignore, with why each is allowed for now
-NO_DOCKERIGNORE = {
-    "apps/webapp": FROZEN,
-    **{context: "sends the whole folder to the daemon until it has one" for context in (
-        "infra/minio", "inspector/schema-docs", "apps/qualification/services/agents", "apps/report-composer",
-        "apps/results-dashboard", "platform", "apps/catalogue/devpi")},
-}
+NO_DOCKERIGNORE: dict[str, str] = {}
 
 #: Dockerfiles nothing builds, with why each is kept
 UNBUILT: dict[str, str] = {
@@ -185,12 +147,15 @@ def runs_as(stage_list: list[Stage], target: str | None) -> tuple[str | None, st
 
 
 def exact(image: str) -> bool:
-    if "@sha256:" in image:
-        return True
-    name, _, tag = image.rpartition(":")
-    if not name or "/" in tag:
+    """name:version@sha256:<64 hex>: an exact version (major.minor.patch, or major.minor for an image released
+    that way) and its digest. A tag alone can be moved; a digest alone says nothing of what it is."""
+    name, _, digest = image.partition("@sha256:")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
         return False
-    version = r"v?\d+\.\d+(?=$|[-_])" if name in TWO_PART_RELEASES else r"v?\d+\.\d+\.\d+(?=$|[-_])"
+    base, _, tag = name.rpartition(":")
+    if not base or "/" in tag:
+        return False
+    version = r"v?\d+\.\d+(?=$|[-_])" if base in TWO_PART_RELEASES else r"v?\d+\.\d+\.\d+(?=$|[-_])"
     return re.match(version, tag) is not None
 
 
@@ -242,11 +207,13 @@ def test_every_dockerfile_is_built_by_compose():
 
 def test_the_policy_reads_what_it_should():
     """The parsing above, on shapes the checkout has: a stage chain, an ARG base, a target, a digest."""
-    assert exact("caddy:2.10.2") and exact("dpage/pgadmin4:9.18") and exact("x@sha256:" + "0" * 64)
-    assert exact("redis:7.4.11-alpine") and exact("quay.io/oauth2-proxy/oauth2-proxy:v7.13.0")
-    assert not exact("redis:7-alpine") and not exact("python:3.12-slim") and not exact("rabbitmq:3-management")
-    assert not exact("dpage/pgadmin4:9") and not exact("alpine:3.22")
-    assert not exact("localhost:5000/image")
+    d = "@sha256:" + "0" * 64
+    assert exact("caddy:2.10.2" + d) and exact("dpage/pgadmin4:9.18" + d) and exact("postgres:15.19-alpine" + d)
+    assert exact("redis:7.4.11-alpine" + d) and exact("quay.io/oauth2-proxy/oauth2-proxy:v7.13.0" + d)
+    assert not exact("caddy:2.10.2") and not exact("x" + d)
+    assert not exact("redis:7-alpine" + d) and not exact("python:3.12-slim" + d) and not exact("rabbitmq:3-management" + d)
+    assert not exact("dpage/pgadmin4:9" + d) and not exact("alpine:3.22" + d) and not exact("postgres:15-alpine" + d)
+    assert not exact("localhost:5000/image" + d)
     assert len(builds()) > 10 and third_party_images()
     chain = [Stage("deps", "python:3.12.15-slim", "app"), Stage(None, "deps")]
     assert runs_as(chain, None) == ("app", "python:3.12.15-slim")

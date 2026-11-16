@@ -112,6 +112,22 @@ jobs:
           cd scripts/tests && uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]'
           python -m pytest -q -p no:cacheprovider -p no:warnings
 
+  # Every lock of the checkout, submodules included, against published advisories: a high or critical one fails
+  # (scripts/audit-dependencies.sh; accepted advisories with a date in scripts/audit-accepted.txt)
+  advisories:
+    name: dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: astral-sh/setup-uv@v5
+      - run: bash scripts/audit-dependencies.sh
+
   # Windows: the public submodules check out (no file name Windows refuses, Linux line endings kept), and the
   # install script's own tests pass there. Docker cannot run Linux containers on this runner, so the stack itself
   # is not started; that is proven on Linux.
@@ -191,6 +207,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - working-directory: ${{ matrix.service }}
         run: |
+          if [ -f overrides.txt ]; then
+            # as its image installs: overrides.txt raises pins of requirements.txt's packages, which uv run cannot
+            uv venv -q --python 3.12 "$RUNNER_TEMP/service"
+            VIRTUAL_ENV="$RUNNER_TEMP/service" uv pip install -q -r requirements.txt --override overrides.txt pytest httpx
+            "$RUNNER_TEMP/service/bin/python" -m pytest -q -p no:cacheprovider -p no:warnings
+            exit
+          fi
           dev=""
           [ -f requirements-dev.txt ] && dev="--with-requirements requirements-dev.txt"
           # shellcheck disable=SC2086

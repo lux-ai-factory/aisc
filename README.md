@@ -45,7 +45,7 @@ uv run scripts/aisc.py start
 ```
 
 Then open the address the last message of `start` gives (<http://localhost:8100> unless it moved) and sign in
-with the account that message names (`admin` / `admin` on a new install).
+as `admin` with the password `uv run scripts/aisc.py password` shows (each install gets its own).
 
 The first start builds AISC's images on your computer and downloads the others (27 in all), so it takes a while.
 Later starts are quick.
@@ -149,11 +149,12 @@ your passwords.
 
 1. Open the address the last message of `start` gives in your browser. It is <http://localhost:8100> unless that
    port was taken and `start` moved it.
-2. Sign in with the account named in the last message of `start`. On a new install that is `admin` / `admin`
-   (a second account, `user` / `user`, has ordinary rights). These simple passwords are safe here because the
-   sign-in only works from your own computer. An install served to others over https gets generated
-   passwords instead, and `rotate-infra-password` changes them; both are kept as `AISC_ADMIN_PASSWORD` and
-   `AISC_USER_PASSWORD` in `env.secrets`. Show them with `uv run scripts/aisc.py password`.
+2. Sign in as `admin` (a second account, `user`, has ordinary rights). Every install gets its own generated
+   passwords for both: show them with `uv run scripts/aisc.py password`. They are kept as `AISC_ADMIN_PASSWORD`
+   and `AISC_USER_PASSWORD` in `env.secrets`, and `rotate-infra-password` changes them. An install made before
+   may still be on `admin` / `admin` and `user` / `user`: `start` then says which command changes each.
+   AISC answers on this computer only. To reach it from other machines on your network, set `AISC_LAN=on` in
+   `env.local` and run `start` again (an install served over https is reachable anyway).
 3. Click **Create project** and give the project a name.
 4. Work through the four steps on the project page. Each card has an **Open** link.
 
