@@ -96,7 +96,7 @@ def test_an_older_volume_loses_the_unused_platform_schemas_and_the_catalogue_log
 def _post_project(bed) -> dict:
     code = ("import json; from fastapi.testclient import TestClient; from platform_service.app import app\n"
             "c = TestClient(app); r = c.post('/projects', json={'name': 'fresh volume probe'})\n"
-            "print(json.dumps({'status': r.status_code, 'body': r.json() if r.content else None}))\n")
+            "print('PROBE ' + json.dumps({'status': r.status_code, 'body': r.json() if r.content else None}))\n")
     env = {**os.environ, "PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
            "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform"),
            "PLATFORM_MIGRATE_DATABASE_URL": bed.dsn("platform_migrator", "platform"), "AUTH_ENABLED": "false",
@@ -104,7 +104,8 @@ def _post_project(bed) -> dict:
            "PYTHONPATH": f"{ROOT / 'platform'}:{ROOT / 'shared/identity'}"}
     r = subprocess.run(["uv", "run", "--quiet", "--extra", "dev", "python", "-c", code], cwd=ROOT / "platform",
                        env=env, capture_output=True, text=True, timeout=300)
-    lines = r.stdout.strip().splitlines()
+    # the platform's own JSON log lines share stdout (some come at exit): the probe's document is marked
+    lines = [line[len("PROBE "):] for line in r.stdout.splitlines() if line.startswith("PROBE ")]
     try:
         return json.loads(lines[-1])
     except (IndexError, json.JSONDecodeError):
