@@ -11,7 +11,7 @@ from psycopg import errors
 from psycopg.rows import dict_row
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
-from platform_service import dashboard_bridge, db, projectdb, proof_store, targets
+from platform_service import dashboard_bridge, db, projectdb, proof_store, run_purge, targets
 from platform_service.membership import validate_role
 from platform_service.projects import normalise_name, slug_for, validate_slug
 from platform_service.routes.admission import ADMIN_ROLE, last_owner, no_project, owner_or_403, role_or_404
@@ -440,3 +440,39 @@ def latest_system_version(project: str, caller: Caller = Depends(caller_dependen
     if not exists:
         raise no_project(project)
     return found
+
+
+class PurgeRunIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: why the run goes (a data subject's request, a mistaken upload); kept in the tombstone and the ledger
+    reason: StrictStr = Field(min_length=1, max_length=500)
+    #: the run's id again, so a run is deleted only when named twice
+    confirm: StrictStr
+
+    @field_validator("reason")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be empty")
+        return value
+
+
+@router.delete("/projects/{slug}/runs/{evaluation_pid}")
+def purge_run(slug: str, evaluation_pid: str, body: PurgeRunIn, caller: Caller = Depends(caller_dependency)) -> dict:
+    """Delete one run: its measures, artifacts and recorded calls. Only an owner, only with a reason and the
+    run's id typed again. The run's row stays, marked purged, and the trace keeps a tombstone per run."""
+    owner_or_403(slug, caller)
+    if body.confirm.strip().lower() != evaluation_pid.lower():
+        raise HTTPException(status_code=422, detail="type the run's id exactly to delete it")
+    found = db.get_project(slug)
+    if found is None:
+        raise no_project(slug)
+    try:
+        return run_purge.purge_run(found["pid"], evaluation_pid, caller.subject, body.reason)
+    except run_purge.NoSuchRun:
+        raise HTTPException(status_code=404, detail="the project has no such run") from None
+    except run_purge.EngineNotReady:
+        raise HTTPException(status_code=503, detail="the engine has not set up this project's database yet") from None
+    except errors.InvalidTextRepresentation:
+        raise HTTPException(status_code=404, detail="the project has no such run") from None

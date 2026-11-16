@@ -44,6 +44,7 @@ platform	platform/platform_service/routes/projects.py	remove_project_member	its 
 platform	platform/platform_service/routes/projects.py	create_system_version	its event is written one layer down, in the change's own transaction: card_version.created (db.create_version)
 platform	platform/platform_service/routes/projects.py	revise_system_version	its event is written one layer down, in the change's own transaction: card_version.revised (db.revise_version)
 platform	platform/platform_service/routes/projects.py	abandon_system_version	its event is written one layer down, in the change's own transaction: card_version.abandoned (db.abandon_version)
+platform	platform/platform_service/routes/projects.py	purge_run	its event is written one layer down, in the change's own transaction: run.purged (run_purge.purge_run)
 platform	platform/platform_service/routes/connections.py	sync_targets	its event is written one layer down, in the change's own transaction: targets.synced (targets.sync)
 platform	platform/platform_service/routes/connections.py	upload_target_file	its event is written one layer down, in the change's own transaction: target.file.uploaded (target_store.set_file)
 platform	platform/platform_service/routes/llm.py	save_llm_provider	its event is written one layer down, in the change's own transaction: llm.provider.saved (llm_store.save_provider)
