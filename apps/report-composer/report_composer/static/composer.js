@@ -397,6 +397,8 @@
     if (res.ok && !layoutId) { unsaved = false; location.href = main.dataset.base + "/layouts/" + res.data.id; return true; }
     if (res.ok) {
       revision = res.data.revision;
+      const asked = main.querySelector("[data-generate-revision]");
+      if (asked) asked.value = String(revision);
       unsaved = false;
       showProblems([]);
       if (state) state.textContent = "Saved (revision " + revision + ")";
@@ -417,6 +419,21 @@
     showProblems(err && err.details && err.details.length ? err.details : [{ message: errorText(res) }]);
     return false;
   }
+
+  // Generate and download: of the saved revision only, which the page names; unsaved changes are saved first
+  // when the person says so.
+  let askedFirst = false;
+  main.addEventListener("submit", async function (ev) {
+    const by = ev.submitter;
+    if (askedFirst || !unsaved || !by || !layoutId || !(by.getAttribute("formaction") || "").endsWith("/download-report")) return;
+    ev.preventDefault();
+    const go = await ask("This layout has unsaved changes. Generate and download makes the report of the saved " +
+                         "revision " + revision + ", not of the preview of your changes. Save the changes and " +
+                         "generate the report of the new revision?", "Save and generate");
+    if (!go || !(await save())) return;
+    askedFirst = true;
+    try { ev.target.requestSubmit(by); } finally { askedFirst = false; }
+  });
 
   // A new section from the "+ Add a section" menu: its row and its form, from the palette's template
   function add(typeId) {

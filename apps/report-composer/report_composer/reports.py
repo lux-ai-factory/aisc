@@ -118,6 +118,21 @@ def cut_off_before(request):
     return request.app.state.clock() - timedelta(minutes=GENERATION_WINDOW_MINUTES)
 
 
+def expected_revision(value) -> int | None:
+    """The layout revision a generate request says the person was looking at: a whole number from 1, or None
+    when it names none. Anything else is refused (422)."""
+    if value is None or value == "":
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = 0
+    if isinstance(value, bool) or number < 1:
+        raise ApiError(422, "invalid_request", "revision must be a whole number from 1.",
+                       [{"pointer": "/revision", "message": "must be a whole number from 1"}])
+    return number
+
+
 def report_row(row: dict) -> dict:
     """A generated report as the reports list answers it, with the inclusive last day of its period."""
     return {**row, "last_day": (lambda d: d.isoformat() if d else None)(data_selection.last_day(row.get("period_to")))}
@@ -132,8 +147,10 @@ def _error(code, message, details=()) -> dict:
 
 
 def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, anchor=None,
-           declared=None) -> tuple[str, dict]:
+           declared=None, expected_revision=None) -> tuple[str, dict]:
     """Checks the saved layout and records a running report with its snapshot: (report id, snapshot).
+    `expected_revision`: the revision the person was looking at; a layout saved since is refused (409), so
+    a report is never of a revision other than the one shown.
 
     The layout row stays locked until the caller's transaction ends, so two generations of one
     layout cannot both pass the running-report check.
@@ -144,6 +161,12 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
         raise ApiError(404, "not_found", NO_LAYOUT)
     if not layout["blocks"]:
         raise ApiError(422, "empty_layout", "A layout without blocks cannot be generated.")
+    if expected_revision is not None and layout.get("revision") is not None \
+            and layout["revision"] != expected_revision:
+        raise ApiError(409, "stale_revision",
+                       f"The layout was saved meanwhile; the current revision is {layout['revision']}. No report was"
+                       f" generated: open revision {layout['revision']} to generate it.",
+                       [{"current_revision": layout["revision"]}])
     system, sel = check_choice(conn, choice or {})
     fail_on(layouts.validate_layout(
         layout["blocks"], block_types=block_types(request),
@@ -199,7 +222,8 @@ def _pdf_copy(renderer, snapshot) -> tuple[bytes | None, str | None]:
     return (pdf, None) if len(pdf) <= MAX_PDF_BYTES else (None, "too_large")
 
 
-def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, record=None) -> tuple[int, dict]:
+def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, record=None,
+             expected_revision=None) -> tuple[int, dict]:
     """One generation at a time per layout; the snapshot is stored before the renderer runs. Every
     read and write is in the project's own database. `record(conn, outcome)`, the caller's ledger event,
     runs in the transaction that finishes the report (outcome_fields says what it holds). The ledger
@@ -212,7 +236,8 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
         found = db.get_layout(conn, layout_id, builtin_ok=True)
     declared = declared_charts.for_snapshot(request, project, (found or {}).get("blocks"))
     with projects.connect(project["pid"]) as conn:
-        report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor, declared)
+        report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor, declared,
+                                     expected_revision)
     outcome = {"report_id": report_id, "system_id": snapshot["system_id"], "format": fmt,
                "card_revision": snapshot.get("card_revision"), "pinned_at": snapshot.get("pinned_at"),
                "layout": snapshot["layout"], "anchor": anchor, "selection": snapshot.get("selection")}

@@ -257,8 +257,10 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
     choice["other_versions"] = typed["other_versions"]
     fmt = typed["format"] if typed["format"] in reports.FORMATS else "pdf"
     try:
+        expected = reports.expected_revision(form.get("revision"))
         status, body = await run_in_threadpool(
             reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
+            expected_revision=expected,
             record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
                                                **reports.outcome_fields(o)))
     except ApiError as e:
@@ -298,8 +300,10 @@ async def download_report(request: Request, ref: str, layout_id: str):
         return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}?{query}#reports",
                                 status_code=303)
     try:
+        expected = reports.expected_revision(form.get("revision"))
         status, body = await run_in_threadpool(
             reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
+            expected_revision=expected,
             record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
                                                **reports.outcome_fields(o)))
     except ApiError as e:
