@@ -104,7 +104,7 @@ _ACTIONS = [
     _a("flower.request", 0, (), "request", origin="platform", per_request=None),
     _a("pgadmin.request", 0, (), "request", origin="platform", per_request=None),
     _a("ledger.rejected", 0, (), "event", origin="platform", actor_kinds=("system",), per_request=None,
-       details_keys=("reason", "digest")),
+       details_keys=("reason", "digest", "refused_action")),
     # a frozen content redacted on the operator's word (secret_cleanup.py), appended by the platform itself
     _a("ledger.content.redacted", 0, (), "ledger", origin="platform", actor_kinds=("system",), per_request=None,
        details_keys=("event_ids", "reason", "count")),

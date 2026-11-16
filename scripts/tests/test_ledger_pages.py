@@ -96,3 +96,42 @@ def test_the_step_filter_and_column_name_the_steps():
     assert ">requests<" not in html and "<option>1</option>" not in html
     assert "cell(STEPS[e.step] || e.step" in html
     assert "<th>Module</th>" in html and "<th>App</th>" not in html
+
+
+_ROWS_HARNESS = r"""
+const vm = require('vm');
+const [source, events] = [process.argv[2], JSON.parse(process.argv[3])];
+const els = {};
+const el = (id) => els[id] || (els[id] = mk('div'));
+function mk(tag) {
+  return {tagName: tag, children: [], className: '', hidden: false, disabled: false, _t: '',
+          get textContent() { return this._t + this.children.map((c) => c.textContent).join(''); },
+          set textContent(v) { this._t = String(v); this.children = []; },
+          appendChild(c) { this.children.push(c); return c; }, addEventListener() {}};
+}
+class FormData { constructor() {} *[Symbol.iterator]() {} }
+const answer = (body) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+const ctx = {document: {getElementById: el, createElement: mk}, FormData, URLSearchParams, console, setTimeout,
+             encodeURIComponent, location: {replace() {}}, window: {location: {search: '?project=demo'}},
+             fetch: (url) => answer(url.includes('/ledger/events') ? {events, next: null} : null)};
+vm.createContext(ctx);
+vm.runInContext(source, ctx);
+setTimeout(() => console.log(JSON.stringify(els['rows'].children.map((tr) => tr.children.map((td) => td.textContent)))), 50);
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_an_entry_the_ledger_refused_names_the_refused_action(tmp_path):
+    """An owner reads on the Activity log what the ledger refused (for example a checklist install), and why."""
+    import json
+    (tmp_path / "h.js").write_text(_ROWS_HARNESS)
+    refused = {"seq": 7, "occurred_at": "2026-11-16T10:00:00Z", "actor": {"kind": "system"}, "step": 0,
+               "action": "ledger.rejected", "item_type": "event", "item_id": "e-1", "source_app": "controls",
+               "outcome": "refused", "details": {"reason": "project_mismatch", "refused_action": "control.installed"}}
+    older = dict(refused, seq=6, details={"reason": "missing_request"})      # an entry from before the key
+    r = subprocess.run(["node", str(tmp_path / "h.js"), scripts(LOGS.read_text())[0], json.dumps([refused, older])],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-1500:]
+    rows = json.loads(r.stdout)
+    assert rows[0][-1] == "refused: project_mismatch (control.installed)", rows
+    assert rows[1][-1] == "refused: missing_request", rows
