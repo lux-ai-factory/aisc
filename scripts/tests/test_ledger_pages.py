@@ -24,7 +24,7 @@ def scripts(html: str) -> list[str]:
 def test_the_page_reads_the_verified_events_route_and_never_writes_html():
     html = LOGS.read_text()
     assert "/ledger/events" in html and "innerHTML" not in html
-    assert "'Integrity check failed: ' + res.body.detail" in html     # a 409 is shown, not hidden
+    assert "'Integrity check failed: ' + detail" in html     # a 409 is shown, not hidden
     assert "ALARM" not in html
 
 
@@ -67,7 +67,7 @@ def test_paging_keeps_the_submitted_filters_and_a_new_list_starts_empty():
     html = LOGS.read_text()
     assert "var q = new URLSearchParams(submitted);" in html
     start = html.index("if (reset || !submitted) {")
-    assert html.index("document.getElementById('rows').textContent = '';", start) < html.index("fetch(base", start)
+    assert html.index("document.getElementById('rows').textContent = '';", start) < html.index("aisc.call(base", start)
 
 
 def test_the_log_is_a_carousel_of_20():
@@ -80,7 +80,7 @@ def test_the_log_is_a_carousel_of_20():
     assert 'id="more"' not in html and "Older entries" not in html
     assert '<span class="pos" id="pos"></span>' in html
     js = scripts(html)[0]
-    fetched = js.index("fetch(base")
+    fetched = js.index("aisc.call(base")
     assert js.index("rows.textContent = '';", fetched) > fetched        # every page replaces the rows
     assert "want.push(next)" in js and "want.pop()" in js                # Newer goes back the way Older came
     assert js.index("cursors = want;") > js.index("if (!res.ok)")        # a failed read keeps the page's place
@@ -110,10 +110,13 @@ function mk(tag) {
           appendChild(c) { this.children.push(c); return c; }, addEventListener() {}};
 }
 class FormData { constructor() {} *[Symbol.iterator]() {} }
-const answer = (body) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+const answer = (body) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body),
+                                           text: () => Promise.resolve(JSON.stringify(body))});
 const ctx = {document: {getElementById: el, createElement: mk}, FormData, URLSearchParams, console, setTimeout,
-             encodeURIComponent, location: {replace() {}}, window: {location: {search: '?project=demo'}},
+             encodeURIComponent, decodeURIComponent, JSON,
+             location: {replace() {}, pathname: '/logs.html', search: '?project=demo'},
              fetch: (url) => answer(url.includes('/ledger/events') ? {events, next: null} : null)};
+ctx.window = ctx;   // a page's globals and window's are one: page.js's window.aisc is the page's aisc
 vm.createContext(ctx);
 vm.runInContext(source, ctx);
 setTimeout(() => console.log(JSON.stringify(els['rows'].children.map((tr) => tr.children.map((td) => td.textContent)))), 50);
@@ -129,7 +132,9 @@ def test_an_entry_the_ledger_refused_names_the_refused_action(tmp_path):
                "action": "ledger.rejected", "item_type": "event", "item_id": "e-1", "source_app": "controls",
                "outcome": "refused", "details": {"reason": "project_mismatch", "refused_action": "control.installed"}}
     older = dict(refused, seq=6, details={"reason": "missing_request"})      # an entry from before the key
-    r = subprocess.run(["node", str(tmp_path / "h.js"), scripts(LOGS.read_text())[0], json.dumps([refused, older])],
+    page_js = (ROOT / "homepage/assets/page.js").read_text()     # loaded before the page's own script
+    r = subprocess.run(["node", str(tmp_path / "h.js"), page_js + "\n" + scripts(LOGS.read_text())[0],
+                        json.dumps([refused, older])],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-1500:]
     rows = json.loads(r.stdout)

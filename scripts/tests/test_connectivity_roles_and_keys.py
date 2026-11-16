@@ -61,7 +61,8 @@ function fetch(path, init) {
   if (path === '/api/projects/demo') body = {name: 'Demo'};
   else if (path === '/api/projects/demo/connectivity') body = s.connectivity;
   else if (path.endsWith('/models')) body = {models: [], error: 'not asked here'};
-  return Promise.resolve({ok: true, status: method === 'DELETE' ? 204 : 200, json: () => Promise.resolve(body)});
+  return Promise.resolve({ok: true, status: method === 'DELETE' ? 204 : 200, json: () => Promise.resolve(body),
+                          text: () => Promise.resolve(JSON.stringify(body))});
 }
 function confirm(text) { asked.push(String(text)); return false; }
 const win = {addEventListener() {}, confirm};
@@ -69,7 +70,13 @@ const ctx = {document, fetch, Node, URLSearchParams, encodeURIComponent, JSON, c
              location: {search: '?project=demo', hash: '', replace() {}}, setTimeout,
              history: {replaceState() {}}, window: win};
 vm.createContext(ctx);
-for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) vm.runInContext(m[1], ctx);
+for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  // the shared page.js, as the browser loads it (window's globals are the page's: aisc is window.aisc)
+  if (/\bsrc="\/assets\/page\.js"/.test(m[1])) {
+    vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(file), 'assets/page.js'), 'utf8'), ctx);
+    ctx.aisc = ctx.window.aisc;
+  } else vm.runInContext(m[2], ctx);
+}
 const wait = () => new Promise((r) => setTimeout(r, 60));
 const row = (name) => byId['connections'].children.find((tr) => tr.textContent.includes('(' + name + ')'));
 const box = (name, role) => row(name).querySelectorAll('input').find((i) => i.value === role);

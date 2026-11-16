@@ -118,33 +118,18 @@
 
 </div>
 
+<script src="/assets/page.js"></script>
 <script>
-  var slug = new URLSearchParams(location.search).get('project') || '';
+  var slug = aisc.project();
   // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
   // one ended on '/p/', "No project with the handle ."); throwing stops the rest of this script
   if (!slug) { location.replace('/'); throw new Error('no project'); }
   var enc = encodeURIComponent;
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
 
-  // The only request helper: same origin, the session cookie, JSON bodies.
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(path, {
-      method: opts.method || 'GET',
-      credentials: 'same-origin',
-      headers: opts.body ? {'Content-Type': 'application/json'} : {},
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    });
-  }
-
-  function bodyOf(res) {
-    return res.json().catch(function () { return null; });
-  }
-
-  // What went wrong, in the platform's words when it gave some.
-  function refusal(res, d) {
-    if (d && typeof d.detail === 'string') return d.detail;
-    return 'Refused (HTTP ' + res.status + ')';
+  // What went wrong, in the platform's words when it gave some (aisc.call's message), or that nothing answered.
+  function refusal(answer) {
+    return answer.status ? answer.message : NOT_ANSWERING;
   }
 
   function say(el, text, isError) {
@@ -183,22 +168,20 @@
 
   function boot() {
     document.getElementById('back').href = '/p/' + enc(slug);
-    api('/api/projects/' + enc(slug))
-      .then(function (res) {
-        if (!res.ok) {
-          return res.json().catch(function () { return null; }).then(function (body) {
-            show('page-message', notOpened(res.status, body));
-            return null;
-          });
+    aisc.call('/api/projects/' + enc(slug))
+      .then(function (answer) {
+        if (!answer.ok) {
+          show('page-message', answer.status ? notOpened(answer.status, answer.data) : NOT_ANSWERING);
+          return null;
         }
-        return res.json();
+        return answer.data;
       })
       .then(function (p) {
         if (!p) return null;
         document.getElementById('project-name').textContent = p.name;
         document.title = p.name + ' - Helper models';
-        return api('/api/authz/projects/' + enc(slug)).then(function (res) {
-          return res.ok ? res.json() : null;
+        return aisc.call('/api/authz/projects/' + enc(slug)).then(function (answer) {
+          return answer.ok ? answer.data : null;
         });
       })
       .then(function (a) {
@@ -219,16 +202,15 @@
   }
 
   function reload() {
-    return api(helpersPath())
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { show('page-message', refusal(res, d)); return; }
-          canManage = !!d.can_manage;
-          roles = d.roles;
-          helpers = d.helpers;
-          renderList();
-          renderForm();
-        });
+    return aisc.call(helpersPath())
+      .then(function (answer) {
+        var d = answer.data;
+        if (!answer.ok) { show('page-message', refusal(answer)); return; }
+        canManage = !!d.can_manage;
+        roles = d.roles;
+        helpers = d.helpers;
+        renderList();
+        renderForm();
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
   }
@@ -324,27 +306,23 @@
     if (typed) body.api_key = typed;              // absent keeps the stored key
     // the typed key stays in the field until the save succeeds (clearForm), so a refused save keeps it
     say(msg, 'Saving...');
-    api(helpersPath(document.getElementById('f-name').value.trim()), {method: 'PUT', body: body})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say(msg, refusal(res, d), true); return; }
-          clearForm();
-          say(msg, 'Saved.');
-          return reload();
-        });
+    aisc.call(helpersPath(document.getElementById('f-name').value.trim()), {method: 'PUT', body: body})
+      .then(function (answer) {
+        if (!answer.ok) { say(msg, refusal(answer), true); return; }
+        clearForm();
+        say(msg, 'Saved.');
+        return reload();
       })
       .catch(function () { say(msg, NOT_ANSWERING, true); });
   });
 
   function removeHelper(h, msg) {
     say(msg, 'Removing...');
-    api(helpersPath(h.name), {method: 'DELETE'})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok && res.status !== 404) { say(msg, refusal(res, d), true); return; }
-          if (editing === h.name) clearForm();
-          return reload();
-        });
+    aisc.call(helpersPath(h.name), {method: 'DELETE'})
+      .then(function (answer) {
+        if (!answer.ok && answer.status !== 404) { say(msg, refusal(answer), true); return; }
+        if (editing === h.name) clearForm();
+        return reload();
       })
       .catch(function () { say(msg, NOT_ANSWERING, true); });
   }
@@ -354,12 +332,11 @@
     var model = input.value.trim();
     if (!model) { say(msg, 'Type the model name to call first.', true); return; }
     say(msg, 'Testing...');
-    api(helpersPath(h.name) + '/test', {method: 'POST', body: {model: model}})
-      .then(function (res) {
-        return bodyOf(res).then(function (d) {
-          if (!res.ok) { say(msg, refusal(res, d), true); return; }
-          say(msg, d.detail, !d.ok);
-        });
+    aisc.call(helpersPath(h.name) + '/test', {method: 'POST', body: {model: model}})
+      .then(function (answer) {
+        var d = answer.data;
+        if (!answer.ok) { say(msg, refusal(answer), true); return; }
+        say(msg, d.detail, !d.ok);
       })
       .catch(function () { say(msg, NOT_ANSWERING, true); });
   }

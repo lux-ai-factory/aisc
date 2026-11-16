@@ -158,8 +158,9 @@
 
 </div>
 
+<script src="/assets/page.js"></script>
 <script>
-  var slug = new URLSearchParams(location.search).get('project') || '';
+  var slug = aisc.project();
   if (!slug) { location.replace('/'); throw new Error('no project'); }
   var enc = encodeURIComponent;
   var base = '/api/projects/' + enc(slug);
@@ -169,34 +170,15 @@
 
   var NOT_ANSWERING = 'The platform is not answering. Nothing was saved.';
 
-  // The only request helper: same origin, the session cookie, JSON bodies. Resolves {ok, status, body}, never
+  // The only request helper: page.js's aisc.call, JSON bodies. Resolves {ok, status, data, message}, never
   // rejects: nothing answering is status 0.
   function api(path, method, body) {
-    return fetch(path, {
-      method: method || 'GET', credentials: 'same-origin',
-      headers: body ? {'Content-Type': 'application/json'} : {},
-      body: body ? JSON.stringify(body) : undefined
-    }).then(function (res) {
-      return res.json().catch(function () { return null; }).then(function (b) {
-        return {ok: res.ok, status: res.status, body: b};
-      });
-    }, function () {
-      return {ok: false, status: 0, body: null};
-    });
+    return aisc.call(path, {method: method || 'GET', body: body || undefined});
   }
 
-  // the platform's own words: its sentence, or its field errors listed (FastAPI's 422)
+  // the platform's own words (its sentence, or its field errors listed), or that nothing answered
   function refusal(r) {
-    if (r.status === 0) return NOT_ANSWERING;
-    var d = r.body && r.body.detail;
-    if (typeof d === 'string' && d) return d;
-    if (Array.isArray(d) && d.length) {
-      return d.map(function (e) {
-        var field = e && Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : '';
-        return (field ? field + ': ' : '') + (e && e.msg ? e.msg : String(e));
-      }).join('; ');
-    }
-    return 'Refused (HTTP ' + r.status + ')';
+    return r.status === 0 ? NOT_ANSWERING : r.message;
   }
 
   // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
@@ -326,10 +308,10 @@
     if (!c || !c.provider) return;
     note.textContent = 'Asking ' + c.label + ' for its models…';
     api(base + '/connections/' + enc(c.name) + '/models').then(function (r) {
-      var models = (r.ok && r.body && r.body.models) || [];
+      var models = (r.ok && r.data && r.data.models) || [];
       models.forEach(function (m) { choices.appendChild(el('option')).value = m; });
       if (models.length) { note.textContent = models.length + ' models: click the box to pick one.'; return; }
-      var why = (r.body && (r.body.error || r.body.detail)) || (r.status ? 'HTTP ' + r.status : 'the platform is not answering');
+      var why = (r.data && (r.data.error || r.data.detail)) || (r.status ? 'HTTP ' + r.status : 'the platform is not answering');
       note.textContent = 'The list could not be read (' + why + '): type the model name.';
     });
   }
@@ -438,7 +420,7 @@
   function reload() {
     return api('/api/projects/' + enc(slug) + '/connectivity').then(function (r) {
       if (!r.ok) { $('page-message').textContent = refusal(r); $('page-message').hidden = false; return; }
-      data = r.body;
+      data = r.data;
       $('content').hidden = false;
       render();
     });
@@ -480,9 +462,9 @@
   // ---- start: the project, then the page's one read ----
   $('back').href = '/p/' + enc(slug);
   api(base).then(function (r) {
-    if (!r.ok) { $('page-message').textContent = notOpened(r.status, r.body); $('page-message').hidden = false; return; }
-    $('project-name').textContent = r.body.name;
-    document.title = r.body.name + ' - Connectivity';
+    if (!r.ok) { $('page-message').textContent = notOpened(r.status, r.data); $('page-message').hidden = false; return; }
+    $('project-name').textContent = r.data.name;
+    document.title = r.data.name + ' - Connectivity';
     $('who').textContent = 'signed in';
     show(location.hash.slice(1));
     return reload();

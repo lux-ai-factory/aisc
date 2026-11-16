@@ -30,7 +30,7 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
     # one inline script, and the shared origins helper (no link names localhost)
-    assert scripts == [' src="/assets/origins.js"', ""], scripts
+    assert scripts == [' src="/assets/origins.js"', ' src="/assets/page.js"', ""], scripts
     assert re.search(r"<title>AI Assessment Sandbox - ", html)
 
 
@@ -353,7 +353,7 @@ def _report_tiles_body():
 
 def test_the_report_column_counts_the_versions_reports_and_links_the_newest():
     body = _report_tiles_body()
-    assert "api('/api/projects/' + enc(slug) + '/reports?version=' + enc(data.version.pid))" in body
+    assert "aisc.call('/api/projects/' + enc(slug) + '/reports?version=' + enc(data.version.pid))" in body
     assert "plural(d.count, 'report') + ' generated'" in body
     assert "d.latest.layout_name" in body
     assert "ENGINE + '/report-composer' + d.latest.download" in body

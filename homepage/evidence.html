@@ -222,9 +222,10 @@
 </div>
 
 <script src="/assets/origins.js"></script>
+<script src="/assets/page.js"></script>
 <script>
   var params = new URLSearchParams(location.search);
-  var slug = params.get('project') || '';
+  var slug = aisc.project();
   // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
   // one ended on '/p/', "No project with the handle ."); throwing stops the rest of this script
   if (!slug) { location.replace('/'); throw new Error('no project'); }
@@ -239,21 +240,8 @@
   var ENGINE = '';                          // the engine web app (assets/origins.js), set before the project loads
   var CONTROLS = '';                        // the controls app, under the engine's site
 
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(path, {
-      method: opts.method || 'GET',
-      credentials: 'same-origin',
-      headers: opts.body ? {'Content-Type': 'application/json'} : {},
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    });
-  }
-  function bodyOf(res) { return res.json().catch(function () { return null; }); }
-  function refusal(res, d) {
-    if (d && typeof d.detail === 'string') return d.detail;
-    if (d && Array.isArray(d.detail)) return d.detail.map(function (e) { return (e.loc || []).slice(-1)[0] + ': ' + e.msg; }).join('; ');
-    return 'Refused (HTTP ' + res.status + ')';
-  }
+  // what the platform said when it refused (aisc.call's message), or that nothing answered
+  function refusal(answer) { return answer.status ? answer.message : NOT_ANSWERING; }
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -416,8 +404,8 @@
       box.appendChild(el('p', 'empty', 'No report generated for this version yet.'));
       return;
     }
-    api('/api/projects/' + enc(slug) + '/reports?version=' + enc(data.version.pid))
-      .then(function (res) { return res.ok ? res.json() : null; })
+    aisc.call('/api/projects/' + enc(slug) + '/reports?version=' + enc(data.version.pid))
+      .then(function (answer) { return answer.ok ? answer.data : null; })
       .catch(function () { return null; })
       .then(function (d) {
         if (!d) { box.appendChild(el('p', 'empty', 'The reports could not be read right now.')); return; }
@@ -464,11 +452,10 @@
   }
 
   function load() {
-    return api('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
-      .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); })
-      .then(function (r) {
-        if (!r.res.ok) { show('page-message', refusal(r.res, r.d)); return; }
-        data = r.d;
+    return aisc.call('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
+      .then(function (answer) {
+        if (!answer.ok) { show('page-message', refusal(answer)); return; }
+        data = answer.data;
         versionBar();
         render();
         tileDeleted();
@@ -496,11 +483,10 @@
     button.addEventListener('click', function () {
       button.disabled = true;
       said.textContent = ' Making the tile…';
-      api('/api/projects/' + enc(slug) + '/dashboards/again', {method: 'POST', body: {plugin: deletedTile}})
-        .then(function (res) { return bodyOf(res).then(function (d) { return {res: res, d: d}; }); })
-        .then(function (r) {
-          if (r.res.ok && r.d && r.d.url) { location.href = r.d.url; return; }
-          said.textContent = ' Not made: ' + refusal(r.res, r.d);
+      aisc.call('/api/projects/' + enc(slug) + '/dashboards/again', {method: 'POST', body: {plugin: deletedTile}})
+        .then(function (answer) {
+          if (answer.ok && answer.data && answer.data.url) { location.href = answer.data.url; return; }
+          said.textContent = ' Not made: ' + refusal(answer);
           button.disabled = false;
         })
         .catch(function () { said.textContent = ' ' + NOT_ANSWERING; button.disabled = false; });
@@ -527,8 +513,8 @@
   // Manage, as on the project page: the account for anyone signed in, the rest by role. The platform decides
   // who is what; Delete stays on the project page.
   function manageMenu(p) {
-    api('/api/authz/projects/' + enc(slug))
-      .then(function (res) { return res.ok ? res.json() : null; })
+    aisc.call('/api/authz/projects/' + enc(slug))
+      .then(function (answer) { return answer.ok ? answer.data : null; })
       .catch(function () { return null; })
       .then(function (a) {
         if (!a || !(a.role || a.admin)) return;   // members see the menu, strangers nothing
@@ -575,16 +561,14 @@
       .then(function () {
         ENGINE = window.aiscOrigin('engine');
         CONTROLS = ENGINE + '/controls';
-        return api('/api/projects/' + enc(slug));
+        return aisc.call('/api/projects/' + enc(slug));
       })
-      .then(function (res) {
-        if (!res.ok) {
-          return res.json().catch(function () { return null; }).then(function (body) {
-            show('page-message', notOpened(res.status, body));
-            return null;
-          });
+      .then(function (answer) {
+        if (!answer.ok) {
+          show('page-message', answer.status ? notOpened(answer.status, answer.data) : NOT_ANSWERING);
+          return null;
         }
-        return res.json();
+        return answer.data;
       })
       .then(function (p) {
         if (!p) return null;
@@ -602,8 +586,8 @@
         return load();
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
-    fetch('/oauth2/userinfo', {credentials: 'same-origin'})
-      .then(function (r) { return r.ok ? r.json() : null; })
+    aisc.call('/oauth2/userinfo')
+      .then(function (answer) { return answer.ok ? answer.data : null; })
       .then(function (d) { $('who').textContent = d ? (d.preferredUsername || d.user || d.email || 'user') : 'signed in'; })
       .catch(function () { $('who').textContent = 'signed in'; });
   }

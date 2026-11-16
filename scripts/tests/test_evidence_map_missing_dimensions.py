@@ -49,12 +49,20 @@ function fetch(path) {
   if (path === '/api/projects/demo') body = {name: 'Demo'};
   else if (path.startsWith('/api/projects/demo/evidence')) body = s.evidence;
   else if (path.startsWith('/oauth2/')) body = {user: 'alice'};
-  return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+  return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body),
+                          text: () => Promise.resolve(JSON.stringify(body))});
 }
 const ctx = {document, fetch, Node, URLSearchParams, encodeURIComponent, JSON, console, Date,
              location: {search: '?project=demo', replace() {}}};
+ctx.window = ctx;   // a page's globals and window's are one
 vm.createContext(ctx);
-for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) vm.runInContext(m[1], ctx);
+for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  // the shared page.js, as the browser loads it (window's globals are the page's: aisc is window.aisc)
+  if (/\bsrc="\/assets\/page\.js"/.test(m[1])) {
+    vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(file), 'assets/page.js'), 'utf8'), ctx);
+    ctx.aisc = ctx.window.aisc;
+  } else vm.runInContext(m[2], ctx);
+}
 setTimeout(() => {
   const [thead, tbody] = byId['grid'].children;
   const heads = thead.children[0].children, cells = tbody.children[0].children;

@@ -126,11 +126,12 @@
 </main>
 </div>
 
+<script src="/assets/page.js"></script>
 <script>
   // Everything here is decided by the platform (platform_service/evidence.py): what may be linked, each
   // objective's coverage, who may review. The page shows it and sends the links back.
   var params = new URLSearchParams(location.search);
-  var slug = params.get('project') || '';
+  var slug = aisc.project();
   if (!slug) { location.replace('/'); throw new Error('no project'); }
   var version = params.get('version');
   var enc = encodeURIComponent;
@@ -152,16 +153,6 @@
     var d = new Date(iso);
     return [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join('.');
   }
-  function api(path, opts) {
-    opts = opts || {};
-    return fetch(path, {
-      method: opts.method || 'GET', credentials: 'same-origin',
-      headers: opts.body ? {'Content-Type': 'application/json'} : {},
-      body: opts.body ? JSON.stringify(opts.body) : undefined
-    }).then(function (res) {
-      return res.json().catch(function () { return null; }).then(function (d) { return {res: res, d: d}; });
-    });
-  }
   // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
   // its own words, with a reload to try again after a failure
   function notOpened(status, body) {
@@ -173,9 +164,7 @@
   }
 
   function refusal(r) {
-    if (r.d && typeof r.d.detail === 'string') return r.d.detail;
-    if (r.d && Array.isArray(r.d.detail)) return r.d.detail.map(function (e) { return (e.loc || []).slice(-1)[0] + ': ' + e.msg; }).join('; ');
-    return 'Refused (HTTP ' + r.res.status + ')';
+    return r.status ? r.message : NOT_ANSWERING;
   }
   function say(text, kind) { var m = $('msg'); m.textContent = text || ''; m.className = 'msg' + (kind ? ' ' + kind : ''); }
 
@@ -208,12 +197,12 @@
 
   function save(links, done) {
     say('Saving\u2026');
-    api('/api/projects/' + enc(slug) + '/evidence/links', {method: 'PUT', body: {
+    aisc.call('/api/projects/' + enc(slug) + '/evidence/links', {method: 'PUT', body: {
       version: data.version.pid,
       links: links.map(function (l) { return {objective_id: l.objective_id, kind: l.kind, key: l.key, note: l.note || null}; })
     }}).then(function (r) {
-      if (!r.res.ok) { say(refusal(r), 'err'); return; }
-      data = r.d; say('Saved.', 'ok'); render(); if (done) done();
+      if (!r.ok) { say(refusal(r), 'err'); return; }
+      data = r.data; say('Saved.', 'ok'); render(); if (done) done();
     }).catch(function () { say(NOT_ANSWERING, 'err'); });
   }
 
@@ -358,10 +347,10 @@
   }
 
   function load() {
-    return api('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
+    return aisc.call('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
       .then(function (r) {
-        if (!r.res.ok) { show('page-message', refusal(r)); return; }
-        data = r.d;
+        if (!r.ok) { show('page-message', refusal(r)); return; }
+        data = r.data;
         var select = $('version');
         select.textContent = '';
         (data.versions || []).forEach(function (v, i) {
@@ -394,22 +383,22 @@
     $('copy').addEventListener('click', function () { save(data.links.map(function (l) { return l; })); });
     $('mark-reviewed').addEventListener('click', function () {
       say('Saving\u2026');
-      api('/api/projects/' + enc(slug) + '/evidence/review', {method: 'POST', body: {version: data.version.pid}})
+      aisc.call('/api/projects/' + enc(slug) + '/evidence/review', {method: 'POST', body: {version: data.version.pid}})
         .then(function (r) {
-          if (!r.res.ok) { say(refusal(r), 'err'); return; }
-          data = r.d; say('Reviewed.', 'ok'); render();
+          if (!r.ok) { say(refusal(r), 'err'); return; }
+          data = r.data; say('Reviewed.', 'ok'); render();
         }).catch(function () { say(NOT_ANSWERING, 'err'); });
     });
-    api('/api/projects/' + enc(slug))
+    aisc.call('/api/projects/' + enc(slug))
       .then(function (r) {
-        if (!r.res.ok) { show('page-message', notOpened(r.res.status, r.d)); return null; }
-        $('project-name').textContent = r.d.name;
-        document.title = r.d.name + ' - Evidence map';
+        if (!r.ok) { show('page-message', r.status ? notOpened(r.status, r.data) : NOT_ANSWERING); return null; }
+        $('project-name').textContent = r.data.name;
+        document.title = r.data.name + ' - Evidence map';
         return load();
       })
       .catch(function () { show('page-message', NOT_ANSWERING); });
-    fetch('/oauth2/userinfo', {credentials: 'same-origin'})
-      .then(function (r) { return r.ok ? r.json() : null; })
+    aisc.call('/oauth2/userinfo')
+      .then(function (r) { return r.ok ? r.data : null; })
       .then(function (d) { $('who').textContent = d ? (d.preferredUsername || d.user || d.email || 'user') : 'signed in'; })
       .catch(function () { $('who').textContent = 'signed in'; });
   }

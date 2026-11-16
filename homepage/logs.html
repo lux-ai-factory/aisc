@@ -86,9 +86,10 @@
 </main>
 </div>
 <script src="/assets/ledger-beacon.js"></script>
+<script src="/assets/page.js"></script>
 <script>
   // Thin on purpose: the platform filters, verifies and names people; this page only lays rows out.
-  var slug = new URLSearchParams(window.location.search).get('project') || '';
+  var slug = aisc.project();
   // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
   // one ended on '/p/', "No project with the handle ."); throwing stops the rest of this script
   if (!slug) { location.replace('/'); throw new Error('no project'); }
@@ -139,17 +140,17 @@
     document.getElementById('newer').disabled = document.getElementById('older').disabled = true;
     var msg = document.getElementById('msg');
     msg.className = 'msg'; msg.textContent = 'loading...';
-    fetch(base + '?' + q.toString(), {credentials: 'same-origin'}).then(function (r) {
-      return r.json().then(function (body) { return {ok: r.ok, status: r.status, body: body}; });
-    }).then(function (res) {
+    aisc.call(base + '?' + q.toString()).then(function (res) {
       if (!res.ok) {
+        var detail = res.data && res.data.detail;
         msg.className = 'msg err';
-        msg.textContent = res.status === 409 ? 'Integrity check failed: ' + res.body.detail : (res.body.detail || 'not available');
+        msg.textContent = !res.status ? 'the log could not be read'
+          : res.status === 409 ? 'Integrity check failed: ' + detail : (detail || 'not available');
         return;
       }
       var rows = document.getElementById('rows');
       rows.textContent = '';
-      res.body.events.forEach(function (e) {
+      res.data.events.forEach(function (e) {
         var tr = document.createElement('tr');
         tr.appendChild(cell(e.seq, 'mono'));
         tr.appendChild(cell((e.occurred_at || '').replace('T', ' ').slice(0, 19), 'mono'));
@@ -168,7 +169,7 @@
       });
       // the page shown is now the one asked for; a refused or failed read keeps the old one and its place
       cursors = want;
-      next = res.body.next;
+      next = res.data.next;
       var first = cursors.length * PAGE + 1, n = rows.children.length;
       document.getElementById('pos').textContent = n ? 'entries ' + first + '–' + (first + n - 1) : '';
       document.getElementById('newer').disabled = !cursors.length;
@@ -184,8 +185,8 @@
   document.getElementById('filters').addEventListener('submit', function (ev) { ev.preventDefault(); load(true); });
   document.getElementById('older').addEventListener('click', function () { load(false, 'older'); });
   document.getElementById('newer').addEventListener('click', function () { load(false, 'newer'); });
-  fetch('/api/authz/projects/' + encodeURIComponent(slug), {credentials: 'same-origin'})
-    .then(function (r) { return r.ok ? r.json() : null; })
+  aisc.call('/api/authz/projects/' + encodeURIComponent(slug))
+    .then(function (r) { return r.ok ? r.data : null; })
     .then(function (a) {
       if (a && (a.admin || a.role === 'owner')) {
         var ex = document.getElementById('export');

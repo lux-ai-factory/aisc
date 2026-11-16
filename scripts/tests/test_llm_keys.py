@@ -98,8 +98,8 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
-    assert len(scripts) == 1, "exactly one inline <script>"
-    assert "src" not in scripts[0].lower(), "no external script"
+    # page.js (how every launcher page calls the platform), then exactly one inline script
+    assert [s.strip() for s in scripts] == ['src="/assets/page.js"', ''], scripts
 
 
 def test_non_admins_are_told_and_no_llm_call_is_made_first():
@@ -147,14 +147,13 @@ def test_csp_and_injection_safe():
     assert not re.search(r"\.on[a-z]+\s*=", script), "property event handler; use addEventListener"
     assert "innerHTML" not in html and "outerHTML" not in html and "insertAdjacentHTML" not in html
     assert "document.write" not in script and "eval(" not in script
-    calls = re.findall(r"fetch\(\s*([^,)]+)", script)
-    assert calls, "no fetch at all"
+    # every call goes through page.js (same-origin, with the person's sign-in, JSON bodies)
+    calls = re.findall(r"aisc\.call\(\s*([^,)]+)", script)
+    assert calls, "no call at all"
+    assert "fetch(" not in script
     for arg in calls:
         assert not re.search(r"https?:", arg), f"not same-origin: {arg}"
-    assert script.count("credentials: 'same-origin'") + script.count('credentials: "same-origin"') + \
-        script.count("credentials:'same-origin'") >= len(calls)
-    assert re.search(r"""['"]Content-Type['"]\s*:\s*['"]application/json['"]""", script)
-    for literal in re.findall(r"""fetch\(\s*['"]([^'"]*)""", script):
+    for literal in re.findall(r"""aisc\.call\(\s*['"]([^'"]*)""", script):
         assert literal.startswith("/api/"), literal
 
 

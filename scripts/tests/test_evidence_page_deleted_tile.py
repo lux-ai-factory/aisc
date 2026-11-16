@@ -39,7 +39,8 @@ for (const m of html.replace(/<script[\s\S]*?<\/script>/gi, '').matchAll(/<(\w+)
   if (id) { byId[id[1]] = new El(m[1]); byId[id[1]].hidden = /\shidden(\s|$)/.test(m[2]); }
 }
 const posts = [];
-const answer = (status, body) => Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
+const answer = (status, body) => Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body),
+                                                  text: () => Promise.resolve(JSON.stringify(body))});
 function fetch(path, init) {
   if (init && init.method === 'POST') {
     posts.push({path, body: JSON.parse(init.body)});
@@ -58,7 +59,11 @@ const window = {aiscOriginsReady: Promise.resolve(), aiscOrigin: () => 'http://e
 const ctx = {document, fetch, window, URLSearchParams, encodeURIComponent, JSON, console, Date, location, Promise};
 vm.createContext(ctx);
 for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-  if (!/\bsrc=/.test(m[1])) vm.runInContext(m[2], ctx);
+  // the shared page.js, as the browser loads it (window's globals are the page's: aisc is window.aisc)
+  if (/\bsrc="\/assets\/page\.js"/.test(m[1])) {
+    vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(file), 'assets/page.js'), 'utf8'), ctx);
+    ctx.aisc = window.aisc;
+  } else if (!/\bsrc=/.test(m[1])) vm.runInContext(m[2], ctx);
 }
 const wait = () => new Promise((r) => setTimeout(r, 60));
 (async () => {

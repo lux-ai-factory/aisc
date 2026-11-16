@@ -71,7 +71,8 @@ def test_the_page_reads_one_route_and_writes_only_through_the_platform():
     assert "'/api/projects/' + enc(slug) + '/connectivity'" in script
     for write in ("'/agents/'", "'/tool'", "kind: 'provider'"):
         assert write in script, write
-    assert "fetch(" in script and script.count("fetch(") == 1, "one request helper"
+    # one request helper, through page.js
+    assert "fetch(" not in script and script.count("aisc.call(") == 1, "one request helper"
 
 
 def test_the_page_never_shows_a_key():
@@ -163,13 +164,20 @@ function answer(path) {
 }
 function fetch(path) {
   const body = answer(path);
-  return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+  return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body),
+                          text: () => Promise.resolve(JSON.stringify(body))});
 }
 const ctx = {document, fetch, Node, URLSearchParams, encodeURIComponent, JSON, console,
              location: {search: '?project=demo', hash: '', replace() {}},
              history: {replaceState() {}}, window: {addEventListener() {}}};
 vm.createContext(ctx);
-for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) vm.runInContext(m[1], ctx);
+for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  // the shared page.js, as the browser loads it (window's globals are the page's: aisc is window.aisc)
+  if (/\bsrc="\/assets\/page\.js"/.test(m[1])) {
+    vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(file), 'assets/page.js'), 'utf8'), ctx);
+    ctx.aisc = ctx.window.aisc;
+  } else vm.runInContext(m[2], ctx);
+}
 setTimeout(() => {
   const rows = (id) => byId[id].children.map((tr) => tr.children.map((td) => td.textContent));
   const texts = Object.values(byId).map((n) => n.textContent)
