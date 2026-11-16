@@ -384,11 +384,21 @@
   // click while it loads no longer opens it without a project
   document.getElementById('sandbox-card').href = '/evidence.html?project=' + encodeURIComponent(slug);
 
+  // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
+  // its own words, with a reload to try again after a failure
+  function notOpened(status, body) {
+    if (status === 404) return 'No such project: ' + slug + '.';
+    var detail = body && body.detail;
+    var why = typeof detail === 'string' && detail ? detail.replace(/\.$/, '') : 'HTTP ' + status;
+    if (status >= 500) return 'The platform could not open this project just now (' + why + '). Reload the page to try again.';
+    return typeof detail === 'string' && detail ? why + '.' : 'The project could not be opened (' + why + ').';
+  }
+
   aisc.call('/api/projects/' + encodeURIComponent(slug)).then(function (answer) {
     if (!answer.ok) {
       document.getElementById('project-name').textContent = 'Unknown project';
       document.getElementById('project-meta').textContent =
-        answer.status === 0 ? answer.message : 'No such project: ' + slug + '.';
+        answer.status === 0 ? answer.message : notOpened(answer.status, answer.data);
       return;
     }
     var p = answer.data;

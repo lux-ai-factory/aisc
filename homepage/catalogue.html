@@ -132,6 +132,16 @@
     });
   }
 
+  // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
+  // its own words, with a reload to try again after a failure
+  function notOpened(status, body) {
+    if (status === 404) return 'No such project: ' + slug + '.';
+    var detail = body && body.detail;
+    var why = typeof detail === 'string' && detail ? detail.replace(/\.$/, '') : 'HTTP ' + status;
+    if (status >= 500) return 'The platform could not open this project just now (' + why + '). Reload the page to try again.';
+    return typeof detail === 'string' && detail ? why + '.' : 'The project could not be opened (' + why + ').';
+  }
+
   function boot() {
     $('back').href = '/p/' + enc(slug);
     document.querySelectorAll('[data-mode]').forEach(function (b) {
@@ -139,7 +149,7 @@
     });
     aisc.call('/api/projects/' + enc(slug)).then(function (p) {
       if (p.status === 0) { show('page-message', NOT_ANSWERING); return; }
-      if (!p.ok) { show('page-message', 'No such project: ' + slug + '.'); return; }
+      if (!p.ok) { show('page-message', notOpened(p.status, p.data)); return; }
       $('project-name').textContent = p.data.name;
       document.title = p.data.name + ' - Catalogue';
       return aisc.call('/api/projects/' + enc(slug) + '/catalogue').then(function (c) {

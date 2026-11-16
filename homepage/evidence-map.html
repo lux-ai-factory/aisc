@@ -162,6 +162,16 @@
       return res.json().catch(function () { return null; }).then(function (d) { return {res: res, d: d}; });
     });
   }
+  // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
+  // its own words, with a reload to try again after a failure
+  function notOpened(status, body) {
+    if (status === 404) return 'No such project: ' + slug + '.';
+    var detail = body && body.detail;
+    var why = typeof detail === 'string' && detail ? detail.replace(/\.$/, '') : 'HTTP ' + status;
+    if (status >= 500) return 'The platform could not open this project just now (' + why + '). Reload the page to try again.';
+    return typeof detail === 'string' && detail ? why + '.' : 'The project could not be opened (' + why + ').';
+  }
+
   function refusal(r) {
     if (r.d && typeof r.d.detail === 'string') return r.d.detail;
     if (r.d && Array.isArray(r.d.detail)) return r.d.detail.map(function (e) { return (e.loc || []).slice(-1)[0] + ': ' + e.msg; }).join('; ');
@@ -392,7 +402,7 @@
     });
     api('/api/projects/' + enc(slug))
       .then(function (r) {
-        if (!r.res.ok) { show('page-message', 'No such project: ' + slug + '.'); return null; }
+        if (!r.res.ok) { show('page-message', notOpened(r.res.status, r.d)); return null; }
         $('project-name').textContent = r.d.name;
         document.title = r.d.name + ' - Evidence map';
         return load();

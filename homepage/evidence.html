@@ -555,6 +555,16 @@
     if (e.key === 'Escape') $('manage').open = false;
   });
 
+  // 'No such project' only when the platform says so (404); a failure of the platform, or another refusal, in
+  // its own words, with a reload to try again after a failure
+  function notOpened(status, body) {
+    if (status === 404) return 'No such project: ' + slug + '.';
+    var detail = body && body.detail;
+    var why = typeof detail === 'string' && detail ? detail.replace(/\.$/, '') : 'HTTP ' + status;
+    if (status >= 500) return 'The platform could not open this project just now (' + why + '). Reload the page to try again.';
+    return typeof detail === 'string' && detail ? why + '.' : 'The project could not be opened (' + why + ').';
+  }
+
   function boot() {
     $('back').href = '/p/' + enc(slug);
     $('version').addEventListener('change', function () {
@@ -568,7 +578,12 @@
         return api('/api/projects/' + enc(slug));
       })
       .then(function (res) {
-        if (!res.ok) { show('page-message', 'No such project: ' + slug + '.'); return null; }
+        if (!res.ok) {
+          return res.json().catch(function () { return null; }).then(function (body) {
+            show('page-message', notOpened(res.status, body));
+            return null;
+          });
+        }
         return res.json();
       })
       .then(function (p) {
