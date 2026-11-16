@@ -91,8 +91,8 @@ services:
         condition: service_started
       qualification-headless:
         condition: service_started
-      report-headless:
-        condition: service_started
+      # report-headless:
+      #   condition: service_started
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
@@ -210,20 +210,20 @@ services:
     networks:
       - backend
 
-  # The headless report service: snapshot in, PDF/HTML out. Stateless — the
-  # backend assembles the snapshot, stores it and the document; this is the
-  # renderer only (no UI, no own DB).
-  report-headless:
-    build: apps/reporting/services/headless
-    container_name: report-headless
-    environment:
-      # The backend sends ONE shared outbound token (SERVICE_TOKEN_FOR_APPS) to
-      # every app door; the report door defaults to that same token so the call
-      # is accepted, with a dedicated override when one is wanted.
-      BACKEND_TO_REPORT_TOKEN: ${BACKEND_TO_REPORT_TOKEN:-${BACKEND_TO_QUALIFICATION_TOKEN:-}}
-    restart: unless-stopped
-    networks:
-      - backend
+  # # The headless report service: snapshot in, PDF/HTML out. Stateless — the
+  # # backend assembles the snapshot, stores it and the document; this is the
+  # # renderer only (no UI, no own DB).
+  # report-headless:
+  #   build: apps/reporting/services/headless
+  #   container_name: report-headless
+  #   environment:
+  #     # The backend sends ONE shared outbound token (SERVICE_TOKEN_FOR_APPS) to
+  #     # every app door; the report door defaults to that same token so the call
+  #     # is accepted, with a dedicated override when one is wanted.
+  #     BACKEND_TO_REPORT_TOKEN: ${BACKEND_TO_REPORT_TOKEN:-${BACKEND_TO_QUALIFICATION_TOKEN:-}}
+  #   restart: unless-stopped
+  #   networks:
+  #     - backend
 
 volumes:
   flower_data:
