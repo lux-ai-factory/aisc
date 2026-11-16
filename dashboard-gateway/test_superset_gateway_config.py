@@ -61,8 +61,12 @@ class KeycloakSecurityManager:
     def _sync_dashboard_ownership(self, *args):
         pass
 
+    def _remember(self, subject, realm_roles):
+        REMEMBERED.append((subject, list(realm_roles)))
+
 
 SIGN_INS = []
+REMEMBERED = []
 
 
 def apply_sign_in(sm, user, roles, projects, sync_ownership):
@@ -108,6 +112,7 @@ def claims(sub="sub-alice", roles=("viewer",), iat=1000, **more):
 class FollowTheGatewayInFlask(unittest.TestCase):
     def setUp(self):
         SIGN_INS.clear()
+        REMEMBERED.clear()
         app = Flask(__name__)
         app.secret_key = "test"
         logins = LoginManager(app)
@@ -184,6 +189,10 @@ class FollowTheGatewayInFlask(unittest.TestCase):
         self.get(user="alice", token_claims=claims(iat=1300))
         self.get(user="alice", token_claims=claims(iat=1000))
         self.assertEqual(len(SIGN_INS), 1)
+
+    def test_a_sign_in_remembers_who_for_the_requests_that_follow_the_memberships(self):
+        self.get(user="alice", token_claims=claims(roles=["viewer"]))
+        self.assertEqual(REMEMBERED, [("sub-alice", ["viewer"])])
 
     def test_without_verified_claims_nothing_is_synced(self):
         self.assertEqual(self.get(user="alice").text, "alice")

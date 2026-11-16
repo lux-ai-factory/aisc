@@ -87,8 +87,11 @@ class GatewaySecurityManager(KeycloakSecurityManager):
         user.email = claims.get("email") or user.email
         user.first_name = claims.get("given_name") or user.first_name
         user.last_name = claims.get("family_name") or user.last_name
-        apply_sign_in(self, user, (claims.get("realm_access") or {}).get("roles", []),
+        realm_roles = (claims.get("realm_access") or {}).get("roles", [])
+        apply_sign_in(self, user, realm_roles,
                       self._member_projects(claims.get("sub")), sync_ownership=self._sync_dashboard_ownership)
+        # and between tokens, each request follows the memberships (the dashboard's own hook, once a minute)
+        self._remember(claims.get("sub"), realm_roles)
 
 
 CUSTOM_SECURITY_MANAGER = GatewaySecurityManager
