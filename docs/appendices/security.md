@@ -4,6 +4,8 @@ Back to [How AISC works](../architecture.md).
 
 Who may do what, where the secrets are, and the limits of what AISC protects.
 
+To report a vulnerability: [SECURITY.md](../../SECURITY.md). In an incident: [runbook](../runbooks/incident.md).
+
 ## Who may do what
 
 - **Signed in**: anyone with an account in the realm `aisc` may create a project and becomes its owner.
