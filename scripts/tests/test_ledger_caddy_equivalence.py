@@ -145,9 +145,12 @@ def fixpoint(tree):
 
 def test_with_the_witness_unset_the_gateway_is_the_old_one_plus_the_strip_and_the_block(tmp_path):
     # the sign-in is reached by its service name on the compose network
-    # (test_no_host_network), not through the host: the one other change since phase 2
+    # (test_no_host_network), not through the host; and the sign-in brings the person back to the address
+    # they opened, before a module's prefix was stripped (test_sign_in_returns_to_the_stripped_modules.py):
+    # the two other changes since phase 2
     old = (ROOT / "scripts/tests/fixtures/ledger_gateway/Caddyfile.before-ledger-gateway").read_text()
-    (tmp_path / "Caddyfile").write_text(old.replace("host.docker.internal:4180", "oauth2-proxy:4180"))
+    old = old.replace("host.docker.internal:4180", "oauth2-proxy:4180")
+    (tmp_path / "Caddyfile").write_text(old.replace("rd={http.request.uri}", "rd={http.request.orig_uri}"))
     before = fixpoint(adapt(tmp_path / "Caddyfile"))
     after = fixpoint(without_token_filter(adapt(ROOT / "Caddyfile")))
     assert json.dumps(after, sort_keys=True) == json.dumps(before, sort_keys=True)
@@ -181,8 +184,8 @@ def test_the_comparison_is_not_fooled_by_a_changed_strip_or_block(tmp_path, old,
     """Only a static 404 counts as the block, and only a strip before sign-in counts as the strip."""
     if "forward_auth oauth2-proxy:4180 {" in new and "request_header" not in new:
         text = _mutated(tmp_path, old, new).read_text()
-        text = text.replace("      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n",
-                            "      redir * /oauth2/start?rd={http.request.uri}\n    }\n  }\n  request_header -X-Auth-Request-*\n"
+        text = text.replace("      redir * /oauth2/start?rd={http.request.orig_uri}\n    }\n  }\n",
+                            "      redir * /oauth2/start?rd={http.request.orig_uri}\n    }\n  }\n  request_header -X-Auth-Request-*\n"
                             "  request_header -X-Middleware-Subrequest\n", 1)
         (tmp_path / "Caddyfile").write_text(text)
         path = tmp_path / "Caddyfile"

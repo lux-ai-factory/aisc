@@ -47,7 +47,7 @@
     copy_headers X-Auth-Request-Access-Token
     @unauth status 401
     handle_response @unauth {
-      redir * /oauth2/start?rd={http.request.uri}
+      redir * /oauth2/start?rd={http.request.orig_uri}
     }
   }
 }
