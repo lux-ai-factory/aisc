@@ -2,7 +2,7 @@
 # 8000 that fetches one plugin repo when the platform asks, builds it and uploads it to the stack's
 # devpi; at its own start it publishes the plugin interface. The HTTP side is the standard library
 # alone; git, build and twine come in the image, pinned, rather than from an install on every start.
-FROM python:3.12-slim
+FROM python:3.12.15-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \

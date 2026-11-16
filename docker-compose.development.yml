@@ -826,7 +826,7 @@ services:
 
   # SELECT for report_ro on what the report reads, granted again on every start
   report-grants:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     container_name: ${CONTAINER_PREFIX:-}report-grants
     environment:
       PGHOST: postgres
@@ -919,7 +919,7 @@ services:
   # in the dashboard. The shared `redis` is reachable by the eval worker, which runs plugin code.
   # A cache: nothing is kept on disk, nothing is published.
   dashboard-redis:
-    image: redis:7.4.11-alpine
+    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     container_name: ${CONTAINER_PREFIX:-}dashboard-redis
     restart: unless-stopped
     environment:

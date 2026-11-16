@@ -742,7 +742,7 @@ def held_by_aisc() -> set[int]:
 
 
 #: the image the probe runs: the stack's own Caddy, which publishes these ports, so `up` would pull it anyway
-PROBE_IMAGE = "caddy:2.10.2"
+PROBE_IMAGE = "caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb"
 #: the name every probe container starts with, so one left behind (a probe cut short) is found and removed
 PROBE_PREFIX = "aisc-port-probe-"
 #: how long one probe may take: a container that only binds and exits needs well under a second

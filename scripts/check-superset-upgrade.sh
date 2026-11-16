@@ -48,7 +48,7 @@ TOKEN="$(openssl rand -hex 24)"; SECRET="$(openssl rand -hex 32)"
 PID="9e0c1d2a-3b4c-4d5e-8f60-718293a4b5c6"; HEX="${PID//-/}"
 docker network create "$NET" >/dev/null
 docker run -d --rm --name "$PG" --network "$NET" -e POSTGRES_USER=aisc-postgres-user -e POSTGRES_PASSWORD="$PG_PW" \
-  -e POSTGRES_DB=platform postgres:15-alpine >/dev/null
+  -e POSTGRES_DB=platform postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81 >/dev/null
 docker run -d --rm --name "$REDIS" --network "$NET" redis:7.4.11-alpine >/dev/null
 until docker exec "$PG" pg_isready -q -U aisc-postgres-user -d platform; do sleep 1; done; sleep 2
 docker exec "$PG" psql -q -v ON_ERROR_STOP=1 -U aisc-postgres-user -d platform -c "CREATE DATABASE project_$HEX" >/dev/null

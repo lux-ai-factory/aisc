@@ -1,7 +1,7 @@
 # MinIO server and client built from source. MinIO stopped publishing community images in late
 # 2025 (quay.io/minio/* and minio/* are refused), so the stack builds its own from the last source
 # releases. One image serves both the server (minio) and the bucket job (mc).
-FROM golang:1.24-alpine AS build
+FROM golang:1.24.13-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS build
 ARG MINIO_RELEASE=RELEASE.2025-10-15T17-29-55Z
 ARG MC_RELEASE=RELEASE.2025-08-13T08-35-41Z
 RUN apk add --no-cache git
@@ -15,7 +15,7 @@ RUN git clone --depth 1 --branch "$MINIO_RELEASE" https://github.com/minio/minio
 RUN git clone --depth 1 --branch "$MC_RELEASE" https://github.com/minio/mc /src/mc \
  && cd /src/mc && go build -trimpath -ldflags "-s -w" -o /out/mc .
 
-FROM alpine:3.22
+FROM alpine:3.22.6@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/minio /usr/bin/minio
 COPY --from=build /out/mc /usr/bin/mc

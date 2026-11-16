@@ -46,8 +46,9 @@ base webapp ab9f19d
 webapp .env modes: APP_DEPLOYMENT and APP_LAUNCHER_URL placeholders for env.sh
 webapp .env.development modes: standalone mode and launcher URL for dev
 webapp .env.test modes: the mode for plain vitest runs
-webapp Dockerfile modes, images: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's; npm ci, and nginx-unprivileged owning the bundle env.sh rewrites (scripts/tests/test_engine_services_unprivileged.py, test_images_run_as_users.py)
+webapp Dockerfile modes, images: ENV APP_DEPLOYMENT=standalone by default, so the image alone behaves as upstream's; npm ci, and nginx-unprivileged owning the bundle env.sh rewrites, base images pinned by version and digest (scripts/tests/test_engine_services_unprivileged.py, test_images_run_as_users.py)
 webapp .dockerignore images: the host's node_modules, build and keys stay out of the image's build (scripts/tests/test_images_run_as_users.py)
+webapp Dockerfile.dev images: its base image pinned by version and digest (scripts/tests/test_images_pinned_by_digest.py)
 webapp src/DeploymentGate.tsx modes: error page for an unknown mode
 webapp src/MyApp.tsx modes: Tasks route standalone only
 webapp src/api/installProjectHeader.test.ts modes: the start-up wrapper names the project on fetch and axios

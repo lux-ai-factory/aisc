@@ -1,6 +1,6 @@
 """Fixtures of the composer tests.
 
-Database tests run on a throwaway postgres:15-alpine bed with one database per project
+Database tests run on a throwaway postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81 bed with one database per project
 (scripts/lib/report_bed_isolated.py): the core part of the seed (projects alpha,
 beta, gamma, echo; members) in `platform`, and one database per project holding its versions in
 project.system and the composer's schema. The composer connects as `report_composer_rw`. Never the

@@ -209,7 +209,7 @@ services:
       - engine-standalone
 
   rabbitmq:
-    image: rabbitmq:3.13.7-management
+    image: rabbitmq:3.13.7-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     container_name: ${CONTAINER_PREFIX:-}rabbitmq-standalone
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-rabbit-user}
@@ -222,7 +222,7 @@ services:
       - engine-standalone
 
   redis:
-    image: redis:7.4.11-alpine
+    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     container_name: ${CONTAINER_PREFIX:-}redis-standalone
     restart: unless-stopped
     volumes:
@@ -231,7 +231,7 @@ services:
       - engine-standalone
 
   postgres:
-    image: postgres:15-alpine   # a PG14 data dir does not start under 15: fresh volumes
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81   # a PG14 data dir does not start under 15: fresh volumes
     container_name: ${CONTAINER_PREFIX:-}postgres-standalone
     environment:
       POSTGRES_USER: ${DB_USER:-aisc}

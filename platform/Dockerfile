@@ -1,8 +1,8 @@
 # The platform: projects, the ledger's writer, connections. It installs exactly what platform/uv.lock pins and
 # carries the shared code (aisc_identity, the plugin-side connection client) from the `shared` build context
 # that compose passes, so the running service reads no code from a mount.
-FROM python:3.12-slim-bookworm
-COPY --from=ghcr.io/astral-sh/uv:0.9.9 /uv /uvx /bin/
+FROM python:3.12.16-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
+COPY --from=ghcr.io/astral-sh/uv:0.9.9@sha256:f6e3549ed287fee0ddde2460a2a74a2d74366f84b04aaa34c1f19fec40da8652 /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/req.txt \

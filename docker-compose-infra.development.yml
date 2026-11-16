@@ -1,7 +1,7 @@
 services:
   # Caddy, the gateway: every browser request comes in here
   caddy:
-    image: caddy:2.10.2
+    image: caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb
     container_name: ${CONTAINER_PREFIX:-}caddy
     restart: unless-stopped
     ports:
@@ -109,7 +109,7 @@ services:
   # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
     restart: unless-stopped
-    image: rabbitmq:3.13.7-management
+    image: rabbitmq:3.13.7-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     container_name: ${CONTAINER_PREFIX:-}rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
@@ -123,7 +123,7 @@ services:
 
   # Redis, where the worker's Celery results are kept
   redis:
-    image: redis:7.4.11-alpine
+    image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     container_name: ${CONTAINER_PREFIX:-}redis
     restart: unless-stopped
     environment:
@@ -140,7 +140,7 @@ services:
 
   # PostgreSQL: the platform database, one database per project, Keycloak's and Superset's
   postgres:
-    image: postgres:15-alpine   # the engine backend requires PostgreSQL 15; a 14 data directory does not start
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81   # the engine backend requires PostgreSQL 15; a 14 data directory does not start
     container_name: ${CONTAINER_PREFIX:-}postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -175,7 +175,7 @@ services:
   # The same grants on a volume that already exists: initdb scripts only run on
   # an empty one. Idempotent, so it runs on every start and then exits.
   postgres-setup:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     container_name: ${CONTAINER_PREFIX:-}postgres-setup
     environment:
       PGHOST: postgres
@@ -262,7 +262,7 @@ services:
   # the browser is sent to the public address (login-url), and the code is redeemed, the keys fetched
   # and the session ended on keycloak:8080. Keycloak's KC_HOSTNAME keeps the issuer the same either way.
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0@sha256:56e3daedf765c7a1eea6e366fbe684be7d3084830ade14b6174570d3c7960954
     container_name: ${CONTAINER_PREFIX:-}oauth2-proxy
     restart: unless-stopped
     depends_on:
@@ -316,7 +316,7 @@ services:
   keycloak:
     restart: unless-stopped
     # A pinned version.
-    image: quay.io/keycloak/keycloak:26.6.3
+    image: quay.io/keycloak/keycloak:26.6.3@sha256:9b0330756022422149aa6502eb2def8cd47c6e1b000c7c65cdb13e7c0133e992
     container_name: ${CONTAINER_PREFIX:-}keycloak
     # --import-realm imports the realm files in /opt/keycloak/data/import/ at start, but only
     # creates realms that do not exist yet. On a fresh keycloak database it creates the whole
@@ -368,7 +368,7 @@ services:
   # gRPC on 3322; its web console (8080) is not published.
   immudb:
     restart: unless-stopped
-    image: codenotary/immudb:1.11.1
+    image: codenotary/immudb:1.11.1@sha256:1053c2c254473670412b6f7257f61b6c09469b9b53b50c02bc7378ba775dc429
     container_name: ${CONTAINER_PREFIX:-}immudb
     environment:
       IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD:?run scripts/secrets.sh first}
@@ -399,7 +399,7 @@ services:
   # into a volume, owned by immudb's user (3322) and readable by it alone. As root, so it can read the
   # file whoever owns it, with no file ACL (setfacl does not exist on macOS). Runs at every start.
   immudb-key:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     container_name: ${CONTAINER_PREFIX:-}immudb-key
     user: "0"
     volumes:
@@ -418,7 +418,7 @@ services:
   # /var/lib/pgadmin in a volume, which outlives the container, so the password file is rewritten
   # and the server list reloaded on every start rather than only on the first.
   pgadmin:
-    image: dpage/pgadmin4:9.18
+    image: dpage/pgadmin4:9.18@sha256:c332c5f6dfba995d9ebc4af261d93506d6876085d712eaaa3defc8dd1a3f26de
     container_name: ${CONTAINER_PREFIX:-}pgadmin
     environment:
       PGADMIN_CONFIG_SERVER_MODE: "False"
