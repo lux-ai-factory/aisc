@@ -232,6 +232,11 @@ The steps themselves are in the [README](../README.md#before-you-install). What 
   passwords `AISC_ADMIN_PASSWORD` and `AISC_USER_PASSWORD` from `env.secrets`; the checks sign in with
   them too (`scripts/lib/dev-accounts.sh`). The Keycloak console's account is `admin` with
   `KEYCLOAK_ADMIN_PASSWORD` from `env.secrets`. The console is on `127.0.0.1:8081` only.
+  The realm asks for passwords of 12 characters or more that are not the user name or e-mail and not one of
+  the last three, and locks an account for a while after 5 wrong passwords (`keycloak/aisc-realm.json`). Every
+  `start` puts both on a realm made before, and turns the lockout on in the master realm (the console). Staging
+  imports `keycloak/aisc-realm.staging.json`: the same realm without its accounts and without the gateway
+  client's secret.
 - **Checks.** `./scripts/verify.sh --stack` runs `verify-db-access.sh`, `verify-project-databases.sh`,
   `verify-sso.sh`, `verify-rbac.sh`, `verify-plugins.sh` and `verify-switches.sh`, then `stackcheck db-access`
   (`scripts/stackcheck`), against the running stack.

@@ -1461,9 +1461,19 @@ def realm_lockout() -> dict:
     return {name: realm[name] for name in LOCKOUT_SETTINGS if name in realm}
 
 
+def realm_hardening_commands() -> list[list[str]]:
+    """kcadm's commands that put the realm file's password policy and the lockout on realms made before them:
+    the aisc realm (its people's sign-in) and the master realm (Keycloak's own admin console and kcadm). The
+    master realm takes Keycloak's default lockout settings; only the switch is set there."""
+    realm = json.loads((ROOT / "keycloak" / "aisc-realm.json").read_text())
+    return [["update", "realms/aisc", "-s", "bruteForceProtected=true", "-s",
+             "passwordPolicy=" + realm["passwordPolicy"]],
+            ["update", "realms/master", "-s", "bruteForceProtected=true"]]
+
+
 def sync_sign_in() -> None:
     """Tells Keycloak the addresses this install has now, the gateway client's current secret and the realm
-    file's account lockout. The realm import put the addresses, the secret and the lockout of its first start
+    file's account lockout and password policy (and turns the lockout on in the master realm too). The realm import put the addresses, the secret and the lockout of its first start
     into the realm's database and is never run again, so a port that moved since would leave the sign-in sending
     people to an address nothing answers on, a rotated secret would leave oauth2-proxy refused, and a realm made
     before the lockout was turned on would take any number of wrong passwords. Run on every start once the realm answers; Keycloak may
@@ -1504,6 +1514,10 @@ def sync_sign_in() -> None:
         locked = kcadm(DOCKER, container, admin, "update", "realms/aisc", "-f", "-", stdin=json.dumps(lockout))
         if locked.returncode != 0:
             return locked.stderr.strip() or "kcadm could not update the realm's account lockout"
+        for command in realm_hardening_commands():
+            hardened = kcadm(DOCKER, container, admin, *command)
+            if hardened.returncode != 0:
+                return hardened.stderr.strip() or f"kcadm could not {' '.join(command[:2])}"
         return ""
 
     for attempt in range(tries):
