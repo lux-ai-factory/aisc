@@ -19,24 +19,31 @@ evaluation_pid: ContextVar[str | None] = ContextVar("aisc_evaluation_pid", defau
 
 
 class JsonFormatter(logging.Formatter):
+    # held by the class, because a line logged while Python shuts down finds this module's globals set to None
+    _from_timestamp = staticmethod(datetime.fromtimestamp)
+    _utc = timezone.utc
+    _dumps = staticmethod(json.dumps)
+    _request_id = request_id
+    _evaluation_pid = evaluation_pid
+
     def __init__(self, service: str = "") -> None:
         super().__init__()
         self.service = service
 
     def format(self, record: logging.LogRecord) -> str:
         line = {
-            "time": datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec="milliseconds")
+            "time": self._from_timestamp(record.created, self._utc).isoformat(timespec="milliseconds")
             .replace("+00:00", "Z"),
             "level": record.levelname,
             "service": self.service,
             "logger": record.name,
             "message": record.getMessage(),
-            "request_id": getattr(record, "request_id", request_id.get()),
-            "evaluation_pid": getattr(record, "evaluation_pid", evaluation_pid.get()),
+            "request_id": getattr(record, "request_id", self._request_id.get()),
+            "evaluation_pid": getattr(record, "evaluation_pid", self._evaluation_pid.get()),
         }
         if record.exc_info:
             line["error"] = self.formatException(record.exc_info)
-        return json.dumps(line, default=str)
+        return self._dumps(line, default=str)
 
 
 class KeepIds(logging.Filter):
@@ -51,13 +58,14 @@ class KeepIds(logging.Filter):
 
 class _Stdout(logging.StreamHandler):
     """Writes to whatever sys.stdout is when the line is written."""
+    _sys = sys    # held by the class, as in JsonFormatter
 
     def __init__(self) -> None:
         super().__init__()
 
     @property
     def stream(self):
-        return sys.stdout
+        return self._sys.stdout
 
     @stream.setter
     def stream(self, _value) -> None:

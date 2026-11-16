@@ -95,3 +95,16 @@ def test_a_line_formatted_in_a_queues_thread_keeps_the_ids(capsys):
         logger.removeHandler(handler)
         logger.propagate = True
     assert _last_json(capsys.readouterr().err)["evaluation_pid"] == "ev-2"
+
+
+def test_a_line_written_while_python_shuts_down_is_still_formatted(monkeypatch):
+    # at interpreter exit a module's globals become None while objects still log from __del__
+    logs = _logs()
+    formatter = logs.JsonFormatter("platform")
+    logs.configure("platform")
+    handler = logging.getLogger().handlers[0]
+    for name in ("json", "datetime", "timezone", "sys"):
+        monkeypatch.setattr(logs, name, None)
+    record = logging.LogRecord("x", logging.WARNING, __file__, 1, "late", None, None)
+    assert '"message": "late"' in formatter.format(record)
+    assert handler.stream is not None

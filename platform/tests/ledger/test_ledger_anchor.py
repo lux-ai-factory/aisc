@@ -57,6 +57,7 @@ def test_the_command_prints_one_json_document(project, memory_ledger, through_ga
     import json
 
     _some_events(through_gateway, project, mode)
+    capsys.readouterr()                  # the in-process requests' own log lines, not the command's output
     anchor().main([])
     document = json.loads(capsys.readouterr().out)
     assert set(document) == {"anchored_at", "heads"} and document["heads"]
