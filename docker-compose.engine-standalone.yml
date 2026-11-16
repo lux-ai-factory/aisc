@@ -16,8 +16,33 @@
 # The webapp is on http://localhost:8080, the API on http://localhost:8000, both on 127.0.0.1 only:
 # standalone has no sign-in.
 
+# Every service's log is rotated at 10 MB, five files kept, and every service runs within memory, CPU and process
+# limits in one of three sizes: small for the proxies and caches, large for the engine, the databases, Keycloak, the
+# dashboard and the agents, medium for the rest (the one-shots included). The workers set their own limits.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+x-size-small: &size-small
+  logging: *logging
+  mem_limit: 256m
+  cpus: 0.5
+  pids_limit: 128
+x-size-medium: &size-medium
+  logging: *logging
+  mem_limit: 1g
+  cpus: 1.0
+  pids_limit: 256
+x-size-large: &size-large
+  logging: *logging
+  mem_limit: 2g
+  cpus: 2.0
+  pids_limit: 512
+
 services:
   aisc-backend:
+    <<: *size-large
     build: apps/backend/
     image: aisc-backend:${AISC_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_PREFIX:-}aisc-backend-standalone
@@ -67,6 +92,7 @@ services:
       - engine-standalone
 
   aisc-eval-worker:
+    logging: *logging
     platform: linux/amd64
     build:
       context: apps/eval/
@@ -91,6 +117,10 @@ services:
       # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
       # never overlapping, since the kernel counts a uid's processes across containers
       PLUGIN_RUN_UIDS: "10100-10199"
+    # the worker's size, as in the Configurator's file: every process and thread inside counts against pids_limit
+    mem_limit: ${EVAL_WORKER_MEM_LIMIT:-16g}
+    cpus: ${EVAL_WORKER_CPUS:-4}
+    pids_limit: 2048
     # only to set, at start, the firewall that keeps plugin tests behind the egress proxy
     cap_add: &eval-worker-capabilities
       - NET_ADMIN
@@ -109,6 +139,7 @@ services:
   # the runs. It runs plugin code as the run worker does, so it is kept apart the same way (same image,
   # settings, firewall, reaper and egress hosts; no database credential).
   aisc-eval-declarations-worker:
+    logging: *logging
     platform: linux/amd64
     # the run worker's image, built there (two builds of one tag race)
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
@@ -118,6 +149,10 @@ services:
       <<: *eval-worker-env
       # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
       PLUGIN_RUN_UIDS: "10200-10209"
+    # one plugin at a time: its install, then its manifest or one form hook
+    mem_limit: ${EVAL_DECLARATIONS_WORKER_MEM_LIMIT:-8g}
+    cpus: ${EVAL_DECLARATIONS_WORKER_CPUS:-2}
+    pids_limit: 1024
     cap_add: *eval-worker-capabilities
     init: true
     depends_on:
@@ -131,6 +166,7 @@ services:
               "--queues=plugin-declarations", "--concurrency=1"]
 
   aisc-webapp:
+    <<: *size-small
     build: apps/webapp/
     image: aisc-webapp:${AISC_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_PREFIX:-}aisc-webapp-standalone
@@ -148,6 +184,7 @@ services:
   # Hands MinIO's volume to MinIO's user (uid 10030) before MinIO starts: a volume an older install made as root
   # would otherwise stop the server. Changes nothing once the folder is MinIO's; no network.
   minio-data-owner:
+    <<: *size-medium
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     # no build: the same image as minio, built once there
     pull_policy: never
@@ -162,6 +199,7 @@ services:
     restart: "no"
 
   minio:
+    <<: *size-medium
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     build: ./infra/minio
@@ -187,6 +225,7 @@ services:
       - engine-standalone
 
   make_buckets:
+    <<: *size-medium
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     # no build: the same image as its main service, built once there (parallel builds of one tag race)
@@ -209,6 +248,7 @@ services:
       - engine-standalone
 
   rabbitmq:
+    <<: *size-medium
     image: rabbitmq:3.13.7-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     container_name: ${CONTAINER_PREFIX:-}rabbitmq-standalone
     environment:
@@ -222,6 +262,7 @@ services:
       - engine-standalone
 
   redis:
+    <<: *size-small
     image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     container_name: ${CONTAINER_PREFIX:-}redis-standalone
     restart: unless-stopped
@@ -231,6 +272,7 @@ services:
       - engine-standalone
 
   postgres:
+    <<: *size-large
     image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81   # a PG14 data dir does not start under 15: fresh volumes
     container_name: ${CONTAINER_PREFIX:-}postgres-standalone
     environment:
@@ -246,6 +288,7 @@ services:
   # Hands devpi's volume to devpi's user (uid 10001) before devpi starts: a volume an older image filled as root
   # would otherwise stop the server, which no longer starts as root. Changes nothing once the folder is devpi's.
   devpi-data-owner:
+    <<: *size-medium
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
     # no build: the same image as devpi, built once there
     pull_policy: never
@@ -260,6 +303,7 @@ services:
     restart: "no"
 
   devpi:
+    <<: *size-medium
     build: apps/catalogue/devpi
     image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_PREFIX:-}devpi-standalone

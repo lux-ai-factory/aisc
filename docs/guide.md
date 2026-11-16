@@ -333,6 +333,17 @@ plugins. To develop one of the engine's apps on the host, see that submodule's R
 `docker-compose-infra.staging.yml` and `docker-compose.staging.yml` are older deployment files for the
 engine alone and are not used by the stack above.
 
+### Logs and limits
+
+Every service in the development and engine-standalone files keeps its log in Docker's `json-file` driver,
+rotated at 10 MB with five files kept, and runs within memory, CPU and process limits in three sizes (the
+`x-size-*` anchors at the top of each file): small (256 MB, half a CPU, 128 processes) for Caddy, the two
+Redis, oauth2-proxy and the webapp; large (2 GB, two CPUs, 512 processes) for the engine backend, PostgreSQL,
+Keycloak, the dashboard, the agents and control objectives; medium (1 GB, one CPU, 256 processes) for every
+other service and one-shot. The two eval workers keep their own (`EVAL_WORKER_MEM_LIMIT`, `EVAL_WORKER_CPUS`,
+`EVAL_DECLARATIONS_WORKER_MEM_LIMIT`, `EVAL_DECLARATIONS_WORKER_CPUS`). A service that needs more gets it by
+an override file that sets its `mem_limit`, `cpus` or `pids_limit`.
+
 ### PostgreSQL 15
 
 Every stack runs PostgreSQL 15 (the backend requires it): development, the standalone engine and

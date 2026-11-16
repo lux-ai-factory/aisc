@@ -1,6 +1,31 @@
+# Every service's log is rotated at 10 MB, five files kept, and every service runs within memory, CPU and process
+# limits in one of three sizes: small for the proxies and caches, large for the engine, the databases, Keycloak, the
+# dashboard and the agents, medium for the rest (the one-shots included). The workers set their own limits.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+x-size-small: &size-small
+  logging: *logging
+  mem_limit: 256m
+  cpus: 0.5
+  pids_limit: 128
+x-size-medium: &size-medium
+  logging: *logging
+  mem_limit: 1g
+  cpus: 1.0
+  pids_limit: 256
+x-size-large: &size-large
+  logging: *logging
+  mem_limit: 2g
+  cpus: 2.0
+  pids_limit: 512
+
 services:
   # Caddy, the gateway: every browser request comes in here
   caddy:
+    <<: *size-small
     image: caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb
     container_name: ${CONTAINER_PREFIX:-}caddy
     restart: unless-stopped
@@ -43,6 +68,7 @@ services:
   # Hands MinIO's volume to MinIO's user (uid 10030) before MinIO starts: a volume an older install made as root
   # would otherwise stop the server. Changes nothing once the folder is MinIO's; no network.
   minio-data-owner:
+    <<: *size-medium
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     # no build: the same image as minio, built once there
     pull_policy: never
@@ -58,6 +84,7 @@ services:
 
   # MinIO, the S3-compatible object storage for models, datasets and artifacts
   minio:
+    <<: *size-medium
     restart: unless-stopped
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
@@ -89,6 +116,7 @@ services:
   # infra/minio/make-buckets.sh). With MinIO itself, the only holder of MinIO's root account: the engine backend
   # is aisc-engine, the platform aisc-platform, each limited to its buckets (infra/minio/policies).
   make_buckets:
+    <<: *size-medium
     # built from source (infra/minio/Dockerfile): MinIO no longer publishes community images
     image: aisc-minio:${AISC_IMAGE_TAG:-latest}
     # no build: the same image as its main service, built once there (parallel builds of one tag race)
@@ -109,6 +137,7 @@ services:
 
   # RabbitMQ, the queue that carries evaluation jobs to the worker
   rabbitmq:
+    <<: *size-medium
     restart: unless-stopped
     image: rabbitmq:3.13.7-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     container_name: ${CONTAINER_PREFIX:-}rabbitmq
@@ -133,6 +162,7 @@ services:
   # through the management API, then exits (infra/rabbitmq/setup_users.py, on every start). The administrator
   # account (RABBITMQ_USERNAME) is for operators and this one-shot only; no service holds it.
   rabbitmq-setup:
+    <<: *size-medium
     image: python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
     container_name: ${CONTAINER_PREFIX:-}rabbitmq-setup
     user: "65534"
@@ -156,6 +186,7 @@ services:
 
   # Redis, where the worker's Celery results are kept
   redis:
+    <<: *size-small
     image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
     container_name: ${CONTAINER_PREFIX:-}redis
     restart: unless-stopped
@@ -173,6 +204,7 @@ services:
 
   # PostgreSQL: the platform database, one database per project, Keycloak's and Superset's
   postgres:
+    <<: *size-large
     image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81   # the engine backend requires PostgreSQL 15; a 14 data directory does not start
     container_name: ${CONTAINER_PREFIX:-}postgres
     environment:
@@ -208,6 +240,7 @@ services:
   # The same grants on a volume that already exists: initdb scripts only run on
   # an empty one. Idempotent, so it runs on every start and then exits.
   postgres-setup:
+    <<: *size-medium
     image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     container_name: ${CONTAINER_PREFIX:-}postgres-setup
     environment:
@@ -295,6 +328,7 @@ services:
   # the browser is sent to the public address (login-url), and the code is redeemed, the keys fetched
   # and the session ended on keycloak:8080. Keycloak's KC_HOSTNAME keeps the issuer the same either way.
   oauth2-proxy:
+    <<: *size-small
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.13.0@sha256:56e3daedf765c7a1eea6e366fbe684be7d3084830ade14b6174570d3c7960954
     container_name: ${CONTAINER_PREFIX:-}oauth2-proxy
     restart: unless-stopped
@@ -347,6 +381,7 @@ services:
 
   # Keycloak: the identity provider behind the one sign-in of every module.
   keycloak:
+    <<: *size-large
     restart: unless-stopped
     # A pinned version.
     image: quay.io/keycloak/keycloak:26.6.3@sha256:9b0330756022422149aa6502eb2def8cd47c6e1b000c7c65cdb13e7c0133e992
@@ -400,6 +435,7 @@ services:
   # immudb, the tamper-evident ledger of who did what. It keeps its own embedded storage.
   # gRPC on 3322; its web console (8080) is not published.
   immudb:
+    <<: *size-medium
     restart: unless-stopped
     image: codenotary/immudb:1.11.1@sha256:1053c2c254473670412b6f7257f61b6c09469b9b53b50c02bc7378ba775dc429
     container_name: ${CONTAINER_PREFIX:-}immudb
@@ -432,6 +468,7 @@ services:
   # into a volume, owned by immudb's user (3322) and readable by it alone. As root, so it can read the
   # file whoever owns it, with no file ACL (setfacl does not exist on macOS). Runs at every start.
   immudb-key:
+    <<: *size-medium
     image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     container_name: ${CONTAINER_PREFIX:-}immudb-key
     user: "0"
@@ -451,6 +488,7 @@ services:
   # /var/lib/pgadmin in a volume, which outlives the container, so the password file is rewritten
   # and the server list reloaded on every start rather than only on the first.
   pgadmin:
+    <<: *size-medium
     image: dpage/pgadmin4:9.18@sha256:c332c5f6dfba995d9ebc4af261d93506d6876085d712eaaa3defc8dd1a3f26de
     container_name: ${CONTAINER_PREFIX:-}pgadmin
     environment:
@@ -483,6 +521,7 @@ services:
   # platform's or a project's), made on the first visit and again after ten minutes. Behind the same
   # admin gate, at :8100/inspect/schema/<database>/. Reads as inspector_ro.
   schema-docs:
+    <<: *size-medium
     build: inspector/schema-docs/
     image: aisc-schema-docs:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
