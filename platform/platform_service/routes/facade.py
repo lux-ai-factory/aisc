@@ -28,8 +28,8 @@ from platform_service import (adapters, connection_allowlist, connection_facade,
                               run_passes, run_stop, run_trace)
 from platform_service.projects import looks_like_pid
 from platform_service.routes.admission import _internal
-from platform_service.routes.connections import (CONNECTION_NAME, RUN_KEY_PREFIX, _key_hash, adapter_connection_of,
-                                                 call_descriptor_of, secret_values)
+from platform_service.connections import CONNECTION_NAME, adapter_connection_of, call_descriptor_of, secret_values
+from platform_service.routes.run_passes import RUN_KEY_PREFIX, _key_hash
 
 router = APIRouter()
 

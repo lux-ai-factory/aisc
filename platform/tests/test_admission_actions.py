@@ -15,7 +15,8 @@ from platform_service.routes import admission
 
 ROUTES = Path(admission.__file__).parent
 #: the routers whose gate is the table
-GATED = ("connections.py", "connectivity.py", "helpers.py", "llm.py")
+GATED = ("connections.py", "targets.py", "allowed_hosts.py", "run_passes.py", "connectivity.py", "helpers.py",
+         "llm.py")
 #: the role checks a route must not call itself
 ROLE_CHECKS = {"role_or_404", "admin_project", "owner_or_403", "admitted"}
 GATES = {"project_for", "allowed_actions"}
