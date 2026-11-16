@@ -49,8 +49,10 @@ def _accounts_of_a_new_install(scratch, caddy_domain=None):  # noqa: F811
     return {k: v for k, v in secrets_of(scratch).items() if k in ACCOUNTS.values()}
 
 
-def test_a_local_install_signs_in_as_admin_admin_and_user_user(scratch):  # noqa: F811
-    assert _accounts_of_a_new_install(scratch) == {"AISC_ADMIN_PASSWORD": "admin", "AISC_USER_PASSWORD": "user"}
+def test_a_local_install_gets_generated_account_passwords_too(scratch):  # noqa: F811
+    values = _accounts_of_a_new_install(scratch)
+    assert all(re.fullmatch(r"[0-9a-f]{64}", v) for v in values.values()), "not generated"
+    assert values["AISC_ADMIN_PASSWORD"] != values["AISC_USER_PASSWORD"]
 
 
 def test_an_install_served_over_https_gets_generated_account_passwords(scratch):  # noqa: F811

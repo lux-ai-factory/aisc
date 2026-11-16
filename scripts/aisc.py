@@ -51,9 +51,13 @@ made, so:
   tracked value), never a new one. Such an install is on well-known passwords until rotate-infra-password
   changes each, in its service and then in env.secrets; a new install gets random ones.
 
-The realm's two accounts are admin / admin and user / user on a local install: its sign-in is reached from this
-machine only (Keycloak is published on 127.0.0.1). An install served to others (CADDY_DOMAIN https://, from the
-environment or env.plugin_downloader) gets generated passwords for them.
+The realm's two accounts, admin and user, get generated passwords on every new install (`password` prints
+them). An install made before that may still be on admin / admin and user / user: start says so, naming the
+rotate-infra-password command for each, never the value.
+
+Caddy publishes the browser ports on this machine only (127.0.0.1) unless the install asks for the network:
+AISC_LAN=on (in the environment or env.local), or an install served over https. env.runtime then gets
+CADDY_BIND_ADDRESS=0.0.0.0; a CADDY_BIND_ADDRESS line in env.local (an address of this machine) is taken over both.
 """
 from __future__ import annotations
 
@@ -143,6 +147,22 @@ def admin_ports_asked() -> bool:
     return asked == "on"
 
 
+def lan_asked() -> bool:
+    """AISC_LAN=on in the shell, or else in env.local (its last line for it), as admin_ports_asked reads it."""
+    asked = os.environ.get("AISC_LAN")
+    local = ROOT / LOCAL
+    if asked is None and local.is_file():
+        lines = [line for line in lines_of(str(local)) if line.startswith("AISC_LAN=")]
+        asked = lines[-1].split("=", 1)[1].strip().strip('"\'') if lines else None
+    return asked == "on"
+
+
+def caddy_bind_address() -> str:
+    """The host address Caddy publishes the browser ports on: every interface for an install served over https
+    or one that asked for the local network (AISC_LAN=on), else this machine only."""
+    return "0.0.0.0" if served_over_https() or lan_asked() else "127.0.0.1"
+
+
 def served_over_https() -> bool:
     # the checkout's own file, not the current folder's: COMPOSE asks this on import, before main moves there
     tracked = ROOT / TRACKED
@@ -193,9 +213,8 @@ SECRETS = [
     ("RABBITMQ_ENGINE_PASSWORD", "rand"),
     ("RABBITMQ_WORKER_PASSWORD", "rand"),
     ("RABBITMQ_FLOWER_PASSWORD", "rand"),
-    # the realm's two development accounts, admin and user: the realm import puts these into it, and its
-    # database keeps them after, so they are volume-bound too. admin / admin and user / user on a local install,
-    # generated on one served to others over https (account below)
+    # the realm's two accounts, admin and user: the realm import puts these into it, and its database keeps them
+    # after, so they are volume-bound too. Generated on every new install (account below)
     ("AISC_ADMIN_PASSWORD", "account"),
     ("AISC_USER_PASSWORD", "account"),
     ("GATEWAY_COOKIE_SECRET", "cookie"),
@@ -352,9 +371,25 @@ def immudbpw() -> str:
 
 
 def account(name: str) -> str:
-    if served_over_https():
-        return rand()
-    return {"AISC_ADMIN_PASSWORD": "admin", "AISC_USER_PASSWORD": "user"}.get(name) or rand()
+    """A realm account's password: random on every install, served over https or not (the realm's sign-in is
+    reached through Caddy, which may be on the network)."""
+    return rand()
+
+
+#: each realm account's setting, its name, and the password it had on a local install before they were generated
+KNOWN_ACCOUNT_PASSWORDS = {"AISC_ADMIN_PASSWORD": ("admin", "admin"), "AISC_USER_PASSWORD": ("user", "user")}
+
+
+def warn_known_account_passwords(path: str) -> None:
+    """Tells an install whose env.secrets still holds a realm account's well-known password which command changes
+    it. Names the setting and the command, never the value."""
+    if not Path(path).is_file():
+        return
+    for name, (account_name, known) in KNOWN_ACCOUNT_PASSWORDS.items():
+        if value_in(name, path).strip("'\"") == known:
+            warn(f"The realm account '{account_name}' still has the well-known password this install was made with. "
+                 f"Anyone who reaches the sign-in can use it. Change it with: scripts/aisc.py rotate-infra-password "
+                 f"{name}")
 
 
 def fresh(kind: str, name: str) -> str:
@@ -582,8 +617,10 @@ def write_runtime() -> None:
     secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
     local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
+    # where Caddy publishes the browser ports (caddy_bind_address), before env.local so a line there wins
     combined = ([line for line in secret_lines if infra(line)] + [line for line in tracked if not infra(line)]
-                + [line for line in secret_lines if not infra(line)] + local)
+                + [line for line in secret_lines if not infra(line)]
+                + [f"CADDY_BIND_ADDRESS={caddy_bind_address()}"] + local)
     prefix = container_prefix(install_id())
     if prefix:
         combined.append(f"CONTAINER_PREFIX={prefix}")
@@ -1734,6 +1771,7 @@ def start_steps() -> None:
 
     # 2. The secrets
     make_secrets([], hint=False)
+    warn_known_account_passwords(OUT)
 
     # Only one install runs at a time: refuse before the ports are looked at, so the other stack's are never taken
     # for ours to move. PROJECT is this install's stack by now. No answer from Docker: carry on.

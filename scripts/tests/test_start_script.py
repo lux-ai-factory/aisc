@@ -612,24 +612,28 @@ def test_an_https_install_with_a_port_kept_from_plain_http_keeps_its_own_address
     assert "open on http://localhost" not in r.stdout
 
 
-def test_a_new_install_is_told_to_sign_in_as_admin_admin(scratch):
+def test_a_new_install_is_told_how_to_show_its_own_passwords(scratch):
+    """Every new install has generated passwords: admin / admin would be refused."""
     (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
-    r = run(scratch)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "sign in as admin / admin" in r.stdout
-
-
-def test_an_install_with_its_own_passwords_is_not_told_admin_admin(scratch):
-    """Passwords generated (https) or changed (rotate-infra-password): admin / admin would be refused."""
-    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
-    assert run(scratch).returncode == 0
-    secrets = (scratch / "env.secrets").read_text()
-    secrets = secrets.replace("AISC_ADMIN_PASSWORD=admin\n", "AISC_ADMIN_PASSWORD=Zq8-changed-by-its-admin\n")
-    (scratch / "env.secrets").write_text(secrets)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "admin / admin" not in r.stdout
     assert "uv run scripts/aisc.py password" in r.stdout
+    assert "rotate-infra-password" not in r.stdout + r.stderr
+
+
+def test_an_install_still_on_admin_admin_is_told_so_and_how_to_change_it(scratch):
+    """An install made before the passwords were generated keeps the ones its realm holds."""
+    (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
+    assert run(scratch).returncode == 0
+    secrets = [line for line in (scratch / "env.secrets").read_text().splitlines()
+               if not line.startswith("AISC_ADMIN_PASSWORD=")]
+    (scratch / "env.secrets").write_text("\n".join(secrets + ["AISC_ADMIN_PASSWORD=admin"]) + "\n")
+    r = run(scratch)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "sign in as admin / admin" in r.stdout
+    assert "scripts/aisc.py rotate-infra-password AISC_ADMIN_PASSWORD" in r.stderr
+    assert "AISC_USER_PASSWORD" not in r.stderr
 
 
 def test_a_quoted_port_kept_in_env_local_is_honoured(scratch):
