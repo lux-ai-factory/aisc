@@ -33,7 +33,7 @@ def test_a_link_has_a_note_and_a_version_has_a_review_the_readers_read(evidence_
     pid = evidence_project["pid"]
     cols = sql(dsn, pid, "SELECT column_name FROM information_schema.columns"
                          " WHERE table_schema = 'evidence' AND table_name = 'review' ORDER BY ordinal_position")
-    assert [c[0] for c in cols] == ["system_id", "reviewed_by", "reviewed_by_name", "reviewed_at"]
+    assert [c[0] for c in cols] == ["system_id", "reviewed_by", "reviewed_by_name", "reviewed_at", "voided_at"]
     assert sql(dsn, pid, "SELECT data_type FROM information_schema.columns WHERE table_schema = 'evidence'"
                          " AND table_name = 'link' AND column_name = 'note'") == [("text",)]
     rows = sql(dsn, pid, "SELECT r, has_table_privilege(r, 'evidence.review', 'SELECT'),"

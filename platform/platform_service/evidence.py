@@ -633,7 +633,7 @@ def review_of(pid, version_pid: str) -> dict | None:
     """Who marked one card version's map reviewed, and when; None when nobody has since its last change."""
     with connection_store.connect(pid) as conn:
         row = conn.execute("SELECT reviewed_by, reviewed_by_name, reviewed_at FROM evidence.review"
-                           " WHERE system_id::text = %s", (version_pid,)).fetchone()
+                           " WHERE system_id::text = %s AND voided_at IS NULL", (version_pid,)).fetchone()
     return None if row is None else {**row, "reviewed_at": row["reviewed_at"].isoformat()}
 
 
@@ -749,7 +749,8 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | No
     in that version's matrix and to a test or control that can take it (Refused otherwise, and nothing
     is changed). An older version is OlderVersion: it is kept as it was. Removing every link is a save
     like any other: its `evidence.links.saved` event has an empty list as content. A save that changes
-    a link or a note clears the map's review."""
+    a link or a note ends the map's review: the review stays on record, ended, and the event names its
+    reviewer (`review_voided`)."""
     all_versions = versions(pid)
     current = _version(all_versions, version)
     if current is None:
@@ -797,15 +798,19 @@ def replace(pid, wanted: list[tuple[str, str, str]], who: str, version: str | No
             for link in renoted:
                 conn.execute("UPDATE evidence.link SET note = %s WHERE system_id::text = %s AND objective_id = %s"
                              " AND kind = %s AND item_key = %s", (notes[link], system_id, *link))
+            ended = None
             if wanted_set != have or renoted:
-                conn.execute("DELETE FROM evidence.review WHERE system_id::text = %s", (system_id,))
+                # the review ends but stays on record, and the saved event names whose review it was
+                ended = conn.execute("UPDATE evidence.review SET voided_at = now() WHERE system_id::text = %s"
+                                     " AND voided_at IS NULL RETURNING reviewed_by", (system_id,)).fetchone()
             kept_notes = {**had, **notes}
             # carried: the page offered the links of an earlier version (this one had none of its own)
             outbox.emit_project(conn, "evidence.links.saved", item_type="evidence", item_id=system_id,
                                 card_version=system_id,
                                 details={"added": len(wanted_set - have), "removed": len(have - wanted_set),
                                          "carried": not have and _carried(pid, found, all_versions)[0] is not None,
-                                         **({"notes_changed": len(renoted)} if renoted else {})},
+                                         **({"notes_changed": len(renoted)} if renoted else {}),
+                                         **({"review_voided": ended["reviewed_by"]} if ended else {})},
                                 content=[list(link) + ([kept_notes[link]] if kept_notes.get(link) else [])
                                          for link in sorted(wanted_set)])
 
@@ -831,9 +836,10 @@ def mark_reviewed(pid, who: str, name: str, version: str | None = None) -> None:
                 raise Refused("the map has no links to review")
             if who in makers:
                 raise Refused("the map is reviewed by someone who made none of its links")
+            # a second review of an unchanged map takes the place of the first, which stays on record
+            conn.execute("UPDATE evidence.review SET voided_at = now() WHERE system_id::text = %s"
+                         " AND voided_at IS NULL", (system_id,))
             conn.execute("INSERT INTO evidence.review (system_id, reviewed_by, reviewed_by_name, reviewed_at)"
-                         " VALUES (%s, %s, %s, now()) ON CONFLICT (system_id) DO UPDATE SET"
-                         " reviewed_by = EXCLUDED.reviewed_by, reviewed_by_name = EXCLUDED.reviewed_by_name,"
-                         " reviewed_at = EXCLUDED.reviewed_at", (system_id, who, name))
+                         " VALUES (%s, %s, %s, now())", (system_id, who, name))
             outbox.emit_project(conn, "evidence.map.reviewed", item_type="evidence", item_id=system_id,
                                 card_version=system_id, details={"links": len(makers)})
