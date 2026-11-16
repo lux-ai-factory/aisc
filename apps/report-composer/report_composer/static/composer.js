@@ -453,10 +453,8 @@
     if (!res.ok) { say("The report was not generated: " + errorText(res)); redrawReports(); return; }
     say("");
     clearReportError();
-    const link = document.createElement("a");
-    link.href = api + "/reports/" + encodeURIComponent(res.data.id) + "/download";
-    link.download = "";
-    document.body.appendChild(link); link.click(); link.remove();
+    // an attachment: the browser downloads it under the name the composer gives and stays on the page
+    location.assign(api + "/reports/" + encodeURIComponent(res.data.id) + "/download");
     redrawReports();
   }
   main.addEventListener("submit", function (ev) {
