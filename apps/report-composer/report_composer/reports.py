@@ -188,15 +188,15 @@ def outcome_fields(o: dict) -> dict:
                         "pinned_at": o.get("pinned_at")}}
 
 
-def _pdf_copy(renderer, snapshot) -> bytes | None:
-    """A Word report's PDF, from the same snapshot right after it: what Download PDF serves. None when the
-    renderer cannot make it; the Word report stands without it."""
+def _pdf_copy(renderer, snapshot) -> tuple[bytes | None, str | None]:
+    """A Word report's PDF, from the same snapshot right after it: what Download PDF serves, and why there is
+    none ('renderer_unavailable' or 'too_large'). The Word report stands without it."""
     try:
         pdf = base64.b64decode(renderer.render({**snapshot, "mode": "pdf"})["pdf_base64"])
     except Exception:
         logger.warning("the PDF copy of a Word report could not be rendered", exc_info=True)
-        return None
-    return pdf if len(pdf) <= MAX_PDF_BYTES else None
+        return None, "renderer_unavailable"
+    return (pdf, None) if len(pdf) <= MAX_PDF_BYTES else (None, "too_large")
 
 
 def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, record=None) -> tuple[int, dict]:
@@ -250,14 +250,17 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
                       block_statuses=statuses)
     status = "partial" if any(s.get("status") == "error" for s in statuses) else "done"
     sha256 = hashlib.sha256(document).hexdigest()
-    pdf_copy = _pdf_copy(renderer, snapshot) if fmt != "pdf" else None
+    pdf_copy, pdf_copy_error = _pdf_copy(renderer, snapshot) if fmt != "pdf" else (None, None)
     with projects.connect(project["pid"]) as conn:
         # the bytes of either format sit in the column named pdf
         db.finish_report(conn, report_id, status=status, finished_at=clock(), pdf=document,
                          sha256=sha256, size_bytes=len(document), block_statuses=statuses, fingerprint=fingerprint,
-                         pdf_copy=pdf_copy, pdf_copy_sha256=hashlib.sha256(pdf_copy).hexdigest() if pdf_copy else None)
+                         pdf_copy=pdf_copy, pdf_copy_sha256=hashlib.sha256(pdf_copy).hexdigest() if pdf_copy else None,
+                         pdf_copy_error=pdf_copy_error)
         if record is not None:
             record(conn, {**outcome, "ok": True, "status": status, "sha256": sha256, "block_statuses": statuses,
                           "fingerprint": fingerprint})
-    return 201, {"id": report_id, "status": status, "format": fmt, "block_statuses": statuses,
-                 "fingerprint": fingerprint}
+    answer = {"id": report_id, "status": status, "format": fmt, "block_statuses": statuses, "fingerprint": fingerprint}
+    if fmt != "pdf":
+        answer["pdf_copy_error"] = pdf_copy_error           # None: the PDF copy was made too
+    return 201, answer
