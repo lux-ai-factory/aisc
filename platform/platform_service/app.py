@@ -15,7 +15,9 @@ answers, and the routers of platform_service.routes, one per area.
 from __future__ import annotations
 
 import logging
+import uuid
 
+from aisc_identity import logs
 from aisc_identity.switches import check_environment
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -28,6 +30,7 @@ from platform_service.routes import ROUTERS
 from platform_service.routes.admission import _ledger_presented
 from platform_service.systems import InvalidSystem
 
+logs.configure("platform")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AISC platform", docs_url="/docs")
@@ -98,10 +101,14 @@ async def ledger_request(request: Request, call_next):
             logger.warning("ledger: a presented request id was not used: %s", problem)   # isn't this one
             request_id = None
     token = outbox.current_request.set(request_id)
+    log_token = logs.request_id.set(request.headers.get("x-aisc-request-id") or uuid.uuid4().hex)
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        logger.info("%s %s %s", request.method, request.url.path, response.status_code)
+        return response
     finally:
         outbox.current_request.reset(token)
+        logs.request_id.reset(log_token)
 
 
 @app.get("/health")
