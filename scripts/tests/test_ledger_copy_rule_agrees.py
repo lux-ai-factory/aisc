@@ -27,6 +27,8 @@ CASES = [
 
 
 def _load(name, path):
+    if str(ROOT / "shared/identity") not in sys.path:   # both import the shared rule, aisc_redact
+        sys.path.insert(0, str(ROOT / "shared/identity"))
     spec = importlib.util.spec_from_file_location(f"ledger_copy_rule_{name}", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

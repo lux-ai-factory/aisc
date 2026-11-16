@@ -159,6 +159,8 @@ tpg_project_db() { # pid
   if ! [[ "$pid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
     echo "tpg_project_db: not a project pid: '${1:-}'" >&2; return 1
   fi
-  (cd "$TPG_ROOT/platform" && uv run --quiet python -m platform_service.projectdb provision "$pid" \
+  # shared/identity holds the rules the platform imports (aisc_identity, aisc_redact), as in its image
+  (cd "$TPG_ROOT/platform" && PYTHONPATH="$TPG_ROOT/shared/identity${PYTHONPATH:+:$PYTHONPATH}" \
+     uv run --quiet python -m platform_service.projectdb provision "$pid" \
      --dsn "$(tpg_dsn "$(tpg_platform_role)" platform)")
 }

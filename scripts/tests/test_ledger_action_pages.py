@@ -13,6 +13,8 @@ import pytest
 from conftest import ROOT
 
 sys.path.insert(0, str(ROOT / "platform"))
+
+sys.path.insert(0, str(ROOT / "shared/identity"))   # the rules the platform imports
 #: app -> its source folder and the path it is served under
 APPS = {"qualification": ("apps/qualification/src", "/qualification"), "controls": ("apps/controls/src", "/controls")}
 IMPORT = re.compile(r"""from\s+["']([^"']+)["']""")

@@ -13,6 +13,7 @@ TPG = ROOT / "scripts/lib/throwaway-pg.sh"
 
 def test_a_bed_project_database_is_the_one_provision_makes():
     sys.path.insert(0, str(ROOT / "platform"))
+    sys.path.insert(0, str(ROOT / "shared/identity"))   # the rules the platform imports
     from platform_service.ledger.registry import REGISTRY
 
     pid = "5e1f0c2a-7b3d-4c8e-9f10-2a3b4c5d6e7f"

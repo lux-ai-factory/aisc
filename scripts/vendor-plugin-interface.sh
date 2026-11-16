@@ -55,10 +55,11 @@ for repo in "$@"; do
 done
 
 # The other local packages a target may take from vendor/: name, the folder its wheel is built from, and the
-# importable package inside that folder.
+# importable packages inside that folder (space-separated: shared/identity ships the secret rule aisc_redact
+# beside aisc_identity).
 LOCAL_NAMES=(aisc-plugin-manager aisc-identity)
 local_folder() { case "$1" in aisc-plugin-manager) echo shared/plugin-manager ;; aisc-identity) echo shared/identity ;; esac; }
-local_package() { case "$1" in aisc-plugin-manager) echo src/aisc_plugin_manager ;; aisc-identity) echo aisc_identity ;; esac; }
+local_package() { case "$1" in aisc-plugin-manager) echo src/aisc_plugin_manager ;; aisc-identity) echo aisc_identity aisc_redact ;; esac; }
 
 source_path() {  # source_path PYPROJECT DIST: the path its [tool.uv.sources] entry gives, or nothing
   python3 - "$1" "$2" <<'PY'
@@ -88,7 +89,8 @@ for target in "${TARGETS[@]}"; do
         wanted=$(wheel_name "$dist" "$(toml_get "$folder/pyproject.toml" project.version)")
         [ "$path" = "vendor/$wanted" ] \
           || fail "$target/pyproject.toml must point $dist at vendor/$wanted under [tool.uv.sources]"
-        if [ -n "$(git -C "$folder" status --porcelain --untracked-files=no -- "$(local_package "$dist")")" ]; then
+        # shellcheck disable=SC2046 # one path per package
+        if [ -n "$(git -C "$folder" status --porcelain --untracked-files=no -- $(local_package "$dist"))" ]; then
           fail "$folder/$(local_package "$dist") has uncommitted changes; the vendored wheel must be its code as committed"
         fi
         LOCAL_WANTED="$LOCAL_WANTED
@@ -117,11 +119,12 @@ for dist in "${LOCAL_NAMES[@]}"; do
   folder=$(local_folder "$dist")
   package=$(local_package "$dist")
   copy="$TMP/src-$dist"
-  mkdir -p "$copy/$(dirname "$package")"
+  mkdir -p "$copy"
   for f in "$folder"/pyproject.toml "$folder"/README* "$folder"/LICENSE*; do
     [ -f "$f" ] && cp "$f" "$copy/"
   done
-  (cd "$folder" && tar --exclude=__pycache__ --exclude='*.pyc' -cf - "$package") | (cd "$copy" && tar -xf -)
+  # shellcheck disable=SC2086 # one path per package
+  (cd "$folder" && tar --exclude=__pycache__ --exclude='*.pyc' -cf - $package) | (cd "$copy" && tar -xf -)
   version=$(toml_get "$folder/pyproject.toml" project.version)
   built=$(wheel_name "$dist" "$version")
   SOURCE_DATE_EPOCH=$(git -C "$folder" log -1 --format=%ct -- .) \

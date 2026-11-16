@@ -18,6 +18,8 @@ from ledger_routes import SCOPED_OUT, WRITES, discovered
 
 sys.path.insert(0, str(ROOT / "platform"))
 
+sys.path.insert(0, str(ROOT / "shared/identity"))   # the rules the platform imports
+
 EXCEPTIONS = ROOT / "scripts/tests/fixtures/ledger_route_exceptions.tsv"
 #: The apps whose handlers emit their own events. The engine is not changed here: its events come from
 #: the one registered forwarding module.

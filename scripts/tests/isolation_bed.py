@@ -211,7 +211,8 @@ def provision(bed: IsoBed, pids: list[str]) -> None:
             "for p in sys.argv[2:]: projectdb.provision(sys.argv[1], p)\n")
     _run(bed, "provision", ["uv", "run", "--quiet", "--extra", "dev", "python", "-c", code,
                             bed.dsn(platform_role(bed.t), "platform"), *pids],
-         ROOT / "platform", {"PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
+         ROOT / "platform", {"PYTHONPATH": str(ROOT / "shared/identity"),
+                             "PLATFORM_DATABASE_URL": bed.dsn("platform_rw", "platform"),
                              "PLATFORM_TEST_DATABASE_URL": bed.dsn("platform_rw", "platform")},
          "projectdb.provision")
     bed.projects += [p for p in pids if p not in bed.projects]
