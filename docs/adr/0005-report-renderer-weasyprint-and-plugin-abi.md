@@ -47,9 +47,10 @@ against the unified ORM rather than as a second service.
    `REPORT_SERVICE_URL` seam remains for a deployment that prefers the pilot service.
 5. **New top-level production dependencies (the I8 decision).** `weasyprint`, `cairosvg`, `jinja2`,
    `markupsafe`, `lxml`, `defusedxml`, `pillow` (WeasyPrint/cairosvg/SVG need the last four), and the
-   vendored `aisc-report-plugin-interface` (+ the four plugin packages, vendored under
-   `shared/report-plugin-interface` and `apps/backend/aisc_report_plugins/`). `python-docx` stays.
-   `reportlab` is removed.
+   interface's own `markdown-it-py` and `nh3` (rich text), plus the vendored
+   `aisc-report-plugin-interface` (+ the four plugin packages, vendored under
+   `apps/backend/aisc_report_plugin_interface/` and `apps/backend/aisc_report_plugin_*/`).
+   `python-docx` stays. `reportlab` is removed.
 
 ## Consequences
 
