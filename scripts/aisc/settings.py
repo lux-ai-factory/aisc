@@ -24,12 +24,33 @@ NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker 
              "service, then run this again.")
 
 
+#: the Configurator's own deployment (start --configurator): its settings, made from env.configurator.example, and
+#: its compose file, laid over the https one
+CONFIGURATOR_SETTINGS = "env.configurator"
+CONFIGURATOR_FILE = "docker-compose.configurator.yml"
+#: the settings env.runtime is made from: env.plugin_downloader, or env.configurator once use_configurator ran
+SETTINGS = TRACKED
+
+
+def settings_file() -> str:
+    """The settings file this start makes env.runtime from (use_configurator changes it)."""
+    return SETTINGS
+
+
+def configurator() -> bool:
+    """Whether this start runs the Configurator's own deployment (start --configurator)."""
+    return SETTINGS == CONFIGURATOR_SETTINGS
+
+
 def optional_compose_files() -> list[str]:
     """443 only for an install served over https, so a taken 443 never stops one on plain http; the
-    infrastructure's ports on the loopback only when asked (AISC_ADMIN_PORTS=on), for tools on the host."""
+    infrastructure's ports on the loopback only when asked (AISC_ADMIN_PORTS=on), for tools on the host; the
+    Configurator's own file last, for start --configurator."""
     files = ["docker-compose.https.yml"] if served_over_https() else []
     if admin_ports_asked():
         files.append("docker-compose.admin-ports.yml")
+    if configurator():
+        files.append(CONFIGURATOR_FILE)
     return files
 
 
@@ -62,7 +83,7 @@ def caddy_bind_address() -> str:
 
 def served_over_https() -> bool:
     # the checkout's own file, not the current folder's: COMPOSE asks this on import, before main moves there
-    tracked = ROOT / TRACKED
+    tracked = ROOT / SETTINGS
     domain = os.environ.get("CADDY_DOMAIN") or (value_in("CADDY_DOMAIN", str(tracked)) if tracked.is_file() else "")
     return domain.strip('"').startswith("https://")
 
@@ -125,6 +146,26 @@ PROJECT = stack_name(install_id(str(ROOT / OUT)))
 COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED,
            "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml",
            *[arg for name in optional_compose_files() for arg in ("-f", name)]]
+
+
+def use_configurator() -> None:
+    """start --configurator: the settings from env.configurator, and the https and Configurator compose files over
+    the development ones. Refused, before anything else runs, unless the install is served over https and
+    env.configurator exists: the Configurator's session cookie, sign-in and gateway are https only."""
+    global SETTINGS
+    own = ROOT / CONFIGURATOR_SETTINGS
+    domain = (os.environ.get("CADDY_DOMAIN") or (value_in("CADDY_DOMAIN", str(own)) if own.is_file() else "")).strip("\"'")
+    if not domain.startswith("https://"):
+        raise Refused(f"the Configurator is served over https only, and CADDY_DOMAIN is {domain or 'not set'}. Set "
+                      f"CADDY_DOMAIN=https://<its address> in {CONFIGURATOR_SETTINGS} (copied from "
+                      f"{CONFIGURATOR_SETTINGS}.example)")
+    if not own.is_file():
+        raise Refused(f"no {CONFIGURATOR_SETTINGS}: copy {CONFIGURATOR_SETTINGS}.example to {CONFIGURATOR_SETTINGS} and "
+                      "set the values it marks (https:// address, AISC_IMAGE_TAG)")
+    SETTINGS = CONFIGURATOR_SETTINGS
+    for name in optional_compose_files():
+        if name not in COMPOSE:
+            COMPOSE.extend(["-f", name])
 
 
 def use_stack(name: str) -> None:

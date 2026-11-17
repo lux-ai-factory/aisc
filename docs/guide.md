@@ -333,6 +333,35 @@ plugins. To develop one of the engine's apps on the host, see that submodule's R
 `docker-compose-infra.staging.yml` and `docker-compose.staging.yml` are older deployment files for the
 engine alone and are not used by the stack above.
 
+### Deploying the Configurator
+
+The development files assume one host: every service, volume and bind mount is on the machine compose runs on, and
+the conveniences of a developer machine are on (Keycloak in `start-dev`, the launcher and dashboard on their own
+ports, the ledger in `record`, images tagged `latest`). `docker-compose.configurator.yml` is laid over them, and over
+`docker-compose.https.yml`, for a deployment:
+
+1. Copy `env.configurator.example` to `env.configurator` and set `CADDY_DOMAIN` (https only), the addresses, and
+   `AISC_IMAGE_TAG` (the build every image runs, for example the commit).
+2. Put the certificate for `CADDY_DOMAIN` in `caddy-tls/server.crt` and `caddy-tls/server.key`.
+3. Run `uv run scripts/aisc.py start --configurator`. It needs Compose 2.24 or later, refuses an `http://`
+   `CADDY_DOMAIN`, makes the secrets as for any install, and makes Postgres's key and self-signed certificate once
+   in `postgres-tls/` (kept, `--rotate` included).
+
+What the file changes:
+- Postgres speaks TLS only (`infra/postgres/pg_hba.configurator.conf`: a password over the socket or over TLS,
+  everything else refused); every client requires TLS (`PGSSLMODE=require`, `sslmode=require` in the Prisma and
+  JDBC addresses). The clients do not check the certificate: the network between them is the compose network.
+- Every long-running service has a healthcheck and restarts unless stopped; nothing starts before what it needs is
+  healthy, or, for a one-shot, finished.
+- Keycloak runs `start` (production mode) behind the gateway; Caddy publishes 80 and 443 only and serves the
+  certificate above (`CADDY_ENVIRONMENT=production`); pgadmin, schema-docs and Flower stay in the `inspect`
+  profile; `LEDGER_MODE=enforce` on every service that writes to the ledger; every image the stack builds runs at
+  `AISC_IMAGE_TAG`, never pulled.
+
+Caddy publishing 80 and 443 only means the launcher, the dashboard and the sign-in are not published by this file:
+an operator's front proxy serves them at the addresses `env.configurator` names. Check the deployment with
+`./scripts/verify.sh --stack` once it is up.
+
 ### Logs and limits
 
 Every service in the development and engine-standalone files keeps its log in Docker's `json-file` driver,

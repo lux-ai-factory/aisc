@@ -13,6 +13,11 @@ __pycache__/
 immudb-signing.key
 immudb-signing.pub
 
+# the Configurator's settings, Postgres's key and certificate (start --configurator) and Caddy's certificate
+env.configurator
+/postgres-tls/
+/caddy-tls/
+
 # adapter plugins are the operator's own (adapters/README.md): only the README is AISC's
 adapters/*
 !adapters/README.md

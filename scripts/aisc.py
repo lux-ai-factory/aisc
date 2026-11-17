@@ -5,6 +5,8 @@
 """Install and run AISC on Linux, macOS and Windows alike: the commands a person installing it runs.
 
     uv run scripts/aisc.py start                              # check, make the secrets, build, start, wait
+    uv run scripts/aisc.py start --configurator               # the same for the Configurator's own deployment
+                                                              # (docker-compose.configurator.yml, env.configurator)
     uv run scripts/aisc.py secrets                            # make the secrets if they are missing
     uv run scripts/aisc.py secrets --rotate                   # make new ones, replacing what is there
     uv run scripts/aisc.py secrets --add-ledger-key           # add the next version of the ledger's master key

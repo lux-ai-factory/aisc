@@ -21,9 +21,10 @@ from .docker import (DOCKER_CALL_WAIT_S, LOG_TAIL_LINES, LOG_WAIT_S, Stack, capt
 from .keycloak import keycloak_realm_url, sync_sign_in
 from .ports import (TAKEN_IN_DOCKER, free_for_docker, held_by_aisc, kept_ports_not_ports, local_lines,
                     prepare_port_probe, published_ports, settle_ports)
-from .secrets import hide_secrets, make_secrets, warn_known_account_passwords, write_runtime
-from .settings import (COMPOSE, LOCAL, NO_DOCKER, OUT, ROOT, TRACKED, Refused, effective, install_id, lines_of,
-                       project, read_local, say, served_over_https, text_of, value_in, warn, with_slash, write_beside)
+from .secrets import hide_secrets, make_postgres_tls, make_secrets, warn_known_account_passwords, write_runtime
+from .settings import (COMPOSE, LOCAL, NO_DOCKER, OUT, ROOT, Refused, configurator, effective, install_id, lines_of,
+                       project, read_local, say, served_over_https, settings_file, text_of, use_configurator, value_in,
+                       warn, with_slash, write_beside)
 
 
 #: True once start has handed the stack to compose `up`; a refusal after that point cannot say "nothing was started".
@@ -116,7 +117,7 @@ def answer_over_tls(port: int, public_name: str) -> int | None:
 ONE_SHOT_SERVICES = frozenset({
     "make_buckets", "postgres-setup", "immudb-key", "ledger-pool", "report-grants", "aisc-backend-migrate",
     "controls-migrate", "qualification-migrate", "control-objectives-migrate", "report-composer-migrate",
-    "dashboard-migrate", "minio-data-owner", "devpi-data-owner", "rabbitmq-setup",
+    "dashboard-migrate", "minio-data-owner", "devpi-data-owner", "rabbitmq-setup", "postgres-tls",
 })
 
 
@@ -199,8 +200,9 @@ def not_running(lines: str) -> list[str]:
     return [line for line in lines.splitlines() if line and not re.search(r"\t(Up|running|Exited \(0\))", line)]
 
 
-def start(_args: list[str]) -> None:
-    """Install and start AISC in one command.
+def start(args: list[str]) -> None:
+    """Install and start AISC in one command; `start --configurator` starts the Configurator's own deployment
+    (docker-compose.configurator.yml with env.configurator), refused unless it is served over https.
 
     1. Refuses a checkout that cannot work, before anything runs: Docker not running, Compose older than 2.17, a
        branch other than pilot (master's files are older), submodules not checked out. Warns when
@@ -233,6 +235,8 @@ def start(_args: list[str]) -> None:
     sign-in the addresses, START_MIN_DISK_GB (20), START_RESTART_GRACE_S (90) for how long a restarting service
     may be waited on, START_PROBE_WAIT_S (10) and START_PULL_WAIT_S (300) for asking
     Docker whether it can publish the ports."""
+    if "--configurator" in args:
+        use_configurator()
     try:
         start_steps()
     finally:
@@ -256,6 +260,9 @@ def start_steps() -> None:
     if not parts or (int(parts[1]), int(parts[2])) < (2, 17):
         raise Refused(f"Docker Compose {version or 'is missing'}: AISC needs the Compose plugin 2.17 or later "
                       "(docker compose version).")
+    if configurator() and (int(parts[1]), int(parts[2])) < (2, 24):
+        raise Refused(f"Docker Compose {version}: the Configurator's compose file needs the Compose plugin 2.24 or "
+                      "later (docker compose version).")
     branch = captured(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     if branch != BRANCH:
         raise Refused(f"this checkout is on '{branch or 'no branch'}', not {BRANCH}. Run: git checkout {BRANCH} && "
@@ -272,6 +279,8 @@ def start_steps() -> None:
     # 2. The secrets
     make_secrets([], hint=False)
     warn_known_account_passwords(OUT)
+    if configurator():
+        make_postgres_tls()
 
     # Only one install runs at a time: refuse before the ports are looked at, so the other stack's are never taken
     # for ours to move. project() is this install's stack by now. No answer from Docker: carry on.
@@ -298,7 +307,7 @@ def start_steps() -> None:
         raise Refused("AISC cannot start: " + " ".join(problems))
     # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose
     # gives it (see sign_in_clients): one set without its slash is given with one.
-    tracked_launcher = effective("LAUNCHER_EXTERNAL_URL", TRACKED)
+    tracked_launcher = effective("LAUNCHER_EXTERNAL_URL", settings_file())
     if "LAUNCHER_EXTERNAL_URL" not in settings and tracked_launcher and not tracked_launcher.endswith("/"):
         settings["LAUNCHER_EXTERNAL_URL"] = with_slash(tracked_launcher)
     existing = lines_of(LOCAL) if Path(LOCAL).is_file() else []
@@ -317,8 +326,9 @@ def start_steps() -> None:
     # an https install's public name may not resolve from here, nor its certificate be trusted. Its listener
     # there serves TLS for that name only, so it is asked over TLS with the name (answer_over_tls).
     launcher = with_slash(effective("LAUNCHER_EXTERNAL_URL") or "http://localhost:8100/")
-    launcher_port = int(effective("HOMEPAGE_PORT_EXTERNAL") or "8100")
-    public_name = urlsplit(launcher).hostname or urlsplit(effective("CADDY_DOMAIN", TRACKED)).hostname or "localhost"
+    # the Configurator publishes 443 only: there the gateway's own redirect to the sign-in is the answer
+    launcher_port = 443 if configurator() else int(effective("HOMEPAGE_PORT_EXTERNAL") or "8100")
+    public_name = urlsplit(launcher).hostname or urlsplit(effective("CADDY_DOMAIN", settings_file())).hostname or "localhost"
     over_tls = served_over_https() and not os.environ.get("START_URL")
     url = (f"https://localhost:{launcher_port}/ (as {public_name})" if over_tls
            else os.environ.get("START_URL") or f"http://localhost:{launcher_port}/")
