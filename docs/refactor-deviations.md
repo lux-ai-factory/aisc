@@ -340,6 +340,101 @@ $ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architect
 5 passed, 3 xfailed                  # unchanged baseline, 0 failed
 ```
 
+## E5 follow-up: the pilot renderer, its dependencies and the plugin ABI (REP-02)
+
+This section supersedes the two "Deviations" bullets above that described the renderer as
+`reportlab`-based and the Jinja/CSS fidelity, SVG logos and per-tool renderers as "not yet ported".
+They are now ported. Nothing below changes REP-01.
+
+**Dependency and runtime inventory, taken *before* anything was added.** The pilot's renderer is
+`report_renderer/` in the pilot repo: a Jinja environment over `templates/document.html.j2` and
+`blocks/templates/*.j2`, `templates/report.css` + `templates/css/*.css`, WeasyPrint for PDF,
+`python-docx` for Word, `cairosvg` for SVG rasterisation, `nh3` for the rich-text commentary,
+`markdown-it-py` for the free-text/commentary markdown, and the `aisc_report_plugin_interface` /
+`aisc_report_plugin_*` distributions reached through the `aisc_report.tools` entry point. System
+runtime needs: `pango`, `cairo`, `gdk-pixbuf`, `libffi`, `fontconfig`, `harfbuzz` (WeasyPrint and
+cairosvg) and a font (`ttf-dejavu`) for the CSS font stacks — all added to the backend `Dockerfile`
+runtime stage. **No browser and no Chromium**, per ADR 0005: WeasyPrint draws CSS itself and the
+renderer fetches nothing (only `data:` URIs are read).
+
+**What is now ported.**
+
+- **The ABI, vendored verbatim:** `aisc_report_plugin_interface` (INTERFACE_VERSION 2) and the four
+  tool plugins `aisc_report_plugin_{langbite,mlareject,promptfoo,strongreject}`.
+- **`aisc_backend/report_renderer/`**: `document.py` (snapshot → sections → the pilot's
+  `document.html.j2`), the pilot's `blocks/templates/` and `templates/css/`, `pdf.py` (WeasyPrint,
+  `data:` only), `svg_print.py`, `style.py`, `structure.py`, `errors.py` (all vendored unchanged),
+  and `docx.py` (the Word export).
+- **`report_renderer/tools_abi.py`**: the renderer registry (the installed `aisc_report.tools` entry
+  points **plus** the four bundled renderers), matching by normalised tool name, a read-only
+  `ToolRun` built from the ORM (observations, measurements, components, artifacts), and the pilot's
+  generic measurements table as the fallback for a tool without a renderer. Runs on a local model
+  are left out here as everywhere else (`services.report_local_runs`).
+- **CSS composition** is the pilot's: `report.css` + the `@page` rule (header, footer, marking,
+  "Page N of M") + `style.css_overrides(look)` + the feature CSS the document uses
+  (`commentary`/`chapters`/`marking`/`key_figures`/`chart`/`toc_pages`/`numbering`). Charts come from
+  the interface's SVG (`charts.svg`); the cover logo is an SVG or raster `data:` URI, run through
+  `svg_print.for_print` first, and an SVG with an embedded external resource is refused.
+- `services/report_render.py` now delegates to the renderer (async `render_document`); `reportlab`
+  is gone. The `REPORT_SERVICE_URL` seam is retained: an external renderer still wins when set.
+
+**Deviations and things left undone.**
+
+- **"Observations not tied to a tool" is not printed.** The pilot's Test-results block prints the
+  observations its engine could not attribute to a run. The unified app stores one observation per
+  tool tag on the evaluation, so it cannot tell an untagged observation from a run's; the block
+  prints nothing there instead of attributing it to the wrong run. Cosmetic; recorded, not blocking.
+- **The cover's heading is empty, not "Cover".** The pilot's `document.html.j2` prints
+  `<h2>{title}</h2>` for a section whose `kind` is unset, and the pilot gives the cover the title
+  "Cover" (from the block class). This port keeps the cover's `kind="cover"` and an empty title, so
+  the page shows no stray heading. Deliberate; a one-line cosmetic difference from the pilot.
+- **`docx` headers and footers are not ported.** The pilot's `margin_texts` feeds both the PDF
+  `@page` rule and the DOCX header/footer; this port carries the marking, header/footer text and page
+  numbers into the **PDF** only. The Word document has the report's content, not the running margins.
+- **The Word export re-parses the section HTML** with the standard library's parser (headings,
+  paragraphs, lists, tables, `data:` images; charts and inline SVG are skipped). The pilot has its
+  own `html_to_docx`; this is an equivalent-in-kind, not byte-identical, implementation.
+- **The pilot's `report-composer` / `report-generator` services are not shipped** (ADR 0005): the
+  backend owns layouts, rendering and history, and the webapp composes against the existing report
+  router. The pilot's static `homepage/` stays reference material — the look is re-expressed in the
+  React app, not shipped as HTML.
+- **`report-settings.default_format` still accepts `docx`** (as noted above); the pilot's Word
+  output is likewise a first-class format.
+- **Local-model exclusion** is unchanged from REP-01 (a real concept in the unified app, see above).
+
+**Invariants reconciled rather than changed** (recorded, not silent):
+
+- **I5 (a report is drawn from its snapshot, not from live data).** `document.build_sections` reads
+  the evaluation rows **by pid from the frozen snapshot** to build the tool sections; no project
+  state (card, controls, coverage, links) is re-read. The rendered bytes of a published report are
+  therefore stable.
+- **I8 (an ADR before a dependency).** ADR 0005 was written first and lists exactly the interface
+  dependencies (`markdown-it-py`, `nh3`) and the no-browser/in-process decision; the renderer
+  dependencies follow it. ADR 0004 remains superseded.
+- **I10 (no browser/Chromium).** WeasyPrint + cairosvg only; `pdf.py` refuses every non-`data:` URL.
+- **Guards unchanged:** 5 passed, 3 xfailed, 0 failed (no baseline grew).
+
+**Verified on this tree after the follow-up (commands and their output):**
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Ran 317 tests in 10.7s
+OK                                    # 297 → 317 (13 plugin/renderer + 7 comparison/exclusion)
+
+$ rm -f /tmp/mig.sqlite3 && DATABASE_URL=sqlite:////tmp/mig.sqlite3 uv run python manage.py migrate
+... Applying sessions.0001_initial... OK        # applies cleanly from empty
+
+$ cd apps/webapp && npx vitest run
+ Test Files  33 passed (33)
+      Tests  193 passed (193)
+
+$ npm run build
+✓ built in 6.5s
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                  # unchanged baseline, 0 failed
+```
+
 ## Run it locally
 
 ```bash
