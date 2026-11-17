@@ -54,3 +54,77 @@ def test_the_service_passwords_are_kept_and_renewed_on_rotate():
     wanted = {"RABBITMQ_ENGINE_PASSWORD", "RABBITMQ_WORKER_PASSWORD", "RABBITMQ_FLOWER_PASSWORD"}
     assert wanted - {n for n, _ in m.SECRETS} == set(), "scripts/aisc.py makes no RabbitMQ service passwords"
     assert wanted - set(m.FRESH_ON_ROTATE) == set()
+
+
+def test_rabbitmq_is_healthy_only_once_its_api_and_broker_ports_listen(tmp_path):
+    """`rabbitmq-diagnostics ping` answers as soon as the node boots, before the management API (15672) that the
+    one-shot calls and the broker port (5672) the services use are open: a start on a slow machine ran the
+    one-shot too early and it was refused."""
+    test = compose_cfg.config(tmp_path)["services"]["rabbitmq"]["healthcheck"]["test"]
+    command = " ".join(test)
+    assert "check_port_listener 15672" in command
+    assert "check_port_listener 5672" in command
+
+
+class _Answer:
+    status = 204
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_the_one_shot_waits_while_the_management_api_refuses_connections():
+    import urllib.error
+    m = _module()
+    tries, waits = [], []
+
+    def opener(request, timeout):
+        tries.append(request.full_url)
+        if len(tries) < 3:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return _Answer()
+
+    put = m.sender("http://rabbitmq:15672", ("admin", "fake"), opener=opener, sleep=waits.append, wait_s=60)
+    put("/api/users/aisc-engine", {"password": "x", "tags": ""})
+    assert len(tries) == 3
+    assert waits and all(w > 0 for w in waits)
+
+
+def test_the_one_shot_gives_up_with_its_reason_once_the_wait_is_over():
+    import urllib.error
+    import pytest
+    m = _module()
+    clock = [0.0]
+
+    def opener(request, timeout):
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    put = m.sender("http://rabbitmq:15672", ("admin", "fake"), opener=opener, sleep=sleep, wait_s=10,
+                   clock=lambda: clock[0])
+    with pytest.raises(SystemExit, match="RabbitMQ's management API at http://rabbitmq:15672 did not answer"):
+        put("/api/users/aisc-engine", {"password": "x", "tags": ""})
+    assert clock[0] >= 10
+
+
+def test_a_refusal_by_rabbitmq_itself_is_not_waited_out():
+    """An HTTP error (a wrong administrator password, a bad body) is an answer: retrying would only hide it."""
+    import io
+    import urllib.error
+    import pytest
+    m = _module()
+    tries = []
+
+    def opener(request, timeout):
+        tries.append(1)
+        raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", {}, io.BytesIO(b""))
+
+    put = m.sender("http://rabbitmq:15672", ("admin", "wrong"), opener=opener, sleep=lambda s: None, wait_s=60)
+    with pytest.raises(urllib.error.HTTPError):
+        put("/api/users/aisc-engine", {"password": "x", "tags": ""})
+    assert tries == [1]

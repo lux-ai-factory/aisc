@@ -84,6 +84,21 @@ def helper_models(pid: str, name: str, request: Request) -> JSONResponse:
     return _internal(200, {"models": llm_catalogue.chat_first(listed["models"]), "error": listed["error"]})
 
 
+@router.get("/internal/projects/{pid}/network-rule")
+def network_rule(pid: str, request: Request) -> JSONResponse:
+    """The project's network rule, for the engine to send an LLM component's key only where the platform would send
+    its own: {"allowed_hosts", "denied_addresses", "floor_hosts"} (connection_allowlist.rule). No key, no endpoint."""
+    if _behind_gateway(request):
+        return _internal(404, {"detail": "not here"})
+    try:
+        identify(request.headers.get(SERVICE_TOKEN_HEADER), {"engine": "PLATFORM_ENGINE_TOKEN"})
+    except ServiceRefused as refused:
+        return _internal(refused.status, {"detail": refused.detail})
+    if not looks_like_pid(pid) or db.get_project(pid) is None:
+        return _internal(404, {"detail": f"no project {pid!r}"})
+    return _internal(200, connection_allowlist.rule(pid))
+
+
 #: The most references one fingerprints question may name (a run names a few).
 MOST_FINGERPRINT_REFS = 32
 
