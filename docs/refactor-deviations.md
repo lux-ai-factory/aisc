@@ -67,7 +67,8 @@ names with the ones this tree actually has; the sets shrank, and each entry carr
 
 ## E4 feature parity — evidence map and connections (EVD-01 #114, CON-01 #112)
 
-Landed on this branch: `apps/backend` `0eed571`, `apps/webapp` `94f5ddb`.
+Landed on this branch: `apps/backend` (EVD-01 `0eed571`, CON-01 rework this commit),
+`apps/webapp` (EVD-01 `94f5ddb`, CON-01 rework this commit).
 
 **EVD-01 — versioned evidence map (done).** The pilot's `homepage/evidence-map.html`
 is re-expressed as a React page (`apps/webapp/src/pages/EvidenceMapPage.tsx`,
@@ -85,27 +86,48 @@ real endpoints the frozen backend did not have:
   and writes them only on an explicit copy; a review must be by someone who made
   none of the version's links and is invalidated by any link change.
 
-**CON-01 — connections and adapters (partial).** `AIComponent` gains `adapter`,
-`adapter_version`, `helper_role` (migration `0034`); `GET/PUT
-/projects/{pid}/connections[/{component_pid}]` list connection components (adapter,
-endpoint, key presence) and let an editor choose the adapter/helper role. React page
-`/projects/:name/connections`, linked from the Project menu.
+**CON-01 — connections, adapters and helpers (done).** Rewritten against the pilot's
+own contract instead of the frozen `AIComponent` fields:
+
+- Models `Connection`, `Helper` and `RunBinding` (migration `0035`), a connection
+  being a protocol the adapter registry dispatches on (`rest`, `openai`, `a2a`,
+  `oip`), an endpoint, the protocol's own fields, and the component it targets.
+- `apps/backend/aisc_backend/adapters/` ports the pilot's request builders and
+  response parsers: `rest` (templated body, JSON-path answer, refusal match),
+  `openai` (chat completions, tool-call/logprob capabilities), `a2a` (JSON-RPC
+  `message/send`, artifacts, `.well-known/agent-card.json` discovery) and `oip`
+  (KServe v2 infer). `services/connections.py` describes an adapter for the UI.
+- `GET/PUT/DELETE /projects/{pid}/connections[/{name}]`, `POST …/{name}/target`,
+  `POST …/{name}/test` (one real call through the adapter, as a test would make it)
+  and `POST …/{name}/discover`; `GET/PUT/DELETE /projects/{pid}/helpers[/{name}]`
+  with `POST …/{name}/test`; `GET/PUT /projects/{pid}/runs/{plugin_pid}/bindings`
+  snapshots the adapter/version and the helper a run used.
+- Keys and secret header values live **per project** in the existing encrypted
+  `ProjectConfig` secret store (`category=secrets`, keys `connection:<name>:key`,
+  `connection:<name>:header:<header>`, `helper:<name>:key`). Every response reports
+  only *that* a key is stored and the header *names*; the value never leaves the
+  backend. `AIComponent.json_value` no longer holds connection keys.
+- React: `/projects/:name/connections` is the full editor (the protocol's fields,
+  key, secret headers, advanced headers/timeout, Try, agent card, target link,
+  remove) and `/projects/:name/helpers` the helper models (endpoint, roles, key,
+  Test), both in the Project menu; Try/Test call the real endpoints.
 
 ### Left undone / deviating (CON-01)
 
-1. **Only the connection/adapter *record* is ported, not the adapter protocols.**
-   There is no OpenAI/A2A/REST request builder, no A2A agent card discovery and no
-   live "test connection" — the pilot's `connections.html` adapters. The adapter
-   kind is data a test can read; nothing dispatches on it yet. Owner: the E5
-   execution/plugin port.
-2. **Keys stay in `AIComponent.json_value`, not a per-project encrypted secret.**
-   The frozen backend already stores an LLM `secret_key` there; CON-01 does not move
-   it to the pilot's encrypted project-scoped store. The connections listing reports
-   presence only and never reads the value back, so it cannot leak, but the pilot's
-   separation of key from connection is **not** implemented. Deviates from the pilot;
-   follows from the frozen backend it was ported onto. Owner: the secrets/SEC work.
-3. **Helper *role* only, no helper model binding.** `helper_role` marks a component;
-   binding a helper to a run is not ported.
+1. **The pilot's allowed-hosts guard is not ported.** The pilot refuses internal
+   hosts unless they are listed, and never calls loopback, deployment or metadata
+   addresses. Here a connection may point anywhere the backend can reach — the tests
+   exercise exactly that, against a loopback server. That is a net *new* capability
+   for an editor and needs its own decision (an `AllowedHost` model plus IP
+   classification), so it is deferred rather than guessed. Owner: SEC/REL work,
+   before CON-01 leaves the integration branch.
+2. **Helper bindings are recorded, not shown.** `RunBinding` is written and read over
+   the API, and its snapshot is proven not to follow later connection edits, but no
+   page yet displays "what this run used" — that belongs with the run/execution UI.
+   Owner: E5.
+3. **`0034`→`0035` churn.** `0034` added `adapter`/`adapter_version`/`helper_role` to
+   `AIComponent`; `0035` removes them and creates the new tables. Both are kept and
+   both apply, rather than rewriting a migration that is already on the branch.
 4. **UI-02 and the report composer are untouched.** This note covers only EVD-01 and
    CON-01; the four-column hub (UI-02) and report composer remain as previously
    landed.
@@ -113,9 +135,9 @@ endpoint, key presence) and let an editor choose the adapter/helper role. React 
 **Guards:** `5 passed, 3 xfailed, 0 failed` — **no baseline grew** for any of the
 above (`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`).
 
-**Verified on this tree:** `uv run python manage.py test` → 221 passed (was 208);
-`migrate` on SQLite applies `0033`/`0034`; `npm run build` clean; `npx vitest run` →
-147 passed (was 132).
+**Verified on this tree:** `uv run python manage.py test` → 249 passed (was 221);
+`migrate` on SQLite applies `0033`/`0034`/`0035`; `makemigrations --check` clean;
+`npm run build` clean; `npx vitest run` → 164 passed (was 147).
 
 ## Run it locally
 
