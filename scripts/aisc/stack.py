@@ -21,6 +21,7 @@ from .docker import (DOCKER_CALL_WAIT_S, LOG_TAIL_LINES, LOG_WAIT_S, Stack, capt
 from .keycloak import keycloak_realm_url, sync_sign_in
 from .ports import (TAKEN_IN_DOCKER, free_for_docker, held_by_aisc, kept_ports_not_ports, local_lines,
                     prepare_port_probe, published_ports, settle_ports)
+from .run_uids import LABEL as RUN_UIDS_LABEL, other_installs_run_uids, run_uid_settings
 from .secrets import hide_secrets, make_postgres_tls, make_secrets, warn_known_account_passwords, write_runtime
 from .settings import (COMPOSE, LOCAL, NO_DOCKER, OUT, ROOT, Refused, check_host_names, configurator,
                        configurator_setting, effective, install_id, lines_of, project, read_local, say,
@@ -315,6 +316,13 @@ def start_steps() -> None:
                                              not served_over_https(), free_for_docker, TAKEN_IN_DOCKER.__contains__)
     if problems:
         raise Refused("AISC cannot start: " + " ".join(problems))
+    # This install's run-uid pools, chosen once and kept in env.local with the ports: away from the pools of every
+    # other install's worker on this host (stopped ones too), since the kernel counts a uid's processes across them
+    workers = docker_in_time([Stack.docker, "ps", "-a", "--filter", "label=com.docker.compose.service=aisc-eval-worker",
+                              "--format", '{{.Label "com.docker.compose.project"}}\t{{.Label "' + RUN_UIDS_LABEL + '"}}'],
+                             DOCKER_CALL_WAIT_S)
+    others = other_installs_run_uids(workers.stdout, project()) if workers is not None and workers.returncode == 0 else []
+    settings.update(run_uid_settings(kept, install_id(), others))
     # The realm import makes the sign-in's callback and sign-out rule from the launcher's address as compose
     # gives it (see sign_in_clients): one set without its slash is given with one.
     tracked_launcher = effective("LAUNCHER_EXTERNAL_URL", settings_file())

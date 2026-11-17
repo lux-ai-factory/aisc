@@ -233,6 +233,9 @@ services:
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker
+    # the pool this worker leases from, read by another install's start so the two never share a uid
+    labels:
+      aisc.run-uids: "${PLUGIN_RUN_UIDS:-10100-10199}"
     # The image's own check pings "celery@$$HOSTNAME", which in a Dockerfile is the shell's pid
     # followed by the word HOSTNAME, with a 3s timeout, so it never passes. This pings the worker
     # by its real name and gives it 20s.
@@ -282,8 +285,9 @@ services:
       # Unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none.
       PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
       # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
-      # never overlapping, since the kernel counts a uid's processes across containers
-      PLUGIN_RUN_UIDS: "10100-10199"
+      # never overlapping, since the kernel counts a uid's processes across containers. Each install has its own
+      # pools, chosen by start and kept in env.local (scripts/aisc/run_uids.py)
+      PLUGIN_RUN_UIDS: "${PLUGIN_RUN_UIDS:-10100-10199}"
     depends_on:
       - aisc-backend
       - rabbitmq
@@ -344,7 +348,7 @@ services:
     environment:
       <<: *eval-worker-env
       # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
-      PLUGIN_RUN_UIDS: "10200-10209"
+      PLUGIN_RUN_UIDS: "${PLUGIN_DECLARATIONS_RUN_UIDS:-10200-10209}"
     depends_on:
       - aisc-eval-worker
       - aisc-backend

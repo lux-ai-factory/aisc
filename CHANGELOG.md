@@ -3,6 +3,17 @@
 ## Unreleased: connections without the key on resolve, params, tools, run keys that end with their pass; hardening after the audit of every change since 31 October
 
 ### Upgrading an existing install
+- Each install has its own run-uid pools: `start` writes `PLUGIN_RUN_UIDS` and `PLUGIN_DECLARATIONS_RUN_UIDS`
+  into `env.local` once (from the install's id, away from the pools other installs' workers on the host carry in
+  their `aisc.run-uids` label), and compose reads them; an install without an id keeps 10100-10199 and
+  10200-10209. An install that has none gets them at its next start; no data changes. Recreate both eval workers.
+- Plugin installs run in the sandbox a test runs in: each install takes a uid from the run pool, behind the
+  firewall, with a proxy token that admits only the package index hosts (the stack's index, `pypi.org`,
+  `files.pythonhosted.org`), and a home and uv cache of its own (so each install downloads from the index again);
+  every process it leaves is ended after each step, and what it built is root's before a test runs it. **A
+  catalogue plugin and its dependencies install from wheels only** (`--only-binary :all:`): a dependency
+  published only as source fails the install with a message naming it, until the publisher provides a wheel.
+  Local plugins keep source builds. Rebuild the eval worker image.
 - The plugin index is immutable: devpi's `root/public` is created non-volatile, and a volume an earlier image
   made volatile is made non-volatile at the next start (`devpi: index root/public made non-volatile`). A version
   on the index is never replaced or deleted: the publisher refuses to publish a version that is already there
