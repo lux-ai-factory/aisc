@@ -9,7 +9,7 @@ import secrets as random_source
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .settings import (COMBINED, INSTALL, LOCAL, OUT, SIGNING_KEY, SIGNING_PUB, TRACKED, Refused, settings_file,
+from .settings import (COMBINED, INSTALL, LOCAL, OUT, SIGNING_KEY, SIGNING_PUB, Refused, settings_file,
                        caddy_bind_address, container_prefix, install_id, lines_of, new_install_id, private, project,
                        say, stack_name, text_of, up_hint, use_stack, value_in, warn, with_value, write_beside)
 
