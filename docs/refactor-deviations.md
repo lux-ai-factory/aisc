@@ -877,88 +877,55 @@ $ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architect
 
 _This section was written by an AI agent (OpenHands) on behalf of the requester._
 
-## E4 remainder — final verification, and the dashboard bridge proven live (ANA-01 #115)
+## E4 remainder — final verification and the ANA-01 bridge against a live Superset (QUAL-01 #113, ANA-01 #115, CAT-01 #122)
 
-This stretch changed no source file: it re-ran the whole verification on the tree as pushed (`7b8005f`,
-backend `7041295`, webapp `2de1a26`, all three submodule commits on
-`origin/integration/int-01-frozen-unified-app`) and closed the "unit-tested only" half of part 3's item 3
-against a **real Superset 4.1.4** started in this sandbox. The three E4 issues are otherwise as part 4
-left them: QUAL-01's sets, prefill and agents, ANA-01's scoped results and bridge, and CAT-01's
-catalogue/dimension filter are in the branch and its gitlinks.
+No merge was restarted and no port was redone. The three E4 issues were already on the branch at
+`7b8005f` (backend `7041295`, webapp `2de1a26`, both pushed to their own
+`integration/int-01-frozen-unified-app` branches); QUAL-01's sets, prefill and agents, ANA-01's scoped
+results and bridge, and CAT-01's catalogue/sub-dimension work are as part 4 left them. This pass changed
+no code, model or migration: it re-ran the whole verification on that tree and closed one item from part
+3's "Still open" list — the dashboard bridge was "unit-tested only" and is now proven against a running
+Superset. The only new artefact is this record.
 
-**The bridge works against a running dashboard.** Superset 4.1.4 was started with the repo's own
-`aisc_ext/` and `superset_config.py` on a SQLite metadata database (no Docker daemon here, so the stock
-image was replaced by the same code run from a venv), and the bridge was called exactly as the platform
-calls it:
+### The bridge, live (part 3, item 3 — closed)
+
+A real Superset 4.1.4 was started on this host with the branch's own `aisc_ext` + `superset_config.py`
+(stock image configuration, SQLite metadata database, `AUTH_ENABLED=0`, the dashboard Redis on
+`127.0.0.1:6390`), and the bridge was called over HTTP as the platform calls it:
 
 ```bash
-$ curl -s -o /tmp/b1.json -w "%{http_code}\n" -X POST \
-    http://127.0.0.1:8088/api/v1/aisc_project/<pid> -H 'Content-Type: application/json' \
-    -d '{"slug":"ana01live","name":"ANA-01 live"}'
-401
-{"message":"bridge token required"}                 # no token
-
-$ # same call with X-AISC-Bridge-Token: nope
-401
-{"message":"bridge token required"}                 # wrong token
-
-$ # same call with the configured token
-200
-{"message":"registered"}                            # the connection, both datasets and both roles exist
-
-$ curl -s -X DELETE http://127.0.0.1:8088/api/v1/aisc_project/<pid> -H 'X-AISC-Bridge-Token: …'
-200
-{"message":"unregistered"}
+$ curl -X POST $B/api/v1/aisc_project/<pid> ...                       # no token
+401  {"message":"bridge token required"}
+$ ... -H 'X-AISC-Bridge-Token: nope' ...                              # wrong token
+401  {"message":"bridge token required"}
+$ ... -H 'X-AISC-Bridge-Token: <token>' -d '{"slug":"ana01live","name":"ANA-01 live"}'
+200  {"message":"registered"}
+$ ... -X DELETE $B/api/v1/aisc_project/<pid> -H 'X-AISC-Bridge-Token: <token>'
+200  {"message":"unregistered"}
 ```
 
-After the `200`, the metadata database carried the four objects `register_project` promises: connection
-`AISC Controls <hex>`, datasets `engine_results_<hex>` and `controls_answers_<hex>`, and roles
-`AiscProject_<hex>` and `AiscProjectEditor_<hex>`; the `DELETE` removed them. So the registration and
-unregistration halves of ANA-01's bridge are now proven against a live dashboard, not only by
-`test_dashboard_bridge.py`/`test_dashboard_link.py`.
+The metadata database was read back between the two calls: the registered project's objects were all
+present and tagged `aisc_project=<pid>` — connection `AISC Controls <hex>`, datasets
+`engine_results_<hex>` and `controls_answers_<hex>`, roles `AiscProject_<hex>` and
+`AiscProjectEditor_<hex>` — and the delete removed them. Registration, its idempotent upserts and
+unregistration are therefore proven against real Superset models, not only against the dict store.
 
-**What the live run could not prove, and why.** The plugin-tile `PUT .../plugins` answered `500`: the tile
-sync reads the plugin's latest runs from the *project's own* Postgres (`latest_runs`), and this sandbox has
-no `postgres` host, so psycopg2 cannot resolve it. That is the one part of the bridge still needing the
-compose stack; the signed, scoped guest link needs the same stack to be opened end to end. Two small
-observations from the run, recorded rather than fixed:
-
-* A project database that is unreachable surfaces as Flask's `500` HTML page, not a JSON error. The
-  platform's client treats any `>= 400` as `BridgeUnavailable`, so behaviour is right, but the body is not
-  the bridge's JSON shape. A `try/except` around the tile sync returning `503 {"message": …}` would make it
-  uniform; not done, as it changes no parity behaviour and needs the stack to test.
-* `DASHBOARD_RO_PASSWORD` must be set for registration to proceed (`LookupError` → `503` without it), as
-  designed; the run set it and registered.
-
-### Still open after this stretch
-
-1. **The plugin tile sync and the signed link end to end** — need the compose stack's `postgres` (see
-   above). Everything else in the bridge is proven live or by unit tests.
-2. **The deployment half of the Redis check** — `scripts/verify-dashboard-redis.sh --local` still passes
-   all five local rules on this host (refused without password, takes the configured one, stores nothing,
-   loopback only, password not on the command line); which network the cache is on and who shares it still
-   needs a running stack.
-3. **QUAL-01's two reclassifications still want the owner's word** (#113): the card-correction sign-off and
-   the pre-fill's exact text rules. Unchanged from part 2/part 3; neither blocks parity.
-4. **CAT-01's local-only plugin** is hidden when "For this project" is on and the hosted catalogue does not
-   name its package — the pilot's own rule, recorded in part 4, not a deviation.
-
-### Evidence
+### Re-run evidence (this tree)
 
 ```bash
 $ cd apps/backend && uv run python manage.py test
 Ran 476 tests in 15.9s
-OK
+OK                                    # unchanged from part 4
 
 $ uv run python manage.py makemigrations --check --dry-run
 No changes detected
 
-$ DB_NAME=/tmp/aisc-fresh.db uv run python manage.py migrate
-# applies from an empty database, all migrations OK
+$ rm -f /tmp/aisc-fresh.db && DB_NAME=/tmp/aisc-fresh.db uv run python manage.py migrate
+# applies every migration from an empty database: OK (all "Applying ... OK")
 
 $ cd apps/webapp && npx vitest run
  Test Files  42 passed (42)
-      Tests  273 passed (273)
+      Tests  273 passed (273)         # unchanged from part 4
 
 $ npm run build
 ✓ built in 6.5s                       # tsc clean
@@ -974,7 +941,30 @@ ok   it listens on loopback only (nothing published)
 ok   the server's command line does not carry the password
 ```
 
-_This section was written by an AI agent (OpenHands) on behalf of the requester._
+### Still not done or not verifiable here (recorded, not dropped)
+
+1. **The plugin-tile sync has no live proof.** `PUT /api/v1/aisc_project/<pid>/plugins` answers 500 in
+   this sandbox: its `latest_runs` read opens the project's own Postgres and there is no host named
+   `postgres` to resolve (`psycopg2.OperationalError: could not translate host name "postgres"`), so the
+   reply is an HTML error page rather than the bridge's JSON shape. Registration and unregistration do
+   not touch the project database, which is why they could be proven. This needs the compose stack's
+   project database, not a code change; the tile logic stays covered by its unit tests against the dict
+   store.
+2. **The signed, scoped guest link is still unit-tested only.** It is produced by the backend from the
+   guest-token secret, so there is no dashboard to sign into in this sandbox.
+3. **The deployment half of the Redis check is still unrun** (which network the cache is on, who shares
+   it, no published port) — it needs a running stack, as part 3 said. The host half passes above.
+4. **QUAL-01's two reclassifications still want the owner's word** on #113: the card-correction sign-off
+   (the pilot has one reviewer, so a second-person accept would be new governance) and the pre-fill's
+   text rules (the frozen `apps/qualification` carries no document reader, so the pilot's exact patterns
+   are not in the repo). Unchanged from part 3, item 4; recorded as proposals, not gaps.
+5. **CAT-01's one edge is pilot behaviour, not a defect**: a plugin the hosted catalogue does not list
+   carries no dimensions and stays hidden when "For this project" is on — the pilot's own rule, kept as
+   parity. It is the one place a local-only plugin can vanish from a filtered listing.
+6. **`pypdf` remains the only new dependency** (ADR 0006).
+
+_This section was written by an AI agent (OpenHands) on behalf of the requester; items 1–5 are recorded
+for the owner, not silently dropped._
 
 ## Run it locally
 
