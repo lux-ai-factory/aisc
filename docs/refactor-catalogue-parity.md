@@ -18,7 +18,7 @@ exclusion 2 (the step-3 filter by the project's objectives' dimensions) was the 
 | One page where a project finds both kinds — tests (plugins) and checklists — and installs from it | `GET /catalogue` answers both kinds (`kind=all\|plugin\|control`), one install endpoint `POST /projects/{pid}/catalogue/installs`, one page `CataloguePage` with one reusable `CatalogueExploreDialog` | **ported** |
 | "Filtered by this project's control objectives" | `GET /catalogue` carries each item's dimension tags and the dimension vocabulary; `GET /projects/{pid}/control-objectives/dimensions` says which dimensions the project's selected objectives are; the listing page's "For this project" switch (on by default) keeps the items carrying one of them, with a note and "show everything" when the project has selected nothing — see [exclusion 2](#exclusion-2--the-filters-are-in-the-one-listing) | **ported** |
 | "Public catalogue: read live, always current, nothing stored for this project" | `GET /catalogue` reads through to the hosted catalogue on each listing (`services/controls_catalogue`, briefly cached), nothing is stored until an item is installed | **ported** |
-| "Also lists the tests kept on this installation" | the plugin side of the same listing comes from the installation's loader (`source == "local"`, expanded per base-plugin class), alongside registry packages | **ported** |
+| "Also lists the tests kept on this installation" | the plugin side of the same listing comes from the installation's loader (`source == "local"`, expanded per base-plugin class), alongside registry packages; each row carries the dimensions of the catalogue's `type: test` item naming its package, so "For this project" narrows it too | **ported** |
 | Install into the project (idempotent, repeatable) | `POST /projects/{pid}/catalogue/installs` copies a checklist template into the project's own library (`ProjectChecklist`), installs the requested plugin class(es) (`Plugin`), and re-enables rather than duplicating on reinstall | **ported** |
 | An install that the reference's own UI consumed | `GET /projects/{pid}/catalogue/control/{slug}/export` keeps the reference `{meta, questions}` package shape, so outside tooling still works | **ported** |
 | The published catalogue site itself (independently published artifact) | linked, never fetched or stored (`app_catalog_url`, I9) | **ported (as a link)** |
@@ -78,15 +78,24 @@ objectives carry it in `ControlObjective.macro_requirement`.
   sidebar offers (built from the served vocabulary). Both narrow the same `filterCatalogue` call, matching
   *any* of their slugs, which is the catalogue site's own rule.
 
-**What is still different, and why.** Only checklists are narrowed. The pilot's "tests" tab is filtered by
-the same dimensions because its tests come from the hosted catalogue (`type: test` items, which do carry
-dimension tags); our plugin side of the listing comes from this installation's plugin loader
-(`source == "local"` plus registry packages), which carries no dimension tag at all, so a project filter
-would hide every plugin rather than narrow them. `filterCatalogue` therefore leaves plugins alone — the
-switch is not offered on the plugin-only dialog — and the plugin side of the listing is unchanged. Closing
-*that* needs the hosted catalogue's test dimension tags to reach the loader path, which is the same
-question the plugin listing already has (which catalogue is authoritative for a plugin package), not a
-dimension-table question.
+**Both sides are narrowed, and the plugin side needed no second listing.** The pilot's "tests" tab is
+filtered by the same dimensions because its tests come from the hosted catalogue (`type: test` items,
+which do carry dimension tags). Our plugin side of the listing comes from this installation's plugin
+loader (`source == "local"` plus registry packages), which carries no dimension tag of its own, so the
+catalogue's `type: test` item naming the package (`package_name`, or its slug with the historical
+`aisc-plugin-` prefix) supplies them: `_plugin_dimensions` in `services/controls_catalogue.py` indexes
+the cached fetch by package, and `routers/catalogue.py` attaches the dimensions to each plugin row.
+`filterCatalogue` narrows plugins by the same dimensions as a checklist, and the plugin-only dialog
+offers the "For this project" switch too. A package the hosted catalogue does not list carries none and
+is hidden by a project filter, which is the pilot's own rule — a filter means "what this project's
+objectives touch", not "everything". One cached fetch (`_all_items`) feeds the checklist listing, the
+plugin dimensions and the sub-dimension tree, so the surface still reads the catalogue once per window.
+
+**The sub-dimension chips nest, as the pilot's sidebar does.** The catalogue's own tree
+(`controls_subdim`/`testing_subdim`, parent in `parent_dimension_slug`) is served as
+`CatalogueOut.subdimensions` and each item's children as `CatalogueControlOut.subdimensions`; the
+dialog's chips nest those children under each dimension and a child chip narrows to the items carrying
+it. An item matched only through its child still matches its parent's chip, as before.
 
 ## No duplicate surface (the second CAT-01 criterion)
 

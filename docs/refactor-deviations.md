@@ -824,6 +824,59 @@ checklists with no dimension tag: 0
 _This section was written by an AI agent (OpenHands) on behalf of the requester; item 4 above is a
 proposal for the owner to confirm (recorded on #113)._
 
+## E4 remainder closed, part 4: the plugin side and the sub-dimension chips (CAT-01 #122)
+
+Items 1 and 2 of part 3's "Still open" list are closed on this branch (backend `7041295`, webapp
+`2de1a26`), and the parent gitlinks are bumped to them. No invariant changed, so no ADR; no model and no
+migration (`makemigrations --check`: "No changes detected").
+
+* **The plugin side of the catalogue is dimension-filtered**, without a second listing: the catalogue's
+  `type: test` item naming a package (`package_name`, or its slug with the historical `aisc-plugin-`
+  prefix) supplies the dimensions the loader cannot, `_plugin_dimensions` indexes them from the one
+  cached fetch (`_all_items`), and the plugin-only dialog now offers the "For this project" switch. A
+  package the hosted catalogue does not list carries no dimensions and is hidden by a project filter —
+  the pilot's own rule, recorded rather than worked around.
+* **The dimension chips nest the catalogue's own sub-dimension tree** (`controls_subdim`/`testing_subdim`,
+  parent in `parent_dimension_slug`), served as `CatalogueOut.subdimensions` and per item as
+  `CatalogueControlOut.subdimensions`; a child chip narrows to the items carrying it, and the parent chip
+  still matches a sub-dimension-only item.
+
+What is still open from part 3: item 3 (the dashboard bridge is unit-tested only — there is no Superset
+in this environment) and item 4 (the owner's word on QUAL-01's two reclassifications) are unchanged.
+Item 5 of part 2 (`pypdf` is the only new dependency) still holds. The plugin side's narrowing depends on
+the hosted catalogue naming a plugin's package in a `type: test` item; a plugin the hosted catalogue does
+not list has no dimensions to filter by and is hidden when "For this project" is on. That is the pilot's
+behaviour, not a deviation, but it is the one place a local-only plugin can disappear from a filtered
+listing.
+
+### Evidence
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Ran 476 tests in 19.7s
+OK                                    # 473 → 476 (+3: the sub-dimension tree, the plugin's test-item
+                                      #  dimensions, and the plugin-only filter path)
+
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ uv run python manage.py migrate
+No migrations to apply
+
+$ cd apps/webapp && npx vitest run
+ Test Files  42 passed (42)
+      Tests  273 passed (273)         # 266 → 273 (+7: plugin filtering, the sub-dimension chips,
+                                      #  childrenOf)
+
+$ npm run build
+✓ built in 6.5s                       # tsc clean
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                   # unchanged baseline, 0 failed
+```
+
+_This section was written by an AI agent (OpenHands) on behalf of the requester._
+
 ## Run it locally
 
 ```bash
