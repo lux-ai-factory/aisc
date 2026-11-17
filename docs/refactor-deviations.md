@@ -67,8 +67,12 @@ names with the ones this tree actually has; the sets shrank, and each entry carr
 
 ## E4 feature parity — evidence map and connections (EVD-01 #114, CON-01 #112)
 
-Landed on this branch: `apps/backend` (EVD-01 `0eed571`, CON-01 rework this commit),
-`apps/webapp` (EVD-01 `94f5ddb`, CON-01 rework this commit).
+Two passes are on this branch: the first landed EVD-01 and CON-01
+(`apps/backend` EVD-01 `0eed571`; `apps/webapp` EVD-01 `94f5ddb`), the second
+answered audit iteration 2's verdict that CON-01 parity was incomplete: the
+pilot's allowed-hosts guard was missing, and the plugin-environment gate (ADR
+0003 §4) had only been checked for the run, not for the installer. Second pass:
+`apps/backend` `f3b1dd7`, `apps/webapp` `dbad518`, `apps/eval` `a5ecbb4`.
 
 **EVD-01 — versioned evidence map (done).** The pilot's `homepage/evidence-map.html`
 is re-expressed as a React page (`apps/webapp/src/pages/EvidenceMapPage.tsx`,
@@ -89,7 +93,7 @@ real endpoints the frozen backend did not have:
 **CON-01 — connections, adapters and helpers (done).** Rewritten against the pilot's
 own contract instead of the frozen `AIComponent` fields:
 
-- Models `Connection`, `Helper` and `RunBinding` (migration `0035`), a connection
+- Models `Connection`, `Helper` and `RunBinding` (migration `0034`), a connection
   being a protocol the adapter registry dispatches on (`rest`, `openai`, `a2a`,
   `oip`), an endpoint, the protocol's own fields, and the component it targets.
 - `apps/backend/aisc_backend/adapters/` ports the pilot's request builders and
@@ -112,32 +116,81 @@ own contract instead of the frozen `AIComponent` fields:
   remove) and `/projects/:name/helpers` the helper models (endpoint, roles, key,
   Test), both in the Project menu; Try/Test call the real endpoints.
 
-### Left undone / deviating (CON-01)
+**CON-01, second pass — the allowed-hosts guard (done).** A connection may call any
+public address; an internal one — a private network, the Docker host, a machine on
+the LAN — is refused unless the project lists it or the stack allows it for every
+project. Ported from the pilot as a *door* rule, read immediately before every call
+out (so a change applies to the next call with no restart):
 
-1. **The pilot's allowed-hosts guard is not ported.** The pilot refuses internal
-   hosts unless they are listed, and never calls loopback, deployment or metadata
-   addresses. Here a connection may point anywhere the backend can reach — the tests
-   exercise exactly that, against a loopback server. That is a net *new* capability
-   for an editor and needs its own decision (an `AllowedHost` model plus IP
-   classification), so it is deferred rather than guessed. Owner: SEC/REL work,
-   before CON-01 leaves the integration branch.
-2. **Helper bindings are recorded, not shown.** `RunBinding` is written and read over
+- `aisc_backend/services/allowed_hosts.py`: the rules, pure and database-free
+  (`normalize_entry`, `is_loopback`, `is_metadata`, `is_internal`, `refusal_for`,
+  `is_never_allowed`), plus `project_entries`, `floor_hosts` and `guard_url`.
+  `CONNECTIONS_ALLOWED_HOSTS` is the stack-wide floor (the pilot's `floor` rows);
+  `CONNECTIONS_STACK_HOSTS` names the deployment's own services.
+- `AllowedHost` (project, host, note, `updated_at`, `updated_by`; unique per
+  project) with `GET/PUT/DELETE /projects/{pid}/allowed-hosts[/{host}]`: a viewer
+  reads, an editor writes, every change is audited, and an entry that names a class
+  which can never be reached is returned `denied` with the reason instead of being
+  quietly usable. Loopback, cloud metadata and the deployment's own services can
+  never be listed, and saving a connection or helper refuses them where they are
+  typed.
+- The guard is consulted by `POST …/connections/{name}/test`, `…/{name}/discover`
+  and the helper test; a refusal is answered in the same shape as a failed Try, and
+  it never opens a socket.
+- React: the pilot's `#allowed-hosts` section is an accordion at the foot of
+  Components and connections (`src/components/AllowedHostsSection.tsx`,
+  `src/lib/allowedHosts.ts`).
+- `RunBinding.adapter_version` now records the revision of the adapter a run used
+  (`adapters.BUILTIN_VERSION`, or an installed adapter's own version) instead of an
+  empty string.
+- Evidence: `test_allowed_hosts.py` (the rules, 19 cases),
+  `tests/routers/test_allowed_host_router.py` (CRUD, roles, audit, denied rows),
+  the connection/helper router suites routed through the guard,
+  `tests/integration/test_mock_targets_smoke.py` with `tests/local_target.py` (a
+  native REST target and a bespoke A2A target on the machine's own address: the
+  recorded request bodies, a file-shaped input recorded by sha256, the adapter
+  version in the run binding, and a refusal before any request leaves), and
+  `apps/eval/tests/test_installer_under_allowlist.py` (the installer's own
+  subprocesses take the allowlist, and a real install and run succeed with nothing
+  but the allowlist).
+
+### Left undone / deviating (E4)
+
+1. **Helper bindings are recorded, not shown.** `RunBinding` is written and read over
    the API, and its snapshot is proven not to follow later connection edits, but no
    page yet displays "what this run used" — that belongs with the run/execution UI.
    Owner: E5.
-3. **`0034`→`0035` churn.** `0034` added `adapter`/`adapter_version`/`helper_role` to
-   `AIComponent`; `0035` removes them and creates the new tables. Both are kept and
-   both apply, rather than rewriting a migration that is already on the branch.
-4. **UI-02 and the report composer are untouched.** This note covers only EVD-01 and
-   CON-01; the four-column hub (UI-02) and report composer remain as previously
+2. **ADR 0003 §4, one spawn point left.** The eval worker's installer and run
+   subprocesses now take the plugin allowlist. The *plugin-manager* keeps its own
+   installer (`shared/plugin-manager/src/aisc_plugin_manager/uv_client.py`,
+   `uv_install`), reached from the backend's plugin/catalogue routers when a
+   registry-sourced plugin is loaded; it still inherits its calling process's
+   environment. Closing it needs a `child_env` hook through `AiscPluginLoader` — a
+   third submodule — so it is recorded here rather than half-done. Owner: SEC-01
+   #104 or the plugin-manager owner.
+3. **Deviation from ADR 0003, recorded:** `RunBinding.adapter_version` was defined
+   but always written empty; it now carries the built-in revision (`1`). This
+   extends a snapshot the ADRs treat as frozen, so it is called out explicitly.
+4. **`0034`/`0035` collapsed.** The first pass committed `0034_aicomponent_adapter_*`
+   (added `AIComponent.adapter`/`adapter_version`/`helper_role`) and
+   `0035_remove_aicomponent_adapter_*` (removed them again). Both are gone:
+   `0034_connections_helpers_bindings_and_allowed_hosts` is the single migration.
+   Django records migration *names*, so a database that applied the old pair must be
+   rebuilt, or the old names `migrate --fake`d.
+5. **The pilot launcher stays a reference.** `homepage/*.html` (connections,
+   evidence map, `theme/brand.json`) is the look/feel reference for the port and is
+   never shipped as the app; the React pages are the product.
+6. **UI-02 and the report composer are untouched.** This note covers E4 (EVD-01 and
+   CON-01); the four-column hub (UI-02) and the report composer remain as previously
    landed.
 
 **Guards:** `5 passed, 3 xfailed, 0 failed` — **no baseline grew** for any of the
 above (`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`).
 
-**Verified on this tree:** `uv run python manage.py test` → 249 passed (was 221);
-`migrate` on SQLite applies `0033`/`0034`/`0035`; `makemigrations --check` clean;
-`npm run build` clean; `npx vitest run` → 164 passed (was 147).
+**Verified on this tree:** backend `uv run python manage.py test` → 270 passed (was
+249); eval `uv run pytest` → 28 passed (was 25); `migrate` on a fresh SQLite applies
+`0001..0034`; `makemigrations --check` clean; `npm run build` clean; `npx vitest run`
+→ 177 passed (was 164).
 
 ## Run it locally
 
