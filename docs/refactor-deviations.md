@@ -89,6 +89,31 @@ real endpoints the frozen backend did not have:
 - Older versions are read-only; carry-forward *offers* the previous version's links
   and writes them only on an explicit copy; a review must be by someone who made
   none of the version's links and is invalidated by any link change.
+- **The two filters.** The page carries the pilot's `Gaps only` and `Priority only`
+  checkboxes (`EvidenceMapPage.tsx`, `data-testid="gaps-only"` / `"priority-only"`),
+  applied to the payload exactly as `homepage/evidence-map.html` applies them:
+  `(!gaps || (!o.linked && !o.stale)) && (!prio || o.priority)`. So they are a view
+  over the map, not a second endpoint — the three fields they read are the server's:
+  * `priority` is earned, never defaulted: the risks the assessor bound to the
+    objective (a rating of High or worse, i.e. impact x likelihood >= 10, makes it
+    key by default, within a budget of seven) or an explicit key choice
+    (`services/control_objectives.py::prioritise`, called by
+    `services/evidence_map.py::_priority_keys`);
+  * `linked` is whether a saved link names the objective;
+  * `stale` is set for an objective this version no longer selects but a saved link
+    still names (`"not selected"`, or `"removed"`/`"deleted"` for a tile that has
+    gone) — and such an objective is deliberately *not* a gap.
+- **Evidence for the filters.** `apps/backend/aisc_backend/tests/routers/
+  test_evidence_router.py::test_priority_and_stale_feed_the_gaps_and_priority_filters`
+  (fields and the row sets they yield: a Critical risk makes O1 key, a Low one
+  leaves O2 unkeyed, no risk leaves O3 unkeyed, O4 is stale while a link keeps it on
+  the map, coverage `{linked: 2, objectives: 4, gaps: 2}`), and
+  `apps/webapp/src/pages/EvidenceMapPage.test.tsx` — a realistic four-objective
+  payload and ten tests: the coverage line and all four rows; the filters pinned by
+  the row set they leave (`Gaps only` → `[O1]`, `Priority only` → `[O1, O3]`, both →
+  `[O1]`, and back); linking a cell, saving a note and unlinking through the API;
+  the platform's refusal shown and the map left as it was; a viewer reading the map
+  and the filters while writing nothing; independent review; carry-forward.
 
 **CON-01 — connections, adapters and helpers (done).** Rewritten against the pilot's
 own contract instead of the frozen `AIComponent` fields:
@@ -187,10 +212,44 @@ out (so a change applies to the next call with no restart):
 **Guards:** `5 passed, 3 xfailed, 0 failed` — **no baseline grew** for any of the
 above (`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`).
 
-**Verified on this tree:** backend `uv run python manage.py test` → 270 passed (was
-249); eval `uv run pytest` → 28 passed (was 25); `migrate` on a fresh SQLite applies
-`0001..0034`; `makemigrations --check` clean; `npm run build` clean; `npx vitest run`
-→ 177 passed (was 164).
+**Verified on this tree (commands and their output):**
+
+```
+$ cd apps/backend && uv run python manage.py test
+Ran 271 tests in 7.218s
+OK
+
+$ DB_ENGINE=django.db.backends.sqlite3 DB_NAME=/tmp/fresh.db uv run python manage.py migrate   # empty file
+  Applying aisc_backend.0033_evidencereview_evidencelink... OK
+  Applying aisc_backend.0034_connections_helpers_bindings_and_allowed_hosts... OK
+$ uv run python manage.py showmigrations aisc_backend | tail -2
+ [X] 0033_evidencereview_evidencelink
+ [X] 0034_connections_helpers_bindings_and_allowed_hosts      # no 0035: the churn pair is collapsed
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ cd apps/webapp && npm run build
+dist/index.html                     1.14 kB │ gzip:   0.55 kB
+dist/assets/index-limjIS5C.css     30.83 kB │ gzip:   6.76 kB
+dist/assets/index-G5kGtiql.js   2,425.30 kB │ gzip: 745.13 kB
+✓ built in 6.45s
+
+$ npx vitest run
+ Test Files  32 passed (32)
+      Tests  181 passed (181)
+
+$ cd apps/eval && uv run pytest -q
+28 passed
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q
+5 passed, 3 xfailed
+```
+
+The counters this pass moved: backend 270 → 271 (the filter-fields test: priority
+from the risk register, staleness from the selection, and the row sets they yield),
+webapp 177 → 181 (the fixture went from two objectives to the four a real map
+returns, and the page gained the filter row-set, note/unlink, refusal and viewer
+tests), guards and eval unchanged.
 
 ## Run it locally
 
