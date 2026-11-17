@@ -22,9 +22,10 @@ from .keycloak import keycloak_realm_url, sync_sign_in
 from .ports import (TAKEN_IN_DOCKER, free_for_docker, held_by_aisc, kept_ports_not_ports, local_lines,
                     prepare_port_probe, published_ports, settle_ports)
 from .secrets import hide_secrets, make_postgres_tls, make_secrets, warn_known_account_passwords, write_runtime
-from .settings import (COMPOSE, LOCAL, NO_DOCKER, OUT, ROOT, Refused, configurator, effective, install_id, lines_of,
-                       project, read_local, say, served_over_https, settings_file, text_of, use_configurator, value_in,
-                       warn, with_slash, write_beside)
+from .settings import (COMPOSE, LOCAL, NO_DOCKER, OUT, ROOT, Refused, check_host_names, configurator,
+                       configurator_setting, effective, install_id, lines_of, project, read_local, say,
+                       served_over_https, settings_file, text_of, use_configurator, value_in, warn, with_slash,
+                       write_beside)
 
 
 #: True once start has handed the stack to compose `up`; a refusal after that point cannot say "nothing was started".
@@ -93,8 +94,8 @@ def answer_of(url: str) -> int | None:
         return None
 
 
-def answer_over_tls(port: int, public_name: str) -> int | None:
-    """The HTTP status of `GET /` on this machine's port over TLS, asked as a browser asks for the public name
+def answer_over_tls(port: int, public_name: str, path: str = "/") -> int | None:
+    """The HTTP status of `GET <path>` on this machine's port over TLS, asked as a browser asks for the public name
     (SNI and Host), redirects not followed; None when nothing answers. An install served over https listens
     there for its public name only: plain HTTP gets a 400, another name no site. The certificate is not checked:
     the listener is this machine's own, and a development one signs its certificate itself (tls internal)."""
@@ -104,12 +105,20 @@ def answer_over_tls(port: int, public_name: str) -> int | None:
     try:
         with socket.create_connection(("localhost", port), timeout=5) as raw, \
                 context.wrap_socket(raw, server_hostname=public_name) as tls:
-            tls.sendall(f"GET / HTTP/1.1\r\nHost: {public_name}\r\nConnection: close\r\n\r\n".encode())
+            tls.sendall(f"GET {path} HTTP/1.1\r\nHost: {public_name}\r\nConnection: close\r\n\r\n".encode())
             response = http.client.HTTPResponse(tls)
             response.begin()
             return response.status
     except (OSError, ssl.SSLError, http.client.HTTPException, ValueError):
         return None
+
+
+def realm_answer() -> int | None:
+    """The status of Keycloak's realm page. The Configurator publishes no Keycloak port: there it is asked on 443
+    by the sign-in's host name, as the browser asks; elsewhere on Keycloak's own port (keycloak_realm_url)."""
+    if configurator() and not os.environ.get("START_SIGN_IN_URL"):
+        return answer_over_tls(443, configurator_setting("SIGN_IN_HOST"), "/realms/aisc")
+    return answer_of(keycloak_realm_url())
 
 
 #: services that run once and exit (restart "no"): finished with code 0 is their good end, so they are never
@@ -237,6 +246,7 @@ def start(args: list[str]) -> None:
     Docker whether it can publish the ports."""
     if "--configurator" in args:
         use_configurator()
+        check_host_names()
     try:
         start_steps()
     finally:
@@ -402,8 +412,9 @@ def start_steps() -> None:
         time.sleep(poll_s)
     # The launcher redirects to the sign-in before Keycloak has imported its realm: a person who follows at once
     # gets no form. The realm's own page answers 200 only once it is there.
-    realm = keycloak_realm_url()
-    while (code := answer_of(realm)) != 200:
+    realm = (f"https://localhost/realms/aisc (as {configurator_setting('SIGN_IN_HOST')})"
+             if configurator() and not os.environ.get("START_SIGN_IN_URL") else keycloak_realm_url())
+    while (code := realm_answer()) != 200:
         restarting = refuse_if_stuck(restarting, this_start, began_at)
         if time.monotonic() >= deadline:
             warn(f"Keycloak's realm page {realm} did not answer 200 within {wait_s:g}s (last answer: "

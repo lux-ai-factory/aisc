@@ -3,6 +3,7 @@ command, and the few answers every other module needs (how to refuse, how to spe
 from __future__ import annotations
 
 import os
+import re
 import secrets as random_source
 import sys
 import tempfile
@@ -168,6 +169,39 @@ def use_configurator() -> None:
             COMPOSE.extend(["-f", name])
 
 
+#: the Configurator's parts: the setting that names each one's host, and the address made from it (env.configurator)
+CONFIGURATOR_PARTS = {"ENGINE_HOST": "API_URL_EXTERNAL", "LAUNCHER_HOST": "LAUNCHER_EXTERNAL_URL",
+                      "DASHBOARD_HOST": "DASHBOARD_EXTERNAL_URL", "SIGN_IN_HOST": "KEYCLOAK_URL_EXTERNAL"}
+HOST_NAME = re.compile(r"[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*")
+
+
+def configurator_setting(name: str) -> str:
+    """A setting as compose gives it to the Configurator: the shell's value, else env.configurator's."""
+    return os.environ.get(name) or effective(name, str(ROOT / CONFIGURATOR_SETTINGS))
+
+
+def check_host_names() -> None:
+    """start --configurator, before Docker is asked: Caddy serves each part at its own host name on 443, so each
+    host name setting must be a name, the four different, and each part's address https://<its name>. Refused
+    with the setting to fix."""
+    hosts = {name: configurator_setting(name).strip() for name in CONFIGURATOR_PARTS}
+    for name, host in hosts.items():
+        if not host:
+            raise Refused(f"{name} is not set in {CONFIGURATOR_SETTINGS}: the Configurator serves each part at its "
+                          f"own host name. Set it (see {CONFIGURATOR_SETTINGS}.example)")
+        if not HOST_NAME.fullmatch(host):
+            raise Refused(f"{name} is {host}: a host name only, such as app.example.org (no https://, port or path)")
+    if len(set(hosts.values())) < len(hosts):
+        raise Refused(f"{', '.join(hosts)} must be four different host names: Caddy tells the parts apart by name")
+    for name, address_name in CONFIGURATOR_PARTS.items():
+        address = configurator_setting(address_name).strip()
+        wanted = f"https://{hosts[name]}"
+        if address not in (wanted, wanted + "/"):
+            raise Refused(f"{address_name} is {address or 'not set'}: the Configurator serves this part at "
+                          f"https://<{name}> only ({wanted}). Set {address_name}=https://${{{name}}} in "
+                          f"{CONFIGURATOR_SETTINGS}")
+
+
 def use_stack(name: str) -> None:
     """Run the stack under this Compose project from here on."""
     global PROJECT
@@ -241,15 +275,20 @@ def read_local() -> dict[str, str]:
 
 def effective(name: str, path: str = COMBINED) -> str:
     """The value compose uses for a setting: its last line in env.runtime (env.local comes last there), one pair
-    of quotes taken off; empty when env.runtime has none. path: another env file to read it from instead."""
-    value = ""
+    of quotes taken off; empty when env.runtime has none. path: another env file to read it from instead. A
+    ${OTHER} in it is filled in as compose fills it: from OTHER's line above it in the file, else the shell's."""
+    seen: dict[str, str] = {}
     if Path(path).is_file():
         for line in lines_of(path):
-            if line.startswith(name + "="):
-                value = line.split("=", 1)[1].strip()
-                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-                    value = value[1:-1]
-    return value
+            other, sign, value = line.partition("=")
+            if not sign or other.startswith("#") or " " in other:
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            seen[other] = re.sub(r"\$\{([A-Za-z0-9_]+)\}",
+                                 lambda m: seen.get(m[1], os.environ.get(m[1], "")), value)
+    return seen.get(name, "")
 
 
 def with_slash(address: str) -> str:

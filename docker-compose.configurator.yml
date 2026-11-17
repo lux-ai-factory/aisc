@@ -8,8 +8,10 @@
 #   - Every long-running service has a healthcheck and restarts unless stopped; nothing starts before what it
 #     needs is healthy, or, for a one-shot, finished.
 #   - No development convenience: Keycloak runs `start` behind the gateway, Caddy publishes 80 and 443 only and
-#     serves the operator's certificate (caddy-tls/), the inspection tools (pgadmin, schema-docs, flower) stay in
-#     the `inspect` profile, the ledger is enforced, and every image is one tagged build (AISC_IMAGE_TAG).
+#     serves the engine, the launcher, the dashboard and the sign-in each at its own host name (ENGINE_HOST,
+#     LAUNCHER_HOST, DASHBOARD_HOST, SIGN_IN_HOST) with the operator's certificate (caddy-tls/), the inspection
+#     tools (pgadmin, schema-docs, flower) stay in the `inspect` profile, the ledger is enforced, and every image is
+#     one tagged build (AISC_IMAGE_TAG).
 #
 # The development file assumes one host: every service, volume and bind mount on the machine compose runs on.
 
@@ -110,8 +112,11 @@ services:
   # --- the sign-in -------------------------------------------------------------------------------------------
   # Keycloak in production mode, behind the gateway: plain http inside the compose network, the browser's
   # https address taken from the proxy's X-Forwarded headers. Its database over TLS.
+  # Not published on the host: its public name is served by Caddy (infra/caddy/Caddyfile.configurator), without
+  # the administration.
   keycloak:
     command: start --import-realm
+    ports: !reset []
     environment:
       KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: "true"
@@ -130,7 +135,37 @@ services:
 
   # The image is distroless: no shell, no http client. The check only proves the binary runs; a crash is caught
   # by the restart policy, and Caddy's sign-in answers what is left.
+  # Its command is the development one (a test keeps them the same) but for the names it lets a person be sent
+  # back to after signing in: the four host names, not localhost. No cookie domain: each host name keeps its own
+  # sign-in cookie, and the Keycloak session signs a person in on the next name without a form.
   oauth2-proxy:
+    command: !override
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      - --skip-oidc-discovery=true
+      - --login-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/auth
+      - --redeem-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/token
+      - --oidc-jwks-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --skip-provider-button=true
+      - --set-xauthrequest=true
+      - --pass-access-token=true
+      - --cookie-refresh=4m
+      - --email-domain=*
+      - --oidc-email-claim=preferred_username
+      - --scope=openid profile
+      - --backend-logout-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/logout?id_token_hint={id_token}
+      - --client-id=aisc-gateway
+      - --client-secret=${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
+      - --cookie-secret=${GATEWAY_COOKIE_SECRET:?run scripts/secrets.sh first}
+      - --cookie-secure=${GATEWAY_COOKIE_SECURE:?set GATEWAY_COOKIE_SECURE (true over HTTPS) in env.configurator}
+      - --cookie-samesite=lax
+      - --whitelist-domain=${ENGINE_HOST:?set ENGINE_HOST in env.configurator}
+      - --whitelist-domain=${LAUNCHER_HOST:?set LAUNCHER_HOST in env.configurator}
+      - --whitelist-domain=${DASHBOARD_HOST:?set DASHBOARD_HOST in env.configurator}
+      - --whitelist-domain=${SIGN_IN_HOST:?set SIGN_IN_HOST in env.configurator}
+      - --upstream=static://202
     healthcheck:
       test: ["CMD", "/bin/oauth2-proxy", "--version"]
       interval: 30s
@@ -140,14 +175,28 @@ services:
       keycloak:
         condition: service_healthy
 
-  # --- the gateway: 80 and 443 only, with the operator's certificate --------------------------------------------
+  # --- the gateway: 80 and 443 only, each part by its own host name ----------------------------------------------
+  # infra/caddy/Caddyfile.configurator: one TLS site per host name on 443 (the operator's certificate), in front of
+  # the development Caddyfile's sites, which listen inside the container only, on plain http for any name.
   caddy:
     ports: !override
-      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:80:8005"
-      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:443:8005"
+      # every name: a redirect to https
+      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:80:8080"
+      # the engine, the launcher, the dashboard and the sign-in, told apart by host name
+      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:443:8443"
     volumes:
-      # server.crt and server.key for CADDY_DOMAIN (CADDY_ENVIRONMENT=production in the Caddyfile)
+      - ./infra/caddy/Caddyfile.configurator:/etc/caddy/Caddyfile:ro,Z
+      - ./Caddyfile:/etc/caddy/Caddyfile.development:ro,Z
+      # server.crt and server.key: one certificate for the four host names
       - ./caddy-tls:/etc/caddy/tls:ro,Z
+    environment:
+      # the development sites: plain http on the container's own ports, no TLS of their own
+      CADDY_DOMAIN: "http://"
+      CADDY_ENVIRONMENT: behind-the-host-sites
+      ENGINE_HOST: ${ENGINE_HOST:?set ENGINE_HOST in env.configurator}
+      LAUNCHER_HOST: ${LAUNCHER_HOST:?set LAUNCHER_HOST in env.configurator}
+      DASHBOARD_HOST: ${DASHBOARD_HOST:?set DASHBOARD_HOST in env.configurator}
+      SIGN_IN_HOST: ${SIGN_IN_HOST:?set SIGN_IN_HOST in env.configurator}
     healthcheck:
       # Caddy's admin endpoint, on the container's loopback only
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]

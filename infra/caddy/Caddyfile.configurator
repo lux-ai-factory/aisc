@@ -1,0 +1,64 @@
+# The Configurator's gateway (docker-compose.configurator.yml mounts it as Caddy's Caddyfile). Each part has its
+# own host name on 443, from env.configurator: ENGINE_HOST, LAUNCHER_HOST, DASHBOARD_HOST and SIGN_IN_HOST. 80
+# only redirects to https.
+#
+# The development Caddyfile is imported unchanged, so every module's route, sign-in and ledger witness is the one
+# a development install has. Its three sites listen inside this container only, on plain http for any name
+# (the Configurator's file sets CADDY_DOMAIN=http:// for Caddy): the engine on 8005, the launcher on 8006, the
+# dashboard on 8008. The TLS sites below are in front of them, one per host name, all on 8443 (published as
+# 443), with the operator's certificate (caddy-tls/server.crt and server.key: one certificate for the four names).
+
+# The development sites' TLS: none, they are reached through the TLS sites below. A snippet before the import, so
+# the import's global options block is still the first block Caddy reads.
+(tls-behind-the-host-sites) {
+}
+
+import /etc/caddy/Caddyfile.development
+
+# One part's TLS site: the sign-in's own endpoints straight to oauth2-proxy, told the browser came over https (the
+# development site would tell it http, and it would send Keycloak an http:// callback, which the realm refuses);
+# everything else to the part's development site, as it is.
+(host-site) {
+  import tls-production
+  handle /oauth2/* {
+    reverse_proxy oauth2-proxy:4180 {
+      header_up X-Forwarded-Proto https
+      header_up X-Real-IP {remote_host}
+    }
+  }
+  handle {
+    reverse_proxy 127.0.0.1:{args[0]}
+  }
+}
+
+# the engine: the projects' pages
+https://{$ENGINE_HOST}:8443 {
+  import host-site 8005
+}
+
+# the launcher: the start page
+https://{$LAUNCHER_HOST}:8443 {
+  import host-site 8006
+}
+
+# the dashboard (Superset)
+https://{$DASHBOARD_HOST}:8443 {
+  import host-site 8008
+}
+
+# The sign-in (Keycloak), without its administration: the admin console, its API and the master realm (the
+# console's own sign-in) answer 404 here. Keycloak's console is not published at all; run kcadm in its container
+# (docker compose exec keycloak /opt/keycloak/bin/kcadm.sh) for what it does.
+https://{$SIGN_IN_HOST}:8443 {
+  import tls-production
+  @administration path /admin /admin/* /realms/master /realms/master/*
+  respond @administration 404
+  reverse_proxy keycloak:8080 {
+    header_up X-Forwarded-Port 443
+  }
+}
+
+# plain http: every name, only a redirect to its https address
+http://:8080 {
+  redir https://{host}{uri} 308
+}

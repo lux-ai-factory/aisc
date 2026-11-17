@@ -21,6 +21,11 @@ OVERRIDE = "docker-compose.configurator.yml"
 CONF = compose_cfg.FILES + ["docker-compose.https.yml", OVERRIDE]
 SETTINGS = ROOT / "env.configurator.example"
 HBA = ROOT / "infra/postgres/pg_hba.configurator.conf"
+#: the Configurator's own Caddy sites: one per part, by host name, on 443 (it imports the development Caddyfile)
+CONFIGURATOR_CADDYFILE = ROOT / "infra/caddy/Caddyfile.configurator"
+#: the setting that names each part's host, and the example.org-style name the template gives it
+HOSTS = {"ENGINE_HOST": "app.example.org", "LAUNCHER_HOST": "home.example.org",
+         "DASHBOARD_HOST": "dashboard.example.org", "SIGN_IN_HOST": "auth.example.org"}
 #: services that run once and exit
 ONE_SHOT = {"make_buckets", "postgres-setup", "immudb-key", "ledger-pool", "report-grants", "aisc-backend-migrate",
             "controls-migrate", "qualification-migrate", "control-objectives-migrate", "report-composer-migrate",
@@ -32,7 +37,7 @@ def _conf(tmp_path) -> dict:
     assert (ROOT / OVERRIDE).is_file(), "no docker-compose.configurator.yml: the Configurator has no deployment file"
     assert SETTINGS.is_file(), "no env.configurator.example"
     return compose_cfg.config(tmp_path, files=CONF, settings_file=SETTINGS,
-                              env={"AISC_IMAGE_TAG": "sha-0123abc", "CADDY_DOMAIN": "https://aisc.example"})["services"]
+                              env={"AISC_IMAGE_TAG": "sha-0123abc", **HOSTS})["services"]
 
 
 def test_every_long_running_service_has_a_healthcheck_and_restarts(tmp_path):
@@ -140,3 +145,132 @@ def test_the_postgres_key_and_certificate_are_made_once_private_and_kept(tmp_pat
                            cwd=tmp_path, capture_output=True, text=True, timeout=300)
     assert again.returncode == 0, again.stderr[-800:]
     assert (key.read_bytes(), cert.read_bytes()) == made
+
+
+def test_only_caddy_publishes_and_only_80_and_443(tmp_path):
+    conf = _conf(tmp_path)
+    published = {n: sorted(str(p["published"]) for p in v.get("ports") or []) for n, v in conf.items()}
+    assert {n: p for n, p in published.items() if p} == {"caddy": ["443", "80"]}
+
+
+def test_the_template_gives_each_part_an_example_host_name():
+    text = SETTINGS.read_text()
+    for name, host in HOSTS.items():
+        assert re.search(rf"^{name}={re.escape(host)}$", text, re.M), f"env.configurator.example lacks {name}={host}"
+    # every public address is made from those names: no other name of this install's own is written there
+    public = re.findall(r"^(?:CADDY_DOMAIN|API_URL_EXTERNAL|LAUNCHER_EXTERNAL_URL|DASHBOARD_EXTERNAL_URL|"
+                        r"KEYCLOAK_URL_EXTERNAL|BACKEND_CORS_ALLOWED_ORIGINS|CORS_ORIGINS)=(.*)$", text, re.M)
+    assert len(public) == 7 and all(re.fullmatch(r"https://\$\{[A-Z_]+_HOST\}/?", v) for v in public), public
+
+
+def test_every_public_address_takes_its_host_from_those_settings(tmp_path):
+    conf = _conf(tmp_path)
+    engine, launcher, dashboard, sign_in = (f"https://{HOSTS[n]}" for n in HOSTS)
+    for service in ("caddy", "keycloak"):
+        env = conf[service]["environment"]
+        assert env["API_URL_EXTERNAL"] == engine
+        assert env["DASHBOARD_EXTERNAL_URL"] == dashboard
+    assert conf["keycloak"]["environment"]["LAUNCHER_EXTERNAL_URL"] == launcher + "/"
+    assert conf["caddy"]["environment"]["KEYCLOAK_URL_EXTERNAL"] == sign_in
+    assert conf["keycloak"]["environment"]["KC_HOSTNAME"] == sign_in
+    proxy = conf["oauth2-proxy"]["command"]
+    assert f"--oidc-issuer-url={sign_in}/realms/aisc" in proxy
+    assert f"--login-url={sign_in}/realms/aisc/protocol/openid-connect/auth" in proxy
+    assert sorted(a.split("=", 1)[1] for a in proxy if a.startswith("--whitelist-domain=")) == sorted(HOSTS.values())
+    # one sign-in cookie per host name: none set for localhost, none shared with the parent domain
+    assert [a for a in proxy if a.startswith("--cookie-domain")] == []
+    # nothing a browser is sent to, or that names the install to the outside, is still on this machine
+    local = sorted((n, str(x)) for n, v in conf.items()
+                   for x in [*(v.get("environment") or {}).values(), *(v.get("command") or [])]
+                   if re.search(r"https?://(localhost|127\.0\.0\.1)\b", str(x)))
+    assert local == []
+
+
+def test_apart_from_its_public_names_the_sign_in_gateway_runs_as_in_development(tmp_path):
+    conf = _conf(tmp_path)
+    # the development files with the same settings, so every address they name is the same
+    (tmp_path / "development").mkdir()
+    development = compose_cfg.config(tmp_path / "development", settings_file=SETTINGS,
+                                     env={"AISC_IMAGE_TAG": "sha-0123abc", **HOSTS})["services"]
+
+    def flags(command):
+        return sorted(a for a in command if not a.startswith(("--cookie-domain", "--whitelist-domain")))
+
+    assert flags(conf["oauth2-proxy"]["command"]) == flags(development["oauth2-proxy"]["command"])
+
+
+def test_caddy_serves_the_configurator_sites_beside_the_development_file(tmp_path):
+    conf = _conf(tmp_path)
+    mounts = {m["target"]: m["source"] for m in conf["caddy"]["volumes"]}
+    assert mounts["/etc/caddy/Caddyfile"] == str(CONFIGURATOR_CADDYFILE)
+    assert mounts["/etc/caddy/Caddyfile.development"] == str(ROOT / "Caddyfile")
+    env = conf["caddy"]["environment"]
+    assert {n: env.get(n) for n in HOSTS} == HOSTS
+
+
+def test_start_refuses_a_configurator_without_a_host_name(tmp_path):
+    copy_install_scripts(tmp_path)
+    text = SETTINGS.read_text().replace("SIGN_IN_HOST=auth.example.org", "SIGN_IN_HOST=")
+    (tmp_path / "env.configurator").write_text(text)
+    said, code = _start_configurator(tmp_path)
+    assert code != 0 and "SIGN_IN_HOST" in said and "Docker is not running" not in said, said[-800:]
+
+
+def test_start_refuses_a_configurator_part_served_over_plain_http(tmp_path):
+    copy_install_scripts(tmp_path)
+    text = SETTINGS.read_text()
+    assert "KEYCLOAK_URL_EXTERNAL=https://${SIGN_IN_HOST}" in text
+    (tmp_path / "env.configurator").write_text(
+        text.replace("KEYCLOAK_URL_EXTERNAL=https://${SIGN_IN_HOST}", "KEYCLOAK_URL_EXTERNAL=http://${SIGN_IN_HOST}"))
+    said, code = _start_configurator(tmp_path)
+    assert code != 0 and "KEYCLOAK_URL_EXTERNAL" in said and "https" in said, said[-800:]
+    assert "Docker is not running" not in said, said[-800:]
+
+
+def test_start_accepts_the_template_host_names_and_goes_on_to_docker(tmp_path):
+    copy_install_scripts(tmp_path)
+    (tmp_path / "env.configurator").write_text(SETTINGS.read_text())
+    said, code = _start_configurator(tmp_path)
+    # past every check of the settings: the next step asks for Docker, which is not on PATH here
+    assert code != 0 and "Docker is not running" in said, said[-800:]
+
+
+def test_the_settings_read_back_as_compose_reads_them(tmp_path, monkeypatch):
+    copy_install_scripts(tmp_path)
+    (tmp_path / "env.runtime").write_text("LAUNCHER_HOST=home.example.org\n"
+                                          "LAUNCHER_EXTERNAL_URL=https://${LAUNCHER_HOST}/\n")
+    monkeypatch.chdir(tmp_path)
+    m = aisc_py(tmp_path)
+    assert m.settings.effective("LAUNCHER_EXTERNAL_URL") == "https://home.example.org/"
+
+
+def test_the_configurator_start_waits_for_the_realm_on_443_by_the_sign_in_name(tmp_path, monkeypatch):
+    copy_install_scripts(tmp_path)
+    (tmp_path / "env.configurator").write_text(SETTINGS.read_text())
+    (tmp_path / "env.runtime").write_text(SETTINGS.read_text())
+    monkeypatch.delenv("START_SIGN_IN_URL", raising=False)
+    monkeypatch.delenv("CADDY_DOMAIN", raising=False)
+    monkeypatch.chdir(tmp_path)
+    m = aisc_py(tmp_path)
+    m.settings.use_configurator()
+    asked = []
+    monkeypatch.setattr(m.stack, "answer_over_tls", lambda port, name, path="/": asked.append((port, name, path)) or 200)
+    assert m.stack.realm_answer() == 200
+    assert asked == [(443, "auth.example.org", "/realms/aisc")]
+
+
+def _start_configurator(folder):
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_HOST") and k != "CADDY_DOMAIN"}
+    r = subprocess.run([sys.executable, str(folder / "scripts/aisc.py"), "start", "--configurator"],
+                       cwd=folder, env={**env, "PATH": "/nonexistent"}, capture_output=True, text=True, timeout=60)
+    return r.stdout + r.stderr, r.returncode
+
+
+def test_compose_finds_every_setting_it_reads_in_the_template(tmp_path):
+    r = compose_cfg.run(tmp_path, files=CONF, settings_file=SETTINGS,
+                        env={"AISC_IMAGE_TAG": "sha-0123abc", **HOSTS})
+    assert r.returncode == 0, r.stderr[-800:]
+    unset = set(re.findall(r'The \\?"(\w+)\\?" variable is not set', r.stderr))
+    # the secrets come from env.secrets: the template names them in comments only
+    secrets = set(re.findall(r"^# ([A-Z0-9_]+)=$", SETTINGS.read_text(), re.M))
+    assert sorted(unset - secrets) == []
