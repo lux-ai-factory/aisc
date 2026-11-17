@@ -101,7 +101,12 @@ def test_the_declarations_worker_runs_the_run_workers_image_without_building_it_
 
 
 def uid_pool(service: dict) -> range:
-    first, _, last = str(environment(service).get("PLUGIN_RUN_UIDS") or "").partition("-")
+    """The pool a worker leases from on an install with no pools of its own yet: the default of its
+    ${SETTING:-first-last} (start then writes each install's own, scripts/aisc/run_uids.py)."""
+    value = str(environment(service).get("PLUGIN_RUN_UIDS") or "")
+    if value.startswith("${") and ":-" in value:
+        value = value.split(":-", 1)[1].rstrip("}")
+    first, _, last = value.partition("-")
     return range(int(first), int(last) + 1)
 
 

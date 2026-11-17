@@ -573,8 +573,10 @@ def test_start_keeps_the_browser_ports_it_chose(scratch):
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
     local = (scratch / "env.local").read_text().splitlines()
-    assert local == ["ENGINE_PORT=80", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
-                     "KEYCLOAK_PORT_EXTERNAL=8081"]
+    assert local[:4] == ["ENGINE_PORT=80", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
+                         "KEYCLOAK_PORT_EXTERNAL=8081"]
+    # then the install's own run-uid pools, chosen once (scripts/aisc/run_uids.py)
+    assert [line.split("=")[0] for line in local[4:]] == ["PLUGIN_RUN_UIDS", "PLUGIN_DECLARATIONS_RUN_UIDS"]
     # a new install's container prefix is added after them
     runtime = [line for line in (scratch / "env.runtime").read_text().splitlines()
                if not line.startswith("CONTAINER_PREFIX=")]
@@ -652,10 +654,12 @@ def test_what_a_person_added_to_env_local_survives_a_start(scratch):
     (scratch / "held-ports").write_text(OWN_BROWSER_PORTS)
     r = run(scratch)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (scratch / "env.local").read_text().splitlines() == [
+    local = (scratch / "env.local").read_text().splitlines()
+    assert local[:8] == [
         "# my note", "ENGINE_PORT=8090", "MY_SETTING=x", "ENGINE_HTTPS_PORT=8453",
         "API_URL_EXTERNAL=http://localhost:8090", "HOMEPAGE_PORT_EXTERNAL=8100", "DASHBOARD_PORT_EXTERNAL=8188",
         "KEYCLOAK_PORT_EXTERNAL=8081"]
+    assert [line.split("=")[0] for line in local[8:]] == ["PLUGIN_RUN_UIDS", "PLUGIN_DECLARATIONS_RUN_UIDS"]
 
 
 def test_a_moved_port_is_announced_with_what_frees_a_leftover(scratch):

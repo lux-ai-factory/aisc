@@ -1,0 +1,537 @@
+# The Configurator's own deployment: laid over the two development files and docker-compose.https.yml, it turns
+# every hardening setting on. `scripts/aisc.py start --configurator` runs it, with the settings in env.configurator
+# (made from env.configurator.example). It needs Compose 2.24 or later, for !override.
+#
+#   - Postgres speaks TLS only (infra/postgres/pg_hba.configurator.conf), with the key and certificate start makes
+#     once in postgres-tls/; every client requires TLS: PGSSLMODE=require for libpq, sslmode=require in the
+#     Prisma and JDBC addresses.
+#   - Every long-running service has a healthcheck and restarts unless stopped; nothing starts before what it
+#     needs is healthy, or, for a one-shot, finished.
+#   - No development convenience: Keycloak runs `start` behind the gateway, Caddy publishes 80 and 443 only and
+#     serves the engine, the launcher, the dashboard and the sign-in each at its own host name (ENGINE_HOST,
+#     LAUNCHER_HOST, DASHBOARD_HOST, SIGN_IN_HOST) with the operator's certificate (caddy-tls/), the inspection
+#     tools (pgadmin, schema-docs, flower) stay in the `inspect` profile, the ledger is enforced, and every image is
+#     one tagged build (AISC_IMAGE_TAG).
+#
+# The development file assumes one host: every service, volume and bind mount on the machine compose runs on.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# how often a service's own healthcheck asks, and how long a slow first start may take
+x-healthcheck-timing: &healthcheck-timing
+  interval: 15s
+  timeout: 10s
+  retries: 5
+  start_period: 60s
+
+# every image the stack builds, as the one build this deployment names; never pulled
+x-image-tag: &image-tag
+  pull_policy: never
+
+services:
+  # --- Postgres: TLS only -------------------------------------------------------------------------------------
+  # Hands Postgres the key and certificate start made in postgres-tls/ (private to whoever ran it): copied into a
+  # volume, owned by Postgres's user (70), the key readable by it alone. As root, so it can read the files whoever
+  # owns them. Runs at every start; no network.
+  postgres-tls:
+    logging: *logging
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    image: postgres:15.19-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+    container_name: ${CONTAINER_PREFIX:-}postgres-tls
+    user: "0"
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    volumes:
+      - ./postgres-tls:/src:ro,Z
+      - postgres_tls:/tls
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "cp /src/server.crt /src/server.key /tls/ && chown 70:70 /tls/server.crt /tls/server.key && chmod 600 /tls/server.key && chmod 644 /tls/server.crt"
+    restart: "no"
+
+  postgres:
+    command: >
+      postgres -c ssl=on -c ssl_cert_file=/tls/server.crt -c ssl_key_file=/tls/server.key
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    volumes:
+      - postgres_tls:/tls:ro
+      - ./infra/postgres/pg_hba.configurator.conf:/etc/postgresql/pg_hba.conf:ro,Z
+    depends_on:
+      postgres-tls:
+        condition: service_completed_successfully
+    # on its TCP address: while a fresh volume is set up, the server listens on its socket only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  postgres-setup:
+    environment:
+      PGSSLMODE: require
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  report-grants:
+    environment:
+      PGSSLMODE: require
+
+  # --- the infrastructure's healthchecks ----------------------------------------------------------------------
+  redis:
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard-redis:
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$DASHBOARD_REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # the image's own check, named here so compose shows it
+  immudb:
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/immuadmin", "status"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # --- the sign-in -------------------------------------------------------------------------------------------
+  # Keycloak in production mode, behind the gateway: plain http inside the compose network, the browser's
+  # https address taken from the proxy's X-Forwarded headers. Its database over TLS.
+  # Not published on the host: its public name is served by Caddy (infra/caddy/Caddyfile.configurator), without
+  # the administration.
+  keycloak:
+    command: start --import-realm
+    ports: !reset []
+    environment:
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak?sslmode=require
+    healthcheck:
+      # the management port; the image has bash but no http client
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The image is distroless: no shell, no http client. The check only proves the binary runs; a crash is caught
+  # by the restart policy, and Caddy's sign-in answers what is left.
+  # Its command is the development one (a test keeps them the same) but for the names it lets a person be sent
+  # back to after signing in: the four host names, not localhost. No cookie domain: each host name keeps its own
+  # sign-in cookie, and the Keycloak session signs a person in on the next name without a form.
+  oauth2-proxy:
+    command: !override
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc
+      - --skip-oidc-discovery=true
+      - --login-url=${KEYCLOAK_URL_EXTERNAL}/realms/aisc/protocol/openid-connect/auth
+      - --redeem-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/token
+      - --oidc-jwks-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/certs
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --skip-provider-button=true
+      - --set-xauthrequest=true
+      - --pass-access-token=true
+      - --cookie-refresh=4m
+      - --email-domain=*
+      - --oidc-email-claim=preferred_username
+      - --scope=openid profile
+      - --backend-logout-url=${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/aisc/protocol/openid-connect/logout?id_token_hint={id_token}
+      - --client-id=aisc-gateway
+      - --client-secret=${GATEWAY_CLIENT_SECRET:?run scripts/secrets.sh first}
+      - --cookie-secret=${GATEWAY_COOKIE_SECRET:?run scripts/secrets.sh first}
+      - --cookie-secure=${GATEWAY_COOKIE_SECURE:?set GATEWAY_COOKIE_SECURE (true over HTTPS) in env.configurator}
+      - --cookie-samesite=lax
+      - --whitelist-domain=${ENGINE_HOST:?set ENGINE_HOST in env.configurator}
+      - --whitelist-domain=${LAUNCHER_HOST:?set LAUNCHER_HOST in env.configurator}
+      - --whitelist-domain=${DASHBOARD_HOST:?set DASHBOARD_HOST in env.configurator}
+      - --whitelist-domain=${SIGN_IN_HOST:?set SIGN_IN_HOST in env.configurator}
+      - --upstream=static://202
+    healthcheck:
+      test: ["CMD", "/bin/oauth2-proxy", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  # --- the gateway: 80 and 443 only, each part by its own host name ----------------------------------------------
+  # infra/caddy/Caddyfile.configurator: one TLS site per host name on 443 (the operator's certificate), in front of
+  # the development Caddyfile's sites, which listen inside the container only, on plain http for any name.
+  caddy:
+    ports: !override
+      # every name: a redirect to https
+      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:80:8080"
+      # the engine, the launcher, the dashboard and the sign-in, told apart by host name
+      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:443:8443"
+    volumes:
+      - ./infra/caddy/Caddyfile.configurator:/etc/caddy/Caddyfile:ro,Z
+      - ./Caddyfile:/etc/caddy/Caddyfile.development:ro,Z
+      # server.crt and server.key: one certificate for the four host names
+      - ./caddy-tls:/etc/caddy/tls:ro,Z
+    environment:
+      # the development sites: plain http on the container's own ports, no TLS of their own
+      CADDY_DOMAIN: "http://"
+      CADDY_ENVIRONMENT: behind-the-host-sites
+      ENGINE_HOST: ${ENGINE_HOST:?set ENGINE_HOST in env.configurator}
+      LAUNCHER_HOST: ${LAUNCHER_HOST:?set LAUNCHER_HOST in env.configurator}
+      DASHBOARD_HOST: ${DASHBOARD_HOST:?set DASHBOARD_HOST in env.configurator}
+      SIGN_IN_HOST: ${SIGN_IN_HOST:?set SIGN_IN_HOST in env.configurator}
+    healthcheck:
+      # Caddy's admin endpoint, on the container's loopback only
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # --- the inspection tools stay off (COMPOSE_PROFILES=inspect starts them) ------------------------------------
+  pgadmin:
+    profiles: ["inspect"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  schema-docs:
+    <<: *image-tag
+    profiles: ["inspect"]
+    image: aisc-schema-docs:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- the stack's own images, at one tag, with their healthchecks ---------------------------------------------
+  minio-data-owner:
+    <<: *image-tag
+    image: aisc-minio:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+
+  minio:
+    <<: *image-tag
+    image: aisc-minio:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+
+  make_buckets:
+    <<: *image-tag
+    image: aisc-minio:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+
+  aisc-webapp:
+    <<: *image-tag
+    image: aisc-webapp:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
+    depends_on:
+      aisc-backend:
+        condition: service_healthy
+
+  aisc-backend:
+    <<: *image-tag
+    image: aisc-backend:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      # every path asks for a token here: any answer below 500 means it serves
+      test: ["CMD", "python3", "-c", "import http.client, sys; c = http.client.HTTPConnection('127.0.0.1', 8000, timeout=5); c.request('GET', '/api/v1/app/app-name'); sys.exit(c.getresponse().status >= 500)"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  aisc-backend-migrate:
+    <<: *image-tag
+    image: aisc-backend:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform:
+        condition: service_healthy
+
+  # No port of its own: the check is that its main process is the delivery loop (a crash ends the container,
+  # which the restart policy brings back).
+  aisc-backend-ledger:
+    <<: *image-tag
+    image: aisc-backend:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+    healthcheck:
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q deliver_ledger_events"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      platform:
+        condition: service_healthy
+
+  aisc-eval-worker:
+    <<: *image-tag
+    image: aisc-eval:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    depends_on:
+      aisc-backend:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  aisc-eval-declarations-worker:
+    <<: *image-tag
+    image: aisc-eval:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    depends_on:
+      aisc-eval-worker:
+        condition: service_healthy
+      aisc-backend:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  aisc-eval-flower:
+    <<: *image-tag
+    image: aisc-eval:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+
+  controls-pdf:
+    <<: *image-tag
+    image: aisc-controls-pdf:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health', timeout=5)"]
+
+  # Prisma takes sslmode=require (no certificate check, as libpq's require); uselibpqcompat=true makes node-postgres,
+  # which the app also connects with, read it the same way rather than as verify-full.
+  controls-migrate:
+    <<: *image-tag
+    image: aisc-controls-web:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2&sslmode=require&uselibpqcompat=true}
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROLS_PROJECT_MIGRATE_DATABASE_URL:-postgresql://controls_migrator:${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2&sslmode=require&uselibpqcompat=true}
+    depends_on:
+      platform:
+        condition: service_healthy
+
+  controls-web:
+    <<: *image-tag
+    image: aisc-controls-web:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PROJECT_DATABASE_URL: ${CONTROLS_PROJECT_DATABASE_URL:-postgresql://controls_rw:${CONTROLS_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2&sslmode=require&uselibpqcompat=true}
+      PROJECT_MIGRATE_DATABASE_URL: ${CONTROLS_PROJECT_MIGRATE_DATABASE_URL:-postgresql://controls_migrator:${CONTROLS_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=controls&connection_limit=2&sslmode=require&uselibpqcompat=true}
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/controls',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+    depends_on:
+      controls-pdf:
+        condition: service_healthy
+
+  qualification-prefill:
+    <<: *image-tag
+    image: aisc-qualification-prefill:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8012/health', timeout=5)"]
+
+  qualification-agents:
+    <<: *image-tag
+    image: aisc-qualification-agents:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8012/health', timeout=5)"]
+
+  qualification-ontology:
+    <<: *image-tag
+    image: aisc-qualification-ontology:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5)"]
+
+  qualification-pdf:
+    <<: *image-tag
+    image: aisc-qualification-pdf:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health', timeout=5)"]
+
+  qualification-migrate:
+    <<: *image-tag
+    image: aisc-qualification-migrate:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PROJECT_DATABASE_URL: ${QUALIFICATION_PROJECT_DATABASE_URL:-postgresql://qualification_rw:${QUALIFICATION_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2&sslmode=require&uselibpqcompat=true}
+      PROJECT_MIGRATE_DATABASE_URL: ${QUALIFICATION_PROJECT_MIGRATE_DATABASE_URL:-postgresql://qualification_migrator:${QUALIFICATION_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2&sslmode=require&uselibpqcompat=true}
+    depends_on:
+      platform:
+        condition: service_healthy
+
+  qualification-web:
+    <<: *image-tag
+    image: aisc-qualification-web:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PROJECT_DATABASE_URL: ${QUALIFICATION_PROJECT_DATABASE_URL:-postgresql://qualification_rw:${QUALIFICATION_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2&sslmode=require&uselibpqcompat=true}
+      PROJECT_MIGRATE_DATABASE_URL: ${QUALIFICATION_PROJECT_MIGRATE_DATABASE_URL:-postgresql://qualification_migrator:${QUALIFICATION_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/{database}?schema=qualification&connection_limit=2&sslmode=require&uselibpqcompat=true}
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/qualification',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+    depends_on:
+      qualification-pdf:
+        condition: service_healthy
+      qualification-ontology:
+        condition: service_healthy
+
+  control-objectives-migrate:
+    <<: *image-tag
+    image: aisc-control-objectives:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+    depends_on:
+      platform:
+        condition: service_healthy
+
+  control-objectives:
+    <<: *image-tag
+    image: aisc-control-objectives:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=5)"]
+
+  report-composer:
+    <<: *image-tag
+    image: aisc-report-composer:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      # it has no open page of its own: any answer below 500 means it serves
+      test: ["CMD", "python3", "-c", "import http.client, sys; c = http.client.HTTPConnection('127.0.0.1', 8095, timeout=5); c.request('GET', '/'); sys.exit(c.getresponse().status >= 500)"]
+    depends_on:
+      platform:
+        condition: service_healthy
+      report-renderer:
+        condition: service_healthy
+
+  report-composer-migrate:
+    <<: *image-tag
+    image: aisc-report-composer:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+    depends_on:
+      platform:
+        condition: service_healthy
+
+  report-renderer:
+    <<: *image-tag
+    image: aisc-report-renderer:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+    healthcheck:
+      <<: *healthcheck-timing
+      # every path asks for a token here: any answer below 500 means it serves
+      test: ["CMD", "python3", "-c", "import http.client, sys; c = http.client.HTTPConnection('127.0.0.1', 8001, timeout=5); c.request('GET', '/health'); sys.exit(c.getresponse().status >= 500)"]
+
+  dashboard-migrate:
+    <<: *image-tag
+    image: aisc-results-dashboard:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+    depends_on:
+      dashboard-redis:
+        condition: service_healthy
+
+  dashboard:
+    <<: *image-tag
+    image: aisc-results-dashboard:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+
+  chart-assistant:
+    <<: *image-tag
+    image: aisc-chart-assistant:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/health', timeout=5)"]
+
+  # waits for devpi to be healthy here: a production start may take the minutes devpi needs
+  plugin-publisher:
+    <<: *image-tag
+    image: aisc-plugin-publisher:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    depends_on:
+      devpi:
+        condition: service_healthy
+
+  platform:
+    <<: *image-tag
+    image: aisc-platform:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+      LEDGER_MODE: enforce
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ledger-pool:
+    <<: *image-tag
+    image: aisc-platform:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    environment:
+      PGSSLMODE: require
+    depends_on:
+      platform:
+        condition: service_healthy
+      immudb:
+        condition: service_healthy
+
+  catalogue-private:
+    <<: *image-tag
+    image: aisc-catalogue-private:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+
+  devpi-data-owner:
+    <<: *image-tag
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+
+  devpi:
+    <<: *image-tag
+    image: aisc-catalogue-devpi:${AISC_IMAGE_TAG:?set AISC_IMAGE_TAG}
+
+volumes:
+  # Postgres's key and certificate, as its own user (postgres-tls)
+  postgres_tls:

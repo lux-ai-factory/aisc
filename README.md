@@ -178,6 +178,7 @@ All commands run in the `aisc` folder.
 | Update to the latest version | `git pull`, then `git submodule update --init --recursive`, then `uv run scripts/aisc.py start` |
 | Check that everything works | `./scripts/verify.sh --stack` (macOS and Linux; it needs Python 3 and takes a while) |
 | Remove AISC and all its data | `uv run scripts/aisc.py remove`, then delete the `aisc` folder if you like |
+| Deploy the Configurator on a server (https, TLS to Postgres, health-gated start) | `uv run scripts/aisc.py start --configurator` (see "Deploying the Configurator" in `docs/guide.md`) |
 
 AISC runs one install at a time. Each new download starts with its own, empty data; an earlier install's
 data stays on the computer until you remove that install (`uv run scripts/aisc.py remove` in its folder).

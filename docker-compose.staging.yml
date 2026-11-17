@@ -57,6 +57,9 @@ services:
   aisc-eval-worker:
     image: ghcr.io/lux-ai-factory/aisc-eval:wip-plugins
     container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker
+    # the pool this worker leases from, read by another install's start so the two never share a uid
+    labels:
+      aisc.run-uids: "${PLUGIN_RUN_UIDS:-10100-10199}"
     environment: &eval-worker-env
       API_URL: ${API_URL} # the engine backend's API
       API_PREFIX: ${API_PREFIX}
@@ -67,8 +70,9 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
-      # never overlapping, since the kernel counts a uid's processes across containers
-      PLUGIN_RUN_UIDS: "10100-10199"
+      # never overlapping, since the kernel counts a uid's processes across containers. Each install has its own
+      # pools, chosen by start and kept in env.local (scripts/aisc/run_uids.py)
+      PLUGIN_RUN_UIDS: "${PLUGIN_RUN_UIDS:-10100-10199}"
     volumes: &eval-worker-volumes
       - ${PLUGIN_PATH}:/app/plugins:ro
     depends_on:
@@ -99,7 +103,7 @@ services:
       # raw.githubusercontent.com; set empty, none
       PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
       # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
-      PLUGIN_RUN_UIDS: "10200-10209"
+      PLUGIN_RUN_UIDS: "${PLUGIN_DECLARATIONS_RUN_UIDS:-10200-10209}"
     volumes: *eval-worker-volumes
     depends_on:
       - aisc-eval-worker

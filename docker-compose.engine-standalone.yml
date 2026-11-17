@@ -98,6 +98,9 @@ services:
       context: apps/eval/
     image: aisc-eval:${AISC_IMAGE_TAG:-latest}
     container_name: ${CONTAINER_PREFIX:-}aisc-eval-worker-standalone
+    # the pool this worker leases from, read by another install's start so the two never share a uid
+    labels:
+      aisc.run-uids: "${PLUGIN_RUN_UIDS:-10100-10199}"
     environment: &eval-worker-env
       API_URL: http://aisc-backend:8000
       API_PREFIX: ${API_PREFIX:-/api/v1/internal}
@@ -115,8 +118,9 @@ services:
       # .domain, comma separated; unset, raw.githubusercontent.com (StrongREJECT's datasets); set empty, none
       PLUGIN_EGRESS_ALLOWED_HOSTS: ${PLUGIN_EGRESS_ALLOWED_HOSTS-raw.githubusercontent.com}
       # the uids this worker runs plugins as (aisc_eval/plugin_process.py): the declarations worker has its own,
-      # never overlapping, since the kernel counts a uid's processes across containers
-      PLUGIN_RUN_UIDS: "10100-10199"
+      # never overlapping, since the kernel counts a uid's processes across containers. Each install has its own
+      # pools, chosen by start and kept in env.local (scripts/aisc/run_uids.py)
+      PLUGIN_RUN_UIDS: "${PLUGIN_RUN_UIDS:-10100-10199}"
     # the worker's size, as in the Configurator's file: every process and thread inside counts against pids_limit
     mem_limit: ${EVAL_WORKER_MEM_LIMIT:-16g}
     cpus: ${EVAL_WORKER_CPUS:-4}
@@ -148,7 +152,7 @@ services:
     environment:
       <<: *eval-worker-env
       # a run-uid pool of its own, apart from the run worker's: one task at a time needs one uid
-      PLUGIN_RUN_UIDS: "10200-10209"
+      PLUGIN_RUN_UIDS: "${PLUGIN_DECLARATIONS_RUN_UIDS:-10200-10209}"
     # one plugin at a time: its install, then its manifest or one form hook
     mem_limit: ${EVAL_DECLARATIONS_WORKER_MEM_LIMIT:-8g}
     cpus: ${EVAL_DECLARATIONS_WORKER_CPUS:-2}

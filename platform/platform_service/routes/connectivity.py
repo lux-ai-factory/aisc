@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from platform_service import connection_store, helper_store, llm_catalogue, llm_store, target_store, targets
+from platform_service import connection_allowlist, connection_store, helper_store, llm_catalogue, llm_store, target_store, targets
 from platform_service.routes.admission import allowed_actions, project_for
 from platform_service.connections import connection_view
 from platform_service.routes.llm import clean_model, known_system
@@ -74,7 +74,7 @@ def run_agent_on(slug: str, system: str, body: AgentIn, caller: Caller = Depends
 def connection_models(slug: str, name: str, caller: Caller = Depends(caller_dependency)) -> dict:
     """The models a provider connection offers, asked live with its own address and key, chat models first: what an
     agent's model is picked from. Admins, as choosing an agent's model is. {"models", "error"}; the key is decrypted
-    here only and never answered."""
+    here only, never answered, and sent only to an address the project's network rule allows now."""
     pid = project_for(slug, caller, "use.agent")["pid"]
     found = llm_store.provider_listing(pid, name)
     if found is None or found["provider"] not in llm_catalogue.PROVIDERS:
@@ -86,7 +86,8 @@ def connection_models(slug: str, name: str, caller: Caller = Depends(caller_depe
     base_url = found["base_url"]
     if base_url is None and found["provider"] == "ollama":
         base_url = llm_store.ollama_default()
-    listed = llm_catalogue.list_models(found["provider"], api_key=key, base_url=base_url)
+    rule = connection_allowlist.rule(pid, operator_hosts=llm_store.operator_hosts(base_url))
+    listed = llm_catalogue.list_models(found["provider"], api_key=key, base_url=base_url, rule=rule)
     return {"models": llm_catalogue.chat_first(listed["models"]), "error": listed["error"]}
 
 

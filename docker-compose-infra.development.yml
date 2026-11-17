@@ -150,9 +150,10 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
       # the consumer timeout above the worker's task limit, so a long test run is never handed out twice
       - ./infra/rabbitmq/conf.d/10-aisc.conf:/etc/rabbitmq/conf.d/10-aisc.conf:ro
-    # rabbitmq-setup waits for it to answer before it makes the services' accounts
+    # rabbitmq-setup waits for it before it makes the services' accounts: healthy once the management API
+    # (15672, which the one-shot calls) and the broker (5672) listen; `ping` answers while the node still boots
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_port_listener 15672 && rabbitmq-diagnostics -q check_port_listener 5672"]
       interval: 10s
       timeout: 10s
       retries: 6

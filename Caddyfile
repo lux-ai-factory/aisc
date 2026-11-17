@@ -23,6 +23,11 @@
   tls /etc/caddy/aisctest.uni.lux.cert /etc/caddy/aisctest.uni.lux.key
 }
 
+# The Configurator (docker-compose.configurator.yml): the operator's certificate for CADDY_DOMAIN, from caddy-tls/
+(tls-production) {
+  tls /etc/caddy/tls/server.crt /etc/caddy/tls/server.key
+}
+
 
 # Every module sits behind `protect <app>`:
 # - `route` keeps the directives in the order written. Without it Caddy runs the witness before

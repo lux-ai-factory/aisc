@@ -19,6 +19,8 @@ import base64
 import json
 import os
 import sys
+import time
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from urllib.parse import quote
@@ -41,17 +43,36 @@ def wanted_users() -> dict[str, dict]:
             for name, env in SERVICES.items()}
 
 
-def sender(base_url: str, admin: tuple[str, str]) -> Callable[[str, dict], None]:
-    """PUT of one JSON body to the management API, as the administrator; raises on any answer but 2xx."""
+#: how long a refused connection is tried again: the management API may open a few seconds after the node answers
+WAIT_S = 90
+RETRY_EVERY_S = 2
+
+
+def sender(base_url: str, admin: tuple[str, str], opener: Callable = urllib.request.urlopen,
+           sleep: Callable[[float], None] = time.sleep, wait_s: float = WAIT_S,
+           clock: Callable[[], float] = time.monotonic) -> Callable[[str, dict], None]:
+    """PUT of one JSON body to the management API, as the administrator; raises on any answer but 2xx. A
+    connection nothing accepts yet is tried again for up to wait_s seconds; an HTTP answer is never retried."""
     token = base64.b64encode(f"{admin[0]}:{admin[1]}".encode()).decode()
 
     def put(path: str, body: dict) -> None:
         request = urllib.request.Request(base_url.rstrip("/") + path, data=json.dumps(body).encode(), method="PUT",
                                          headers={"Content-Type": "application/json",
                                                   "Authorization": f"Basic {token}"})
-        with urllib.request.urlopen(request, timeout=10) as answer:
-            if not 200 <= answer.status < 300:
-                raise RuntimeError(f"RabbitMQ answered {answer.status} to PUT {path}")
+        deadline = clock() + wait_s
+        while True:
+            try:
+                with opener(request, timeout=10) as answer:
+                    if not 200 <= answer.status < 300:
+                        raise RuntimeError(f"RabbitMQ answered {answer.status} to PUT {path}")
+                    return
+            except urllib.error.HTTPError:
+                raise
+            except urllib.error.URLError as unreachable:
+                if clock() >= deadline:
+                    raise SystemExit(f"rabbitmq-setup: RabbitMQ's management API at {base_url} did not answer "
+                                     f"within {wait_s:g} s: {unreachable.reason}") from None
+                sleep(RETRY_EVERY_S)
 
     return put
 

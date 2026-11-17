@@ -237,7 +237,7 @@ def test_an_admin_lists_the_models_a_provider_connection_offers_with_its_own_add
     from platform_service import llm_catalogue
     asked = {}
 
-    def listing(provider, api_key=None, base_url=None):
+    def listing(provider, api_key=None, base_url=None, rule=None):
         asked.update(provider=provider, api_key=api_key, base_url=base_url)
         return {"models": ["text-embedding-3", "gpt-4o-mini"], "error": None}
 
@@ -249,6 +249,34 @@ def test_an_admin_lists_the_models_a_provider_connection_offers_with_its_own_add
     assert r.status_code == 200, r.text
     assert r.json() == {"models": ["gpt-4o-mini", "text-embedding-3"], "error": None}
     assert asked == {"provider": "compatible", "api_key": key, "base_url": "https://api.openai.com/v1"}
+    assert key not in r.text
+
+
+def test_a_connections_models_are_never_asked_at_an_address_the_projects_rule_now_refuses(client, admin, project,
+                                                                                         monkeypatch):
+    """A provider connection saved at an internal address the project allowed then; the entry is gone since: its key
+    is not sent there, and the rule's reason is the error."""
+    import httpx
+
+    from aisc_plugin_interface import connections as guard
+    from platform_service import connection_store, llm_store
+
+    real = guard.transport._addresses
+    monkeypatch.setattr(guard.transport, "_addresses", lambda host, port: [ipaddress.ip_address("10.20.30.40")]
+                        if host == "inside.example.com" else real(host, port))
+
+    def no_call(*args, **kwargs):
+        raise AssertionError("the listing called an address the project's network rule refuses")
+
+    monkeypatch.setattr(httpx, "Client", no_call)
+    key = new_key()
+    connection_store.save_provider(project["pid"], "inside-llm", label="Inside", provider="compatible",
+                                   base_url="https://inside.example.com/v1", ciphertext=llm_store.encrypt(key),
+                                   subject="t")
+    r = client.get(f"/projects/{project['slug']}/connections/inside-llm/models", headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["models"] == []
+    assert "internal address" in r.json()["error"]
     assert key not in r.text
 
 

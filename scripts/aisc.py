@@ -5,6 +5,8 @@
 """Install and run AISC on Linux, macOS and Windows alike: the commands a person installing it runs.
 
     uv run scripts/aisc.py start                              # check, make the secrets, build, start, wait
+    uv run scripts/aisc.py start --configurator               # the same for the Configurator's own deployment
+                                                              # (docker-compose.configurator.yml, env.configurator)
     uv run scripts/aisc.py secrets                            # make the secrets if they are missing
     uv run scripts/aisc.py secrets --rotate                   # make new ones, replacing what is there
     uv run scripts/aisc.py secrets --add-ledger-key           # add the next version of the ledger's master key
@@ -87,12 +89,12 @@ def load_package():
 
 load_package()
 
-from aisc import docker, image_drift, infra_passwords, keycloak, ports, secrets, settings, stack  # noqa: E402
+from aisc import docker, image_drift, infra_passwords, keycloak, ports, run_uids, secrets, settings, stack  # noqa: E402
 
 # Every name the modules define stays a name of this script too, so what the tests and wrappers read here
 # (SECRETS, COMPOSE, settle_ports, Stack, sign_in_clients, ...) is still here. A test that replaces a name
 # replaces it in the module that uses it (stack.docker_in_time, ports.ON_WINDOWS, ...).
-for _module in (settings, secrets, docker, ports, keycloak, infra_passwords, stack, image_drift):
+for _module in (settings, secrets, docker, ports, keycloak, infra_passwords, stack, image_drift, run_uids):
     globals().update((name, value) for name, value in vars(_module).items() if not name.startswith("__"))
 
 #: the docker command this process's PATH finds, as the module loads (start finds it again: Stack.use_docker)

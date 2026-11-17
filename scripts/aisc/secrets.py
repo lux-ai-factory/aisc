@@ -6,10 +6,10 @@ import base64
 import os
 import re
 import secrets as random_source
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .settings import (COMBINED, INSTALL, LOCAL, OUT, SIGNING_KEY, SIGNING_PUB, TRACKED, Refused,
+from .settings import (COMBINED, INSTALL, LOCAL, OUT, SIGNING_KEY, SIGNING_PUB, Refused, settings_file,
                        caddy_bind_address, container_prefix, install_id, lines_of, new_install_id, private, project,
                        say, stack_name, text_of, up_hint, use_stack, value_in, warn, with_value, write_beside)
 
@@ -347,6 +347,42 @@ def make_signing_key() -> None:
         os.chmod(pub, 0o644)
 
 
+#: Postgres's key and certificate for the Configurator (start --configurator), and its name in them
+POSTGRES_TLS_DIR, POSTGRES_TLS_NAME = "postgres-tls", "postgres"
+
+
+def make_postgres_tls() -> None:
+    """The Configurator's Postgres speaks TLS only, with this key and a certificate it signs itself (its clients
+    require TLS, not a known certificate: sslmode=require). Made once and kept, --rotate included; private to this
+    user. The stack's postgres-tls job hands Postgres its own copy."""
+    folder = Path(POSTGRES_TLS_DIR)
+    key, cert = folder / "server.key", folder / "server.crt"
+    if key.is_file() and key.stat().st_size and cert.is_file() and cert.stat().st_size:
+        return
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    folder.mkdir(mode=0o700, exist_ok=True)
+    made = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, POSTGRES_TLS_NAME)])
+    now = datetime.now(timezone.utc)
+    signed = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(made.public_key())
+              .serial_number(x509.random_serial_number()).not_valid_before(now - timedelta(minutes=5))
+              .not_valid_after(now + timedelta(days=3650))
+              .add_extension(x509.SubjectAlternativeName([x509.DNSName(POSTGRES_TLS_NAME)]), critical=False)
+              .sign(made, hashes.SHA256()))
+    new = folder / "server.key.new"
+    new.write_bytes(made.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                                       serialization.NoEncryption()))
+    private(str(new))
+    cert.write_bytes(signed.public_bytes(serialization.Encoding.PEM))
+    private(str(cert))
+    os.replace(new, key)
+    say(f"made {key} and {cert}")
+
+
 def write_runtime() -> None:
     """compose takes one --env-file, so the settings and the secrets are combined into one. Also git-ignored,
     also made again from its two sources. The infrastructure passwords come from env.secrets only (a value still
@@ -356,7 +392,7 @@ def write_runtime() -> None:
         name = line.split("=", 1)[0]
         return " " not in name and name in FIRST_IN_RUNTIME
 
-    secret_lines, tracked = lines_of(OUT), lines_of(TRACKED)
+    secret_lines, tracked = lines_of(OUT), lines_of(settings_file())
     # this install's own settings (the ports start chose) come last, so compose takes them over the tracked ones
     local = lines_of(LOCAL) if Path(LOCAL).is_file() else []
     # where Caddy publishes the browser ports (caddy_bind_address), before env.local so a line there wins
@@ -367,7 +403,7 @@ def write_runtime() -> None:
     if prefix:
         combined.append(f"CONTAINER_PREFIX={prefix}")
     write_beside(COMBINED, text_of(combined))
-    say(f"wrote {COMBINED} ({TRACKED} + {OUT}{' + ' + LOCAL if local else ''})")
+    say(f"wrote {COMBINED} ({settings_file()} + {OUT}{' + ' + LOCAL if local else ''})")
 
 
 def make_secrets(args: list[str], hint: bool = True) -> None:

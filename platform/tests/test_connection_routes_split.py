@@ -36,6 +36,7 @@ ROUTES = {
     ('GET', '/internal/projects/{pid}/helpers/{name}/models'),
     ('GET', '/internal/projects/{pid}/helpers/{name}/resolve'),
     ('GET', '/internal/projects/{pid}/llm/{system}'),
+    ('GET', '/internal/projects/{pid}/network-rule'),
     ('GET', '/internal/projects/{pid}/proof-files/{file_id}'),
     ('GET', '/internal/projects/{pid}/targets/{key}/connection'),
     ('GET', '/internal/projects/{pid}/targets/{key}/reachable'),

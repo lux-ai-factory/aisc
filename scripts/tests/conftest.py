@@ -17,8 +17,23 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _compose_merge_tag(loader, node):
+    """Compose's own merge tags (!override, !reset in docker-compose.configurator.yml) read as the plain value they
+    tag, so the tests that read the compose files as YAML read that file too."""
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node, deep=True)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+for _tag in ("!override", "!reset"):
+    yaml.SafeLoader.add_constructor(_tag, _compose_merge_tag)
 GUARD = ROOT / "scripts/guard-frozen.sh"
 CHAIN = ROOT / "scripts/test-pipeline-chain.sh"
 

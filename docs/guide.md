@@ -333,6 +333,43 @@ plugins. To develop one of the engine's apps on the host, see that submodule's R
 `docker-compose-infra.staging.yml` and `docker-compose.staging.yml` are older deployment files for the
 engine alone and are not used by the stack above.
 
+### Deploying the Configurator
+
+The development files assume one host: every service, volume and bind mount is on the machine compose runs on, and
+the conveniences of a developer machine are on (Keycloak in `start-dev`, the launcher and dashboard on their own
+ports, the ledger in `record`, images tagged `latest`). `docker-compose.configurator.yml` is laid over them, and over
+`docker-compose.https.yml`, for a deployment:
+
+1. Copy `env.configurator.example` to `env.configurator` and set the four host names (`ENGINE_HOST`,
+   `LAUNCHER_HOST`, `DASHBOARD_HOST`, `SIGN_IN_HOST`) and `AISC_IMAGE_TAG` (the build every image runs, for example
+   the commit). Every public address (`CADDY_DOMAIN`, `API_URL_EXTERNAL`, `LAUNCHER_EXTERNAL_URL`,
+   `DASHBOARD_EXTERNAL_URL`, `KEYCLOAK_URL_EXTERNAL`, the CORS origins) is made from them in the file.
+2. Point the four names at the host, and put one certificate covering them in `caddy-tls/server.crt` and
+   `caddy-tls/server.key`.
+3. Run `uv run scripts/aisc.py start --configurator`. It needs Compose 2.24 or later, refuses before Docker is
+   asked when a host name is missing or a part's address is not `https://<its name>`, makes the secrets as for any
+   install, and makes Postgres's key and self-signed certificate once in `postgres-tls/` (kept, `--rotate`
+   included).
+
+What the file changes:
+- Postgres speaks TLS only (`infra/postgres/pg_hba.configurator.conf`: a password over the socket or over TLS,
+  everything else refused); every client requires TLS (`PGSSLMODE=require`, `sslmode=require` in the Prisma and
+  JDBC addresses). The clients do not check the certificate: the network between them is the compose network.
+- Every long-running service has a healthcheck and restarts unless stopped; nothing starts before what it needs is
+  healthy, or, for a one-shot, finished.
+- Keycloak runs `start` (production mode) behind the gateway; pgadmin, schema-docs and Flower stay in the `inspect`
+  profile; `LEDGER_MODE=enforce` on every service that writes to the ledger; every image the stack builds runs at
+  `AISC_IMAGE_TAG`, never pulled.
+- Caddy publishes 80 and 443 only, and nothing else publishes a port. On 443 it serves the engine, the launcher,
+  the dashboard and the sign-in each at its own host name (`infra/caddy/Caddyfile.configurator`), with the
+  certificate above; 80 only redirects to https. Keycloak's administration (`/admin`, `/realms/master`) answers 404
+  on the sign-in's name; run `kcadm.sh` in the Keycloak container for it. The development `Caddyfile` is imported
+  unchanged, so every module's route is the one a development install has; its sites listen inside the container
+  only, behind the TLS ones. oauth2-proxy lets a person be sent back to the four names only, and keeps one sign-in
+  cookie per name (the Keycloak session signs a person in on the next name without a form).
+
+Check the deployment with `./scripts/verify.sh --stack` once it is up.
+
 ### Logs and limits
 
 Every service in the development and engine-standalone files keeps its log in Docker's `json-file` driver,
