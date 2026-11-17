@@ -435,6 +435,85 @@ $ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architect
 5 passed, 3 xfailed                  # unchanged baseline, 0 failed
 ```
 
+## E4 parity: qualification/objectives (QUAL-01 #113), scoped results (ANA-01 #115), catalogue (CAT-01 #122)
+
+Continues the E4 port on the same branch (no merge restarted). What landed:
+
+**QUAL-01 — the project-local custom objective code.** The pilot keeps a project's own objectives in the
+project's *own* database, so two projects may each write the same local code. In the unified single DB the
+old `objective_id` was **globally** unique, so the second project's `CX-1` was rejected (`409`) and no project
+could use a code the catalogue already used. `ControlObjective.objective_id` is now unique **per project**
+(two new constraints: `(project, objective_id)` and a partial unique on the seeded rows, migration
+`0036_alter_controlobjective_objective_id_and_more`; the column widens to 32 chars so a prefixed local code
+fits). A local code still may not repeat inside its project nor shadow the shared catalogue.
+`test_catalogue_add_edit_delete_project_row` previously asserted the cross-project `409`; that expectation was
+the wrong encoding of the pilot and is now inverted (another project's same code succeeds; the repeat and the
+`O1` shadow are the `409`s).
+
+**QUAL-01 — priorities: unticking a default key now sticks, and choices can be undone.** The matrix built its
+key overrides as `{id: True}` for the stored list and fell back to the computed default for anything absent,
+so unticking one of the default seven priority objectives silently reverted. A non-empty stored
+`key_objectives` is now the assessor's complete answer (the objectives left out are off); an empty list still
+means "no choice yet, use the defaults". New `DELETE /projects/{pid}/control-objectives/profile/keys`
+("Undo priority choices", wired to a button on `ControlObjectivesPage`) clears the choices so the defaults
+apply again. A regression test covers tick → untick → undo.
+
+**QUAL-01 — rating bounds.** `PATCH .../risks/{pid}/rating` now enforces the pilot's 1..5 impact/likelihood
+and the 1000-character rationale cap (both were unvalidated).
+
+**ANA-01 — scoped results and the dashboard bridge.** `services/results_dashboard.py` + `routers/results.py`
+serve the project's results scoped to a published AI-card version, and `routers/stats.py` takes the same
+scope; the webapp `ResultsSection` (on `DashboardPage`) and `lib/results.ts` read it. Superset stays its own
+process — this is only the bridge/link, not a new DB path.
+
+**CAT-01 — one catalogue surface.** `routers/catalogue.py` gained a `kind` filter (`control` | `plugin`) and
+returns the published catalogue site's URL (`APP_CATALOG_URL`) so the combined webapp page
+(`src/pages/CataloguePage.tsx`, route `/projects/:project_name/catalogue`) can show tests and checklists
+together and link out to the independently published catalogue, as the pilot's `catalogue.html` does.
+
+### Not done (QUAL-01 remainder, recorded rather than silently dropped)
+
+These pilot behaviours are still absent; they need either a model/LLM path or a schema owner's decision:
+
+1. **Risk mapper "Suggest with AI"** (`docs/appendices/2-control-objectives.md` §3): no LLM client exists in
+   the backend (no Ollama/`CONTROL_OBJECTIVES_LLM_*` integration), so the proposal endpoint, its quote
+   validation against the risk chain and the three-attempt cap are not ported. Rating, scoring, manual
+   linking and priorities are unaffected.
+2. **Built-in objective profiles** ("Full AI Act" 50 / "Fairness and oversight" 10, first assessment defaulting
+   to the latter): the exact 10-objective membership is not in the repo (only the appendix names it), so
+   inventing it was left out. The single per-project profile + "Change profile" via
+   `PUT .../control-objectives/profile` already works.
+3. **Custom objective *sets*** (a project's own set with a code prefix, edited as a draft and published as
+   fixed numbered versions): only per-project custom *rows* exist; set/version models are a schema change for
+   the MIG-01 owner.
+4. **Qualification**: the headless `qualification-prefill` document upload (text rules) and the
+   `qualification-agents` card agent (suggest additions + self-critique) are not ported; the card, its
+   version chain, node edits and the JSON-LD serialisation are (from the frozen port). Card **PDF/JSON
+   download** still goes through the renderer rather than a `qualification-pdf` service.
+5. **Engine component snapshot per card component** (the "changed in the engine since" flag) is not ported.
+
+### Evidence
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Found 329 test(s).
+Ran 329 tests in 13.6s
+OK                                    # 317 → 329 (+7 results router, +3 catalogue kind/url/scope, +2 objectives)
+
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ cd apps/webapp && npx vitest run
+ Test Files  35 passed (35)
+      Tests  200 passed (200)          # 193 → 200
+
+$ npm run build
+✓ built in 8.1s
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                    # unchanged baseline, 0 failed
+```
+
 ## Run it locally
 
 ```bash
