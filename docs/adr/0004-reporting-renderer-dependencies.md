@@ -1,6 +1,6 @@
 # 0004. Reporting renderer: Python-native PDF/Word in the backend, no browser
 
-**Status:** accepted
+**Status:** superseded by [0005](0005-report-renderer-weasyprint-and-plugin-abi.md)
 **Invariant:** I8 — new production dependencies decided (not waived)
 **Owner:** AISC project owner (reporting workstream, epic E5)
 **Date:** 2026-11-17

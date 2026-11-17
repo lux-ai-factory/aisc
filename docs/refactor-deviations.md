@@ -291,6 +291,13 @@ existing report router (`GET /{pid}/reports`, `POST /{pid}/reports/generate`, `/
 
 **Deviations / left undone (owned by later issues, not blocking).**
 
+- **ADR ordering (process deviation).** The first reporting dependencies (`reportlab`, `python-docx`)
+  landed on this branch in `74b752e` **before** the I8 ADR that decided them (`cbab369`, ADR 0004).
+  I8 requires the decision before the dependency. Corrected by withdrawing that ADR: ADR 0004 is marked
+  *superseded by ADR 0005*, and ADR 0005 (the pilot WeasyPrint/Jinja renderer + report-plugin ABI) is
+  written **before** the renderer dependencies below are added, so the ordering holds for them. The
+  `reportlab` dependency is removed.
+
 - **Renderer engine differs from the pilot.** The pilot renders HTML→PDF with **WeasyPrint** (system
   cairo/pango libs) plus `python-docx`; this port renders with `reportlab` + `python-docx`, no browser
   and no system libs. Recorded as the I8 decision in [`adr/0004-reporting-renderer-dependencies.md`](adr/0004-reporting-renderer-dependencies.md).

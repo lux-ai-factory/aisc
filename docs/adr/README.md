@@ -21,9 +21,12 @@ or breaks an invariant does.
 - [0003 — Frozen unified-app integration](0003-frozen-unified-app-port-and-worker-boundary.md):
   selective mainline integration, rewrite unshipped migrations, immediate plugin environment boundary,
   deny-by-default ORM access and pragmatic pilot UI review. Supersedes 0002, not 0001's audit decision.
-- [0004 — Reporting renderer](0004-reporting-renderer-dependencies.md): Python-native PDF/Word
-  (`reportlab` + `python-docx`) rendered in the backend, no browser; the pilot's WeasyPrint service
-  stays behind the `REPORT_SERVICE_URL` seam. The I8 decision for the E5 reporting dependencies.
+- [0004 — Reporting renderer](0004-reporting-renderer-dependencies.md): **superseded by 0005**; its
+  in-process `reportlab` choice is withdrawn (it reproduced the information, not the pilot's renderer).
+- [0005 — Report renderer](0005-report-renderer-weasyprint-and-plugin-abi.md): adopt the pilot's
+  WeasyPrint/Jinja renderer, CSS and cairosvg logos, and the `aisc_report_plugin_interface` ABI with the
+  bundled `aisc-report-plugin-*` tool renderers; `reportlab` is dropped. The I8 decision for the E5
+  reporting dependencies, written before they are added.
 
 Worker-ready epics, dependency gates and detailed issue bodies: [`../refactor-issues.json`](../refactor-issues.json).
 
