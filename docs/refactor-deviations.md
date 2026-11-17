@@ -473,7 +473,12 @@ together and link out to the independently published catalogue, as the pilot's `
 
 ### Not done (QUAL-01 remainder, recorded rather than silently dropped)
 
-These pilot behaviours are still absent; they need either a model/LLM path or a schema owner's decision:
+> **Superseded:** all five items below were closed on the same branch — see
+> [E4 remainder closed](#e4-remainder-closed-the-qualification-agents-profiles-sets-and-the-card-snapshot-qual-01-113).
+> The list is kept as the record of what the earlier commit left out.
+
+These pilot behaviours were still absent at the time; they needed either a model/LLM path or a schema
+owner's decision:
 
 1. **Risk mapper "Suggest with AI"** (`docs/appendices/2-control-objectives.md` §3): no LLM client exists in
    the backend (no Ollama/`CONTROL_OBJECTIVES_LLM_*` integration), so the proposal endpoint, its quote
@@ -509,6 +514,110 @@ $ cd apps/webapp && npx vitest run
 
 $ npm run build
 ✓ built in 8.1s
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                    # unchanged baseline, 0 failed
+```
+
+## E4 remainder closed: the qualification agents, profiles, sets and the card snapshot (QUAL-01 #113)
+
+The five items the section above recorded as *not done* are now in, on the same branch (no merge
+restarted). The decisions behind them are [ADR 0006](../adr/0006-qualification-agents-and-objective-sets.md)
+(`apps/backend` `557059d`, `apps/webapp` `39e6edb`).
+
+**One model-resolution seam.** `aisc_backend/services/ai_assistant.py` is the single answer to "which
+model does an assistant use": the project's own helper model first (by role, then its first helper),
+the stack setting second (`CONTROL_OBJECTIVES_LLM_*`, `CARD_AGENT_LLM_*`), else `NoModelConfigured` —
+which the endpoints answer as `503` rather than inventing an answer. The risk mapper's proposer now
+goes through it (`services/risk_mapper.resolve_proposer` is that helper), so there is one rule, not
+three. **A helper's endpoint is read through CON-01's allowed-hosts door immediately before the call**
+(`guard_url`), answered as `400` naming the model; the stack setting is the operator's own
+configuration, not project input, so it is not put through the project's allowlist.
+
+**QUAL-01 — the risk mapper ("Suggest with AI", appendix 2 §3).** `services/risk_mapper.py` is a pure
+decision function (no database): each proposal must quote the risk's own chain, unknown or repeated
+objectives and wrong quotes are sent back for **at most three attempts**, what still fails is dropped
+with its reason, and links a person made by hand survive unless "also replace objectives I linked by
+hand" is ticked (an earlier *AI* run's links are replaced). `POST
+/projects/{pid}/control-objectives/risks/mappings/suggest` validates, writes the surviving proposals
+as `source="ai"` links, audits them, and returns `attempts`/`created`/`dropped`. The webapp's step 2
+has the button, the tick and the run line (`describeSuggestion`).
+
+**QUAL-01 — the two built-in profiles.** Full AI Act (every objective of the project's visible
+catalogue) and Fairness and oversight (the objectives of the catalogue's own macro requirements
+**REQ1 Human Agency and Oversight, REQ5 Fairness, REQ7 Accountability** = 10), with a first
+assessment starting on the latter. The membership is **derived, not hard-coded**
+(`services/objective_profiles.py`), so a changed catalogue cannot silently drift from the profile;
+`GET .../control-objectives/profiles` returns both with the current one, and `PUT
+.../control-objectives/profile` sets `profile_key`. This is where the earlier note said "the exact
+10-objective membership is not in the repo" — it is: it is the catalogue's own macro requirements.
+
+**QUAL-01 — custom objective sets.** `ObjectiveSet` (name, code prefix, editable draft) and
+`ObjectiveSetVersion` (each published version `1..n`, frozen) with `GET/POST .../objective-sets`,
+`GET/PUT .../objective-sets/{set_pid}`, `POST .../publish` (an empty draft is refused `400`),
+`POST .../apply` (copies a published version into the project's own catalogue rows and selects them —
+so the matrix, the evidence map and the report read them like any other objective; applying twice
+updates, never duplicates) and `DELETE`. Every write is audited. The webapp has the profile chooser
+and the sets editor (start from the catalogue, drop or add rows, publish, apply, delete).
+
+**QUAL-01 — document pre-fill.** `services/qualification_prefill.py` reads `.pdf` (new dependency
+`pypdf`), `.docx` (`python-docx`), `.txt`/`.md` with plain text rules — **no model** — matching each
+questionnaire question's own wording, and `POST /projects/{pid}/qualification/prefill` (multipart,
+optional `questionnaire_id`) answers with proposals only: field, value, the sentence that matched, the
+line, plus the questions nothing was found for. **Nothing is stored.** The webapp's step 1 dialog
+shows them for review, lets each be dropped, and offers the pilot's two modes (fill the empty fields /
+replace the answers); `applyPrefill` is a pure merge, so what the person typed into fields the document
+says nothing about is kept.
+
+**QUAL-01 — the card agent.** `services/card_agent.py` answers about the card and *proposes* node
+corrections, each of which must quote the person's words or the card (the same rule the risk mapper
+uses); `POST /projects/{pid}/qualification/{qpid}/agent` returns the reply, the proposals and what it
+left out. Applying a proposal goes through the **existing** node-correction endpoint, which rebuilds
+the card and stores a new version — so there is still exactly one card write path (I3/I6), and the
+webapp panel shows each proposal's quote with Apply/Dismiss and folds the new version into the page.
+
+**QUAL-01 — the card components against the engine.** `CardComponentLink` records, per card component,
+which engine AI component it stood for and a snapshot of what that component said when the card was
+saved; `GET .../qualification/{qpid}/card-components` compares them on read and reports `changed` and
+`missing`. The webapp shows "changed in the engine since" / "not in the engine".
+
+### Still not done (recorded rather than silently dropped)
+
+1. **A card correction has no sign-off step of its own.** Applying an agent proposal goes through the
+   node-correction endpoint, which rebuilds the card and stores a new version, and the change is
+   audited — but nothing in the repo asks a second person to accept the corrected version, so a
+   reviewer reads the version chain rather than being prompted. If a sign-off is wanted it is a small
+   addition to the node path, not new state.
+2. **The sets' row editing is deliberately shallow in the UI.** A draft row can be added (ID, macro
+   requirement, text) or dropped, and the draft can be started from the catalogue; the remaining
+   catalogue fields (legal basis, sub-requirement label, assessment mode, target, standards grounding,
+   notes) are carried through the API and the version chain but have no per-field editor. Owner: a
+   MIG/UX follow-up; no backend work remains.
+3. **A set's published version is not shown as a diff.** Versions are stored and returned
+   (`versions[]`), and `published v<n>` is shown, but there is no side-by-side of two versions.
+4. **The pre-fill's rules are ours, not the pilot's.** The pilot reads documents with its own text
+   rules whose exact patterns are not in the repo; ours match each question's own wording. A
+   deployment that wants the pilot's exact extraction needs those patterns.
+5. **`pypdf` is the only new dependency** (ADR 0006). Nothing else changed shape.
+
+### Evidence
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Ran 403 tests in 11.7s
+OK                                    # 329 → 397 (this work) → 403 (the door rule)
+
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected                   # migrations 0037, 0038, 0039 are committed
+
+$ DATABASE_URL=sqlite:////tmp/fresh.sqlite3 uv run python manage.py migrate
+# applies from empty, all migrations OK
+
+$ cd apps/webapp && npx vitest run
+ Test Files  39 passed (39)
+      Tests  232 passed (232)          # 200 → 232: +15 lib, +4 card agent, +6 pre-fill, +7 profile/sets
+
+$ npm run build          # ✓ built, tsc clean
 
 $ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
 5 passed, 3 xfailed                    # unchanged baseline, 0 failed
