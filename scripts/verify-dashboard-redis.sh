@@ -9,6 +9,17 @@
 #
 #   DASHBOARD_REDIS_PASSWORD=... scripts/verify-dashboard-redis.sh
 #
+# No Docker here, but a `redis-server` on PATH? Then the rule itself can still be
+# exercised, on this host, with the same configuration the compose service writes:
+#
+#   scripts/verify-dashboard-redis.sh --local
+#
+# Local mode starts a throwaway server on a free loopback port with the compose
+# service's own config (requirepass, no persistence, nothing published) and checks
+# what a client sees. The deployment checks (which network it is on, which
+# containers share it, what `docker inspect` shows) need a running stack; local
+# mode says so instead of pretending to know.
+#
 # Exit 0: every check passed. Exit 1: the deployment deviates, and the line says how.
 set -uo pipefail
 
@@ -23,6 +34,65 @@ ok()   { printf 'ok   %s\n' "$*"; }
 bad()  { printf 'BAD  %s\n' "$*"; failures=$((failures + 1)); }
 
 compose() { docker compose -f "$COMPOSE_FILE" --profile "$COMPOSE_PROFILE" "$@"; }
+
+# ─── local mode: the rule itself, without Docker ────────────────────────────
+if [ "${1:-}" = "--local" ]; then
+  for tool in redis-server redis-cli; do
+    command -v "$tool" >/dev/null 2>&1 || { bad "$tool is not installed"; say "install redis, or run this against a deployment"; exit 1; }
+  done
+  workdir=$(mktemp -d)
+  port=$(( (RANDOM % 20000) + 20000 ))
+  password="${DASHBOARD_REDIS_PASSWORD:-$(head -c 18 /dev/urandom | base64 | tr -d '/+=')}"
+  # the compose entrypoint's own lines, plus a loopback port so nothing here is public
+  printf 'requirepass %s\nsave ""\nappendonly no\nport %s\nbind 127.0.0.1\n' \
+    "$password" "$port" > "$workdir/redis.conf"
+  redis-server "$workdir/redis.conf" --daemonize yes --pidfile "$workdir/redis.pid" \
+    --logfile "$workdir/redis.log" || { bad "the server did not start"; exit 1; }
+  trap 'redis-cli -p "$port" -a "$password" shutdown nosave >/dev/null 2>&1; rm -rf "$workdir"' EXIT
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    redis-cli -p "$port" ping >/dev/null 2>&1 && break
+    sleep 0.2
+  done
+
+  answer=$(redis-cli -p "$port" ping 2>&1 || true)
+  case "$answer" in
+    *NOAUTH*|*"Authentication required"*) ok "a client with no password is refused (NOAUTH)" ;;
+    *) bad "redis-cli ping without a password answered '$answer' — is requirepass on?" ;;
+  esac
+  answer=$(REDISCLI_AUTH="$password" redis-cli -p "$port" ping 2>&1 || true)
+  case "$answer" in
+    *PONG*) ok "the password the service is given is the one it takes" ;;
+    *) bad "the password did not work: '$answer'" ;;
+  esac
+  answer=$(REDISCLI_AUTH="$password" redis-cli -p "$port" config get appendonly 2>&1 | tail -1)
+  case "$answer" in
+    no) ok "it keeps nothing (appendonly no): a cache, not a store" ;;
+    *) bad "appendonly answered '$answer'" ;;
+  esac
+  case "$(REDISCLI_AUTH="$password" redis-cli -p "$port" config get bind 2>&1 | tail -1)" in
+    127.0.0.1*) ok "it listens on loopback only (nothing published)" ;;
+    *) bad "bind is not loopback: the cache would be reachable" ;;
+  esac
+  # the password is in the config file, never on the server's command line
+  if ps -o args= -C redis-server 2>/dev/null | grep -q -- "$password"; then
+    bad "the password is in the server's command line"
+  else
+    ok "the server's command line does not carry the password"
+  fi
+
+  say ""
+  if [ "$failures" -eq 0 ]; then
+    say "the dashboard's Redis rule holds on this host: password-protected, loopback-only, storing nothing"
+    say "note the deployment checks (its network, who shares it) were not run — they need a running stack"
+    exit 0
+  fi
+  say "$failures check(s) failed"
+  exit 1
+fi
+if [ "$#" -gt 0 ]; then
+  bad "unknown argument: $1 (the only argument is --local)"
+  exit 1
+fi
 
 # 1. it is running, and it asks for a password: a command without one is refused
 if ! compose ps --status running --services 2>/dev/null | grep -qx "$SERVICE"; then

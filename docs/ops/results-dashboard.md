@@ -128,6 +128,18 @@ answer `NOAUTH`, the password itself must work, no port must be published, the p
 the server's command line, and no service running plugin code may be attached to the cache's network).
 It exits non-zero and says which check failed — it never passes silently.
 
+**The rule itself, with no Docker at all** (a `redis-server` on this host is enough):
+
+```bash
+scripts/verify-dashboard-redis.sh --local
+```
+
+It starts a throwaway server with the compose service's own configuration
+(`requirepass`, `save ""`, `appendonly no`, loopback only) and runs the client-side half of the checks
+against it: no password is refused, the password works, nothing is persisted, nothing is published, and
+the password is not in the server's command line. The deployment-only checks (which network it is on and
+who shares it) are not run and it says so — run the plain form on a stack for those.
+
 **The link contract** (unit tests, no dashboard needed):
 
 ```bash

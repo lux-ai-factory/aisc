@@ -9,12 +9,14 @@ Reference for the pilot's behaviour: `homepage/catalogue.html` (the pilot launch
 landed by DOC-01) plus the pilot's `apps/catalogue`.
 
 **Reviewed by:** AISC project owner (CAT-01 / #122), 2026-11-17. **Outcome:** parity accepted as
-stated below; the two exclusions are deliberate and carry their reason.
+stated below. Exclusion 1 (the public/private catalogue choice) is deliberate and carries its reason;
+exclusion 2 (the step-3 filter by the project's objectives' dimensions) was the one real parity gap and
+**is now ported** — the heading is kept so the record of the gap and of how it closed survives.
 
 | Pilot capability (`homepage/catalogue.html`) | Unified app | State |
 |---|---|---|
 | One page where a project finds both kinds — tests (plugins) and checklists — and installs from it | `GET /catalogue` answers both kinds (`kind=all\|plugin\|control`), one install endpoint `POST /projects/{pid}/catalogue/installs`, one page `CataloguePage` with one reusable `CatalogueExploreDialog` | **ported** |
-| "Filtered by this project's control objectives" | not filtered — see exclusion 2 | **excluded** (reason recorded) |
+| "Filtered by this project's control objectives" | `GET /catalogue` carries each item's dimension tags and the dimension vocabulary; `GET /projects/{pid}/control-objectives/dimensions` says which dimensions the project's selected objectives are; the listing page's "For this project" switch (on by default) keeps the items carrying one of them, with a note and "show everything" when the project has selected nothing — see [exclusion 2](#exclusion-2--the-filters-are-in-the-one-listing) | **ported** |
 | "Public catalogue: read live, always current, nothing stored for this project" | `GET /catalogue` reads through to the hosted catalogue on each listing (`services/controls_catalogue`, briefly cached), nothing is stored until an item is installed | **ported** |
 | "Also lists the tests kept on this installation" | the plugin side of the same listing comes from the installation's loader (`source == "local"`, expanded per base-plugin class), alongside registry packages | **ported** |
 | Install into the project (idempotent, repeatable) | `POST /projects/{pid}/catalogue/installs` copies a checklist template into the project's own library (`ProjectChecklist`), installs the requested plugin class(es) (`Plugin`), and re-enables rather than duplicating on reinstall | **ported** |
@@ -43,28 +45,48 @@ an updated template). If a deployment needs version-pinned catalogue snapshots, 
 requirement, not a port — it would go through the versioning mechanism (I6), not through a private
 catalogue table.
 
-## Exclusion 2 — filtering the catalogue by the project's control objectives
+## Exclusion 2 — the filters are in the one listing
 
-The pilot filters the catalogue to what the selected objectives imply. **Appendix 2** says exactly how:
-"Step 3 filters the catalogue, by default, to tests and checklists tagged with **the dimensions** of the
-selected objectives" (`docs/appendices/2-control-objectives.md`, "What later steps take from it"), and a
-dimension is the objectives' macro requirement — `REQ1 Human Agency and Oversight` … `REQ11`, which our
-own catalogue rows carry in `ControlObjective.macro_requirement` (seeded from
-`aisc_backend/data/ai_act_control_objectives.csv`). So the mapping on the objective side exists.
+**This gap is closed; the heading is kept so the record of it is not lost.** The pilot filters the
+catalogue to what the selected objectives imply, and Appendix 2 says how: "Step 3 filters the catalogue, by
+default, to tests and checklists tagged with **the dimensions** of the selected objectives"
+(`docs/appendices/2-control-objectives.md`). A dimension is the catalogue's own vocabulary, and our
+objectives carry it in `ControlObjective.macro_requirement`.
 
-**Not ported, and this is the one catalogue parity gap.** The other side of that mapping is missing: the
-surface's catalogue items carry `control_topic`, regulation ids, country ids and a provider
-(`services/controls_catalogue._mapped`) — no dimension. The hosted catalogue's raw items do carry tags in
-sections (`item["tags"]`, each `{section, slug}`; `_is_control` already reads the `type` section), so a
-dimension tag may well be there, but the hosted API is not reachable from this sandbox
-(`CONTROLS_CATALOG_URL` answers nothing), and a filter keyed on a guessed section name would be a guess
-presented as a mapping — it would silently show the wrong list. The listing is therefore shown whole and
-the objectives page stands on its own.
+**Both sides of that mapping now exist, in one place each.**
 
-Closing it is small and mechanical once the section name is confirmed against the live catalogue: read the
-dimension tag in `_mapped` (into `CatalogueControlOut.dimensions`), and filter the one listing by the
-dimensions of the project's selected objectives, keeping "show everything" as the escape hatch — in the
-same listing, not a second one. Until then the gap is recorded here rather than papered over.
+* **The vocabulary.** `services/dimensions.py` is the single table: `REQ1..REQ11` → the catalogue's eleven
+  dimension slugs, with the catalogue's own labels (`diversity-non-discrimination-fairness`, not our
+  "Fairness"). `services/evidence_map` reads `dimension_of` from it, the catalogue surface serves
+  `vocabulary()` as `CatalogueOut.dimensions`, and the objective side serves `dimensions_of` per project.
+  Nothing else may invent a dimension; `tests/test_dimensions.py` pins every slug and checks that every
+  seeded requirement has one.
+* **The tag.** The section name that was the blocker is confirmed against the live catalogue, not guessed:
+  items carry `{"section": "dimension", "slug": …}` and their sub-dimensions under
+  `controls_subdim`/`testing_subdim` with the dimension in `parent_dimension_slug`.
+  `services/controls_catalogue._dimension_slugs` reads all three sections and folds a sub-dimension into its
+  parent — the catalogue's own site rule, so an item tagged only `purpose-limitation` is still a
+  `privacy-data-governance` item — into `CatalogueControlOut.dimensions`. Measured on the live catalogue
+  (2026-11-17, 68 items / 44 checklists): **every checklist carries a dimension tag**, across nine of the
+  eleven slugs.
+* **The read.** `GET /projects/{pid}/control-objectives/dimensions` answers the selected objectives'
+  dimensions (the profile's `objectives`; a project that only ever flagged key objectives is read from
+  those), `[]` meaning "nothing selected yet".
+* **The filter.** One listing, not a second one: `CatalogueExploreDialog` gained a "For this project"
+  switch (on by default, as the pilot's sidebar has it), a note — "No control objectives selected yet:
+  showing everything." — when the project has selected nothing, and the dimension chips that the pilot's
+  sidebar offers (built from the served vocabulary). Both narrow the same `filterCatalogue` call, matching
+  *any* of their slugs, which is the catalogue site's own rule.
+
+**What is still different, and why.** Only checklists are narrowed. The pilot's "tests" tab is filtered by
+the same dimensions because its tests come from the hosted catalogue (`type: test` items, which do carry
+dimension tags); our plugin side of the listing comes from this installation's plugin loader
+(`source == "local"` plus registry packages), which carries no dimension tag at all, so a project filter
+would hide every plugin rather than narrow them. `filterCatalogue` therefore leaves plugins alone — the
+switch is not offered on the plugin-only dialog — and the plugin side of the listing is unchanged. Closing
+*that* needs the hosted catalogue's test dimension tags to reach the loader path, which is the same
+question the plugin listing already has (which catalogue is authoritative for a plugin package), not a
+dimension-table question.
 
 ## No duplicate surface (the second CAT-01 criterion)
 
@@ -79,3 +101,14 @@ Asserted, not asserted-by-eye:
   one module installs (`lib/checklists.ts` + the dialog), one route renders a catalogue, one component
   implements the exploration UI, and the pages that open it are the known three (`CataloguePage`,
   `ChecklistsPage`, `Plugins`) — a fourth, or a second listing call, fails the test.
+
+The dimension filter did not add a surface: the *vocabulary and tag* live in the services above, the
+project's dimensions are one more read of the project's own objectives
+(`routers/control_objectives.py`, alongside the objectives catalogue it belongs to — not a route under
+`/catalogue`, so it is not a listing), and the narrowing happens inside the same `filterCatalogue` call the
+dialog already used. Asserted from both sides:
+`apps/backend/aisc_backend/tests/test_dimensions.py` (the table), `.../tests/routers/test_control_objectives_router.py`
+(what a project's dimensions are), `.../tests/routers/test_controls_catalogue_sync.py` (the items' tags and
+the served vocabulary), `apps/webapp/src/lib/catalogue.test.ts` (the narrowing), and
+`apps/webapp/src/components/CatalogueExploreDialog.test.tsx` + `src/pages/CataloguePage.test.tsx` (the
+switch, the note, and the page wiring end to end).

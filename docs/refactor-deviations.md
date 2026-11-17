@@ -723,6 +723,107 @@ $ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architect
 _This section was written by an AI agent (OpenHands) on behalf of the requester; the two reclassifications
 above are proposals for the owner to confirm (recorded on #113)._
 
+## E4 remainder closed, part 3: the step-3 catalogue filter, and what is still open (CAT-01 #122)
+
+The one catalogue parity gap part 2 recorded — step 3 filtering the catalogue by the dimensions of the
+project's selected objectives — is closed. Same branch, no merge restarted; the parity record
+([refactor-catalogue-parity.md](refactor-catalogue-parity.md), exclusion 2) carries the detail.
+
+**The blocker was a section name, and it is now measured rather than guessed.** The hosted catalogue's
+items tag dimensions in a `dimension` section, and hang sub-dimensions under one in
+`controls_subdim`/`testing_subdim` with the dimension in `parent_dimension_slug`. `services.dimensions`
+is the new *single* table tying our eleven AI Act macro requirements to the catalogue's eleven slugs (with
+the catalogue's own labels), `services.evidence_map` reads its `dimension_of` (its private copy of the
+table is gone — that is the "no second path" rule applied to a lookup, not a module), the catalogue surface
+serves the vocabulary as `CatalogueOut.dimensions` and each item's tags as `CatalogueControlOut.dimensions`,
+and `GET /projects/{pid}/control-objectives/dimensions` answers what the project's selected objectives
+imply. The webapp's one exploration dialog gained the pilot's "For this project" switch (on by default, in
+the same listing, not a second one), the pilot's note when nothing is selected, and the dimension chips the
+pilot's sidebar offers; both narrow the existing `filterCatalogue` call.
+
+**No invariant changed, so no ADR.** No model, no migration (`makemigrations --check`: "No changes
+detected"), no second store, no second listing: the filter narrows what the one listing already returns,
+and the vocabulary is served rather than duplicated in the UI.
+
+### Fixed on audit: the pushed submodule commits were not in the branch
+
+The previous stretch pushed `apps/backend` and `apps/webapp` commits (the pilot-prefill vendoring and its
+webapp wiring) but the parent's gitlinks still recorded the commits *before* them, so a fresh clone of the
+branch did not contain that work. This stretch bumps both gitlinks to the pushed submodule tips. Recorded
+because "pushed" and "in the branch" are different claims, and only the second one is what a reader
+checking out the branch gets.
+
+### Still open (recorded, not papered over)
+
+1. **The plugin ("tests") side of the catalogue is not dimension-filtered.** The pilot filters both kinds;
+   our tests come from this installation's plugin loader, which carries no dimension tag, so a project
+   filter would hide every plugin rather than narrow them. The dialog offers no switch on its plugin-only
+   view. Closing it needs the hosted catalogue's test tags on the loader path — a plugin-listing question
+   (which catalogue is authoritative for a plugin package), not a dimension-table one.
+2. **The dimension chips offer the eleven dimensions, not the catalogue's sub-dimension tree.** The
+   pilot's sidebar nests `controls_subdim`/`testing_subdim` children under each dimension. Our chips are
+   the objectives' dimensions — the only vocabulary "for this project" can mean — and an item is matched
+   through its sub-dimension to its parent, so selecting a dimension still finds a sub-dimension-only item.
+   Sub-dimension chips would need a tree built from live catalogue tags: a UX addition, not a parity block.
+3. **ANA-01's dashboard link and bridge are still unit-tested only.** There is no Superset in this
+   environment, so registration, the tile sync and the signed, scoped link are proven by
+   `test_dashboard_bridge.py` (8), `test_dashboard_link.py` (10), `test_results_router.py` (10) and
+   `test_dashboard_redis_compose.py` (9) rather than against a running dashboard. What *can* be executed
+   on a host with no Docker daemon now is: `scripts/verify-dashboard-redis.sh --local` starts a real
+   `redis-server` with the compose service's own configuration and checks it refuses a client with no
+   password, takes the configured one, persists nothing, binds loopback only and keeps the password out of
+   its command line. Its deployment half (which network the cache is on, who shares it, no published port)
+   still needs a stack. This is a verification limit of the environment, not a known deviation.
+4. **QUAL-01's two reclassifications still want the owner's word** (unchanged from part 2, restated so it
+   is not lost): the card-correction *sign-off* (the pilot has one person reviewing, so a second-person
+   accept would be new governance, not a port) and the pre-fill's *text rules* (the frozen
+   `apps/qualification` carries no document reader, so the pilot's exact patterns are not in the repo and
+   inventing them would be guessing). Both are recorded as proposals for the owner on #113; neither blocks
+   parity as it stands. Item 5 of part 2 (`pypdf` is the only new dependency) still holds.
+
+### Evidence
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Ran 473 tests in 15.8s
+OK                                    # 448 → 473 (+25 this stretch: 7 dimension table, 5 project
+                                      #  dimensions router, 2 catalogue tags/vocabulary, …
+                                      #  and the prefill-vendoring tests that were not in the branch before)
+
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ uv run python manage.py migrate
+No migrations to apply                 # nothing to apply; the tree's migrations are complete
+
+$ cd apps/webapp && npx vitest run
+ Test Files  42 passed (42)
+      Tests  266 passed (266)         # 246 → 266 (+20: dimension filter, the switch/note/chips, page wiring,
+                                      #  the dimensions read, and the prefill UI tests now in the branch)
+
+$ npm run build
+✓ built in 6.5s                       # tsc clean
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                   # unchanged baseline, 0 failed
+
+$ DASHBOARD_REDIS_PASSWORD=… scripts/verify-dashboard-redis.sh --local
+ok   a client with no password is refused (NOAUTH)
+ok   the password the service is given is the one it takes
+ok   it keeps nothing (appendonly no): a cache, not a store
+ok   it listens on loopback only (nothing published)
+ok   the server's command line does not carry the password
+the dashboard's Redis rule holds on this host: password-protected, loopback-only, storing nothing
+note the deployment checks (its network, who shares it) were not run — they need a running stack
+
+$ # the live catalogue, as the surface reads it (2026-11-17)
+live checklists: 44
+checklists with no dimension tag: 0
+```
+
+_This section was written by an AI agent (OpenHands) on behalf of the requester; item 4 above is a
+proposal for the owner to confirm (recorded on #113)._
+
 ## Run it locally
 
 ```bash
