@@ -600,6 +600,11 @@ saved; `GET .../qualification/{qpid}/card-components` compares them on read and 
    deployment that wants the pilot's exact extraction needs those patterns.
 5. **`pypdf` is the only new dependency** (ADR 0006). Nothing else changed shape.
 
+> **Superseded (part 2):** items 2 and 3 were closed with code and items 1 and 4 were reclassified after
+> checking the pilot — see
+> [E4 remainder closed, part 2](#e4-remainder-closed-part-2-the-set-history-and-the-full-row-editor-qual-01-113-cat-01-122).
+> Item 5 still holds.
+
 ### Evidence
 
 ```bash
@@ -622,6 +627,101 @@ $ npm run build          # ✓ built, tsc clean
 $ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
 5 passed, 3 xfailed                    # unchanged baseline, 0 failed
 ```
+
+## E4 remainder closed, part 2: the set history and the full row editor (QUAL-01 #113, CAT-01 #122)
+
+The five items the previous section recorded as *not done* are now all resolved: two closed with code, two
+reclassified after checking the pilot, and one (the `pypdf` dependency) still standing — the answers are
+written down here rather than left implied. The
+catalogue's own record (what the pilot does, what we do, what is out and why) is
+[refactor-catalogue-parity.md](refactor-catalogue-parity.md).
+
+### Closed with code (QUAL-01)
+
+**A set's published version is now compared, not just named.** `services/objective_sets.py` is the pure
+decision (`diff_rows`: rows in, per-field differences out) and
+`GET /projects/{pid}/objective-sets/{set_pid}/diff` serves it — with no version numbers it compares the
+**last published version with the draft**, which is the question someone editing a set is asking;
+`from_version`/`to_version` name two published versions instead, and an unknown number is a 404 rather than
+a silently empty answer. Rows are matched **by `objective_id`**, so a reworded row reads as a *change* with
+both values, not as a removal plus an addition. The webapp shows it under the set (`Changes since v<n>`,
+`data-testid="set-diff-<pid>"`), naming the fields that moved. No new state: versions stay append-only
+(ADR 0006's mechanism, unchanged), and the diff is a read.
+
+**The set editor now edits every column the catalogue carries.** The "Add a row" dialog became add-or-edit
+(all ten fields, per `SET_ROW_FIELDS`) and the draft chips open it on that row, so a row can be corrected in
+place (`PUT .../objective-sets/{set_pid}` replaces it by its code) instead of only added or dropped. The
+duplicate-code rule is checked in the dialog too, so a rename onto an existing code is refused before it
+leaves the browser.
+
+### Reclassified, with the evidence for it (not pilot gaps)
+
+**The card-correction sign-off is not a parity gap: the pilot has no second-person step either.** Appendix 1
+says "the card agent … drafts more nodes from your prose and, in a second role, critiques its own draft;
+**you review what it proposes**" (`docs/appendices/1-qualify.md`) — one person reviews, and what they accept
+is what the version chain and the audit entry record. Our behaviour is that, so a "second person accepts"
+step would be a new governance requirement, not a port. It stays out of E4; if a deployment needs four eyes,
+it is a small addition to the node path (a reviewer field on the corrected version), not new state.
+
+**The pre-fill's text rules cannot be the pilot's, and the formats already are.** The leftover item read
+"the rules are ours, not the pilot's"; the reason is now verified rather than assumed: the frozen
+`apps/qualification` submodule carries **no document reader at all** (`services/` is the LLM client and the
+card renderer), so the pilot's exact extraction patterns are genuinely absent from the repo — inventing them
+would be guessing. Everything else in the pilot's sentence is in: the formats the pilot reads
+(`.pdf`, `.docx`, `.txt`, `.md`, `.markdown` — `services/qualification_prefill.py` also takes `.rst`, `.csv`
+and `.json`), text rules with no model, proposals only, and the pilot's "fill only the empty fields or
+replace your answers" choice (`PrefillMode` = `empty` | `replace`).
+
+### Catalogue (CAT-01)
+
+`docs/refactor-catalogue-parity.md` records the pilot's capabilities against ours, verified against
+`homepage/catalogue.html` and `docs/appendices/2-control-objectives.md`: one listing for both kinds, read
+through live, installs that copy into the project, the `{meta, questions}` export and the link to the
+published site are all ported. Two things are deliberately out and said so: the public/private catalogue
+choice (a project's own copy is what installing into the project already gives it) and the step-3 filter by
+the selected objectives' dimensions. The second is the one real catalogue gap: our objectives *do* carry the
+dimension (`macro_requirement`), but the surface's catalogue items carry no dimension tag
+(`services/controls_catalogue._mapped` maps topic/regulations/countries only), and the hosted catalogue
+(`CONTROLS_CATALOG_URL`) is unreachable from this sandbox, so the tag section cannot be confirmed — a filter
+keyed on a guess would show the wrong list. The exact change needed is written in that record.
+
+### Left alone on purpose
+
+* **No new migration, no new model, no new invariant.** The diff reads existing append-only versions; the
+  row editor writes the same draft the endpoint already accepted. `makemigrations --check` says "No changes
+  detected".
+* **The private-catalogue table and a per-project catalogue copy** — see the parity record, exclusion 1.
+* **The pilot's exact pre-fill patterns, and a second-person card sign-off** — see above; both are
+  requirements additions, not ports.
+
+### Evidence
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Ran 448 tests in 15.6s
+OK                                    # 403 → 448 (+10 this stretch: 6 diff service, 4 diff router;
+                                      #  +35 the uncommitted ANA-01/CAT-01 work in this tree)
+
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ DB_NAME=/tmp/e4fresh3.sqlite3 uv run python manage.py migrate     # from empty
+Running migrations: … Applying sessions.0001_initial... OK          # all migrations apply
+
+$ cd apps/webapp && npx vitest run
+ Test Files  41 passed (41)
+      Tests  246 passed (246)         # 232 → 246 (+5 this stretch: 2 row editor/diff UI, 3 set history api;
+                                      #  +9 the uncommitted ANA-01/CAT-01 work in this tree)
+
+$ npm run build
+✓ built in 6.5s                       # tsc clean
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                   # unchanged baseline, 0 failed
+```
+
+_This section was written by an AI agent (OpenHands) on behalf of the requester; the two reclassifications
+above are proposals for the owner to confirm (recorded on #113)._
 
 ## Run it locally
 

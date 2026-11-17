@@ -21,6 +21,10 @@ or breaks an invariant does.
 - [0003 — Frozen unified-app integration](0003-frozen-unified-app-port-and-worker-boundary.md):
   selective mainline integration, rewrite unshipped migrations, immediate plugin environment boundary,
   deny-by-default ORM access and pragmatic pilot UI review. Supersedes 0002, not 0001's audit decision.
+- [0007 — Results bridge and the dashboard's own Redis](0007-results-dashboard-bridge-and-cache.md):
+  signed, scoped dashboard links; the pilot's bridge API with its fail-closed token rule; the Superset
+  cache as an opt-in `analytics` profile (implements ADR 0001's isolated-cache decision); charts read
+  through the visualizer's own repository.
 - [0004 — Reporting renderer](0004-reporting-renderer-dependencies.md): **superseded by 0005**; its
   in-process `reportlab` choice is withdrawn (it reproduced the information, not the pilot's renderer).
 - [0005 — Report renderer](0005-report-renderer-weasyprint-and-plugin-abi.md): adopt the pilot's

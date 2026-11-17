@@ -56,6 +56,14 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
+      # The analytics dashboard bridge (ANA-01): where the dashboard is and how to
+      # authenticate. The dashboard's own Redis is defined once, in
+      # docker-compose.yml (profile `analytics`); see docs/ops/results-dashboard.md.
+      RESULTS_DASHBOARD_URL: ${RESULTS_DASHBOARD_URL:-}
+      RESULTS_DASHBOARD_SECRET: ${RESULTS_DASHBOARD_SECRET:-}
+      RESULTS_DASHBOARD_LINK_TTL: ${RESULTS_DASHBOARD_LINK_TTL:-900}
+      RESULTS_DASHBOARD_BRIDGE_URL: ${RESULTS_DASHBOARD_BRIDGE_URL:-}
+      RESULTS_DASHBOARD_BRIDGE_TOKEN: ${RESULTS_DASHBOARD_BRIDGE_TOKEN:-}
     networks:
       - backend
     depends_on:
