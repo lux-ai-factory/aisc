@@ -65,6 +65,58 @@ names with the ones this tree actually has; the sets shrank, and each entry carr
 3. Optional-domain feature parity (connections/adapters, evidence map, report composer, catalogue) and the
    pilot look/feel launcher (landed as the `homepage/` reference) are the E3–E5 port.
 
+## E4 feature parity — evidence map and connections (EVD-01 #114, CON-01 #112)
+
+Landed on this branch: `apps/backend` `0eed571`, `apps/webapp` `94f5ddb`.
+
+**EVD-01 — versioned evidence map (done).** The pilot's `homepage/evidence-map.html`
+is re-expressed as a React page (`apps/webapp/src/pages/EvidenceMapPage.tsx`,
+`/projects/:name/evidence-map`, linked from the Collect evidence hub), backed by
+real endpoints the frozen backend did not have:
+
+- `GET /projects/{pid}/evidence` (latest AI-card version, or `?version=<pid>`),
+  `PUT /projects/{pid}/evidence/links` (whole-set replace), `POST
+  /projects/{pid}/evidence/review`. Model `EvidenceLink` + `EvidenceReview`
+  (migration `0033`); the matrix itself is computed on read and never stored.
+- Tests come from the version's evaluation plugins, controls from the checklist
+  submissions, objectives from step 2's selection; coverage/gaps/readiness reuse
+  `scoring.py`. Project-scoped: stranger 404, viewer reads, editor writes.
+- Older versions are read-only; carry-forward *offers* the previous version's links
+  and writes them only on an explicit copy; a review must be by someone who made
+  none of the version's links and is invalidated by any link change.
+
+**CON-01 — connections and adapters (partial).** `AIComponent` gains `adapter`,
+`adapter_version`, `helper_role` (migration `0034`); `GET/PUT
+/projects/{pid}/connections[/{component_pid}]` list connection components (adapter,
+endpoint, key presence) and let an editor choose the adapter/helper role. React page
+`/projects/:name/connections`, linked from the Project menu.
+
+### Left undone / deviating (CON-01)
+
+1. **Only the connection/adapter *record* is ported, not the adapter protocols.**
+   There is no OpenAI/A2A/REST request builder, no A2A agent card discovery and no
+   live "test connection" — the pilot's `connections.html` adapters. The adapter
+   kind is data a test can read; nothing dispatches on it yet. Owner: the E5
+   execution/plugin port.
+2. **Keys stay in `AIComponent.json_value`, not a per-project encrypted secret.**
+   The frozen backend already stores an LLM `secret_key` there; CON-01 does not move
+   it to the pilot's encrypted project-scoped store. The connections listing reports
+   presence only and never reads the value back, so it cannot leak, but the pilot's
+   separation of key from connection is **not** implemented. Deviates from the pilot;
+   follows from the frozen backend it was ported onto. Owner: the secrets/SEC work.
+3. **Helper *role* only, no helper model binding.** `helper_role` marks a component;
+   binding a helper to a run is not ported.
+4. **UI-02 and the report composer are untouched.** This note covers only EVD-01 and
+   CON-01; the four-column hub (UI-02) and report composer remain as previously
+   landed.
+
+**Guards:** `5 passed, 3 xfailed, 0 failed` — **no baseline grew** for any of the
+above (`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`).
+
+**Verified on this tree:** `uv run python manage.py test` → 221 passed (was 208);
+`migrate` on SQLite applies `0033`/`0034`; `npm run build` clean; `npx vitest run` →
+147 passed (was 132).
+
 ## Run it locally
 
 ```bash
