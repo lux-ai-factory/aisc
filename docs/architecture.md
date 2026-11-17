@@ -1,5 +1,13 @@
 # How AISC works
 
+> **Consolidation target (2026-11-16; ADR 0003):** preserve the pilot launcher's look, navigation and four-step
+> workflow in the existing React webapp. The [refactor plan §2.1](refactor-plan.md#21-pilot-ui-contract-and-screen-to-owner-map)
+> maps those screens to React pages and Django table owners. The service topology and automatic-save
+> version behaviour described below are historical pilot details; the plan governs consolidation and
+> explicit publication with immutable history.
+> Selectively merge the frozen unified-app layer/shared commits onto main; block worker-wide credentials
+> from plugin children now and defer self-contained dispatch/run-local doors until after the port.
+
 This document explains what AISC is for, the four steps of an assessment and how the software behind them fits
 together. The [README](../README.md) says how to install it, and the [guide](guide.md) is the operator's reference
 (settings, ports, tests).

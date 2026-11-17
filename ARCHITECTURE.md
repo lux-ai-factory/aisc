@@ -1,6 +1,8 @@
 # AISC — architecture invariants (binding)
 
-> **Status: DRAFT for ratification (2026-11-11).** Written because several long-standing design
+> **Status: binding, clarified 2026-11-16 by [ADR 0001](docs/adr/0001-mainline-first-consolidation.md)
+> and [ADR 0003](docs/adr/0003-frozen-unified-app-port-and-worker-boundary.md) (superseding
+> [ADR 0002](docs/adr/0002-unified-app-first-feature-port.md)).** Written because several long-standing design
 > rules exist only in people's heads and are broken, one feature at a time, by contributors (and
 > agents) moving fast. This file makes them explicit and testable.
 >
@@ -39,6 +41,13 @@ owns it, with the smallest number of moving parts.
 
 ## The invariants
 
+**Delivery scope (ADR 0003):** selectively merge frozen `feat/unified-app` layer commits onto main;
+complete the pilot feature port (including reporting) in the consolidated layers. I1/I2 and inherited
+*per-run target credential* exposure are deferred to the post-port execution milestone. Immediately
+stop plugin subprocesses from inheriting worker-wide service secrets. Project isolation is
+required through the shared ORM/access mechanism; PostgreSQL RLS is not required. Other consolidation
+rules remain in force. The detailed sequence and acceptance gates live in `docs/refactor-plan.md`.
+
 ### I1. A run is self-contained — the worker never needs the backend to finish it
 
 > **A run is handed everything it needs at dispatch, then completes on its own.** The eval worker MUST
@@ -68,6 +77,11 @@ say *"and if this service is down, the run still finishes"* and the answer is no
 its own workspace and the queue's result backend; a single `post_results` step sends measures, artifacts
 and status at the end (idempotent, retried). See [the worked example](#worked-example-the-worker-rule-i1).
 
+**Delivery scope (ADR 0003):** dispatch independence and the local door are deferred until after the
+merge/feature port, along with worker-loss recovery, retry design and execution hardening. Existing
+backend-dependent execution is explicitly accepted for this delivery. The worked example below is the
+follow-up acceptance target, not a consolidation gate.
+
 ### I2. A plugin reaches a system through a door, not a credential
 
 > **A plugin MUST NOT be given the credential of the system it assesses.** It calls a **door** that speaks
@@ -86,6 +100,10 @@ the intended shape is a loopback door inside the eval worker, with the plugin un
 
 **Broken when.** A plugin environment contains a target/connection secret (`AISC_TARGET_API_KEY` and the
 like), or the plugin is pointed at a URL that is not the run's own door.
+
+**Delivery scope (ADR 0003):** the plugin subprocess must not inherit worker-wide service secrets;
+existing explicit per-run target credentials remain a temporary exception. Preserve required adapter
+functionality; implement the run-local door after the feature port.
 
 ### I3. One implementation per concern
 
@@ -139,18 +157,32 @@ the two apps cannot in fact deploy independently.
 
 **Broken when.** A query names another app's table/schema from outside that app.
 
+**Scope (ADR 0001):** Django owns AISC's relational domain tables. Main's existing immudb audit store
+keeps its provisioning mechanism, and third-party services keep their upstream metadata migrations.
+
+**Project isolation (ADR 0003):** deny-by-default shared ORM query scoping and role checks enforce tenancy for this
+refactor. Cover core and optional-domain reads, writes, related-object references and downloads.
+PostgreSQL RLS is a possible later improvement, not a required mechanism or acceptance gate.
+
 ### I6. Every governed change is versioned from one place, and ledgered
 
 > **A version is cut in exactly one place, its immutability is enforced in application code, and every
-> governed change writes a ledger event.** A report names the version it is about.
+> governed change uses the one backend audit writer.** A report names the version it is about.
 
 **Why.** The version is what ties the steps together and makes a report defensible; if any step can cut
-or mutate it, the guarantee is gone. The ledger is the append-only record of what happened.
+or mutate it, the guarantee is gone. The one audit store records governed actions under the delivery
+scope below.
 
-**Today.** Versions are rows in the per-project DB, created only by the platform, with immutability
+**Pilot today.** Versions are rows in the per-project DB, created only by the platform, with immutability
 enforced **by triggers** that do not block `DELETE` (§3; smell #10).
 
 **Broken when.** A second code path writes a version, or an invariant lives only in a trigger.
+
+**Delivery scope (ADR 0001):** retain main's `aisc_backend.audit` + immudb implementation and history.
+Audit calls are best-effort, as on main: an immudb failure can lose an event without rolling back the
+business action. Guaranteed delivery and atomicity across Postgres/immudb are not promised by this
+refactor. Do not port pilot's separate ledger/witness/outbox/relay system. The audit writer remains a
+module rather than a new Django app with invented Postgres tables.
 
 ### I7. No secret leaves the point of use
 
@@ -162,6 +194,10 @@ enforced **by triggers** that do not block `DELETE` (§3; smell #10).
 on every path that can carry a secret outward.
 
 **Broken when.** A new outbound path (a log, an artifact, an error, a message) is added without the scrub.
+
+**Delivery scope (ADR 0003):** plugin child environments must exclude worker service secrets **now**.
+Inherited explicit per-run target credentials are deferred to the run-local door milestone. Ported
+feature APIs, reports, logs and artifacts still must omit secrets; no new disclosure path is authorised.
 
 ### I8. A new moving part needs a decision record
 
@@ -242,14 +278,14 @@ costume. This is the *deployment* view of I9 — the container count is the repo
 so the two are split and fixed on the same axis.
 
 **Today.** ~41 service definitions; ~10 are one-shot (`*-migrate`, `*-setup`, `*-grant`); tools (`aisc-eval-flower`,
-`pgadmin`, `schema-docs`) are default; domains are exploded (`qualification` = 6 containers; `dashboard-redis` is a
-second Redis beside the shared one).
+`pgadmin`, `schema-docs`) are default; domains are exploded (`qualification` = 6 containers).
 
-**Broken when.** A service's `command` exits; a container is named `*-migrate` / `*-setup` / `*-grant`; shared
-infra gets a second instance; or a domain is split into peer containers.
+**Broken when.** A service's `command` exits; a container is named `*-migrate` / `*-setup` / `*-grant`;
+or a domain is split into peer containers.
 
-**Correct shape.** ~3 layer services (backend, webapp, eval worker) + ~3 published (catalogue, Superset dashboard,
-plugin-publisher) + ~8 infra, plus opt-in tool profiles. Migrations/init run **once, as a step**.
+**Correct shape.** Layer services + published services + necessary infrastructure, plus opt-in tools.
+Migrations/init run **once, as a step**. Retain Superset's isolated `dashboard-redis` (ADR 0001): its
+pickle-backed cache must not be writable by evaluation plugins. Container count is not an acceptance target.
 
 ---
 
@@ -278,7 +314,7 @@ It looks reasonable — "the platform holds the secret, so let it proxy" — but
 `platform` being up, which is exactly what the self-contained design avoids. The same feature is delivered
 correctly by putting the door **in the worker** and handing the run a run-scoped secret up front.
 
-**The acceptance test (and the guard).** With everything dispatched, take the backend's API URL away
+**The post-port acceptance test (and the guard; ADR 0003).** With everything dispatched, take the backend's API URL away
 (point it at a black hole / stop the container) and run a real evaluation with the mock kit
 ([`SCRATCH-platform-adapters/07-development-plan.md`](SCRATCH-platform-adapters/07-development-plan.md)):
 **the run MUST complete and produce its measures.** Then restore the backend and assert the results post.
@@ -286,39 +322,45 @@ That single test is worth more than any prose: it fails the moment someone re-in
 
 ## How compliance is enforced
 
-Prose does not enforce anything. We use five layers, cheapest first, so that the *shortest* path is also
-the compliant one — otherwise the rule is just advice.
+Agent instructions and human review own architectural judgement. A small set of automated regression
+checks complements them: tests catch repeatable mistakes, not whether an architecture is good. A new
+bespoke checker for each invariant is not a prerequisite for the refactor (ADR 0001).
 
 1. **`AGENTS.md` (root).** The first file a coding agent reads: one line per invariant, the command to run
    the guards, and the instruction to stop and write an ADR rather than break one. (Also summarised in
    `CONTRIBUTING.md` for people.)
 2. **Mechanical guards — `tests/architecture/`** (pytest). The authoritative table is
    [`tests/architecture/README.md`](tests/architecture/README.md). Today `test_invariants.py` holds the
-   checks; the list below is by invariant — **"to write"** ones are Phase 0 of the
-   [refactor plan](docs/refactor-plan.md):
-   - **I1** `test_i1_worker_does_not_fetch_from_backend_midrun` (xfail) + *to write* the acceptance test
-     (mock kit, backend/platform unreachable → the run completes and posts).
-   - **I2** *to write* — extend `apps/eval/tests/test_plugin_environment.py`: the plugin env carries no
-     target/connection secret.
+    checks; the list below identifies candidate behavioural checks to add with the owning feature,
+    rather than a mandatory Phase 0 tooling project:
+    - **I1** `test_i1_worker_does_not_fetch_from_backend_midrun` (named baseline under ADR 0003) +
+     post-port acceptance test (backend/platform unreachable → the run completes and posts).
+    - **I2** now — plugin child gets no worker-wide service secrets; post-port — the plugin receives a
+      run-local door instead of a target/connection credential.
    - **I3** `test_i3_plugin_interface_is_independent` · `test_i3_eval_worker_has_no_backend_import` (pass) ·
      `test_i3_one_project_database_module` (xfail) + *to write* one-ledger and no-domain-UI.
    - **I4** `test_i4_one_deployment_contract` (xfail) + *to write* `INSTALLED_APPS`/`MIDDLEWARE`/URLconf
      identical across flag combinations.
-   - **I5** *to write* — no app names another app's schema/table (AST/regex); one migration tool under
-     `apps/`; **an app owns tables** (no app package without `models.py` + `migrations/`).
+    - **I5** feature checks — no cross-owner table access; Django owns product relational migrations;
+      respect ADR 0001's existing immudb and third-party metadata exceptions. New domain apps own tables.
    - **I7** *to write* — extend the existing scrub tests.
    - **I9** `test_i9_no_domain_slice_module` (xfail) + *to write* no product UI outside the `webapp`.
    - **I10** *to write* — the core imports no optional-domain package; the core alone runs an evaluation.
-   - **I11** `test_i11_no_step_containers` (xfail) — no `*-migrate`/`*-setup`/`*-grant` service, one
-     instance per infra service.
-3. **Import contracts — `import-linter`** in `pyproject.toml`, run in the same job. The concrete DAG:
+    - **I11** `test_i11_no_step_containers` (named baseline) — no new step service; preserve the
+      justified Superset cache isolation.
+3. **Import contracts** where useful; an extra tool is not required up front. The concrete DAG:
    `plugins` → `aisc_plugin_interface` only; `aisc_eval` → **not** `platform`, **not** the backend's
-   internals; `webapp` → the backend's HTTP API only; `shared/*` is acyclic. This catches a new dependency
-   at the line that adds it.
-4. **CI as a required check.** An `architecture` job runs the guards + `lint-imports` **before** the test
-   suite; it is a required check, so a red guard cannot merge — human or agent.
+    internals; `webapp` → the backend's HTTP API only; `shared/*` is acyclic. Python import checks do
+    not enforce JavaScript/TypeScript dependencies; review those with the frontend's tooling.
+4. **CI.** Run the small architecture suite alongside feature tests. Require the relevant checks for
+    merge; no claim is made that a green heuristic suite proves every invariant.
 5. **Ownership + review.** `CODEOWNERS` on the boundary files; a PR-template line: *"Does this change break
    an invariant? If yes, link the ADR."*
+
+**Existing violations** are itemised baselines under ADR 0001; ADR 0003 extends only the execution
+baseline's expiry to the post-port milestone. New detected findings fail normally; only known findings
+are expected failures. Review the source-specific baseline when merging main/unified-app rather than
+blindly copying the pilot findings. A cleared baseline passes; remove its retired entries.
 
 **Exceptions** are allowed but explicit: a **temporary allowlist entry** in the relevant guard, with an
 issue link and an expiry, plus an ADR. An allowlist entry without an expiry is itself a smell.
@@ -345,8 +387,9 @@ ADR's id. This is intentionally heavier than a code change and lighter than a me
 - [ ] **Porting** — if this comes from an exploration branch or `platform/`: is it **needed**, and does it not
   duplicate or overlap what we already have? (recorded as keep / extend / merge / drop / ask; **ambiguous ⇒ ask
   a human**, default not to port.)
-- [ ] **I1** — if this touches the run path: can the run still finish with the backend and platform down?
-- [ ] **I2** — if this touches a plugin or a connection: does the plugin get a door, not a credential?
+- [ ] **I1/I2** — during the port, prevent worker-wide secrets reaching plugin subprocesses and retain
+  existing per-run behaviour within ADR 0003's named scope; post-port, verify backend-down completion
+  and the run-local credential-withholding door.
 - [ ] **I4** — if this changes settings: is it a flag at the point of use, not a mode?
 - [ ] **I5** — if this touches data: is it an ORM model/migration in its owning app, not raw SQL across a boundary?
 - [ ] **I7** — if this can carry a secret: is it scrubbed?

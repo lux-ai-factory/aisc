@@ -1,28 +1,39 @@
-# Brief — folding `unified-modules` and `pilot` into the main line
+# Brief — frozen `unified-app` integration and pilot feature port
 
 > **Audience:** a developer or an agent picking this up cold. **This file is self-contained** — it does not
 > assume the reader has the `SCRATCH-*` notes. It is *the decisions* — the **how and in what order** is
 > [`refactor-plan.md`](refactor-plan.md).
 >
-> **Date:** 2026-11-12. **Status:** agreed framing + decisions; binding rules in
+> **Updated:** 2026-11-16. **Status:** agreed framing + decisions; binding rules in
 > [`../ARCHITECTURE.md`](../ARCHITECTURE.md); the phased implementation in [`refactor-plan.md`](refactor-plan.md).
 >
 > **Read this first, then the [plan](refactor-plan.md), then start at [§2 the method](#2-the-method-five-steps-per-phase).**
+
+> **Scope clarification:** [ADR 0003](adr/0003-frozen-unified-app-port-and-worker-boundary.md) and the updated
+> [plan](refactor-plan.md) govern implementation: **main → selectively merge frozen unified-app layers → complete pilot
+> features and consolidation → improve execution**. ORM project isolation is sufficient; reporting
+> comes from pilot and folds into backend/webapp. **Preserve the pilot launcher's look, feel and flow**
+> in React; its screens guide frontend organisation and Django feature ownership (D11/D12).
+> Keep ADR 0001's one best-effort immudb audit writer,
+> mainline-only upgrades and isolated Superset cache. Self-contained runs, run-local doors and runtime
+> design is post-port work; blocking worker-wide secret exposure is a gate now. Instructions/review own architectural judgement, supported by small
+> regression tests. Historical scratch proposals are not additional refactor requirements.
 
 ---
 
 ## 0. How to use this brief
 
-1. Read [§1 framing](#1-the-framing-exploration-branches) and [§3 roadmap](#3-the-roadmap-two-phases) — two minutes.
-2. The work is **two phases**, in order: **Phase 1 `unified-modules`, then Phase 2 `pilot`.**
+1. Read [§1 framing](#1-the-framing-exploration-branches) and [§3 roadmap](#3-the-roadmap) — two minutes.
+2. Start from **main**, selectively merge the **frozen** `feat/unified-app` layer/shared commits, then
+   complete **pilot feature parity and consolidation**; preserve the main parent instead of merging it.
 3. Each phase runs the **same five steps** ([§2](#2-the-method-five-steps-per-phase)):
    **feature extraction → architecture discussion → ticket creation → test plan → implementation.**
 4. Before writing any code, read the **invariants** ([§5](#5-binding-invariants-the-rules-any-implementation-must-obey))
    and run the guards: `uv run --no-project --with pytest python -m pytest tests/architecture -q`.
 5. If a feature needs an invariant changed, **write an ADR** (`docs/adr/`), do not silently break it.
 
-**The one-line goal:** take two exploration branches, extract the **features** worth keeping, and
-re-implement them **properly** on the main line — one way to do each thing, no second architecture.
+**The one-line goal:** combine unified-app's consolidated implementation with all retained pilot features
+on mainline, with one implementation per concern; improve plugin execution afterwards.
 
 ---
 
@@ -42,6 +53,11 @@ features for **short-lived pilots**. They are **not release lines and not merge 
 
 Full statement: [`exploration-branches.md`](exploration-branches.md). This is the branch-scale form of
 invariant **I3** (one implementation per concern).
+
+**Frozen integration input (ADR 0003):** `feat/unified-app` is reviewed at the plan's pinned snapshot.
+Merge backend, webapp, eval, plugin-interface and plugin-manager onto their main branches; keep main's
+parent (compose/e2e/CI/docs). Use the frozen qualification/controls tips and pilot as feature references,
+not legacy app-branch merges. Do not advance moving branch tips without an explicit reviewed change.
 
 ---
 
@@ -72,37 +88,38 @@ Phase ─▶ Feature ─▶ Ticket(s) ─▶ (test plan + guard)
 the same goes for everything in `platform/`. For every module, endpoint or page you consider, ask: is it
 **needed** (name the behaviour)? does it **duplicate or overlap** something we already have (I3)? can an
 existing mechanism be **extended** instead? Then record a disposition — **keep · extend · merge · drop · ask**
-(definitions and the `ask` rule in [`refactor-plan.md`](refactor-plan.md) §6). Basic assumptions are fine and
+(dispositions and the `ask` rule in [`refactor-plan.md`](refactor-plan.md) §1). Basic assumptions are fine and
 should be noted; where the need is **genuinely ambiguous, ask a human and default to not porting.** A decision
 to drop is as valuable as one to keep.
 
 ---
 
-## 3. The roadmap: two phases
+## 3. The roadmap
 
 ```
-Phase 1: unified-modules        →   Phase 2: pilot
-(shared cross-cutting modules)      (platform, connections, adapters, run model)
-        │                                   ▲
-        └── the contracts Phase 2 builds on ┘
+main parent → merge five frozen unified-app layer/shared pins → worker env + access gates
+            → repair/consolidate shared contracts
+         → complete pilot features (including reporting) → release consolidation
+         → post-port execution improvements
 ```
 
-**Why this order.** `unified-modules` unifies the **shared cross-cutting modules** every app uses — the
-caller's identity, opening a project's data, keeping a secret, writing a ledger event, calling a service.
-Phase 2 (the `pilot` features — the platform app, connections, adapters, the run/worker model) *builds on*
-those contracts. Doing pilot first would build the platform and adapters on top of un-unified modules and
-then have to redo them. **Phase 1 first.**
-
-Each phase is independent enough to finish before the next begins. Do **not** interleave them. The
-**ordered steps** (and the guards each one turns green) are in [`refactor-plan.md`](refactor-plan.md) §3–§4.
+**Why this order.** Unified-app already implements much of the shared-database backend and integrated
+webapp. Reuse that work, correct permissions and immutable history, then fill the pilot feature gaps.
+Pilot reporting, evidence and Superset integration are explicit workstreams. Required adapter behaviour
+is ported through the current runtime; self-contained dispatch and run-local doors follow the port.
+Before claiming isolation, prevent the plugin child from inheriting worker-wide service secrets and
+enforce deny-by-default project access. Mainline data upgrades remain required; unshipped unified-app
+compliance migrations may be rewritten because nobody deployed unified-app with data to preserve.
+The [plan](refactor-plan.md) owns phase numbering, the feature matrix and acceptance gates.
 
 ---
 
 ## 4. What we decided (the features/decisions to fold in)
 
-Compact decision blocks. `Phase` says where it belongs. These are the *decisions*; the *rules* are §5.
+Compact decision blocks. The plan owns delivery order; D1/D2 describe the deferred execution destination.
+The remaining consolidation decisions apply to the merge/port. The binding rules and exceptions are §5.
 
-### D1 — A run is self-contained (Phase 2)
+### D1 — A run is self-contained (post-port; ADR 0003)
 
 A run is dispatched with **everything it needs** (the evaluation, its tests and inputs, dataset/model
 bytes, connection URLs with a run-scoped secret, helper-model keys, project settings). The eval worker then
@@ -115,35 +132,44 @@ artifacts, status). The backend observes status **by id**.
   (`apps/eval/aisc_eval/service/api_client.py`), and `pilot` routes the plugin's calls through the
   **platform's doors** with a `PLATFORM_RUN_PASS`.
 
-### D2 — A plugin reaches a system through a door, not a credential (Phase 2)
+### D2 — A plugin reaches a system through a door, not a credential (post-port; ADR 0003)
+
+**Immediate boundary:** plugin subprocesses do not inherit worker-wide secrets; use a closed child
+environment allowlist. Explicit per-run target credentials remain a temporary limitation until the
+run-local door, not a reason to pass the worker's `DJANGO_SECRET_KEY` or `INTERNAL_API_KEY` to plugins.
 
 A plugin is never handed the assessed system's secret. It calls a **door** that speaks its protocol; the
 door withholds the key, enforces the project's allowlist/timeout, and scrubs the answer. The door lives
 **with the run** (the eval worker) so it does not re-introduce D1.
 
-### D3 — Consolidate: one backend, one webapp, one database (Phase 2)
+### D3 — Consolidate: one backend, one webapp, one database
 
 Retire the `platform` app and the `scripts/` control plane.
 
 - **One backend (Django) + one webapp**; **connections and adapters move into the backend beside
-  `AIComponent`**. (Whether the submodules stay independent is under discussion — see D8.)
-- **One database with project-scoped access** (`project_id` + Postgres row-level security), not one
-  database per project.
-- Fold the platform's real jobs in: per-project DB provisioning (**already in the backend**), membership,
-  encrypted secrets, run tickets (**already**), the ledger, evidence/dashboards.
+  `AIComponent`**. Keep layer/published-artifact boundaries; fold domain stacks (D8).
+- **One database with project-scoped access** (`project_id` + shared ORM/access checks), not one
+  database per project. Upgrade main's existing database only; no pilot project-database import is needed.
+- Fold the platform's retained jobs in: project management (no per-project DB provisioning), membership,
+  encrypted secrets, run bindings, evidence/dashboards. Reuse main's audit writer, not pilot's ledger stack.
 - Replace `scripts/` (env generation + compose assembly, ~25k lines) with a **committed compose file + a
   short Makefile**.
-- **Why:** the platform's only *runtime* job — proxying plugin calls — moves to the worker (D1/D2), so it
-  has no runtime role left. Everything else it does already exists in the backend.
+- **Why:** backend/eval own the retained platform functionality. Remove the duplicate service through
+  necessary compatibility/relocation work; the execution redesign in D1/D2 is a later milestone.
 
-### D4 — One app graph; feature flags, not a deployment mode (Phase 2)
+### D4 — One app graph; feature flags, not a deployment mode
 
 Replace the binary `AISC_DEPLOYMENT` (`standalone`|`configurator`) with **named feature flags** read at the
 point of use, recorded in one registry, validated at startup. `INSTALLED_APPS`/`MIDDLEWARE`/URLconf must
-**not** change with configuration. A fresh install works with no flags set. Likely v1 flags: `LOCAL_AUTH`,
-`PROJECT_DB_PER_PROJECT`, `PLATFORM_MEMBERSHIP_SOURCE`, `RUN_TICKET_KEY`.
+**not** change with configuration. A fresh install works with no flags set. Flags gate retained behaviours
+such as optional compliance features; do not preserve per-project-DB/platform-membership switches or
+treat a secret key's presence as a feature flag.
 
-### D5 — Adapters are a first-class, shipped concept (Phase 2)
+### D5 — Adapters are a first-class, shipped concept
+
+**Delivery scope:** port required data/resource selection, bindings and version recording through the
+existing runtime. The loopback door below is the post-port destination; general sandbox/session and
+authoring frameworks remain follow-ups. This contract must not force an execution rewrite during the port.
 
 - **Two kinds:** `data` (feed plugin inputs) and `resource` (reach a system). **"Agent" = resource +
   session**, not a third kind.
@@ -180,28 +206,27 @@ class Adapter(ResourceAdapter):
 ∧ plugin.needs ⊆ adapter.capabilities`; data = `kind == data ∧ adapter.produces == plugin.input.type ∧
 adapter.accepts ∋ uploaded file`.
 
-### D6 — Versioning lives in the model layer (Phase 2)
+### D6 — Versioning lives in the model layer
 
 Versioning is **yes**, but not where pilot put it (rows in the per-project DB, immutability in **DB
 triggers** with a `DELETE` hole, each step stamping in a separate transaction). It belongs in the
 **Django/ORM model layer**: versioned models, app-enforced invariants, **one place** that cuts a version
 (on an explicit publish, not every save).
 
-### D7 — The `unified-modules` shared contracts (Phase 1)
+### D7 — Shared contracts: extend the merged implementation
 
-The cross-cutting modules every app should use **one way**: the caller's identity and access
-(`shared/identity/aisc_identity/`), opening a project's database, keeping a secret, writing a ledger event
-(`shared/ledger-ts`, `aisc_identity.ledger_events`), calling a service, and the plugin interface/manager.
-**Phase 1's first deliverable is the feature list for this** ([§2 step 1](#2-the-method-five-steps-per-phase)) — the
-exact inventory is to be extracted from the branch.
+The cross-cutting behaviours every app should use **one way**: identity/access, project-scoped data,
+secrets, auditing, service calls and the plugin interface/manager. The branch's `shared/identity`,
+`shared/ledger-ts` and database modules are evidence to inspect, not packages to port wholesale.
+Use main's project database and audit writer instead of introducing the branch's delivery plumbing.
+Start from unified-app's merged membership, audit, models and shared plugin changes. Compare the source
+branches in the plan's feature matrix; reuse existing destination mechanisms rather than porting a
+second shared identity/database/audit implementation.
 
-### D8 — Independence by architectural axis, or fold? (Phase 2 — **under discussion**)
+### D8 — Independence by architectural axis (confirmed 2026-11-16)
 
-**Not a decision yet.** The tree is **many git submodules** (`apps/*`, `shared/*`); the original premise was
-that a service could be **replaced with someone else's implementation**. The open question is whether to
-**fold** the modules into one backend + webapp, or to **keep independent repos but unify DB access and
-migrations**. (A third option — keep the repos fully independent — is the status quo and is the source of the
-duplication smells.)
+Keep layer and published-artifact boundaries; fold the duplicated domain stacks into backend/webapp.
+The tradeoffs below explain that decision rather than reopening the mainline-first port.
 
 **The axis that decides it.** A repo boundary is justified by an **architectural concern** (a layer), a
 **published/external artifact** (an ABI, a public site, a registry), or the **composition root** (the
@@ -250,7 +275,7 @@ and weak for the **domain slices** (which *do* share the project DB and therefor
 get a platform service) **vs** *layers + one shared domain model* (cross-cutting concerns live in the
 backend; domains become features of the layers).
 
-**Leading position (for discussion, not decided):** keep the **layer repos** (`backend`, `webapp`, `eval`,
+**Destination:** keep the **layer repos** (`backend`, `webapp`, `eval`,
 `results-dashboard`), the **published artifacts** (`catalogue`, `shared/*`), and the **composition root** (the
 `aisc` parent repo — orchestration only, **no application logic**); fold the **domain slices**
 (`qualification`, `controls`, `control-objectives`) into webapp (UI) + backend (API/ORM); and fold the
@@ -263,22 +288,17 @@ e2e and docs. In-tree application code today — `platform/`, `report-composer/`
 `shared/ledger-ts/` — moves to a component repo. This is itself an I9 boundary (the composition root), not a
 licence to keep app code in the parent.
 
-### D9 — Data access and migrations (Phase 2; provisional — depends on D8)
+### D9 — Data access and migrations
 
-Target **if the domain slices fold**: one database with project-scoped access and one migration runner +
-history (D3), with app-owned schema. If they stay independent, multiple migration tools are the price of that
-choice (see the D8 pros/cons).
+Target: main's shared product database, project-scoped access and Django domain migrations. Only mainline
+installations need upgrades. Preserve their data, IDs, files and migration history; no pilot data importer.
 
 - Modules folded into the backend: their tables become **Django ORM models + migrations** (I5) — one tool.
-- Modules that stay independent (the layers): `eval` has no DB; `results-dashboard`/Superset reads read-only;
-  anything that does reach the project DB goes through the **shared access package**
-  (`shared/identity/aisc_identity/projectdb`) and the **one runner**, which records `(module, revision,
-  applied_at)` in a single history table.
-- **If a multi-tool reality survives, it needs an ADR.** I5 says *one migration tool*; keeping more than one
-  requires an **ADR** that refines I5 to "one migration **runner and history**; app-owned artifacts" — or
-  commits to a single tool. Do not diverge silently.
+- `eval` has no product DB access; Superset reads through explicitly scoped read-only access.
+- Third-party metadata migrations and main's existing immudb provisioning remain their upstream/existing
+  mechanisms under ADR 0001; do not invent a second unified migration history or project-DB access package.
 
-### D10 — Container topology: one container per deployable process (Phase 2 — **under discussion**)
+### D10 — Container topology: simple deployment with justified isolation
 
 The dev compose carries **~41 service definitions** (29 app + 12 infra across `docker-compose*.development.yml`),
 and they mix three different things: genuine long-running **services**, **one-shot init/migration steps** dressed
@@ -291,15 +311,13 @@ published service, or an infra service.
 | **service** | a long-running process of a layer, a published artifact, or infra | **one container each** | `aisc-backend`, `aisc-webapp`, `aisc-eval-worker`; `catalogue-private`, `dashboard`, `plugin-publisher`; `postgres`, `redis`, `rabbitmq`, `minio`, `immudb`, `keycloak`, `caddy`, `devpi` |
 | **step** | a migration, grant, bucket/key setup — runs once, exits | **NOT a container** — a step of the one migration runner (D9) or an init hook | `aisc-backend-migrate`, `{controls,qualification,control-objectives,report-composer,dashboard}-migrate`, `report-grants`, `make_buckets`, `postgres-setup`, `immudb-key` |
 | **tool** | dev/admin/observability, not needed to serve | **opt-in profile**, never default | `aisc-eval-flower`, `pgadmin`, `schema-docs`, `docker-compose.admin-ports.yml` |
-| **wrong-axis split** | a domain exploded into peer containers (each with its own DB/migrate) | **collapse** — one service per concern; the domain folds per D8 | qualification: `-web -prefill -agents -ontology -pdf -migrate` (6); controls: `-web -pdf -migrate`; reports: `report-composer` + `report-renderer`; `dashboard-redis` (a second Redis beside the shared one) |
+| **wrong-axis split** | a domain exploded into peer containers (each with its own DB/migrate) | **collapse** — the domain folds per D8 | qualification, controls and report domain stacks |
 
-**The tell:** a service whose `command` exits, or named `*-migrate` / `*-setup` / `*-grant`; a second instance of
-shared infra (`dashboard-redis`); or a domain split into `-web` / `-pdf` / `-agents` containers.
+Retain **`dashboard-redis`**: it is Superset's password-protected application cache, on an isolated network.
+Its pickle deserialization must not consume values writable by evaluation plugins (ADR 0001).
 
-**Target shape:** ~**3 layer services** (backend, webapp, eval worker) + ~**3 published** (catalogue, Superset
-dashboard, plugin-publisher) + ~**8 infra** (postgres, redis, rabbitmq, minio, immudb, keycloak, caddy, devpi) +
-opt-in tool profiles — down from ~41 default definitions. Migrations/init run **once, as a step**; a domain never
-gets a container of its own.
+**Target shape:** layer services, published services and necessary infrastructure, plus opt-in tools.
+Migrations/init run once as steps. Container count is not an acceptance target.
 
 **Why it matters.** Each container is a moving part (I8) — to build, start, monitor, secure, migrate, delete — and
 a per-domain `*-migrate` container is also a per-domain migration tool (I5). **The container count is the repo
@@ -309,10 +327,11 @@ count (I9) seen from the deployment side**; they are split on the same wrong axi
 service); migrations and init are **steps**, dev tools are **profiles**, and a domain is **never** split across
 containers. **Adopted as I11.**
 
-### D11 — Backend structure: one Django app per domain (Phase 2)
+### D11 — Backend structure: table-owning apps inside one backend
 
-The backend is a single Django app, `aisc_backend`, holding every domain in one package. Split it into **one
-Django app per domain** — a **core** set plus the **optional** domains — all **inside the same `backend` repo**
+The merged backend starts with `aisc_backend` holding the consolidated features. Organise it into
+**table-owning Django apps** aligned with the pilot assessment flow — a **core** set plus the **optional**
+domains — all **inside the same `backend` repo**
 (a Django app is a packaging unit, not a repo/service; I9). This is the enforcement unit for I5 (each app owns
 its tables and migrations), I9 (a domain is a package, not a service) and I10 (optional apps depend on core).
 
@@ -321,40 +340,39 @@ a `migrations/` directory. A *noun that owns no tables* — an auth adapter, a r
 writer — is a **module inside a core app**, not an app. Do not mint an app per noun; mint one per table-owning
 domain. (This correction removes `ledger` and `identity`, which an earlier sketch of D11 proposed as apps.)
 
-**Target app set** (pattern, not a final boundary; some rows are settled in the fold):
+**Target app set:** these are logical owners; preserve existing mechanisms and migration/data continuity
+when implementing the split. The [plan §2.1](refactor-plan.md#21-pilot-ui-contract-and-screen-to-owner-map)
+maps each pilot screen to these owners and the existing React pages.
 
-| app | kind | today (in `aisc_backend/models/`) | routers / areas |
+| app | kind | owned data / mechanisms | user-facing areas |
 |---|---|---|---|
-| `core` | core | `common` (`Base`, `HasData`, `StorageContainer`), `project` (`Project`), `project_config` (`ProjectConfig`), `ai_system` (`AIComponent`, `AIComponentType`, `AISystem`) | project, project_by_name, project_config, component |
-| `evaluation` | core | `evaluation`, `measure`, `metric`, `observation`, `artifact`; the per-evaluation bindings `EvaluationInput`, `EvaluationPlugin`, `EvaluationPluginStatus` | evaluation, file, task, internal, stats |
-| `plugins` | core | `Plugin`, `PluginConfig`, `PluginConfigProjectConfig` | plugin |
-| `audit` | core | the **one** governed-change record (I6): today `audit/` (immudb `audit_log`) | audit |
-| `qualification` | **optional** | its Prisma tables → models | its APIs |
-| `control_objectives` | **optional** | its Alembic tables → models | — |
-| `controls` | **optional** | its Prisma tables → models | — |
-| `report` | **optional** | folded report generation (D8) | — |
+| `core` | core | common/storage models, `Project`, membership, `ProjectConfig`, `AISystem`, `AIComponent`/types, connection and helper bindings; shared version/publish and secret mechanisms | Projects, project context, Manage/settings/members/connections/models |
+| `evaluation` | core | evaluations, measures, metrics, observations, artifacts, inputs, per-run plugin/config bindings and status | Collect evidence → Run tests, Results/visualizer; scoped dashboard bridge |
+| `plugins` | core | `Plugin`, `PluginConfig`, `PluginConfigProjectConfig`; catalogue/source and adapter configuration extensions | Choose tests; install/configure tests and adapters |
+| `qualification` | **optional** | questionnaires, AI-card content/graph and corrections, linked to core system/version | 1. Qualify the AI system |
+| `control_objectives` | **optional** | risk/objective assessments, mappings; objective-to-evidence links, notes, review and carry-forward | 2. Set control objectives; Evidence map/coverage |
+| `controls` | **optional** | checklist catalogue/installations, answers, readiness and checklist review/history | 3. Choose checklists; Collect evidence → Answer checklists |
+| `report` | **optional** | layouts, block configuration, generation snapshots, documents and provenance | Collect evidence → Report/composer/history |
 
-**Modules, not apps** (they own no tables — I5): the **auth adapter** (`keycloak`, the `membership` shim over
-`aisc_identity.access`) and the **door** (request→project scoping). Both live in `core`.
+**Modules, not new apps:** main's existing **audit writer** (immudb, ADR 0001), the auth adapter and request
+project scoping. The plugin-facing target door belongs in `eval`, not the backend request-scoping module.
+The landing, Manage and Collect evidence hub compose these features in React; they need no separate
+backend app. Core owns run results/artifacts, while optional objectives own their compliance links.
+Optional content joins the single publish/snapshot mechanism through backend wiring without core
+importing optional models. Report assembly reads scoped owning-model interfaces and freezes its inputs.
 
 **What the earlier sketch got wrong** (recorded so it is not reintroduced):
 
-- **`ledger` is a platform shim and a duplicated concern.** `ledger.py` (+ `models.LedgerOutbox`) is the
-  engine's half of a ledger the **platform owns**, bridged by a transactional outbox: each change inserts a
-  row in its own transaction, and `manage.py deliver_ledger_events` (the `aisc-backend-ledger` container)
-  HTTP-POSTs them to `POST /internal/projects/{pid}/ledger/events` with `PLATFORM_LEDGER_ENGINE_TOKEN`. Every
-  part of that machinery — `PLATFORM_URL`, the token, the refusal codes, the per-database advisory lock — exists
-  **only because the platform is a separate service**. Meanwhile `audit/` (immudb `audit_log`, single writer
-  `clerk.write_event`) is a **second** append-only record of the same changes; the module's own docstring says so
-  ("The engine's own audit log … is kept as it is"). Two records of who changed what is **I3** (one
-  implementation per concern) and **I6** (governed changes are ledgered). **D3** (one backend, one DB) makes the
-  outbox/relay machinery collapse to an insert in the same transaction; the *record* merges into the **one**
-  `audit` app. There is no second app and no second record.
-- **`identity` conflates an auth adapter with project-DB plumbing.** `keycloak.py`/`membership.py` are real but
-  are an **adapter** — the one membership rule lives in `shared/identity` (`aisc_identity.access`). `projectdb.py`
+- **`ledger` is the pilot's second audit implementation.** Its outbox holds events waiting for delivery;
+  its relay sends them to platform. Reuse main's `audit/` helper and immudb writer instead of porting
+  this stack. Main's audit calls are best-effort: an immudb outage may lose an event. Consolidating
+  processes does **not** create an atomic Postgres/immudb transaction. Guaranteed delivery is follow-up
+  work, not a refactor requirement (ADR 0001).
+- **`identity` conflates an auth adapter with project-DB plumbing.** Keep unified-app's ORM membership
+  and access helpers as the one mechanism; the pilot's `shared/identity` is a reference. `projectdb.py`
   (alias-per-project router, `open_alias`, per-project `migrate_database`, run-ticket minting) and
   `project_door.py` exist **only because each project is a separate Postgres database today**; D3/D9 (one DB,
-  `project_id` + RLS) collapse the alias/router/per-project-migrate and most of the door. Both are entangled with
+  `project_id` + ORM scoping) collapse the alias/router/per-project-migrate and most of the door. Both are entangled with
   `deployment.py` (I4) and `platform_projects.py` (another platform shim). Neither owns a table → a module in
   `core`, reshaped by D3.
 
@@ -367,17 +385,18 @@ domain. (This correction removes `ledger` and `identity`, which an earlier sketc
    domain" become "one repo/service per domain".
 3. **An app owns tables (I5).** If the split would create an app with no `models.py` and no `migrations/`, it is
    a module, not an app.
-4. **Dependency points coreward (I10).** Optional apps import core; core imports no optional app — enforced by
-   an `import-linter` contract inside the backend.
-5. **Schema-preserving move.** Keep `Meta.db_table` stable and use `SeparateDatabaseAndState` (state-only
-   migrations) so no table moves and no data migrates; cross-app FKs keep the DAG acyclic.
+4. **Dependency points coreward (I10).** Optional apps import core; core imports no optional app — reviewed
+   and checked with appropriate small tests; an import-linter rollout is not a prerequisite.
+5. **Preserve shipped history only.** Mainline `0001–0014` and its data need compatible model moves
+   (`Meta.db_table` and state-only migrations if needed), with acyclic cross-app FKs. Unshipped
+   unified-app `0015–0032` compliance migrations may be rewritten into destination apps (ADR 0003).
 
 **Why.** Each domain gets its own migration history, admin and label in the one tool (I5/D9); the core/optional
 split becomes structural (I10); and the D8 folds land as **apps**, not services. It is the backend-level
 expression of I9. Sorting by *tables* rather than *nouns* is what keeps the app count small and stops the
 "an app per concept" drift that produced the domain slices in the first place.
 
-### D12 — The platform application: domains into `backend`, the launcher flow into `webapp` (Phase 2)
+### D12 — The platform application: domains into `backend`, the launcher flow into `webapp`
 
 The `platform` app is **not** one thing and is **not** one Django app. It is **a second backend layer** (I9/I3),
 and it ships the Configurator's product UI as **static pages outside the webapp**. Split it in two:
@@ -388,34 +407,53 @@ and it ships the Configurator's product UI as **static pages outside the webapp*
 |---|---|
 | `projects.py`, `membership.py`, `routes/{projects,authz,admission}` | `core` + the identity module — the *other* implementation of project/membership (I3) |
 | `db.py`, `projectdb.py`, `migrate.py`, `migrations/`, `project-template/` | deleted/reshaped by D3/D9 — one DB, Django the one migration tool (I5) |
-| `connection_store.py`, `target_store.py`, `connection_allowlist.py`, `connection_facade.py`, `adapters.py`, `targets.py`, `routes/{connections,facade}` | the **connections/adapters** concern beside `AIComponent` (D5) — a `connections` app |
+| `connection_store.py`, `target_store.py`, `connection_allowlist.py`, `connection_facade.py`, `adapters.py`, `targets.py`, `routes/{connections,facade}` | extend **`core` components/connections** and **`plugins` adapter configuration** (D5); execution compatibility in `eval` |
 | `secret_box.py`, `ledger/secrets.py`, `ledger/config_secrets.py` | the **one secret store** (I3) |
-| `ledger/*` + `ledger-identity/` | the **one ledger/audit** concern (I6/I3) — merges with backend `audit/` (see D11) |
-| `evidence.py`, `routes/evidence` | evidence domain |
-| `llm_catalogue.py`, `llm_store.py`, `routes/llm` | LLM catalogue/keys domain |
-| `helpers.py`, `helper_store.py`, `routes/helpers` | helper-models domain |
-| `catalogue.py`, `plugin_sources.py`, `publisher.py`, `routes/catalogue` | `core`; the published **`catalogue` site stays separate** (a published artifact) |
+| `ledger/*` + `ledger-identity/` | do not port the separate stack; retained mutations use main's existing `audit/` writer (ADR 0001) |
+| `evidence.py`, `routes/evidence` | `control_objectives` owns compliance links/notes/review; `evaluation` owns runs/artifacts, `controls` owns checklist answers |
+| `llm_catalogue.py`, `llm_store.py`, `routes/llm` | `core` settings/model bindings and the one secret mechanism |
+| `helpers.py`, `helper_store.py`, `routes/helpers` | `core` helper-role/component bindings |
+| `catalogue.py`, `plugin_sources.py`, `publisher.py`, `routes/catalogue` | `plugins` for tests, `controls` for checklists; the published **`catalogue` site stays separate** |
 | `reports.py` | the **`report`** domain (D8) |
-| `dashboards.py`, `dashboard_bridge.py` | bridge folds to `core`; **Superset stays its own service** |
-| `systems.py`, `engine_components.py`, `engine_runs.py`, `run_passes.py`, `local_controls.py`, `routes/engine` | **`evaluation`** (backend) + `eval` |
-| `app.py` | the middleware/router wiring — the door (I2) and the run path (I1) in `backend` |
+| `dashboards.py`, `dashboard_bridge.py` | scoped bridge folds to `evaluation`; **Superset stays its own service** |
+| `systems.py`, `engine_components.py`, `engine_runs.py`, `run_passes.py`, `local_controls.py`, `routes/engine` | system/components in `core`; runs in `evaluation` + `eval`; checklist data in `controls` |
+| `app.py` | backend API wiring; preserve runtime during port, run-local door follows under ADR 0003 |
 
-**The UI (`homepage/*.html`, 11 pages + assets; the launcher on Caddy:8100) is the product flow to re-express as
-`webapp` pages**, pointed at the one backend API:
+**The UI (`homepage/*.html`, 10 pages + assets; the launcher on Caddy:8100) is the source of truth for
+the product's look, feel, navigation and flow.** Implement it in the existing React `webapp`, pointed at
+the one backend API. Reuse unified-app page logic and components under the pilot presentation.
 
 | launcher page | the step | becomes |
 |---|---|---|
-| `index.html` | project list (Configurator home) | a webapp page |
-| `project.html` | a project — "plan the assessment", the four steps | a webapp page |
-| `connections.html` · `llm.html` · `helpers.html` · `logs.html` | Manage: connections · LLM keys · helpers · activity | webapp pages |
-| `evidence.html` · `evidence-map.html` | Collect evidence · Evidence map | webapp pages |
-| `results.html` · `catalogue.html` | Results (→ Superset) · catalogue pages | webapp pages |
+| `index.html` | project list (Configurator home) | `GlobalHome` with pilot project-list layout |
+| `project.html` | "Plan the assessment", numbered steps 1–3, then step 4 below | `ProjectHome` with pilot cards/connectors and shared shell |
+| linked qualification/objectives tools | steps 1 and 2 | existing qualification/objectives/risk pages in that shell |
+| `catalogue.html` | 3. Choose tests and checklists | compose existing plugin catalogue and optional controls catalogue |
+| `connections.html` · `llm.html` · `helpers.html` · `logs.html` | Manage: connections · LLM keys · helpers · activity | settings/component pages and `LogsPage` with pilot menu groupings |
+| `evidence.html` | 4. Collect evidence | extend `SandboxPage`: version selector, map/coverage, four action columns |
+| `evidence-map.html` | links, notes, review and gaps | evidence-map page/components backed by objectives-owned records |
+| `results.html` and linked run/checklist/report tools | evidence hub detail destinations | existing run/measurement/checklist/dashboard/report pages with retained pilot workflows |
 
-**Keep the flow, move the surface.** What falls out of the move (why it is worth one decision):
+The visual contract includes blue/pink tokens, square corners, hairlines, numbered headings,
+MuseoModerno/Raleway/IBM Plex Mono fonts, branded topbar, back/session controls and mobile stacking.
+Use `homepage/assets/launcher.css` and `shared/theme/brand.json` through the existing React styling
+mechanism. Adapt `MyApp.tsx`/`TopBar` and navigation to this shell, keeping `pages`, `components`, `api`
+and `context` as the existing organisational mechanisms. Preserve deep links and selected project/card
+version across navigation. Manage adds the merged membership UI under the same role-aware structure.
+
+The evidence hub's columns remain **Answer checklists / Run tests / Results / Report**. Retain the
+pilot's version filtering and separate local-model runs, explicit publication and immutable report
+history. Disabled optional features disappear from navigation with clear direct-link states; core
+tests/results stay accessible without qualification. Flags change behaviour, never the backend app graph.
+
+Implement the shell and two hubs early, then complete feature pages within them. The plan §2.1 owns
+the detailed screen-to-Django map and desktop/mobile, role, version, deep-link and lean-profile acceptance.
+
+**Keep the look and flow, move the surface.** What falls out of the move (why it is worth one decision):
 
 - **`scripts/` retires** — its `homepage`/launcher tests (`scripts/tests/*`) become webapp e2e.
 - **The `/api/* → platform` Caddy hop dies** — one API, one origin (I3), no proxy rewrite.
-- **`AISC_DEPLOYMENT` (I4) retires** — the webapp already expresses it as a flag (`standalone | configurator`).
+- **`AISC_DEPLOYMENT` (I4) retires** — registered behaviour flags express the lean/full profiles.
 
 **Do not:** make `platform` one Django app (a second monolith beside `aisc_backend` — I3/I9); or re-express the
 launcher as Django templates/admin. The webapp is the **presentation layer** (I9); Django admin is ops, not the
@@ -427,6 +465,10 @@ product UI.
 
 These are normative and enforced (`ARCHITECTURE.md`; guards in `tests/architecture/`). `MUST`/`MUST NOT` are
 not stylistic.
+
+**ADR 0003 scope:** I1/I2 redesign and explicit per-run target credential exposure are deferred;
+worker-wide secrets must be excluded from the plugin subprocess now. Other consolidation rules remain
+current requirements; deny-by-default ORM isolation is sufficient.
 
 - **I1 — A run is self-contained.** Hand the worker everything at dispatch; it finishes with the backend
   and platform **down**; the backend observes status by id; results are posted at the end. *Never add a
@@ -455,10 +497,10 @@ not stylistic.
   infra); migrations/init are **steps**, dev tools are **profiles**, a domain is never split across containers
   (see D10). The deployment view of I9.
 
-**Enforcement (defense in depth):** `AGENTS.md` (agents read first) → guards in `tests/architecture/` →
-`import-linter` contracts → a **required CI check** → `CODEOWNERS` + the PR checklist → an **ADR** for any
-exception. A red guard is a stop, not a warning. Current guard status: **2 pass, 4 xfail** (the xfails
-name invariants the code does not yet meet: I1, I3, I4, I9).
+**Enforcement:** agent instructions and review, complemented by the small architecture suite and feature
+tests. Named baseline violations are expected failures; new detected violations fail normally. Do not
+require a checker for every invariant. ADR 0003 extends the execution baseline to the post-port milestone;
+other ADR 0001 baselines still expire with consolidation. Run the suite for current status.
 
 ---
 
@@ -480,9 +522,10 @@ So the design is understood *by seeing it*, not by reading it.
 - **Test plan per use case:** unit (adapter contract) · compatibility (dropdown shows/hides correctly) ·
   manual+e2e (assert the metric **and** that the mock target recorded the call the adapter should have
   made).
-- **Build order:** **Phase 0 = stand on the pilot's existing adapter path to make the first use cases
-  visible in the real UI** (before any relocation), then the door (native), then resource adapters, then
-  data adapters, then combinations, then polish.
+- **Build order:** selectively merge the five frozen unified-app pins onto main, close worker-env and
+  route-access security gates, then port the required resource/data adapter behaviours,
+  then improve execution after feature consolidation. Use the mock kit to prove retained functionality;
+  the older scratch plan is reference, not an extra implementation phase.
 
 Detail: [`../SCRATCH-platform-adapters/07-development-plan.md`](../SCRATCH-platform-adapters/07-development-plan.md).
 
@@ -508,45 +551,48 @@ Each is a **second implementation** of something the backend/webapp already own.
 | 11 | ~50 compose service definitions | 29 + 24 across dev compose files | D3, I8 |
 | 12 | Runtime config generated, not committed | `aisc.py` writes `env.runtime`/`env.secrets`/`env.local` | D3 |
 | 13 | Two notions of "the project" | platform project vs backend `aisc_backend_project`; `platform_projects.py` | D3 |
-| 14 | E2E suite + published compose dropped on `pilot` | `e2e/*`, published `docker-compose*.yml` | decide at reset |
-| 15 | Module boundaries justified by "replaceable services" that is not real | 12 git submodules; cross-app raw SQL (§4) | D8 (under discussion) |
-| 16 | Containers split on the wrong axis; migrations/init as containers | ~41 compose services; `*-migrate`/`*-setup`/`*-grant`; `dashboard-redis`; qualification's six | D10, I5, I9 |
+| 14 | E2E suite + published compose dropped on `pilot` | `e2e/*`, published `docker-compose*.yml` | preserve mainline work during integration |
+| 15 | Module boundaries justified by "replaceable services" that is not real | 12 git submodules; cross-app raw SQL (§4) | D8 |
+| 16 | Containers split on the wrong axis; migrations/init as containers | per-domain services and migration plumbing; the isolated dashboard cache is retained | D10, I5, I9 |
 | 17 | An app (module) per *concern* that owns no tables | `audit/`, `auth/` proposed as Django apps in the D11 sketch; neither has `models.py` or `migrations/` | D11, I5 |
 | 18 | A second record of who changed what | immudb `audit_log` **and** the platform ledger (`ledger.py` + `LedgerOutbox` + `aisc-backend-ledger`) | D3, I3, I6 |
 | 19 | A product UI maintained as static HTML outside the webapp | `homepage/*.html` (11 pages, Caddy:8100) + the `/api/* → platform` hop; `scripts/` tests drive it | D12, I3, I9 |
 
 ---
 
-## 8. Open questions / decisions to force
+## 8. Decision status and follow-ups
 
-- **Native target:** for a target the runtime already speaks, keep the door always (recommended), or point
-  the plugin straight at the endpoint with a run-scoped key? (D2)
-- **Session lifetime:** is `open`/`call`/`close` enough for an agent session, and who owns it — the run or
-  the row? (D5)
-- **`produces`/input-type registry:** the id vocabulary that data adapters and plugins agree on. (D5)
-- **Version cut:** who cuts a version, and when (on publish vs on save)? (D6)
-- **Reset:** what are we happy to drop from `master` (the e2e suite, the published compose stack)?
-- **Boundaries to keep (D8, under discussion):** the leading position keeps the **layer repos**
-  (`backend`, `webapp`, `eval`, `results-dashboard`), the **published artifacts** (`catalogue`, `shared/*`) and
-  the **composition root**; folds the **domain slices** (`qualification`, `controls`, `control-objectives`)
-  and the **`platform` app** (into `backend` + `eval`).
+ADR 0003 governs the frozen unified-app-first port. Explicit publish (D6), layer/domain boundaries (D8) and
+isolated dashboard cache (D10) remain in scope. The native local door (D2) is a post-port improvement.
+
+- **Session lifetime:** implement the lifecycle needed by the retained cases; a general framework is later work.
+- **`produces`/input-type registry:** use the minimal vocabulary needed by the port and existing providers.
+- **Mainline:** keep main parent and selectively merge frozen unified-app layers, then port pilot features; preserve main's data and useful
+  tests/deployment behaviour. Project isolation is enforced through ORM/access checks; no required RLS.
+- **Audit:** one existing backend helper + immudb, best-effort, with mainline history retained.
 - **Research vs compliance — profiles, not modes.** A researcher wants only the **core** (write a plugin, run
   it, see results — no qualification / control-objectives / controls); a compliance user wants the full four
   steps. The split MUST be **feature composition (I4)**, not a second app or a schema fork: define the
   **core**, make each compliance step an **optional domain**, and keep the dependency **one-way**
   (compliance → core, never core → compliance). Shipped as **install profiles** (compose) in the composition
   root, on one app graph and one schema. Invariant [**I10**](#5-binding-invariants-the-rules-any-implementation-must-obey).
-- **Report generation vs Superset (D8) — decided.** Report generation depends on the DB/ORM/schema, so it is a
-  **domain to fold** into `backend` (a `report` feature); **Superset analytics stays separate** — its own
-  service/repo/container (`results-dashboard`).
+- **Reporting source — pilot.** Port its composer, layouts/blocks, PDF/Word outputs, version/comparison
+  selection, evidence/results/charts and stored provenance into the one backend/webapp report feature.
+  Extend useful unified-app foundations; its fallback is not feature parity. Backend ORM assembles the
+  snapshot instead of a renderer reading other apps' tables. See the plan §5.3.
+- **Report generation vs Superset (D8) — decided.** Report generation folds into backend/webapp;
+  **Superset analytics stays separate** — its own service/repo/container (`results-dashboard`).
 - **I11 (containers) — adopted.** One container per deployable process (D10): migrations/init are **steps**,
   dev/admin tools are **profiles**, a domain is never split across containers.
-- **Multi-turn/agent evaluation:** which agent-style plugin (agentdojo? promptfoo?) ships, since no
-  evaluator drives a conversation today.
+- **Multi-turn/agent evaluation:** new evaluators and general conversation support are follow-ups unless
+  explicitly part of an agreed retained feature.
 
 ---
 
 ## 9. Known evidence (so claims can be checked)
+
+The 2026-11-16 unified-app review, pinned commits, checks and concrete repair tasks are recorded in
+the [plan](refactor-plan.md) §§3–4. The observations below describe the older pilot/exploration snapshot.
 
 Read against `origin/pilot`, `origin/master`, `origin/dev`, `origin/feat/unified-modules` (2026-11-09) and
 the working tree (2026-11-11).
@@ -576,8 +622,8 @@ the working tree (2026-11-11).
 
 - **Exploration branch** — a pilot (`pilot`, `feat/unified-modules`): a discussion point, not a release.
 - **Independent module** — a module with its own repo/deploy, justified by an **architectural concern** (a
-  layer) or a **published ABI** — not by a business domain (see D8, under discussion).
-- **Module** — an app/service/package with a unified contract (Phase 1's subject).
+  layer) or a **published ABI** — not by a business domain (D8).
+- **Module** — an app/service/package with a unified contract; keep one owner per concern.
 - **Door** — the run-local endpoint (serving the plugin's protocol) behind which a connection/adapter sits.
 - **Native vs bespoke target** — a system the runtime already speaks vs one that needs an adapter.
 - **Data vs resource adapter** — feeds inputs (once) vs reaches a system (per call).

@@ -12,4 +12,16 @@ or breaks an invariant does.
   under which the waiver is removed.
 - Link the ADR from the PR: *"breaks I<n>; see ADR NNNN."*
 
+## Accepted decisions
+
+- [0001 — Mainline-first consolidation](0001-mainline-first-consolidation.md): one best-effort immudb
+  audit writer, mainline-only upgrades and isolated Superset cache.
+- [0002 — Unified-app-first feature port](0002-unified-app-first-feature-port.md): superseded by 0003;
+  historical rationale for deferring self-contained dispatch and the run-local door.
+- [0003 — Frozen unified-app integration](0003-frozen-unified-app-port-and-worker-boundary.md):
+  selective mainline integration, rewrite unshipped migrations, immediate plugin environment boundary,
+  deny-by-default ORM access and pragmatic pilot UI review. Supersedes 0002, not 0001's audit decision.
+
+Worker-ready epics, dependency gates and detailed issue bodies: [`../refactor-issues.json`](../refactor-issues.json).
+
 The point is to make "someone ran ahead" into "the team decided", with a cost and an exit — cheaply.

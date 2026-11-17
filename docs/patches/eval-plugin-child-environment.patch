@@ -1,0 +1,68 @@
+--- a/aisc_eval/celery_tasks.py
++++ b/aisc_eval/celery_tasks.py
+@@ -44,6 +44,21 @@
+ logger = get_logger()
+ 
+ SECRET_ENV_PREFIX = "AISC_SECRET_"
++
++# Catalogue plugins are untrusted. Do not inherit the worker's Django encryption key,
++# internal API key, database/registry credentials or unrelated container secrets.
++_PLUGIN_ENV_ALLOWLIST = (
++    "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TZ", "UV_CACHE_DIR", "UV_PYTHON",
++)
++
++
++def plugin_child_env() -> dict[str, str]:
++    """Build the closed base environment for the plugin subprocess.
++
++    Explicit per-run AISC_SECRET_ values are added at the call site until the
++    post-port credential-withholding door replaces that existing interface.
++    """
++    return {name: os.environ[name] for name in _PLUGIN_ENV_ALLOWLIST if name in os.environ}
+ 
+ 
+ def build_project_settings(settings: list[dict]) -> dict:
+@@ -406,10 +421,10 @@
+         stderr_content = ""
+         try:
+             with open(stderr_path, "w+") as stderr_file:
+-                child_env = os.environ.copy()
++                child_env = plugin_child_env()
+                 child_env.update(
+-                build_secret_environment(project_settings + llm_secret_settings)
+-            )
++                    build_secret_environment(project_settings + llm_secret_settings)
++                )
+                 process = subprocess.Popen(
+                     [str(venv_python), str(runtime_script)],
+                     cwd=str(workspace_path),
+--- /dev/null
++++ b/tests/test_plugin_environment.py
+@@ -0,0 +1,27 @@
++"""The plugin must not inherit the worker's service-level credentials (ADR 0003)."""
++
++from aisc_eval.celery_tasks import plugin_child_env
++
++
++def test_plugin_child_env_is_closed(monkeypatch):
++    for name in (
++        "DJANGO_SECRET_KEY", "INTERNAL_API_KEY", "PACKAGE_REGISTRY_PASSWORD",
++        "DATABASE_URL", "REDIS_URL", "KEYCLOAK_CLIENT_SECRET", "AISC_UNKNOWN",
++    ):
++        monkeypatch.setenv(name, f"worker-only-{name}")
++    monkeypatch.setenv("PATH", "/usr/bin")
++    monkeypatch.setenv("LANG", "C.UTF-8")
++
++    child = plugin_child_env()
++
++    assert child["PATH"] == "/usr/bin"
++    assert child["LANG"] == "C.UTF-8"
++    assert not any(name in child for name in (
++        "DJANGO_SECRET_KEY", "INTERNAL_API_KEY", "PACKAGE_REGISTRY_PASSWORD",
++        "DATABASE_URL", "REDIS_URL", "KEYCLOAK_CLIENT_SECRET", "AISC_UNKNOWN",
++    ))
++
++
++def test_plugin_child_env_does_not_wildcard_run_secrets(monkeypatch):
++    monkeypatch.setenv("AISC_SECRET_NOT_SELECTED_FOR_THIS_RUN", "not-this-run")
++    assert "AISC_SECRET_NOT_SELECTED_FOR_THIS_RUN" not in plugin_child_env()

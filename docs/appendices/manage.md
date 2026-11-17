@@ -2,6 +2,13 @@
 
 Back to [How AISC works](../architecture.md).
 
+> **Port target:** retain these pilot menu groupings and visual/workflow behaviour in the React webapp,
+> backed by the shared Django core/settings/access mechanisms. Add the merged membership UI to Manage.
+> Platform APIs, per-project databases and legacy service links below describe the pilot implementation;
+> use the [plan's screen-to-owner map](../refactor-plan.md#21-pilot-ui-contract-and-screen-to-owner-map)
+> for the destination, including role-aware access and shared-database inspection wording.
+> Pilot-like styling and workflow suffice; no pixel-perfect screenshot gate is required.
+
 ## Purpose
 
 The **Manage** menu, at the top of a project's page, holds the project's settings that the steps rely on: which

@@ -36,28 +36,34 @@ branch is testable end to end.
 
 ## Architecture guard / ADR deviations (recorded, not blocking)
 
-Run: `uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX`
+The **v2** guard suite (`tests/architecture/`, landed by DOC-01) uses *named baselines*: a known finding is
+recorded under its ADR and reported as `xfail`; a **new** finding fails. Run:
+`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX` → **5 passed, 3 xfailed,
+0 failed** on this tree.
 
-| invariant | state | why / owner |
+| invariant | state | evidence / owner |
 |---|---|---|
-| **I10** core does not import optional domains | **RED** | the frozen unified-app optional domains are present and imported by core; the sanctioned fold is **CORE-01 #109** |
-| **I9 / I5 / I3** domain slices | xfail | `qualification`/`controls` remain separate slices (ARCHITECTURE.md I9/I5) |
-| **I1** self-contained dispatch | satisfied on this branch | the eval `refactor/architecture-consolidation` conformance was folded in. **Deviates from ADR 0003**, which defers I1 to EXEC-01 #120 — kept deliberately so the merged worker is functional and safer |
-| **I2** plugin child env allowlist | satisfied on this branch | same fold; ADR 0003 preferred the narrow **SEC-01 #104** patch over folding the whole eval conformance |
-| **I7** outbound scrub | satisfied on this branch | same fold |
-| **I11** one container per deployable process | satisfied | dev-overlay migration folded into the app process |
+| **I1** worker fetch mid-run | xfail (baseline) | the 5 findings are the **dispatcher** (`run_evaluation`) and `_embed_input_files` attaching inputs/settings **before** dispatch, plus status reconciliation in `finalize_evaluation`. `run_plugin` is self-contained, so I1 holds; the AST heuristic cannot tell dispatcher from runner. ADR 0003 / EXEC-01 #120 |
+| **I9** domain-slice module | xfail (baseline) | `apps/qualification`, `apps/controls` are still full-stack slices (ADR 0001) |
+| **I11** no step containers | xfail (baseline) | main's compose keeps one-shot `make_buckets` steps in `docker-compose.yml` and `docker-compose-infra*.yml`; the docs tree renamed these to `engine-standalone` (ADR 0001). REL-01/REL-02 |
+| **I2** plugin child env allowlist | satisfied | `plugin_child_env()` allowlist (eval conformance fold) |
+| **I7** outbound scrub | satisfied | `aisc_eval/utils/scrub.py` on stdout/stderr/artifacts |
+| **I3 / I4** plugin-interface independence, one deployment contract | pass | — |
+
+Baselines were **re-recorded for this merged tree** (DOC-01), replacing the docs-branch function/file
+names with the ones this tree actually has; the sets shrank, and each entry carries source evidence in
+`tests/architecture/test_invariants.py`.
 
 ## Deviations to revisit later
 
-1. The binding ADRs `docs/adr/0001-mainline-first-consolidation.md` and
-   `docs/adr/0003-frozen-unified-app-port-and-worker-boundary.md`, and the starting patch
-   `docs/patches/eval-plugin-child-environment.patch`, are **not** on this branch — they exist only in
-   the handover zip. Land them and reconcile the v1 docs currently carried on this branch with the v2
-   `refactor-plan.md` / `unified-modules-and-pilot-brief.md` (**DOC-01 #121**).
-2. `apps/eval` carries the `refactor/architecture-consolidation` conformance merge in addition to the
-   frozen pin (see I1/I2/I7 above). Re-confirm ADR 0003 scope, or keep it and retire the SEC-01 patch.
-3. Optional-domain feature parity (connections/adapters, evidence map, report composer, catalogue) is
-   **not** on this branch yet; that is the E3–E5 feature port.
+1. `apps/eval` carries the `refactor/architecture-consolidation` conformance merge in addition to the
+   frozen pin (this satisfies I2/I7 and the I1 dispatch pattern). **Deviates from ADR 0003**, which
+   deferred I1 to EXEC-01 #120 and preferred the narrow **SEC-01 #104** patch — kept so the merged worker
+   is functional and safer. Re-confirm scope, or keep it and retire the SEC-01 patch.
+2. `docs/patches/eval-plugin-child-environment.patch` is now on the branch; SEC-01 #104 should confirm it
+   is already applied by the eval fold.
+3. Optional-domain feature parity (connections/adapters, evidence map, report composer, catalogue) and the
+   pilot look/feel launcher (landed as the `homepage/` reference) are the E3–E5 port.
 
 ## Run it locally
 

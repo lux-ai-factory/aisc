@@ -1,73 +1,62 @@
-# Architectural guards
+# Architectural regression checks
 
-One test per invariant in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md), where it can be checked
-mechanically. These are the part of the architecture that **fails a build**, so that the shortest path to
-a feature is also the compliant one.
+**Architecture is primarily agent instructions and human review.** These small pytest checks catch
+concrete repeatable mistakes; a green result does not prove the architecture is correct. There is no
+requirement for one script per invariant or an up-front import-linter project.
 
-Run them from the repository root:
+Read [`AGENTS.md`](../../AGENTS.md), [`ARCHITECTURE.md`](../../ARCHITECTURE.md), and the
+[mainline-first plan](../../docs/refactor-plan.md). Scope is recorded in
+[ADR 0001](../../docs/adr/0001-mainline-first-consolidation.md) and
+[ADR 0003](../../docs/adr/0003-frozen-unified-app-port-and-worker-boundary.md).
 
 ```bash
-uv run --no-project --with pytest python -m pytest tests/architecture -q
+uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
 ```
 
-The tests use the standard library only (AST import scanning and file checks), so they need no module
-`venv` and run anywhere. Wire this into CI as a **required** check (the repository-checks job is the
-natural home).
+## What the suite checks
 
-## The guards
+- Required Python source trees exist, so missing submodules do not silently pass.
+- The plugin interface and eval worker do not import backend/platform internals.
+- Named backend-fetch calls in worker task functions.
+- Deployment-contract files and duplicate project-DB modules.
+- A heuristic for full domain stacks (frontend + API + migrations).
+- Step-container names in top-level compose files.
 
-| invariant | test | state today |
-|---|---|---|
-| I1 run independence | `test_i1_worker_does_not_fetch_from_backend_midrun` | passing — the run path consumes what it was dispatched with |
-| I2 door not credential | `test_i2_plugin_environment_is_an_allowlist` | passing — the plugin gets an allowlisted env |
-| I3 one implementation | `test_i3_plugin_interface_is_independent` | passing |
-| I3 one implementation | `test_i3_eval_worker_has_no_backend_import` | passing |
-| I3 one implementation | `test_i3_one_project_database_module` | passing |
-| I3 one implementation | `test_i3_no_second_ledger` | passing |
-| I3/I9 one UI | `test_i3_no_product_ui_outside_webapp` | **xfail** — `qualification`, `controls` carry their own UI |
-| I3 shared ABIs | `test_i3_shared_artifacts_are_acyclic` | passing |
-| I4 flags not modes | `test_i4_one_deployment_contract` | passing |
-| I4 app graph | `test_i4_app_graph_is_static`, `test_i4_urlconf_is_static` | passing |
-| I5 one migration tool | `test_i5_one_migration_tool` | **xfail** — Prisma under `qualification`/`controls` |
-| I5 app owns tables | `test_i5_installed_app_owns_tables` | passing |
-| I7 no secret leaves use | `test_i7_outbound_paths_scrub` | passing — the run path scrubs stdout, stderr, logs, artifacts, errors |
-| I9 boundaries on the axis | `test_i9_no_domain_slice_module` | **xfail** — `qualification`, `controls` are domain slices |
-| I10 core first | `test_i10_core_does_not_import_optional` | passing |
-| I11 one container per process | `test_i11_no_step_containers` | passing — migrations are steps of the app process |
-| I8 process | `test_allowlist_entries_are_adr_backed` | passing |
+## Baselines, not blanket expected failures
 
-An `xfail` guard is an invariant the current code does **not** yet meet. It documents the gap; it starts
-passing (`xpass`) once the code is fixed — at which point remove the marker, do not delete the test. Do not
-relax or delete a guard to make a change merge; add an allowlist entry plus the ADR instead.
+The current pilot checkout already violates several destination rules. Each check lists its known
+findings under ADR 0001. **New findings fail before existing findings are marked `xfail`.** A cleared
+baseline passes automatically; remove retired entries as its implementation lands. Consolidation
+baselines expire at completion; ADR 0003 extends **only the execution baseline** to the post-port
+execution milestone. That named expected failure may remain when the feature port ships. The later
+execution milestone clears it. Baselines cannot grow without a reviewed decision.
 
-**I9 is a heuristic.** `test_i9_no_domain_slice_module` flags a module that carries a frontend **and** an API
-**and** its own database/migrations — the full vertical slice. Today that is `qualification` and `controls`;
-the partial slice `control-objectives` (API + its own Alembic) is named in
-[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) I9 but is not caught by the heuristic. (`catalogue`, which
-also has a frontend, is **allowed** — it is a published public site, not a domain slice.) When the slices are
-folded, the test `xpass`es — remove the marker.
+When landing these guards on main + frozen unified-app layers, review each source-specific finding. The current
+pilot function/file names are not a ready-made merged-tree allowlist. Document any reconciliation with
+its source evidence and linking ADR; do not use blanket skips to make the merge pass.
+Add one small deny-by-default project-route coverage guard during SEC-02 (issue manifest in
+`../../docs/refactor-issues.json`) with named public/global/internal exceptions. It complements
+two-project role/related-object/download tests. The eval child environment must have a closed allowlist;
+do not permit inherited worker-wide credentials as an expected failure.
 
-## Allowlist
+The helpers do not detect arbitrary renamed networking, dynamic imports, semantic duplication or all
+domain layouts. For example, `control-objectives` is not a full-stack match for the layout heuristic.
+Review still covers these. The suite intentionally does not count Redis instances: Superset's isolated
+cache is required by the current trust boundary.
 
-`allowlist.json` is the only sanctioned way to waive a guard: an entry is `{path, adr, reason}` and the
-named ADR must exist and be **accepted**. `test_allowlist_entries_are_adr_backed` enforces that, so a PR
-that adds a waiver without an ADR fails. The allowlist is **empty by design** — the refactor removes the
-smells rather than waiving them.
+## Behavioural evidence
 
-## Layering
+Add checks with the feature that owns them: mainline upgrade and clean install; ORM tenant read/write,
+related-object and download isolation; same app graph across flags; immutable published versions and
+reopen/history behaviour; one audit writer; core evaluation with compliance disabled; pilot reporting
+with real PDF/Word outputs and version/evidence provenance. PostgreSQL RLS is not required.
 
-The layer contracts are enforced as static AST guards in this suite
-(`test_i3_plugin_interface_is_independent`, `test_i3_eval_worker_has_no_backend_import`,
-`test_i3_shared_artifacts_are_acyclic`, `test_i10_core_does_not_import_optional`) rather than as
-`import-linter` contracts. The apps live in separate repositories with separate venvs, so a static scan
-runs in one job with no install step and no extra top-level dependency (I8). The contracts are the same:
-`plugins → plugin-interface`; `eval → not backend internals`; `shared/*` acyclic; `core → no optional domain`.
+Keep real execution smoke tests for functional parity. Backend-down completion, run-local doors,
+plugin environment/credential isolation, worker-crash recovery and general adapter sandbox/session
+frameworks belong to the post-port milestone (ADR 0003). Worker-wide secrets in plugin children are
+an **immediate gate**; add a small deny-by-default route-coverage guard and two-project role tests.
+Ported outbound paths still require scrub
+checks. Do not assert lossless audit delivery: main's immudb writer remains best-effort.
 
-## Guards still to write
-
-These need a running system rather than an AST scan:
-
-- **I1 acceptance test (the flagship):** run the mock kit with the backend and platform unreachable;
-  assert the run completes and produces measures; then restore and assert the results post. This is the
-  guard that actually prevents a re-introduced mid-run call. It belongs in `apps/eval/tests/`, not here.
-- **I10 core-alone:** the I1 acceptance test with the compliance features off.
+Run the small suite in existing CI when landing it on main. Use appropriate frontend tools/review for
+TypeScript dependencies; Python import checks do not cover them.

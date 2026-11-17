@@ -39,5 +39,28 @@ plays for one design question, but spanning the app instead of a single note:
 - It applies to **module boundaries too**: a pilot's submodule split is not a design to preserve either. A
   boundary kept "so the service can be replaced" must be justified by *real* independence — an **architectural
   axis** (a layer), a **published artifact** (an ABI, a public site, a registry), or the **composition root**
-  — not a business domain. Whether the pilot's boundaries should stay is **under discussion** (see
-  [`unified-modules-and-pilot-brief.md`](unified-modules-and-pilot-brief.md) D8).
+  — not a business domain (see [`unified-modules-and-pilot-brief.md`](unified-modules-and-pilot-brief.md) D8).
+
+## Upgrade scope (2026-11-16)
+
+Only existing `master`/`main` installations need data-preserving upgrades. Pilot/unified-modules/unified-app
+data requires no importer. Implement on main's existing schema and migration history. See
+[ADR 0001](adr/0001-mainline-first-consolidation.md).
+
+## Unified-app is the frozen selective integration source (ADR 0003)
+
+`feat/unified-app` is explicitly selected as a **frozen merge source** for backend, webapp, eval,
+plugin-interface and plugin-manager at the pinned snapshot in the plan. Start from main in these
+repositories and pin their resulting commits from a main-based parent; do **not** merge unified-app's
+parent tree or the qualification/controls legacy app histories. The latter, pilot and unified-modules
+are behaviour references, not wholesale merge sources. Review later changes explicitly.
+
+Then compare the merged product against pilot and port the missing retained behaviours, including the
+full reporting/composer flow, evidence and analytics. Extend the merged backend/webapp/ORM mechanisms;
+preserve the pilot launcher's visual design, navigation and four-step assessment flow in React as
+specified in the plan §2.1. Reuse unified-app functionality beneath that presentation;
+do not copy pilot's platform, per-project databases or separate audit stack. Execution improvements
+follow the feature port except for the immediate plugin child-environment allowlist; project isolation
+is ORM-enforced and deny-by-default. Preserve mainline data, not unshipped unified-app migration history.
+The feature matrix and acceptance gates are in [the plan](refactor-plan.md), under
+[ADR 0003](adr/0003-frozen-unified-app-port-and-worker-boundary.md).

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Results - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<style>
+  /* The launcher's tokens, fonts, header and session line are /assets/launcher.css; these are this page's own.
+     Everything this page decides is decided by the platform; the page only shows it. */
+  main{max-width:1180px; margin:0 auto; padding:40px 32px 64px}
+  .title{margin:0 0 4px; font-size:26px; font-weight:600; letter-spacing:-.02em}
+  .note{
+    margin:0 0 22px; padding:12px 14px; border-left:3px solid var(--border-strong);
+    color:var(--muted); font-size:13px; background:rgba(0,15,223,.02);
+  }
+
+  /* the hidden attribute wins over any display rule (Save on a read-only version, for a viewer) */
+  [hidden]{display:none !important}
+
+  @media (max-width:820px){
+    main{padding:28px 18px 40px}
+  }
+  /* ---- results navigation: one target's tools, each opening the dashboard filtered ---- */
+  .crumb{font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .crumb b{color:var(--text)}
+  .tools-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:34px 0 12px; flex-wrap:wrap}
+  .tools-head span{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.1em; color:var(--muted); text-transform:uppercase}
+  .tools-head a{font-family:var(--mono); font-size:12px; letter-spacing:.06em}
+  .tools{display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:18px}
+  /* .tool, not a.tool: the greyed tiles are divs and need the same layout */
+  .tool{display:flex; flex-direction:column; gap:10px; min-height:150px; padding:24px 26px; box-sizing:border-box;
+        background:var(--primary); color:#fff; text-decoration:none}
+  a.tool:hover{background:var(--primary-hover)}
+  .tool-name{font-size:24px; font-weight:700}
+  .tool-runs{font-family:var(--mono); font-size:13px}
+  .tool-open{margin-top:auto; font-family:var(--mono); font-size:13px; letter-spacing:.08em; text-align:right}
+  .tool.is-off{background:var(--panel-2); color:var(--muted); border:2px dashed var(--border-strong); min-height:110px}
+  .tool.is-off .tool-name{font-size:20px}
+  /* what the tool's runs assessed, how they reached it, and the helper models they used */
+  .tool-assessed, .tool-helpers{font-family:var(--mono); font-size:12px; opacity:.9}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to Collect evidence">&larr; Collect evidence</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="crumb" id="crumb"></p>
+  <p class="note" id="page-message" hidden></p>
+  <div class="tools-head" id="tools-head" hidden>
+    <span>Tests run on this component</span>
+    <a id="all-tools" href="#"></a>
+  </div>
+  <div class="tools" id="tools"></div>
+</main>
+</div>
+
+<script src="/assets/page.js"></script>
+<script>
+  var params = new URLSearchParams(location.search);
+  var slug = aisc.project();
+  // no project, nothing to show or link to: the launcher lists the projects (a link built from an empty
+  // one ended on '/p/', "No project with the handle ."); throwing stops the rest of this script
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var targetKey = params.get('target') || '';
+  var version = params.get('version');
+  var enc = encodeURIComponent;
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text) node.textContent = text;
+    return node;
+  }
+  function show(id, text) { var node = $(id); if (text !== undefined) node.textContent = text; node.hidden = false; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function day(iso) {
+    var d = new Date(iso);
+    return [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join('.');
+  }
+
+  function kindOf(t) {
+    if (t.kind === 'system') return 'system';
+    if (t.kind === 'unassigned') return 'unassigned';
+    return (t.component_kind || 'component').replace(/_/g, ' ');
+  }
+
+  // "Helper models: Judge gpt-4o-mini, Attacker llama-3", or '' when the runs used none
+  function helpersLine(helpers) {
+    if (!helpers || !helpers.length) return '';
+    return 'Helper models: ' + helpers.map(function (h) {
+      return h.role.charAt(0).toUpperCase() + h.role.slice(1) + ' ' + h.model;
+    }).join(', ');
+  }
+
+  // what a tool's runs on this target assessed and through which connections (each named once, its
+  // fingerprint in the tooltip); nothing for the "No target" entry, runs made before targets
+  function assessedLine(target, it) {
+    var line = el('span', 'tool-assessed');
+    if (target.key !== null) {
+      var seen = {}, through = [], prints = [];
+      (it.connections || []).forEach(function (c) {
+        var text = c.protocol_name + ' (' + c.name + ')';
+        prints.push(c.name + ': ' + c.fingerprint);
+        if (!seen[text]) { seen[text] = true; through.push(text); }
+      });
+      line.textContent = 'AI card · ' + target.label + (through.length ? ' · reached through ' + through.join(', ') : '');
+      if (prints.length) line.title = 'Fingerprint at run time, ' + prints.join('; ');
+    }
+    return line;
+  }
+
+  function render(data) {
+    var crumb = $('crumb');
+    var back = el('a', null, 'Collect evidence · Results');
+    back.href = '/evidence.html?project=' + enc(slug) + (version ? '&version=' + enc(version) : '');
+    crumb.appendChild(back);
+    var target = (data.targets || []).filter(function (t) {
+      return (t.key === null ? 'none' : t.key) === targetKey;
+    })[0];
+    if (!target) { show('page-message', 'No such system or component in this project.'); return; }
+    crumb.appendChild(el('span', null, '›'));
+    crumb.appendChild(el('b', null, 'Tested: ' + target.label + ' (' + kindOf(target) + ')'));
+    if (data.version) crumb.appendChild(el('span', null, '· Version ' + data.version.number));
+
+    show('tools-head');
+    var all = $('all-tools');
+    all.textContent = 'Every test\'s charts →';
+    all.href = data.dashboards_url;
+
+    var box = $('tools');
+    target.tools.forEach(function (it) {
+      var a = el('a', 'tool');
+      // its own tile, synced by the platform before it opens, filtered on this target and card version
+      a.href = it.dashboard_url;
+      a.appendChild(el('span', 'tool-name', it.label));
+      a.appendChild(el('span', 'tool-runs', it.executed + ' completed · ' + it.failed + ' failed · ' +
+        it.running + ' running' + (it.last_run ? ' · last run ' + day(it.last_run) : '')));
+      var assessed = assessedLine(target, it);
+      if (assessed.textContent) a.appendChild(assessed);
+      if (it.helpers && it.helpers.length) a.appendChild(el('span', 'tool-helpers', helpersLine(it.helpers)));
+      a.appendChild(el('span', 'tool-open', 'Open charts →'));
+      box.appendChild(a);
+    });
+    // the installed tools with no run on this target, greyed: the platform's list (one per engine plugin)
+    (target.greyed || []).forEach(function (it) {
+      var off = el('div', 'tool is-off');
+      off.appendChild(el('span', 'tool-name', it.label));
+      off.appendChild(el('span', 'tool-runs', 'Installed, not run on it yet'));
+      box.appendChild(off);
+    });
+    if (!box.children.length) box.appendChild(el('p', 'note', 'No tests installed yet: pick them in step 3, Tests and checklists.'));
+  }
+
+  function boot() {
+    $('back').href = '/evidence.html?project=' + enc(slug);
+    $('back').textContent = '\u2190 Collect evidence';
+    aisc.call('/api/projects/' + enc(slug)).then(function (p) {
+      if (p.status === 0) { show('page-message', p.message); return; }
+      if (!p.ok) { show('page-message', 'No such project: ' + slug + '.'); return; }
+      $('project-name').textContent = p.data.name;
+      document.title = p.data.name + ' - Results';
+      return aisc.call('/api/projects/' + enc(slug) + '/evidence' + (version ? '?version=' + enc(version) : ''))
+        .then(function (ev) {
+          if (!ev.ok) { show('page-message', ev.message); return; }
+          render(ev.data);
+        });
+    });
+    aisc.call('/oauth2/userinfo').then(function (u) {
+      var d = u.data;
+      $('who').textContent = d ? (d.preferredUsername || d.user || d.email || 'user') : 'signed in';
+    });
+  }
+  boot();
+</script>
+</body>
+</html>

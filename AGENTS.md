@@ -9,6 +9,9 @@ If you believe an invariant must change, **stop and write an ADR** in [`docs/adr
 
 ## The invariants (one line each)
 
+**Delivery exception:** ADR 0003 supersedes 0002: defer I1/I2 and inherited *per-run target credential*
+handling until post-port, but block worker-wide secret inheritance by plugin subprocesses now.
+
 - **I1 — a run is self-contained.** Hand the worker everything at dispatch; it must finish with the
   backend and platform **down**; the backend observes status by id; results are posted at the end.
   *Never add a mid-run call from the run path to a backend/platform endpoint.*
@@ -21,8 +24,8 @@ If you believe an invariant must change, **stop and write an ADR** in [`docs/adr
   `MIDDLEWARE` or the URLconf. Toggle behaviour with a registered feature flag.
 - **I5 — the domain is the model layer.** Own your tables via ORM models/migrations in your app; never
   query another app's tables with raw SQL; one migration tool.
-- **I6 — one place cuts a version, and governed changes are ledgered.** Immutability is enforced in app
-  code, not only in a DB trigger.
+- **I6 — one version cut, one audit writer.** Extend main's immudb audit module; preserve its best-effort
+  delivery semantics for this refactor (ADR 0001). Immutability is enforced in app code.
 - **I7 — no secret leaves the point of use.** Scrub every outbound path (plugin, artifact, log, message).
 - **I8 — new moving part ⇒ ADR.** A new service, database, datastore or top-level dependency needs an ADR
   with an owner, a cost, and a removal condition.
@@ -37,6 +40,37 @@ If you believe an invariant must change, **stop and write an ADR** in [`docs/adr
 - **I11 — one container per deployable process.** A container is one long-lived service (layer, published, or
   infra). Migrations/init are **steps**, dev tools are **profiles**, a domain is **never** split across
   containers. (The deployment view of I9.)
+
+## Refactor scope (2026-11-16; ADR 0001 + ADR 0003)
+
+- Freeze reviewed `feat/unified-app` pins; start from main/master in parent and selectively merge frozen
+  backend, webapp, eval, plugin-interface and plugin-manager commits. **Do not merge the parent** or
+  qualification/controls legacy app branches. Preserve mainline parent deployment/e2e/docs.
+  Only mainline installations need data-preserving upgrades; exploration-branch data needs no importer.
+- Enforce project isolation and roles through one ORM/access mechanism across all endpoints.
+  PostgreSQL RLS is not required. Fix unified-app's permissions, membership and version-history gaps.
+  Use deny-by-default route coverage and two-project behavioural tests; fix the plugin child environment
+  allowlist before considering isolation complete (ADR 0003).
+- Port pilot's full retained reporting behaviour into the one backend/webapp report feature, extending
+  useful unified-app foundations. Preserve explicit publish and immutable snapshots.
+- Preserve the pilot launcher's look, feel, navigation and four-step assessment flow in the existing
+  React webapp. Structure pages and table-owning Django features around the plan §2.1 / brief D11–D12
+  mapping; reuse unified-app functionality beneath the pilot presentation. Close-enough visual review
+  of the shell and hubs is sufficient; no pixel-perfect acceptance gate.
+- Keep one audit implementation: main's backend audit helper + immudb. Do not port a second ledger,
+  gateway witness or inter-service outbox/relay. Delivery remains best-effort, not lossless.
+- Keep Superset's isolated Redis cache. Sharing a technology does not require sharing a trust boundary.
+- Preserve the working main/unified-app plugin runtime during the port. A plugin subprocess must never
+  inherit worker-wide service credentials; a narrow environment allowlist is an immediate gate.
+  Self-contained dispatch, run-local doors and isolation of *per-run target credentials* are post-port
+  work (ADR 0003). Port required adapter functionality through existing mechanisms.
+- Only mainline data needs preservation: unshipped unified-app compliance migrations may be rewritten
+  into destination Django apps. Keep existing functionality until duplication is proved and reviewed;
+  new production renderer dependencies need an I8 ADR, not a premature feature cut.
+- Keep layer/domain consolidation and optional-domain flags in scope; retire duplicate platform/domain
+  services after feature parity without requiring the deferred execution redesign.
+- Instructions/review decide architecture; the small pytest suite catches concrete regressions.
+  Do not create a checker per invariant or expand this port into a tooling project.
 
 ## Before you propose a change
 
@@ -53,12 +87,11 @@ the guard's allowlist entry plus the linking ADR is the only acceptable form.
 - [`docs/refactor-plan.md`](docs/refactor-plan.md) — **the phased implementation plan** and the
   invariant → guard → step spine. Start here to do the work.
 - [`docs/unified-modules-and-pilot-brief.md`](docs/unified-modules-and-pilot-brief.md) — **the decisions**
-  (D1–D12): the two-phase roadmap (`unified-modules` then `pilot`) and the five-step method.
+  (D1–D12): the unified-app-first roadmap, pilot feature port and five-step method.
 - [`docs/architecture.md`](docs/architecture.md) — how AISC works (descriptive; subordinate to the above).
 - [`docs/exploration-branches.md`](docs/exploration-branches.md) — how pilot branches are treated (features,
   not code).
-- [`tests/architecture/`](tests/architecture/README.md) — **the gates**: one guard per invariant, and what is
-  still to write.
+- [`tests/architecture/`](tests/architecture/README.md) — small regression checks and their limitations.
 - [`docs/adr/`](docs/adr/) — **the exceptions**: the only sanctioned way to change an invariant.
 - [`docs/appendices/`](docs/appendices/) — per-step and per-concern detail.
 - [`SCRATCH-platform-adapters/`](SCRATCH-platform-adapters/README.md) — **scratch design notes** (not
@@ -66,14 +99,15 @@ the guard's allowlist entry plus the linking ADR is the only acceptable form.
 
 ## Working rules for agents here
 
-The full loop is [`docs/refactor-plan.md`](docs/refactor-plan.md) §6. In short:
+The full loop is [`docs/refactor-plan.md`](docs/refactor-plan.md) §1. In short:
 
 - **Port the need, not the code.** Don't port something because it exists — ask if it's needed, if it
   duplicates or overlaps existing code, and if an existing mechanism can be extended instead. Basic
   assumptions are fine; when the need is genuinely ambiguous, **ask a human** rather than port it.
 - Prefer editing an existing module over adding a new one; prefer a model over a query; prefer a flag over
   a mode; prefer a local call over a network hop; prefer a step over a container.
-- Do not silence or delete a guard to make a change pass; when a guard `xpass`es, remove its marker.
+- Do not silence or delete a guard to make a change pass. Shrink named violation baselines as work lands;
+  new detected violations must fail even while other baseline findings remain.
 - Keep changes inside the app that owns the concern. If you are not sure which app owns it, ask.
 - Update the nearest `README`/doc when you change behaviour — but never edit an invariant to match code;
   change the code or write the ADR.

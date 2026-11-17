@@ -1,3 +1,0 @@
-{
-  "_comment": "ADR-backed waivers for architectural guards. An entry is {path, adr, reason}. See docs/adr/README.md. Empty by design: the refactor removes the smells rather than waiving them."
-}

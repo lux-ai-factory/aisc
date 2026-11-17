@@ -2,6 +2,13 @@
 
 Back to [How AISC works](../architecture.md).
 
+> **Port target:** preserve this pilot hub's appearance, AI-card version selector, Evidence map/coverage
+> and four-column workflow inside React. Extend the merged run/checklist/result/report pages beneath
+> that shell. The [plan's screen-to-owner map](../refactor-plan.md#21-pilot-ui-contract-and-screen-to-owner-map)
+> defines Django ownership; the plan's reporting workstream defines full retained report behaviour.
+> Service addresses below are historical pilot details, not destination boundaries.
+> Review the hub at desktop/mobile sizes for a close-enough experience, not pixel-perfect parity.
+
 ## Purpose
 
 Step 4 carries out the assessment and reports on it. People answer the checklists, the tests run on the system, the
