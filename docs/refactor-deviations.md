@@ -251,6 +251,88 @@ webapp 177 → 181 (the fixture went from two objectives to the four a real map
 returns, and the page gained the filter row-set, note/unlink, refusal and viewer
 tests), guards and eval unchanged.
 
+## E5 reporting parity (REP-01 / REP-02)
+
+Ported the pilot's reporting onto the **existing** integration branch (no merge of `pilot`). The
+existing report router (`GET /{pid}/reports`, `POST /{pid}/reports/generate`, `/report-settings`,
+`/reports/{report_pid}`, `/reports/{report_pid}/pdf`) was **extended, not replaced**.
+
+**REP-01 — layouts, blocks, immutable snapshot.**
+
+- New `ReportLayout` (ordered `blocks`, `show_index`, `numbering`, `revision`) + `Report` gains
+  `project`, `layout`, `layout_revision`, `snapshot_checksum`, `document_checksum` and `document_pdf`
+  (migration `0035_reportlayout_and_snapshot_checksums`).
+- `services/report_blocks.py`: the pilot's block vocabulary as a registry with per-block option
+  schemas, `validate_blocks` (unknown type / duplicate instance / bad enum → 422), `outline`
+  (chapter numbering, appendix letters) and **five built-in layouts** (Summary, Management overview,
+  Assessment report, EU AI Act, Technical dossier). `MAX_BLOCKS=50`.
+- `services/report_snapshot.build_snapshot` now freezes the selected AI-card **version**, the evidence
+  map's **coverage** of that version (from `EvidenceLink`/`EvidenceReview`, with a `stale` flag for a
+  link the matrix no longer selects), the layout and its blocks, the picked evaluations and sections,
+  and the project/system/controls/objectives — all read from the ORM **once at generation time**. The
+  snapshot is stored on the `Report` row with a SHA-256 checksum; every read (`/reports/{pid}`,
+  `/snapshot`, `/pdf`) is served from it, so a published report does not change when the project does.
+- New layout endpoints: list (built-ins first), create, get, update (revision bump), delete,
+  duplicate (fresh instance ids), export/import (portable file), preview (HTML, never saved),
+  `report-block-types` (the composer palette).
+
+**REP-02 — real PDF/Word and a React composer.**
+
+- `services/report_render.py` renders a real **PDF** (`reportlab`) and **Word** (`python-docx`) from
+  the frozen snapshot; `report_service.generate` prefers an external renderer when
+  `REPORT_SERVICE_URL` is set and otherwise renders **in-process** — the old HTML-summary fallback is
+  gone, so a `pdf`/`docx` request is always a real document. A Word report also stores a PDF companion
+  so `/pdf` always streams a PDF; the primary document is at `/reports/{pid}/download`.
+- `pages/ReportPage.tsx` is now a composer: layout cards (built-ins + project), an ordered block
+  outline (add from the palette, move, remove, edit options), HTML preview, and a generate dialog with
+  layout, AI-card version, evaluations, sections, period and PDF/Word. It uses the existing brand
+  classes (`.brand-block`, `.brand-step`, `.brand-mono`); the pilot's static `homepage/` was reference
+  only, not shipped.
+
+**Deviations / left undone (owned by later issues, not blocking).**
+
+- **Renderer engine differs from the pilot.** The pilot renders HTML→PDF with **WeasyPrint** (system
+  cairo/pango libs) plus `python-docx`; this port renders with `reportlab` + `python-docx`, no browser
+  and no system libs. Recorded as the I8 decision in [`adr/0004-reporting-renderer-dependencies.md`](adr/0004-reporting-renderer-dependencies.md).
+  **Not yet ported:** the pilot's Jinja HTML/CSS template fidelity, `cairosvg` SVG logos and the
+  per-tool plugin renderers (`aisc-report-plugin-*` via the `aisc_report.tools` entry point). The
+  *information* of each block is retained; the exact styling is not. ADR 0004 names the removal
+  condition (adopt WeasyPrint/templates as the in-process renderer if fidelity becomes a requirement).
+- **`report-settings.default_format` now also accepts `docx`** (was `pdf | html`); the existing
+  bad-format test was updated to use `rtf` and a new `docx`-default test added.
+- **Local-model exclusion has no equivalent.** The pilot could exclude a local model; the unified app
+  has no such concept, so a report is scoped to project + selected version + picked evaluations.
+  Behavioural equivalent not required for parity; noted so it is not silently assumed done.
+- **Version/history surfacing** lives in the composer (version select + past-report cards), not yet
+  surfaced from the evidence hub; the pilot's `report-composer`/`report-generator` services are **not**
+  shipped (the backend owns layouts and rendering).
+- **Reports generated before this change** have no `layout_id`/checksums and no `document_pdf`; they
+  still open (their stored bytes are served for a `pdf`-format report).
+
+**Verified on this tree (commands and their output):**
+
+```
+$ cd apps/backend && uv run python manage.py test
+Ran 297 tests in 8.293s
+OK                                   # 271 → 297 (report layouts, blocks, snapshot, render, versions)
+
+$ DB_ENGINE=django.db.backends.sqlite3 DB_NAME=/tmp/fresh35.db uv run python manage.py migrate
+  Applying aisc_backend.0035_reportlayout_and_snapshot_checksums... OK
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ cd apps/webapp && npm run build
+dist/assets/index-Dhd83SV1.js   2,434.09 kB │ gzip: 747.17 kB
+✓ built in 6.46s
+
+$ npx vitest run
+ Test Files  32 passed (32)
+      Tests  190 passed (190)        # 181 → 190 (composer + layout/preview/generate lib tests)
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                  # unchanged baseline, 0 failed
+```
+
 ## Run it locally
 
 ```bash
