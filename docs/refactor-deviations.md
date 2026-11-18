@@ -38,12 +38,12 @@ branch is testable end to end.
 
 The **v2** guard suite (`tests/architecture/`, landed by DOC-01) uses *named baselines*: a known finding is
 recorded under its ADR and reported as `xfail`; a **new** finding fails. Run:
-`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX` → **5 passed, 3 xfailed,
-0 failed** on this tree.
+`uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX` → **7 passed, 1 xfailed,
+0 failed** on this tree (at acceptance; I1 and I11 have since been closed — see the acceptance section).
 
 | invariant | state | evidence / owner |
 |---|---|---|
-| **I1** worker fetch mid-run | xfail (baseline) | the 5 findings are the **dispatcher** (`run_evaluation`) and `_embed_input_files` attaching inputs/settings **before** dispatch, plus status reconciliation in `finalize_evaluation`. `run_plugin` is self-contained, so I1 holds; the AST heuristic cannot tell dispatcher from runner. ADR 0003 / EXEC-01 #120 |
+| **I1** worker fetch mid-run | pass | the 5 findings are the **dispatcher** (`run_evaluation`) and `_embed_input_files` attaching inputs/settings **before** dispatch, plus status reconciliation in `finalize_evaluation`. `run_plugin` is self-contained, so I1 holds; closed by EXEC-01a #120: the fetches moved into `aisc_eval/dispatch.py` at dispatch time and the worker performs none. ADR 0003 / EXEC-01 #120 |
 | **I9** domain-slice module | xfail (baseline) | `apps/qualification`, `apps/controls` are still full-stack slices (ADR 0001) |
 | **I11** no step containers | pass | the one-shot `make_buckets` bucket-init containers were removed from `docker-compose.yml` and `docker-compose-infra*.yml` (REL-02); buckets are created by the documented one-off `scripts/make-buckets.sh` |
 | **I2** plugin child env allowlist | satisfied | `plugin_child_env()` allowlist (eval conformance fold) |
@@ -1065,3 +1065,45 @@ git config --global url."https://github.com/".insteadOf "git@github.com:"
 ```
 
 _This document was created by an AI agent (OpenHands) on behalf of the requester._
+
+## Final acceptance sweep (REL-01 #119) — 2026-11-18
+
+Run from a **fresh clone** of `integration/int-01-frozen-unified-app` with
+`--recurse-submodules` (so this is exactly what a tester pulls), plus the working
+tree. Every submodule gitlink resolved; no commit was missing from the remotes.
+
+| check | command | result |
+|---|---|---|
+| architecture guards | `pytest tests/architecture -q` | **7 passed, 1 xfailed, 0 failed** |
+| backend suite | `uv run python manage.py test` | **482 passed, OK** |
+| migrations drift | `manage.py makemigrations --check` | **No changes detected** |
+| fresh database | `migrate` on an empty SQLite file | **clean, 60 tables** |
+| webapp suite | `npx vitest run` | **273 passed (42 files)** |
+| webapp build | `npm run build` | **clean** |
+| compose | `docker compose config -q` (published / build / infra / staging / development) | **all OK** |
+
+Two defects were found and fixed in the sweep (they were invisible to the
+per-issue worker tests, which is why the sweep exists):
+
+1. **Optional features defaulted OFF.** The flag registry shipped with the lean
+   profile as the default, so the full profile — the normal build — answered 404
+   on qualification/objectives/controls/reporting and broke 133 backend tests.
+   Full is the default again (`config/settings.py`, `aisc_backend/flags.py`); the
+   lean profile is the `FEATURE_*=false` opt-out. Five router test classes that
+   predate the auth door now grant the development caller `Owner`, as the other
+   router tests already did.
+2. **`env.example` shipped `DASHBOARD_REDIS_PASSWORD=` empty.** Compose requires
+   it (`:?`), so the documented `cp env.example .env` flow could not start any
+   profile. It now carries a local-only default, with the guard kept for real
+   deployments.
+
+**Remaining reviewed deviation.** **I9** — `apps/controls` and `apps/qualification`
+are still full-stack domain slices (ADR 0001); their retained behaviour is served
+from `backend`/`webapp`, and the slices are reference-only. This is the only
+`xfail` left, it is recorded, and it expires at release.
+
+**Release decision (REL-01).** The branch is accepted as a **working integration
+branch, testable end to end** — not a release. The frozen-app port, the security
+work (SEC-01/02/03), the versioning/identity work (VER-01), the audit and flag
+core (CORE-01) and the execution work (EXEC-01) are all on it; the one open
+invariant is the recorded I9 consolidation debt above.
