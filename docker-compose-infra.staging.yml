@@ -146,7 +146,21 @@ services:
       - backend
       - frontend
 
+  immudb:
+    image: codenotary/immudb:1.11.1     # pinned; latest stable on Docker Hub
+    container_name: immudb
+    environment:
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD:?Set the immudb admin password}
+      IMMUDB_FORCE_ADMIN_PASSWORD: "true"               # apply that password at startup (skip change-on-first-login)
+      IMMUDB_DIR: /var/lib/immudb                        # data folder (default ./data) -> the mounted volume
+    volumes:
+      - immudb_data:/var/lib/immudb     # persist the ledger
+    networks:
+      - backend
+
+
 volumes:
+  immudb_data:
   minio_data: # Persistent storage for MinIO
   postgres_data: # Persistent storage for PostgreSQL
   rabbitmq_data: # Persistent storage for RabbitMQ

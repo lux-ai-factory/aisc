@@ -2,11 +2,10 @@ services:
   # # Frontend development container
   aisc-webapp:
     image: ghcr.io/lux-ai-factory/aisc-webapp:wip-plugins
-    ports:
-      - "5173:80" # Development server port
     container_name: aisc-webapp
     environment:
       APP_API_URL: ${API_URL_EXTERNAL}
+      APP_SHOW_CELERY_TASKS: ${SHOW_CELERY_TASKS:-false}
       APP_SHOW_PLUGIN_VISUALIZATION: ${SHOW_PLUGIN_VISUALIZATION}
       # Auth toggle injected into the built JS at container start (env.sh replaces APP_AUTH_ENABLED).
       APP_AUTH_ENABLED: ${AUTH_ENABLED}
@@ -70,6 +69,8 @@ services:
       redis:
         condition: service_started
       rabbitmq:
+        condition: service_started
+      immudb:
         condition: service_started
 
   aisc-eval-worker:
