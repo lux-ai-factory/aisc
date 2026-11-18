@@ -20,18 +20,8 @@ services:
       timeout: 10s
       retries: 5
 
-  # MinIO bucket initialization service
-  make_buckets:
-    image: quay.io/minio/mc
-    depends_on:
-      minio:
-        condition: service_healthy  # Wait for MinIO to be ready
-    environment:
-      MINIO_ROOT_USER: ${S3_USER}        # MinIO credentials for bucket creation
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
-    volumes:
-      - ./tasks/minio_add_bucket.sh:/minio_add_bucket.sh  # Mount initialization script
-    entrypoint: /minio_add_bucket.sh
+  # The S3 buckets (`datasets`, `models`, `artifacts`) are created by a
+  # documented one-off command, not an init container (I11). See README, "Run it".
 
   # RabbitMQ Message queue to send the jobs
   rabbitmq:

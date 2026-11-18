@@ -45,7 +45,7 @@ recorded under its ADR and reported as `xfail`; a **new** finding fails. Run:
 |---|---|---|
 | **I1** worker fetch mid-run | xfail (baseline) | the 5 findings are the **dispatcher** (`run_evaluation`) and `_embed_input_files` attaching inputs/settings **before** dispatch, plus status reconciliation in `finalize_evaluation`. `run_plugin` is self-contained, so I1 holds; the AST heuristic cannot tell dispatcher from runner. ADR 0003 / EXEC-01 #120 |
 | **I9** domain-slice module | xfail (baseline) | `apps/qualification`, `apps/controls` are still full-stack slices (ADR 0001) |
-| **I11** no step containers | xfail (baseline) | main's compose keeps one-shot `make_buckets` steps in `docker-compose.yml` and `docker-compose-infra*.yml`; the docs tree renamed these to `engine-standalone` (ADR 0001). REL-01/REL-02 |
+| **I11** no step containers | pass | the one-shot `make_buckets` bucket-init containers were removed from `docker-compose.yml` and `docker-compose-infra*.yml` (REL-02); buckets are created by the documented one-off `scripts/make-buckets.sh` |
 | **I2** plugin child env allowlist | satisfied | `plugin_child_env()` allowlist (eval conformance fold) |
 | **I7** outbound scrub | satisfied | `aisc_eval/utils/scrub.py` on stdout/stderr/artifacts |
 | **I3 / I4** plugin-interface independence, one deployment contract | pass | — |

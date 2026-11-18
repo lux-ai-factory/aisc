@@ -60,6 +60,10 @@ cp env.example .env
 
 # 3. Start the platform (pulls pre-built images from ghcr.io)
 docker compose up -d
+
+# 4. Create the object-storage buckets (one-off step; the stack ships no
+#    bucket-init container)
+scripts/make-buckets.sh
 ```
 
 The **first** start downloads the images and clones the default evaluation
@@ -146,12 +150,18 @@ Quick reference for the two most common contributor workflows:
 docker compose --env-file env.development \
   -f docker-compose-infra.development.yml \
   -f docker-compose.development.yml up
+
+# create the object-storage buckets once (no bucket-init container any more)
+COMPOSE_FILE=docker-compose-infra.development.yml:docker-compose.development.yml \
+  COMPOSE_ENV_FILES=env.development scripts/make-buckets.sh
 ```
 
 **Develop the core apps** (infra in Docker, apps running locally):
 
 ```bash
 docker compose --env-file env.development -f docker-compose-infra.development.yml up
+COMPOSE_FILE=docker-compose-infra.development.yml COMPOSE_ENV_FILES=env.development \
+  scripts/make-buckets.sh
 # then run backend/webapp/eval from your IDE (see .vscode/ and .run/)
 ```
 

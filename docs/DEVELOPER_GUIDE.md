@@ -97,6 +97,10 @@ Docker and mount your local plugins.
    docker compose --env-file env.development \
      -f docker-compose-infra.development.yml \
      -f docker-compose.development.yml up
+
+   # create the object-storage buckets once (one-off step, not a container)
+   COMPOSE_FILE=docker-compose-infra.development.yml:docker-compose.development.yml \
+     COMPOSE_ENV_FILES=env.development scripts/make-buckets.sh
    ```
 
 Your plugins are automatically mounted and loaded into both the backend and the
@@ -116,6 +120,10 @@ easier to run the **infrastructure in Docker** and the apps **locally**.
 
 ```bash
 docker compose --env-file env.development -f docker-compose-infra.development.yml up
+
+# create the object-storage buckets once (one-off step, not a container)
+COMPOSE_FILE=docker-compose-infra.development.yml COMPOSE_ENV_FILES=env.development \
+  scripts/make-buckets.sh
 ```
 
 This starts PostgreSQL, RabbitMQ, Redis, MinIO, Keycloak, immudb and Caddy.
@@ -175,6 +183,10 @@ docker compose --env-file env.plugin_downloader \
   -f docker-compose.plugin_downloader.yml \
   -f docker-compose-infra.development.yml \
   -f docker-compose.development.yml up
+
+# create the object-storage buckets once (one-off step, not a container)
+COMPOSE_FILE=docker-compose.plugin_downloader.yml:docker-compose-infra.development.yml:docker-compose.development.yml \
+  COMPOSE_ENV_FILES=env.plugin_downloader scripts/make-buckets.sh
 ```
 
 The `plugin_downloader` service clones the default plugin repositories into

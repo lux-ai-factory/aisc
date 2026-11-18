@@ -65,7 +65,7 @@ platform.
 | `aisc-eval-flower` | The monitor of the test runs' task queue, for admins (`inspect` profile). | `rabbitmq` |
 | `rabbitmq` | The queue that carries test runs to the worker. | |
 | `redis` | Where the worker keeps task results. | |
-| `minio`, `make_buckets` | S3 storage: buckets `datasets`, `models`, `artifacts`. `make_buckets` (*one-shot*) creates them. | |
+| `minio` | S3 storage: buckets `datasets`, `models`, `artifacts` (created by the one-off `scripts/make-buckets.sh`, not an init container). | |
 | `dashboard` | Superset with AISC's extension: one dashboard per test per project, comments and review requests. | `postgres` (database `superset`, the project databases read-only), `dashboard-redis`, `platform` |
 | `dashboard-migrate` | *One-shot.* Superset's migrations. | `postgres` |
 | `dashboard-redis` | Superset's own cache, with a password, on a network only the dashboard's services join. | |
