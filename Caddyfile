@@ -1,13 +1,80 @@
-(tls-development) {
+(development) {
+  # Local dev terminates TLS with Caddy's internal CA (no public DNS/LetsEncrypt —
+  # *.sslip.io resolves to 127.0.0.1, so a public cert can't be issued).
   tls internal
+  import application-routes
 }
 
-(tls-staging) {
+(staging) {
   tls /etc/caddy/aisctest.uni.lux.cert /etc/caddy/aisctest.uni.lux.key
+  import application-routes
 }
 
+(application-routes) {
+  # Explicit ordering keeps private endpoints ahead of the public API.
+  route {
+    @internal path /api/v1/internal /api/v1/internal/*
+    handle @internal {
+      respond "Forbidden - Internal Service Only" 403
+    }
 
-{$CADDY_DOMAIN}:{$CADDY_PORT} {
+    @django path /api /api/* /admin /admin/* /static/*
+    handle @django {
+      reverse_proxy aisc-backend:8000 {
+        header_up X-Real-IP {remote_host}
+      }
+    }
+
+    # Keycloak serves /auth natively. Preserve the path, with no forwarded prefix.
+    @keycloak path /auth /auth/*
+    handle @keycloak {
+      reverse_proxy keycloak:8080 {
+        header_up X-Real-IP {remote_host}
+      }
+    }
+
+    # Flower is available only through Django's admin-protected monitoring API.
+    @flower path /flower /flower/*
+    handle @flower {
+      respond "Not Found" 404
+    }
+
+    handle {
+      reverse_proxy aisc-webapp:80 {
+        header_up X-Real-IP {remote_host}
+      }
+    }
+  }
+}
+
+# Internal links: a single map from a stable /internal/<service> namespace to
+# the microservice containers. Bound to :8080 which compose does NOT publish to
+# the host, so only peers on the docker networks can reach it. The public site
+# above never routes to these. All auth/service-token headers pass through.
+(internal-routes) {
+  handle_path /internal/qualification/* {
+    reverse_proxy qualification:8000
+  }
+  # the report service is reached only by the backend, directly at http://report:8080
+  # (it draws the backend's JSON snapshot); never through Caddy.
+  # Flower serves under /flower because of FLOWER_URL_PREFIX; keep that prefix.
+  handle /internal/flower/* {
+    uri replace /internal/flower /flower
+    reverse_proxy aisc-eval-flower:5555
+  }
+  # The eval worker's internal API door: /internal/backend/api/v1/internal/*.
+  handle_path /internal/backend/* {
+    reverse_proxy aisc-backend:8000
+  }
+}
+
+:8080 {
+  import internal-routes
+}
+
+# Scheme in CADDY_DOMAIN picks the listener: http://… -> :80, https://… -> :443
+# (development handles https with `tls internal`; staging uses its static cert).
+{$CADDY_DOMAIN} {
   log {
     format console
     output file {$LOG_FILE} {
@@ -15,54 +82,5 @@
       roll_keep 10
     }
   }
-
-  import tls-{$CADDY_ENVIRONMENT}
-
-  # Reverse proxy to aisc-backend, Django Admin section
-  handle /admin* {
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
-
-  # Reverse proxy to aisc-backend, this will serve the static assets need by Django Admin
-  handle /static/admin/* {
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
-
-  # Internal API should only be accessible inside the containers, block all external access
-  handle /api/v1/internal/* {
-    respond "Forbidden - Internal Service Only" 403
-  }
-
-  # Should be the backend API, so forward also this path there
-  handle /api/* {
-    reverse_proxy aisc-backend:8000 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
-
-  # Flower 
-  handle /flower/* {
-    reverse_proxy aisc-eval-flower:5555 {
-        header_up X-Real-IP {remote_host}
-      }
-  }
-
-  # Same-origin Keycloak SSO under /auth. Do NOT send X-Forwarded-Prefix —
-  # with proxy-headers=xforwarded it doubles Keycloak's native /auth path.
-  handle {$CADDY_KEYCLOAK_PATH:/noauth}/* {
-    reverse_proxy keycloak:8080 {
-      header_up X-Real-IP {remote_host}
-    }
-  }
-
-  # Serve the JS frontend by default
-  handle {
-    reverse_proxy aisc-webapp:80 {
-      header_up X-Real-IP {remote_host}
-    }
-  }
+  import {$CADDY_ENVIRONMENT}
 }

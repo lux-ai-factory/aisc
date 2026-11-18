@@ -5,19 +5,21 @@ services:
     container_name: caddy
     restart: always
     ports:
-      - 443:8005
+      - "80:80"
+      - "443:443"
     volumes:
-      - /home/deployer/config/caddy:/etc/caddy/:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /home/deployer/config/caddy/aisctest.uni.lux.cert:/etc/caddy/aisctest.uni.lux.cert:ro
+      - /home/deployer/config/caddy/aisctest.uni.lux.key:/etc/caddy/aisctest.uni.lux.key:ro
       - /home/deployer/data/caddy:/data
     environment:
       LOG_FILE: "/data/access.log"
-      CADDY_DOMAIN: "aisctest.uni.lux"
-      CADDY_PORT: "8005"
+      CADDY_DOMAIN: "https://aisctest.uni.lux"
+      CADDY_PORT: "443"
       CADDY_ENVIRONMENT: "staging"
       # Keycloak on the same origin as the app, under /auth (no DNS/cert for a
-      # subdomain). Must include the leading slash; Caddy proxies /auth/* through
+      # subdomain). Caddy proxies /auth/* through
       # unchanged (KC_HTTP_RELATIVE_PATH=/auth makes Keycloak serve that prefix).
-      CADDY_KEYCLOAK_PATH: "/auth"
     networks:
       - backend
       - frontend

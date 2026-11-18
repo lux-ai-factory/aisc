@@ -5,16 +5,16 @@ services:
     container_name: caddy
     restart: always
     ports:
-      - "443:8005"
-      - "${CADDY_HOST_PORT:-80}:8005"
+      - "${CADDY_HOST_PORT:-80}:80"
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      # Persist Caddy's TLS state (internal CA for dev) across restarts.
+      - caddy_data:/data
     environment:
       LOG_FILE: "/data/access.log"
       CADDY_DOMAIN: ${CADDY_DOMAIN}
-      CADDY_PORT: "8005"
       CADDY_ENVIRONMENT: ${CADDY_ENVIRONMENT}
-      CADDY_KEYCLOAK_PATH: /auth
     networks:
       - backend
       - frontend
@@ -178,6 +178,7 @@ services:
 
 
 volumes:
+  caddy_data: # Persistent TLS certs/state for Caddy
   immudb_data: # Persistent storage for the immudb ledger
   minio_data: # Persistent storage for MinIO
   postgres_data: # Persistent storage for PostgreSQL
