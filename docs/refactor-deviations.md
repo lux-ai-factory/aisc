@@ -966,6 +966,85 @@ ok   the server's command line does not carry the password
 _This section was written by an AI agent (OpenHands) on behalf of the requester; items 1–5 are recorded
 for the owner, not silently dropped._
 
+## E4 remainder, part 5: the tile body the dashboard actually reads, and a plugin the catalogue cannot dimension (ANA-01 #115, CAT-01 #122)
+
+Two real gaps were found by reading the *other* side rather than this branch, and closed on the same
+branch (no merge restarted). The decisions are recorded here rather than left implied; no invariant
+changed, so no ADR, and no model or migration (`makemigrations --check`: "No changes detected").
+
+**The dashboard's bridge read a body we did not send (ANA-01).** `aisc_ext.plugin_tiles.plugin_request`
+— the validator behind `PUT /api/v1/aisc_project/<pid>/plugins`, read from the dashboard's own public
+repository — takes `plugin`, `label`, `version`, `project_name` and `visualizations` (the plugin's
+`metric_visualizations`), and `again` only when a tile someone deleted is remade. Ours sent
+`{"plugin", "label", "charts"}`, so the dashboard's validator *accepted* the call and made a tile with
+**no charts and no version** — a silent empty dashboard, which is worse than a refusal. `sync_tool` now
+sends that contract (`apps/backend` `98dbd9c`) and `docs/ops/results-dashboard.md` documents it. The
+client is still not wired into a page: the results page links the one dashboard with a signed, scoped
+link per tool (part 3's design), and the pilot's per-plugin tiles are a dashboard-side concern that a
+deployment wanting them can now ask for with a correct body.
+
+**A plugin the catalogue cannot dimension is kept, not hidden (CAT-01).** A local-only plugin that
+neither the hosted catalogue nor a `type: test` item names carries no dimension, so the project filter
+dropped it — silently. This is the one place the pilot hides an item; the caller listed it before the
+filter, so dropping it makes a working plugin disappear with nothing said. `filterCatalogue` now keeps
+such an item under an active filter and the card carries a `no catalogue dimension` chip; an item that
+*has* dimensions and none of ours is still filtered out (`apps/webapp` `347ec00`,
+`lib/catalogue.unmatchedByDimensions`). This one **is** a deliberate deviation from the pilot: the
+unified app prefers "show it, marked" to "hide it quietly". Owner may reverse it by dropping the
+`unmatchedByDimensions` clauses.
+
+### Still open (unchanged from part 3/4, restated so it is not lost)
+
+1. **The dashboard bridge is unit-tested only in this environment.** Registration, the tile body and
+   the signed scoped link are proven by `test_dashboard_bridge.py` (9), `test_dashboard_link.py` (10),
+   `test_results_router.py` (10) and `test_dashboard_redis_compose.py` (9); the tile body was also
+   cross-checked against the dashboard's own `plugin_request` (public
+   `lux-ai-factory/aisc-results-dashboard`), which is how the gap above was found. A live Superset is
+   not runnable here (no Docker daemon for the stack, and a Superset install needs a project's Postgres
+   with the engine schema for the tile sync). This is an environment limit, not a known deviation.
+2. **The dashboard Redis deployment half is not run.** `scripts/verify-dashboard-redis.sh --local`
+   passes on this host (password-protected, loopback-only, storing nothing); which network the cache is
+   on and who shares it needs a running stack.
+3. **QUAL-01's two reclassifications still want the owner's word** (the card-correction *sign-off* —
+   the pilot has one person reviewing — and the pre-fill's *text rules*, absent from the frozen
+   `apps/qualification`). Recorded on #113; neither blocks parity.
+4. **`pypdf` remains the only new dependency.**
+
+### Evidence
+
+```bash
+$ cd apps/backend && uv run python manage.py test
+Ran 477 tests in 16.7s
+OK                                    # 476 → 477 (the tile body, and `again`)
+
+$ uv run python manage.py makemigrations --check --dry-run
+No changes detected
+
+$ uv run python manage.py migrate
+No migrations to apply
+
+$ cd apps/webapp && npx vitest run
+ Test Files  42 passed (42)
+      Tests  273 passed (273)         # unchanged count: the plugin view's two cases now assert the mark
+
+$ npm run build
+✓ built in 6.94s                      # tsc clean
+
+$ cd ../.. && uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX
+5 passed, 3 xfailed                   # unchanged baseline, 0 failed
+
+$ # the dashboard's own validator, run against both bodies (public results-dashboard repo)
+$ uv run --no-project --with pyyaml python -c "from aisc_ext.plugin_tiles import plugin_request; \
+    print(plugin_request({'plugin':'strongreject::StrongReject','label':'StrongReject', \
+    'charts':[{'chart_type':'bar','metrics':['harmful_rate']}]}))"
+{'plugin': 'strongreject::StrongReject', 'label': 'StrongReject', 'version': '',
+ 'project_name': '', 'visualizations': [], 'again': False}   # accepted, but an empty tile
+```
+
+_This section was written by an AI agent (OpenHands) on behalf of the requester; item 3 is a proposal
+for the owner to confirm (recorded on #113), and the CAT-01 deviation above is recorded for the same
+owner to accept or reverse._
+
 ## Run it locally
 
 ```bash

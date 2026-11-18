@@ -70,7 +70,7 @@ own API with the pilot's header:
 ```
 POST   <DASHBOARD_BRIDGE_URL>/api/v1/aisc_project/<pid>          {"slug", "name"}
 DELETE <DASHBOARD_BRIDGE_URL>/api/v1/aisc_project/<pid>
-PUT    <DASHBOARD_BRIDGE_URL>/api/v1/aisc_project/<pid>/plugins  {"plugin", "label", "charts"}
+PUT    <DASHBOARD_BRIDGE_URL>/api/v1/aisc_project/<pid>/plugins  {"plugin", "label", "version", "project_name", "visualizations", "again"}
 ```
 
 The pilot pushed registration on project create and deletion on drop; here it is an explicit action,
