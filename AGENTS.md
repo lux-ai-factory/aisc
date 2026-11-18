@@ -94,6 +94,9 @@ the guard's allowlist entry plus the linking ADR is the only acceptable form.
 - [`tests/architecture/`](tests/architecture/README.md) — small regression checks and their limitations.
 - [`docs/adr/`](docs/adr/) — **the exceptions**: the only sanctioned way to change an invariant.
 - [`docs/appendices/`](docs/appendices/) — per-step and per-concern detail.
+- [`docs/migrations/`](docs/migrations/README.md) — **per-release upgrade guides** (`vX-to-vY.md`) for
+  plugin authors and agents: what changed in plugin-interface/manager, backend, eval and webapp, and
+  what to do about it.
 - [`SCRATCH-platform-adapters/`](SCRATCH-platform-adapters/README.md) — **scratch design notes** (not
   binding): the case for consolidating the platform app, feature flags, and the adapter design.
 
