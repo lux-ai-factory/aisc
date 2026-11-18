@@ -26,6 +26,14 @@ def _files(pattern: str):
             yield path
 
 
+def _scanned(pattern: str) -> list[Path]:
+    """A guard's source set. An empty set is a failure: a guard must never pass because the
+    path it points at is stale or the tree is not checked out (see DOC-01 #121)."""
+    found = sorted(_files(pattern))
+    assert found, f"guard source set is empty for {pattern!r} (stale path or uninitialised checkout)"
+    return found
+
+
 def _baseline(actual, known, *, decision="ADR 0001: remaining consolidation baseline"):
     """Fail new findings before marking named debt under its scoped decision."""
     actual, known = set(actual), set(known)
@@ -58,7 +66,7 @@ def _import_roots(path: Path) -> set[str]:
 
 def _importers(pattern: str, forbidden: set[str]) -> list[str]:
     out = []
-    for path in _files(pattern):
+    for path in _scanned(pattern):
         hit = _import_roots(path) & forbidden
         if hit:
             out.append(f"{path.relative_to(ROOT)} imports {sorted(hit)}")
@@ -115,14 +123,28 @@ def test_i1_worker_does_not_fetch_from_backend_midrun():
 
 
 def test_i4_one_deployment_contract():
-    """The deployment-mode contract lives in exactly one module, or is replaced by feature flags."""
-    found = sorted(str(p.relative_to(ROOT)) for p in _files("apps/**/deployment.py"))
-    _baseline(found, {"apps/backend/aisc_backend/deployment.py", "apps/eval/aisc_eval/deployment.py"})
+    """The deployment-mode contract is replaced by one feature-flag registry (I4)."""
+    # The merged tree dropped the pilot's `deployment.py` mode modules for the flag registry at
+    # `apps/backend/aisc_backend/flags.py`; that registry is now the I4 contract to guard.
+    registries = sorted(str(p.relative_to(ROOT)) for p in _scanned("apps/**/flags.py"))
+    assert len(registries) == 1, f"expected exactly one feature-flag registry, found {registries}"
+    # A per-deployment mode contract must not reappear beside the registry.
+    modes = sorted(str(p.relative_to(ROOT)) for p in _files("apps/**/deployment.py"))
+    assert not modes, f"deployment-mode contract reintroduced: {modes}"
 
 
 def test_i3_one_project_database_module():
     """One project-database path, not two."""
-    found = sorted(str(p.relative_to(ROOT)) for p in _files("**/projectdb.py"))
+    # The pilot's per-project `projectdb.py` modules are gone on the merged tree; Django's single
+    # `DATABASES` mapping is the one project-database path, so it is the source set to guard.
+    modules = sorted(str(p.relative_to(ROOT)) for p in _files("**/projectdb.py"))
+    settings = sorted(
+        str(p.relative_to(ROOT))
+        for p in _scanned("apps/**/settings.py")
+        if re.search(r"^DATABASES\s*=", p.read_text(encoding="utf-8"), re.M)
+    )
+    found = modules + settings
+    assert found, "no project-database path found (DATABASES/projectdb scan is stale)"
     if len(found) <= 1:
         return
     _baseline(found, {
@@ -159,7 +181,9 @@ def _is_domain_slice(module: Path) -> bool:
 
 def test_i9_no_domain_slice_module():
     """A module is a layer or a published ABI — not a vertical business-domain slice (frontend+API+DB)."""
-    slices = sorted(str(d.relative_to(ROOT)) for d in _module_dirs() if _is_domain_slice(d))
+    modules = list(_module_dirs())
+    assert modules, "no apps/shared module directories found (stale scan)"
+    slices = sorted(str(d.relative_to(ROOT)) for d in modules if _is_domain_slice(d))
     _baseline(slices, {"apps/qualification", "apps/controls"})
 
 
@@ -185,8 +209,10 @@ def _compose_service_names(path: Path) -> list[str]:
 
 def test_i11_no_step_containers():
     """A container runs a long-lived process; migrations/setup/grants are steps, not services (I11)."""
+    compose_files = sorted(ROOT.glob("docker-compose*.yml"))
+    assert compose_files, "no docker-compose*.yml files found (stale scan)"
     offenders = []
-    for path in sorted(ROOT.glob("docker-compose*.yml")):
+    for path in compose_files:
         for name in _compose_service_names(path):
             if _STEP_CONTAINER.search(name):
                 offenders.append(f"{path.name}:{name}")
