@@ -1,0 +1,521 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Draft GitHub issues for the AISC frozen unified-app consolidation; IDs are local references, not existing GitHub issue numbers.",
+  "source_of_truth": [
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "docs/adr/0001-mainline-first-consolidation.md",
+    "docs/adr/0003-frozen-unified-app-port-and-worker-boundary.md",
+    "docs/refactor-plan.md"
+  ],
+  "source_freeze": {
+    "parent_reference_only": "256712ef2710a038fbdd86a6718d6d16aab766c4",
+    "merge_inputs": {
+      "apps/backend": "a8cf87399654d1366d36bfa423840559ac231fdd",
+      "apps/webapp": "ea0a7710f661ffbb0b5caeabbea5bff9dc1fc4bc",
+      "apps/eval": "4767cf51f08ca434e48202c29432e573a694bed4",
+      "shared/plugin-interface": "0d13ec1877c16fcef4b4bbf8a8802431304b93f9",
+      "shared/plugin-manager": "308e452840015559c33b1d057c2f758c707fdb86"
+    },
+    "pilot_ui_reference": "6197dc1aff55a582f5bdb39b10b0910b81b7a07b",
+    "note": "Freeze is an input snapshot, not a merge already performed. Qualification/controls branch tips are reference-only. Mainline installations need data upgrades; nobody deployed unified-app with data to preserve."
+  },
+  "import_notes": "Create epics before child issues; replace local epic_id/depends_on/blocks references with GitHub links after creation. Do not assign concurrent writers to the same module. Start parallel groups only after their dependencies are merged. Each worker must run architecture guards before proposing structural work, read the ADR and nearest docs, add behaviour tests, and update docs. Missing/ambiguous feature needs go to the owner rather than being silently dropped. No commits, issues, or GitHub API actions have been executed by this manifest.",
+  "common_worker_contract": "Work from the frozen integration result coordinated by INT-01, not the live tip of feat/unified-app. Do not merge pilot or legacy domain stacks wholesale. Extend one backend/webapp/eval implementation and shared ORM/access/audit/secret/version mechanisms. One app graph, feature flags at behaviour seams, core independent of optional domains, one audit writer (best-effort immudb), Superset Redis isolated. Keep existing behaviour until parity is proven. A new production dependency/service/store needs I8 ADR before implementation. Preserve mainline database migrations/data, and the existing plugin execution architecture except the immediate environment fix; I1/I2 redesign is post-port. Run `uv run --no-project --with pytest python -m pytest tests/architecture -q` from full checkout, plus tests for owned features. Report exact tests and follow-up gaps; a named xfail is not proof of correctness.",
+  "epics": [
+    {
+      "id": "E0",
+      "title": "Frozen integration and baseline",
+      "stage": "foundation",
+      "depends_on": [],
+      "parallel_group": "coordinator",
+      "done_when": "Main parent and five merged layer/shared gitlinks are pinned, guides/compose/e2e preserved and reviewed tests run; fresh install and mainline PostgreSQL upgrade belong to MIG-01 and REL-01."
+    },
+    {
+      "id": "E1",
+      "title": "Immediate security and project access",
+      "stage": "security gate",
+      "depends_on": [
+        "E0"
+      ],
+      "parallel_group": "security",
+      "done_when": "Worker-wide secrets excluded from plugin subprocesses; project APIs deny unauthorized access; two-project role and internal API checks pass."
+    },
+    {
+      "id": "E2",
+      "title": "Django ownership, versioning and migrations",
+      "stage": "shared contracts",
+      "depends_on": [
+        "E0"
+      ],
+      "parallel_group": "backend contracts",
+      "done_when": "One system identity and publish mechanism, optional-domain boundaries, mainline upgrade and clean PostgreSQL install pass."
+    },
+    {
+      "id": "E3",
+      "title": "Pilot-like React presentation",
+      "stage": "product experience",
+      "depends_on": [
+        "E1",
+        "E2"
+      ],
+      "parallel_group": "frontend",
+      "done_when": "Pilot-style shell, numbered steps, Manage and versioned evidence hub work in desktop/mobile/lean profiles; functional React tests pass."
+    },
+    {
+      "id": "E4",
+      "title": "Connections, controls, evidence and analytics parity",
+      "stage": "feature port",
+      "depends_on": [
+        "E1",
+        "E2"
+      ],
+      "parallel_group": "feature workers",
+      "done_when": "Retained pilot behaviour works in owning layers with scoped data, current execution, results bridge and tests."
+    },
+    {
+      "id": "E5",
+      "title": "Pilot reporting into one report feature",
+      "stage": "feature port",
+      "depends_on": [
+        "E1",
+        "E2"
+      ],
+      "parallel_group": "report workers",
+      "done_when": "Layout/composer, selected-version immutable snapshot, real PDF/Word and provenance work in one backend/webapp feature."
+    },
+    {
+      "id": "E6",
+      "title": "Deployment and acceptance without premature deletion",
+      "stage": "release consolidation",
+      "depends_on": [
+        "E3",
+        "E4",
+        "E5"
+      ],
+      "parallel_group": "coordinator",
+      "done_when": "Mainline upgrade, full flow and lean core pass; duplicated runtime stacks removed only after parity review; baselines reconciled."
+    },
+    {
+      "id": "E7",
+      "title": "Post-port execution improvements (not this release)",
+      "stage": "follow-up",
+      "depends_on": [
+        "E6"
+      ],
+      "parallel_group": "future",
+      "done_when": "Self-contained dispatch, run-local door and environment/run-secret isolation complete; I1/I2 waiver retired."
+    }
+  ],
+  "issues": [
+    {
+      "id": "INT-01",
+      "epic_id": "E0",
+      "title": "Coordinate main-based selective merge at frozen unified-app pins",
+      "labels": [
+        "refactor",
+        "integration",
+        "priority:critical"
+      ],
+      "depends_on": [],
+      "parallel_group": "coordinator",
+      "owner_paths": [
+        ".gitmodules",
+        "apps/backend",
+        "apps/webapp",
+        "apps/eval",
+        "shared/plugin-interface",
+        "shared/plugin-manager",
+        "docker-compose*.yml"
+      ],
+      "body": "## Goal\nDeliver a reproducible main-based integration checkout without merging the unified-app parent tree.\n## Inputs and implementation\nUse source_freeze.merge_inputs in this manifest (also plan §3). Create integration branches from current main/master in the five named submodule repos; merge each frozen commit, resolve conflicts preserving mainline fixes, test, then pin resulting commits in a main-based parent. Parent frozen commit 256712e is a reference, not a merge instruction. Keep main's published compose, local-build overlay, compose-validation CI, e2e, DEVELOPER_GUIDE.md and env.example. Do not merge apps/qualification or apps/controls branch history; read them for behaviour only. Coordinate the actual target branches/PRs and make an integration ledger: main SHA, frozen input SHA, merge SHA, test status per repo. No `submodule update --remote` in lieu of merges. Do not overwrite existing user work.\n## Acceptance\nParent pins exact resulting commits; compose and guides still work; no disappearing e2e; backend/frontend/worker focused tests and React build run; migration planning deferred to MIG-01. Record missing functionality as issues rather than deleting it. Stop and ask on conflicting author work outside the freeze. See ADR 0003 and plan §§2–3.\n## GitHub submission\nAfter coordinator confirms integration, create this issue under E0 and link each blocking child by its local ID. Do not presume draft IDs are GitHub numbers."
+    },
+    {
+      "id": "SEC-01",
+      "epic_id": "E1",
+      "title": "Do not inherit worker service secrets in plugin child environment",
+      "labels": [
+        "refactor",
+        "security",
+        "eval",
+        "priority:critical"
+      ],
+      "depends_on": [
+        "INT-01"
+      ],
+      "parallel_group": "security-eval",
+      "owner_paths": [
+        "apps/eval/aisc_eval/celery_tasks.py",
+        "apps/eval/tests"
+      ],
+      "body": "## Security failure\nFrozen eval celery_tasks.py creates plugin subprocess env via `os.environ.copy()` (~line 409). Plugin can read DJANGO_SECRET_KEY (used for stored-secret encryption), INTERNAL_API_KEY (backend internal API), registry password, database/Redis/Keycloak credentials, and unrelated host secrets. Project isolation is not satisfied while this path exists.\n## Applyable starting fix\n`docs/patches/eval-plugin-child-environment.patch` applies to the clean frozen eval pin (NOT the pilot tree). From that submodule after integration, use `git apply --check <parent>/docs/patches/eval-plugin-child-environment.patch`, then `git apply ...` if compatible; reconcile manually if the merge changed nearby code. It was trialled in a disposable frozen checkout and 12 eval tests passed; it has NOT been merged into the main integration. It covers the Popen child only, not installer subprocesses or all outbound paths.\n## Implementation\nUse a closed minimal `plugin_child_env()` allowlist for runtime necessities (e.g. PATH, HOME, LANG, LC_ALL, TMPDIR, TZ, UV cache/Python if actually needed); construct child env from it and add only explicitly required existing per-run `AISC_SECRET_*` settings. Examine plugin install/venv subprocess env and logs for comparable worker-secret exposure, harden without breaking install. Do NOT cherry-pick eval commit e05a231e171f4fab217d83ef71f0efd5beda3049 wholesale; it also changes dispatch and scrubbing. Do not introduce self-contained dispatch or a run-local door here. Never assert per-run target keys are isolated yet: ADR 0003 documents that remaining exception.\n## Tests / acceptance\nUnit tests set DJANGO_SECRET_KEY, INTERNAL_API_KEY, PACKAGE_REGISTRY_PASSWORD, DATABASE_URL, REDIS_URL, KEYCLOAK_CLIENT_SECRET and unknown env names; a captured Popen child cannot read them but gets required non-secret runtime entries plus deliberate run settings. Test a real plugin/venv smoke with file input and current start/stop/failure; assert no accidental egress in stdout/logs/artifacts. Document remaining per-run credential risk. Merge before declaring the shared security gate complete; SEC-02 may proceed concurrently on disjoint files."
+    },
+    {
+      "id": "SEC-02",
+      "epic_id": "E1",
+      "title": "Deny project-scoped routes by default and add one route-coverage guard",
+      "labels": [
+        "refactor",
+        "security",
+        "backend",
+        "priority:critical"
+      ],
+      "depends_on": [
+        "INT-01"
+      ],
+      "parallel_group": "security-backend",
+      "owner_paths": [
+        "apps/backend/aisc_backend/routers",
+        "apps/backend/aisc_backend/repositories",
+        "apps/backend/aisc_backend/services",
+        "tests/architecture"
+      ],
+      "body": "## Context\nUnified-app membership/access exists but old routers still bypass it. Review found ~48 routes without membership checks in component (6), evaluation (9), file (3), plugin (18), project_config (6), stats (4), task (2); confirm actual routes after merge. A viewer can rename a project, nonmembers can access evaluation status, and `MembershipRepository.add_member` incorrectly assigns `existing.asave()` result (None). Last-owner changes can race.\n## Implementation\nChoose one shared backend ORM project-resolution and role-check path; deny by default for every project-scoped public read, write, list, file, artifact and related-object reference. Viewer read, editor mutation, owner membership, admin semantics as documented. Check slug/UUID ownership, cross-project FK/input IDs, history/downloads and project rename. Fix member update and last-owner transaction race. Bootstrap existing mainline project ownership idempotently. Add a *small* route registration/coverage regression test that enumerates project-scoped routes and fails new unscoped ones; explicitly name only truly global/auth/internal exemptions with justification. Do not add a checker per invariant or pretend static route coverage proves permission correctness. No PostgreSQL RLS required.\n## Acceptance\nTwo projects, stranger/viewer/editor/owner/admin tests cover old core routers and new feature pattern; all unscoped endpoints discovered in review fixed; related-object writes and downloads cannot cross projects; existing mainline owners still have access. Internal routes are addressed by SEC-03. No duplicate membership store. Coordinate access helper contract with other backend workers before they add routes; SEC-01 is also required for security gate."
+    },
+    {
+      "id": "SEC-03",
+      "epic_id": "E1",
+      "title": "Bind internal evaluation and file access to the authorized project",
+      "labels": [
+        "refactor",
+        "security",
+        "backend"
+      ],
+      "depends_on": [
+        "SEC-02"
+      ],
+      "parallel_group": "security-backend",
+      "owner_paths": [
+        "apps/backend/aisc_backend/routers/internal.py",
+        "apps/eval/aisc_eval/service/api_client.py"
+      ],
+      "body": "## Problem\nThe shared INTERNAL_API_KEY is service authentication, not a project capability. Unified-app internal routes include `/projects/settings/{any_pid}`, file downloads by name and evaluation retrieval; a key alone currently permits cross-project reads if leaked. Do not rely on a plugin env allowlist as the only protection.\n## Work\nTrace internal endpoints and current eval caller contracts. Require an evaluation/run/project binding for settings, dataset/model bytes and evaluation requests, validating ownership via the same ORM model path. For legacy calls without context, design and roll out compatible caller arguments on backend+eval together; keep current execution working and do not introduce a new service or I1 redesign. Explicitly document any global bootstrap-only internal endpoint and deny arbitrary project/file lookup.\n## Acceptance\nTests using an authentic internal key but mismatched evaluation/project or another project's file fail; valid worker run paths still function; no shared key is treated as authorization to enumerate project data. Avoid echoing secrets in error/log responses."
+    },
+    {
+      "id": "MIG-01",
+      "epic_id": "E2",
+      "title": "Rewrite unshipped compliance migrations and preserve mainline upgrade",
+      "labels": [
+        "refactor",
+        "backend",
+        "migrations",
+        "priority:critical"
+      ],
+      "depends_on": [
+        "INT-01"
+      ],
+      "parallel_group": "backend-schema-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/models",
+        "apps/backend/aisc_backend/migrations",
+        "apps/backend/config/settings.py",
+        "apps/backend/aisc_backend/*/migrations"
+      ],
+      "body": "## Constraints\nOnly mainline installations need data preservation. Mainline backend migration history through 0014 (reviewed main baseline bc879c8340b840627b7409b05ace29f3cc6330f3) must not be rewritten. Nobody deployed unified-app with data to preserve: frozen unified-app's *unshipped* 0015–0032 compliance chain can be replaced. Freeze exact starting main migration heads before editing.\n## Implementation\nOrganize table-owning Django apps per plan §2.1/brief D11: core, evaluation, plugins and optional qualification, control_objectives, controls, report. For mainline-owned tables use state-only moves/Meta.db_table or other safe Django migration techniques with data/PK/FK/content type/permissions continuity. Create clean ordered migrations for new compliance tables directly in destination apps; no importer for unified-app/pilot or a second migration tool. Keep installed apps, middleware and URLconf stable across flags; core does not import optional domains. Coordinate model interfaces/ownership with VER-01 and feature workers; one schema owner merges migrations to avoid concurrent migration-number collisions.\n## Acceptance\nReal PostgreSQL mainline 0014 → final upgrade with populated project/components/evaluations/files succeeds; fresh PostgreSQL install succeeds; migrate --check / consistency, FK and old IDs verified. Record model-to-table mapping and migration DAG; SQLite representative fixture is supplemental only. No rewrite of shipped mainline history or fabricated empty baseline test."
+    },
+    {
+      "id": "VER-01",
+      "epic_id": "E2",
+      "title": "One assessed-system identity and explicit immutable publication",
+      "labels": [
+        "refactor",
+        "backend",
+        "versioning",
+        "priority:critical"
+      ],
+      "depends_on": [
+        "MIG-01"
+      ],
+      "parallel_group": "backend-version-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/models",
+        "apps/backend/aisc_backend/routers",
+        "apps/backend/aisc_backend/services"
+      ],
+      "body": "## Problem\nMerged qualification `System` and core `AISystem` can split identity; reopening/recompleting qualification may orphan an old card, later drafts can hide cards from reports, and published content may be mutated. Need one shared publish mechanism with historical snapshots.\n## Work\nChoose core `AISystem` as assessed-system identity; link optional qualification content through it. Implement one transactional publish operation that cuts a version only on explicit action; edits/reopen create a draft/successor and never move/delete/mutate a published snapshot. Keep stable card/version lookup even if a later draft exists. Bind risk/objective/checklist/evidence references to correct version; preserve project-local custom identifiers. Optional features register contributions through backend wiring without core importing optional models. Coordinate data model and schema owner with MIG-01; do not create another version store.\n## Acceptance\nTests: published card remains readable after reopen/recomplete/edit, report lookup by old version still works, cross-project cards rejected, concurrent publish resolves deterministically with one version per action, delete of historical card blocked. One core evaluation still works when optional features disabled. Update versioning docs."
+    },
+    {
+      "id": "CORE-01",
+      "epic_id": "E2",
+      "title": "Feature flags, lean core, single audit and source-specific architecture checks",
+      "labels": [
+        "refactor",
+        "backend",
+        "audit"
+      ],
+      "depends_on": [
+        "MIG-01",
+        "SEC-02"
+      ],
+      "parallel_group": "backend-contracts",
+      "owner_paths": [
+        "apps/backend/config/settings.py",
+        "apps/backend/aisc_backend/audit",
+        "tests/architecture"
+      ],
+      "body": "## Work\nOne registered flag mechanism toggles optional qualification/objectives/controls/report behaviour, never INSTALLED_APPS, MIDDLEWARE or URLconf. Core projects/components/connections/plugins/evaluation/results operate without optional data and imports. Extend main's one best-effort immudb audit writer/API for new governed mutations, including membership and reporting; preserve historical mainline events after project scoping. Superset cache stays isolated. Update architecture guards on the actual merged checkout: old pilot file/function names may disappear, so verify that a passing guard scans existing sources and is not an empty pass. Named remaining I1 baseline is post-port per ADR 0003; consolidation debt expires at release. Do not relax guards with global skips.\n## Acceptance\nRun lean and full profiles against same installed app graph; evaluate a plugin in lean profile; project-scoped activity reads with old/new events; immudb outage retains best-effort semantics; architecture suite passes/xfails only on explicitly reviewed current-source findings. Coordinate files with SEC-02/MIG-01; do not add a parallel ledger."
+    },
+    {
+      "id": "UI-01",
+      "epic_id": "E3",
+      "title": "Pilot-styled React shell, Projects, four-step landing and Manage",
+      "labels": [
+        "refactor",
+        "frontend",
+        "ux"
+      ],
+      "depends_on": [
+        "INT-01",
+        "SEC-02"
+      ],
+      "parallel_group": "frontend-shell-owner",
+      "owner_paths": [
+        "apps/webapp/src/MyApp.tsx",
+        "apps/webapp/src/components/TopBar*",
+        "apps/webapp/src/components/LeftBar*",
+        "apps/webapp/src/pages/GlobalHome*",
+        "apps/webapp/src/pages/ProjectHome*",
+        "apps/webapp/src/styles"
+      ],
+      "body": "## Reference\nPilot homepage/index.html, project.html, assets/launcher.css, fonts/logo and shared/theme/brand.json at commit 6197dc1. Existing React MyApp.tsx routes, TopBar/LeftBar, GlobalHome/ProjectHome, context and API clients from frozen webapp ea0a771 are the implementation base.\n## Work\nUse existing React webapp; no second launcher SPA or Django templates. Adapt theme/shell to pilot-like blue/pink, pale background, square cards/hairlines, MuseoModerno/Raleway/IBM Plex Mono, branded topbar, back/project/session controls and responsive stacking. Project landing: Plan the assessment with 1 Qualify AI system → 2 Set control objectives → 3 Choose tests and checklists; downward step 4 Collect evidence. Manage groups account/admin, activity, inspection, AI models/keys, components/connections, helpers, membership and deletion according to role; backend still enforces access. Keep old deep links and useful unified-app editors/forms; hide disabled optional cards but keep core run/results reachable. Avoid frontend/backend interface duplication; coordinate context/route contract with UI-02.\n## Acceptance\nDesktop and mobile sanity review for shell and landing is recognisably pilot-like (NOT pixel perfect); create/select project, navigate and browser back/refresh; role-appropriate Manage menu; keyboard/focus and deep link tests; React unit tests/build. Record intentional visual differences, not exhaustive screenshot matrices."
+    },
+    {
+      "id": "UI-02",
+      "epic_id": "E3",
+      "title": "Four-column Collect evidence hub with scoped version context",
+      "labels": [
+        "refactor",
+        "frontend",
+        "evidence"
+      ],
+      "depends_on": [
+        "UI-01",
+        "VER-01"
+      ],
+      "parallel_group": "frontend-evidence-owner",
+      "owner_paths": [
+        "apps/webapp/src/pages/SandboxPage*",
+        "apps/webapp/src/context",
+        "apps/webapp/src/pages/ChecklistsPage*",
+        "apps/webapp/src/pages/DashboardPage*"
+      ],
+      "body": "## Reference\nPilot homepage/evidence.html and evidence-map.html, docs/appendices/4-collect-evidence.md and plan §2.1. Extend existing SandboxPage and shared React context/API.\n## Work\nProject title and back link; selected published AI card version; Evidence map/coverage summary; four action columns exactly Answer checklists, Run tests, Results, Report. Selected version scopes test tile counts, assessment runs/results, map and reports. Checklist tiles show latest answers regardless of selector; local-model runs remain distinctly visible but excluded from assessment report. Keep selection across links/refresh/back/forward, validate scope and clear stale state on project change; do not silently publish edits. Hide absent optional functions in lean profile but allow tests/results. Link existing checklists/run/measure/dashboard/report pages rather than duplicating them. Coordinate APIs with EVD-01, ANA-01, REP-01.\n## Acceptance\nUnit/integration tests of two projects/two published versions and latest checklist answers; local-model distinction; desktop/mobile close-enough review of hub; deep links, keyboard and unavailable optional states. Backend endpoints must independently enforce roles and flags."
+    },
+    {
+      "id": "CON-01",
+      "epic_id": "E4",
+      "title": "Keep current runtime; integrate pilot connections, adapters, helper models and keys",
+      "labels": [
+        "refactor",
+        "backend",
+        "eval",
+        "adapters"
+      ],
+      "depends_on": [
+        "SEC-01",
+        "SEC-02",
+        "MIG-01"
+      ],
+      "parallel_group": "feature-connections-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/models/ai_system*",
+        "apps/backend/aisc_backend/routers/component*",
+        "apps/backend/aisc_backend/routers/project_config*",
+        "apps/webapp/src/pages/Settings*",
+        "shared/plugin-interface",
+        "shared/plugin-manager"
+      ],
+      "body": "## Work\nCompare main/unified-app components, settings and plugin configs with pilot homepage/connections.html, llm.html, helpers.html plus platform connection/adapter behaviour. Extend core AIComponent and one secret mechanism; plugins owns adapter definitions/config selection, evaluation owns binding per run. Keep native and bespoke targets, data/resource adapter compatibility, selected adapter/config version, helper roles/models and secret-setting UI. Reuse frozen shared plugin-interface/manager contracts. Keep file-input/run/stop/failure/results working on the current runtime; DO NOT implement self-contained dispatch or run-local door in this issue. Scrub outbound metadata and respect SEC-01 child environment. Coordinate shared model/migrations with MIG-01 and frontend shell with UI-01; no second platform connection store, service or general session framework.\n## Acceptance\nProject-scoped role tests; adapter discovery/selection/version saved with run; native/bespoke mock target and file-input smoke; helper/model/secret management cannot leak values across projects; installer/run still work under env allowlist. Record any pilot capability deliberately excluded with owner review."
+    },
+    {
+      "id": "QUAL-01",
+      "epic_id": "E4",
+      "title": "Qualification, risks, objectives and checklists reach pilot behaviour",
+      "labels": [
+        "refactor",
+        "backend",
+        "frontend",
+        "qualification"
+      ],
+      "depends_on": [
+        "VER-01",
+        "SEC-02"
+      ],
+      "parallel_group": "feature-compliance-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/qualification",
+        "apps/backend/aisc_backend/control_objectives",
+        "apps/backend/aisc_backend/controls",
+        "apps/webapp/src/pages/QualificationPage*",
+        "apps/webapp/src/pages/ControlObjectivesPage*",
+        "apps/webapp/src/pages/ChecklistsPage*"
+      ],
+      "body": "## Work\nCompare frozen unified-app features with pilot docs/appendices/1-qualify.md, 2-control-objectives.md, 3-tests-and-checklists.md and pilot headless/ontology behaviour. Extend the one backend and React pages: questionnaire/card editing, real computed AI card/graph (not fallback summary), risk classification, objectives/priorities and project-local custom IDs, checklist catalogue/install, answers, readiness/review, required exports and history. Use one core system/published version contract from VER-01; preserve role isolation from SEC-02. Qualification, control_objectives and controls own their tables; core must not import optional models. Work with MIG-01 schema owner to avoid conflicting migration numbering.\n## Acceptance\nUser can publish an AI card, set objectives, install tests/checklists and answer/review them; historical versions stable after editing draft; project-local custom objectives cannot collide; role and two-project tests; core evaluation works when compliance flags off. Keep useful unified-app behaviour even where pilot differs; document unresolved feature decisions."
+    },
+    {
+      "id": "EVD-01",
+      "epic_id": "E4",
+      "title": "Versioned evidence map, links, coverage, review and carry-forward",
+      "labels": [
+        "refactor",
+        "backend",
+        "frontend",
+        "evidence"
+      ],
+      "depends_on": [
+        "VER-01",
+        "QUAL-01",
+        "SEC-02"
+      ],
+      "parallel_group": "feature-evidence-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/control_objectives",
+        "apps/webapp/src/pages/SandboxPage*",
+        "apps/webapp/src/api"
+      ],
+      "body": "## Reference and owner\nPilot homepage/evidence-map.html, platform evidence routes, docs/appendices/4-collect-evidence.md; extend unified-app evidence coverage. `control_objectives` owns objective-to-evidence links/notes/review; evaluation owns runs/artifacts and controls owns checklist answers.\n## Work\nScoped ORM relations, dimension-compatible linking, notes, gaps/stale statuses, independent review and review invalidation on changes, version-aware coverage and appropriate carry-forward to a new published version. Never mutate a prior version's published evidence; define new-version copy versus reference explicitly. Provide API for UI-02 coverage and evidence-map React view. Local-model-only results do not become assessment evidence; reject cross-project related IDs.\n## Acceptance\nTwo versions: link/review one, change source and show invalidation only where applicable, publish successor and verify correct carry-forward, old version unchanged. Different project IDs/strangers forbidden; map coverage matches chosen version and UI's summary. No raw SQL to another app's tables."
+    },
+    {
+      "id": "ANA-01",
+      "epic_id": "E4",
+      "title": "Scoped results, Superset dashboard bridge and analytics",
+      "labels": [
+        "refactor",
+        "backend",
+        "analytics"
+      ],
+      "depends_on": [
+        "SEC-02",
+        "MIG-01"
+      ],
+      "parallel_group": "feature-analytics-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/routers/stats*",
+        "apps/backend/aisc_backend/evaluation",
+        "apps/webapp/src/pages/DashboardPage*",
+        "apps/results-dashboard"
+      ],
+      "body": "## Work\nPort required pilot results dashboard bridge and version/run filters onto evaluation-owned ORM result data; Superset stays its own analytics process, not a domain backend or a new DB path. Enforce project scoping on bridge/read APIs, charts and exported evidence. Retain the isolated password-protected dashboard Redis; do not share it with plugin/eval cache. Keep core visualizer/results available with compliance flags disabled. Dashboard links fit UI-02's evidence hub and the report's prepared snapshot API without a renderer querying third-party tables.\n## Acceptance\nTwo-project isolation and selected-version filtering; real results/measurements/chart smoke, local-model run distinction, dashboard link authenticated and scoped; isolated Redis deployment verified. Preserve existing visualizer behaviour and update ops docs."
+    },
+    {
+      "id": "REP-00",
+      "epic_id": "E5",
+      "title": "Inventory pilot renderer dependencies and make any I8 decision",
+      "labels": [
+        "refactor",
+        "report",
+        "architecture"
+      ],
+      "depends_on": [
+        "INT-01"
+      ],
+      "parallel_group": "report-owner",
+      "owner_paths": [
+        "apps/report-composer",
+        "apps/backend/pyproject.toml",
+        "apps/backend/Dockerfile*",
+        "docs/adr"
+      ],
+      "body": "## Problem / investigation\nUser wants to keep pilot's full real PDF/Word reporting and understand dependencies before deleting anything. Inspect actual pilot renderer/package manifests and tests: distinguish runtime WeasyPrint/python-docx needs from Playwright/Chromium test-only usage; do not assume a browser is required in production. Compare frozen unified-app report stubs. Check license/system packages/image size/CPU and install path.\n## Decision gate\nIf existing shipped dependencies suffice, record evidence and use them. BEFORE adding any new top-level production dependency/service/browser image, write an I8 ADR with named owner, operational cost, security implications and removal condition; have owner accept it. No decision to drop PDF/Word or preemptively remove pilot renderer code. Keep one backend report feature, not another report container unless expressly approved.\n## Acceptance\nDependency/runtime inventory in docs and owner-reviewed ADR when needed; reproducible proof-of-render prototype for true PDF and Word; no unreviewed production dependency. REP-01/02 must consume the agreed approach."
+    },
+    {
+      "id": "REP-01",
+      "epic_id": "E5",
+      "title": "Report layouts, blocks and immutable ORM snapshot",
+      "labels": [
+        "refactor",
+        "report",
+        "backend"
+      ],
+      "depends_on": [
+        "VER-01",
+        "SEC-02",
+        "REP-00"
+      ],
+      "parallel_group": "report-backend-owner",
+      "owner_paths": [
+        "apps/backend/aisc_backend/report",
+        "apps/backend/aisc_backend/routers/report*",
+        "apps/backend/aisc_backend/models/report*"
+      ],
+      "body": "## Reference\nPilot apps/report-composer plus docs/appendices/4-collect-evidence.md#report; extend frozen unified-app report models/snapshot helper and one audit API. Coordinate schema with MIG-01 and evidence/data providers with EVD-01, ANA-01.\n## Work\nOrdered configurable blocks, index/numbering, five read-only built-in layouts, duplicate/edit custom layout, project-to-project import/export; chapters, text/commentary and AI card/risk/objective/checklist/evidence/test/result/chart/plugin blocks. Select published AI-card version, optional period, added versions and comparison version. Assemble project-scoped ORM data through owning apps' models/interfaces (no cross-app raw SQL), exclude local-model-only runs from assessment report, store frozen inputs/version references/blocks/provenance/checksum and immutable historical document records. Apply deny-by-default roles to list, generate and downloads; scrub secrets and use one best-effort audit writer. Renderer/plugin receives prepared snapshot, not a second DB.\n## Acceptance\nTwo projects and two published versions: snapshot picks exactly intended data; later draft/changed evidence cannot change old report; comparison and custom-layout round trip tested; project foreign keys and downloads forbidden; no HTML masquerading as PDF. Coordinate backend API contract with REP-02."
+    },
+    {
+      "id": "REP-02",
+      "epic_id": "E5",
+      "title": "Real PDF/Word generation and pilot-like React report composer",
+      "labels": [
+        "refactor",
+        "report",
+        "frontend"
+      ],
+      "depends_on": [
+        "REP-01",
+        "REP-00",
+        "UI-02"
+      ],
+      "parallel_group": "report-frontend-renderer-owner",
+      "owner_paths": [
+        "apps/webapp/src/pages/ReportPage*",
+        "apps/backend/aisc_backend/report",
+        "apps/report-composer"
+      ],
+      "body": "## Work\nWithin the single backend/webapp report feature, port useful pilot rendering functions/ABI and React composer flow, extending existing frozen ReportPage. Use REP-00's accepted renderer dependencies. Build genuine PDF and Word (optional PDF companion for Word if supported), correct MIME/filenames/checksum/history/downloads; support configured block order, headings/layouts, evidence/results/charts, comparison and commentary. Preserve report-plugin ABI through one loader, no parallel report service, project DB or second audit writer. Surface version selection/history from the evidence hub and readable errors for missing optional blocks. Do not delete legacy rendering until the replacement has parity.\n## Acceptance\nGenerate and open real PDF and DOCX with meaningful content for a selected published version; verify document signatures/MIME/content, custom layout and comparison, old downloads byte-stable after new draft, permission tests and excluded local-model runs. ReportPage tests/build plus targeted end-to-end generation; use close-enough pilot UX, not pixel-exact screenshots."
+    },
+    {
+      "id": "REL-01",
+      "epic_id": "E6",
+      "title": "Consolidation acceptance, reviewed retirement and mainline release",
+      "labels": [
+        "refactor",
+        "release",
+        "integration"
+      ],
+      "depends_on": [
+        "SEC-01",
+        "SEC-02",
+        "SEC-03",
+        "MIG-01",
+        "VER-01",
+        "CORE-01",
+        "UI-01",
+        "UI-02",
+        "CON-01",
+        "QUAL-01",
+        "EVD-01",
+        "ANA-01",
+        "REP-01",
+        "REP-02"
+      ],
+      "parallel_group": "coordinator",
+      "owner_paths": [
+        "docker-compose*.yml",
+        "docs",
+        "e2e",
+        "tests/architecture"
+      ],
+      "body": "## Coordination\nFull port and consolidation acceptance, not an automatic early release after integration. Keep a behaviour/ownership inventory; identify actual duplicate platform/domain APIs, UIs, DB paths and migration tools before deleting them, show parity and obtain owner review. Preserve main published-image/local-build compose, CI, env guides, mock kit, public catalogue, separate Superset analytics and isolated Redis. Migrations/init are steps; dev tools opt-in; no domain service stack. Reconcile all source-specific architecture xfails: only ADR 0003 I1 may remain after consolidation. Do not hide failures by removing scanned files or loosening assertions.\n## Acceptance\nFresh startup and populated mainline PostgreSQL upgrade, existing mainline IDs/files/immudb activity readable, two-project auth/roles/worker-env isolation, complete four-step pilot-like flow with report PDF/Word, adapter smoke, results/dashboard and lean core run. Check frontend build, backend/worker feature suites, e2e and architecture guards; document known exceptions and deployment limits. Legacy removal only after named parity evidence and owner review. Keep explicit publish/snapshot immutability; no pixel-perfect UI requirement."
+    },
+    {
+      "id": "EXEC-01",
+      "epic_id": "E7",
+      "title": "Post-port: self-contained dispatch and run-local credential-withholding door",
+      "labels": [
+        "refactor",
+        "follow-up",
+        "eval",
+        "security"
+      ],
+      "depends_on": [
+        "REL-01"
+      ],
+      "parallel_group": "future",
+      "owner_paths": [
+        "apps/eval",
+        "apps/backend/aisc_backend",
+        "shared/plugin-interface"
+      ],
+      "body": "## Not a consolidation gate\nAfter release port, replace mid-run backend/platform fetches with a self-contained dispatch payload and end-of-run posting; backend observes queue status by id. Put assessed-system request door with the run, withholding per-run target credentials from plugins, enforcing allowlist/timeouts and scrubbing outbound results/errors/artifacts. Do not transplant pilot shared-platform proxy or reintroduce worker-wide environment inheritance. Add real mock-kit acceptance: dispatch, take backend/platform down, run completes and posts when available; plugin env has no target or service credentials. Retry/worker-loss recovery and sandbox/session framework may be separate follow-ups. Shrink then retire ADR 0003 I1/I2 baseline and temporary per-run I7 exception when tests pass."
+    }
+  ]
+}

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<style>
+  /* The tokens, fonts, header and session line are /assets/launcher.css (electric blue, hot pink, no
+     rounded corners, hairlines and monospace labels); this page sets its header a size larger. */
+  /* one cold wash of brand blue, one warm of accent: depth without noise */
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(900px 420px at 8% -8%, rgba(0,15,223,.07), transparent 70%),
+      radial-gradient(700px 360px at 104% 108%, rgba(255,0,126,.06), transparent 70%);
+  }
+
+  /* ---- header: hairline, logo, product name, session ---- */
+  .topbar{gap:26.4px}
+  .topbar .rule{height:33.6px}
+  .session{margin-left:24px; gap:16.8px; font-size:13.8px}
+
+  main{
+    max-width:1360px; margin:0 auto; padding:40px 32px 32px;
+    min-height:calc(100vh - 89px); display:flex; flex-direction:column; justify-content:center;
+  }
+
+  /* ---- endpoints: in the header, out of the way until asked for ---- */
+  .menu{position:relative; margin-left:auto}
+  .menu summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
+    padding:7.2px 12px; border:1px solid var(--border);
+    font-family:var(--mono); font-size:13.2px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+    transition:border-color .14s ease, color .14s ease;
+  }
+  .menu summary::-webkit-details-marker{display:none}
+  .menu summary:hover{color:var(--primary); border-color:var(--border-strong)}
+  .menu summary:focus-visible{outline:2px solid var(--primary); outline-offset:2px}
+  .menu summary svg{
+    width:13.2px; height:13.2px; stroke:currentColor; stroke-width:2; fill:none;
+    transition:transform .16s ease;
+  }
+  .menu[open] summary{color:var(--primary); border-color:var(--primary)}
+  .menu[open] summary svg{transform:rotate(180deg)}
+  .menu .panel{
+    position:absolute; right:0; top:calc(100% + 9px); z-index:30; min-width:261.6px;
+    padding:6px 0; background:var(--panel);
+    border:1px solid var(--border-strong); box-shadow:0 14px 34px rgba(12,18,60,.13);
+  }
+  .menu .panel a{
+    display:block; padding:10.8px 18px; text-decoration:none;
+    font-family:var(--mono); font-size:13.8px; color:var(--text);
+  }
+  .menu .panel a:hover{background:var(--panel-2); color:var(--primary)}
+  .menu .panel a:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
+
+  @media (max-width:820px){
+    .topbar{padding:14.4px 21.6px; gap:16.8px}
+    main{padding:28px 18px 32px; min-height:0; display:block}
+  }
+
+  /* ---- projects: bigger cards, centred as one wrapped row, the heading over them ---- */
+  .stage{width:fit-content; max-width:100%; margin:0 auto}
+  .head{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:30px}
+  .head h2{
+    margin:0; font-size:16px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--heading);
+  }
+  .newbtn{
+    display:inline-flex; align-items:center; gap:8px; padding:13px 20px;
+    border:1px solid var(--primary); background:var(--primary); color:#fff;
+    font-family:var(--mono); font-size:14px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase; cursor:pointer;
+  }
+  .newbtn:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
+  .newbtn.ghost{background:transparent; color:var(--primary)}
+  .newbtn.ghost:hover{background:rgba(0,15,223,.06); color:var(--primary-hover)}
+
+  .projects{display:flex; flex-wrap:wrap; justify-content:center; gap:24px}
+  a.project{
+    width:440px; max-width:100%;
+    display:flex; flex-direction:column; gap:12px; padding:34px; min-height:210px;
+    border:1px solid var(--border); background:var(--panel); text-decoration:none; color:inherit;
+    transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;
+  }
+  a.project:hover{
+    border-color:var(--primary); transform:translateY(-2px);
+    box-shadow:0 10px 26px rgba(12,18,60,.09);
+  }
+  a.project:focus-visible{outline:2px solid var(--primary); outline-offset:3px}
+  a.project h3{margin:0; font-size:26px; font-weight:600; letter-spacing:-.015em}
+  a.project .slug{
+    font-family:var(--mono); font-size:14px; color:var(--primary);
+    letter-spacing:.04em;
+  }
+  a.project p{margin:0; color:var(--muted); font-size:17px}
+  a.project time{font-family:var(--mono); font-size:14px; color:var(--faint); margin-top:auto}
+
+  .empty{
+    width:560px; max-width:100%;
+    padding:52px; border:1px dashed var(--border-strong); background:transparent;
+    color:var(--muted); font-size:17px; text-align:center;
+  }
+
+  dialog.new{
+    border:1px solid var(--border-strong); padding:0; background:var(--panel);
+    box-shadow:0 30px 70px rgba(12,18,60,.22); max-width:460px; width:92vw;
+  }
+  dialog.new::backdrop{background:rgba(12,18,60,.35)}
+  dialog.new form{display:flex; flex-direction:column; gap:14px; padding:26px}
+  dialog.new h3{margin:0; font-size:17px; font-weight:600}
+  dialog.new label{
+    display:flex; flex-direction:column; gap:6px;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  dialog.new input, dialog.new textarea{
+    font:inherit; font-size:14px; padding:10px 12px; color:var(--text);
+    border:1px solid var(--border-strong); background:var(--panel); border-radius:0;
+  }
+  dialog.new input:focus, dialog.new textarea:focus{outline:2px solid var(--primary); outline-offset:-1px}
+  dialog.new .row{display:flex; gap:10px; justify-content:flex-end; margin-top:4px}
+  dialog.new .err{color:var(--error); font-size:12.5px; min-height:1em}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <details class="menu">
+    <summary>
+      Manage
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </summary>
+    <div class="panel">
+      <a data-origin="keycloak" data-path="/realms/aisc/account">My account</a>
+    </div>
+  </details>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <div class="stage">
+    <div class="head">
+      <h2>Projects</h2>
+      <button class="newbtn" id="new-project">Create project</button>
+    </div>
+    <div class="projects" id="projects"></div>
+  </div>
+</main>
+
+</div>
+
+<dialog class="new" id="dialog">
+  <form id="new-form">
+    <h3>Create project</h3>
+    <label>Name
+      <input name="name" required autocomplete="off" placeholder="MicroCredit Assist Score (MCAS)"/>
+    </label>
+    <label>Description (optional)
+      <textarea name="description" rows="2" placeholder="What is being assessed"></textarea>
+    </label>
+    <span class="err" id="err"></span>
+    <div class="row">
+      <button type="button" class="newbtn ghost" id="cancel">Cancel</button>
+      <button type="submit" class="newbtn">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/assets/origins.js"></script>
+<script>
+  var list = document.getElementById('projects');
+  var dialog = document.getElementById('dialog');
+
+  function when(iso) {
+    try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ''; }
+  }
+
+  function render(projects) {
+    if (!projects.length) {
+      list.innerHTML = '<div class="empty">No projects yet. Create one to begin an assessment.</div>';
+      return;
+    }
+    list.innerHTML = projects.map(function (p) {
+      var desc = p.description ? '<p></p>' : '';
+      var card = document.createElement('a');
+      card.className = 'project';
+      card.href = '/p/' + encodeURIComponent(p.slug);
+      card.innerHTML = '<span class="slug"></span><h3></h3>' + desc
+        + '<time></time>';
+      card.querySelector('.slug').textContent = p.slug;
+      card.querySelector('h3').textContent = p.name;
+      if (p.description) card.querySelector('p').textContent = p.description;
+      card.querySelector('time').textContent = when(p.created_at);
+      return card.outerHTML;
+    }).join('');
+  }
+
+  // a refusal (500, 403, 503) is not an empty list: say so, or someone creates a project that exists
+  fetch('/api/projects', {credentials: 'same-origin'})
+    .then(function (r) {
+      if (!r.ok) { var e = new Error('refused'); e.status = r.status; throw e; }
+      return r.json();
+    })
+    .then(render)
+    .catch(function (e) {
+      list.innerHTML = '<div class="empty">' + (e && e.status
+        ? 'The platform service answered ' + Number(e.status) + ': the projects could not be listed.'
+        : 'Could not reach the platform service.') + '</div>';
+    });
+
+  document.getElementById('new-project').addEventListener('click', function () { dialog.showModal(); });
+  document.getElementById('cancel').addEventListener('click', function () { dialog.close(); });
+
+  document.getElementById('new-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var err = document.getElementById('err');
+    err.textContent = '';
+    var data = new FormData(e.target);
+    fetch('/api/projects', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: data.get('name'),
+        description: data.get('description') || null
+      })
+    }).then(function (r) {
+      return r.json().then(function (body) {
+        if (!r.ok) throw new Error(body.detail || 'could not create the project');
+        window.location.href = '/p/' + encodeURIComponent(body.slug);
+      });
+    }).catch(function (e2) { err.textContent = e2.message; });
+  });
+</script>
+<script>
+  document.addEventListener('click', function (e) {
+    var menu = document.querySelector('.menu');
+    if (menu && menu.open && !menu.contains(e.target)) menu.open = false;
+  });
+  document.addEventListener('keydown', function (e) {
+    var menu = document.querySelector('.menu');
+    if (e.key === 'Escape' && menu) menu.open = false;
+  });
+
+  fetch('/oauth2/userinfo', {credentials:'same-origin'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (d) document.getElementById('who').textContent =
+        d.preferredUsername || d.user || d.email || 'user';
+    })
+    .catch(function(){});
+</script>
+</body>
+</html>

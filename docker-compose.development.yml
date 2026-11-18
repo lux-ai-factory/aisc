@@ -56,6 +56,14 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
+      # The analytics dashboard bridge (ANA-01): where the dashboard is and how to
+      # authenticate. The dashboard's own Redis is defined once, in
+      # docker-compose.yml (profile `analytics`); see docs/ops/results-dashboard.md.
+      RESULTS_DASHBOARD_URL: ${RESULTS_DASHBOARD_URL:-}
+      RESULTS_DASHBOARD_SECRET: ${RESULTS_DASHBOARD_SECRET:-}
+      RESULTS_DASHBOARD_LINK_TTL: ${RESULTS_DASHBOARD_LINK_TTL:-900}
+      RESULTS_DASHBOARD_BRIDGE_URL: ${RESULTS_DASHBOARD_BRIDGE_URL:-}
+      RESULTS_DASHBOARD_BRIDGE_TOKEN: ${RESULTS_DASHBOARD_BRIDGE_TOKEN:-}
     networks:
       - backend
     depends_on:
@@ -156,18 +164,6 @@ services:
     networks:
       - backend
 
-  controls-migrate:
-    build: apps/controls
-    container_name: controls-migrate
-    command: >
-      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done && npx prisma db seed"
-    env_file: apps/controls/env.development
-    depends_on:
-      - postgres
-    restart: "no"
-    networks:
-      - backend
-
   controls-web:
     build:
       context: apps/controls
@@ -179,14 +175,19 @@ services:
       # the server-side audit forwarder posts here (service name on the backend network, not localhost)
       AISC_BACKEND_URL: http://aisc-backend:8000
     depends_on:
-      controls-migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_started
       controls-pdf:
         condition: service_started
     restart: unless-stopped
     networks:
       - backend
       - frontend
+    # The schema migration is a step of this process, not a container (I11).
+    command: >
+      sh -c "until npx prisma migrate deploy; do echo '[controls] waiting for postgres'; sleep 2; done
+      && npx prisma db seed
+      && npx next start -p 3000"
 
   # ── EU-AI-Act qualification app (apps/qualification submodule) ──
   # LiteLLM completion sidecar — holds the provider key; the app calls it over HTTP.
@@ -210,18 +211,6 @@ services:
     networks:
       - backend
 
-  qualification-migrate:
-    build: apps/qualification
-    container_name: qualification-migrate
-    command: >
-      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done"
-    env_file: apps/qualification/env.development
-    depends_on:
-      - postgres
-    restart: "no"
-    networks:
-      - backend
-
   qualification-web:
     build:
       context: apps/qualification
@@ -230,12 +219,10 @@ services:
     container_name: qualification-web
     environment:
       AISC_BACKEND_URL: http://aisc-backend:8000
-    # Migration is owned by qualification-migrate; the web container only serves.
-    command: ["npx", "next", "start", "-p", "3000"]
     env_file: apps/qualification/env.development
     depends_on:
-      qualification-migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_started
       qualification-llm:
         condition: service_started
       qualification-pdf:
@@ -244,6 +231,10 @@ services:
     networks:
       - backend
       - frontend
+    # The schema migration is a step of this process, not a container (I11).
+    command: >
+      sh -c "until npx prisma migrate deploy; do echo '[qualification] waiting for postgres'; sleep 2; done
+      && npx next start -p 3000"
 
 volumes:
   flower_data:
