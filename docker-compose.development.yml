@@ -139,6 +139,17 @@ services:
     command: >
       sh -c "uv pip install --no-deps -e /app/shared/plugin-manager -e /app/shared/plugin-interface 
       && celery -A aisc_eval.celery_worker worker --loglevel=debug"
+    # Healthy = this worker is online on the broker. The image's own HEALTHCHECK
+    # pings "celery@$$HOSTNAME" (a shell PID once `$$` is expanded) which never
+    # matches a node name, so it is overridden here to ping any node of the app.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - celery --app aisc_eval.celery_app inspect ping --timeout 5
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
   aisc-eval-flower:
     platform: linux/amd64
@@ -168,7 +179,9 @@ services:
     healthcheck:
       test:
         - "CMD-SHELL"
-        - celery --app aisc_eval.celery_app inspect ping -d "celery@$$HOSTNAME"
+        # no node named "celery@<this container's hostname>" exists on flower, so
+        # ping any node of the app instead of the old -d "celery@$$HOSTNAME"
+        - celery --app aisc_eval.celery_app inspect ping --timeout 5
       interval: 30s
       timeout: 10s
       retries: 5
