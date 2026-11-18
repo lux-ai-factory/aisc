@@ -32,14 +32,15 @@ As the name suggests, it is also a **Request for Comments**: anyone who wishes t
 
 ## 📁 Repository Structure
 
-This repository consists of three main applications that work in tandem, along with shared libraries for plugin management:
+This repository consists of six main applications that work in tandem, along with shared libraries for plugin management. The **webapp is the only user interface**; everything else is backend compute reached exclusively through Django:
 
 ### Applications (`apps/`)
-*   **Webapp (`apps/webapp`)**: A React-based frontend for interacting with the aisc platform.
-*   **Backend (`apps/backend`)**: A Django-based bakend that manages datasets, models, and evaluation requests.
-*   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins.
-*   **Controls (`apps/controls`)**: A Next.js app for AI-compliance checklists with 1–5 readiness scoring and PDF reporting. Served under `/controls`.
-*   **Qualification (`apps/qualification`)**: A Next.js app that qualifies AI systems against the EU AI Act (Articles 10/12/13/14) and generates system cards, via a LiteLLM completion sidecar and a PDF renderer. Served under `/qualification`.
+*   **Webapp (`apps/webapp`)**: The single UI — a React-based frontend for interacting with the aisc platform.
+*   **Backend (`apps/backend`)**: A Django-based backend that manages datasets, models, evaluation requests, authorization, and stored documents. Every UI action goes through it.
+*   **Evaluation Service (`apps/eval`)**: A Celery worker that executes evaluation tasks using plugins. It has no UI — it calls Django's internal API.
+*   **Controls (`apps/controls`)**: Backend-only — AI-compliance checklists (1–5 readiness scoring). No UI of its own; Django serves the checklist APIs (backed by the hosted catalogue) to the webapp.
+*   **Qualification (`apps/qualification`)**: Backend-only — qualifies AI systems against the EU AI Act (Articles 10/12/13/14) and generates system cards via FastAPI services. No UI of its own; Django orchestrates it and the webapp renders the result.
+*   **Report (`apps/report`)**: Backend-only — one submodule, one compose service, one lean server. The backend (Django) owns all data, assembles a JSON snapshot, and this service only draws it as HTML/PDF (weasyprint). It reads **no database**; the webapp drives it through the backend's own report endpoints.
 
 ### Shared Libraries (`shared/`)
 *   **Plugin Interface (`shared/plugin-interface`)**: Defines the standard interface that all aisc plugins must implement.
@@ -158,3 +159,61 @@ By submitting contributions, you agree to the [CLA](CLA/CLA_VERA.md) and license
 
 This project is licensed under the [Apache License 2.0](LICENSE).  
 © 2024–2026 Université du Luxembourg and Luxembourg Institute of Science and Technology.
+
+
+### Unified application routing
+
+The webapp calls Django through Caddy. Django owns authorization, project data,
+versions, and stored documents. The qualification service builds the AI card
+in-process (the AIRO builder is vendored inside it). The report microservice
+(`apps/report`) draws the report: the backend assembles a JSON snapshot
+(`services/report_snapshot.py`) from its single database and POSTs it to the
+report service at `http://report:8080` (`REPORT_SERVICE_URL`), which returns
+the HTML preview or PDF — the report service reads no database itself. These
+services have no public route of their own: the eval
+worker reaches Django through Caddy's internal-only `:8080` listener under the
+`/internal/backend` namespace with `X-Internal-Secret`, and Django reaches
+Flower through `/internal/flower`. The internal listener is not published to
+the host, so only peers on the docker networks can use it. Evaluation workers
+use RabbitMQ/Redis and call Django via `http://caddy:8080/internal/backend/api/v1/internal`
+with `X-Internal-Secret`.
+Controls use Django's checklist APIs and the configured hosted catalogue.
+
+The qualification and report services are **required**: the normal compose
+commands below start them alongside the core stack. No
+`QUALIFICATION_SERVICE_URL` / `REPORT_SERVICE_URL` env vars are needed —
+the compose files wire them up directly.
+
+Development uses `http://localhost` (HTTP only). Start it with:
+
+```sh
+docker compose --env-file env.development -f docker-compose-infra.development.yml -f docker-compose.development.yml up --build
+```
+
+If changing `CADDY_HOST_PORT`, also update `API_URL_EXTERNAL`,
+`KEYCLOAK_URL_EXTERNAL`, `KEYCLOAK_ISSUER`, CORS and CSRF origins to include that
+port. Existing Keycloak realms are not updated by realm import: update their
+webapp redirect URIs and web origins when changing the public URL.
+
+Staging publishes HTTP port 80 for redirects and HTTPS port 443 for the app.
+The repository Caddyfile is mounted directly; certificates remain at
+`/home/deployer/config/caddy/aisctest.uni.lux.cert` and `.key`.
+Before deployment, build and publish these additional images with the same
+release tag, then set `AISC_SERVICES_TAG` to that tag in `env.staging`:
+
+| Image under `ghcr.io/lux-ai-factory/` | Build context | Dockerfile |
+| --- | --- | --- |
+| `aisc-qualification` | `apps/qualification` | `Dockerfile` |
+| `aisc-report` | `apps/report` | `Dockerfile` |
+
+Rebuild and publish the backend and webapp images used by staging as well.
+Set `BACKEND_TO_QUALIFICATION_TOKEN` (shared by Django's outbound app call and
+the service door) and `IMMUDB_ADMIN_PASSWORD`. Staging refuses missing required values.
+No service token is sent to the browser. Upstream service failures return
+errors rather than fallback documents/cards.
+
+Celery monitoring is global and admin-only. Set `SHOW_CELERY_TASKS=true` to show
+it in the webapp. Django exposes `/api/v1/tasks/monitoring` and
+`/api/v1/tasks/monitoring/{task_id}` and calls Flower internally through
+`FLOWER_SERVICE_URL`. Public `/flower` paths return 404; public internal API
+paths return 403. API, admin, and Keycloak prefixes pass through unchanged.
