@@ -29,9 +29,22 @@ services:
       S3_URL: ${S3_URL}
       S3_USER: ${S3_USER}
       S3_PASSWORD: ${S3_PASSWORD}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_ENGINE: ${DB_ENGINE}
+      IMMUDB_URL: immudb:3322
+      IMMUDB_ADMIN_PASSWORD: ${IMMUDB_ADMIN_PASSWORD}
+      # Qualification and the Report service are required; the backend calls them directly by
+      # container name on the backend network. The report service draws the JSON snapshot the
+      # backend assembles (services/report_service.py -> REPORT_SERVICE_URL/api/generate).
+      QUALIFICATION_SERVICE_URL: http://qualification:8000
+      REPORT_SERVICE_URL: http://report:8080
+      FLOWER_SERVICE_URL: http://caddy:8080/internal/flower
+      SERVICE_TOKEN_FOR_APPS: ${BACKEND_TO_QUALIFICATION_TOKEN:-}
+      CONTROLS_CATALOG_URL: ${CONTROLS_CATALOG_URL:-https://sandboxconfigurator.aifactory.lu/api/api}
       REDIS_BACKEND_URL: ${REDIS_BACKEND_URL}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       BACKEND_CORS_ALLOWED_ORIGINS: ${BACKEND_CORS_ALLOWED_ORIGINS}
@@ -97,6 +110,7 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL}
       CORS_ORIGINS: "*"
       FLOWER_URL_PREFIX: flower
+      FLOWER_UNAUTHENTICATED_API: "true"
     volumes:
       - /home/deployer/plugins:/app/plugins:ro
     depends_on:
@@ -113,3 +127,34 @@ services:
       retries: 5
     networks:
       - backend
+
+  # The qualification service: answers in, AI card out. Stateless —
+  # the backend owns all qualification data; this is only the compute.
+  qualification:
+    image: ghcr.io/lux-ai-factory/aisc-qualification:${AISC_SERVICES_TAG:-unpublished}
+    container_name: qualification
+    environment:
+      BACKEND_TO_QUALIFICATION_TOKEN: ${BACKEND_TO_QUALIFICATION_TOKEN:-}
+      # the system's IR node in generated cards; deployment-specific, never a
+      # hardcoded host (unset -> a local urn:aisc:project in the service)
+      AISC_SYSTEM_IRI: ${AISC_SYSTEM_IRI:-}
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # The Report microservice (apps/report): ONE lean server. The backend (Django) owns all data and
+  # hands it over as a JSON snapshot; this service only draws the document (HTML/PDF) from that
+  # snapshot and reads no database. Backend-network only, :8080.
+  report:
+    image: ghcr.io/lux-ai-factory/aisc-report:${AISC_SERVICES_TAG:-unpublished}
+    container_name: report
+    environment:
+      # shared service token: the backend sends SERVICE_TOKEN_FOR_APPS as X-AISC-Service-Token;
+      # the report service expects the same value in REPORT_SERVICE_TOKEN.
+      REPORT_SERVICE_TOKEN: ${BACKEND_TO_QUALIFICATION_TOKEN:?BACKEND_TO_QUALIFICATION_TOKEN is required}
+    restart: unless-stopped
+    networks:
+      - backend
+    expose:
+      - "8080"
+

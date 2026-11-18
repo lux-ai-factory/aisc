@@ -64,10 +64,12 @@ services:
       KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-aisc-backend-admin}
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
-      # headless qualification service (computes the AI card; backend stores it)
-      QUALIFICATION_SERVICE_URL: http://qualification-headless:8000
-      # headless report service (renders the report snapshot to PDF/HTML)
-      REPORT_SERVICE_URL: http://report-headless:8000
+      # Qualification and the Report service are required; the backend calls them directly by
+      # container name on the backend network. The report service draws the JSON snapshot the
+      # backend assembles (services/report_service.py -> REPORT_SERVICE_URL/api/generate).
+      QUALIFICATION_SERVICE_URL: http://qualification:8000
+      REPORT_SERVICE_URL: http://report:8080
+      FLOWER_SERVICE_URL: http://caddy:8080/internal/flower
       SERVICE_TOKEN_FOR_APPS: ${BACKEND_TO_QUALIFICATION_TOKEN}
       # Hosted controls catalogue API; read by `sync_controls_catalogue` to
       # populate the checklist tables (was a vendored seed before).
@@ -89,10 +91,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-      qualification-headless:
+      qualification:
         condition: service_started
-      # report-headless:
-      #   condition: service_started
     volumes:
       - ${PLUGIN_PATH}:/app/plugins:z
       - ./shared:/app/shared:z
@@ -188,55 +188,42 @@ services:
     networks:
       - backend
 
-  # The real AIRO graph builder the headless service calls to build the card.
-  # Without it the headless service falls back to a deterministic stub card
-  # (summary + digest only) — the card is then not "computed".
-  qualification-ontology:
+  # Qualification service: answers in, AI card out. Stateless —
+  # the backend owns all qualification data; this is only the compute.
+  # Default in dev: it owns the builtin default questionnaire
+  # (src/default_questionnaire.py), which the backend proxies from here.
+  qualification:
+    # Build from the app root so the vendored AIRO builder (airo_min + airo
+    # ttl) and the shared src/data vocabs resolve into the image.
     build:
       context: apps/qualification
-      dockerfile: services/ontology/Dockerfile
-    container_name: qualification-ontology
-    environment:
-      QUALIFICATION_WEB_TO_ONTOLOGY_TOKEN: ${ONTOLOGY_WEB_TOKEN:-}
-      QUALIFICATION_AGENTS_TO_ONTOLOGY_TOKEN: ${ONTOLOGY_AGENTS_TOKEN:-}
-    restart: unless-stopped
-    networks:
-      - backend
-
-  # The headless qualification service: answers in, AI card out. Stateless —
-  # the backend owns all qualification data; this is only the compute.
-  qualification-headless:
-    build: apps/qualification/services/headless
-    container_name: qualification-headless
+      dockerfile: Dockerfile
+    container_name: aisc-qualification
     environment:
       BACKEND_TO_QUALIFICATION_TOKEN: ${BACKEND_TO_QUALIFICATION_TOKEN:-}
       # the system's IR node in generated cards; deployment-specific, never a
       # hardcoded host (unset -> a local urn:aisc:project in the service)
       AISC_SYSTEM_IRI: ${AISC_SYSTEM_IRI:-}
-      # where the AIRO graph is built; unset -> the stub card is returned
-      ONTOLOGY_SERVICE_URL: http://qualification-ontology:8011
-      HEADLESS_TO_ONTOLOGY_TOKEN: ${ONTOLOGY_WEB_TOKEN:-}
-    depends_on:
-      qualification-ontology:
-        condition: service_started
     restart: unless-stopped
     networks:
       - backend
 
-  # # The headless report service: snapshot in, PDF/HTML out. Stateless — the
-  # # backend assembles the snapshot, stores it and the document; this is the
-  # # renderer only (no UI, no own DB).
-  # report-headless:
-  #   build: apps/reporting/services/headless
-  #   container_name: report-headless
-  #   environment:
-  #     # The backend sends ONE shared outbound token (SERVICE_TOKEN_FOR_APPS) to
-  #     # every app door; the report door defaults to that same token so the call
-  #     # is accepted, with a dedicated override when one is wanted.
-  #     BACKEND_TO_REPORT_TOKEN: ${BACKEND_TO_REPORT_TOKEN:-${BACKEND_TO_QUALIFICATION_TOKEN:-}}
-  #   restart: unless-stopped
-  #   networks:
-  #     - backend
+  # The Report microservice (apps/report): ONE lean server. The backend (Django) owns all data and
+  # hands it over as a JSON snapshot (services/report_snapshot.py); this service only draws the
+  # document (HTML/PDF) from that snapshot and reads no database. Backend-network only, :8080.
+  report:
+    build: apps/report
+    image: aisc-report:latest
+    pull_policy: never
+    container_name: aisc-report
+    environment:
+      # shared service token: the backend sends it as X-AISC-Service-Token (SERVICE_TOKEN_FOR_APPS)
+      REPORT_SERVICE_TOKEN: ${BACKEND_TO_QUALIFICATION_TOKEN:-dev-report-token}
+    restart: unless-stopped
+    networks:
+      - backend
+    expose:
+      - "8080"
 
 volumes:
   flower_data:
