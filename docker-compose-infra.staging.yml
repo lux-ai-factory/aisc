@@ -101,8 +101,11 @@ services:
       - -c
       - |
         URL="$${API_URL_EXTERNAL:-http://localhost}"
+        SECRET="$${BACKEND_ADMIN_CLIENT_SECRET:-}"
         mkdir -p /opt/keycloak/data/import
-        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        sed -e 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' \
+            -e 's|$${BACKEND_ADMIN_CLIENT_SECRET}|'"$$SECRET"'|g' \
+            /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
         exec /opt/keycloak/bin/kc.sh start --import-realm
     volumes:
       # Realm template (rendered at startup, see command above).
@@ -111,6 +114,9 @@ services:
       # API_URL_EXTERNAL = public base URL of the app (frontend + API share one
       # Caddy domain). The realm's redirect URIs are rendered from it.
       API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      # Secret of the aisc-backend-admin confidential client (substituted into
+      # the imported realm; empty = the client imports with no usable secret).
+      BACKEND_ADMIN_CLIENT_SECRET: ${BACKEND_ADMIN_CLIENT_SECRET:-}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_DB: postgres

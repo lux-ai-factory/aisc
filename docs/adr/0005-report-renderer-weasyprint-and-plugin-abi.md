@@ -1,6 +1,6 @@
 # 0005. Report renderer: the pilot's WeasyPrint/Jinja renderer and report-plugin ABI
 
-**Status:** accepted
+**Status:** superseded by [ADR 0008](0008-report-renderer-one-engine-in-backend.md) (its external-service seam and bundled per-tool renderer packages are withdrawn)
 **Supersedes:** [ADR 0004](0004-reporting-renderer-dependencies.md) (its `reportlab` choice is withdrawn)
 **Invariant:** I8 — new production dependencies decided (not waived)
 **Owner:** AISC project owner (reporting workstream, epic E5); renderer code ported from the pilot

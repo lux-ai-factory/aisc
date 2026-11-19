@@ -377,6 +377,9 @@ renderer fetches nothing (only `data:` URIs are read).
   `svg_print.for_print` first, and an SVG with an embedded external resource is refused.
 - `services/report_render.py` now delegates to the renderer (async `render_document`); `reportlab`
   is gone. The `REPORT_SERVICE_URL` seam is retained: an external renderer still wins when set.
+  *(Superseded: [ADR 0008](../adr/0008-report-renderer-one-engine-in-backend.md) withdraws that seam
+  and the vendored per-tool renderer packages — one in-backend engine, per-tool fragments in the eval
+  plugin.)*
 
 **Deviations and things left undone.**
 
@@ -413,6 +416,18 @@ renderer fetches nothing (only `data:` URIs are read).
   dependencies follow it. ADR 0004 remains superseded.
 - **I10 (no browser/Chromium).** WeasyPrint + cairosvg only; `pdf.py` refuses every non-`data:` URL.
 - **Guards unchanged:** 5 passed, 3 xfailed, 0 failed (no baseline grew).
+
+**ADR 0008 follow-up (landed).** The renderer is now a single in-backend engine: the external
+`REPORT_SERVICE_URL` seam and the `apps/report` service are withdrawn (never merged into this
+branch), so there is one implementation of rendering, not two. The per-tool renderers that were
+vendored under `apps/backend/aisc_report_plugin_*` are gone; each eval plugin now draws its own
+run through `BaseEvaluationPlugin.get_report_renderer()` (langbite, promptfoo and strongreject
+in their plugin repos; mlareject's renderer is staged for its repo). The ABI
+(`BaseToolRenderer`, `ToolRun`, i18n/templating/charts) moved from the vendored
+`aisc_report_plugin_interface` into the published `aisc_plugin_interface.report` (behind the
+`[report]` extra, `aisc-plugin-interface` 0.4.0). A run whose plugin has no renderer still prints
+the generic measurements table, so old plugins keep working. See
+[`adr/0008-report-renderer-one-engine-in-backend.md`](adr/0008-report-renderer-one-engine-in-backend.md).
 
 **Verified on this tree after the follow-up (commands and their output):**
 

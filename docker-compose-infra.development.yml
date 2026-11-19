@@ -102,8 +102,11 @@ services:
       - -c
       - |
         URL="$${API_URL_EXTERNAL:-http://localhost}"
+        SECRET="$${BACKEND_ADMIN_CLIENT_SECRET:-}"
         mkdir -p /opt/keycloak/data/import
-        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        sed -e 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' \
+            -e 's|$${BACKEND_ADMIN_CLIENT_SECRET}|'"$$SECRET"'|g' \
+            /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm --proxy-headers=xforwarded
     volumes:
       # Realm template (rendered at startup, see command above).
@@ -112,6 +115,9 @@ services:
     environment:
       # Base URL used to render redirect URIs in the realm template.
       API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      # Secret of the aisc-backend-admin confidential client (substituted into
+      # the imported realm; empty = the client imports with no usable secret).
+      BACKEND_ADMIN_CLIENT_SECRET: ${BACKEND_ADMIN_CLIENT_SECRET:-}
       # Same-origin SSO path. Do NOT add X-Forwarded-Prefix in Caddyfile —
       # with proxy-headers=xforwarded it would double /auth.
       KC_HTTP_RELATIVE_PATH: /auth

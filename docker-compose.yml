@@ -109,14 +109,20 @@ services:
       - -c
       - |
         URL="$${API_URL_EXTERNAL:-http://localhost}"
+        SECRET="$${BACKEND_ADMIN_CLIENT_SECRET:-}"
         mkdir -p /opt/keycloak/data/import
-        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        sed -e 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' \
+            -e 's|$${BACKEND_ADMIN_CLIENT_SECRET}|'"$$SECRET"'|g' \
+            /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm --proxy-headers=xforwarded
     volumes:
       - ./keycloak/aisc-realm.template.json:/tmp/aisc-realm.template.json:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
       API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      # Secret of the aisc-backend-admin confidential client (substituted into
+      # the imported realm; empty = the client imports with no usable secret).
+      BACKEND_ADMIN_CLIENT_SECRET: ${BACKEND_ADMIN_CLIENT_SECRET:-}
       KC_HTTP_RELATIVE_PATH: /auth
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
@@ -226,6 +232,13 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      # Keycloak Admin REST API (services.keycloak_admin): the backend talks to
+      # it with a confidential service-account client, never a user's password.
+      # Empty URL or secret = the admin surface is off.
+      KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL:-}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-aisc}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-aisc-backend-admin}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
       # The analytics dashboard bridge (ANA-01). The dashboard is the pilot's own
       # Superset process, deployed separately; these tell this stack where it is
