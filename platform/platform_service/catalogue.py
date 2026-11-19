@@ -350,12 +350,23 @@ def _local_packages(pid, token: str, public_packages: set) -> list[dict]:
     return [out[k] for k in sorted(out)]
 
 
+#: An admin's explicit choice of no dimension is kept as one row under this prefix + the package name. The
+#: table's dimension column only takes REQ1..REQ11, so the marker's dimension is a placeholder; the prefix
+#: cannot start a package name.
+NO_DIMENSIONS_PREFIX = "no-dimensions:"
+
+
 def _local_dimensions(pid) -> dict[str, list[str]]:
+    """The admin's saved dimensions per package; a package the admin chose none for maps to []."""
     with _connect(pid) as conn:
         rows = conn.execute("SELECT package_name, dimension FROM catalogue.local_dimension").fetchall()
     found: dict[str, list[str]] = {}
     for r in rows:
-        found.setdefault(r["package_name"], []).append(r["dimension"])
+        name = r["package_name"]
+        if name.startswith(NO_DIMENSIONS_PREFIX):
+            found.setdefault(name[len(NO_DIMENSIONS_PREFIX):], [])
+        else:
+            found.setdefault(name, []).append(r["dimension"])
     return {k: sorted(v, key=lambda rid: int(rid[3:])) for k, v in found.items()}
 
 
@@ -394,7 +405,9 @@ def tools(pid, token: str, detailed: bool, internal: bool = False) -> list[dict]
     for n, p in enumerate(_local_packages(pid, token, {package_of(t) for t in public})):
         name = p["package_name"]
         entry_tags = [_local_tag(tags)] + ([by_slug["test"]] if "test" in by_slug else [])
-        entry_tags += [by_slug[slug_of[rid]] for rid in dims.get(name, []) if slug_of[rid] in by_slug]
+        # an admin's saved choice, an empty one too, wins over what the package declares
+        chosen = dims[name] if name in dims else [d for d in p.get("dimensions") or [] if d in slug_of]
+        entry_tags += [by_slug[slug_of[rid]] for rid in chosen if slug_of[rid] in by_slug]
         entry = {k: None for k in TOOL_KEYS}
         entry.update(id=LOCAL_ID_BASE + 1 + n, slug=f"local-{name}", name=name, package_name=name,
                      version=p.get("version"), description="A plugin of this stack, not in the public catalogue.",
@@ -721,7 +734,11 @@ def set_local_dimensions(pid, package: str, dimensions: list[str]) -> list[str]:
         raise InvalidDimensions("dimensions are REQ1 to REQ11")
     _require_private(pid)
     with _connect(pid) as conn, conn.transaction():
-        conn.execute("DELETE FROM catalogue.local_dimension WHERE package_name = %s", (package,))
+        conn.execute("DELETE FROM catalogue.local_dimension WHERE package_name IN (%s, %s)",
+                     (package, NO_DIMENSIONS_PREFIX + package))
+        if not dimensions:
+            conn.execute("INSERT INTO catalogue.local_dimension (package_name, dimension) VALUES (%s, %s)",
+                         (NO_DIMENSIONS_PREFIX + package, R_IDS[0]))
         for d in sorted(set(dimensions)):
             conn.execute("INSERT INTO catalogue.local_dimension (package_name, dimension) VALUES (%s, %s)",
                          (package, d))
