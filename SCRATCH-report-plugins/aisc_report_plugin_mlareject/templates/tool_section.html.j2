@@ -1,0 +1,166 @@
+{# MLA-Reject in the Test results block: the summary and the aggregate tables, computed from the
+   run's measurements. No plots and never a prompt or a response. #}
+<div class="tool-section">
+
+  <h3>Executive Summary</h3>
+  <div class="executive-summary">
+    <div class="summary-container">
+      <div class="summary-column left-column">
+        <div class="summary-stats">
+          <div class="stat-box">
+            <strong>Total observations</strong>
+            <span class="stat-value">{{ statistics.summary.total_cases | default(statistics.nObservations) | default('N/A') }}</span>
+          </div>
+          <div class="stat-box">
+            <strong>Mean score</strong>
+            <span class="stat-value">
+              {% if statistics.summary.mean_score is not none %}
+                {{ "%.3f" | format(statistics.summary.mean_score) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </div>
+          <div class="stat-box">
+            <strong>Empty jailbreaks</strong>
+            <span class="stat-value">{{ statistics.summary.empty_cases | default('N/A') }}</span>
+          </div>
+          <div class="stat-box">
+            <strong>Effective jailbreaks</strong>
+            <span class="stat-value">{{ statistics.summary.effective_cases | default('N/A') }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary-column right-column">
+        <div class="summary-stats">
+          <div class="stat-box">
+            <strong>Languages</strong>
+            <span class="stat-value">
+              {% set langs = statistics.languages | list %}
+              {% if langs %}
+                {{ langs | join(', ') }}
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </div>
+          <div class="stat-box">
+            <strong>Jailbreak methods</strong>
+            <span class="stat-value">
+              {% set jailbreaks = statistics.jailbreakMethods | list %}
+              {% if jailbreaks %}
+                {{ jailbreaks | join(', ') }}
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </div>
+          <div class="stat-box">
+            <strong>Empty share</strong>
+            <span class="stat-value">
+              {% if statistics.summary.total_cases %}
+                {{ "%.1f" | format(statistics.summary.empty_share * 100) }}%
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary-stats">
+      <div class="stat-box">
+        <strong>Harm categories</strong>
+        <span class="stat-value">
+          {% set categories = statistics.categories | list %}
+          {% if categories %}
+            {{ categories | join(', ') }}
+          {% else %}
+            N/A
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <h3>Aggregate score by jailbreak method</h3>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Jailbreak method</th>
+          <th>Cases</th>
+          <th>Harmful cases</th>
+          <th>Empty cases</th>
+          <th>Mean score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in statistics.byJailbreak | default([]) %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>{{ row.cases }}</td>
+          <td>{{ row.harmful_cases }}</td>
+          <td>{{ row.empty_cases }}</td>
+          <td>{% if row.avg_score is not none %}{{ "%.3f" | format(row.avg_score) }}{% else %}N/A{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Most susceptible harm categories</h3>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Cases</th>
+          <th>Harmful cases</th>
+          <th>Empty cases</th>
+          <th>Mean score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in statistics.byCategory | default([]) %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>{{ row.cases }}</td>
+          <td>{{ row.harmful_cases }}</td>
+          <td>{{ row.empty_cases }}</td>
+          <td>{% if row.avg_score is not none %}{{ "%.3f" | format(row.avg_score) }}{% else %}N/A{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Scores by language</h3>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Language</th>
+          <th>Cases</th>
+          <th>Harmful cases</th>
+          <th>Empty cases</th>
+          <th>Mean score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in statistics.byLanguage | default([]) %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>{{ row.cases }}</td>
+          <td>{{ row.harmful_cases }}</td>
+          <td>{{ row.empty_cases }}</td>
+          <td>{% if row.avg_score is not none %}{{ "%.3f" | format(row.avg_score) }}{% else %}N/A{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>

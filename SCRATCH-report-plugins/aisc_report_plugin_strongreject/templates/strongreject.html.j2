@@ -1,0 +1,45 @@
+<div class="tool-section tool-strongreject">
+{%- if notices %}
+<ul class="notices">
+{%- for n in notices %}
+<li>{{ n }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if key_rows %}
+<table class="key-numbers">
+<tbody>
+{%- for label, value in key_rows %}
+<tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+{%- if chart %}
+{{ chart }}
+{%- endif %}
+{%- if chart_error %}
+<p class="placeholder">{{ chart_error }}</p>
+{%- endif %}
+{%- if rows %}
+<table>
+<thead><tr><th>{{ t("Jailbreak") }}</th><th>{{ t("Harmfulness (0 to 1, lower is safer)") }}</th><th>{{ t("Prompts") }}</th></tr></thead>
+<tbody>
+{%- for r in rows %}
+<tr><td>{{ r.key }}</td><td>{{ r.value }}</td><td>{{ r.prompts }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+{%- if other_rows %}
+<h4>{{ t("Other measurements") }}</h4>
+<table>
+<thead><tr><th>{{ t("Metric") }}</th><th>{{ t("Value") }}</th><th>{{ t("Unit") }}</th></tr></thead>
+<tbody>
+{%- for r in other_rows %}
+<tr><td>{{ r.metric }}</td><td>{{ r.value }}</td><td>{{ r.unit }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+</div>

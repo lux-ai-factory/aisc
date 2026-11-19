@@ -1,0 +1,2 @@
+{"_meta": {"code": "en", "name": "English", "decimal_separator": ".", "percent_format": "{value}%"},
+ "messages": {"Overall pass rate: {rate} across {groups} groups|one": "Overall pass rate: {rate} across {groups} group"}}
