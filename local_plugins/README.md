@@ -28,8 +28,8 @@ Start AISC as usual (`uv run scripts/aisc.py start` in the aisc folder). Then:
    catalogue shows only the public entries). Your plugin is listed with Source = **Local**. Its default
    dimensions are the ones its own `pyproject.toml` declares (`[tool.aisc]`, `dimensions = ["REQ5"]`; ids
    other than REQ1 to REQ11 are ignored). An admin can give it others in its entry (**Dimensions**, REQ1 to
-   REQ11); that choice, an empty one included, replaces the declared default. Dimensions put it under "For
-   this project" and let step 4's Evidence map link it to objectives of those dimensions.
+   REQ11); that choice, an empty one included, replaces the declared default. Dimensions let the catalogue
+   filter by them and step 4's Evidence map link the test to objectives of those dimensions.
 3. **Press Install** (it takes the admin role). The plugin publisher builds the plugin from this folder,
    checks it and puts it on the stack's package index, then the engine installs it from there.
 
@@ -57,5 +57,6 @@ keys out of a plugin's folder all the same). A link anywhere in the folder is re
 
 The engine lists a plugin it finds in `/app/plugins` with a `+local` version, and that listing is what makes it a
 Local entry. A Local test's default dimensions come from `[tool.aisc] dimensions` in its package; the ones an admin gives it
-are kept in the project's database (`catalogue.local_dimension`) and replace the default, "none" included. The publisher's code for this folder is `infra/plugin-publisher/plugin_publisher/local.py`.
+are kept in the project's database (`catalogue.local_dimension`) and replace the default, "none" included. The publisher's code for this folder is
+`infra/plugin-publisher/plugin_publisher/local.py`.
 For writing a plugin, see the plugin developer guide in `shared/plugin-interface`.

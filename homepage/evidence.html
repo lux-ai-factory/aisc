@@ -88,7 +88,8 @@
   .local .tile{border-left-color:var(--border-strong); border-style:dashed}
 
   /* ---- Manage: the project page's menu, the same rules (test_evidence_page.py keeps them equal) ---- */
-  .menu{position:relative; margin-left:auto}
+  .session{margin-left:auto}
+  .menu{position:relative; margin-left:24px}
   .menu summary{
     list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
     padding:7.2px 12px; border:1px solid var(--border);
@@ -140,6 +141,7 @@
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
   <details class="menu" id="manage">
     <summary>
       Manage
@@ -170,7 +172,6 @@
       <span class="sep owner-only" hidden></span>
     </div>
   </details>
-  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>

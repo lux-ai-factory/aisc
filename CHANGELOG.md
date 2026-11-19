@@ -244,7 +244,7 @@
 - A run pass names only the evaluation's own project; a component naming another project's target or connection
   is refused (400).
 - The plugin publisher replaces a published version whose content changed; the vendored plugin-manager is
-  `0.3.0+aisc.1`.
+  `0.3.0+aisc.2`.
 - The eval image carries Node 22.22.0 and promptfoo 0.125.1.
 - StrongREJECT is released as `aisc-plugin-strongreject` 0.1.2 and LangBiTe as `aisc-plugin-langbite` 0.2.11:
   the versions where a failing target fails the run instead of scoring as safe. The engine and worker install a
@@ -350,7 +350,7 @@
   configuration that matches no prompt. No placeholder 0.0 measure is written any more. Check: each plugin's `tests/` (`test_failed_runs.py`).
 - The plugin publisher builds on every publish and uploads when the version is missing from the index or its wheel
   content (members by hash) changed, for plugins and the interface alike; the answer says `replaced`. The vendored
-  plugin-manager is `0.3.0+aisc.1`, upstream's 0.3.0 plus this checkout's commits. Check:
+  plugin-manager is `0.3.0+aisc.2`, upstream's 0.3.0 plus this checkout's commits. Check:
   `cd infra/plugin-publisher && uv run --with pytest pytest -q` and `scripts/tests/test_plugin_interface_pins.py`.
 - The eval worker hands plugins none of its own model keys (`AISC_TARGET_API_KEY`, `OPENAI_API_KEY`,
   `API_KEY_OPENAI`); the model addresses still pass. Check: `apps/eval` `tests/test_plugin_environment.py`.
