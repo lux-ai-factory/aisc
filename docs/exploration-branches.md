@@ -41,6 +41,20 @@ plays for one design question, but spanning the app instead of a single note:
   axis** (a layer), a **published artifact** (an ABI, a public site, a registry), or the **composition root**
   — not a business domain (see [`unified-modules-and-pilot-brief.md`](unified-modules-and-pilot-brief.md) D8).
 
+## Frozen pilot reference (pinned 2026-11-16)
+
+The pilot is a **moving branch**: it has kept changing since this refactor began. This work is pinned to the
+pilot snapshot it started from and **ignores later pilot changes**:
+
+- pilot reference commit: **`6197dc1aff55a582f5bdb39b10b0910b81b7a07b`** — "The audit's design changes: one way
+  to call a service, open a project database, decide who the caller is, keep a secret, write a ledger event,
+  run a plugin, build a launcher page and run a suite";
+- `feat/unified-app` frozen pins: see [the plan](refactor-plan.md) §3 (backend, webapp, eval,
+  plugin-interface, plugin-manager).
+
+Read that snapshot for behaviour; do **not** follow `origin/pilot` HEAD. Any later pilot work is a separate
+proposal, reviewed on its own.
+
 ## Upgrade scope (2026-11-16)
 
 Only existing `master`/`main` installations need data-preserving upgrades. Pilot/unified-modules/unified-app

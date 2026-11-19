@@ -152,7 +152,6 @@ def test_i3_one_project_database_module():
         "apps/control-objectives/src/aisc_control_objectives/projectdb.py",
         "apps/report-composer/report_composer/projectdb.py",
         "platform/platform_service/projectdb.py",
-        "shared/identity/aisc_identity/projectdb.py",
     })
 
 
@@ -184,7 +183,10 @@ def test_i9_no_domain_slice_module():
     modules = list(_module_dirs())
     assert modules, "no apps/shared module directories found (stale scan)"
     slices = sorted(str(d.relative_to(ROOT)) for d in modules if _is_domain_slice(d))
-    _baseline(slices, {"apps/qualification", "apps/controls"})
+    # The legacy `apps/controls` / `apps/qualification` vertical slices were retired;
+    # their retained behaviour lives as features inside `backend`/`webapp` (I10). The
+    # baseline is empty: any reintroduced domain slice now fails.
+    _baseline(slices, set())
 
 
 _STEP_CONTAINER = re.compile(r"(?:[-_](?:migrate|setup|grants?|buckets|key)|^make_buckets)$")

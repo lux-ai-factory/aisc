@@ -7,6 +7,12 @@
 > explicit publication with immutable history.
 > Selectively merge the frozen unified-app layer/shared commits onto main; block worker-wide credentials
 > from plugin children now and defer self-contained dispatch/run-local doors until after the port.
+>
+> **Retired in the consolidation:** the static `homepage/` launcher and the separate
+> `apps/controls` / `apps/qualification` services have been removed. Their retained behaviour
+> (checklists, control objectives, qualification/system cards, evidence map, reporting) now
+> lives inside `apps/webapp` and `apps/backend` as optional, flag-gated features. Where the
+> topology below names those services, read the consolidated webapp/backend instead.
 
 This document explains what AISC is for, the four steps of an assessment and how the software behind them fits
 together. The [README](../README.md) says how to install it, and the [guide](guide.md) is the operator's reference

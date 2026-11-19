@@ -14,8 +14,9 @@ it is on the list to delete before the branch merges (see §5).
 
 The frozen `feat/unified-app` is ported onto `master` as **one testable branch**. Everything agreed
 for the port is on it and the acceptance sweep is green from a fresh clone. What is **not** done:
-the release itself (no tag), the post-port execution milestone (E7), and the I9 consolidation debt
-(the `apps/controls` / `apps/qualification` slices are still reference-only). GitHub issues are
+the release itself (no tag) and the post-port execution milestone (E7). The I9 consolidation is now
+**done**: the `apps/controls` / `apps/qualification` submodules, the static `homepage/` launcher and
+the per-app DB init files have been removed (guards now **8 passed, 0 xfailed**). GitHub issues are
 labelled `status: doing` and linked to PR #125, but not closed.
 
 Verified at handover (fresh clone, `--recurse-submodules`):
@@ -53,8 +54,8 @@ cd ../.. && cp env.example .env && docker compose up -d                      # u
 ```
 
 Submodule pins on the branch: `apps/backend 7926e7e`, `apps/eval f6f4996`, `apps/webapp 347ec00`,
-`shared/plugin-interface d69b593`, `shared/plugin-manager 9ae73b2`; `apps/controls 432301c` and
-`apps/qualification 7253966` stay at their **mainline** pins (reference-only).
+`shared/plugin-interface d69b593`, `shared/plugin-manager 9ae73b2`. The `apps/controls` and
+`apps/qualification` submodules were removed (I9 consolidation).
 
 ---
 
@@ -118,12 +119,14 @@ green; it does **not** mean the issue is closed on GitHub.
    door **are** done; still open: the real **backend/platform-down acceptance test**, durable recovery
    after worker loss, retries/dedup, credential expiry, adapter sandboxing, stronger audit
    verification, PostgreSQL RLS. See `docs/refactor-plan.md` §7.
-3. **I9 consolidation debt (the only `xfail` left).** `apps/controls` and `apps/qualification` are
-   still full-stack domain slices at their mainline pins (ADR 0001); their retained behaviour is
-   served from `backend`/`webapp`. Recorded in `docs/refactor-deviations.md`; expires at release.
-4. **Legacy retirement not executed.** `homepage/` (the static launcher), the spent exploration
-   branches and `scripts/` cleanup are **#123** — to be done after the visual/navigation acceptance,
-   not at integration time.
+3. **I9 consolidation — DONE.** `apps/controls` and `apps/qualification` (full-stack domain slices,
+   ADR 0001) were removed along with the static `homepage/` launcher and the per-app `init/*-db.sql`
+   files; their retained behaviour is served from `backend`/`webapp`. The I9 guard passes with an
+   empty baseline (suite: **8 passed, 0 xfailed**). Recorded in `docs/refactor-deviations.md`.
+4. **Legacy retirement partly done.** `homepage/` and the controls/qualification submodules are
+   removed; what remains of **#123** is the spent exploration branches and any `scripts/` cleanup
+   (both `scripts/make-buckets.sh` and `scripts/verify-dashboard-redis.sh` are kept — they are
+   documented steps, not leftovers).
 5. **Plugin-manager installer env** — one ADR 0003 §4 spawn point remains open
    (`shared/plugin-manager/src/aisc_plugin_manager/uv_client.py`); recorded in
    `docs/refactor-deviations.md` (§"Left undone (E4)").
@@ -169,7 +172,7 @@ These were created **for** the integration and should not reach `master` as-is. 
 | `docs/exploration-branches.md` | how pilot branches are treated | delete |
 | `docs/patches/` | the only file is the SEC-01 patch, now applied by the eval fold | delete the directory |
 | `SCRATCH-platform-adapters/` | scratch design notes (explicitly "not binding") | delete |
-| `homepage/` | the static launcher kept as a look/feel reference | delete **after** the §2.1 visual/navigation acceptance (#123) |
+| `homepage/` | the static launcher kept as a look/feel reference | **deleted** |
 | `scripts/` | **keep** — `make-buckets.sh` is the documented bucket-init path (REL-02, `README.md`) and `verify-dashboard-redis.sh` is referenced by `docs/ops/results-dashboard.md` | keep both |
 
 ### 5.2 Fix the links in the docs that stay

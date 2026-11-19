@@ -16,7 +16,7 @@ results are shown, and the report puts it all together for one version of the AI
 
 ## Where
 
-Project page, **4. Collect evidence**. The page (`homepage/evidence.html`, on the launcher's port) has an **AI card
+Project page, **4. Collect evidence**. The page (the Collect evidence hub in the React webapp) has an **AI card
 version** selector, an **Evidence map** button with the version's coverage in one line ("4 of 6 objectives linked ·
 2 gaps"), and four columns: Answer checklists, Run tests, Results, Report. Each column's heading opens its
 application; under it are tiles.
@@ -86,8 +86,8 @@ are listed whatever the version.
 what is not covered yet. It is the step's risk and control matrix carried through to the evidence, as finance teams
 keep it: every risk to its objective, every objective to the checks that prove it, and the gaps in plain sight.
 
-**Where:** the **Evidence map** button on Collect evidence opens its own page (`homepage/evidence-map.html`) for the
-selected AI card version.
+**Where:** the **Evidence map** button on Collect evidence opens its own page (the Evidence map page in the React
+webapp) for the selected AI card version.
 
 **The grid:**
 

@@ -44,7 +44,7 @@ recorded under its ADR and reported as `xfail`; a **new** finding fails. Run:
 | invariant | state | evidence / owner |
 |---|---|---|
 | **I1** worker fetch mid-run | pass | the 5 findings are the **dispatcher** (`run_evaluation`) and `_embed_input_files` attaching inputs/settings **before** dispatch, plus status reconciliation in `finalize_evaluation`. `run_plugin` is self-contained, so I1 holds; closed by EXEC-01a #120: the fetches moved into `aisc_eval/dispatch.py` at dispatch time and the worker performs none. ADR 0003 / EXEC-01 #120 |
-| **I9** domain-slice module | xfail (baseline) | `apps/qualification`, `apps/controls` are still full-stack slices (ADR 0001) |
+| **I9** domain-slice module | pass | `apps/qualification`, `apps/controls` vertical slices **retired** (submodules removed); their behaviour lives in `backend`/`webapp`. No `xfail` remains |
 | **I11** no step containers | pass | the one-shot `make_buckets` bucket-init containers were removed from `docker-compose.yml` and `docker-compose-infra*.yml` (REL-02); buckets are created by the documented one-off `scripts/make-buckets.sh` |
 | **I2** plugin child env allowlist | satisfied | `plugin_child_env()` allowlist (eval conformance fold) |
 | **I7** outbound scrub | satisfied | `aisc_eval/utils/scrub.py` on stdout/stderr/artifacts |
@@ -1097,13 +1097,13 @@ per-issue worker tests, which is why the sweep exists):
    profile. It now carries a local-only default, with the guard kept for real
    deployments.
 
-**Remaining reviewed deviation.** **I9** — `apps/controls` and `apps/qualification`
-are still full-stack domain slices (ADR 0001); their retained behaviour is served
-from `backend`/`webapp`, and the slices are reference-only. This is the only
-`xfail` left, it is recorded, and it expires at release.
+**I9 retired (post-integration).** `apps/controls` and `apps/qualification` were full-stack domain
+slices (ADR 0001); their retained behaviour is served from `backend`/`webapp`. The two submodules,
+the static `homepage/` launcher and the per-app `init/*-db.sql` files have now been **removed**; the
+I9 guard passes with an empty baseline and the suite is **8 passed, 0 xfailed**. `shared/identity`
+and `shared/report-plugin-interface` (stale pilot checkouts, never tracked here) were removed too.
 
 **Release decision (REL-01).** The branch is accepted as a **working integration
 branch, testable end to end** — not a release. The frozen-app port, the security
 work (SEC-01/02/03), the versioning/identity work (VER-01), the audit and flag
-core (CORE-01) and the execution work (EXEC-01) are all on it; the one open
-invariant is the recorded I9 consolidation debt above.
+core (CORE-01), the execution work (EXEC-01) and the I9 consolidation are all on it.

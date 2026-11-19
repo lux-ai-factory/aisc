@@ -15,8 +15,9 @@ the class is stated by whoever composes the report (step 4, Risk classification 
 
 ## Where
 
-Project page, **1. Qualify the AI system**. The application is `qualification-web` (`apps/qualification`), under
-`/qualification` on the engine's port (80 by default).
+Project page, **1. Qualify the AI system**. The page is part of the core React webapp (`apps/webapp`),
+backed by the optional, flag-gated `qualification` feature in `apps/backend`. (In the pilot this was a
+separate `qualification-web` app under `/qualification`; that service was retired in the consolidation.)
 
 ## What you do
 

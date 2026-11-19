@@ -2,6 +2,11 @@
 
 Back to [How AISC works](../architecture.md).
 
+> **Historical pilot topology.** The consolidation retired the static `homepage/` launcher and the
+> separate `apps/controls` / `apps/qualification` services; their behaviour now lives in the core
+> `apps/webapp` / `apps/backend` as flag-gated features. The service names below describe the pilot
+> deployment, not the consolidated product.
+
 Every service the stack runs, by its name in `docker-compose-infra.development.yml` and
 `docker-compose.development.yml`, with what it does and what it talks to. A service marked *one-shot* runs at every
 start, does its job and exits.
