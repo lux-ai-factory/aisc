@@ -73,7 +73,6 @@ h1,h2,h3,h4{font-family:"MuseoModerno",ui-sans-serif,system-ui,sans-serif; color
 .session b{color:var(--text); font-weight:500}
 .session a{color:var(--primary); text-decoration:none; border-bottom:1px solid transparent}
 .session a:hover{border-bottom-color:var(--primary)}
-.topbar .menu ~ .session{margin-left:0}
 
 @media (max-width:820px){
   .topbar{padding:12px 18px; gap:14px}

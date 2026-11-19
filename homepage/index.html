@@ -20,7 +20,7 @@
   /* ---- header: hairline, logo, product name, session ---- */
   .topbar{gap:26.4px}
   .topbar .rule{height:33.6px}
-  .session{margin-left:24px; gap:16.8px; font-size:13.8px}
+  .session{margin-left:auto; gap:16.8px; font-size:13.8px}
 
   main{
     max-width:1360px; margin:0 auto; padding:40px 32px 32px;
@@ -28,7 +28,7 @@
   }
 
   /* ---- endpoints: in the header, out of the way until asked for ---- */
-  .menu{position:relative; margin-left:auto}
+  .menu{position:relative; margin-left:24px}
   .menu summary{
     list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
     padding:7.2px 12px; border:1px solid var(--border);
@@ -133,6 +133,7 @@
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
   <details class="menu">
     <summary>
       Manage
@@ -142,7 +143,6 @@
       <a data-origin="keycloak" data-path="/realms/aisc/account">My account</a>
     </div>
   </details>
-  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>
