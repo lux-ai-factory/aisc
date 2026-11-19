@@ -26,3 +26,6 @@
 	path = apps/qualification
 	url = https://github.com/lux-ai-factory/aisc-qualification.git
 	branch = main
+[submodule "apps/report"]
+	path = apps/report
+	url = git@github.com:lux-ai-factory/aisc-report-generator.git
