@@ -98,6 +98,7 @@ def test_the_sandbox_page_gates_run_tests_and_results_only():
     assert "write-report" not in re.search(r"function gateWays.*?\n  }\n", script, re.S).group(0)
     assert "Connect at least one component of " in script
     assert "'/connectivity.html?project=' + enc(slug)" in script
+    assert "link.textContent = 'Connect here';" in script and "Connect it in Connectivity" not in script
     assert "Ask an owner of the project to connect one." in script
     assert "visibilitychange" in script, "checked again when the person comes back to the tab"
 
