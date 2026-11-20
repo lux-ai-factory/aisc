@@ -361,7 +361,7 @@ renderer fetches nothing (only `data:` URIs are read).
 
 - **The ABI, vendored verbatim:** `aisc_report_plugin_interface` (INTERFACE_VERSION 2) and the four
   tool plugins `aisc_report_plugin_{langbite,mlareject,promptfoo,strongreject}`.
-- **`aisc_backend/report_renderer/`**: `document.py` (snapshot → sections → the pilot's
+- **`aisc_report/report_renderer/`**: `document.py` (snapshot → sections → the pilot's
   `document.html.j2`), the pilot's `blocks/templates/` and `templates/css/`, `pdf.py` (WeasyPrint,
   `data:` only), `svg_print.py`, `style.py`, `structure.py`, `errors.py` (all vendored unchanged),
   and `docx.py` (the Word export).

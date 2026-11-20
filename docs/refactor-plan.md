@@ -290,6 +290,8 @@ access, the route guard covers new endpoints, and a plugin child cannot read wor
   tables, IDs, migration history, content types and permissions. Rewrite **unshipped** unified-app
   0015–0032 in destination apps as needed; do not use state-only migration gymnastics for disposable
   unified-app data. Use §2.1/brief D11; verify clean install and real PostgreSQL mainline upgrade.
+  Layer code follows its tables: routers, services, schemas, repositories and tests live in the app that owns
+  the tables they serve, while the URLconf stays the one composition root and every app stays installed.
 - Register feature flags at behaviour seams; never change installed apps, middleware or URLconf by mode.
   Core must run with qualification, objectives and controls disabled and without their data.
 - Extend the one audit module. Preserve mainline immudb history and verify its project-scoped read

@@ -1,6 +1,6 @@
 # Backend Django app split — plan
 
-**Status:** proposed, not executed. Branch `integration/int-01-frozen-unified-app`.
+**Status:** phases 1–3 executed. Branch `integration/int-01-frozen-unified-app`.
 **Scope:** `apps/backend` only. No repo, service or container changes (I9/I11).
 **Decision source:** `docs/unified-modules-and-pilot-brief.md` D11 and `docs/refactor-plan.md` §2.3.
 
@@ -171,6 +171,51 @@ data.
 
 > Phase 2 is the risky part. Do it as its own change after phase 1 is green, with a real PostgreSQL
 > upgrade from a mainline `0014` database as the gate.
+
+### 4.4 Phase 3 — feature code follows its tables
+
+The table split is not the end of the split. A table-owning app should also own the layer code that
+serves its tables. Leaving all routers, services, schemas, repositories and tests in `aisc_backend`
+makes the core app look like the whole system and hides the real optional-domain boundaries.
+
+This is **code organisation**, not a new moving part:
+
+- no new app, repo, service or container;
+- no new URLconf, middleware or `INSTALLED_APPS` branch;
+- no model or migration changes;
+- one composition root (`config/urls.py`) still registers every router;
+- feature flags still gate behaviour at the point of use.
+
+**Rule:** layer code lives with the app that owns its tables. The unit is still the table-owning app;
+we are not minting an app per noun or per layer. A `routers/`, `services/`, `schemas/` or
+`repositories/` package inside an app is a layer module, not a new boundary.
+
+**Target ownership.**
+
+| App | Layer code |
+|---|---|
+| `aisc_backend` (core) | common/storage, project, membership, `AISystem`/`AIComponent`, `ProjectConfig`, connections/helpers, auth, audit, allowed hosts, stats, file storage, adapters, shared helpers |
+| `aisc_evaluation` | evaluation/results/internal/task routers, evaluation/measurement repositories, results dashboard/bridge services, evaluation schemas, evaluation tests |
+| `aisc_plugins` | plugin router, plugin repository, plugin schema, plugin tests |
+| `aisc_qualification` | qualification/questionnaire routers, prefill package, qualification/card/publication services, qualification schemas, qualification tests |
+| `aisc_control_objectives` | control-objectives/evidence/assessment routers, objectives/evidence/coverage/risk services, objective/evidence schemas, tests |
+| `aisc_controls` | control/catalogue routers, controls catalogue/scoring services, control schemas, tests |
+| `aisc_report` | report router, report renderer engine, report snapshot/blocks/render services, report schemas, tests |
+
+**Dependency direction stays coreward.** The core set is `aisc_backend`, `aisc_evaluation` and
+`aisc_plugins`; the optional set is `aisc_qualification`, `aisc_control_objectives`, `aisc_controls`
+and `aisc_report`. Optional apps may import core. Core must not import optional. Optional-to-optional
+edges are allowed only as a documented DAG. The current DAG is `aisc_control_objectives → aisc_controls,
+aisc_qualification` and `aisc_report → aisc_controls, aisc_control_objectives, aisc_qualification`;
+`aisc_controls` and `aisc_qualification` depend only on core.
+
+**Shared exceptions.** Core cannot import an optional service just to register its exception. Define
+the base exception in core and have optional services subclass it; the core exception handler
+registers the base class.
+
+**Execution order.** Move the optional-domain layer code first, because that removes the current
+core→optional violations. Then move the core-set evaluation and plugin layer code to balance the
+core app. Move tests with their features and keep only cross-cutting tests in `aisc_backend`.
 
 ---
 

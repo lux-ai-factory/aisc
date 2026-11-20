@@ -384,7 +384,8 @@ importing optional models. Report assembly reads scoped owning-model interfaces 
 2. **A Django app is not a repo or a service (I9).** One repo (`backend`), many apps; do not let "one app per
    domain" become "one repo/service per domain".
 3. **An app owns tables (I5).** If the split would create an app with no `models.py` and no `migrations/`, it is
-   a module, not an app.
+   a module, not an app. Layer code that serves an app's tables — routers, services, schemas, repositories and
+   tests — belongs with that app; it does not create a new app or a new boundary.
 4. **Dependency points coreward (I10).** Optional apps import core; core imports no optional app — reviewed
    and checked with appropriate small tests; an import-linter rollout is not a prerequisite.
 5. **Preserve shipped history only.** Mainline `0001–0014` and its data need compatible model moves

@@ -157,6 +157,10 @@ the two apps cannot in fact deploy independently.
 
 **Broken when.** A query names another app's table/schema from outside that app.
 
+**Within a layer.** A table-owning app also owns the layer code that serves its tables — routers,
+services, schemas, repositories and tests. That is code organisation inside the layer, not a new
+repo, service or boundary. The one URLconf remains the composition root and every app stays installed.
+
 **Scope (ADR 0001):** Django owns AISC's relational domain tables. Main's existing immudb audit store
 keeps its provisioning mechanism, and third-party services keep their upstream metadata migrations.
 

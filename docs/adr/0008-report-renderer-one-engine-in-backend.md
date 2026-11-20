@@ -38,7 +38,7 @@ container.
 ## Decision
 
 1. **Exactly one document engine, and it lives in the backend.** The in-process
-   `aisc_backend/report_renderer/` (snapshot → PDF/DOCX/HTML via WeasyPrint, the Jinja templates/CSS and
+   `aisc_report/report_renderer/` (snapshot → PDF/DOCX/HTML via WeasyPrint, the Jinja templates/CSS and
    python-docx) is the renderer. The external path is withdrawn: drop `REPORT_SERVICE_URL`, the
    `httpx` POST in `services/report_service.py` and the `apps/report` (`aisc-report`) submodule and
    compose service. There is one renderer, with one behaviour (a configured renderer is never
