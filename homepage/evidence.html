@@ -58,6 +58,11 @@
   .tile-off{font-size:12px; color:var(--muted); font-style:italic}
   .tiles .empty{margin:0; font-size:13px; color:var(--muted)}
   a.way:hover{background:var(--primary-hover); border-color:var(--primary-hover)}
+  /* Run tests and Results wait until a part of the system is connected: greyed out, with why and where */
+  a.way.off, a.way.off:hover{background:transparent; color:var(--muted); border-style:dashed;
+    border-color:var(--border-strong); cursor:default}
+  .wait{margin:0; font-size:13.2px; color:var(--text)}
+  .wait a{color:var(--primary)}
   /* Results: the system and components with runs on top, the others folded away under "Not run yet" */
   details.idle{margin-top:4px}
   details.idle summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:8px; padding:6px 2px;
@@ -200,10 +205,12 @@
       </div>
       <div class="way-col">
         <a class="way" id="execute-tests" data-origin="engine" data-path="/">Run tests</a>
+        <p class="wait" id="tests-wait" hidden></p>
         <div class="tiles" id="test-tiles" aria-label="Installed tests"></div>
       </div>
       <div class="way-col">
         <a class="way" id="visualise" data-origin="dashboard" data-path="/">Results</a>
+        <p class="wait" id="results-wait" hidden></p>
         <div class="tiles" id="target-tiles" aria-label="The system and its components"></div>
         <div class="local" id="local" hidden>
           <h3>Local, not part of the assessment record</h3>
@@ -224,6 +231,7 @@
 
 <script src="/assets/origins.js"></script>
 <script src="/assets/page.js"></script>
+<script src="/assets/sandbox-gate.js"></script>
 <script>
   var params = new URLSearchParams(location.search);
   var slug = aisc.project();
@@ -525,6 +533,10 @@
         $('inspect-schema').href = '/inspect/schema/?project=' + enc(p.pid);
         $('activity-log').href = '/logs.html?project=' + enc(slug);
         reveal('#manage .member-only');
+        gateWays(a.admin || a.role === 'owner');
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') gateWays(a.admin || a.role === 'owner');
+        });
         if (a.admin || a.role === 'owner') {
           $('connectivity-settings').href = '/connectivity.html?project=' + enc(slug);
           $('members-settings').href = '/members.html?project=' + enc(slug);
@@ -533,6 +545,43 @@
         if (!a.admin) return;
         reveal('#manage .admin-only');
       });
+  }
+  // Run tests and Results open once a part of the system is connected; until then each is greyed out and says what
+  // to connect, with a link to Connectivity for an owner. A targets call that fails leaves them as they are.
+  // Answer checklists and Report never wait.
+  function gateWays(isOwner) {
+    aisc.call('/api/projects/' + enc(slug) + '/targets').then(function (answer) {
+      var gate = window.aiscSandboxGate(answer, $('project-name').textContent);
+      [['execute-tests', 'tests-wait'], ['visualise', 'results-wait']].forEach(function (pair) {
+        var way = $(pair[0]), wait = $(pair[1]);
+        var off = /(^|\s)off(\s|$)/.test(way.className);
+        if (gate.open) {
+          if (way.getAttribute('data-open-href')) way.setAttribute('href', way.getAttribute('data-open-href'));
+          if (off) way.className = way.className.replace(/(^|\s)off(\s|$)/, ' ').trim();
+          way.removeAttribute('aria-disabled');
+          wait.hidden = true;
+          return;
+        }
+        if (way.getAttribute('href')) way.setAttribute('data-open-href', way.getAttribute('href'));
+        way.removeAttribute('href');
+        if (!off) way.className += ' off';
+        way.setAttribute('aria-disabled', 'true');
+        wait.textContent = 'Connect at least one component of ';
+        var name = document.createElement('b');
+        name.textContent = gate.system;
+        wait.appendChild(name);
+        wait.appendChild(document.createTextNode(' first. '));
+        if (isOwner) {
+          var link = document.createElement('a');
+          link.href = '/connectivity.html?project=' + enc(slug);
+          link.textContent = 'Connect it in Connectivity';
+          wait.appendChild(link);
+        } else {
+          wait.appendChild(document.createTextNode('Ask an owner of the project to connect one.'));
+        }
+        wait.hidden = false;
+      });
+    });
   }
   document.addEventListener('click', function (e) {
     var menu = $('manage');

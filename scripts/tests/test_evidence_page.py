@@ -29,8 +29,9 @@ def test_the_page_has_the_launchers_look_and_one_inline_script():
     assert '<link rel="stylesheet" href="/assets/launcher.css"/>' in html   # the tokens, fonts and header
     assert 'class="session"' in html and 'id="who"' in html
     scripts = re.findall(r"<script\b([^>]*)>", html, re.I)
-    # one inline script, and the shared origins helper (no link names localhost)
-    assert scripts == [' src="/assets/origins.js"', ' src="/assets/page.js"', ""], scripts
+    # one inline script, the shared origins helper (no link names localhost), page.js and the sandbox gate
+    assert scripts == [' src="/assets/origins.js"', ' src="/assets/page.js"', ' src="/assets/sandbox-gate.js"', ""], \
+        scripts
     assert re.search(r"<title>AI Assessment Sandbox - ", html)
 
 
@@ -94,7 +95,7 @@ def test_hidden_means_hidden_whatever_an_elements_display():
 def test_the_tests_tiles_are_a_column_under_execute_tests():
     markup = markup_of(read(PAGE))
     column = re.search(r'<div class="way-col">\s*(<a\b[^>]*id="execute-tests".*?</a>)\s*'
-                       r'<div class="tiles" id="test-tiles"', markup, re.S)
+                       r'(?:<p class="wait" id="tests-wait" hidden></p>\s*)?<div class="tiles" id="test-tiles"', markup, re.S)
     assert column, "the tiles do not sit under Execute tests"
     assert re.search(r'<div class="way-col">\s*<a\b[^>]*id="address-controls"', markup)
 
@@ -184,7 +185,8 @@ def _target_tiles_body():
 def test_the_target_tiles_are_a_column_under_visualisation():
     markup = markup_of(read(PAGE))
     assert re.search(r'<a class="way" id="visualise" data-origin="[^"]+" data-path="[^"]+">Results</a>\s*'
-                     r'<div class="tiles" id="target-tiles"', markup), "no tiles under Results"
+                     r'(?:<p class="wait" id="results-wait" hidden></p>\s*)?<div class="tiles" id="target-tiles"', markup), \
+        "no tiles under Results"
     assert "renderTargetTiles();" in script_of(read(PAGE))
 
 

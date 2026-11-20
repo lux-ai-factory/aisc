@@ -1,9 +1,10 @@
-"""The AI Assessment Sandbox card opens only once a part of the AI system is connected.
+"""In the AI Assessment Sandbox, Run tests and Results open only once a part of the AI system is connected.
 
 homepage/assets/sandbox-gate.js decides from the platform's targets answer (GET /api/projects/{slug}/targets): the
-card is open when the system or one of its card components has an endpoint or an uploaded file; otherwise it is
-greyed out and names the system to connect. A targets call that failed never locks the card. The function is run
-here in node, as the browser would; the page's use of it is checked in its source.
+two are open when the system or one of its card components has an endpoint or an uploaded file; otherwise they are
+greyed out and name the system to connect. A targets call that failed never locks them. Answer checklists and Report
+never wait, and the project page's sandbox card always opens. The function is run here in node, as the browser
+would; the pages' use of it is checked in their source.
 """
 import json
 import re
@@ -16,6 +17,7 @@ from conftest import ROOT
 
 GATE_JS = ROOT / "homepage/assets/sandbox-gate.js"
 PROJECT = ROOT / "homepage/project.html"
+SANDBOX = ROOT / "homepage/evidence.html"
 
 _HARNESS = r"""
 const fs = require('fs'), vm = require('vm');
@@ -80,13 +82,27 @@ def test_without_a_system_target_the_project_name_is_used():
     assert gate(answer, "Noa demo") == {"open": False, "system": "Noa demo"}
 
 
-def test_the_project_page_uses_the_gate_on_the_sandbox_card():
-    html = PROJECT.read_text()
+def scripts_of(html):
+    return "\n".join(re.findall(r"<script\b[^>]*>(.*?)</script>", html, re.S | re.I))
+
+
+def test_the_sandbox_page_gates_run_tests_and_results_only():
+    html = SANDBOX.read_text()
     assert '<script src="/assets/sandbox-gate.js"></script>' in html
-    script = "\n".join(re.findall(r"<script\b[^>]*>(.*?)</script>", html, re.S | re.I))
+    script = scripts_of(html)
     assert "/targets" in script and "aiscSandboxGate(" in script
-    assert re.search(r'<p class="wait" id="sandbox-wait" hidden>', html), "the sentence under the card's title"
+    assert re.search(r'<p class="wait" id="tests-wait" hidden></p>', html), "the sentence under Run tests"
+    assert re.search(r'<p class="wait" id="results-wait" hidden></p>', html), "the sentence under Results"
+    assert "['execute-tests', 'tests-wait']" in script and "['visualise', 'results-wait']" in script
+    assert "address-controls" not in re.search(r"function gateWays.*?\n  }\n", script, re.S).group(0)
+    assert "write-report" not in re.search(r"function gateWays.*?\n  }\n", script, re.S).group(0)
     assert "Connect at least one component of " in script
-    assert "'/connectivity.html?project=' + encodeURIComponent(slug)" in script
+    assert "'/connectivity.html?project=' + enc(slug)" in script
     assert "Ask an owner of the project to connect one." in script
     assert "visibilitychange" in script, "checked again when the person comes back to the tab"
+
+
+def test_the_project_page_sandbox_card_always_opens():
+    html = PROJECT.read_text()
+    assert "sandbox-gate.js" not in html and "sandbox-wait" not in html and "aiscSandboxGate" not in html
+    assert "document.getElementById('sandbox-card').href = '/evidence.html?project='" in html

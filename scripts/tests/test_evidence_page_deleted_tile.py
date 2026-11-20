@@ -48,6 +48,7 @@ function fetch(path, init) {
   }
   if (path === '/api/projects/demo') return answer(200, {name: 'Demo', pid: 'p-1'});
   if (path.startsWith('/api/projects/demo/evidence')) return answer(200, s.evidence);
+  if (path === '/api/projects/demo/targets') return answer(200, {targets: [{kind: 'system', label: 'Demo', endpoint: {kind: 'openai'}}]});
   if (path.startsWith('/api/authz/')) return answer(200, {role: s.evidence.can_edit ? 'editor' : 'viewer'});
   return answer(200, {user: 'alice'});
 }
@@ -63,6 +64,8 @@ for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
   if (/\bsrc="\/assets\/page\.js"/.test(m[1])) {
     vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(file), 'assets/page.js'), 'utf8'), ctx);
     ctx.aisc = window.aisc;
+  } else if (/\bsrc="\/assets\/sandbox-gate\.js"/.test(m[1])) {
+    vm.runInContext(fs.readFileSync(require('path').join(require('path').dirname(file), 'assets/sandbox-gate.js'), 'utf8'), ctx);
   } else if (!/\bsrc=/.test(m[1])) vm.runInContext(m[2], ctx);
 }
 const wait = () => new Promise((r) => setTimeout(r, 60));
