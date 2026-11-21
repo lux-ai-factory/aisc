@@ -67,6 +67,13 @@ def _is_inspect_errors(key, value):
     return key == "errors" and "is not running on this installation" in json.dumps(value)
 
 
+def _is_page_cache(handler):
+    """Another intended change: the launcher's pages are asked for again every time, so that after sign out the
+    server can send the browser to the sign-in page (test_launcher_sign_out.py)."""
+    return isinstance(handler, dict) and handler.get("handler") == "headers" and \
+        handler.get("response") == {"set": {"Cache-Control": ["no-cache"]}} and "request" not in handler
+
+
 def _is_sign_in(handler):
     """oauth2-proxy's forward_auth, as Caddy adapts it: a reverse_proxy to port 4180."""
     return isinstance(handler, dict) and handler.get("handler") == "reverse_proxy" and \
@@ -85,6 +92,8 @@ def normal(node):
                 if _is_sign_in(following):
                     continue
             if isinstance(item, dict) and "handle" in item and (_is_authz(item) or _is_origins(item)):
+                continue
+            if _is_page_cache(item):
                 continue
             if isinstance(item, dict) and item.get("handler") == "subroute" and \
                     all("match" not in r for r in item.get("routes") or []):

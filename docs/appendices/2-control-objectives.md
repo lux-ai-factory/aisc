@@ -22,7 +22,7 @@ Custom objective sets and Objective profiles.
   draft and published as fixed, numbered versions.
 - **An objective profile** is a choice of objectives, from the built-in ones and from published sets. It is
   versioned. Two profiles are built in: "Full AI Act" (all 50) and "Fairness and oversight" (10); a first assessment
-  starts on the latter, and **Change profile** switches.
+  starts on Full AI Act (O1-O50), and **Change profile** switches back to the profile block.
 
 ## What you do
 

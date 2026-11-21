@@ -539,7 +539,8 @@ def _by_tags(listed: list[dict]) -> tuple[dict, dict]:
 
 def tool_dimensions(pid=None, token: str = "") -> tuple[dict, dict] | None:
     """(slug -> dimensions, package name -> dimensions). Asked for a project with the caller's token, from the
-    project's own catalogue: its private copy with the dimensions an admin gave its local tests, or the public
+    project's own catalogue: its private copy with the dimensions an admin gave its local tests (or, failing that, the ones their
+    package declares), or the public
     one live. Otherwise (no token, or a project that has not chosen its catalogue yet) from the public tools
     catalogue, plus the local controls'. None when the catalogue does not answer or is not configured."""
     if pid is not None and token:

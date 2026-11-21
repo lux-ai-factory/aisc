@@ -24,7 +24,7 @@
   /* The way out of a project, where the way out of each tool is: at the top. */
   .topbar .back{font-size:13.2px; padding:8.4px 13.2px}
   .topbar .rule{height:33.6px}
-  .session{margin-left:24px; gap:16.8px; font-size:13.8px}
+  .session{margin-left:auto; gap:16.8px; font-size:13.8px}
 
   main{
     max-width:1632px; margin:0 auto; padding:48px 38.4px 38.4px;
@@ -124,7 +124,7 @@
   .card.off h2{color:var(--muted)}
 
   /* ---- endpoints: in the header, out of the way until asked for ---- */
-  .menu{position:relative; margin-left:auto}
+  .menu{position:relative; margin-left:24px}
   .menu summary{
     list-style:none; cursor:pointer; display:flex; align-items:center; gap:8.4px;
     padding:7.2px 12px; border:1px solid var(--border);
@@ -262,6 +262,7 @@
   <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
   <span class="rule"></span>
   <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
   <details class="menu" id="manage">
     <summary>
       Manage
@@ -293,7 +294,6 @@
       <button type="button" class="danger admin-only" hidden id="delete-open">Delete this project&hellip;</button>
     </div>
   </details>
-  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
 </div>
 
 <main>

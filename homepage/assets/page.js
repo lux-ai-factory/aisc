@@ -8,6 +8,10 @@
 // the platform is down); message is null when ok, else the platform's own words (FastAPI's detail, a
 // sentence or a list of field errors) or 'Refused (HTTP n)'. Status 0 is nothing answering. body is sent as
 // JSON; file (a File or Blob, for an upload) is sent as it is, as application/octet-stream.
+// A call that fails because the person is no longer signed in (signed out in another tab, or the session
+// ended) does not settle: the gateway sent it on to the sign-in on another origin, which fetch refuses as if
+// nothing answered, so the page asks the sign-in itself (/oauth2/auth) and, refused, goes to the sign-in page
+// and back here.
 (function () {
   // the platform's rule for a handle (platform_service/projects.py, _SLUG_RE and SLUG_MAX)
   var HANDLE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -53,8 +57,17 @@
         return {ok: res.ok, status: res.status, data: data, message: res.ok ? null : message(res.status, data)};
       });
     }, function () {
-      return {ok: false, status: 0, data: null, message: NOT_ANSWERING};
+      return signedOut().then(function (out) {
+        if (!out) return {ok: false, status: 0, data: null, message: NOT_ANSWERING};
+        location.assign('/oauth2/start?rd=' + encodeURIComponent(location.pathname + location.search));
+        return new Promise(function () {});   // the page is leaving
+      });
     });
+  }
+
+  function signedOut() {
+    return fetch('/oauth2/auth', {credentials: 'same-origin'})
+      .then(function (res) { return res.status === 401; }, function () { return false; });
   }
 
   window.aisc = {project: project, call: call, NOT_ANSWERING: NOT_ANSWERING};

@@ -95,6 +95,10 @@ class NotChosen(NotPrivate):
     """The project has not chosen its catalogue yet, so it has none to read."""
 
 
+class DimensionsDeclared(ValueError):
+    """A local test's package declares its dimensions: they are not changed from the catalogue."""
+
+
 class InvalidDimensions(ValueError):
     """Not REQ1..REQ11."""
 
@@ -350,12 +354,23 @@ def _local_packages(pid, token: str, public_packages: set) -> list[dict]:
     return [out[k] for k in sorted(out)]
 
 
+#: An admin's explicit choice of no dimension is kept as one row under this prefix + the package name. The
+#: table's dimension column only takes REQ1..REQ11, so the marker's dimension is a placeholder; the prefix
+#: cannot start a package name.
+NO_DIMENSIONS_PREFIX = "no-dimensions:"
+
+
 def _local_dimensions(pid) -> dict[str, list[str]]:
+    """The admin's saved dimensions per package; a package the admin chose none for maps to []."""
     with _connect(pid) as conn:
         rows = conn.execute("SELECT package_name, dimension FROM catalogue.local_dimension").fetchall()
     found: dict[str, list[str]] = {}
     for r in rows:
-        found.setdefault(r["package_name"], []).append(r["dimension"])
+        name = r["package_name"]
+        if name.startswith(NO_DIMENSIONS_PREFIX):
+            found.setdefault(name[len(NO_DIMENSIONS_PREFIX):], [])
+        else:
+            found.setdefault(name, []).append(r["dimension"])
     return {k: sorted(v, key=lambda rid: int(rid[3:])) for k, v in found.items()}
 
 
@@ -373,7 +388,8 @@ def tools(pid, token: str, detailed: bool, internal: bool = False) -> list[dict]
     out = []
     for t in public:
         installed = (package_of(t) in packages) or (t.get("slug") in checklists)
-        entry = {**t, "aisc_local": t.get("slug") in local_controls_here, "aisc_installed": bool(installed)}
+        entry = {**t, "aisc_local": t.get("slug") in local_controls_here, "aisc_installed": bool(installed),
+                 "aisc_dimensions_declared": False}
         # completion_status is what colours a test's card and what Plugin available keeps: it says whether
         # the test can be installed on this stack (blue), from the index or fetched from its source on
         # install, or not (pink). No network per entry: a source is a line of the table, not a read.
@@ -394,7 +410,11 @@ def tools(pid, token: str, detailed: bool, internal: bool = False) -> list[dict]
     for n, p in enumerate(_local_packages(pid, token, {package_of(t) for t in public})):
         name = p["package_name"]
         entry_tags = [_local_tag(tags)] + ([by_slug["test"]] if "test" in by_slug else [])
-        entry_tags += [by_slug[slug_of[rid]] for rid in dims.get(name, []) if slug_of[rid] in by_slug]
+        # what the package declares is its dimensions; an admin's choice, an empty one too, counts only for a
+        # package that declares none
+        declared = [d for d in p.get("dimensions") or [] if d in slug_of]
+        chosen = declared or dims.get(name, [])
+        entry_tags += [by_slug[slug_of[rid]] for rid in chosen if slug_of[rid] in by_slug]
         entry = {k: None for k in TOOL_KEYS}
         entry.update(id=LOCAL_ID_BASE + 1 + n, slug=f"local-{name}", name=name, package_name=name,
                      version=p.get("version"), description="A plugin of this stack, not in the public catalogue.",
@@ -403,6 +423,7 @@ def tools(pid, token: str, detailed: bool, internal: bool = False) -> list[dict]
                      available_on_devpi=p.get("source") == "registry",
                      metadata=None, metrics=[], questions=[], tags=entry_tags)
         out.append({**entry, "aisc_local": True, "aisc_installed": name in packages,
+                    "aisc_dimensions_declared": bool(declared),
                     **({"aisc_in_local_plugins": bool(p.get("in_local_plugins"))} if internal else {})})
     if not detailed:
         out = [{**plain_tool(t)} for t in out]
@@ -715,13 +736,31 @@ def project_dimensions(pid) -> list[str]:
 
 # ── Local plugins ───────────────────────────────────────────────────────────
 
-def set_local_dimensions(pid, package: str, dimensions: list[str]) -> list[str]:
-    """An admin gives a local entry its dimensions (REQ1..REQ11), replacing what it had."""
+def _declares_dimensions(pid, token: str, package: str) -> bool:
+    """Whether the engine lists `package` with dimensions of its own (False when the engine does not answer)."""
+    try:
+        listed = engine_components.available_plugins(pid, token)
+    except engine_components.EngineUnavailable:
+        return False
+    known = {rid for rid, _, _ in evidence.DIMENSIONS}
+    return any(_dist(p.get("package_name") or "") == _dist(package)
+               and any(d in known for d in p.get("dimensions") or []) for p in listed)
+
+
+def set_local_dimensions(pid, package: str, dimensions: list[str], token: str = "") -> list[str]:
+    """An admin gives a local entry its dimensions (REQ1..REQ11), replacing what it had. Refused for a package that
+    declares its own (DimensionsDeclared); when the engine cannot say what a package declares, the choice is saved."""
     if not all(d in R_IDS for d in dimensions):
         raise InvalidDimensions("dimensions are REQ1 to REQ11")
     _require_private(pid)
+    if _declares_dimensions(pid, token, package):
+        raise DimensionsDeclared(f"{package} declares its dimensions in its own package; they are not changed here")
     with _connect(pid) as conn, conn.transaction():
-        conn.execute("DELETE FROM catalogue.local_dimension WHERE package_name = %s", (package,))
+        conn.execute("DELETE FROM catalogue.local_dimension WHERE package_name IN (%s, %s)",
+                     (package, NO_DIMENSIONS_PREFIX + package))
+        if not dimensions:
+            conn.execute("INSERT INTO catalogue.local_dimension (package_name, dimension) VALUES (%s, %s)",
+                         (NO_DIMENSIONS_PREFIX + package, R_IDS[0]))
         for d in sorted(set(dimensions)):
             conn.execute("INSERT INTO catalogue.local_dimension (package_name, dimension) VALUES (%s, %s)",
                          (package, d))

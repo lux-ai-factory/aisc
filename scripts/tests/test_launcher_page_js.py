@@ -24,6 +24,8 @@ const s = JSON.parse(scenario);
 const sent = [];
 function fetch(path, init) {
   sent.push({path, init});
+  if (path === '/oauth2/auth' && s.auth) return Promise.resolve({ok: s.auth === 202, status: s.auth,
+                                                                 text: () => Promise.resolve('')});
   if (s.answer === 'down') return Promise.reject(new TypeError('Failed to fetch'));
   const a = s.answer || {};
   return Promise.resolve({ok: a.status >= 200 && a.status < 300, status: a.status,
@@ -31,14 +33,20 @@ function fetch(path, init) {
 }
 const window = {};
 const ctx = {window, fetch, URLSearchParams, decodeURIComponent, JSON,
-             location: {pathname: s.pathname || '/x.html', search: s.search || ''}};
+             location: {pathname: s.pathname || '/x.html', search: s.search || '',
+                        assign: (to) => { went.push(to); }}};
+const went = [];
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(file, 'utf8'), ctx);
 const out = {project: window.aisc.project()};
 if (!s.call) { console.log(JSON.stringify(out)); }
-else window.aisc.call(s.call.path, s.call.opts).then((answer) => {
-  out.answer = answer; out.sent = sent; console.log(JSON.stringify(out));
-});
+else {
+  // a page that is leaving for the sign-in page has no answer to wait for: say where it went instead
+  const told = setTimeout(() => { out.sent = sent; out.went = went; console.log(JSON.stringify(out)); }, 300);
+  window.aisc.call(s.call.path, s.call.opts).then((answer) => {
+    clearTimeout(told); out.answer = answer; out.sent = sent; out.went = went; console.log(JSON.stringify(out));
+  });
+}
 """
 
 
@@ -126,4 +134,19 @@ def test_an_answer_that_is_not_json_is_no_data_and_no_error_page(tmp_path):
 
 def test_nothing_answering_is_status_0_and_never_a_rejection(tmp_path):
     out = call(tmp_path, "down")
+    assert out["answer"] == {"ok": False, "status": 0, "data": None, "message": "The platform is not answering."}
+
+
+def test_a_call_refused_because_the_sign_in_ended_opens_the_sign_in_page_and_comes_back(tmp_path):
+    # Signed out (the sign-out link, or the session expired), the gateway sends the call on to Keycloak on another
+    # origin, which a page's fetch refuses as a network error: the page must not say the platform is down.
+    out = run(tmp_path, answer="down", auth=401, pathname="/p/demo", search="?open=catalogue",
+              call={"path": "/api/projects/demo", "opts": None})
+    assert out["went"] == ["/oauth2/start?rd=%2Fp%2Fdemo%3Fopen%3Dcatalogue"]
+    assert "answer" not in out
+
+
+def test_nothing_answering_while_still_signed_in_stays_status_0(tmp_path):
+    out = run(tmp_path, answer="down", auth=202, call={"path": "/api/projects", "opts": None})
+    assert out["went"] == []
     assert out["answer"] == {"ok": False, "status": 0, "data": None, "message": "The platform is not answering."}

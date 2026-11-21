@@ -200,10 +200,12 @@ services:
     networks:
       - backend
     # the password goes through a config file, so it is not in the server's command line; the image's own
-    # entrypoint then runs the server as the redis user, as it did before
+    # entrypoint then runs the server as the redis user, as it did before. The file of an earlier start (a restart
+    # keeps the container's /tmp) is removed first: it is the redis user's, and fs.protected_regular refuses root a
+    # write to it in the sticky /tmp, which would keep Redis restarting
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - 'umask 077 && printf "requirepass %s\ndir /data\n" "$$REDIS_PASSWORD" > /tmp/redis.conf && chown redis /tmp/redis.conf && exec docker-entrypoint.sh redis-server /tmp/redis.conf'
+      - 'rm -f /tmp/redis.conf && umask 077 && printf "requirepass %s\ndir /data\n" "$$REDIS_PASSWORD" > /tmp/redis.conf && chown redis /tmp/redis.conf && exec docker-entrypoint.sh redis-server /tmp/redis.conf'
 
   # PostgreSQL: the platform database, one database per project, Keycloak's and Superset's
   postgres:

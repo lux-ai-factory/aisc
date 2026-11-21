@@ -644,6 +644,8 @@ services:
       AISC_BACKEND_URL: http://aisc-backend:8000
       # The card agent, which "Let AI suggest additions" starts and the card page polls.
       AGENT_SERVICE_URL: http://qualification-agents:8012
+      # "Let AI suggest additions" is offered only with on; off (the default) hides it and refuses it.
+      AISC_AI_ACTIONS: ${AISC_AI_ACTIONS:-off}
       # The ledger: each change writes its event with ledger.emit in its own transaction.
       LEDGER_MODE: ${LEDGER_MODE:-record}
       # The gateway's token, verified here (src/vendor/aisc-ledger/gatewayToken.ts): the request id the
@@ -744,6 +746,8 @@ services:
       # its own system's token only: it can resolve risk_mapper and nothing else
       PLATFORM_INTERNAL_TOKEN: ${PLATFORM_RISK_MAPPER_TOKEN:?run scripts/secrets.sh first}
       QUALIFICATION_URL: http://qualification-web:3000/qualification
+      # "Suggest with AI" is offered only with on; off (the default) hides it and refuses it.
+      AISC_AI_ACTIONS: ${AISC_AI_ACTIONS:-off}
       # membership only (core.project, core.project_member)
       DATABASE_URL: ${CONTROL_OBJECTIVES_DATABASE_URL:-postgresql://control_objectives_rw:${CONTROL_OBJECTIVES_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform}
       # each project's assessments, in that project's database
@@ -1281,6 +1285,8 @@ services:
       LEDGER_IMMUDB_PASSWORD: ${LEDGER_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
       ENGINE_IMMUDB_PASSWORD: ${ENGINE_IMMUDB_PASSWORD:?run scripts/secrets.sh first}
       PLATFORM_DATABASE_URL: postgresql://platform_rw:${PLATFORM_RW_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
+      # giving a waiting project its ledger database goes through the platform's pool, which migrates core first
+      PLATFORM_MIGRATE_DATABASE_URL: postgresql://platform_migrator:${PLATFORM_MIGRATOR_PASSWORD:?run scripts/secrets.sh first}@postgres:5432/platform
     depends_on:
       postgres-setup:
         condition: service_completed_successfully

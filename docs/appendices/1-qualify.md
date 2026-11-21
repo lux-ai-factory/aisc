@@ -61,8 +61,10 @@ you can:
   project's database. The card graph is built from them every time it is read.
 - Each component keeps a stable key from one version to the next, so tests on a component can be followed across
   versions.
-- Every save also records which of the engine's components (datasets, models) the card's components are, with a
-  snapshot of each, so the system page can flag a component that changed in the engine since.
+- Every save also records which of the engine's components (models and other parts, not test data or helper models) the card's components are, with a
+  snapshot of each. The system page does not flag drift; the qualification opens on the latest card, which shows a
+  folded banner when the card really needs a new version because a model or other component changed in the engine
+  (not for test data, helper models or the platform's own mirrors of targets).
 
 ## What later steps take from it
 

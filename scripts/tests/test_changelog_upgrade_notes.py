@@ -19,7 +19,7 @@ NAMED = (
     "0014_ledger_content_redaction", "0022_run_key_pass", "0023_connection_secret_headers",
     "0024_connection_capabilities", "0024_drop_stored_langbite_judge_keys", "scripts/clean-old-secrets.sh",
     "docs/runbooks/clean-old-secrets.md", "--apply", "retired", "AISC_TARGET_API_KEY", "OPENAI_API_KEY",
-    "0.3.0+aisc.1", "promptfoo",
+    "0.3.0+aisc.2", "promptfoo",
 )
 
 

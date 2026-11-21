@@ -256,14 +256,18 @@ def catalogue_control_export(slug: str, control: str, caller: Caller = Depends(c
 
 
 @router.put("/projects/{slug}/catalogue/local/{package}/dimensions")
-def put_local_dimensions(slug: str, package: str, body: LocalDimensionsIn,
+def put_local_dimensions(slug: str, package: str, body: LocalDimensionsIn, request: Request,
                          caller: Caller = Depends(caller_dependency)) -> dict:
-    """An admin gives a local entry its dimensions (REQ1 to REQ11)."""
+    """An admin gives a local entry its dimensions (REQ1 to REQ11), unless its package declares its own."""
     found = _catalogue_project(slug, caller)
     if not caller.has_role(ADMIN_ROLE):
         raise HTTPException(status_code=403, detail="classifying a local plugin takes an admin")
+    token = token_from_headers(request.headers) or ""
     try:
-        dims = _private_reads(found["pid"], lambda: catalogue.set_local_dimensions(found["pid"], package, body.dimensions))
+        dims = _private_reads(found["pid"], lambda: catalogue.set_local_dimensions(found["pid"], package,
+                                                                                   body.dimensions, token))
     except catalogue.InvalidDimensions as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    except catalogue.DimensionsDeclared as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return {"package_name": package, "dimensions": dims}

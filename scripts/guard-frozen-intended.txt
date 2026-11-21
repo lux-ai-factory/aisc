@@ -122,6 +122,9 @@ webapp src/pages/launchOnce.ts launch: each launch carries its own Idempotency-K
 webapp src/pages/launchOnce.test.ts launch: its tests, and the Launch button is off while a launch is sent
 webapp src/components/plugin/PluginEvaluationForm.connectivity.test.tsx launch: the run form points to Connectivity for a helper role
 webapp src/components/AISystemSettings.saveFailures.test.tsx testdata: Delete asks first; refused saves say why and keep the dialog open
+webapp src/components/fileBaseName.ts testdata: test data or a component is named after its file, without the extension, unless a name was typed
+webapp src/components/fileBaseName.test.ts testdata: its tests
+webapp src/pages/PluginStartEvaluation.cache.test.tsx launch: a launch keeps the inputs of every ticked test, one still incomplete included, for its next tick
 webapp src/components/addProjectWizard.tsx filetypes: the dataset picker offers only the engine's dataset extensions (it took any file)
 webapp src/models/componentFileTypes.ts filetypes: the engine's file extensions per component type, as the pickers' accept value
 webapp src/models/componentFileTypes.test.ts filetypes: its tests

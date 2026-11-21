@@ -18,7 +18,7 @@ from tests.test_evidence import ALICE, BOB, VERA, _reader, catalogue, evidence_p
 pytestmark = needs_database
 SAMPLE = json.loads((Path(__file__).parent / "fixtures" / "public_catalogue_sample.json").read_text())
 ADMIN = "00000000-0000-0000-0000-0000000ad111"
-EXTRA = {"aisc_local", "aisc_installed"}
+EXTRA = {"aisc_local", "aisc_installed", "aisc_dimensions_declared"}
 
 
 def public_routes(stub, sample):

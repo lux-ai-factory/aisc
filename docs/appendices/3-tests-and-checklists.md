@@ -29,12 +29,12 @@ The first time, an owner or editor chooses the project's catalogue. **The choice
   An admin can **Update from public**: it adds, updates and removes the public entries, replaces the tags, metrics
   and metadata, and writes the local checklists again from `local_controls/` (a public entry with the same slug
   wins). Local tests are not stored in the copy, so an update does not touch them. An admin gives a local test its
-  dimensions in its entry (**Dimensions**, REQ1 to REQ11): they put it under "For this project" and let the Evidence
-  map link it.
+  dimensions in its entry (**Dimensions**, REQ1 to REQ11): they let the Evidence map link it. Until an admin does,
+  a local test shows the dimensions its package declares in `[tool.aisc] dimensions`; the admin's choice replaces them.
 
-**For this project** (on by default) shows only the entries tagged with the dimensions of the objectives selected in
-step 2; a project with none yet sees everything. The sidebar also filters by trustworthiness dimension, by "Plugin
-available" (tests whose plugin can be installed), by source, by the AI system under assessment and by licence.
+The catalogue shows every entry; there is no switch limiting it to the project's objectives. The sidebar filters
+by trustworthiness dimension, by "Plugin available" (tests whose plugin can be installed), by source, by the AI
+system under assessment and by licence.
 
 ## Installing a test
 
