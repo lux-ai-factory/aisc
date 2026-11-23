@@ -118,6 +118,15 @@ It must be easy to load into the running stack and then appear in the UI for sel
   the interface ABI — a new protocol adapter that ships without an `aisc-plugin-interface` release — split
   them into their own published package (an I8 ADR). The same caveat applies to `input_providers`: they
   ship in the interface for this same reason today, and the same trigger would move them out.
+- **D-22 — Input providers are removed; data adapters are the one input mechanism.** The standard data
+  adapters do exactly what the input providers did (format → value), so keeping both was two
+  implementations of one concern (I3). ADR 0009 §2 already says the providers **become** the standard
+  data adapters; this makes it literal. `@evaluation_input` no longer takes `input_provider_class` — a
+  slot declares `accepts`/`role` only, and `set_input_content`/`get_input_data` hold the value the runtime
+  produced. A format the standard library does not cover is a **plugin-shipped `DataAdapter`** (D-17),
+  not a provider. This supersedes D-15's clause that `input_provider_class=` "stays valid as a
+  shorthand"; the `input_type=` shorthand is unchanged. **Caveat (same as D-21):** if a plugin's parsing
+  ever needs to version separately, ship it as an adapter package — it is already the one mechanism.
 
 ## 3. What exists today (four overlapping implementations)
 
