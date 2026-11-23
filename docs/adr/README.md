@@ -31,6 +31,9 @@ or breaks an invariant does.
   WeasyPrint/Jinja renderer, CSS and cairosvg logos, and the `aisc_report_plugin_interface` ABI with the
   bundled `aisc-report-plugin-*` tool renderers; `reportlab` is dropped. The I8 decision for the E5
   reporting dependencies, written before they are added.
+- [0009 — Components, adapters and the run door](0009-components-adapters-and-the-run-door.md): one
+  component model (`Connection`/`Helper`/`RunBinding` fold into `AIComponent`), one adapter mechanism in
+  `aisc_plugin_interface.adapters`, and the I2 run door brought forward for endpoint inputs.
 
 Worker-ready epics, dependency gates and detailed issue bodies: [`../refactor-issues.json`](../refactor-issues.json).
 
