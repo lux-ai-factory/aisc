@@ -94,23 +94,24 @@ it. Handing the plugin a short-lived door instead keeps the key out of the plugi
 single place to enforce the allowlist — at the cost of one *local* hop, which is free. This is the
 existing `@system_under_test` design; it only works if the door is in the worker.
 
-**Today.** On `pilot` the door is the **platform** (the plugin calls `PLATFORM_URL` with a run pass);
-the intended shape is a loopback door inside the eval worker, with the plugin unchanged
-(see [`SCRATCH-platform-adapters/06-adapters.md`](SCRATCH-platform-adapters/06-adapters.md) §9).
+**Today.** The door is implemented for **endpoint inputs** (ADR 0009): the eval worker starts a
+loopback door beside the plugin, hands the plugin a door URL and a run token, and holds the real key
+itself. The plugin is unchanged. The door enforces the allowed-hosts rule (shared with the backend)
+and scrubs the key from every answer.
 
 **Broken when.** A plugin environment contains a target/connection secret (`AISC_TARGET_API_KEY` and the
 like), or the plugin is pointed at a URL that is not the run's own door.
 
-**Delivery scope (ADR 0003):** the plugin subprocess must not inherit worker-wide service secrets;
-existing explicit per-run target credentials remain a temporary exception. Preserve required adapter
-functionality; implement the run-local door after the feature port.
+**Delivery scope (ADR 0003, updated by ADR 0009):** the plugin subprocess must not inherit worker-wide
+service secrets. The run-local door now covers endpoint inputs; self-contained dispatch (I1) and the
+withholding of inherited *per-run* target credentials for non-endpoint paths remain post-port work.
 
 ### I3. One implementation per concern
 
 > **A concern the backend or webapp already owns MUST NOT be re-implemented.** One project/identity model,
-> one membership check, one secret store, one project-database path, one connection/adapter model (beside
-> `AIComponent`), one auth, one test story. New work **extends** the backend/webapp; it does not add a
-> second application or a parallel model.
+> one membership check, one secret store, one project-database path, one component/adapter model (an
+> endpoint is an `AIComponent` reached through one adapter mechanism, ADR 0009), one auth, one test story.
+> New work **extends** the backend/webapp; it does not add a second application or a parallel model.
 
 **Why.** Every second implementation is a place to fix the same bug twice, a schema to keep in step, and
 two answers to "what is a project?". The cost compounds; the duplication is what makes the system hard to

@@ -167,6 +167,10 @@ treat a secret key's presence as a feature flag.
 
 ### D5 — Adapters are a first-class, shipped concept
 
+> **Realised by [ADR 0009](adr/0009-components-adapters-and-the-run-door.md).** One component model
+> (`Connection`/`Helper`/`RunBinding` fold into `AIComponent`) and one adapter mechanism in
+> `aisc_plugin_interface.adapters`; the loopback door is now built for endpoint inputs, not deferred.
+
 **Delivery scope:** port required data/resource selection, bindings and version recording through the
 existing runtime. The loopback door below is the post-port destination; general sandbox/session and
 authoring frameworks remain follow-ups. This contract must not force an execution rewrite during the port.

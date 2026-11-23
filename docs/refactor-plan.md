@@ -307,18 +307,22 @@ hub with its project/version context. Port each detailed page and Manage destina
 alongside its owning backend feature. Capture visual/workflow acceptance per slice rather than leaving
   the launcher design until after feature completion. Follow §2.1 throughout the workstreams below.
 
-### 3.1 Connections, adapters and management
+### 3.1 Components, adapters and management
 
-- Port retained connections, helper roles/models, configuration import/export, adapter discovery,
-  compatibility/selection and run binding metadata beside existing components/plugins/settings.
+- Port retained component/helper-role/configuration-import-export, adapter discovery, compatibility/
+  selection and run-provenance metadata beside existing components/plugins/settings. One component model
+  and one adapter mechanism ([ADR 0009](adr/0009-components-adapters-and-the-run-door.md)): `Connection`,
+  `Helper` and `RunBinding` fold into `AIComponent`/`EvaluationInput`, and adapters live in
+  `aisc_plugin_interface.adapters`.
 - Keep existing execution and result-posting mechanisms; make only the compatibility/relocation changes
   required for those behaviours. Port supported session behaviour without inventing a general framework.
 - Demonstrate file inputs, native targets and required bespoke adapters through the webapp; the run
   records the selected adapter/config version and the mock target confirms the intended request.
-- Consolidate platform-owned feature logic into backend/eval as appropriate. Platform retirement must
-  not depend on self-contained dispatch or a run-local door; those remain the later execution milestone.
+- Consolidate platform-owned feature logic into backend/eval as appropriate. The endpoint run door is now
+  built (ADR 0009); self-contained dispatch (I1) and inherited per-run target credentials for non-endpoint
+  paths remain the later execution milestone.
 
-**Gate:** retained connection/adapter/helper flows and failure/stop/result behaviour work end to end.
+**Gate:** retained component/adapter flows and failure/stop/result behaviour work end to end.
 
 ### 3.2 Qualification, controls, evidence and analytics
 
@@ -387,8 +391,9 @@ retains its documented current limitations; backend-down execution is not a rele
 ## 7. Post-port improvements (separate milestone)
 
 - Self-contained dispatch and results posted at completion; real backend/platform-down acceptance test.
-- Run-local native/resource door withholding target credentials and further execution hardening;
-  retire ADR 0003's remaining per-run waiver and I1 baseline. Worker-wide secrets are excluded now.
+- Run-local doors for **non-endpoint** paths and further execution hardening; retire ADR 0003's remaining
+  per-run waiver and the I1 baseline. (The endpoint door is built, ADR 0009.) Worker-wide secrets are
+  excluded now.
 - Durable recovery after worker loss; comprehensive attempts/retries/deduplication and credential expiry.
 - Adapter sandboxing, general session/concurrency framework and authoring tools.
 - Stronger audit delivery/verification; PostgreSQL RLS if later requirements justify it.

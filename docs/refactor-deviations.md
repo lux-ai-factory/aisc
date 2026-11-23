@@ -67,6 +67,12 @@ names with the ones this tree actually has; the sets shrank, and each entry carr
 
 ## E4 feature parity — evidence map and connections (EVD-01 #114, CON-01 #112)
 
+> **CON-01 is superseded by [ADR 0009](adr/0009-components-adapters-and-the-run-door.md).** The
+> `Connection`/`Helper`/`RunBinding` model and its pages were folded into the one `AIComponent` model and
+> the `aisc_plugin_interface.adapters` mechanism; the allowed-hosts rule now lives in
+> `aisc_plugin_interface.adapters.hosts` and is shared with the run door. What follows records the CON-01
+> pass as it landed.
+
 Two passes are on this branch: the first landed EVD-01 and CON-01
 (`apps/backend` EVD-01 `0eed571`; `apps/webapp` EVD-01 `94f5ddb`), the second
 answered audit iteration 2's verdict that CON-01 parity was incomplete: the

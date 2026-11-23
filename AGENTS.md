@@ -9,17 +9,20 @@ If you believe an invariant must change, **stop and write an ADR** in [`docs/adr
 
 ## The invariants (one line each)
 
-**Delivery exception:** ADR 0003 supersedes 0002: defer I1/I2 and inherited *per-run target credential*
-handling until post-port, but block worker-wide secret inheritance by plugin subprocesses now.
+**Delivery exception:** ADR 0003 supersedes 0002: defer I1 and inherited *per-run target credential*
+handling until post-port, but block worker-wide secret inheritance by plugin subprocesses now. ADR 0009
+brings the I2 run-local door forward **for endpoint inputs** (the plugin gets a loopback door URL and a
+run token, never the target's key); self-contained dispatch (I1) stays deferred.
 
 - **I1 — a run is self-contained.** Hand the worker everything at dispatch; it must finish with the
   backend and platform **down**; the backend observes status by id; results are posted at the end.
   *Never add a mid-run call from the run path to a backend/platform endpoint.*
 - **I2 — a door, not a credential.** A plugin never receives the assessed system's secret; it calls a
-  door that lives **with the run**, withholds the key, enforces the allowlist, and scrubs.
+  door that lives **with the run**, withholds the key, enforces the allowlist, and scrubs. Implemented for
+  endpoint inputs (ADR 0009).
 - **I3 — one implementation per concern.** One project/identity model, one membership, one secret store,
-  one project-DB path, one connection/adapter model (beside `AIComponent`). Extend backend/webapp; do not
-  add a parallel model or app.
+  one project-DB path, one component/adapter model (an endpoint is an `AIComponent`, ADR 0009). Extend
+  backend/webapp; do not add a parallel model or app.
 - **I4 — one app graph; features are flags, not modes.** No configuration may change `INSTALLED_APPS`,
   `MIDDLEWARE` or the URLconf. Toggle behaviour with a registered feature flag.
 - **I5 — the domain is the model layer.** Own your tables via ORM models/migrations in your app; never
