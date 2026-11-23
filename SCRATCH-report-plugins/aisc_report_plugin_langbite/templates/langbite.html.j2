@@ -1,0 +1,38 @@
+<div class="tool-section tool-langbite">
+{%- if summary_line %}
+<p class="summary">{{ summary_line }}</p>
+{%- endif %}
+{%- if result_line %}
+<p class="summary">{{ result_line }}</p>
+{%- endif %}
+{%- if run_line %}
+<p class="note">{{ run_line }}</p>
+{%- endif %}
+{%- if chart %}
+{{ chart }}
+{%- endif %}
+{%- if chart_error %}
+<p class="placeholder">{{ chart_error }}</p>
+{%- endif %}
+{%- if rows %}
+<table>
+<thead><tr><th>{{ t("Concern") }}</th><th>{{ t("Model") }}</th><th>{{ t("Language") }}</th><th>{{ t("Input type") }}</th><th>{{ t("Reflection type") }}</th><th>{{ t("Passed") }}</th><th>{{ t("Failed") }}</th><th>{{ t("Pass rate") }}</th><th>{{ t("Tolerance set in LangBiTe") }}</th><th>{{ t("Pass / Fail (LangBiTe tolerance check)") }}</th></tr></thead>
+<tbody>
+{%- for r in rows %}
+<tr><td>{{ r.parts[0] }}</td><td>{{ r.parts[1] }}</td><td>{{ r.parts[2] }}</td><td>{{ r.parts[3] }}</td><td>{{ r.parts[4] }}</td><td>{{ r.passed }}</td><td>{{ r.failed }}</td><td>{{ r.rate }}</td><td>{{ r.tolerance }}</td><td>{{ r.check }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+{%- if other_rows %}
+<h4>{{ t("Other measurements") }}</h4>
+<table>
+<thead><tr><th>{{ t("Metric") }}</th><th>{{ t("Value") }}</th><th>{{ t("Unit") }}</th></tr></thead>
+<tbody>
+{%- for r in other_rows %}
+<tr><td>{{ r.metric }}</td><td>{{ r.value }}</td><td>{{ r.unit }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+</div>

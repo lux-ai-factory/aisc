@@ -41,25 +41,8 @@ services:
     networks:
       - backend
 
-  # MinIO bucket initialization service
-  make_buckets:
-    image: pgsty/minio
-    depends_on:
-      minio:
-        condition: service_healthy # Wait for MinIO to be ready
-    environment:
-      MINIO_ROOT_USER: ${S3_USER} # MinIO credentials for bucket creation
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set minio http://minio:9000 ${S3_USER} ${S3_PASSWORD} &&
-      /usr/bin/mc mb --ignore-existing minio/datasets;
-      /usr/bin/mc mb --ignore-existing minio/artifacts;
-      /usr/bin/mc mb --ignore-existing minio/models &&
-      exit 0;
-      "
-    networks:
-      - backend
+  # The S3 buckets (`datasets`, `models`, `artifacts`) are created by a
+  # documented one-off command, not an init container (I11). See README, "Run it".
 
   # RabbitMQ Message queue to send the jobs
   rabbitmq:
@@ -100,10 +83,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persistent storage
-      # Creates the `controls` DB (apps/controls) on a fresh volume.
-      - ./init/controls-db.sql:/docker-entrypoint-initdb.d/10-controls-db.sql:ro,Z
-      # Creates the `qualification` DB (apps/qualification) on a fresh volume.
-      - ./init/qualification-db.sql:/docker-entrypoint-initdb.d/20-qualification-db.sql:ro,Z
       # Creates the `keycloak` DB (used by the keycloak service) on a fresh volume.
       - ./init/keycloak.sql:/docker-entrypoint-initdb.d/30-keycloak.sql:ro,Z
     restart: unless-stopped
@@ -123,8 +102,11 @@ services:
       - -c
       - |
         URL="$${API_URL_EXTERNAL:-http://localhost}"
+        SECRET="$${BACKEND_ADMIN_CLIENT_SECRET:-}"
         mkdir -p /opt/keycloak/data/import
-        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        sed -e 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' \
+            -e 's|$${BACKEND_ADMIN_CLIENT_SECRET}|'"$$SECRET"'|g' \
+            /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm --proxy-headers=xforwarded
     volumes:
       # Realm template (rendered at startup, see command above).
@@ -133,6 +115,9 @@ services:
     environment:
       # Base URL used to render redirect URIs in the realm template.
       API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      # Secret of the aisc-backend-admin confidential client (substituted into
+      # the imported realm; empty = the client imports with no usable secret).
+      BACKEND_ADMIN_CLIENT_SECRET: ${BACKEND_ADMIN_CLIENT_SECRET:-}
       # Same-origin SSO path. Do NOT add X-Forwarded-Prefix in Caddyfile —
       # with proxy-headers=xforwarded it would double /auth.
       KC_HTTP_RELATIVE_PATH: /auth

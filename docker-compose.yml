@@ -60,24 +60,9 @@ services:
     networks:
       - backend
 
-  make_buckets:
-    image: pgsty/minio
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: ${S3_USER}
-      MINIO_ROOT_PASSWORD: ${S3_PASSWORD}
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set minio http://minio:9000 ${S3_USER} ${S3_PASSWORD} &&
-      /usr/bin/mc mb --ignore-existing minio/datasets;
-      /usr/bin/mc mb --ignore-existing minio/artifacts;
-      /usr/bin/mc mb --ignore-existing minio/models &&
-      exit 0;
-      "
-    networks:
-      - backend
+  # The S3 buckets the platform expects (`datasets`, `artifacts`, `models`) are
+  # created by a documented one-off command, not an init container (I11 — a
+  # container runs a long-lived process; setup is a step). See README, "Run it".
 
   # ───────────────────────────── Message broker ──────────────────────────────
   rabbitmq:
@@ -124,14 +109,20 @@ services:
       - -c
       - |
         URL="$${API_URL_EXTERNAL:-http://localhost}"
+        SECRET="$${BACKEND_ADMIN_CLIENT_SECRET:-}"
         mkdir -p /opt/keycloak/data/import
-        sed 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
+        sed -e 's|$${API_URL_EXTERNAL}|'"$$URL"'|g' \
+            -e 's|$${BACKEND_ADMIN_CLIENT_SECRET}|'"$$SECRET"'|g' \
+            /tmp/aisc-realm.template.json > /opt/keycloak/data/import/aisc-realm.json
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm --proxy-headers=xforwarded
     volumes:
       - ./keycloak/aisc-realm.template.json:/tmp/aisc-realm.template.json:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
     environment:
       API_URL_EXTERNAL: ${API_URL_EXTERNAL}
+      # Secret of the aisc-backend-admin confidential client (substituted into
+      # the imported realm; empty = the client imports with no usable secret).
+      BACKEND_ADMIN_CLIENT_SECRET: ${BACKEND_ADMIN_CLIENT_SECRET:-}
       KC_HTTP_RELATIVE_PATH: /auth
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
@@ -241,7 +232,23 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL}
+      # Keycloak Admin REST API (services.keycloak_admin): the backend talks to
+      # it with a confidential service-account client, never a user's password.
+      # Empty URL or secret = the admin surface is off.
+      KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL:-}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-aisc}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-aisc-backend-admin}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       MODEL_LISTING_SSL_VERIFY: ${MODEL_LISTING_SSL_VERIFY}
+      # The analytics dashboard bridge (ANA-01). The dashboard is the pilot's own
+      # Superset process, deployed separately; these tell this stack where it is
+      # and how to authenticate. With no URL or no key the results page shows no
+      # dashboard link at all (a link the dashboard cannot verify is not a link).
+      RESULTS_DASHBOARD_URL: ${RESULTS_DASHBOARD_URL:-}
+      RESULTS_DASHBOARD_SECRET: ${RESULTS_DASHBOARD_SECRET:-}
+      RESULTS_DASHBOARD_LINK_TTL: ${RESULTS_DASHBOARD_LINK_TTL:-900}
+      RESULTS_DASHBOARD_BRIDGE_URL: ${RESULTS_DASHBOARD_BRIDGE_URL:-}
+      RESULTS_DASHBOARD_BRIDGE_TOKEN: ${RESULTS_DASHBOARD_BRIDGE_TOKEN:-}
     depends_on:
       postgres:
         condition: service_started
@@ -316,7 +323,43 @@ services:
     networks:
       - backend
 
+  # ═══════════════ Analytics profile: the dashboard's own Redis ═══════════════
+  # The pilot's rule (scripts/tests/test_dashboard_redis.py): Superset's RedisCache
+  # unpickles what it reads, so a cache it shares with anything that runs plugin
+  # code is an execution path into a process holding every project's read
+  # credentials. Its cache is therefore a Redis of its own — a password from the
+  # environment, on a network only the dashboard's side joins, publishing nothing —
+  # and this file refuses to resolve without that password.
+  #
+  # `analytics` is an opt-in profile: `docker compose --profile analytics up -d`
+  # starts it, the default `docker compose up -d` does not (I11 — the default
+  # contract is unchanged). The dashboard (Superset) itself is the pilot's own
+  # deployment, not this repository's image; it joins this network and this Redis.
+  dashboard-redis:
+    profiles: ["analytics"]
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      DASHBOARD_REDIS_PASSWORD: ${DASHBOARD_REDIS_PASSWORD:?set DASHBOARD_REDIS_PASSWORD (the dashboard's own Redis must ask for a password)}
+    # The password goes in through a config file, so it is never in the server's
+    # command line (`redis-server --requirepass <value>` would show in `ps`).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'printf "requirepass %s\nsave \"\"\nappendonly no\n" "$$DASHBOARD_REDIS_PASSWORD" > /tmp/redis.conf && exec redis-server /tmp/redis.conf'
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$DASHBOARD_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - dashboard_redis_data:/data
+    # no `ports:` — nothing is published
+    networks:
+      - dashboard
+
+
 volumes:
+  dashboard_redis_data:
   immudb_data:
   local_plugins_data:
   minio_data:
@@ -329,3 +372,5 @@ volumes:
 networks:
   backend:
   frontend:
+  #: the dashboard's own network: only the dashboard's side joins it
+  dashboard:

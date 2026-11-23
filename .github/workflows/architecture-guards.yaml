@@ -1,0 +1,44 @@
+name: Architecture guards
+
+# The rules in ARCHITECTURE.md are only real if they fail a build. This job runs
+# tests/architecture/ on every change. Mark it a REQUIRED status check in branch
+# protection: a red guard is a stop, not a warning.
+on:
+  pull_request:
+  push:
+    branches:
+      - "master"
+      - "main"
+      - "dev"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-guards:
+    name: Architecture guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The submodules are public but use SSH URLs, so point git at HTTPS for CI.
+      # Must run before checkout, which is what fetches the submodules.
+      - name: Point submodule SSH URLs at HTTPS
+        run: >
+          git config --global
+          url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf
+          "git@github.com:"
+
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Standard library only: no app venv, no services, seconds to run.
+      - name: Run the architectural guards
+        run: uv run --no-project --with pytest python -m pytest tests/architecture -q -rxX

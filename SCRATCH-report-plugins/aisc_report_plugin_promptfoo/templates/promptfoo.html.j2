@@ -1,0 +1,38 @@
+<div class="tool-section tool-promptfoo">
+{%- if empty %}
+<p class="placeholder">{{ empty }}</p>
+{%- endif %}
+{%- if rows %}
+<table>
+<thead><tr><th>{{ t("Measure") }}</th><th>{{ t("Value") }}</th></tr></thead>
+<tbody>
+{%- for label, value in rows %}
+<tr><th>{{ label }}</th><td>{{ value }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+{%- if pass_fail_note %}
+<p class="note">{{ pass_fail_note }}</p>
+{%- endif %}
+{%- if refusal_note %}
+<p class="note">{{ refusal_note }}</p>
+{%- endif %}
+{%- if chart %}
+{{ chart }}
+{%- endif %}
+{%- if chart_error %}
+<p class="placeholder">{{ chart_error }}</p>
+{%- endif %}
+{%- if other_rows %}
+<h4>{{ t("Other measurements") }}</h4>
+<table>
+<thead><tr><th>{{ t("Metric") }}</th><th>{{ t("Value") }}</th><th>{{ t("Unit") }}</th></tr></thead>
+<tbody>
+{%- for r in other_rows %}
+<tr><td>{{ r.metric }}</td><td>{{ r.value }}</td><td>{{ r.unit }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
+</div>

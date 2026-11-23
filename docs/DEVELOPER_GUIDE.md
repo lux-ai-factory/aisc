@@ -32,9 +32,7 @@ aisc/                    ← parent repo (compose files, docs, keycloak, init)
 ├── apps/
 │   ├── backend/         → lux-ai-factory/aisc-backend      (Django API)
 │   ├── eval/            → lux-ai-factory/aisc-eval         (Celery workers)
-│   ├── webapp/          → lux-ai-factory/aisc-webapp       (React frontend)
-│   ├── controls/        → lux-ai-factory/aisc-controls     (Next.js checklists; not in the default stack yet)
-│   └── qualification/   → lux-ai-factory/aisc-qualification (Next.js EU AI Act; not in the default stack yet)
+│   └── webapp/          → lux-ai-factory/aisc-webapp       (React frontend)
 └── shared/
     ├── plugin-interface/ → lux-ai-factory/aisc-plugin-interface (Python lib)
     └── plugin-manager/   → lux-ai-factory/aisc-plugin-manager   (Python lib)
@@ -71,7 +69,7 @@ GIT_ALLOW_PROTOCOL=file:https:ssh git submodule foreach \
 ## Prerequisites
 
 - **Docker** with **Compose v2** (`docker compose`).
-- **Node.js 20+** and **npm** (webapp, controls, qualification).
+- **Node.js 20+** and **npm** (webapp).
 - **[uv](https://docs.astral.sh/uv/)** (backend, eval, shared libs).
 - **Git**.
 
@@ -97,6 +95,10 @@ Docker and mount your local plugins.
    docker compose --env-file env.development \
      -f docker-compose-infra.development.yml \
      -f docker-compose.development.yml up
+
+   # create the object-storage buckets once (one-off step, not a container)
+   COMPOSE_FILE=docker-compose-infra.development.yml:docker-compose.development.yml \
+     COMPOSE_ENV_FILES=env.development scripts/make-buckets.sh
    ```
 
 Your plugins are automatically mounted and loaded into both the backend and the
@@ -116,6 +118,10 @@ easier to run the **infrastructure in Docker** and the apps **locally**.
 
 ```bash
 docker compose --env-file env.development -f docker-compose-infra.development.yml up
+
+# create the object-storage buckets once (one-off step, not a container)
+COMPOSE_FILE=docker-compose-infra.development.yml COMPOSE_ENV_FILES=env.development \
+  scripts/make-buckets.sh
 ```
 
 This starts PostgreSQL, RabbitMQ, Redis, MinIO, Keycloak, immudb and Caddy.
@@ -175,6 +181,10 @@ docker compose --env-file env.plugin_downloader \
   -f docker-compose.plugin_downloader.yml \
   -f docker-compose-infra.development.yml \
   -f docker-compose.development.yml up
+
+# create the object-storage buckets once (one-off step, not a container)
+COMPOSE_FILE=docker-compose.plugin_downloader.yml:docker-compose-infra.development.yml:docker-compose.development.yml \
+  COMPOSE_ENV_FILES=env.plugin_downloader scripts/make-buckets.sh
 ```
 
 The `plugin_downloader` service clones the default plugin repositories into
@@ -204,10 +214,8 @@ git submodule update --init --recursive
 docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
 
-> The `apps/controls` and `apps/qualification` images are not published yet and
-> are not part of the default stack. When they are added they must be built with
-> `--build-arg NEXT_BASE_PATH=/controls` (resp. `/qualification`), because they
-> are served under a path prefix behind Caddy.
+> The qualification and controls features are served by the core webapp/backend
+> (flag-gated, on by default); there are no separate images or services.
 
 ---
 
@@ -269,9 +277,6 @@ builds and pushes their image(s) to the **GitHub Container Registry (GHCR)**:
 | `aisc-backend` | `.github/workflows/build-and-push.yml` | `ghcr.io/lux-ai-factory/aisc-backend` |
 | `aisc-eval` | `.github/workflows/build-and-push.yml` | `ghcr.io/lux-ai-factory/aisc-eval` |
 | `aisc-webapp` | `.github/workflows/build-and-push.yml` | `ghcr.io/lux-ai-factory/aisc-webapp` |
-
-> The `aisc-controls` and `aisc-qualification` images are not published yet;
-> their build workflows will be added together with those apps.
 
 ### Triggers
 

@@ -36,8 +36,9 @@ Everything below runs the **core platform from published container images**.
 You do **not** need to clone the child repositories (backend, webapp, eval) or
 build anything locally.
 
-> The companion **Controls** and **Qualification** apps are not part of this
-> stack yet and will be added at a later date.
+> The qualification and controls features are part of the core webapp/backend
+> and are gated by feature flags (on by default); there is no separate app or
+> service to deploy.
 
 ### Prerequisites
 
@@ -60,6 +61,10 @@ cp env.example .env
 
 # 3. Start the platform (pulls pre-built images from ghcr.io)
 docker compose up -d
+
+# 4. Create the object-storage buckets (one-off step; the stack ships no
+#    bucket-init container)
+scripts/make-buckets.sh
 ```
 
 The **first** start downloads the images and clones the default evaluation
@@ -114,8 +119,10 @@ are git submodules.
 *   **Webapp (`apps/webapp`)**: React frontend for the platform.
 *   **Backend (`apps/backend`)**: Django app that manages datasets, models and evaluation requests.
 *   **Evaluation Service (`apps/eval`)**: Celery worker that executes evaluation tasks via plugins.
-*   **Controls (`apps/controls`)**: Next.js app for AI-compliance checklists. _Not part of the default stack yet._
-*   **Qualification (`apps/qualification`)**: Next.js app for EU AI Act qualification and system cards. _Not part of the default stack yet._
+
+The qualification and controls features (EU AI Act qualification, system cards,
+AI-compliance checklists, control objectives, evidence map and reporting) live
+**inside** `apps/backend` and `apps/webapp` as optional, flag-gated features.
 
 ### Shared libraries (`shared/`)
 *   **Plugin Interface (`shared/plugin-interface`)**: the standard interface every AISC plugin implements.
@@ -146,12 +153,18 @@ Quick reference for the two most common contributor workflows:
 docker compose --env-file env.development \
   -f docker-compose-infra.development.yml \
   -f docker-compose.development.yml up
+
+# create the object-storage buckets once (no bucket-init container any more)
+COMPOSE_FILE=docker-compose-infra.development.yml:docker-compose.development.yml \
+  COMPOSE_ENV_FILES=env.development scripts/make-buckets.sh
 ```
 
 **Develop the core apps** (infra in Docker, apps running locally):
 
 ```bash
 docker compose --env-file env.development -f docker-compose-infra.development.yml up
+COMPOSE_FILE=docker-compose-infra.development.yml COMPOSE_ENV_FILES=env.development \
+  scripts/make-buckets.sh
 # then run backend/webapp/eval from your IDE (see .vscode/ and .run/)
 ```
 
