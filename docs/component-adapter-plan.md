@@ -107,6 +107,17 @@ It must be easy to load into the running stack and then appear in the UI for sel
   contract (§4.2).
 - **D-13 — Endpoint provenance (was Q10).** A run records the endpoint URL, the adapter id and version,
   and a hash of the adapter config. Secrets are excluded from the hash input.
+- **D-21 — The standard adapters ship inside `aisc-plugin-interface`, as `input_providers` already do.**
+  The concrete data and endpoint adapters (`csv`, `tsv`, `parquet`, `jsonl`, `json`, `onnx`; `openai`,
+  `oip`, `rest`, `a2a`) and the standard presets live in `aisc_plugin_interface.adapters`, beside the
+  contract they implement — the same arrangement the standard `input_providers` (`Csv`, `Parquet`, `Json`,
+  `Onnx`) have always had. Plugin-manager lists them as package `aisc-plugin-interface`, source `builtin`,
+  in the one adapter catalogue, so there is **no second loading path**: "builtin" is a marker, not a
+  branch. Plugins use the contract, never the concrete classes, so where the implementations live is an
+  implementation detail. **Caveat:** if we ever want to version the adapter implementations separately from
+  the interface ABI — a new protocol adapter that ships without an `aisc-plugin-interface` release — split
+  them into their own published package (an I8 ADR). The same caveat applies to `input_providers`: they
+  ship in the interface for this same reason today, and the same trigger would move them out.
 
 ## 3. What exists today (four overlapping implementations)
 
@@ -204,6 +215,9 @@ worker and webapp. Instead:
   the plugin decorator or the UI code.
 
 ## 5. Types and the standard library (draft)
+
+> **Where the standard library lives:** inside `aisc-plugin-interface`, beside the contract, as
+> `input_providers` already do (D-21). The manifests still appear in the one adapter catalogue.
 
 Each adapter declares `from` → `to`. To avoid N×M adapters, each family has one **hub** type:
 - **data:** files are read into `table`, and a slot that needs another shape gets one more step;
