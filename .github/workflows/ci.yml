@@ -106,6 +106,8 @@ jobs:
         with:
           node-version: 20
       - uses: astral-sh/setup-uv@v5
+      # the backup test restores into working services and fails, not skips, when this image is not built
+      - run: docker build -t aisc-minio:latest infra/minio
       # the test beds run each module's own migrations, with the environment a workstation has
       - run: scripts/prepare-tests.sh
       # the port tests occupy ports this machine leaves free: one that cannot run here fails instead of skipping; the

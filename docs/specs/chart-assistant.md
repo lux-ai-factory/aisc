@@ -1,7 +1,6 @@
 # Chart assistant: specification
 
-Status: draft for the owner's review. Nothing is built. Written 2026-11-06 against `~/aisc`, branch `hardening`,
-uncommitted working tree.
+The design the chart assistant follows: what it may do, what it may know, and where each rule is enforced.
 
 ## 1. What it is for
 
@@ -21,7 +20,7 @@ Validated charts are ordinary Superset charts: filters, comments and Save to rep
 
 | # | Rule |
 |---|---|
-| R1 | The model never receives a value read from a project's real data: no row, no sample, no count. The one exception (owner's decision, 2026-11-06): per metric, the minimum and maximum of the score and of each numeric label in the first finished run, which the mock draws its values within. It receives the data model description (section 4) and, when it asks, results computed on the **mock** database only. |
+| R1 | The model never receives a value read from a project's real data: no row, no sample, no count. The one exception (a decision of the project owner): per metric, the minimum and maximum of the score and of each numeric label in the first finished run, which the mock draws its values within. It receives the data model description (section 4) and, when it asks, results computed on the **mock** database only. |
 | R2 | The model never writes a number shown in a chart. It writes a query and chart settings; Superset computes the values. |
 | R3 | The query run on real data is byte for byte the query the person validated: its SHA-256 is recorded at validation and checked before the switch. Any change after validation needs a new validation. |
 | R4 | Every query is read only, twice over: it must be a single `SELECT`/`WITH` (checked before running), and it runs as a role that can only read (section 6). |
