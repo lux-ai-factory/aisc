@@ -27,15 +27,66 @@ def test_it_uses_throwaway_containers_only_and_removes_them():
     assert published == ['"127.0.0.1:$PORT:8088"'], published
 
 
+STAGED = """# syntax=docker/dockerfile:1.19
+FROM apache/superset:1.0.0@sha256:aaa AS shared
+RUN true
+FROM scratch AS gateway
+FROM apache/superset:2.0.0@sha256:bbb
+COPY --from=shared /identity /identity
+"""
+
+
+def _default_image(dockerfile: str, tmp_path) -> str:
+    """What the script's default image is for a dashboard Dockerfile with this text."""
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "apps/results-dashboard").mkdir(parents=True)
+    (tmp_path / "apps/results-dashboard/Dockerfile").write_text(dockerfile)
+    script = tmp_path / "scripts/check-superset-upgrade.sh"
+    line = re.search(r"^IMAGE=(.*)$", SCRIPT.read_text(), re.M).group(1).replace("$0", str(script))
+    return subprocess.run(["bash", "-c", f"echo {line}"], capture_output=True, text=True).stdout.strip()
+
+
 def test_it_runs_the_stacks_superset_by_default_and_the_real_extension():
     text = SCRIPT.read_text()
-    # the default is read from the dashboard's Dockerfile, so an upgrade there is the one place to change
-    stock = re.search(r"^FROM (\S+)", (ROOT / "apps/results-dashboard/Dockerfile").read_text(), re.M).group(1)
+    # the default is the image the dashboard Dockerfile builds: its last FROM, so an upgrade there is the one place
+    # to change; the stages before it are stand-ins for build contexts, not the Superset the stack runs
+    froms = re.findall(r"^FROM (\S+)", (ROOT / "apps/results-dashboard/Dockerfile").read_text(), re.M)
+    stock = froms[-1]
     default = subprocess.run(["bash", "-c", re.search(r'^IMAGE=(.*)$', text, re.M).group(1).replace('$0', str(SCRIPT))
                               .join(["echo ", ""])], capture_output=True, text=True).stdout.strip()
     assert default == stock
     assert "superset_config.py:/app/pythonpath/superset_config.py:ro" in text
     assert "aisc_ext:/app/pythonpath/aisc_ext:ro" in text
+
+
+def test_the_default_image_is_the_last_stages_not_a_named_stage_before_it(tmp_path):
+    assert _default_image(STAGED, tmp_path) == "apache/superset:2.0.0@sha256:bbb"
+
+
+def test_a_given_image_replaces_only_the_last_stages_from_line(tmp_path):
+    text = SCRIPT.read_text()
+    program = re.search(r"awk -v image=\"\$IMAGE\" '([^']*)'", text).group(1)
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(STAGED)
+    out = subprocess.run(["awk", "-v", "image=apache/superset:9.9.9", program, str(dockerfile)],
+                         capture_output=True, text=True).stdout
+    assert out == STAGED.replace("FROM apache/superset:2.0.0@sha256:bbb", "FROM apache/superset:9.9.9")
+
+
+def test_the_image_is_built_with_the_dashboard_folder_as_its_context(tmp_path):
+    """The Dockerfile copies the configuration, extension and branding from the dashboard folder, so a build in
+    any other folder fails. A stand-in docker records the build's arguments and fails it, which stops the script."""
+    log = tmp_path / "docker.log"
+    stub = tmp_path / "bin/docker"
+    stub.parent.mkdir()
+    stub.write_text(f'#!/bin/sh\n[ "$1" = build ] && {{ printf "%s\\n" "$@" > {log}; exit 1; }}\nexit 0\n')
+    stub.chmod(0o755)
+    subprocess.run([str(SCRIPT)], capture_output=True, text=True, timeout=60,
+                   env={**os.environ, "PATH": f"{stub.parent}:{os.environ['PATH']}"})
+    args = log.read_text().splitlines()
+    assert args[-1] == str(ROOT / "apps/results-dashboard"), args
+    dockerfile = args[args.index("-f") + 1]
+    assert dockerfile.endswith("/Dockerfile") and not dockerfile.startswith(args[-1]), args
 
 
 def test_the_fixture_holds_the_plugins_real_default_charts():

@@ -452,6 +452,57 @@ def test_the_shell_setting_of_the_admin_ports_wins_over_env_local(tmp_path, monk
     assert "docker-compose.admin-ports.yml" not in aisc_py(tmp_path).COMPOSE
 
 
+def test_compose_adds_the_baked_file_last_only_when_asked_on(tmp_path, monkeypatch):
+    """AISC_BAKED=on lays docker-compose.baked.yml over the other files; unset, off or any other value does not."""
+    copy_install_scripts(tmp_path)
+    monkeypatch.setenv("CADDY_DOMAIN", "https://x")
+    monkeypatch.setenv("AISC_ADMIN_PORTS", "on")
+    monkeypatch.delenv("AISC_BAKED", raising=False)
+    assert "docker-compose.baked.yml" not in aisc_py(tmp_path).COMPOSE
+    for value in ("off", "1", "yes", ""):
+        monkeypatch.setenv("AISC_BAKED", value)
+        assert "docker-compose.baked.yml" not in aisc_py(tmp_path).COMPOSE, value
+    monkeypatch.setenv("AISC_BAKED", "on")
+    module = aisc_py(tmp_path)
+    assert module.COMPOSE[-2:] == ["-f", "docker-compose.baked.yml"]
+    assert module.COMPOSE.index("docker-compose.https.yml") < module.COMPOSE.index("docker-compose.baked.yml")
+    assert "-f docker-compose.baked.yml" in module.up_hint()
+
+
+def test_the_baked_configurator_overlay_comes_only_with_the_configurator(tmp_path, monkeypatch):
+    """Without the Configurator, AISC_BAKED=on adds docker-compose.baked.yml alone; with it, the Configurator's
+    baked parts (docker-compose.baked.configurator.yml) come right after it, and both after the Configurator's own
+    file, whatever COMPOSE held before start --configurator."""
+    copy_install_scripts(tmp_path)
+    (tmp_path / "env.configurator").write_text("CADDY_DOMAIN=https://aisc.example\n")
+    monkeypatch.delenv("CADDY_DOMAIN", raising=False)
+    monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
+    monkeypatch.setenv("AISC_BAKED", "on")
+    monkeypatch.chdir(tmp_path)
+    m = aisc_py(tmp_path)
+    assert m.settings.optional_compose_files() == ["docker-compose.baked.yml"]
+    m.settings.use_configurator()
+    expected = ["docker-compose.https.yml", "docker-compose.configurator.yml", "docker-compose.baked.yml",
+                "docker-compose.baked.configurator.yml"]
+    assert m.settings.optional_compose_files() == expected
+    files = [m.settings.COMPOSE[i + 1] for i, arg in enumerate(m.settings.COMPOSE) if arg == "-f"]
+    assert files == ["docker-compose-infra.development.yml", "docker-compose.development.yml", *expected]
+
+
+def test_the_baked_overlay_may_be_asked_for_in_env_local_and_the_shell_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv("CADDY_DOMAIN", "http://localhost")
+    monkeypatch.delenv("AISC_ADMIN_PORTS", raising=False)
+    monkeypatch.delenv("AISC_BAKED", raising=False)
+    copy_install_scripts(tmp_path)
+    (tmp_path / "env.local").write_text('AISC_BAKED=off\nAISC_BAKED="on"\n')
+    assert "docker-compose.baked.yml" in aisc_py(tmp_path).COMPOSE
+    (tmp_path / "env.local").write_text("AISC_BAKED=on\nAISC_BAKED=off\n")
+    assert "docker-compose.baked.yml" not in aisc_py(tmp_path).COMPOSE
+    (tmp_path / "env.local").write_text("AISC_BAKED=on\n")
+    monkeypatch.setenv("AISC_BAKED", "off")
+    assert "docker-compose.baked.yml" not in aisc_py(tmp_path).COMPOSE
+
+
 def test_a_port_whose_closed_connections_are_still_waiting_is_free():
     """Linux keeps a closed connection in TIME_WAIT for a minute; Docker binds over it, so the check must too.
     The server here sets SO_REUSEADDR, as Caddy and Docker's port proxy do (every Go listener does): only then

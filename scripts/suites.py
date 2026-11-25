@@ -68,6 +68,11 @@ SUITES = (
     # the tests marked db read the live stack's Postgres: not in a row
     Suite("chart-assistant", "apps/chart-assistant", "", ("uv",), True,
           "cd apps/chart-assistant && uv run --locked --extra dev pytest -q -p no:cacheprovider -m 'not db'"),
+    # the tests that build the baked stack's images (test_baked_images.py, marked images); the repository checks run
+    # the rest of scripts/tests
+    Suite("baked images", "scripts/tests", "", ("uv", "docker"), True,
+          "cd scripts/tests && uv run --no-project --with pytest --with pyyaml python -m pytest -q -p no:cacheprovider"
+          " -p no:warnings -m images test_baked_images.py"),
     Suite("plugin-publisher", "infra/plugin-publisher", "", ("uv",), False,
           "cd infra/plugin-publisher && uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider"),
     Suite("report-plugin-interface", "shared/report-plugin-interface", "", ("uv",), False,

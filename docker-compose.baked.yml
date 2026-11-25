@@ -1,0 +1,135 @@
+# Opt-in overlay for the Kubernetes stack (AISC_BAKED=on): laid over the development files, it gives every service an
+# image that holds its own code and configuration, so nothing is read from the checkout at run time. It resolves on
+# the development files alone and with docker-compose.configurator.yml; for the Configurator,
+# docker-compose.baked.configurator.yml comes after it with the Configurator's own parts.
+# scripts/tests/test_baked_images.py guards both. Services are added here as their images are made self-contained.
+#
+# A service's `volumes` is replaced (!override) by what it still needs from outside its image: a named volume, or a
+# folder scripts/tests/baked_support.py allows. The shared code and data an image holds come in as build contexts
+# (additional_contexts), under the names the Dockerfiles stand in for when a build passes none.
+services:
+  control-objectives:
+    build:
+      context: ./apps/control-objectives
+      additional_contexts:
+        shared: ./shared
+    volumes: !override []
+
+  # the same image as control-objectives
+  control-objectives-migrate:
+    volumes: !override []
+
+  report-composer:
+    build:
+      context: ./apps/report-composer
+      additional_contexts:
+        shared: ./shared
+    volumes: !override []
+
+  # the same image as report-composer
+  report-composer-migrate:
+    volumes: !override []
+
+  plugin-publisher:
+    build:
+      context: ./infra/plugin-publisher
+      additional_contexts:
+        interface: ./shared/plugin-interface
+    volumes: !override
+      - ${PLUGIN_PATH}:/srv/private/local-plugins:ro,z
+
+  # the operator's protocol adapters are per install, so they stay mounted
+  platform:
+    build:
+      context: ./platform
+    volumes: !override
+      - ./immudb-signing.pub:/keys/immudb-signing.pub:ro,Z
+      - ./local_controls:/app/local_controls:ro,z
+      - ./adapters:/app/adapters:ro,z
+
+  report-renderer:
+    build:
+      context: ${REPORT_GENERATOR_DIR:-./apps/report-generator}
+      additional_contexts:
+        vocab: ./apps/qualification/src/data
+        objectives_data: ./apps/control-objectives/src/aisc_control_objectives/data
+    volumes: !override []
+
+  # the configuration, extension, branding and sign-in code are in the image
+  dashboard:
+    build:
+      context: ./apps/results-dashboard
+      additional_contexts:
+        shared: ./shared
+        gateway: ./dashboard-gateway
+    volumes: !override []
+
+  # the same image as dashboard
+  dashboard-migrate:
+    volumes: !override []
+
+  # the initialisation scripts and the host-based access rules are in the image; the data is a volume (the
+  # Configurator's key and certificate volume comes with docker-compose.baked.configurator.yml)
+  postgres:
+    build:
+      context: ./infra/postgres
+      target: postgres
+      additional_contexts:
+        init: ./init
+        scripts: ./scripts
+    image: aisc-postgres:${AISC_IMAGE_TAG:-latest}
+    volumes: !override
+      - postgres_data:/var/lib/postgresql/data
+
+  postgres-setup:
+    build:
+      context: ./infra/postgres
+      target: setup
+      additional_contexts:
+        init: ./init
+        scripts: ./scripts
+    image: aisc-postgres-setup:${AISC_IMAGE_TAG:-latest}
+    volumes: !override []
+
+  report-grants:
+    build:
+      context: ./infra/postgres
+      target: report-grants
+      additional_contexts:
+        init: ./init
+        scripts: ./scripts
+    image: aisc-report-grants:${AISC_IMAGE_TAG:-latest}
+    volumes: !override []
+
+  # the realm and the sign-in theme are in the image
+  keycloak:
+    build:
+      context: ./infra/keycloak
+      additional_contexts:
+        realm: ./keycloak
+    image: aisc-keycloak:${AISC_IMAGE_TAG:-latest}
+    volumes: !override []
+
+  rabbitmq:
+    build:
+      context: ./infra/rabbitmq
+    image: aisc-rabbitmq:${AISC_IMAGE_TAG:-latest}
+    volumes: !override
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  rabbitmq-setup:
+    build:
+      context: ./infra/rabbitmq
+      dockerfile: Dockerfile.setup
+    image: aisc-rabbitmq-setup:${AISC_IMAGE_TAG:-latest}
+    volumes: !override []
+
+  # the Caddyfiles and the pages are in the image; Caddy reads the development one (the Configurator's certificate
+  # and Caddyfile come with docker-compose.baked.configurator.yml)
+  caddy:
+    build:
+      context: ./infra/caddy
+      additional_contexts:
+        homepage: ./homepage
+    image: aisc-gateway:${AISC_IMAGE_TAG:-latest}
+    volumes: !override []

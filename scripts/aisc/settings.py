@@ -29,6 +29,9 @@ NO_DOCKER = ("Docker is not running (or this user may not use it). Start Docker 
 #: its compose file, laid over the https one
 CONFIGURATOR_SETTINGS = "env.configurator"
 CONFIGURATOR_FILE = "docker-compose.configurator.yml"
+#: the overlay whose images hold their own code and configuration (AISC_BAKED=on), and the Configurator's part of it
+BAKED_FILE = "docker-compose.baked.yml"
+BAKED_CONFIGURATOR_FILE = "docker-compose.baked.configurator.yml"
 #: the settings env.runtime is made from: env.plugin_downloader, or env.configurator once use_configurator ran
 SETTINGS = TRACKED
 
@@ -46,24 +49,40 @@ def configurator() -> bool:
 def optional_compose_files() -> list[str]:
     """443 only for an install served over https, so a taken 443 never stops one on plain http; the
     infrastructure's ports on the loopback only when asked (AISC_ADMIN_PORTS=on), for tools on the host; the
-    Configurator's own file last, for start --configurator."""
+    Configurator's own file next, for start --configurator; the baked overlay (AISC_BAKED=on) last, so that every
+    service runs the files its image holds and reads nothing from the checkout, followed for the Configurator by
+    its own baked parts (its Postgres certificate volume, its gateway certificate and Caddyfile)."""
     files = ["docker-compose.https.yml"] if served_over_https() else []
     if admin_ports_asked():
         files.append("docker-compose.admin-ports.yml")
     if configurator():
         files.append(CONFIGURATOR_FILE)
+    if baked_asked():
+        files.append(BAKED_FILE)
+        if configurator():
+            files.append(BAKED_CONFIGURATOR_FILE)
     return files
 
 
-def admin_ports_asked() -> bool:
-    """AISC_ADMIN_PORTS=on in the shell, or else in env.local (its last line for it, as compose reads it). The
-    checkout's own env.local, not the current folder's: COMPOSE asks this on import, before main moves there."""
-    asked = os.environ.get("AISC_ADMIN_PORTS")
+def setting_on(name: str) -> bool:
+    """NAME=on in the shell, or else in env.local (its last line for it, as compose reads it). The checkout's own
+    env.local, not the current folder's: COMPOSE asks this on import, before main moves there."""
+    asked = os.environ.get(name)
     local = ROOT / LOCAL
     if asked is None and local.is_file():
-        lines = [line for line in lines_of(str(local)) if line.startswith("AISC_ADMIN_PORTS=")]
+        lines = [line for line in lines_of(str(local)) if line.startswith(f"{name}=")]
         asked = lines[-1].split("=", 1)[1].strip().strip('"\'') if lines else None
     return asked == "on"
+
+
+def admin_ports_asked() -> bool:
+    """AISC_ADMIN_PORTS=on: the infrastructure's ports on the loopback."""
+    return setting_on("AISC_ADMIN_PORTS")
+
+
+def baked_asked() -> bool:
+    """AISC_BAKED=on: docker-compose.baked.yml, the overlay whose images hold their own code and configuration."""
+    return setting_on("AISC_BAKED")
 
 
 def lan_asked() -> bool:
@@ -144,8 +163,10 @@ PROJECT = stack_name(install_id(str(ROOT / OUT)))
 
 
 #: the stack's compose command; start puts the docker it found first
+#: the files every start runs with, before the optional ones
+BASE_FILES = ("docker-compose-infra.development.yml", "docker-compose.development.yml")
 COMPOSE = ["docker", "compose", "-p", PROJECT, "--env-file", COMBINED,
-           "-f", "docker-compose-infra.development.yml", "-f", "docker-compose.development.yml",
+           *[arg for name in BASE_FILES for arg in ("-f", name)],
            *[arg for name in optional_compose_files() for arg in ("-f", name)]]
 
 
@@ -164,9 +185,11 @@ def use_configurator() -> None:
         raise Refused(f"no {CONFIGURATOR_SETTINGS}: copy {CONFIGURATOR_SETTINGS}.example to {CONFIGURATOR_SETTINGS} and "
                       "set the values it marks (https:// address, AISC_IMAGE_TAG)")
     SETTINGS = CONFIGURATOR_SETTINGS
+    # the optional files again, in their order: the baked overlay must come after the Configurator's own file
+    while COMPOSE[-2] == "-f" and COMPOSE[-1] not in BASE_FILES:
+        del COMPOSE[-2:]
     for name in optional_compose_files():
-        if name not in COMPOSE:
-            COMPOSE.extend(["-f", name])
+        COMPOSE.extend(["-f", name])
 
 
 #: the Configurator's parts: the setting that names each one's host, and the address made from it (env.configurator)

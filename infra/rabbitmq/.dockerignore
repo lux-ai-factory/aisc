@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!Dockerfile.setup
+!conf.d/10-aisc.conf
+!setup_users.py

@@ -535,3 +535,67 @@ def test_a_catalogue_on_the_wrong_engine_or_not_signed_in_fails(copy_up, engine,
         (copy_up / "shims/curl").write_text(curl)
     r, _ = signed_in(copy_up)
     assert any(line.startswith("  FAIL ") and wrong in line for line in r.stdout.splitlines()), r.stdout
+
+
+def test_baked_adds_the_overlay_to_the_copy(fake_docker):
+    """--baked lays docker-compose.baked.yml over the copy: its own compose command (down, create, ps) ends with
+    it and the start of the copy is asked for it (AISC_BAKED=on); without --baked neither has it."""
+    baked = run(fake_docker, "--dry-run", "--baked")
+    plain = run(fake_docker, "--dry-run")
+    assert baked.returncode == 0 and plain.returncode == 0, baked.stdout + baked.stderr + plain.stderr
+    command = next(line for line in baked.stdout.splitlines() if "docker compose -p aisc-ports" in line)
+    assert command.rstrip().endswith("-f docker-compose.baked.yml"), command
+    assert "AISC_BAKED=on" in baked.stdout
+    assert "baked" not in plain.stdout
+
+    # the function that runs the copy's compose commands, run against the stand-in docker
+    text = SCRIPT.read_text()
+    body = _function(text, "copy_compose")
+    for given, expected in (("--baked", True), (None, False)):
+        (fake_docker / "docker.log").unlink(missing_ok=True)
+        files = re.search(r'^COMPOSE_FILES=.*$', text, re.M).group(0)
+        flag = 'BAKED=1' if given else 'BAKED=0'
+        script = (f'{files}\n{flag}\n'
+                  f'copy_compose() {{\n{body}}}\ncopy_compose "{fake_docker}" ps')
+        env = {**os.environ, "PATH": f"{fake_docker}/shims:{os.environ['PATH']}"}
+        subprocess.run(["bash", "-c", script], cwd=fake_docker, env=env, capture_output=True, text=True, timeout=30)
+        ran = [c for c in calls(fake_docker) if c.startswith("compose -p aisc-ports")]
+        assert ran, calls(fake_docker)
+        assert ("-f docker-compose.baked.yml " in ran[0]) == expected, ran[0]
+
+
+#: a uv that records the environment and the arguments it is started with
+RECORDING_UV = r"""#!/bin/sh
+d=$(cd "$(dirname "$0")/.." && pwd)
+env > "$d/uv.env"
+printf '%s | cwd=%s\n' "$*" "$PWD" > "$d/uv.args"
+"""
+
+
+def test_baked_starts_the_copy_with_the_overlay_asked_for(fake_docker):
+    """start_copy, as the script defines it with and without --baked, run against a stand-in uv: aisc.py start runs
+    in the clone with AISC_BAKED=on in its environment only for --baked."""
+    text = SCRIPT.read_text()
+    (fake_docker / "shims/uv").write_text(RECORDING_UV)
+    (fake_docker / "shims/uv").chmod(0o755)
+    clone = fake_docker / "clone"
+    clone.mkdir()
+    baked_env = re.search(r'^BAKED_ENV=.*$', text, re.M).group(0)
+    for flag, expected in (("1", "on"), ("0", None)):
+        (fake_docker / "uv.env").unlink(missing_ok=True)
+        script = (f'BAKED={flag}\n{baked_env}\nCLONE="{clone}"\n'
+                  f'start_copy() {{\n{_function(text, "start_copy")}}}\nstart_copy "{fake_docker}/start.log"')
+        env = {k: v for k, v in os.environ.items() if k != "AISC_BAKED"}
+        env["PATH"] = f"{fake_docker}/shims:{env['PATH']}"
+        r = subprocess.run(["bash", "-c", script], cwd=fake_docker, env=env, capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        started = dict(line.split("=", 1) for line in (fake_docker / "uv.env").read_text().splitlines() if "=" in line)
+        assert started.get("AISC_BAKED") == expected, (flag, started.get("AISC_BAKED"))
+        assert (fake_docker / "uv.args").read_text().strip() == f"run scripts/aisc.py start | cwd={clone}"
+
+
+def test_baked_is_named_in_the_help_and_verify_sh_passes_it_through():
+    r = subprocess.run(["bash", str(SCRIPT), "--help"], capture_output=True, text=True, timeout=30)
+    assert "--baked" in r.stdout
+    verify = (ROOT / "scripts/verify.sh").read_text()
+    assert "--port-fallback [--take-down-running] [--keep] [--baked]" in verify

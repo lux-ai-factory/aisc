@@ -62,6 +62,9 @@ jobs:
           - suite: chart-assistant
             run: cd apps/chart-assistant && uv run --locked --extra dev pytest -q -p no:cacheprovider -m 'not db'
           # the sign-in tests import Superset: they run inside the dashboard's own image
+          # the tests that build the baked stack's images; the repository checks run the rest of scripts/tests
+          - suite: baked images
+            run: cd scripts/tests && uv run --no-project --with pytest --with pyyaml python -m pytest -q -p no:cacheprovider -p no:warnings -m images test_baked_images.py
           - suite: results dashboard sso
             run: cd apps/results-dashboard && docker build -q -t aisc-t-dashboard . >/dev/null && docker run --rm -u root -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/w -e AISC_IDENTITY_DIR=/identity -v "$PWD:/w:ro" -v "$PWD/../../shared/identity:/identity:ro" -w /w --entrypoint sh aisc-t-dashboard -c 'pip install -q pytest && python -m pytest -q -p no:cacheprovider tests/test_sso_login.py'
     steps:
@@ -105,12 +108,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       # the test beds run each module's own migrations, with the environment a workstation has
       - run: scripts/prepare-tests.sh
-      # the port tests occupy ports this machine leaves free: one that cannot run here fails instead of skipping
+      # the port tests occupy ports this machine leaves free: one that cannot run here fails instead of skipping; the
+      # tests that build the baked images run in their own job
       - env:
           AISC_PORT_TESTS_MUST_RUN: "1"
         run: >-
           cd scripts/tests && uv run --no-project --with pytest --with pyyaml --with 'psycopg[binary]'
-          python -m pytest -q -p no:cacheprovider -p no:warnings
+          python -m pytest -q -p no:cacheprovider -p no:warnings -m 'not images'
 
   # Every lock of the checkout, submodules included, against published advisories: a high or critical one fails
   # (scripts/audit-dependencies.sh; accepted advisories with a date in scripts/audit-accepted.txt)

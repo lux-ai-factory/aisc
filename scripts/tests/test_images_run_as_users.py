@@ -1,4 +1,4 @@
-"""Every image the stack builds runs as a user other than root, except two that need root for a stated reason, and
+"""Every image the stack builds runs as a user other than root, except those that need root for a stated reason, and
 every build context keeps local files out of the build with a .dockerignore.
 
 The image policy's own exception lists shrink as images are fixed; this file states where they end. Read-only:
@@ -7,11 +7,11 @@ Dockerfiles and compose files as text, nothing built.
 
 import test_image_policy as policy
 
-PER_RUN_UID = "switches to a uid of its own for each run, which only root can do"
-BUILDS_AS_ANOTHER_USER = "builds each plugin as an unprivileged builder user, which only root can switch to"
-
-#: the only services left running as root, with why
-ROOT_USERS = {"aisc-eval-worker": PER_RUN_UID, "plugin-publisher": BUILDS_AS_ANOTHER_USER}
+#: the only services left running as root; the reasons are the image policy's, which lists the same services
+#: (the worker and the publisher switch user themselves, postgres and rabbitmq drop privileges in their upstream
+#: entrypoints, caddy runs as its upstream image does)
+ROOT_USERS = {name: policy.ROOT_USERS[name]
+              for name in ("aisc-eval-worker", "plugin-publisher", "postgres", "rabbitmq", "caddy")}
 #: services that run one of those images rather than a third: the declarations worker reads manifests and runs form
 #: hooks as a uid of their own, so it is root for the run worker's reason
 SAME_IMAGE_AS = {"aisc-eval-declarations-worker": "aisc-eval-worker"}

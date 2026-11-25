@@ -4,6 +4,7 @@
 #   ./scripts/verify-port-fallback.sh                       # refuses while an AISC stack runs on this machine
 #   ./scripts/verify-port-fallback.sh --take-down-running   # takes that stack down (data kept), back at the end
 #   ./scripts/verify-port-fallback.sh --keep                # leaves the copy up as the last scenario left it, every port moved
+#   ./scripts/verify-port-fallback.sh --baked               # the copy runs docker-compose.baked.yml: no file of the checkout
 #   ./scripts/verify-port-fallback.sh --dry-run             # prints what it would do, changes nothing
 #   ./scripts/verify-port-fallback.sh --clean-up <folder>   # removes a copy kept with --keep
 #
@@ -11,7 +12,9 @@
 # person installing it would, while stand-in web servers hold the ports it prefers. It runs as its own Compose
 # project (aisc-ports) on its own image tag (ports), so no install's data or images are touched; everything it
 # made is removed on any exit. Its start refuses while another install runs (one install runs at a time), so a
-# running stack has to be taken down for the length of the check.
+# running stack has to be taken down for the length of the check. With --baked the copy is started with AISC_BAKED=on,
+# which makes aisc.py add docker-compose.baked.yml to every compose command it runs, and the check's own compose
+# commands add it too.
 #
 # Scenarios, each a real start of the copy:
 #   new install, every default taken        80, 8100, 8188 and 127.0.0.1:8081 held: the four ports move, and
@@ -30,14 +33,15 @@ COMPOSE_FILES="docker-compose-infra.development.yml docker-compose.development.y
 STAND_IN_IMAGE=nginx:1.27-alpine
 
 usage() {
-  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-TAKE_DOWN=0; KEEP=0; DRY_RUN=0; CLEAN_UP=""
+TAKE_DOWN=0; KEEP=0; DRY_RUN=0; CLEAN_UP=""; BAKED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --take-down-running) TAKE_DOWN=1 ;;
     --keep) KEEP=1 ;;
+    --baked) BAKED=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --clean-up) CLEAN_UP=${2:-}; [ -n "$CLEAN_UP" ] || { usage >&2; exit 2; }; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -46,6 +50,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+BAKED_ENV=""; [ "$BAKED" = 1 ] && BAKED_ENV=AISC_BAKED=on
 pass=0; fail=0
 ok() { printf '  PASS %s\n' "$1"; pass=$((pass+1)); }
 no() { printf '  FAIL %s\n' "$1"; fail=$((fail+1)); }
@@ -53,9 +58,10 @@ section() { printf '\n%s\n' "$1"; }
 
 # The copy's compose command, run in its clone: always the aisc-ports project, never another one.
 copy_compose() { # clone folder, compose arguments...
-  local clone=$1; shift
+  local clone=$1 files=$COMPOSE_FILES; shift
+  [ "${BAKED:-0}" = 1 ] && files="$files docker-compose.baked.yml"
   # shellcheck disable=SC2086
-  (cd "$clone" && docker compose -p aisc-ports --env-file env.runtime $(printf -- '-f %s ' $COMPOSE_FILES) "$@")
+  (cd "$clone" && docker compose -p aisc-ports --env-file env.runtime $(printf -- '-f %s ' $files) "$@")
 }
 
 # An install's own compose command, as its containers' labels recorded it: its folder, its env file, its compose
@@ -188,6 +194,8 @@ if [ "$DRY_RUN" = 1 ]; then
     [ -n "$project" ] && echo "  take down the stack $project in $folder, its data kept;" \
                               "bring it back at the end with its own files, up -d --no-build"
   done
+  [ "$BAKED" = 1 ] && echo "  baked: start runs with AISC_BAKED=on, so its compose commands, like the check's own," \
+                             "add the overlay: docker compose -p aisc-ports --env-file env.runtime $(printf -- '-f %s ' $COMPOSE_FILES)-f docker-compose.baked.yml"
   [ "$LEFTOVER" = 1 ] && echo "  remove the containers an earlier check left (project aisc-ports)"
   cat <<EOF
   clone commit $(git -C "$ROOT" rev-parse --short HEAD) with its submodules into a temporary folder aisc-ports.<random>
@@ -262,7 +270,7 @@ stand_in() { # [address:]port -> a web server holding it
 }
 
 start_copy() { # log file -> start's own exit code; its output is shown as it comes and kept in the log
-  (cd "$CLONE" && AISC_PROJECT=aisc-ports AISC_IMAGE_TAG=ports uv run scripts/aisc.py start) 2>&1 | tee "$1"
+  (cd "$CLONE" && env AISC_PROJECT=aisc-ports AISC_IMAGE_TAG=ports ${BAKED_ENV:+"$BAKED_ENV"} uv run scripts/aisc.py start) 2>&1 | tee "$1"
   return "${PIPESTATUS[0]}"
 }
 

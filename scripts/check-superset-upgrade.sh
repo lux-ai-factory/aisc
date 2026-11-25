@@ -19,8 +19,9 @@ set -euo pipefail
 
 BREAK=0
 if [[ "${1:-}" == "--break" ]]; then BREAK=1; shift; fi
-# the stack's image unless one is given: the FROM of apps/results-dashboard/Dockerfile
-IMAGE="${1:-$(sed -n 's/^FROM //p' "$(dirname "$0")/../apps/results-dashboard/Dockerfile" | head -1)}"
+# the stack's image unless one is given: the image apps/results-dashboard/Dockerfile builds, the FROM of its last stage
+# (the stages before it are stand-ins for build contexts), without the stage's name
+IMAGE="${1:-$(awk '/^FROM /{image=$2} END{print image}' "$(dirname "$0")/../apps/results-dashboard/Dockerfile")}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DASH="$ROOT/apps/results-dashboard"
 FIX="$ROOT/scripts/fixtures/superset_upgrade"
@@ -40,8 +41,10 @@ say() { printf '== %s\n' "$*"; }
 free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'; }
 
 say "image: $IMAGE"
-sed "s#^FROM .*#FROM $IMAGE#" "$DASH/Dockerfile" > "$WORK/Dockerfile"
-docker build -q -t "$BUILT" -f "$WORK/Dockerfile" "$WORK" >/dev/null
+# the given image goes into the last stage only: the stages before it are not Superset images to swap
+awk -v image="$IMAGE" '{line[NR]=$0} /^FROM /{last=NR} END{for(i=1;i<=NR;i++) print (i==last ? "FROM " image : line[i])}' \
+  "$DASH/Dockerfile" > "$WORK/Dockerfile"
+docker build -q -t "$BUILT" -f "$WORK/Dockerfile" "$DASH" >/dev/null
 
 RO_PW="$(openssl rand -hex 12)"; PG_PW="$(openssl rand -hex 12)"; ADMIN_PW="$(openssl rand -hex 12)"
 TOKEN="$(openssl rand -hex 24)"; SECRET="$(openssl rand -hex 32)"

@@ -26,7 +26,7 @@ from conftest import ROOT
 COMPOSE_FILES = sorted(ROOT.glob("docker-compose*.yml"))
 
 #: base images whose own last USER is not root
-UNPRIVILEGED_BASES = ("nginxinc/nginx-unprivileged",)
+UNPRIVILEGED_BASES = ("nginxinc/nginx-unprivileged", "quay.io/keycloak/keycloak")
 #: images whose releases are numbered major.minor, with no patch number (PostgreSQL since 10): that tag is exact
 TWO_PART_RELEASES = ("dpage/pgadmin4", "postgres")
 
@@ -46,6 +46,9 @@ FLOATING_TAGS = {
 #: services whose image runs as root, with why each is allowed for now
 ROOT_USERS = {
     "aisc-eval-worker": "switches to a uid of its own for each run, which only root can do",
+    "postgres": "upstream's entrypoint starts as root and drops to the postgres user itself (exec gosu postgres)",
+    "rabbitmq": "upstream's entrypoint starts as root and drops to the rabbitmq user itself (exec gosu rabbitmq)",
+    "caddy": "runs as its upstream image does: root, which binds its ports",
     "plugin-publisher": "builds each plugin as an unprivileged builder user, which only root can switch to",
 }
 
@@ -188,6 +191,30 @@ def test_every_built_image_ends_as_a_user_other_than_root():
             as_root.add(b.service)
     assert as_root - set(ROOT_USERS) == set(), "give these a USER (or list them in ROOT_USERS with why)"
     assert set(ROOT_USERS) - as_root == set(), "no longer root: take them off ROOT_USERS"
+
+
+def frontend_version(dockerfile: Path) -> tuple[int, ...] | None:
+    """The version of the `# syntax=docker/dockerfile:<version>` line a Dockerfile declares, None without one."""
+    for line in dockerfile.read_text().splitlines():
+        m = re.fullmatch(r"#\s*syntax\s*=\s*docker/dockerfile:(\d+(?:\.\d+)*)\S*", line.strip())
+        if m:
+            return tuple(int(n) for n in m.group(1).split("."))
+        if line.strip() and not line.startswith("#"):
+            break
+    return None
+
+
+def test_a_dockerfile_using_new_copy_flags_pins_a_frontend_that_has_them():
+    """COPY --exclude needs the Dockerfile frontend 1.19 and a symbolic --chmod (a=rX) 1.14: an older Docker
+    builds with a frontend that rejects them unless the Dockerfile names a newer one."""
+    short = []
+    for dockerfile in dockerfiles():
+        copies = [rest for word, rest in instructions(dockerfile) if word == "COPY"]
+        needed = max([(1, 19)] * any("--exclude" in c for c in copies)
+                     + [(1, 14)] * any(re.search(r"--chmod=\S*[a-zA-Z]", c) for c in copies), default=None)
+        if needed and (frontend_version(dockerfile) or ()) < needed:
+            short.append(f"{relative(dockerfile)} needs # syntax=docker/dockerfile:{needed[0]}.{needed[1]}")
+    assert short == [], "declare the frontend on the first line"
 
 
 def test_every_build_context_has_a_dockerignore():

@@ -1,0 +1,6 @@
+# syntax=docker/dockerfile:1.19
+# The one-shot job that creates the broker's users: the Python image with its script.
+FROM python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+COPY --chmod=a=rX setup_users.py /setup/setup_users.py
+# a one-shot client of the broker: it needs no root (65534 is nobody)
+USER 65534

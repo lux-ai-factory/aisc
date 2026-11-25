@@ -25,7 +25,7 @@ CI = ROOT / ".github/workflows/ci.yml"
 SUITES = {
     "identity", "platform", "control-objectives", "report-composer",
     "engine", "engine on postgres", "eval", "eval lint", "plugin-manager", "plugin-interface", "report-generator",
-    "chart-assistant", "results dashboard sso",
+    "chart-assistant", "results dashboard sso", "baked images",
 }
 
 
@@ -120,3 +120,20 @@ def test_the_triggers_are_unchanged():
     assert set(on) == {"push", "pull_request"}
     assert on["push"]["branches"] == ["pilot", "main", "master"]
     assert not on["pull_request"], "pull_request takes every base branch"
+
+
+def marker_of(words: list[str]) -> str | None:
+    """The marker expression of a pytest command (`-m EXPR`, not `python -m pytest`)."""
+    return next((words[i + 1] for i, w in enumerate(words[:-1]) if w == "-m" and words[i + 1] != "pytest"), None)
+
+
+def test_the_baked_images_job_builds_them_and_the_repository_checks_leave_them_out():
+    """The image-building tests of test_baked_images.py (marked images) run in their own job; the repository
+    checks run the rest of scripts/tests, the fast tests of that file among them."""
+    words = pytest_commands(run_of("baked images"))[0]
+    assert commands(run_of("baked images"))[0] == ["cd", "scripts/tests"]
+    assert marker_of(words) == "images" and "test_baked_images.py" in words, words
+    steps = workflow()["jobs"]["repository-checks"]["steps"]
+    checks = [shlex.split(" ".join(str(s["run"]).split())) for s in steps if "python -m pytest" in str(s.get("run", ""))]
+    assert len(checks) == 1, checks
+    assert marker_of(checks[0]) == "not images", checks[0]

@@ -1,0 +1,18 @@
+# The Configurator's part of the baked overlay: laid after docker-compose.configurator.yml and
+# docker-compose.baked.yml (scripts/aisc.py adds it for start --configurator with AISC_BAKED=on). It gives back what
+# the Configurator mounts and docker-compose.baked.yml leaves out: Postgres's key and certificate volume, and the
+# gateway's certificate, with Caddy running the Configurator's Caddyfile the gateway image holds.
+# scripts/tests/test_baked_images.py guards it.
+services:
+  postgres:
+    volumes: !override
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_tls:/tls:ro
+
+  # infra/caddy/Caddyfile.configurator, in the image at /etc/caddy/Caddyfile.configurator; it imports the
+  # development Caddyfile, in the image as well
+  caddy:
+    command: caddy run --config /etc/caddy/Caddyfile.configurator --adapter caddyfile
+    volumes: !override
+      # server.crt and server.key: one certificate for the four host names
+      - ./caddy-tls:/etc/caddy/tls:ro,z

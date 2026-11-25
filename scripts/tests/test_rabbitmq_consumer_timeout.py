@@ -33,6 +33,13 @@ def test_every_compose_file_with_rabbitmq_mounts_the_setting():
         if "image" not in (services.get("rabbitmq") or {}):
             continue                       # no RabbitMQ here, or an overlay (admin ports) on one defined elsewhere
         found += 1
+        build = services["rabbitmq"].get("build") or {}
+        if build:
+            # the baked overlay's image carries the setting at the same place instead of a mount
+            dockerfile = ROOT / build["context"] / build.get("dockerfile", "Dockerfile")
+            assert re.search(r"^COPY\b.*\bconf\.d/10-aisc\.conf /etc/rabbitmq/conf\.d/10-aisc\.conf$",
+                             dockerfile.read_text(), re.M), path.name
+            continue
         volumes = services["rabbitmq"].get("volumes") or []
         assert "./infra/rabbitmq/conf.d/10-aisc.conf:/etc/rabbitmq/conf.d/10-aisc.conf:ro" in volumes, path.name
     assert found >= 1

@@ -34,6 +34,11 @@ def _compose_merge_tag(loader, node):
 
 for _tag in ("!override", "!reset"):
     yaml.SafeLoader.add_constructor(_tag, _compose_merge_tag)
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "images: builds images (the CI job \"baked images\" runs these; repository "
+                                       "checks leave them out)")
 GUARD = ROOT / "scripts/guard-frozen.sh"
 CHAIN = ROOT / "scripts/test-pipeline-chain.sh"
 
