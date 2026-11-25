@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from chart_assistant.description import READERS, fixed_model, for_model
+from chart_assistant.description import READERS, dimension_keys_of, fixed_model, for_model
 from chart_assistant.query_check import check
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -85,3 +85,24 @@ def test_the_model_reads_each_metrics_range_and_nothing_more_of_its_values():
     text = for_model({"metrics": [{"name": "M", "score": {"min": 0.2, "max": 0.4},
                                    "dimensions": {"slot": {"type": "number", "values": None, "min": 3, "max": 9}}}]})
     assert "between 0.2 and 0.4" in text and "between 3 and 9" in text
+
+
+PROJECT = {"targets": ["OpenAI back-end", "Local back-end"],
+           "metrics": [{"name": "Jailbreak success", "dimensions": {"category": {"type": "text", "values": ["cv"]},
+                                                                  "language": {"type": "text", "values": ["en"]}}},
+                       {"name": "Conversation", "dimensions": {"category": {"type": "text", "values": ["AGE"]},
+                                                             "register": {"type": "text", "values": ["basic"]}}}]}
+
+
+def test_the_model_reads_the_targets_by_their_labels():
+    assert "'OpenAI back-end', 'Local back-end'" in for_model(PROJECT)
+
+
+def test_the_views_come_before_the_tables():
+    from chart_assistant.views import BUILT_IN
+    text = for_model(PROJECT, BUILT_IN)
+    assert text.index("## results:") < text.index("# Tables you may query")
+
+
+def test_the_dimension_keys_of_a_project_are_those_of_all_its_metrics():
+    assert dimension_keys_of(PROJECT) == {"category", "language", "register"}

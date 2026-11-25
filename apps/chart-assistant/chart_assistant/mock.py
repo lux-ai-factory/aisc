@@ -76,26 +76,31 @@ def _combinations(rng: random.Random, values: list[list]) -> list[tuple]:
 def rows(project: dict, rng: random.Random) -> dict[str, list[dict]]:
     """table -> rows, invented: one run per target, every metric's label combinations (at most MAX_COMBINATIONS)."""
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    system_pid = _uuid(rng)
+    # two AI card versions, so a chart by version has something to show
+    versions = [_uuid(rng), _uuid(rng)]
     out: dict[str, list[dict]] = {t: [] for t in (
         "project.system", "target.target", "engine.aisc_backend_aicomponent", "engine.aisc_backend_evaluation",
         "engine.aisc_backend_evaluationplugin", "engine.aisc_backend_evaluationinput", "engine.aisc_backend_observation",
         "engine.aisc_backend_metric", "engine.aisc_backend_measurement")}
-    out["project.system"].append({"pid": system_pid, "number": 1, "name": "Mock system", "created_at": start})
+    for number, pid in enumerate(versions, 1):
+        out["project.system"].append({"pid": pid, "number": number, "name": "Mock system", "created_at": start})
     metrics = project.get("metrics", [])
     for j, metric in enumerate(metrics, 1):
         out["engine.aisc_backend_metric"].append({"id": j, "pid": _uuid(rng), "name": metric["name"], "created_at": start})
     measurement_id = 0
-    for i, label in enumerate(project.get("targets") or ["Target A", "Target B"], 1):
+    targets = project.get("targets") or ["Target A", "Target B"]
+    for i, label in enumerate(targets, 1):
         component = _uuid(rng)
         when = start + timedelta(days=i)
         out["engine.aisc_backend_aicomponent"].append({"id": i, "pid": component, "name": label, "created_at": when})
         out["target.target"].append({"key": f"component:{i}", "kind": "component", "label": label,
                                      "engine_component": component, "created_at": when})
-        out["engine.aisc_backend_evaluation"].append({"id": i, "pid": _uuid(rng), "status": "Done", "created_at": when,
-                                                      "system_id": system_pid})
-        out["engine.aisc_backend_evaluationplugin"].append({"id": i, "pid": _uuid(rng), "name": "", "evaluation_id": i,
-                                                            "status": "Done", "created_at": when})
+        # the last run did not finish, and the second half of the runs are of the second card version
+        status = "Failed" if i == len(targets) and len(targets) > 1 else "Done"
+        out["engine.aisc_backend_evaluation"].append({"id": i, "pid": _uuid(rng), "status": status, "created_at": when,
+                                                      "system_id": versions[0 if i <= len(targets) // 2 else 1]})
+        out["engine.aisc_backend_evaluationplugin"].append({"id": i, "pid": _uuid(rng), "name": f"Mock run {i}",
+                                                            "evaluation_id": i, "status": status, "created_at": when})
         out["engine.aisc_backend_evaluationinput"].append({"id": i, "pid": _uuid(rng), "name": "target", "component_id": i,
                                                            "evaluation_plugin_id": i, "value": {}, "created_at": when})
         out["engine.aisc_backend_observation"].append({"id": i, "pid": _uuid(rng), "observer": "mock", "tool": "mock",

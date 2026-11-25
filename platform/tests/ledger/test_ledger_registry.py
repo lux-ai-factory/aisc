@@ -352,10 +352,13 @@ def test_only_the_settings_route_deletes_a_secret():
     assert action.per_request == 1
 
 
-def test_a_plot_the_chart_assistant_removes_is_recorded_from_the_message_that_asked_for_it():
+def test_a_plot_the_chart_assistant_removes_is_recorded_from_the_confirmation_that_made_it():
     removed = REGISTRY["dashboard.assistant.removed"]
     assert removed.item_type == "chart" and removed.details_keys == ("dashboard",)
-    assert removed.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "message"),)
+    assert removed.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "confirm"),)
+    (cause,) = removed.caused_by
+    assert re.match(cause[2], "/api/v1/aisc_assistant/conversations/abc/confirm")
+    assert not re.match(cause[2], "/api/v1/aisc_assistant/conversations/abc/messages")
 
 
 def test_a_validated_chart_may_say_which_plot_it_replaced():
@@ -363,10 +366,12 @@ def test_a_validated_chart_may_say_which_plot_it_replaced():
 
 
 
-def test_a_plot_the_chart_assistant_changes_in_place_is_recorded_from_the_message_that_asked_for_it():
+def test_a_plot_the_chart_assistant_changes_in_place_is_recorded_from_the_confirmation_that_made_it():
     changed = REGISTRY["dashboard.assistant.changed"]
-    assert changed.item_type == "chart" and changed.details_keys == ("dashboard",)
-    assert changed.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "message"),)
+    assert changed.item_type == "chart" and changed.details_keys == ("dashboard", "copy_of")
+    assert changed.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "confirm"),)
+    (cause,) = changed.caused_by
+    assert re.match(cause[2], "/api/v1/aisc_assistant/conversations/abc/confirm")
 
 
 def test_one_message_may_remove_several_plots_each_with_its_own_event():
@@ -438,3 +443,12 @@ def test_a_card_correction_is_caused_by_the_step_1_form_like_a_new_version(page)
 def test_saving_a_new_card_and_correcting_one_are_the_same_server_action():
     assert "qualification.amended" in REGISTRY["qualification.created"].same_action
     assert "qualification.created" in REGISTRY["qualification.amended"].same_action
+
+
+def test_an_undo_through_the_chart_assistant_is_recorded_from_the_undo_request():
+    undone = REGISTRY["dashboard.assistant.undone"]
+    assert undone.item_type == "chart" and undone.details_keys == ("dashboard", "undone")
+    assert undone.per_request is None              # undoing a removal of several plots: one event per plot
+    assert undone.routes == (("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "undo"),)
+    (cause,) = undone.caused_by
+    assert re.match(cause[2], "/api/v1/aisc_assistant/conversations/abc/undo")

@@ -6,7 +6,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from chart_assistant.app import Settings, create_app
+from chart_assistant.app import ModelUnavailable, Settings, create_app
+from chart_assistant.conversation_store import MemoryStore
 from test_loop import CHART, GOOD, StandIn, tool
 
 TOKEN = "dashboard-token"
@@ -25,11 +26,26 @@ class Mocks:
         return lambda sql: {"columns": ["category", "series", "value"], "rows": [["Age", "all", 0.5]]}
 
 
-def client(*script, token=TOKEN):
+SETTINGS = Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="t",
+                    mock_database_url="postgresql://assistant_mock@postgres/postgres")
+
+
+class KeepsNothing(MemoryStore):
+    """A store that remembers nothing: what the service holds in memory is all there is."""
+    def save(self, *a):
+        pass
+
+
+def no_model(pid):
+    raise ModelUnavailable("no model is chosen for the chart assistant in this project (Manage > Connectivity)")
+
+
+def client(*script, token=TOKEN, store=None):
     mocks = Mocks()
     app = create_app(Settings(dashboard_token=token, platform_url="http://platform", platform_token="t",
                               mock_database_url="postgresql://assistant_mock@postgres/postgres"),
-                     model_for=lambda pid: StandIn(*script), mocks=mocks)
+                     model_for=lambda pid: StandIn(*script), mocks=mocks,
+                     store=MemoryStore() if store is None else store)
     return TestClient(app), mocks
 
 
@@ -189,7 +205,7 @@ def real_model_client():
     from chart_assistant import app as module
     settings = Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="p",
                         mock_database_url="postgresql://assistant_mock@postgres/postgres")
-    return TestClient(create_app(settings, model_for=module.platform_model(settings), mocks=Mocks()))
+    return TestClient(create_app(settings, model_for=module.platform_model(settings), mocks=Mocks(), store=MemoryStore()))
 
 
 def failing(exc):
@@ -236,7 +252,7 @@ def test_two_messages_to_one_conversation_are_answered_one_after_the_other():
         return tool("ask_question", question="Which one?")
     app = create_app(Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="t",
                               mock_database_url="postgresql://assistant_mock@postgres/postgres"),
-                     model_for=lambda pid: model, mocks=Mocks())
+                     model_for=lambda pid: model, mocks=Mocks(), store=MemoryStore())
     c = TestClient(app)
     cid = start(c).json()["conversation"]
     answers = []
@@ -251,7 +267,7 @@ def test_two_messages_to_one_conversation_are_answered_one_after_the_other():
 def test_old_conversations_are_let_go_beyond_the_cap(monkeypatch):
     from chart_assistant import app as module
     monkeypatch.setattr(module, "MAX_CONVERSATIONS", 3)
-    c, _ = client(*[tool("ask_question", question="Which one?")] * 10)
+    c, _ = client(*[tool("ask_question", question="Which one?")] * 10, store=KeepsNothing())
     cids = [start(c).json()["conversation"] for _ in range(3)]
     assert say(c, cids[0], "x").status_code == 200                  # used last: kept
     start(c)
@@ -268,3 +284,180 @@ def test_conversations_idle_too_long_are_let_go(monkeypatch):
     now[0] += module.MAX_IDLE_SECONDS + 1
     fresh = start(c).json()["conversation"]
     assert say(c, old, "x").status_code == 404 and say(c, fresh, "x").status_code == 200
+
+
+def test_a_started_conversation_tells_the_model_about_the_results_view_and_the_targets():
+    model = StandIn(tool("ask_question", question="Which one?"))
+    app = create_app(Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="t",
+                              mock_database_url="postgresql://assistant_mock@postgres/postgres"),
+                     model_for=lambda pid: model, mocks=Mocks(), store=MemoryStore())
+    c = TestClient(app)
+    cid = start(c).json()["conversation"]
+    say(c, cid, "anything")
+    system_message = model.sent[0][0]["content"]
+    assert "## results:" in system_message and "'OpenAI back-end'" in system_message
+
+
+def test_a_connection_that_fails_names_the_host_only():
+    from chart_assistant.app import explain
+    text = explain(httpx.ConnectError("Temporary failure in name resolution"), "https://user:secret@api.example.com/v1")
+    assert text == ("the model's address api.example.com could not be reached (ConnectError): "
+                    "check the network of the chart assistant")
+    assert "secret" not in text
+
+
+def test_a_model_that_is_slow_says_so():
+    from chart_assistant.app import explain
+    assert explain(httpx.ReadTimeout("t"), "https://api.example.com/v1") == \
+        "the model at api.example.com did not answer within 120 seconds"
+
+
+def test_anything_else_keeps_the_kind_of_error():
+    from chart_assistant.app import explain
+    assert explain(KeyError("choices"), "https://api.example.com/v1") == \
+        "the model at api.example.com gave no usable answer (KeyError)"
+
+
+def test_through_the_service_a_key_the_project_does_not_have_goes_back_to_the_model():
+    bad = "SELECT dimensions->>'model' AS category, 'a' AS series, avg(score) AS value FROM results GROUP BY 1"
+    model = StandIn(tool("propose_chart", sql=bad, chart=CHART, description="d"),
+                    tool("ask_question", question="Which grouping?"))
+    app = create_app(Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="t",
+                              mock_database_url="postgresql://assistant_mock@postgres/postgres"),
+                     model_for=lambda pid: model, mocks=Mocks(), store=MemoryStore())
+    c = TestClient(app)
+    cid = start(c).json()["conversation"]
+    assert say(c, cid, "by model").json() == {"question": "Which grouping?"}
+    refusal = model.sent[1][-1]["content"]
+    assert refusal.startswith("Refused:") and "'model'" in refusal and "The keys are: category" in refusal
+
+
+def test_a_model_call_that_cannot_connect_says_which_host(monkeypatch):
+    from chart_assistant.app import ModelUnavailable, platform_model
+
+    class Answer:
+        status_code = 200
+
+        def json(self):
+            return {"configured": True, "provider": "compatible", "model": "m", "base_url": "https://api.example.com/v1",
+                    "api_key": "k"}
+
+    def refuse(*args, **kwargs):
+        raise httpx.ConnectError("Temporary failure in name resolution")
+    monkeypatch.setattr("chart_assistant.app.httpx.get", lambda *a, **k: Answer())
+    monkeypatch.setattr("chart_assistant.app.httpx.post", refuse)
+    call = platform_model(Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="t",
+                                   mock_database_url="postgresql://assistant_mock@postgres/postgres"))(PID)
+    with pytest.raises(ModelUnavailable, match="the model's address api.example.com could not be reached"):
+        call([], [])
+
+
+def test_a_validated_proposal_says_which_plot_it_belongs_beside():
+    c, _ = client(tool("propose_chart", sql=GOOD, chart=CHART, description="the mean", near=7))
+    cid = start(c).json()["conversation"]
+    p = c.post(f"/v1/conversations/{cid}/messages", json={"text": "x", "charts": [{"id": 7, "title": "t", "kind": "bar"}]},
+               headers={"X-AISC-Service-Token": TOKEN}).json()["proposal"]
+    assert p["near"] == 7
+    v = c.post(f"/v1/conversations/{cid}/validate", json={"fingerprint": p["fingerprint"]},
+               headers={"X-AISC-Service-Token": TOKEN})
+    assert v.json()["near"] == 7
+
+
+def _system_and_refusal(script):
+    model = StandIn(*script)
+    app = create_app(Settings(dashboard_token=TOKEN, platform_url="http://platform", platform_token="t",
+                              mock_database_url="postgresql://assistant_mock@postgres/postgres"),
+                     model_for=lambda pid: model, mocks=Mocks(), store=MemoryStore())
+    c = TestClient(app)
+    cid = start(c).json()["conversation"]
+    say(c, cid, "anything")
+    return model.sent[0][0]["content"], (model.sent[1][-1]["content"] if len(model.sent) > 1 else "")
+
+
+def test_a_project_with_conversation_results_is_offered_the_conversations_view_only():
+    system_message, _ = _system_and_refusal([tool("ask_question", question="Which?")])
+    assert "## conversations:" in system_message and "## jailbreak_attempts:" not in system_message
+
+
+def test_a_query_on_a_view_the_project_does_not_have_is_refused():
+    sql = "SELECT category, 'a' AS series, AVG(worked) AS value FROM jailbreak_attempts GROUP BY 1"
+    _, refusal = _system_and_refusal([tool("propose_chart", sql=sql, chart=CHART, description="d"),
+                                      tool("ask_question", question="Which?")])
+    assert "table jailbreak_attempts is not one the assistant may read" in refusal
+
+
+def test_a_conversation_goes_on_in_a_service_that_was_restarted():
+    store = MemoryStore()
+    first, _ = client(tool("propose_chart", sql=GOOD, chart=CHART, description="d"), store=store)
+    cid = start(first).json()["conversation"]
+    proposal = say(first, cid, "mean by category").json()["proposal"]
+    second, _ = client(tool("ask_question", question="Which runs?"), store=store)        # a new service, same store
+    assert say(second, cid, "and by run").json() == {"question": "Which runs?"}
+    validated = second.post(f"/v1/conversations/{cid}/validate", json={"fingerprint": proposal["fingerprint"]},
+                            headers={"X-AISC-Service-Token": TOKEN})
+    assert validated.status_code == 200 and validated.json()["sql"] == proposal["sql"]
+
+
+def test_a_proposal_made_before_the_restart_is_validated_after_it_without_a_message():
+    store = MemoryStore()
+    first, _ = client(tool("propose_chart", sql=GOOD, chart=CHART, description="d"), store=store)
+    cid = start(first).json()["conversation"]
+    proposal = say(first, cid, "mean by category").json()["proposal"]
+    second, _ = client(store=store)
+    validated = second.post(f"/v1/conversations/{cid}/validate",
+                            json={"fingerprint": proposal["fingerprint"], "proposal": proposal["id"]},
+                            headers={"X-AISC-Service-Token": TOKEN})
+    assert validated.status_code == 200 and validated.json()["project"] == PID
+
+
+def test_a_restored_conversation_whose_project_has_no_model_any_more_says_so():
+    store = MemoryStore()
+    first, _ = client(tool("ask_question", question="Which?"), store=store)
+    cid = start(first).json()["conversation"]
+    app = create_app(SETTINGS, model_for=no_model, mocks=Mocks(), store=store)
+    answer = TestClient(app).post(f"/v1/conversations/{cid}/messages", json={"text": "x"},
+                                  headers={"X-AISC-Service-Token": TOKEN})
+    assert answer.status_code == 409 and "no model is chosen" in answer.json()["detail"]
+
+
+def test_a_conversation_the_store_does_not_have_either_is_not_found():
+    second, _ = client(store=MemoryStore())
+    assert say(second, "never-started", "x").status_code == 404
+
+
+def test_a_conversation_let_go_from_memory_beyond_the_cap_comes_back_from_the_store(monkeypatch):
+    from chart_assistant import app as module
+    monkeypatch.setattr(module, "MAX_CONVERSATIONS", 1)
+    c, _ = client(*[tool("ask_question", question="Which one?")] * 10)
+    first = start(c).json()["conversation"]
+    start(c)
+    assert say(c, first, "x").json() == {"question": "Which one?"}
+
+
+def test_a_store_that_fails_does_not_stop_a_conversation(caplog):
+    class Broken(MemoryStore):
+        def save(self, *a):
+            raise OSError("down")
+
+        def load(self, *a):
+            raise OSError("down")
+
+        def drop_idle(self, *a):
+            raise OSError("down")
+    c, _ = client(*[tool("ask_question", question="Which?")] * 3, store=Broken())
+    cid = start(c).json()["conversation"]
+    assert say(c, cid, "x").json() == {"question": "Which?"} and say(c, cid, "y").json() == {"question": "Which?"}
+    start(c)
+    assert say(c, "unknown", "x").status_code == 404
+    assert sum("conversation store" in r.getMessage() for r in caplog.records) == 1     # said once in the log
+
+
+def test_a_stored_conversation_holds_the_description_and_messages_and_no_token():
+    store = MemoryStore()
+    c, _ = client(tool("propose_chart", sql=GOOD, chart=CHART, description="d"), store=store)
+    cid = start(c).json()["conversation"]
+    say(c, cid, "x")
+    pid, description, state = store.load(cid, 60)
+    assert pid == PID and description == DESCRIPTION
+    kept = json.dumps(state)
+    assert TOKEN not in kept and "api_key" not in kept and state["messages"][0]["role"] == "system"

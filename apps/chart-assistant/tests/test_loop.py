@@ -5,6 +5,8 @@ import json
 import pytest
 
 from chart_assistant.loop import BudgetSpent, Conversation, Proposal
+from chart_assistant.query_check import fingerprint
+from chart_assistant.views import View
 
 READERS = {"engine.aisc_backend_measurement"}
 GOOD = "SELECT dimensions->>'category' AS category, 'all' AS series, avg(score) AS value FROM engine.aisc_backend_measurement GROUP BY 1"
@@ -466,3 +468,79 @@ def test_a_bar_and_a_radar_of_the_same_subject_are_asked_about_unless_the_reques
     for words, chart in (("set the jailbreak success bars to 40%", 126), ("set il ragno to 40%", 127)):
         c, _ = talk(tool("change_chart", chart=chart, changes={"axis_max": 0.4}))
         assert isinstance(c.ask(words, charts=SAME_SUBJECT), Change), words
+
+
+def test_the_model_is_told_to_read_the_results_view_and_that_a_back_end_is_a_target():
+    from chart_assistant.loop import SYSTEM
+    assert "results" in SYSTEM and "target" in SYSTEM and "only the keys listed" in SYSTEM
+
+
+VIEWS = {"results": View("results", "m", {"metric": "m"},
+                         "SELECT name AS metric, dimensions, score FROM engine.aisc_backend_measurement")}
+ON_VIEW = "SELECT dimensions->>'category' AS category, 'all' AS series, avg(score) AS value FROM results GROUP BY 1"
+
+
+def test_a_query_on_a_view_runs_and_is_proposed_with_the_view_written_in():
+    c, _ = talk(tool("propose_chart", sql=ON_VIEW, chart=CHART, description="d"), views=VIEWS)
+    p = c.ask("mean by category")
+    assert p.sql.lower().startswith("with results as (") and mock_runs[-1] == p.sql
+    assert p.fingerprint == fingerprint(p.sql)
+
+
+def test_a_key_the_project_does_not_have_is_sent_back_to_the_model_with_the_keys_it_has():
+    bad = ON_VIEW.replace("'category'", "'model'")
+    c, model = talk(tool("propose_chart", sql=bad, chart=CHART, description="d"),
+                    tool("propose_chart", sql=ON_VIEW, chart=CHART, description="d"),
+                    views=VIEWS, known_keys=frozenset({"category", "language"}))
+    assert isinstance(c.ask("by model"), Proposal)
+    refusal = model.sent[1][-1]["content"]
+    assert refusal.startswith("Refused:") and "'model'" in refusal and "category, language" in refusal
+
+
+def test_a_result_with_an_empty_series_is_sent_back_to_the_model():
+    def empty_series(sql):
+        return {"columns": ["category", "series", "value"], "rows": [["cv", None, 0.5]]}
+    c, model = talk(tool("propose_chart", sql=ON_VIEW, chart=CHART, description="d"),
+                    tool("ask_question", question="Which grouping do you want?"), views=VIEWS)
+    c.run_on_mock = empty_series
+    assert c.ask("by back-end") == "Which grouping do you want?"
+    assert "'series' is empty in every row" in model.sent[1][-1]["content"]
+
+
+def test_the_model_is_told_that_results_include_runs_that_did_not_finish():
+    from chart_assistant.loop import SYSTEM
+    assert "run_status" in SYSTEM and "finished runs only" in SYSTEM
+
+
+def test_a_proposal_may_say_which_plot_it_belongs_beside():
+    c, _ = talk(tool("propose_chart", sql=GOOD, chart=CHART, description="d", near=7))
+    assert c.ask("the same by language", charts=[{"id": 7, "title": "By category", "kind": "bar"}]).near == 7
+
+
+def test_a_plot_that_is_not_on_the_dashboard_cannot_be_the_neighbour():
+    c, model = talk(tool("propose_chart", sql=GOOD, chart=CHART, description="d", near=99),
+                    tool("propose_chart", sql=GOOD, chart=CHART, description="d"))
+    assert c.ask("x", charts=[{"id": 7, "title": "t", "kind": "bar"}]).near is None
+    assert model.sent[1][-1]["content"].startswith("Refused: near must be the number of a plot on this dashboard")
+
+
+def test_a_conversation_rebuilt_from_its_state_goes_on_where_it_was():
+    c, _ = talk(tool("propose_chart", sql=GOOD, chart=CHART, description="d"))
+    first = c.ask("mean by category")
+    state = json.loads(json.dumps(c.state()))                       # it is plain JSON
+    later = StandIn(tool("ask_question", question="Which runs?"))
+    again = Conversation.restored(state, description="DESCRIPTION TEXT", readers=READERS, model=later,
+                                  run_on_mock=on_mock)
+    assert again.ask("and by run") == "Which runs?"
+    assert [p.fingerprint for p in again.proposals] == [first.fingerprint] and again.proposals[0].number == 1
+    assert later.sent[0][:len(state["messages"])] == state["messages"] and again.asked == 2
+
+
+def test_a_question_asked_before_the_restart_is_still_being_answered_after_it():
+    plot = {"id": 7, "title": "A radar", "kind": "radar", "can_change": []}
+    c, _ = talk(tool("ask_question", question="Delete which one?"))
+    c.ask("delete the radar", charts=[plot])
+    again = Conversation.restored(c.state(), description="D", readers=READERS,
+                                  model=StandIn(tool("remove_chart", chart=7)), run_on_mock=on_mock)
+    removal = again.ask("the first", charts=[plot])
+    assert removal.charts == [(7, "A radar")]                        # the delete asked before the restart still counts

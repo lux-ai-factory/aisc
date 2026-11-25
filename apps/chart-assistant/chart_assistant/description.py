@@ -20,11 +20,24 @@ def fixed_model() -> dict:
 READERS = frozenset(fixed_model())
 
 
-def for_model(project: dict) -> str:
-    """The text the model reads: the tables and columns (with meanings where written), then the project's metrics.
-    project: {"metrics": [{"name", "dimensions": {key: {"type", "values": [..] or None}}}]}; any count in it is left
-    out."""
-    lines = ["# Tables you may query (PostgreSQL). Columns: name (type): meaning."]
+def dimension_keys_of(project: dict) -> frozenset[str]:
+    """Every dimension key of every metric of the project: the only keys a query may read from dimensions."""
+    return frozenset(key for metric in project.get("metrics", []) for key in metric.get("dimensions", {}))
+
+
+def for_model(project: dict, views: dict | None = None) -> str:
+    """The text the model reads: the views first, then the project's targets, the tables and columns (with meanings
+    where written), then the project's metrics. project: {"targets": [labels], "metrics": [{"name", "dimensions":
+    {key: {"type", "values": [..] or None}}}]}; any count in it is left out."""
+    lines = []
+    if views:
+        from chart_assistant.views import describe
+        lines.append("# Views: read these first. They already join each result to its metric, target, version and run.")
+        lines.append(describe(views))
+    if project.get("targets"):
+        labels = ", ".join(repr(str(label)) for label in project["targets"])
+        lines.append(f"\n# This project's targets (results.target): {labels}\n")
+    lines.append("# Tables you may query (PostgreSQL). Columns: name (type): meaning.")
     for table, spec in sorted(fixed_model().items()):
         if not spec.get("meaning"):
             continue

@@ -64,8 +64,9 @@ def _defined_in_scope(table: exp.Table, name: str) -> bool:
     return False
 
 
-def check(sql: str, readers: set[str] | frozenset[str]) -> str:
-    """The query, normalised, when it may run; QueryRefused otherwise. readers: "schema.table" names."""
+def check(sql: str, readers: set[str] | frozenset[str], views: frozenset[str] = frozenset()) -> str:
+    """The query, normalised, when it may run; QueryRefused otherwise. readers: "schema.table" names; views: names a
+    query may read bare, written in by views.expand before it runs."""
     if not isinstance(sql, str) or not sql.strip():
         raise QueryRefused("the query is empty")
     try:
@@ -88,6 +89,8 @@ def check(sql: str, readers: set[str] | frozenset[str]) -> str:
         name = table.name.lower()
         schema = (table.db or "").lower()
         if not schema and _defined_in_scope(table, name):
+            continue
+        if not schema and name in views:
             continue
         if f"{schema}.{name}" not in readers:
             raise QueryRefused(f"table {(schema + '.' if schema else '') + name} is not one the assistant may read")

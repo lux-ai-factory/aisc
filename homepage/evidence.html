@@ -62,6 +62,9 @@
   a.way.off, a.way.off:hover{background:transparent; color:var(--muted); border-style:dashed;
     border-color:var(--border-strong); cursor:default}
   .wait{margin:0; font-size:13.2px; color:var(--text)}
+  /* and so do each test's Configure and Run (assets/sandbox-gate.js aiscLockTestTiles) */
+  a.tile-btn.off, a.tile-btn.off:hover{background:transparent; color:var(--muted); border-style:dashed;
+    border-color:var(--border-strong); cursor:not-allowed}
   .wait a{color:var(--primary)}
   /* Results: the system and components with runs on top, the others folded away under "Not run yet" */
   details.idle{margin-top:4px}
@@ -248,6 +251,7 @@
   var pid = '';                             // the project's pid: the engine's pages take it as ?project=
   var ENGINE = '';                          // the engine web app (assets/origins.js), set before the project loads
   var CONTROLS = '';                        // the controls app, under the engine's site
+  var testsOpen = true;                     // whether Run tests is open (gateWays): its tiles' buttons follow it
 
   // what the platform said when it refused (aisc.call's message), or that nothing answered
   function refusal(answer) { return answer.status ? answer.message : NOT_ANSWERING; }
@@ -293,6 +297,7 @@
       }
       box.appendChild(tile);
     });
+    window.aiscLockTestTiles(box, testsOpen);
   }
 
   function tileLink(label, title, href) {
@@ -552,6 +557,8 @@
   function gateWays(isOwner) {
     aisc.call('/api/projects/' + enc(slug) + '/targets').then(function (answer) {
       var gate = window.aiscSandboxGate(answer, $('project-name').textContent);
+      testsOpen = gate.open;
+      window.aiscLockTestTiles($('test-tiles'), gate.open);
       [['execute-tests', 'tests-wait'], ['visualise', 'results-wait']].forEach(function (pair) {
         var way = $(pair[0]), wait = $(pair[1]);
         var off = /(^|\s)off(\s|$)/.test(way.className);

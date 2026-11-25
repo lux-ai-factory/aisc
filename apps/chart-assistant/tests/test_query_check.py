@@ -113,3 +113,17 @@ def test_the_fingerprint_is_the_sha256_of_the_exact_text():
                                  "SELECT dense_rank() OVER (ORDER BY 1)", "SELECT initcap(lower(btrim(' a ')))"])
 def test_the_functions_the_criterion_uses_are_taken(sql):
     check(sql, READERS)
+
+
+def test_a_view_may_be_read_by_its_bare_name():
+    check("SELECT metric FROM results", READERS, views=frozenset({"results"}))
+
+
+def test_a_view_named_with_a_schema_is_not_the_view():
+    with pytest.raises(QueryRefused, match="public.results is not one the assistant may read"):
+        check("SELECT metric FROM public.results", READERS, views=frozenset({"results"}))
+
+
+def test_without_views_a_bare_name_is_still_refused():
+    with pytest.raises(QueryRefused):
+        check("SELECT metric FROM results", READERS)

@@ -146,3 +146,11 @@ def test_a_label_range_marked_whole_stays_whole():
         "turn": {"type": "number", "values": None, "min": 1.0, "max": 4.0, "whole": True}}}]}
     drawn = [r["dimensions"]["turn"] for r in mock.rows(whole, random.Random(2))["engine.aisc_backend_measurement"]]
     assert all(t in (1, 2, 3, 4) and isinstance(t, int) for t in drawn)
+
+
+def test_the_runs_of_the_mock_have_names_two_card_versions_and_one_that_did_not_finish():
+    rows = mock.rows(PROJECT, random.Random(1))
+    assert all(p["name"] for p in rows["engine.aisc_backend_evaluationplugin"])
+    assert {e["status"] for e in rows["engine.aisc_backend_evaluation"]} == {"Done", "Failed"}
+    versions = {s["pid"]: s["number"] for s in rows["project.system"]}
+    assert {versions[e["system_id"]] for e in rows["engine.aisc_backend_evaluation"]} == {1, 2}

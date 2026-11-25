@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Callable
 
+from chart_assistant.proposal_check import result_problem, unknown_keys
 from chart_assistant.query_check import QueryRefused, check, fingerprint
+from chart_assistant.views import expand
 
 #: the kinds a plot can switch between in place, keeping its query (the dashboard's changed_params says the same)
 IN_PLACE_KINDS = ("bar", "line")
@@ -51,6 +53,11 @@ A chart's query returns columns named in its settings:
 Kinds: radar, bar, line, table. Write the chart's description in one or two plain sentences: what each value is and how
 it is computed, so a person can judge it without reading SQL. Never invent numbers.
 
+Read from the view results whenever it holds what you need; use the other tables only for what it lacks. What was
+tested (a back-end, a model, a component) is a target: results.target, never a dimension. A metric's dimensions hold
+only the keys listed for it below. Results include runs that did not finish (run_status other than 'Done'): keep
+them unless the person asks for finished runs only, and say in the description which runs the chart counts.
+
 The project's data model follows.
 
 """
@@ -67,7 +74,9 @@ TOOLS = [
             "chart": {"type": "object", "required": ["kind", "title", "category", "value"], "properties": {
                 "kind": {"type": "string", "enum": list(KINDS)}, "title": {"type": "string"},
                 "category": {"type": "string"}, "series": {"type": "string"}, "value": {"type": "string"}}},
-            "replaces": {"type": "integer", "description": "the number of the plot this one replaces"}}}}},
+            "replaces": {"type": "integer", "description": "the number of the plot this one replaces"},
+            "near": {"type": "integer", "description": "the number of the plot this new one belongs beside, when the "
+                                                       "person asked about that plot"}}}}},
     {"type": "function", "function": {
         "name": "change_chart", "description": "Change a plot on the dashboard in place, without changing its query.",
         "parameters": {"type": "object", "required": ["chart", "changes"], "properties": {
@@ -135,6 +144,8 @@ class Proposal:
     fingerprint: str
     replaces: int | None = None
     replaces_title: str | None = None
+    #: the plot of the dashboard this new one belongs beside
+    near: int | None = None
     #: its number in the conversation: two proposals may share a query (bars, then lines)
     number: int = 0
 
@@ -178,8 +189,12 @@ def _chart_problem(chart, columns) -> str | None:
 
 class Conversation:
     def __init__(self, *, description: str, readers, model: Callable, run_on_mock: Callable[[str], dict],
+                 views: dict | None = None, known_keys: frozenset[str] | None = None,
                  max_steps: int = 8, max_messages: int = 30):
         self.readers, self.model, self.run_on_mock = set(readers), model, run_on_mock
+        #: the views a query may read by name (written in before it runs), and the dimension keys the project's results
+        #: have (None: not checked)
+        self.views, self.known_keys = dict(views or {}), known_keys
         self.max_steps, self.max_messages = max_steps, max_messages
         self.messages: list[dict] = [{"role": "system", "content": SYSTEM + description}]
         self.asked = 0
@@ -194,13 +209,36 @@ class Conversation:
         self.answered = False
         self._asked_last = False
 
+    def state(self) -> dict:
+        """What the conversation must remember to go on after a restart, as plain JSON: what the model was sent (the
+        description is in the system message: labels, never rows), the counters, the flags and the proposals."""
+        return {"messages": json.loads(json.dumps(self.messages)), "asked": self.asked,
+                "proposals": [asdict(p) for p in self.proposals],
+                "delete_asked": self.delete_asked, "delete_said": self._delete_said,
+                "answered": self.answered, "asked_last": self._asked_last}
+
+    @classmethod
+    def restored(cls, state: dict, **kwargs) -> "Conversation":
+        """The conversation rebuilt from its state; kwargs are the constructor's. The state's system message is kept, not
+        rebuilt, so the model goes on reading what it read before."""
+        c = cls(**kwargs)
+        c.messages = list(state["messages"])
+        c.asked = int(state["asked"])
+        c.proposals = [Proposal(**p) for p in state["proposals"]]
+        c.delete_asked, c._delete_said = bool(state["delete_asked"]), bool(state["delete_said"])
+        c.answered, c._asked_last = bool(state["answered"]), bool(state["asked_last"])
+        return c
+
     def _plot(self, number) -> dict | None:
         """The plot with that number on this dashboard; true or false is not a number (bool is an int in Python)."""
         return self.made.get(number) if type(number) is int else None
 
-    def _run(self, sql: str) -> dict:
-        check(sql, self.readers)
-        return self.run_on_mock(sql)
+    def _run(self, sql: str) -> tuple[str, dict]:
+        """The query as it runs (the views it reads written in) and its result on the mock database."""
+        check(sql, self.readers, views=frozenset(self.views))
+        full = expand(sql, self.views)
+        check(full, self.readers)
+        return full, self.run_on_mock(full)
 
     def _tool(self, call) -> tuple[str, Proposal | str | None]:
         name = call["function"]["name"]
@@ -247,10 +285,23 @@ class Conversation:
             replaced = self._plot(args["replaces"])
             if replaced is None:
                 return "Refused: replaces must be the number of a plot on this dashboard (see the list).", None
+        neighbour = None
+        if name == "propose_chart" and args.get("near") is not None:
+            neighbour = self._plot(args["near"])
+            if neighbour is None:
+                return "Refused: near must be the number of a plot on this dashboard (see the list).", None
         # a closing semicolon breaks the query once it is wrapped as a dataset on the real data
         sql = re.sub(r"[\s;]+$", "", str(args.get("sql") or ""))
+        if self.known_keys is not None:
+            try:
+                unknown = unknown_keys(sql, self.known_keys)
+            except Exception:                                    # noqa: BLE001 - unreadable: query_check says why
+                unknown = []
+            if unknown:
+                return (f"Refused: this project's results have no dimension key {', '.join(repr(k) for k in unknown)}. "
+                        f"The keys are: {', '.join(sorted(self.known_keys))}. What was tested is results.target."), None
         try:
-            result = self._run(sql)
+            sql, result = self._run(sql)
         except QueryRefused as refused:
             return f"Refused: {refused}", None
         except Exception as failed:                                  # noqa: BLE001 - the model may fix its query
@@ -261,10 +312,14 @@ class Conversation:
             problem = _chart_problem(args.get("chart"), result["columns"])
             if problem:
                 return f"Not a valid chart: {problem}", None
+            problem = result_problem(args["chart"], result)
+            if problem:
+                return f"Refused: {problem}.", None
             return "Shown to the person.", Proposal(sql=sql, chart=args["chart"], description=str(args.get("description") or ""),
                                                     mock=result, fingerprint=fingerprint(sql),
                                                     replaces=replaced["id"] if replaced else None,
-                                                    replaces_title=str(replaced.get("title") or "") if replaced else None)
+                                                    replaces_title=str(replaced.get("title") or "") if replaced else None,
+                                                    near=neighbour["id"] if neighbour else None)
         return f"Refused: no tool {name}", None
 
     def ask(self, text: str, charts=None) -> Proposal | Change | Removal | str:

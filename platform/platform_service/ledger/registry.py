@@ -582,15 +582,22 @@ _ACTIONS = [
        caused_by=(("dashboard", "POST", _DB + r"/aisc_assistant/conversations/[^/]+/validate$"),),
        details_keys=("dashboard", "sha256", "replaces"), content_required=True,
        routes=(("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "validate"),)),
+    # the assistant proposes a change or a removal in a message; it is made when the person confirms it
+    # (copy_of: the chart another dashboard also shows, changed on a copy)
     _a("dashboard.assistant.changed", 5, ("dashboard",), "chart",
-       caused_by=(("dashboard", "POST", _DB + r"/aisc_assistant/conversations/[^/]+/messages$"),),
-       details_keys=("dashboard",), content_required=True,
-       routes=(("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "message"),)),
-    # one message may remove several plots: one event per plot, all citing it
+       caused_by=(("dashboard", "POST", _DB + r"/aisc_assistant/conversations/[^/]+/confirm$"),),
+       details_keys=("dashboard", "copy_of"), content_required=True,
+       routes=(("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "confirm"),)),
+    # one confirmation may remove several plots: one event per plot, all citing it
     _a("dashboard.assistant.removed", 5, ("dashboard",), "chart", per_request=None,
-       caused_by=(("dashboard", "POST", _DB + r"/aisc_assistant/conversations/[^/]+/messages$"),),
+       caused_by=(("dashboard", "POST", _DB + r"/aisc_assistant/conversations/[^/]+/confirm$"),),
        details_keys=("dashboard",),
-       routes=(("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "message"),)),
+       routes=(("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "confirm"),)),
+    # the person undoes a change or a removal they confirmed: one event per plot put back
+    _a("dashboard.assistant.undone", 5, ("dashboard",), "chart", per_request=None,
+       caused_by=(("dashboard", "POST", _DB + r"/aisc_assistant/conversations/[^/]+/undo$"),),
+       details_keys=("dashboard", "undone"),
+       routes=(("dashboard", "apps/results-dashboard/aisc_ext/assistant/api.py", "undo"),)),
     _a("dashboard.comment.deleted", 5, ("dashboard",), "comment",
        caused_by=(("dashboard", "DELETE", _DB + r"/aisc_comment/(?P<item>[0-9]+)$"),), details_keys=("dashboard",),
        content_required=True, routes=(("dashboard", "apps/results-dashboard/aisc_ext/comments/api.py", "delete"),)),
