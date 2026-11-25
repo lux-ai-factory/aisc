@@ -1,1 +1,1 @@
-"""The chart assistant (spec: ~/aisc-working-notes/chart-assistant/spec.md)."""
+"""The chart assistant (spec: docs/specs/chart-assistant.md)."""

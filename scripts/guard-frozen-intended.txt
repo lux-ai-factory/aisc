@@ -30,7 +30,9 @@
 #                 list and the run forms, Show retired lists it with Restore
 #   launch        a relaunch keeps the last run's helper models (its judge); a refused launch says the engine's
 #                 reason once; with no connection for a helper role the run form sends the person to Connectivity;
-#                 a launch is sent once: the button is off while it is sent and each click carries its own key
+#                 a launch is sent once: the button is off while it is sent and each click carries its own key;
+#                 a test that calls its target while no target of the AI card has a connection is greyed out on
+#                 the launch page and never ticked, the engine saying why (GET /plugins/launch-blockers)
 #   testdata      Delete on test data asks first; a refused add or edit, or a file the engine could not store, is
 #                 said with the engine's reason and the dialog stays open
 #   filetypes     a dataset or model file picker offers only the extensions the engine takes for that type
@@ -129,3 +131,7 @@ webapp src/components/addProjectWizard.tsx filetypes: the dataset picker offers 
 webapp src/models/componentFileTypes.ts filetypes: the engine's file extensions per component type, as the pickers' accept value
 webapp src/models/componentFileTypes.test.ts filetypes: its tests
 webapp src/components/componentFilePickers.test.tsx filetypes: the wizard and test data pickers offer only the engine's extensions
+webapp src/api/launchBlockers.ts launch: asks the engine which tests cannot be launched yet and why; nothing is blocked when it does not answer
+webapp src/components/plugin/PluginEvaluationForm.css launch: the greyed-out look of a test that cannot be launched yet
+webapp src/components/plugin/PluginEvaluationForm.blocked.test.tsx launch: a blocked test's card is greyed out and says why
+webapp src/pages/PluginStartEvaluation.blocked.test.tsx launch: a blocked test is never ticked, and a reload does not tick it

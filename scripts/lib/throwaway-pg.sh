@@ -47,7 +47,9 @@ tpg_start() { # label
   # TPG_PG_ARGS: server settings for this run only, such as "-c fsync=off" for a suite that makes
   # and drops hundreds of databases (each DROP DATABASE waits for a checkpoint). Unset: the defaults.
   # shellcheck disable=SC2086
-  docker run --rm -d --name "$TPG_NAME" -p "127.0.0.1:${PORT}:5432" \
+  # --shm-size: Docker's default /dev/shm is 64 MB, and a parallel query of a busy suite needs more
+  # ("could not resize shared memory segment ... No space left on device" made project databases fail)
+  docker run --rm -d --name "$TPG_NAME" --shm-size=256m -p "127.0.0.1:${PORT}:5432" \
     -e POSTGRES_USER="$TPG_SU" -e POSTGRES_PASSWORD="$TPG_PW" -e POSTGRES_DB=platform \
     "$TPG_IMAGE" ${TPG_PG_ARGS:+postgres $TPG_PG_ARGS} >/dev/null || return 1
   echo "throwaway-pg: container $TPG_NAME on 127.0.0.1:$PORT" >&2

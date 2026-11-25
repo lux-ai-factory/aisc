@@ -63,7 +63,7 @@ jobs:
             run: cd apps/chart-assistant && uv run --locked --extra dev pytest -q -p no:cacheprovider -m 'not db'
           # the sign-in tests import Superset: they run inside the dashboard's own image
           - suite: results dashboard sso
-            run: cd apps/results-dashboard && docker build -q -t aisc-t-dashboard . >/dev/null && docker run --rm -u root -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/w -v "$PWD:/w:ro" -w /w --entrypoint sh aisc-t-dashboard -c 'pip install -q pytest && python -m pytest -q -p no:cacheprovider tests/test_sso_login.py'
+            run: cd apps/results-dashboard && docker build -q -t aisc-t-dashboard . >/dev/null && docker run --rm -u root -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/w -e AISC_IDENTITY_DIR=/identity -v "$PWD:/w:ro" -v "$PWD/../../shared/identity:/identity:ro" -w /w --entrypoint sh aisc-t-dashboard -c 'pip install -q pytest && python -m pytest -q -p no:cacheprovider tests/test_sso_login.py'
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -145,7 +145,7 @@ jobs:
       - env:
           AISC_PORT_TESTS_MUST_RUN: "1"
         run: >-
-          uv run --no-project --with pytest python -m pytest -q -p no:cacheprovider
+          uv run --no-project --with pytest --with pyyaml python -m pytest -q -p no:cacheprovider
           scripts/tests/test_aisc_py.py scripts/tests/test_busy_ports.py scripts/tests/test_windows_names.py
           scripts/tests/test_line_endings.py
           --deselect scripts/tests/test_busy_ports.py::test_a_busy_engine_port_is_moved

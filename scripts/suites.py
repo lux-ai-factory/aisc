@@ -112,7 +112,8 @@ SUITES = (
     # the sign-in tests import Superset: they run inside the dashboard's own image, the code mounted read-only
     Suite("results dashboard sso", "apps/results-dashboard", "", ("docker",), True,
           "cd apps/results-dashboard && docker build -q -t aisc-t-dashboard . >/dev/null && docker run --rm -u root"
-          " -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/w -v \"$PWD:/w:ro\" -w /w --entrypoint sh aisc-t-dashboard"
+          " -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/w -e AISC_IDENTITY_DIR=/identity -v \"$PWD:/w:ro\""
+          " -v \"$PWD/../../shared/identity:/identity:ro\" -w /w --entrypoint sh aisc-t-dashboard"
           " -c 'pip install -q pytest && python -m pytest -q -p no:cacheprovider tests/test_sso_login.py'"),
 )
 

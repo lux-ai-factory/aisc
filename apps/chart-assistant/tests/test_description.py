@@ -11,7 +11,7 @@ from chart_assistant.description import READERS, dimension_keys_of, fixed_model,
 from chart_assistant.query_check import check
 
 ROOT = Path(__file__).resolve().parents[3]
-CRITERION = Path.home() / "aisc-working-notes/bias-plots/superset"
+CRITERION = Path(__file__).parent / "fixtures" / "bias-plots"
 
 
 def granted_readers() -> set[str]:

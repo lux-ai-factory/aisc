@@ -90,7 +90,7 @@ def save_helper(slug: str, name: str, body: HelperIn, caller: Caller = Depends(c
     reachable(pid, endpoint)
     if body.api_key is None:
         # a stored key goes only where it was entered for: another origin needs it typed again
-        stored = helper_store.get(pid, name, with_deleted=True)
+        stored = helper_store.landing(pid, name)
         secret_box.kept_key(stored["endpoint_url"] if stored else None, endpoint, bool(stored and stored["has_key"]))
     ciphertext = llm_store.KEEP
     key = None

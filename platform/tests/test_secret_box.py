@@ -179,3 +179,37 @@ def test_a_connection_keeps_its_secret_headers_only_with_its_origin(client, admi
     assert moved.status_code == 422, moved.text
     resent = client.put(url, json={**body, "base_url": "https://two.example.com/v1"}, headers=admin)
     assert resent.status_code == 200, resent.text
+
+
+# The store's own write: the row a helper save lands on is the one checked
+
+@needs_database
+@pytest.mark.parametrize("deleted", [False, True], ids=["live", "deleted"])
+def test_a_helper_save_landing_on_a_named_helper_connection_keeps_its_key_only_with_its_origin(
+        client, admin, project, dsn, _env, deleted):
+    """A connection named `judge` exists, so helper `judge` is written to provider connection `judge-helper`. That one
+    holds a key entered for one.example.com (deleted or not: a delete keeps the key). A save at two.example.com
+    without the key must not carry it there."""
+    from platform_service import connection_store, llm_store
+    from tests.llm_support import new_key
+
+    other = {"label": "Judge system", "kind": "openai", "base_url": "https://one.example.com/v1", "model": "m",
+             "timeout_s": 5}
+    assert client.put(f"/projects/{project['slug']}/connections/judge", json=other, headers=admin).status_code == 200
+    connection_store.save_provider(project["pid"], "judge-helper", label="Judge's", provider="compatible",
+                                   base_url="https://one.example.com/v1", ciphertext=llm_store.encrypt(new_key()),
+                                   subject="t")
+    if deleted:
+        assert connection_store.delete(project["pid"], "judge-helper")
+    stored = "select base_url, secret_ciphertext, deleted_at is not null from connection.endpoint where name = 'judge-helper'"
+    before = one(dsn, project, stored)
+
+    moved = _helper(client, project, admin, "https://two.example.com/v1")
+    assert moved.status_code == 422, moved.text
+    assert "enter the key again" in moved.json()["detail"]
+    assert one(dsn, project, stored) == before, "a refused save changed the connection it would have written"
+
+    retyped = _helper(client, project, admin, "https://two.example.com/v1", new_key())
+    assert retyped.status_code == 200, retyped.text
+    after = one(dsn, project, stored)
+    assert after[0] == "https://two.example.com/v1" and after[1] != before[1]

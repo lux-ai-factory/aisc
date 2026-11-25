@@ -49,6 +49,17 @@ def get(pid, name: str, *, with_deleted: bool = False) -> dict | None:
                                        + ("" if with_deleted else " AND u.deleted_at IS NULL"), (name,)).fetchone())
 
 
+def landing(pid, name: str) -> dict | None:
+    """The connection a save of helper `name` would write to, as its address and whether it holds a key (deleted
+    or not: a delete keeps the key), or None when the save would make a new one. A save that sends no key asks it,
+    so a stored key goes only where it was entered for: a helper whose name is another connection's lands on
+    `<name>-helper`, which may hold a key of its own although the helper itself was never saved."""
+    with llm_store.connect(pid) as conn:
+        row = conn.execute("SELECT base_url AS endpoint_url, provider, secret_ciphertext IS NOT NULL AS has_key"
+                           " FROM connection.endpoint WHERE name = %s", (_connection_for(conn, name),)).fetchone()
+    return _addressed(row)
+
+
 def use_as_tool(pid, connection: str, *, roles: list[str], subject: str | None) -> dict | None:
     """Make connection `connection` a test tool in `roles`, under its own name (Manage > Connectivity). The
     database refuses a connection that reaches the assessed system (ConnectionAssessed). None when a tool of that

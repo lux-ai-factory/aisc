@@ -11,7 +11,7 @@ import pytest
 from chart_assistant import mock
 from chart_assistant.description import fixed_model
 
-CRITERION = Path.home() / "aisc-working-notes/bias-plots/superset"
+CRITERION = Path(__file__).parent / "fixtures" / "bias-plots"
 PROJECT = {
     "targets": ["OpenAI back-end", "Local back-end"],
     "metrics": [{"name": "Conversation", "dimensions": {

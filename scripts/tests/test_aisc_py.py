@@ -198,6 +198,9 @@ def test_a_port_below_1024_without_root_is_judged_by_connecting(monkeypatch):
         monkeypatch.setattr(socket.socket, "bind", refused)
         assert not m.port_is_free(port, "0.0.0.0")
         monkeypatch.undo()
+    # undo() took the ON_WINDOWS patch away too: on a real Windows machine a refused bind would read as a
+    # reserved range (taken) instead of "bind cannot tell"
+    monkeypatch.setattr(m.ports, "ON_WINDOWS", False)
     monkeypatch.setattr(socket.socket, "bind", refused)
     assert m.port_is_free(port, "0.0.0.0")
 
@@ -470,6 +473,9 @@ def test_address_reuse_is_set_on_linux_only(monkeypatch):
     """On macOS (BSD sockets) SO_REUSEADDR lets a bind on 0.0.0.0 succeed beside a program listening on
     127.0.0.1 only, so such a port would read as free."""
     m = aisc_py()
+    # a Linux or macOS socket: on a real Windows machine SO_EXCLUSIVEADDRUSE would be set beside the faked
+    # SO_REUSEADDR, which Windows refuses (WinError 10022)
+    monkeypatch.setattr(m.ports, "ON_WINDOWS", False)
     options = []
     plain = socket.socket.setsockopt
 

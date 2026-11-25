@@ -897,6 +897,39 @@ engine.aisc_backend_project:
       meaning: ''
       type: character varying
   meaning: ''
+project.saved_system:
+  columns:
+    card_revision:
+      meaning: the revision of the version's AI card that the name, release, provider and description come from
+      type: integer
+    created_at:
+      meaning: created at
+      type: timestamp with time zone
+    created_by:
+      meaning: created by
+      type: text
+    description:
+      meaning: description, as the version's latest card gives it
+      type: text
+    name:
+      meaning: name, as the version's latest card gives it
+      type: text
+    number:
+      meaning: the version number people see
+      type: integer
+    pid:
+      meaning: public id
+      type: uuid
+    provider:
+      meaning: provider, as the version's latest card gives it
+      type: text
+    updated_at:
+      meaning: updated at
+      type: timestamp with time zone
+    version:
+      meaning: release, as the version's latest card gives it
+      type: text
+  meaning: The saved AI card versions of the project (project.system without the abandoned ones), each described as its latest card describes it.
 project.system:
   columns:
     created_at:
