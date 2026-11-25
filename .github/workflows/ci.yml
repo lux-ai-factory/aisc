@@ -85,6 +85,10 @@ jobs:
           if [ ${#missing[@]} -gt 0 ]; then
             sudo apt-get update -q && sudo apt-get install -y -q "${missing[@]}"
           fi
+      # the ledger tests run the engine's own immudb integration test in the engine's environment
+      - name: the engine environment
+        if: matrix.suite == 'platform'
+        run: cd apps/backend && uv sync --locked
       # the proof-file store tests run on the stack's own MinIO image, built from source
       - name: the MinIO image
         if: matrix.suite == 'platform'
