@@ -143,10 +143,12 @@ until then, so the suite stays green and turns red the day one of them starts pa
 Four corrections. They stand alone and come first, because they reach a client.
 
 1. **A built-in layout can be generated.** A built-in layout has no revision. Its generate form sends none, and
-   "no revision" is accepted for a built-in layout only: a stored layout without one is refused with
-   `token_required`. Today the form sends `revision=0` and every generation of a built-in layout is refused with
-   "revision must be a whole number from 1", while a stored layout without a revision is accepted. The second
-   half changes behaviour that `tests/test_download_report.py` asserts: those requests gain a revision.
+   On the page's form, "no revision" is accepted for a built-in layout only: the form of a stored layout
+   without one generates nothing and the page says why. Today the form sends `revision=0` and every generation of
+   a built-in layout is refused with "revision must be a whole number from 1", while a stored layout's form
+   without a revision is accepted. The requests of `tests/test_download_report.py` send the revision.
+   The JSON route (`POST /api/p/{project}/layouts/{id}/reports`) is not a page: a request there that names no
+   revision asks for the layout as it is now, and stays accepted. A revision it does name is checked as today.
 2. **An amendment is a submission that follows another one.** The report lists as amendments the submissions
    that have a previous version, whether or not a reason was given. Reason and requester print when present, and
    "no reason given" when not. Today an amendment without a reason is missing from the report. The controls app
@@ -155,8 +157,11 @@ Four corrections. They stand alone and come first, because they reach a client.
 3. **"The latest submission" is the latest closed one.** A draft prints only when the layout asks for drafts
    (the control answers block's option `drafts: true`, off by default), under the heading "Draft, not final", and
    is never counted in coverage. When a draft newer than the printed submission exists, the report says so in one
-   line. This changes behaviour that `test_block_control_answers.py` and `test_block_summary_coverage.py` assert
-   (a draft printed and counted): those expectations change with the rule.
+   line. A block with no closed submission for the version has the status `empty`. A draft named through the
+   block's `submissions` option prints only with `drafts: true` as well. "Newer results exist for version n" counts
+   closed submissions only. This changes behaviour that `test_block_control_answers.py` and
+   `test_block_summary_coverage.py` asserted (a draft printed and counted), and the golden documents that print a
+   draft or its effect on coverage.
 4. **A report does not yet say what it was built from.** Until reports store the list of the records they read,
    every generated report prints one fixed line near its first page: "This report does not list the records it
    was built from."
