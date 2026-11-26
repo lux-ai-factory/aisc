@@ -61,13 +61,18 @@ longer changes.
 - Take, hand over and take over are platform routes. Each runs under a row lock on the part, so two people taking
   the same part at once get one holder and one refusal.
 
+**The first save takes the part.** Saving on a part nobody holds makes the person saving its holder, and creates
+the task and the part when they do not exist yet. Nobody has to press Take before starting, and a part is never
+in a state where nobody can save on it.
+
 **Only the holder saves.** Every save on the content of a part checks, in the same transaction as the write, that
-the person saving holds that part:
+the person saving holds that part (taking it when nobody does). The database function is
+`work.claim_for_save(kind, subject, part, label, person_subject, person_name)`; apps call it through:
 
 | Language | Helper |
 |---|---|
-| Python | `aisc_identity.holds.require_holder(conn, subject, part, person)` |
-| TypeScript | `requireHolder(tx, subject, part, person)` in `shared/access-ts/holds.ts`, vendored into qualification and controls |
+| Python | `aisc_identity.holds.claim_for_save(conn, kind, subject, part, label, person_subject, person_name)` |
+| TypeScript | `claimForSave(tx, kind, subject, part, label, personSubject, personName)` in `shared/access-ts/holds.ts`, vendored into qualification and controls |
 
 The helper reads `work.hold` with `FOR SHARE`, so a take-over waits for a save in progress and the next save sees
 the new holder. A save by someone else is refused with the refusal object (section 5), code `not_holder`: "Maria
@@ -75,6 +80,11 @@ Rossi holds this section since 10:40. Your text is kept below; ask her to hand i
 you." The page keeps the typed text.
 
 A save on a task in check is refused with `not_final`: the content of a submitted task does not change.
+
+**A switch per project.** Holding is on or off per project, in `work.setting`. While it is off,
+`claim_for_save` neither takes nor refuses, so the project works as before. It is off for existing projects and,
+in this version, for new ones; an owner turns it on (`PUT /projects/{p}/work/holds` with `{"on": true}`, event
+`work.holds_switched`). It becomes on by default once the pages show who holds a part.
 
 **Automatic writers** (the card's AI refinement, sync jobs) write only for the person holding the part when they
 started, and only while that person still holds it. Otherwise their result is dropped, the holder is told, and an
