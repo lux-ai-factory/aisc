@@ -164,7 +164,8 @@ names the thing as the page labels it, the person and the time; never a generic 
 
 ## 8. Events
 
-`hold.taken`, `hold.released`, `hold.handed_over`, `hold.taken_over` (with the reason as content), `task.submitted`,
+`hold.taken`, `hold.released`, `hold.offered`, `hold.handed_over` (the offer accepted), `hold.offer_declined`,
+`hold.taken_over` (with the reason as content), `task.submitted`,
 `task.signed`, `task.sent_back`, `task.done`, `staffing.rule_changed`, `staffing.preset_applied`, `write.refused`,
 `automatic.result_dropped`. The person in an event is given by their actor reference. A task change the platform
 makes because an app's event arrived is recorded as an event derived from it.

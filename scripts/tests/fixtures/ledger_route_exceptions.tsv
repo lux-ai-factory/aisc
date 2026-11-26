@@ -88,3 +88,9 @@ dashboard	apps/results-dashboard/aisc_ext/assistant/api.py	start	nothing of the 
 platform	platform/platform_service/routes/engine.py	connection_fingerprints	changes nothing: the engine reads the endpoint fingerprints of a run's references, which the engine's run_requested then records
 platform	platform/platform_service/routes/evidence.py	make_tile_again	makes again a plugin tile someone deleted in the results dashboard, from the engine's results: a derived view, nothing an assessment holds (as the bridge's sync_plugin_tile)
 dashboard	apps/results-dashboard/aisc_ext/assistant/api.py	message	asks the chart assistant and answers its proposal, question or the act to confirm: it changes nothing; a change or a removal is made, and recorded, by confirm
+platform	platform/platform_service/routes/work.py	take	its event is written in the change's own transaction, through the project database's ledger.emit: hold.taken (routes/work.py _event)
+platform	platform/platform_service/routes/work.py	release	its event is written in the change's own transaction, through the project database's ledger.emit: hold.released (routes/work.py _event)
+platform	platform/platform_service/routes/work.py	offer	its event is written in the change's own transaction, through the project database's ledger.emit: hold.offered (routes/work.py _event)
+platform	platform/platform_service/routes/work.py	accept	its event is written in the change's own transaction, through the project database's ledger.emit: hold.handed_over (routes/work.py _event)
+platform	platform/platform_service/routes/work.py	decline	its event is written in the change's own transaction, through the project database's ledger.emit: hold.offer_declined (routes/work.py _event)
+platform	platform/platform_service/routes/work.py	take_over	its event is written in the change's own transaction, through the project database's ledger.emit: hold.taken_over (routes/work.py _event)
