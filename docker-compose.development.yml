@@ -69,6 +69,7 @@ services:
       # backend assembles (services/report_service.py -> REPORT_SERVICE_URL/api/generate).
       QUALIFICATION_SERVICE_URL: http://qualification:8000
       REPORT_SERVICE_URL: http://report:8080
+      REPORT_MAX_ARTIFACTS: ${REPORT_MAX_ARTIFACTS:-1000}
       FLOWER_SERVICE_URL: http://caddy:8080/internal/flower
       SERVICE_TOKEN_FOR_APPS: ${BACKEND_TO_QUALIFICATION_TOKEN}
       # Hosted controls catalogue API; read by `sync_controls_catalogue` to
