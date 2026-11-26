@@ -111,6 +111,15 @@ ROUTES = {
     ('PUT', '/projects/{slug}/members/{subject}'),
     ('PUT', '/projects/{slug}/retention'),
     ('PUT', '/projects/{slug}/targets/{key}/file'),
+    # who holds a part of a task (added after the split; the inventory lists every route the platform serves)
+    ('GET', '/projects/{project}/work/{kind}/{subject}'),
+    ('PUT', '/projects/{project}/work/holds'),
+    ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/take'),
+    ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/release'),
+    ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/offer'),
+    ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/accept'),
+    ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/decline'),
+    ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/take-over'),
 }
 
 ROUTE_MODULE = Path(platform_service.__file__).parent / "routes/connections.py"
