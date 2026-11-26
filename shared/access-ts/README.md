@@ -36,6 +36,12 @@ a card, `cardLockShared(tx)` for a writer that reads the latest card to stamp a 
 transaction client; both refuse a client outside a transaction. With the Python helper they are the only code
 that spells the lock's key.
 
+`holds.ts` is the twin of `aisc_identity.holds`: `claimForSave(tx, kind, subject, part, label, personSubject,
+personName)` claims a part of a task for the person saving, inside the Prisma transaction that writes, through the
+project database's `work.claim_for_save`. Someone else holding the part, or the task being in check, throws
+`HoldRefused`, whose `refusal` is the refusal object the page shows; the transaction then rolls back. Both twins run
+the shared wording cases in `shared/identity/hold-refusal-cases.json`.
+
 ## Settings
 
 | Setting | Meaning | In the stack |

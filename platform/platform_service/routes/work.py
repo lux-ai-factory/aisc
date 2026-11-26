@@ -11,7 +11,7 @@ from typing import Annotated
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 
 from platform_service import db
 from platform_service.ledger import outbox
@@ -29,6 +29,11 @@ _PART = "/projects/{project}/work/{kind}/{subject}/parts/{part}"
 class ToIn(BaseModel):
     model_config = _STRICT
     to: StrictStr = Field(max_length=200)
+
+
+class SwitchIn(BaseModel):
+    model_config = _STRICT
+    on: StrictBool
 
 
 class TakeOverIn(BaseModel):
@@ -85,6 +90,22 @@ def _where(kind, subject, part):
     return dict(kind=kind, subject=subject, part=part)
 
 
+def _holding(conn) -> bool:
+    row = conn.execute("select enabled from work.setting where name = 'holds'").fetchone()
+    return bool(row and row["enabled"])
+
+
+@router.put("/projects/{project}/work/holds")
+def switch_holding(project: str, body: SwitchIn, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """Holding on or off for the project: while off, saves neither take nor check a part (work.claim_for_save)."""
+    pid = _admit(project, caller, "owner")
+    with db.project_connection(pid) as conn, conn.transaction():
+        conn.execute("insert into work.setting (name, enabled) values ('holds', %s)"
+                     " on conflict (name) do update set enabled = excluded.enabled, changed_at = now()", (body.on,))
+        outbox.emit_project(conn, "work.holds_switched", item_type="project", item_id=pid, details={"on": body.on})
+    return {"on": body.on}
+
+
 @router.get("/projects/{project}/work/{kind}/{subject}")
 def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)]):
     with db.project_connection(_admit(project, caller, "viewer")) as conn:
@@ -95,7 +116,9 @@ def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, D
         parts = conn.execute("select p.key, p.label, h.holder_subject, h.holder_name, h.since, h.offered_to_subject"
                              "  from work.part p left join work.hold h on h.task = p.task and h.part = p.key"
                              " where p.task = %s order by p.key", (task["id"],)).fetchall()
-    return {"kind": kind, "subject": subject, "state": task["state"], "parts": [dict(p) for p in parts]}
+        holding = _holding(conn)
+    return {"kind": kind, "subject": subject, "state": task["state"], "holding": holding,
+            "parts": [dict(p) for p in parts]}
 
 
 @router.post(_PART + "/take")

@@ -20,6 +20,7 @@ export const REFUSAL_STATUS = {
   syncing: 409, // the card is being synchronised; try again in a moment
   not_final: 409, // the action marks something complete and it is not
   token_required: 400, // a save without a token, on a write that needs one
+  not_holder: 409, // someone else holds the part this save writes
 } as const;
 
 export type RefusalCode = keyof typeof REFUSAL_STATUS;

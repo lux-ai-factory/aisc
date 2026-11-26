@@ -7,7 +7,8 @@
     {"code": "cited_by_report", "http": 409},
     {"code": "syncing", "http": 409},
     {"code": "not_final", "http": 409},
-    {"code": "token_required", "http": 400}
+    {"code": "token_required", "http": 400},
+    {"code": "not_holder", "http": 409}
   ],
   "valid": [
     {

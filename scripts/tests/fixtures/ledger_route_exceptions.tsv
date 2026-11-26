@@ -94,3 +94,4 @@ platform	platform/platform_service/routes/work.py	offer	its event is written in 
 platform	platform/platform_service/routes/work.py	accept	its event is written in the change's own transaction, through the project database's ledger.emit: hold.handed_over (routes/work.py _event)
 platform	platform/platform_service/routes/work.py	decline	its event is written in the change's own transaction, through the project database's ledger.emit: hold.offer_declined (routes/work.py _event)
 platform	platform/platform_service/routes/work.py	take_over	its event is written in the change's own transaction, through the project database's ledger.emit: hold.taken_over (routes/work.py _event)
+platform	platform/platform_service/routes/work.py	switch_holding	its event is written in the change's own transaction, through the project database's ledger.emit: work.holds_switched (routes/work.py switch_holding)

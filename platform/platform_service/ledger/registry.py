@@ -180,6 +180,10 @@ _ACTIONS = [
        caused_by=(("platform", "POST", _LAUNCH + r"/work/[^/]+/[^/]+/parts/[^/]+/take-over$"),),
        details_keys=("kind", "part", "had_holder"),
        content_required=True),
+    # holding switched on or off for the project by an owner
+    _a("work.holds_switched", 0, ("platform",), "project",
+       caused_by=(("platform", "PUT", _LAUNCH + r"/work/holds$"),),
+       details_keys=("on",)),
     _a("targets.synced", 0, ("platform",), "project",
        caused_by=(("qualification", "ACTION", _QU + "/(system/edit|qualify/new)$"),
                   ("platform", "POST", _LAUNCH + "/targets/sync$")), details_keys=("added", "renamed")),

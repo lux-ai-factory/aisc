@@ -1,0 +1,50 @@
+{
+  "about": "What a save refused by work.claim_for_save answers: the database's SQLSTATE and DETAIL, the label of the part as the page shows it, the person saving and the time now, and the refusal they make. Read by aisc_identity.holds and shared/access-ts/holds.ts.",
+  "cases": [
+    {
+      "name": "someone else holds the part, since earlier today",
+      "sqlstate": "AH001",
+      "detail": {"holder": "Maria Rossi", "since": "2026-01-20T10:40:12.345678+00:00"},
+      "label": "Intended purpose",
+      "person": "Luca Bianchi",
+      "now": "2026-01-20T11:02:00Z",
+      "refusal": {
+        "code": "not_holder",
+        "what": "Intended purpose",
+        "message": "Maria Rossi holds Intended purpose since 10:40 UTC. Your text is kept below; ask them to hand it over, or an owner to give it to you.",
+        "changed": [], "saved": [], "not_saved": [],
+        "current": {"token": "", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T10:40:12Z", "values": {}}
+      }
+    },
+    {
+      "name": "someone else holds the part, since another day, with the database on another time zone",
+      "sqlstate": "AH001",
+      "detail": {"holder": "Maria Rossi", "since": "2026-01-19T17:05:00+01:00"},
+      "label": "Governance",
+      "person": "Luca Bianchi",
+      "now": "2026-01-20T11:02:00Z",
+      "refusal": {
+        "code": "not_holder",
+        "what": "Governance",
+        "message": "Maria Rossi holds Governance since 19 Jan 16:05 UTC. Your text is kept below; ask them to hand it over, or an owner to give it to you.",
+        "changed": [], "saved": [], "not_saved": [],
+        "current": {"token": "", "changed_by": "Maria Rossi", "changed_at": "2026-01-19T16:05:00Z", "values": {}}
+      }
+    },
+    {
+      "name": "the task is in check",
+      "sqlstate": "AH002",
+      "detail": null,
+      "label": "Risk register",
+      "person": "Luca Bianchi",
+      "now": "2026-01-20T11:02:00Z",
+      "refusal": {
+        "code": "not_final",
+        "what": "Risk register",
+        "message": "Risk register is in check, and its content does not change while it is checked. Your text is kept below.",
+        "changed": [], "saved": [], "not_saved": [],
+        "current": {"token": "", "changed_by": "Luca Bianchi", "changed_at": "2026-01-20T11:02:00Z", "values": {}}
+      }
+    }
+  ]
+}

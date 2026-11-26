@@ -54,3 +54,12 @@ def test_a_take_over_is_recorded_with_its_reason(task, call, memory_ledger):
 
     assert taken_over[0].content_sha256 == secrets.content_digest(task["pid"], {"reason": "Bob is away until Monday"})
     assert "reason" not in taken_over[0].details
+
+
+def test_switching_holding_is_recorded_with_who_did_it_and_the_new_state(project, call, memory_ledger):
+    switched = call(OWNER, "PUT", f"/projects/{project['slug']}/work/holds", json={"on": True})
+    assert switched.status_code == 200, switched.text
+    relay_all(project["pid"])
+    got = [(e.action, person(project["pid"], e.actor_ref)[0], e.details)
+           for e in entries(memory_ledger, log_of(project["pid"])) if e.action == "work.holds_switched"]
+    assert got == [("work.holds_switched", OWNER, {"on": True})]
