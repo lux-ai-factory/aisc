@@ -89,13 +89,17 @@ The card state moves when qualification stores a card. Every other record that d
 card state it was made on.
 
 - **One lock.** Advisory key `hashtext('project.system')` in the project's database: exclusive in the transaction
-  that stores a card (save and correction), shared in every writer that stamps or compares a card state.
+  that stores a card, shared in every writer that stamps or compares a card state. A save takes it as its first
+  statement. A correction takes it right after the platform has counted the revision (the platform's count takes
+  the same lock in its own transaction, so taking it earlier would make the correction wait on itself), and still
+  before it commits, so no stamping writer reads the card in between.
   Helpers `aisc_identity.card_lock.exclusive(conn)` / `shared(conn)` and `cardLockExclusive(tx)` /
   `cardLockShared(tx)` in `shared/access-ts/cardLock.ts`. They refuse to run outside a transaction. A static test
   lists the stamping writers and fails when one does not take the lock.
 - **Versions a person can open.** `project.carded_system`, the versions of `project.saved_system` that have a
-  stored card (template migration `0042_carded_system.sql`). Stamping writers and lists shown to people read it;
-  the platform's create, revise and withdraw keep `saved_system`.
+  stored card (template migration `0042_carded_system.sql`). In this version the readers stay on `saved_system`,
+  which already leaves out abandoned versions; moving a reader to `carded_system` is done when a page shows a
+  version with no card, together with the tests that name `saved_system` today.
 - **The page says when the card moved.** A page drawn on one card state shows "The AI card changed since you
   started (Maria Rossi, 11:02: intended purpose)" when it is no longer the latest.
 - **Committing actions ask once.** Submitting a task, launching a run and generating a report, when only the card
