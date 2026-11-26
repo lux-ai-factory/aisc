@@ -11,6 +11,7 @@ import uuid
 from contextlib import contextmanager
 
 import psycopg
+from aisc_identity import card_lock
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
@@ -44,14 +45,18 @@ def systems(conn) -> list[dict]:
 
 
 def system_of_project(conn, system_pid) -> dict | None:
-    """The version, when it is one of this database's project."""
+    """The version, when it is one of this database's project, with the revision its card is at: a report
+    pins that revision, so the card lock is taken shared first and no card is stored before the report is."""
     s = _uuid(system_pid)
     if s is None:
         return None
+    card_lock.shared(conn)
     return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system WHERE pid = %s", (s,)).fetchone()
 
 
 def latest_system(conn) -> dict | None:
+    """The latest version and its card revision, under the card lock as system_of_project reads one."""
+    card_lock.shared(conn)
     return conn.execute(f"SELECT {_SYSTEM} FROM project.saved_system ORDER BY number DESC LIMIT 1").fetchone()
 
 

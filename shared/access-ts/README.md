@@ -25,6 +25,17 @@ its path; Prisma's own options (`schema`, `connection_limit`, `pool_timeout`) ar
 kept. It is plain JavaScript so the apps' node scripts can import it too. Both twins run the shared cases in
 `shared/identity/projectdb-cases.json`.
 
+## Refusals and the card lock
+
+`refusal.ts` is the TypeScript twin of `aisc_identity.refusal`: the `Refusal` type (the answer to a save that
+would replace something the person has not seen) and `isRefusal(value)`. Both twins run the shared cases in
+`shared/identity/refusal-cases.json`.
+
+`cardLock.ts` is the twin of `aisc_identity.card_lock`: `cardLockExclusive(tx)` for the transaction that stores
+a card, `cardLockShared(tx)` for a writer that reads the latest card to stamp a record. `tx` is a Prisma
+transaction client; both refuse a client outside a transaction. With the Python helper they are the only code
+that spells the lock's key.
+
 ## Settings
 
 | Setting | Meaning | In the stack |
@@ -42,7 +53,9 @@ qualification and controls are separate repositories with their own build contex
 | `projectDb.mjs`, `projectDb.d.mts` | `src/vendor/aisc-access/` |
 | `projectDb.test.ts` | `test/vendor/projectDb.test.ts` |
 | `../identity/projectdb-cases.json` | `test/fixtures/projectdb-cases.json` |
+| `refusal.ts`, `cardLock.ts` | `src/vendor/aisc-access/` |
+| `test/refusal.test.ts` | `test/vendor/refusal.test.ts` |
+| `../identity/refusal-cases.json` | `test/fixtures/refusal-cases.json` |
 
 `test/vendor/inSync.test.ts` in each app fails when a copy differs from this folder (it is skipped when the app is
-checked out without the aisc repository around it). To change the client, edit it here and copy both files into
-both apps.
+checked out without the aisc repository around it). To change a file, edit it here and copy it into both apps.

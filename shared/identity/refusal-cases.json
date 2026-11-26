@@ -1,0 +1,162 @@
+{
+  "codes": [
+    {"code": "changed_since_opened", "http": 409},
+    {"code": "upstream_moved", "http": 409},
+    {"code": "upstream_moved_confirm", "http": 409},
+    {"code": "already_exists", "http": 409},
+    {"code": "cited_by_report", "http": 409},
+    {"code": "syncing", "http": 409},
+    {"code": "not_final", "http": 409},
+    {"code": "token_required", "http": 400}
+  ],
+  "valid": [
+    {
+      "name": "a single thing changed by a colleague",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "Maria Rossi changed the timeout and the model of this connection at 14:32. Your changes were not saved.",
+        "changed": ["timeout", "model"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    },
+    {
+      "name": "the app cannot tell what the other save changed",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "Maria Rossi saved this connection at 14:32. Your changes were not saved.",
+        "changed": [],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    },
+    {
+      "name": "a form of independent items, some written and some not",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "checklist",
+        "message": "Maria Rossi changed the answer to question 3 at 14:32. Your answer to question 3 was not saved; your other answers were.",
+        "changed": ["question 3"],
+        "saved": ["question 1", "question 2"],
+        "not_saved": ["question 3"],
+        "current": {"token": "12", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"question 3": "Documented in the manual"}}
+      }
+    },
+    {
+      "name": "a secret field is never given back",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "Maria Rossi changed the key of this connection at 14:32. Your changes were not saved.",
+        "changed": ["key"],
+        "saved": [],
+        "not_saved": ["key"],
+        "current": {"token": "9", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"key": {"secret": true}}}
+      }
+    },
+    {
+      "name": "the earlier save was the same person's",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "You, in another tab or window, changed the timeout of this connection at 14:32. Your changes here were not saved.",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "a code that is not one of the codes",
+      "rule": "code: One of the codes below.",
+      "refusal": {
+        "code": "conflict",
+        "what": "connection",
+        "message": "Maria Rossi changed the timeout of this connection at 14:32. Your changes were not saved.",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    },
+    {
+      "name": "a token that is a number",
+      "rule": "current.token: The token to send with the next save. Always a string.",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "Maria Rossi changed the timeout of this connection at 14:32. Your changes were not saved.",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": 8, "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    },
+    {
+      "name": "no message",
+      "rule": "message: One or two sentences a person can act on.",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    },
+    {
+      "name": "an empty message",
+      "rule": "message: One or two sentences a person can act on. Never a generic error.",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T14:32:10Z",
+                    "values": {"timeout": 300}}
+      }
+    },
+    {
+      "name": "nothing about the current state",
+      "rule": "current.token: The token to send with the next save.",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "Maria Rossi changed the timeout of this connection at 14:32. Your changes were not saved.",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"]
+      }
+    },
+    {
+      "name": "a time that is not UTC to the second",
+      "rule": "current.changed_at: the time (UTC, seconds) of the save that caused the refusal.",
+      "refusal": {
+        "code": "changed_since_opened",
+        "what": "connection",
+        "message": "Maria Rossi changed the timeout of this connection at 14:32. Your changes were not saved.",
+        "changed": ["timeout"],
+        "saved": [],
+        "not_saved": ["timeout"],
+        "current": {"token": "8", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T15:32:10.123+01:00",
+                    "values": {"timeout": 300}}
+      }
+    }
+  ]
+}

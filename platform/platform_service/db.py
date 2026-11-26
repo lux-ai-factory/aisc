@@ -15,6 +15,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from aisc_identity import card_lock
 from platform_service.migrate import migrate
 from platform_service.projects import looks_like_pid
 
@@ -393,7 +394,7 @@ def create_version(project: str, name: str, version: str | None, provider: str |
     if pid is None:
         return None
     with project_connection(pid) as conn, conn.transaction():
-        conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        card_lock.exclusive(conn)
         number = conn.execute(
             "update project.system_number set last = greatest(last, (select coalesce(max(number), 0)"
             " from project.system)) + 1 returning last").fetchone()["last"]
@@ -447,7 +448,7 @@ def abandon_version(project: str, attempt: str, reason: str) -> dict | None:
     except ValueError:
         return None
     with project_connection(project_pid) as conn, conn.transaction():
-        conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        card_lock.exclusive(conn)
         row = conn.execute(f"select {_STORED}, abandoned_at from project.system where attempt = %s",
                            (attempt,)).fetchone()
         if row is None:
@@ -486,7 +487,7 @@ def revise_version(project: str, pid: str, name: str, version: str | None, provi
     except ValueError:
         raise NoSuchVersion(pid) from None
     with project_connection(project_pid) as conn, conn.transaction():
-        conn.execute("select pg_advisory_xact_lock(hashtext('project.system'))")
+        card_lock.exclusive(conn)
         latest = conn.execute("select pid from project.saved_system order by number desc limit 1").fetchone()
         exists = conn.execute("select card_revision from project.saved_system where pid = %s", (wanted,)).fetchone()
         if exists is None:
