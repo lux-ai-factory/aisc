@@ -32,7 +32,7 @@ longer changes.
 
 | Word | Meaning |
 |---|---|
-| **Task** | One piece of work on one subject: the AI card of a version, one checklist submission, the risk register. |
+| **Task** | One piece of work on one subject: the project's AI card (all its versions: every save makes a new version, so a hold per version would protect nothing), one checklist submission, the risk register of a card version. |
 | **Part** | A piece of a task that one person can do alone: a section of the card, a section of a checklist. A task that does not split has one part. |
 | **Holder** | The person who holds a part now. Nobody, or one person. |
 | **Doers** | Everyone who held a part of the task and saved on it. |
