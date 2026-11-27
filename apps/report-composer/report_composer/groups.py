@@ -3,7 +3,8 @@ from __future__ import annotations
 
 GROUPS: list[tuple[str, tuple[str, ...]]] = [
     ("AI card", ("ai_card", "risk_classification")),
-    ("Control objectives and checklists", ("control_objectives", "control_answers", "summary_coverage")),
+    ("Control objectives and checklists", ("control_objectives", "control_answers", "summary_coverage",
+                                           "provider_evidence")),
     ("Tests run", ("test_runs",)),
     ("Results", ("superset_exports", "test_results", "dashboard_chart", "chart")),
     ("Summary", ("key_figures", "changes_since")),
