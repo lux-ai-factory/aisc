@@ -195,8 +195,7 @@ names the thing as the page labels it, the person and the time; never a generic 
 
 `hold.taken`, `hold.released`, `hold.offered`, `hold.handed_over` (the offer accepted), `hold.offer_declined`,
 `hold.taken_over` (with the reason as content), `task.submitted`,
-`task.signed`, `task.sent_back`, `task.done`, `staffing.rule_changed`, `staffing.preset_applied`, `write.refused`,
-`automatic.result_dropped`. The person in an event is given by their actor reference. A task change the platform
+`task.signed`, `task.sent_back`, `task.done`, `staffing.rule_changed`, `staffing.preset_applied`, `write.refused`. The person in an event is given by their actor reference. A task change the platform
 makes because an app's event arrived is recorded as an event derived from it.
 
 ## 9. Tests
@@ -210,7 +209,9 @@ Written a few at a time, right before the code they drive.
 | A take-over waits for a save in progress; the next save by the former holder is refused | two database sessions |
 | Every save path calls the holder helper | source text |
 | A save on a task in check is refused with `not_final` | per app |
-| An automatic result for a former holder is dropped and recorded | platform |
+| A save records its doer once per part and round; taking without saving records nobody | database |
+| A save on a done task starts the next round and the earlier sign-offs stop counting | database and API |
+| Submitting releases the submitter's parts and is refused while someone else holds one | API |
 | The card lock and `carded_system` | database |
 | A committing action after a card correction asks once | API |
 | 0, 1 and 2 checkers: done at the right moment; a holder cannot sign; a changed hash is refused | API |
