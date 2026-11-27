@@ -140,7 +140,12 @@ card state it was made on.
   page sends the content hash it showed and the platform compares it in the same transaction.
 - **Send back** returns the task to `open` and gives each part back to its last holder.
 - **Done** when the agreeing sign-offs of the current round on the submitted content reach `checkers_needed`; with
-  0, at submit.
+  0, at submit. Each person's agreement counts once; a second one is refused (`already_exists`). Agreements given
+  before a send back still count when the content is unchanged. Signing a task that is not in check is refused
+  (`not_in_check`).
+- **What the content hash covers.** The card: its answers, components and risks and the corrections of its
+  components, not the AI's draft. A checklist submission: its answers and scores, not its proof files. The risk
+  register: ratings, comments, mappings and key ticks of that card version. Other kinds cannot be submitted yet.
 - `work.sign_off (task, round, signer_subject, signer_name, answer, reason, content_hash, card_state, at)`, never
   updated.
 
@@ -159,7 +164,7 @@ Each app keeps its own error envelope; inside it a refusal carries the same obje
 For `not_holder`, `changed_by` and `changed_at` are the holder and since when; for `not_final`, the person who
 submitted the task and when.
 
-Codes: `not_holder`, `not_final`, `upstream_moved`, `upstream_moved_confirm`, `already_exists`, `cited_by_report`,
+Codes: `not_holder`, `not_final`, `not_in_check`, `upstream_moved`, `upstream_moved_confirm`, `already_exists`, `cited_by_report`,
 `syncing`, `token_required`, `changed_since_opened` (kept for the pages not held in this version). The message
 names the thing as the page labels it, the person and the time; never a generic error. Every refusal is an event
 `write.refused`, without the refused values. Helpers: `aisc_identity.refusal.Refusal` and
