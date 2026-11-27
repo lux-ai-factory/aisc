@@ -26,19 +26,47 @@ ROOT = Path(__file__).resolve().parents[2]
 SAVE_PATHS = [
     # the AI card: a save and a correction both store the card here, claiming every section of its form
     ("apps/qualification/src/server/services/QualificationService.ts", "storeCard", "claimForSave("),
+    # the card's reviewed components: a reviewer's correction of the drafted graph, and discarding them all
+    ("apps/qualification/src/server/services/OntologyService.ts", "patchNode", "this.claimComponents("),
+    ("apps/qualification/src/server/services/OntologyService.ts", "resetPatch", "this.claimComponents("),
     # a checklist submission's answers: a draft saved (or closed), and a new submission
     ("apps/controls/src/app/p/[project]/submissions/[id]/actions.ts", "saveDraft", "claimSections("),
     ("apps/controls/src/app/p/[project]/checklists/[id]/fill/actions.ts", "submitForm", "claimSections("),
+    # a proof file of an answer, attached or removed: the section of that answer
+    ("apps/controls/src/lib/proofFiles.ts", "attachProofFile", "claimSections("),
+    ("apps/controls/src/lib/proofFiles.ts", "removeProofFile", "claimSections("),
     # the risk register: ratings and their comments, and a mapping by hand
     ("apps/control-objectives/src/aisc_control_objectives/db/repository.py", "rate", "self._claim_register("),
     ("apps/control-objectives/src/aisc_control_objectives/db/repository.py", "save_risk_mapping",
      "self._claim_register("),
+    # the key ticks: set, and all cleared
+    ("apps/control-objectives/src/aisc_control_objectives/db/repository.py", "save_keys", "self._claim_register("),
+    ("apps/control-objectives/src/aisc_control_objectives/db/repository.py", "clear_keys", "self._claim_register("),
 ]
 #: the helpers the save paths call, and the shared helper each one calls in turn
 HELPERS = [
+    ("apps/qualification/src/server/services/OntologyService.ts", "claimComponents", "claimForSave("),
     ("apps/controls/src/lib/checklistSections.ts", "claimSections", "claimForSave("),
     ("apps/control-objectives/src/aisc_control_objectives/db/repository.py", "_claim_register",
      "holds.claim_for_save("),
+]
+
+#: writes on the content of a part that claim nothing in this version: (file, function or method, why)
+NOT_CLAIMED = [
+    ("apps/controls/src/app/p/[project]/submissions/[id]/actions.ts", "reopenForAmendment",
+     "an amendment copies a closed submission's answers into a new draft as they were: nobody types them"),
+    ("apps/controls/src/app/p/[project]/submissions/[id]/actions.ts", "saveDraft",
+     "a submission's label is saved here without a claim: it names the whole submission, not one of its sections"),
+    ("apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts", "saveReviewedQuestions",
+     "a review of the checklist removes the answers to the questions it removes, in every draft: the checklist's "
+     "owner decides that, not a section's holder"),
+    ("apps/control-objectives/src/aisc_control_objectives/projects.py", "use_profile",
+     "a profile switch changes which objectives the assessment runs on, not the register's content"),
+    ("apps/control-objectives/src/aisc_control_objectives/projects.py", "_map_risks_of",
+     "the AI mapping run is an automatic writer; its holder rule (write only for the holder when it started) is "
+     "not built in this version"),
+    ("apps/qualification/src/app/p/[project]/api/qualifications/[id]/extracted/route.ts", "PUT",
+     "the card agent's draft is an automatic writer; its holder rule is not built in this version"),
 ]
 
 #: the files that write a checklist submission's answers (controls), by what they do
@@ -48,7 +76,7 @@ ANSWER_WRITERS = {
         "saveDraft claims; reopenForAmendment copies a closed submission's answers into a new draft as they were",
     "apps/controls/src/app/p/[project]/checklists/[id]/fill/actions.ts": "submitForm claims",
     # not a save on a part in this version
-    "apps/controls/src/lib/proofFiles.ts": "links a proof file to an answer; the answer's text is not changed",
+    "apps/controls/src/lib/proofFiles.ts": "attachProofFile and removeProofFile claim",
     "apps/controls/src/app/p/[project]/checklists/[id]/review/actions.ts":
         "a review of the checklist removes the answers to the questions it removes, in every draft",
 }
@@ -89,6 +117,12 @@ def _body(path: str, name: str) -> str:
                          ids=[f"{p.split('/')[1]}:{n}" for p, n, _ in SAVE_PATHS + HELPERS])
 def test_each_save_path_calls_the_holder_helper(path, name, call):
     assert call in _body(path, name), f"{path}: {name} saves on a held part without calling {call.rstrip('(')}"
+
+
+@pytest.mark.parametrize(("path", "name", "why"), NOT_CLAIMED,
+                         ids=[f"{p.split('/')[1]}:{n}" for p, n, _ in NOT_CLAIMED])
+def test_each_write_left_unclaimed_still_exists(path, name, why):
+    assert _body(path, name)
 
 
 def test_no_file_writes_a_checklists_answers_without_being_classified():
