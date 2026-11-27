@@ -1,29 +1,33 @@
-"""Who does what: a task's parts and who holds them, and taking, releasing, handing over and taking over a part.
+"""Who does what: a task's parts and who holds them, how many people check it, and its submit and sign-offs.
 
 Anyone in the project reads a task. An editor or owner takes a part nobody holds; the holder releases it or
 offers it to another editor or owner, who accepts or declines; an owner takes a part over, or gives it to
-someone else, with a reason. Every change is an event in the project's ledger, in the same transaction.
+someone else, with a reason. Owners set how many people check each kind of task. A doer of the task's current
+round submits it; anyone in the project who is not one signs it off. Every change is an event in the project's
+ledger, in the same transaction.
 """
 from __future__ import annotations
 
-from typing import Annotated
+from datetime import datetime, timezone
+from typing import Annotated, Literal
 
 from aisc_identity import Caller
 from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 from platform_service import db
 from platform_service.ledger import outbox
 from aisc_identity.access import Refused
 
 from platform_service.routes.admission import admitted
-from platform_service.work import holds
-from platform_service.work.kinds import KINDS
+from platform_service.work import checks, holds, presets, staffing
+from platform_service.work.kinds import KINDS, LABELS
 
 router = APIRouter()
 _STRICT = ConfigDict(extra="forbid")
-_PART = "/projects/{project}/work/{kind}/{subject}/parts/{part}"
+_TASK = "/projects/{project}/work/{kind}/{subject}"
+_PART = _TASK + "/parts/{part}"
 
 
 class ToIn(BaseModel):
@@ -34,6 +38,43 @@ class ToIn(BaseModel):
 class SwitchIn(BaseModel):
     model_config = _STRICT
     on: StrictBool
+
+
+class CheckersIn(BaseModel):
+    model_config = _STRICT
+    checkers: StrictInt = Field(ge=0, le=5)
+
+
+class PresetIn(BaseModel):
+    model_config = _STRICT
+    preset: StrictStr = Field(max_length=40)
+
+    @field_validator("preset")
+    @classmethod
+    def _known(cls, value: str) -> str:
+        if value not in presets.NAMES:
+            raise ValueError(f"the presets are {', '.join(presets.NAMES)}")
+        return value
+
+
+class SignIn(BaseModel):
+    model_config = _STRICT
+    answer: Literal["agree", "send_back"]
+    reason: StrictStr | None = Field(default=None, max_length=2000)
+    content_hash: StrictStr = Field(max_length=128)
+
+    @field_validator("reason")
+    @classmethod
+    def _trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def _send_back_says_why(self) -> "SignIn":
+        if self.answer == "send_back" and not self.reason:
+            raise ValueError("say why the task goes back")
+        return self
 
 
 class TakeOverIn(BaseModel):
@@ -90,6 +131,18 @@ def _where(kind, subject, part):
     return dict(kind=kind, subject=subject, part=part)
 
 
+def _at(moment: datetime | None) -> str:
+    """A time as refusals say it: UTC, to the minute."""
+    if moment is None:
+        return "an unknown time"
+    return f"{moment.astimezone(timezone.utc):%d %b %H:%M} UTC"
+
+
+def _task_event(conn, action: str, kind: str, subject: str, details: dict, content=None) -> None:
+    outbox.emit_project(conn, action, item_type="task", item_id=f"{kind}/{subject}",
+                        details={"kind": kind, **details}, content=content)
+
+
 def _holding(conn) -> bool:
     row = conn.execute("select enabled from work.setting where name = 'holds'").fetchone()
     return bool(row and row["enabled"])
@@ -106,19 +159,123 @@ def switch_holding(project: str, body: SwitchIn, caller: Annotated[Caller, Depen
     return {"on": body.on}
 
 
-@router.get("/projects/{project}/work/{kind}/{subject}")
-def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)]):
+@router.get("/projects/{project}/work/rules")
+def read_rules(project: str, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """How many people check each kind of task, in the order of the steps."""
     with db.project_connection(_admit(project, caller, "viewer")) as conn:
-        task = conn.execute("select id, state from work.task where kind = %s and subject = %s",
-                            (_kind(kind), subject)).fetchone()
-        if task is None:
-            raise HTTPException(status_code=404, detail="No such task.")
+        found = staffing.rules(conn)
+    return {"rules": [{"kind": r.kind, "label": LABELS[r.kind], "checkers": r.checkers, "set_by": r.set_by,
+                       "set_at": r.set_at.isoformat() if r.set_at else None} for r in found]}
+
+
+@router.put("/projects/{project}/work/rules/{kind}")
+def change_rule(project: str, kind: str, body: CheckersIn, caller: Annotated[Caller, Depends(caller_dependency)]):
+    pid = _admit(project, caller, "owner")
+    with db.project_connection(pid) as conn, conn.transaction():
+        staffing.set_checkers(conn, _kind(kind), body.checkers, by_subject=caller.subject, by_name=_name(caller))
+        outbox.emit_project(conn, "staffing.rule_changed", item_type="project", item_id=pid,
+                            details={"kind": kind, "checkers": body.checkers})
+    return {"kind": kind, "checkers": body.checkers}
+
+
+@router.post("/projects/{project}/work/preset")
+def apply_preset(project: str, body: PresetIn, caller: Annotated[Caller, Depends(caller_dependency)]):
+    pid = _admit(project, caller, "owner")
+    with db.project_connection(pid) as conn, conn.transaction():
+        numbers = staffing.apply_preset(conn, body.preset, by_subject=caller.subject, by_name=_name(caller))
+        outbox.emit_project(conn, "staffing.preset_applied", item_type="project", item_id=pid,
+                            details={"preset": body.preset})
+    return {"preset": body.preset, "rules": numbers}
+
+
+@router.get(_TASK)
+def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """The task: its round and state, the checkers it needs, its parts and who holds them, and the doers and
+    sign-offs of its current round."""
+    with db.project_connection(_admit(project, caller, "viewer")) as conn:
+        try:
+            task = checks.view(conn, kind=_kind(kind), subject=subject)
+        except checks.NoSuchTask:
+            raise HTTPException(status_code=404, detail="No such task.") from None
         parts = conn.execute("select p.key, p.label, h.holder_subject, h.holder_name, h.since, h.offered_to_subject"
-                             "  from work.part p left join work.hold h on h.task = p.task and h.part = p.key"
-                             " where p.task = %s order by p.key", (task["id"],)).fetchall()
+                             "  from work.part p join work.task t on t.id = p.task"
+                             "  left join work.hold h on h.task = p.task and h.part = p.key"
+                             " where t.kind = %s and t.subject = %s order by p.key", (kind, subject)).fetchall()
         holding = _holding(conn)
-    return {"kind": kind, "subject": subject, "state": task["state"], "holding": holding,
-            "parts": [dict(p) for p in parts]}
+    return {"kind": kind, "subject": subject, **task, "holding": holding, "parts": [dict(p) for p in parts]}
+
+
+@router.post(_TASK + "/submit")
+def submit(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """A doer of the current round submits the task for check: refused while someone else holds a part."""
+    pid = _admit(project, caller, "editor")
+    label = LABELS[_kind(kind)]
+    with db.project_connection(pid) as conn, conn.transaction():
+        try:
+            done = checks.submit(conn, kind=kind, subject=subject, person_subject=caller.subject,
+                                 person_name=_name(caller))
+        except checks.NoSuchTask:
+            raise HTTPException(status_code=404, detail="No such task.") from None
+        except checks.NotOpen as not_open:
+            if not_open.state == "done":
+                message = f"{label} is done: {not_open.by} submitted it at {_at(not_open.at)}."
+            else:
+                message = f"{not_open.by} submitted {label} for check at {_at(not_open.at)}; it is in check."
+            raise _refusal("not_final", message, changed_by=not_open.by,
+                           changed_at=not_open.at.isoformat() if not_open.at else None) from None
+        except checks.NotADoer:
+            raise HTTPException(status_code=403,
+                                detail="Only someone who worked on this task in this round can submit it.") from None
+        except checks.HeldByOthers as held:
+            names = "; ".join(f"{h.holder} holds {h.label} since {_at(h.since)}" for h in held.held)
+            refusal = _refusal("not_holder", f"{names}. They release it, or an owner takes it over, before {label}"
+                                             " is submitted.", changed_by=held.held[0].holder,
+                               changed_at=held.held[0].since.isoformat())
+            refusal.detail["held"] = [{"part": h.part, "label": h.label, "holder_subject": h.holder_subject,
+                                       "holder": h.holder, "since": h.since.isoformat()} for h in held.held]
+            raise refusal from None
+        except checks.NoContentHash:
+            raise HTTPException(status_code=422, detail=f"{label} cannot be submitted for check yet.") from None
+        _task_event(conn, "task.submitted", kind, subject, {"round": done.round,
+                                                            "checkers_needed": done.checkers_needed})
+        if done.state == "done":
+            _task_event(conn, "task.done", kind, subject, {"round": done.round})
+    return {"state": done.state, "round": done.round, "checkers_needed": done.checkers_needed,
+            "content_hash": done.content_hash}
+
+
+@router.post(_TASK + "/sign")
+def sign(project: str, kind: str, subject: str, body: SignIn, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """Agree, or send back with a reason, on the content the page showed; a doer of the round cannot sign."""
+    pid = _admit(project, caller, "viewer")
+    label = LABELS[_kind(kind)]
+    with db.project_connection(pid) as conn, conn.transaction():
+        try:
+            done = checks.sign(conn, kind=kind, subject=subject, person_subject=caller.subject,
+                               person_name=_name(caller), answer=body.answer, reason=body.reason,
+                               content_hash=body.content_hash)
+        except checks.NoSuchTask:
+            raise HTTPException(status_code=404, detail="No such task.") from None
+        except checks.NotInCheck as not_in_check:
+            raise _refusal("not_in_check", f"{label} is not waiting for a check: it is {not_in_check}.") from None
+        except checks.IsADoer:
+            raise HTTPException(status_code=403,
+                                detail="You worked on this task in this round, so someone else checks it.") from None
+        except checks.ContentMoved:
+            raise _refusal("upstream_moved", f"The content of {label} changed since it was shown to you. Open it"
+                                             " again and check what it says now.") from None
+        except checks.AlreadyAgreed:
+            raise _refusal("already_exists", f"You already agreed to {label} as it is now.") from None
+        except checks.NoContentHash:
+            raise HTTPException(status_code=422, detail=f"{label} cannot be checked yet.") from None
+        if body.answer == "send_back":
+            _task_event(conn, "task.sent_back", kind, subject, {"round": done.round},
+                        content={"reason": body.reason})
+        else:
+            _task_event(conn, "task.signed", kind, subject, {"round": done.round})
+        if done.state == "done":
+            _task_event(conn, "task.done", kind, subject, {"round": done.round})
+    return {"state": done.state, "round": done.round, "checkers_needed": done.checkers_needed}
 
 
 @router.post(_PART + "/take")

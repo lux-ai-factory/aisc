@@ -143,3 +143,18 @@ def _session_was_ended(conn) -> bool:
 def test_the_migrator_address_is_given_to_the_tests():
     """The suite reaches platform_migrator as the service does, so provisioning and deletion are tested as they run."""
     assert os.environ.get("PLATFORM_TEST_MIGRATE_DATABASE_URL"), "PLATFORM_TEST_MIGRATE_DATABASE_URL is not set"
+
+
+@needs_database
+@pytest.mark.parametrize("trigger", ["sign_off_is_append_only", "sign_off_is_not_truncated"])
+def test_the_sign_off_guards_cannot_be_lifted_even_by_their_owner(project, trigger):
+    """The sign-offs are listed guards (init/guard-triggers.txt): platform_owner owns work.sign_off, and still
+    cannot disable a guard that keeps them from being changed or removed."""
+    from psycopg.conninfo import make_conninfo
+
+    from tests.conftest import MIGRATE_DSN
+
+    with psycopg.connect(make_conninfo(MIGRATE_DSN, dbname=projectdb.database_name(project["pid"]))) as conn:
+        with pytest.raises(psycopg.Error) as refused:
+            conn.execute(f"ALTER TABLE work.sign_off DISABLE TRIGGER {trigger}")
+    assert "cannot be disabled or dropped" in str(refused.value), refused.value

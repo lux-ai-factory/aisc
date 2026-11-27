@@ -3,8 +3,9 @@
 Every save on the content of a part calls `claim_for_save` in the transaction that writes, before it writes.
 The database function work.claim_for_save does the work: while the project's holding switch is off it does
 nothing; while it is on, the first save on a part nobody holds takes it, the holder passes, and anyone else is
-refused (SQLSTATE AH001, with the holder and since as DETAIL), as is any save on a task in check (AH002). The
-hold row is read FOR SHARE, so a take-over waits for this save to commit.
+refused (SQLSTATE AH001, with the holder and since as DETAIL), as is any save on a task in check (AH002, with
+who submitted it and when as DETAIL). The hold row is read FOR SHARE, so a take-over waits for this save to
+commit.
 
 A refused save raises HoldRefused, whose `refusal` is the refusal object the app answers inside its own
 envelope; the transaction is then aborted, so nothing of the save is written. The wording is one case file,
@@ -63,6 +64,14 @@ def refusal_for(sqlstate, detail, *, label, person_name, now: datetime | None = 
                                " ask them to hand it over, or an owner to give it to you.",
                        current=Current(token="", changed_by=holder, changed_at=_utc_seconds(since)))
     if sqlstate == NOT_FINAL:
+        submitted = json.loads(detail or "{}")
+        if submitted.get("submitted_by") and submitted.get("submitted_at"):
+            at = datetime.fromisoformat(submitted["submitted_at"])
+            return Refusal(code="not_final", what=label,
+                           message=f"{submitted['submitted_by']} submitted {label} for check at {_since(at, now)},"
+                                   " and its content does not change while it is checked. Your text is kept below.",
+                           current=Current(token="", changed_by=submitted["submitted_by"],
+                                           changed_at=_utc_seconds(at)))
         return Refusal(code="not_final", what=label,
                        message=f"{label} is in check, and its content does not change while it is checked."
                                " Your text is kept below.",

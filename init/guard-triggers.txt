@@ -11,6 +11,10 @@
 trace.call call_append_only
 trace.call call_no_truncate
 
+# a sign-off of a task is never changed or removed (platform/project-template/0045_work_rounds_and_sign_offs.sql)
+work.sign_off sign_off_is_append_only
+work.sign_off sign_off_is_not_truncated
+
 # the card versions: a version is never deleted (platform/project-template/0034_card_versions_kept.sql)
 project.system system_no_delete
 project.system system_no_truncate

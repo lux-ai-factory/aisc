@@ -5,8 +5,8 @@
  * calls claimForSave inside the Prisma transaction that writes, before it writes. The database function
  * work.claim_for_save does the work: while the project's holding switch is off it does nothing; while it is
  * on, the first save on a part nobody holds takes it, the holder passes, and anyone else is refused (SQLSTATE
- * AH001, with the holder and since as DETAIL), as is any save on a task in check (AH002). The hold row is read
- * FOR SHARE, so a take-over waits for this save to commit.
+ * AH001, with the holder and since as DETAIL), as is any save on a task in check (AH002, with who submitted it
+ * and when as DETAIL). The hold row is read FOR SHARE, so a take-over waits for this save to commit.
  *
  * A refused save throws HoldRefused, whose `refusal` is the refusal object the page shows; the transaction is
  * rolled back, so nothing of the save is written. The wording is one case file,
@@ -77,6 +77,21 @@ export function refusalFor(
     };
   }
   if (sqlstate === NOT_FINAL) {
+    const submitted = JSON.parse(detail ?? "{}") as { submitted_by?: string | null; submitted_at?: string | null };
+    if (submitted.submitted_by && submitted.submitted_at) {
+      const at = new Date(submitted.submitted_at);
+      return {
+        code: "not_final",
+        what: label,
+        message:
+          `${submitted.submitted_by} submitted ${label} for check at ${since(at, now)},` +
+          " and its content does not change while it is checked. Your text is kept below.",
+        changed: [],
+        saved: [],
+        not_saved: [],
+        current: { token: "", changed_by: submitted.submitted_by, changed_at: utcSeconds(at), values: {} },
+      };
+    }
     return {
       code: "not_final",
       what: label,

@@ -1,5 +1,5 @@
 {
-  "about": "What a save refused by work.claim_for_save answers: the database's SQLSTATE and DETAIL, the label of the part as the page shows it, the person saving and the time now, and the refusal they make. Read by aisc_identity.holds and shared/access-ts/holds.ts.",
+  "about": "What a save refused by work.claim_for_save answers: the database's SQLSTATE and DETAIL (for a task in check, who submitted it and when), the label of the part as the page shows it, the person saving and the time now, and the refusal they make. Read by aisc_identity.holds and shared/access-ts/holds.ts.",
   "cases": [
     {
       "name": "someone else holds the part, since earlier today",
@@ -32,7 +32,22 @@
       }
     },
     {
-      "name": "the task is in check",
+      "name": "the task is in check, submitted earlier today",
+      "sqlstate": "AH002",
+      "detail": {"submitted_by": "Maria Rossi", "submitted_at": "2026-01-20T10:40:12.345678+00:00"},
+      "label": "Risk register",
+      "person": "Luca Bianchi",
+      "now": "2026-01-20T11:02:00Z",
+      "refusal": {
+        "code": "not_final",
+        "what": "Risk register",
+        "message": "Maria Rossi submitted Risk register for check at 10:40 UTC, and its content does not change while it is checked. Your text is kept below.",
+        "changed": [], "saved": [], "not_saved": [],
+        "current": {"token": "", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T10:40:12Z", "values": {}}
+      }
+    },
+    {
+      "name": "the task is in check, with no submitter recorded",
       "sqlstate": "AH002",
       "detail": null,
       "label": "Risk register",
