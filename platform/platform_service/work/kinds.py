@@ -1,4 +1,4 @@
-"""The kinds of work a project has, and how much is at stake in it.
+"""The kinds of work a project has.
 
 A task is an instance of one of these kinds. The order is the order of the steps, and pages and reports
 list kinds in it.
@@ -24,5 +24,3 @@ LABELS = {
     "compose_report": "Compose the report",
     "release_report": "Release the report",
 }
-
-TIERS = ("low", "medium", "high")
