@@ -25,6 +25,8 @@ longer changes.
 - The engine's own pages (test settings, launches) and the admin-only pages (connections, installs): they are not
   held. The engine is upstream code, and the admin pages have one writer in practice.
 - One person overwriting themselves from two browser tabs.
+- Automatic writers (the card's AI refinement, the AI mapping of objectives): they write as today. Nothing yet
+  records who started a run, which is what holding them to the holder needs.
 - Functions and lines, several check stages, committees, sampling, tiers, an installation floor, changes that
   wait for a second person, deputies, a release sheet for reports.
 
@@ -35,7 +37,8 @@ longer changes.
 | **Task** | One piece of work on one subject: the project's AI card (all its versions: every save makes a new version, so a hold per version would protect nothing), one checklist submission, the risk register of a card version. |
 | **Part** | A piece of a task that one person can do alone: a section of the card, a section of a checklist. A task that does not split has one part. |
 | **Holder** | The person who holds a part now. Nobody, or one person. |
-| **Doers** | Everyone who held a part of the task and saved on it. |
+| **Doers** | Everyone who saved on a part of the task in its current round, as `work.doer` records them. |
+| **Round** | One pass of a task from open to done. A save on a done task starts the next round. |
 | **Checker** | A person who signs off a submitted task. |
 | **Card state** | The pair (card version, revision number). A correction changes the revision, a new version both. |
 
@@ -86,9 +89,15 @@ A save on a task in check is refused with `not_final`: the content of a submitte
 in this version, for new ones; an owner turns it on (`PUT /projects/{p}/work/holds` with `{"on": true}`, event
 `work.holds_switched`). It becomes on by default once the pages show who holds a part.
 
-**Automatic writers** (the card's AI refinement, sync jobs) write only for the person holding the part when they
-started, and only while that person still holds it. Otherwise their result is dropped, the holder is told, and an
-event records it.
+**Who did the work.** Holds say who holds a part now; a release deletes the row and a take-over overwrites it. So
+every save that passes the check also records its person in `work.doer (task, round, part, person_subject,
+person_name, first_saved_at)`, once per person, part and round, in the same transaction. Taking a part without
+saving does not make anyone a doer.
+
+**A done task opens again on the next save.** A save on a task that is `done` starts its next round: the task is
+`open` again, its round number goes up by one, the sign-offs of the earlier round stop counting, and the save goes
+on as on any open task. Without this a signed-off card could never be changed again. A save on a task `in_check`
+is still refused with `not_final`.
 
 A static test lists every save path of qualification, controls and control-objectives and fails when one of them
 does not call the helper.
@@ -123,14 +132,16 @@ card state it was made on.
   (1 everywhere, except 0 for launching a run and composing a report). New projects start with `light`. Owners
   change it; each change is an event. `GET /projects/{p}/work/rules`, `PUT /projects/{p}/work/rules/{kind}` with
   `{"checkers": n}`, `POST /projects/{p}/work/preset` with `{"preset": name}`.
-- **Submit.** When every part is released, a doer submits the task: the step's own completing action where one
-  exists (closing a checklist submission, generating a report), else a "Submit for check" button. The platform
-  stores the content hash and the card state, and copies `checkers_needed` from the rule.
-- **Sign-off.** Agree, or send back with a reason. Nobody who held a part of the task can sign. The page sends the
-  content hash it showed and the platform compares it in the same transaction.
+- **Submit.** A doer submits the task: the step's own completing action where one exists (closing a checklist
+  submission, generating a report), else a "Submit for check" button. Submitting releases the parts the submitter
+  holds. It is refused, with who holds what, while someone else holds a part: they release it, or an owner takes
+  it over. The platform stores the content hash and the card state, and copies `checkers_needed` from the rule.
+- **Sign-off.** Agree, or send back with a reason. Nobody who is a doer of the task's current round can sign. The
+  page sends the content hash it showed and the platform compares it in the same transaction.
 - **Send back** returns the task to `open` and gives each part back to its last holder.
-- **Done** when the agreeing sign-offs on the submitted content reach `checkers_needed`; with 0, at submit.
-- `work.sign_off (task, signer_subject, signer_name, answer, reason, content_hash, card_state, at)`, never
+- **Done** when the agreeing sign-offs of the current round on the submitted content reach `checkers_needed`; with
+  0, at submit.
+- `work.sign_off (task, round, signer_subject, signer_name, answer, reason, content_hash, card_state, at)`, never
   updated.
 
 ## 5. The refusal
@@ -140,9 +151,13 @@ Each app keeps its own error envelope; inside it a refusal carries the same obje
 
 ```json
 {"code": "not_holder", "what": "Intended purpose",
- "message": "Maria Rossi holds this section since 10:40. Your text is kept below.",
- "current": {"holder": "Maria Rossi", "since": "2026-01-20T10:40:00Z"}}
+ "message": "Maria Rossi holds Intended purpose since 10:40 UTC. Your text is kept below; ask them to hand it over, or an owner to give it to you.",
+ "changed": [], "saved": [], "not_saved": [],
+ "current": {"token": "", "changed_by": "Maria Rossi", "changed_at": "2026-01-20T10:40:00Z", "values": {}}}
 ```
+
+For `not_holder`, `changed_by` and `changed_at` are the holder and since when; for `not_final`, the person who
+submitted the task and when.
 
 Codes: `not_holder`, `not_final`, `upstream_moved`, `upstream_moved_confirm`, `already_exists`, `cited_by_report`,
 `syncing`, `token_required`, `changed_since_opened` (kept for the pages not held in this version). The message
