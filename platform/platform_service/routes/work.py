@@ -77,6 +77,18 @@ class SignIn(BaseModel):
         return self
 
 
+class CardStateIn(BaseModel):
+    model_config = _STRICT
+    version: StrictStr = Field(max_length=64)
+    revision: StrictInt = Field(ge=1)
+
+
+class SubmitIn(BaseModel):
+    """The card state the submitting page was drawn on; a submit that names none is not asked."""
+    model_config = _STRICT
+    card_state: CardStateIn | None = None
+
+
 class TakeOverIn(BaseModel):
     model_config = _STRICT
     to: StrictStr | None = Field(default=None, max_length=200)
@@ -120,6 +132,28 @@ def _writer(project: str, subject: str) -> dict:
 
 def _refusal(code: str, message: str, **current) -> HTTPException:
     return HTTPException(status_code=409, detail={"code": code, "message": message, "current": current})
+
+
+def card_moved_question(now: dict, verb: str) -> str:
+    """The one question a committing action asks when only the card state moved since its page was drawn."""
+    by = ", ".join(x for x in (now.get("by"), _clock(now.get("at"))) if x)
+    said = f" ({by})" if by else ""
+    return (f"The AI card is now v{now['number']} revision {now['revision']}{said}."
+            f" {verb} on revision {now['revision']}?")
+
+
+def card_moved_refusal(now: dict, verb: str) -> HTTPException:
+    refusal = _refusal("upstream_moved_confirm", card_moved_question(now, verb), changed_by=now.get("by"),
+                       changed_at=now.get("at"))
+    refusal.detail["current"]["values"] = {k: now[k] for k in ("version", "number", "revision")}
+    return refusal
+
+
+def _clock(at: str | None) -> str | None:
+    """A time as the question says it: UTC, hours and minutes."""
+    if not at:
+        return None
+    return f"{datetime.fromisoformat(at).astimezone(timezone.utc):%H:%M} UTC"
 
 
 def _event(conn, action: str, kind: str, subject: str, part: str, details: dict, content=None) -> None:
@@ -206,14 +240,18 @@ def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, D
 
 
 @router.post(_TASK + "/submit")
-def submit(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)]):
-    """A doer of the current round submits the task for check: refused while someone else holds a part."""
+def submit(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)],
+           body: SubmitIn | None = None):
+    """A doer of the current round submits the task for check: refused while someone else holds a part. When
+    the card state moved since the page was drawn, the person is asked once (upstream_moved_confirm): sending
+    the submit again on the card state it names goes through."""
     pid = _admit(project, caller, "editor")
     label = LABELS[_kind(kind)]
+    drawn = body.card_state.model_dump() if body and body.card_state else None
     with db.project_connection(pid) as conn, conn.transaction():
         try:
             done = checks.submit(conn, kind=kind, subject=subject, person_subject=caller.subject,
-                                 person_name=_name(caller))
+                                 person_name=_name(caller), drawn_card_state=drawn)
         except checks.NoSuchTask:
             raise HTTPException(status_code=404, detail="No such task.") from None
         except checks.NotOpen as not_open:
@@ -236,6 +274,8 @@ def submit(project: str, kind: str, subject: str, caller: Annotated[Caller, Depe
             raise refusal from None
         except checks.NoContentHash:
             raise HTTPException(status_code=422, detail=f"{label} cannot be submitted for check yet.") from None
+        except checks.CardMoved as moved:
+            raise card_moved_refusal(moved.now, "Submit") from None
         _task_event(conn, "task.submitted", kind, subject, {"round": done.round,
                                                             "checkers_needed": done.checkers_needed})
         if done.state == "done":

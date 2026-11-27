@@ -64,6 +64,14 @@ class HeldByOthers(Exception):
         self.held = held
 
 
+class CardMoved(Exception):
+    """The card state moved since the page the submit came from was drawn: the person is asked once."""
+
+    def __init__(self, now: dict):
+        super().__init__(f"the card is now version {now['number']} revision {now['revision']}")
+        self.now = now
+
+
 class NoContentHash(Exception):
     """This kind of task has no content to check yet."""
 
@@ -124,8 +132,22 @@ def _content_hash(conn, kind: str, subject: str) -> str:
     return value
 
 
-def submit(conn, *, kind: str, subject: str, person_subject: str, person_name: str) -> Outcome:
-    """Submit the task for check, or finish it when its kind needs no checker."""
+def _card_moved(conn, drawn: dict | None) -> None:
+    """CardMoved when `drawn` ({"version", "revision"}, the card state the page was drawn on) is not the latest
+    card state; nothing when the page named none."""
+    if drawn is None:
+        return
+    now = _run(conn, "select work.card_change()").fetchone()[0]
+    if now is None:
+        return
+    if (str(drawn.get("version")), drawn.get("revision")) != (now["version"], now["revision"]):
+        raise CardMoved(now)
+
+
+def submit(conn, *, kind: str, subject: str, person_subject: str, person_name: str,
+           drawn_card_state: dict | None = None) -> Outcome:
+    """Submit the task for check, or finish it when its kind needs no checker. `drawn_card_state` is the card
+    state the submitting page was drawn on: when the card moved since, CardMoved, and nothing changes."""
     _card_lock_shared(conn, kind)
     task, state, round_, by, at, _, _ = _locked_task(conn, kind, subject)
     if state != "open":
@@ -138,6 +160,7 @@ def submit(conn, *, kind: str, subject: str, person_subject: str, person_name: s
     others = [Held(*row) for row in holds if row[2] != person_subject]
     if others:
         raise HeldByOthers(others)
+    _card_moved(conn, drawn_card_state)
     content_hash = _content_hash(conn, kind, subject)
     needed = staffing.checkers(conn, kind)
     state = "done" if needed == 0 else "in_check"

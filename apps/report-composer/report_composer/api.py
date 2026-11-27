@@ -417,7 +417,8 @@ def export_layout(request: Request, layout_id: str, keep_text: bool = False,
 def post_report(request: Request, layout_id: str, body: dict | None = Body(None),
                 g: Guarded = Depends(project_guard("editor"))):
     """A report of the layout for a chosen version, period, other-versions switch and compare version; with
-    `revision`, only of that layout revision (409 when it was saved since)."""
+    `revision`, only of that layout revision (409 when it was saved since); with `card_revision`, only of that
+    card revision of the version (409 upstream_moved_confirm when the card was corrected since)."""
     body = body or {}
     fmt = body.get("format") or "pdf"
     if fmt not in reports.FORMATS:
@@ -426,8 +427,9 @@ def post_report(request: Request, layout_id: str, body: dict | None = Body(None)
     choice = {k: body.get(k) for k in ("system_id", "period_from", "period_to", "compare_to")}
     choice["other_versions"] = body.get("other_versions") is True
     expected = reports.expected_revision(body.get("revision"))
+    card_revision = reports.expected_card_revision(body.get("card_revision"))
     status, answer = reports.generate(request, g.project, layout_id, g.caller, fmt, choice=choice,
-                                      expected_revision=expected,
+                                      expected_revision=expected, expected_card_revision=card_revision,
                                       record=lambda conn, o: ledger.emit(
                                           conn, "report.generated" if o["ok"] else "report.failed",
                                           **reports.outcome_fields(o)))

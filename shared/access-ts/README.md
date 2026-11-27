@@ -42,6 +42,10 @@ project database's `work.claim_for_save`. Someone else holding the part, or the 
 `HoldRefused`, whose `refusal` is the refusal object the page shows; the transaction then rolls back. Both twins run
 the shared wording cases in `shared/identity/hold-refusal-cases.json`.
 
+`cardChange.ts` reads the project database's `work.card_change()`: `cardChange(tx)` is the latest card state
+(version, revision) with who stored its card and when, and `cardChangedSince(drawn, now)` the line a page drawn on
+an earlier card state shows, "The AI card changed since you started (who, when).", or null while it is the latest.
+
 ## Settings
 
 | Setting | Meaning | In the stack |
@@ -59,8 +63,8 @@ qualification and controls are separate repositories with their own build contex
 | `projectDb.mjs`, `projectDb.d.mts` | `src/vendor/aisc-access/` |
 | `projectDb.test.ts` | `test/vendor/projectDb.test.ts` |
 | `../identity/projectdb-cases.json` | `test/fixtures/projectdb-cases.json` |
-| `refusal.ts`, `cardLock.ts` | `src/vendor/aisc-access/` |
-| `test/refusal.test.ts` | `test/vendor/refusal.test.ts` |
+| `refusal.ts`, `cardLock.ts`, `cardChange.ts` | `src/vendor/aisc-access/` |
+| `test/refusal.test.ts`, `test/cardChange.test.ts` | `test/vendor/` |
 | `../identity/refusal-cases.json` | `test/fixtures/refusal-cases.json` |
 
 `test/vendor/inSync.test.ts` in each app fails when a copy differs from this folder (it is skipped when the app is

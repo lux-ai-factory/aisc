@@ -217,11 +217,13 @@ def _problem_lines(details, layout: dict, types: list[dict]) -> list[str]:
 
 
 def generate_context(layout: dict, systems: list, error: str | None = None, form: dict | None = None,
-                     problems: list | None = None) -> dict:
-    """What the Generate report page shows: the versions newest first, Compare with only when the layout
-    compares versions, and the message of a project without a version."""
+                     problems: list | None = None, confirm: int | None = None) -> dict:
+    """What the Generate report page shows: the versions newest first, each with the card revision it is
+    shown at, Compare with only when the layout compares versions, and the message of a project without a
+    version. `confirm` is the card revision the one question offers to generate on."""
     return {"systems": systems, "has_changes_since": any(b["block_type"] == "changes_since" for b in layout["blocks"]),
-            "message": None if systems else NO_VERSION, "error": error, "form": form or {}, "problems": problems or []}
+            "message": None if systems else NO_VERSION, "error": error, "form": form or {}, "problems": problems or [],
+            "confirm": confirm}
 
 
 def _generate_page(request: Request, g, layout: dict, systems, status_code=200, **kw) -> HTMLResponse:
@@ -258,14 +260,20 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
     fmt = typed["format"] if typed["format"] in reports.FORMATS else "pdf"
     try:
         expected = reports.expected_revision(form.get("revision"))
+        # the card revision of the chosen version the page showed
+        card_revision = reports.expected_card_revision(form.get(f"card_revision:{typed['system_id']}"))
         status, body = await run_in_threadpool(
             reports.generate, request, g.project, layout_id, g.caller, fmt, choice=choice,
-            expected_revision=expected,
+            expected_revision=expected, expected_card_revision=card_revision,
             record=lambda conn, o: ledger.emit(conn, "report.generated" if o["ok"] else "report.failed",
                                                **reports.outcome_fields(o)))
     except ApiError as e:
         with request.app.state.projects.connect(g.project["pid"]) as conn:
             layout, systems = _layout_or_builtin(request, conn, layout_id), db.systems(conn)
+        if e.code == "upstream_moved_confirm":
+            # the one question, and one button that generates on the revision it names (drawn again below)
+            return _generate_page(request, g, layout, systems, status_code=e.status, error=e.message, form=typed,
+                                  confirm=e.details[0]["card_revision"])
         problems = _problem_lines(e.details, layout, block_types(request))
         return _generate_page(request, g, layout, systems, status_code=e.status,
                               error="The report was not generated:" if problems else e.message, form=typed,

@@ -20,6 +20,7 @@
     <div class="field"><label>AI card version <select name="system_id" required>
       {% for s in systems %}<option value="{{ s.pid }}"{% if form.system_id == s.pid %} selected{% endif %}>Version {{ s.number }}{% if s.release %} ({{ s.release }}){% endif %}</option>{% endfor %}
     </select></label>
+      {% for s in systems %}<input type="hidden" name="card_revision:{{ s.pid }}" value="{{ s.card_revision }}">{% endfor %}
       <span class="help">The control objectives and checklist answers of this version are the report's.</span></div>
     <div class="field-row">
       <div class="field"><label>Test runs from <input type="date" name="period_from" value="{{ form.period_from or '' }}"></label></div>
@@ -40,7 +41,7 @@
       <label class="inline"><input type="radio" name="format" value="docx"{% if form.format == "docx" %} checked{% endif %}> Word (DOCX)</label>
     </fieldset>
     <div class="editor-actions">
-      <button type="submit">Generate report</button>
+      <button type="submit">{% if confirm %}Generate on revision {{ confirm }}{% else %}Generate report{% endif %}</button>
       <a class="btn ghost" href="{{ base }}/layouts/{{ layout.id }}">Cancel</a>
     </div>
   </form>

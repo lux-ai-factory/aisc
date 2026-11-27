@@ -17,7 +17,8 @@ TABLES = """
 CREATE TABLE IF NOT EXISTS qualification.qualification (
     id text PRIMARY KEY, system_id uuid NOT NULL, revision int NOT NULL DEFAULT 1, "ontologyPatch" jsonb,
     "systemName" text NOT NULL DEFAULT 'S', "systemVersion" text NOT NULL DEFAULT '',
-    company text NOT NULL DEFAULT '', description text NOT NULL DEFAULT '');
+    company text NOT NULL DEFAULT '', description text NOT NULL DEFAULT '', saved_by text, amended_by text,
+    created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS qualification.qualification_answer (
     id text PRIMARY KEY DEFAULT gen_random_uuid()::text, "qualificationId" text NOT NULL, "toolId" text NOT NULL,
     "questionId" text NOT NULL, answer text NOT NULL);
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS control_objectives.objective_key (
 #: what the apps' migrations grant platform_rw for the content hashes, one statement per table
 GRANTS = (
     'GRANT SELECT (id, system_id, revision, "ontologyPatch") ON qualification.qualification TO platform_rw;',
+    'GRANT SELECT (saved_by, amended_by, created_at) ON qualification.qualification TO platform_rw;',
     'GRANT SELECT ("qualificationId", "toolId", "questionId", answer) ON qualification.qualification_answer'
     ' TO platform_rw;',
     'GRANT SELECT (qualification_id, position, key, name, role, kind, vair_type, provider, provider_name)'

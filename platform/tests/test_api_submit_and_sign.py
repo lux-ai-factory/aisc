@@ -377,3 +377,47 @@ def test_submitting_the_card_waits_for_a_correction_in_progress_and_neither_dead
         correction.rollback()
         correction.close()
     assert outcome == {"submit": "done"}
+
+
+# the card state the page was drawn on
+
+V1 = "11111111-1111-1111-1111-111111111111"
+
+
+def drawn_on(client, as_user, project, who, card_state):
+    return client.post(TASK.format(slug=project["slug"]) + "/submit", json={"card_state": card_state},
+                       headers=as_user(who))
+
+
+def test_a_submit_drawn_on_an_earlier_card_revision_asks_once_and_changes_nothing(client, as_user, team, dsn):
+    wc.card_version(team, V1, 1)
+    wc.card(team, "c1", V1)
+    wc.card(team, "c1r2", V1, revision=2)
+    wc.sql(team, "UPDATE qualification.qualification SET amended_by = 'Maria Rossi',"
+                 " created_at = '2026-01-20T11:02:00Z' WHERE id = 'c1r2'")
+    save(dsn, team, BOB)
+    asked = drawn_on(client, as_user, team, BOB, {"version": V1, "revision": 1})
+    assert asked.status_code == 409, asked.text
+    detail = asked.json()["detail"]
+    assert detail["code"] == "upstream_moved_confirm"
+    assert detail["message"] == "The AI card is now v1 revision 2 (Maria Rossi, 11:02 UTC). Submit on revision 2?"
+    assert detail["current"]["values"] == {"version": V1, "number": 1, "revision": 2}
+    assert stored(dsn, team)[0] == "open"
+    assert holders(dsn, team) == {"governance": BOB}
+
+
+def test_a_submit_sent_again_on_the_card_state_it_was_told_goes_through(client, as_user, team, dsn):
+    wc.card_version(team, V1, 1)
+    wc.card(team, "c1", V1)
+    wc.card(team, "c1r2", V1, revision=2)
+    save(dsn, team, BOB)
+    confirmed = drawn_on(client, as_user, team, BOB, {"version": V1, "revision": 2})
+    assert confirmed.status_code == 200, confirmed.text
+    assert stored(dsn, team)[0] == "done"
+
+
+def test_a_submit_that_names_no_card_state_is_not_asked(client, as_user, team, dsn):
+    wc.card_version(team, V1, 1)
+    wc.card(team, "c1", V1)
+    save(dsn, team, BOB)
+    assert submit(client, as_user, team, BOB).status_code == 200

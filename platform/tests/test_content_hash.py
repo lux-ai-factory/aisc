@@ -150,3 +150,31 @@ def _granted_by_the_apps() -> set[str]:
 
 def test_the_stand_in_grants_platform_rw_what_the_apps_migrations_grant():
     assert set(wc.GRANTS) <= _granted_by_the_apps(), set(wc.GRANTS) - _granted_by_the_apps()
+
+
+@needs_database
+def test_the_card_change_says_who_stored_the_latest_card_state_and_when(dsn, content):
+    with project_db(dsn, content) as conn:
+        assert conn.execute("select work.card_change()").fetchone()[0] is None
+    wc.card_version(content, V1, 1)
+    wc.card(content, "c1", V1)
+    wc.sql(content, "UPDATE qualification.qualification SET saved_by = 'Maria Rossi',"
+                    " created_at = '2026-01-20T11:02:00Z' WHERE id = 'c1'")
+    with project_db(dsn, content) as conn:
+        assert conn.execute("select work.card_change()").fetchone()[0] == {
+            "version": V1, "number": 1, "revision": 1, "by": "Maria Rossi", "at": "2026-01-20T11:02:00+00:00"}
+    wc.card(content, "c1r2", V1, revision=2)
+    wc.sql(content, "UPDATE qualification.qualification SET saved_by = 'Maria Rossi', amended_by = 'Luca Bianchi',"
+                    " created_at = '2026-01-20T12:15:00Z' WHERE id = 'c1r2'")
+    with project_db(dsn, content) as conn:
+        changed = conn.execute("select work.card_change()").fetchone()[0]
+    assert (changed["revision"], changed["by"], changed["at"]) == (2, "Luca Bianchi", "2026-01-20T12:15:00+00:00")
+
+
+@needs_database
+def test_every_module_reads_the_card_change(dsn, content):
+    wc.card_version(content, V1, 1)
+    wc.card(content, "c1", V1)
+    for role in ("qualification_rw", "controls_rw", "control_objectives_rw", "platform_rw"):
+        with project_db(dsn, content, role=role) as conn:
+            assert conn.execute("select work.card_change()").fetchone()[0]["revision"] == 1, role

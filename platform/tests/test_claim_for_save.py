@@ -127,6 +127,15 @@ def test_an_app_cannot_switch_holding_itself(dsn, project):
             conn.execute("insert into work.setting (name, enabled) values ('holds', true)")
 
 
+@pytest.mark.parametrize("role", ["qualification_rw", "controls_rw", "control_objectives_rw"])
+def test_an_app_reads_whether_holding_is_on(dsn, project, role):
+    with project_db(dsn, project, role=role) as conn:
+        assert conn.execute("select work.holds_on()").fetchone()[0] is False
+    holding_on(dsn, project)
+    with project_db(dsn, project, role=role) as conn:
+        assert conn.execute("select work.holds_on()").fetchone()[0] is True
+
+
 def test_the_python_helper_answers_a_refusal_that_names_the_holder_and_writes_nothing(dsn, project):
     from aisc_identity import holds
 

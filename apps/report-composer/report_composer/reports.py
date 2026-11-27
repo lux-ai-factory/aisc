@@ -12,7 +12,7 @@ import re
 import secrets
 import unicodedata
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import anchor as ledger_anchor
 from . import builtin_reports, db, declared_charts, evidence_links, layouts
@@ -138,6 +138,41 @@ def report_row(row: dict) -> dict:
     return {**row, "last_day": (lambda d: d.isoformat() if d else None)(data_selection.last_day(row.get("period_to")))}
 
 
+def expected_card_revision(value) -> int | None:
+    """The card revision of the chosen version a generate request says the person was shown: a whole number
+    from 1, or None when it names none (nothing is compared then). Anything else is refused (422)."""
+    if value is None or value == "":
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = 0
+    if isinstance(value, bool) or number < 1:
+        raise ApiError(422, "invalid_request", "card_revision must be a whole number from 1.",
+                       [{"pointer": "/card_revision", "message": "must be a whole number from 1"}])
+    return number
+
+
+def _card_moved(conn, system: dict) -> ApiError:
+    """The one question a generation asks when only the card's state moved since the page was drawn: who stored
+    the revision and when, when the project database says (work.card_change, for the latest version)."""
+    said = ""
+    readable = conn.execute("SELECT CASE WHEN has_schema_privilege('work', 'USAGE')"
+                            " AND to_regprocedure('work.card_change()') IS NOT NULL"
+                            " THEN has_function_privilege('work.card_change()', 'EXECUTE') ELSE false END AS ok"
+                            " WHERE to_regnamespace('work') IS NOT NULL").fetchone()
+    if readable and readable["ok"]:
+        now = conn.execute("SELECT work.card_change() AS change").fetchone()["change"]
+        if now and now["version"] == system["pid"]:
+            at = datetime.fromisoformat(now["at"]).astimezone(timezone.utc)
+            said = " (" + ", ".join(x for x in (now.get("by"), f"{at:%H:%M} UTC") if x) + ")"
+    revision = system["card_revision"]
+    return ApiError(409, "upstream_moved_confirm",
+                    f"The AI card is now v{system['number']} revision {revision}{said}."
+                    f" Generate on revision {revision}?",
+                    [{"card_version": system["pid"], "card_revision": revision}])
+
+
 def _ref() -> str:
     return secrets.token_hex(4)
 
@@ -147,10 +182,12 @@ def _error(code, message, details=()) -> dict:
 
 
 def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, anchor=None,
-           declared=None, expected_revision=None) -> tuple[str, dict]:
+           declared=None, expected_revision=None, expected_card_revision=None) -> tuple[str, dict]:
     """Checks the saved layout and records a running report with its snapshot: (report id, snapshot).
     `expected_revision`: the revision the person was looking at; a layout saved since is refused (409), so
-    a report is never of a revision other than the one shown.
+    a report is never of a revision other than the one shown. `expected_card_revision`: the card revision of
+    the chosen version the person was shown; when the card was corrected since, nothing is made and the
+    person is asked once (upstream_moved_confirm), with the revision to generate on.
 
     The layout row stays locked until the caller's transaction ends, so two generations of one
     layout cannot both pass the running-report check.
@@ -168,6 +205,8 @@ def _start(request, conn, project, layout_id, caller, fmt="pdf", choice=None, an
                        f" generated: open revision {layout['revision']} to generate it.",
                        [{"current_revision": layout["revision"]}])
     system, sel = check_choice(conn, choice or {})
+    if expected_card_revision is not None and system["card_revision"] != expected_card_revision:
+        raise _card_moved(conn, system)
     fail_on(layouts.validate_layout(
         layout["blocks"], block_types=block_types(request),
         choices=choices_for(request, project["pid"], system["pid"])))
@@ -223,7 +262,7 @@ def _pdf_copy(renderer, snapshot) -> tuple[bytes | None, str | None]:
 
 
 def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, record=None,
-             expected_revision=None) -> tuple[int, dict]:
+             expected_revision=None, expected_card_revision=None) -> tuple[int, dict]:
     """One generation at a time per layout; the snapshot is stored before the renderer runs. Every
     read and write is in the project's own database. `record(conn, outcome)`, the caller's ledger event,
     runs in the transaction that finishes the report (outcome_fields says what it holds). The ledger
@@ -237,7 +276,7 @@ def generate(request, project, layout_id, caller, fmt="pdf", *, choice=None, rec
     declared = declared_charts.for_snapshot(request, project, (found or {}).get("blocks"))
     with projects.connect(project["pid"]) as conn:
         report_id, snapshot = _start(request, conn, project, layout_id, caller, fmt, choice, anchor, declared,
-                                     expected_revision)
+                                     expected_revision, expected_card_revision)
     outcome = {"report_id": report_id, "system_id": snapshot["system_id"], "format": fmt,
                "card_revision": snapshot.get("card_revision"), "pinned_at": snapshot.get("pinned_at"),
                "layout": snapshot["layout"], "anchor": anchor, "selection": snapshot.get("selection")}
