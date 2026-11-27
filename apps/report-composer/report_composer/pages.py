@@ -278,12 +278,18 @@ async def generate_submit(request: Request, ref: str, layout_id: str):
     return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}#reports", status_code=303)
 
 
+#: a stored layout's form that names no revision: which revision the person saw is unknown, so nothing is made
+NO_REVISION_SHOWN = ("No report was generated: the form did not say which revision of the layout you were"
+                     " looking at. Reload the page and generate again.")
+
+
 @router.post("/p/{ref}/layouts/{layout_id}/download-report")
 async def download_report(request: Request, ref: str, layout_id: str):
     """Download report, next to Show in the preview's form: the report is generated with the
     form's version, period and other-versions switch, stored and listed like any report, and answered as
     the document itself, so the browser downloads it and stays on the page. A refused choice goes back to
-    the layout's page with the message."""
+    the layout's page with the message. The form names the revision the person was looking at; only a
+    built-in layout, which has no revision, may name none."""
     from .api import _document, _downloaded
 
     g = guard(request, ref, "editor")                  # refuses a foreign Origin before anything is read
@@ -299,6 +305,8 @@ async def download_report(request: Request, ref: str, layout_id: str):
         query = urlencode({**kept, "report_error": message})
         return RedirectResponse(f"{_root(request)}/p/{g.project['slug']}/layouts/{layout_id}?{query}#reports",
                                 status_code=303)
+    if not form.get("revision") and not layout_id.startswith(builtin_layouts.PREFIX):
+        return back(NO_REVISION_SHOWN)
     try:
         expected = reports.expected_revision(form.get("revision"))
         status, body = await run_in_threadpool(

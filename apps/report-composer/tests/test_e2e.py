@@ -115,6 +115,17 @@ def blocks():
     return [blk(t, title=f"S-{i:02d}", **options.get(t, {})) for i, t in enumerate(ORDER)]
 
 
+@pytest.fixture
+def echo_second_pass_closed(full_bed):
+    """Echo's version 2 answers (sub-e2, a draft in the seed) as a closed submission while the test runs: a
+    report prints closed submissions only, and this test is about the version, not the draft."""
+    db = report_bed.project_db(IDS["E"])
+    full_bed.psql(db, "UPDATE controls.submission SET status = 'Closed' WHERE id = 'sub-e2'")
+    yield
+    full_bed.psql(db, "UPDATE controls.submission SET status = 'Draft' WHERE id = 'sub-e2'")
+
+
+@pytest.mark.usefixtures("echo_second_pass_closed")
 def test_e2e_compose_preview_and_generate(e2e_client, auth):
     c = e2e_client
     erin = auth("erin")

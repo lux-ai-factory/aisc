@@ -19,7 +19,8 @@ def soup(html):
 
 
 def own(client_v2, auth):
-    return new_layout(client_v2, auth, name="Own", blocks=[v2blk("cover"), v2blk("free_text", text="x")])["id"]
+    """A layout of the project's own, as saved: its id and the revision its page shows."""
+    return new_layout(client_v2, auth, name="Own", blocks=[v2blk("cover"), v2blk("free_text", text="x")])
 
 
 def download(client_v2, auth, layout_id, fmt, who="alice", **form):
@@ -30,7 +31,7 @@ def download(client_v2, auth, layout_id, fmt, who="alice", **form):
 
 @pytest.mark.parametrize("which", ["own", "builtin"])
 def test_the_preview_form_has_the_download_menu_next_to_show(client_v2, auth, which):
-    lid = own(client_v2, auth) if which == "own" else B
+    lid = own(client_v2, auth)["id"] if which == "own" else B
     doc = soup(client_v2.get(f"/p/alpha/layouts/{lid}", headers=auth("alice")).text)
     form = doc.find("form", attrs={"data-control": "preview-with"})
     menu = form.find(attrs={"data-control": "download-report"})
@@ -49,8 +50,9 @@ def test_a_viewer_has_no_download_menu(client_v2, auth):
 
 
 def test_pdf_downloads_and_is_listed(client_v2, auth):
-    lid = own(client_v2, auth)
-    r = download(client_v2, auth, lid, "pdf")
+    layout = own(client_v2, auth)
+    lid = layout["id"]
+    r = download(client_v2, auth, lid, "pdf", revision=layout["revision"])
     assert r.status_code == 200 and r.content == PDF and r.headers["content-type"] == "application/pdf"
     assert r.headers["content-disposition"].startswith("attachment;") and r.headers["content-disposition"].endswith('.pdf"')
     assert len(client_v2.get(f"/api/p/alpha/layouts/{lid}/reports", headers=auth("victor")).json()) == 1
@@ -64,8 +66,10 @@ def test_word_of_a_built_in_downloads_and_keeps_its_pdf(client_v2, auth):
 
 
 def test_a_refused_choice_comes_back_to_the_page_with_the_message(client_v2, auth):
-    lid = own(client_v2, auth)
-    r = download(client_v2, auth, lid, "pdf", period_from="2026-09-12", period_to="2026-09-10")
+    layout = own(client_v2, auth)
+    lid = layout["id"]
+    r = download(client_v2, auth, lid, "pdf", revision=layout["revision"], period_from="2026-09-12",
+                 period_to="2026-09-10")
     assert r.status_code == 303 and f"/p/alpha/layouts/{lid}?" in r.headers["location"]
     page = client_v2.get(r.headers["location"].split("testserver")[-1], headers=auth("alice")).text
     assert "The period ends before it starts." in page

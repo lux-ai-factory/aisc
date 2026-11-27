@@ -63,7 +63,7 @@
       <label class="inline"><input type="checkbox" name="other_versions"{% if preview_with.other_versions %} checked{% endif %}> Other versions' runs</label>
       <button type="submit" class="small ghost">Show</button>
       {% if may_write and not is_new %}
-      <input type="hidden" name="revision" value="{{ layout.revision }}" data-generate-revision>
+      {% if not layout.built_in %}<input type="hidden" name="revision" value="{{ layout.revision }}" data-generate-revision>{% endif %}
       <details class="download-menu" data-control="download-report">
         <summary class="btn small">Generate and download &#9662;</summary>
         <div class="download-choices">
