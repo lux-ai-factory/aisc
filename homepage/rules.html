@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Who does what - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<link rel="stylesheet" href="/assets/work.css"/>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to the project">&larr; Project</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="subtitle">Who does what <a id="board-link">Work board</a></p>
+  <p class="note">How many people check each kind of task once it is submitted, from 0 to 5. Nobody checks a task
+    they worked on. With 0, a submitted task is done at once. A change applies to tasks submitted after it.</p>
+  <p class="note" id="page-message" hidden></p>
+  <div id="content" hidden>
+    <div class="row" id="presets"></div>
+    <span class="msg" id="preset-msg" role="status"></span>
+    <div class="wrap"><table>
+      <thead><tr><th>Kind of task</th><th>Checkers</th><th>Set by</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <div class="row" id="save-row"></div>
+    <span class="msg" id="msg" role="status"></span>
+  </div>
+</main>
+
+</div>
+
+<script src="/assets/page.js"></script>
+<script src="/assets/work.js"></script>
+<script>
+  var slug = aisc.project();
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var enc = encodeURIComponent;
+  var w = aiscWork;
+  var base = '/api/projects/' + enc(slug) + '/work';
+  var PRESETS = {light: 'light (nobody checks)', four_eyes: 'four eyes (one checker)'};
+  document.getElementById('back').href = '/p/' + enc(slug);
+  document.getElementById('board-link').href = '/work.html?project=' + enc(slug);
+
+  function presetButtons(answer) {
+    var row = document.getElementById('presets');
+    row.textContent = '';
+    if (!answer.may_change) return;
+    answer.presets.forEach(function (p) {
+      var b = w.button('Apply ' + p.name.replace('_', ' '), true);
+      b.title = PRESETS[p.name] || p.name;
+      b.addEventListener('click', function () {
+        aisc.call(base + '/preset', {method: 'POST', body: {preset: p.name}}).then(function (done) {
+          var said = document.getElementById('preset-msg');
+          if (!done.ok) { w.say(said, 'The preset was not applied: ' + done.message, true); return; }
+          w.say(said, 'Every kind of task now follows ' + (PRESETS[p.name] || p.name) + '.');
+          load();
+        });
+      });
+      row.appendChild(b);
+    });
+  }
+
+  function render(answer) {
+    var body = document.getElementById('rows');
+    body.textContent = '';
+    var fields = [];
+    answer.rules.forEach(function (rule) {
+      var tr = w.el('tr');
+      tr.appendChild(w.el('td', rule.label));
+      var cell = w.el('td');
+      if (answer.may_change) {
+        var n = w.el('input');
+        n.type = 'number'; n.min = '0'; n.max = '5'; n.step = '1'; n.value = String(rule.checkers);
+        n.setAttribute('aria-label', 'Checkers for ' + rule.label);
+        fields.push({rule: rule, input: n});
+        cell.appendChild(n);
+      } else {
+        cell.textContent = String(rule.checkers);
+      }
+      tr.appendChild(cell);
+      tr.appendChild(w.el('td', rule.set_by ? rule.set_by + ', ' + w.when(rule.set_at) : 'not set (0)', 'mono'));
+      body.appendChild(tr);
+    });
+    var save = document.getElementById('save-row');
+    save.textContent = '';
+    if (answer.may_change) {
+      var b = w.button('Save');
+      // only the kinds whose number changed are sent, one change each, as the platform records them
+      b.addEventListener('click', function () {
+        var changed = fields.filter(function (f) { return String(f.input.value) !== String(f.rule.checkers); });
+        var said = document.getElementById('msg');
+        if (!changed.length) { w.say(said, 'Nothing changed.'); return; }
+        var refused = [];
+        changed.reduce(function (before, f) {
+          return before.then(function () {
+            return aisc.call(base + '/rules/' + enc(f.rule.kind), {method: 'PUT', body: {checkers: Number(f.input.value)}})
+              .then(function (done) { if (!done.ok) refused.push(f.rule.label + ': ' + done.message); });
+          });
+        }, Promise.resolve()).then(function () {
+          if (refused.length) { w.say(said, 'Not saved. ' + refused.join(' '), true); return; }
+          w.say(said, 'Saved.');
+          load();
+        });
+      });
+      save.appendChild(b);
+    }
+    presetButtons(answer);
+    document.getElementById('content').hidden = false;
+  }
+
+  function load() {
+    return aisc.call(base + '/rules').then(function (answer) {
+      var page = document.getElementById('page-message');
+      if (!answer.ok) {
+        document.getElementById('content').hidden = true;
+        page.hidden = false;
+        page.textContent = 'Who does what could not be read: ' + answer.message;
+        return;
+      }
+      page.hidden = true;
+      render(answer.data);
+    });
+  }
+
+  aisc.call('/api/projects/' + enc(slug)).then(function (answer) {
+    document.getElementById('project-name').textContent = answer.ok && answer.data ? answer.data.name : slug;
+  });
+  load();
+  aisc.call('/oauth2/userinfo').then(function (answer) {
+    var d = answer.data;
+    if (d) document.getElementById('who').textContent = d.preferredUsername || d.user || d.email || 'user';
+  });
+</script>
+</body>
+</html>

@@ -46,6 +46,12 @@ the shared wording cases in `shared/identity/hold-refusal-cases.json`.
 (version, revision) with who stored its card and when, and `cardChangedSince(drawn, now)` the line a page drawn on
 an earlier card state shows, "The AI card changed since you started (who, when).", or null while it is the latest.
 
+`workParts.ts` is what a held page shows of who holds its parts: `readParts(project, kind, subject, opts)` reads
+the task from the platform as the person using the page (null while the task does not exist yet), with what they
+may do on each part as the platform says it (`canTake`, `canRelease`); `changePart(..., "take" | "release", opts)`
+calls the platform's take or release; `holderLine(part)` is the line the page shows. A refusal is the platform's
+own words.
+
 ## Settings
 
 | Setting | Meaning | In the stack |
@@ -63,8 +69,8 @@ qualification and controls are separate repositories with their own build contex
 | `projectDb.mjs`, `projectDb.d.mts` | `src/vendor/aisc-access/` |
 | `projectDb.test.ts` | `test/vendor/projectDb.test.ts` |
 | `../identity/projectdb-cases.json` | `test/fixtures/projectdb-cases.json` |
-| `refusal.ts`, `cardLock.ts`, `cardChange.ts` | `src/vendor/aisc-access/` |
-| `test/refusal.test.ts`, `test/cardChange.test.ts` | `test/vendor/` |
+| `refusal.ts`, `cardLock.ts`, `cardChange.ts`, `holds.ts`, `workParts.ts` | `src/vendor/aisc-access/` |
+| `test/refusal.test.ts`, `test/cardChange.test.ts`, `test/holds.test.ts`, `test/workParts.test.ts` | `test/vendor/` |
 | `../identity/refusal-cases.json` | `test/fixtures/refusal-cases.json` |
 
 `test/vendor/inSync.test.ts` in each app fails when a copy differs from this folder (it is skipped when the app is

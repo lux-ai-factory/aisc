@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sign-off - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<link rel="stylesheet" href="/assets/work.css"/>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to the work board">&larr; Work board</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <h1 class="title" id="task-name">&hellip;</h1>
+  <p class="subtitle" id="project-name"></p>
+  <p class="note" id="page-message" hidden></p>
+  <div id="content" hidden>
+    <p class="note" id="summary"></p>
+    <p class="row" id="content-row"></p>
+    <h2 class="block-title">Who did the work in this round</h2>
+    <ul class="plain" id="doers"></ul>
+    <h2 class="block-title">Sign-offs and send-backs in this round</h2>
+    <ul class="plain" id="sign-offs"></ul>
+    <div id="answer" hidden>
+      <h2 class="block-title">Your sign-off</h2>
+      <p class="note">You sign the content as submitted, identified by its content hash. If it changed since this
+        page opened, the platform refuses and you open it again.</p>
+      <div class="row" id="answer-row"></div>
+    </div>
+    <span class="msg" id="msg" role="status"></span>
+  </div>
+</main>
+
+</div>
+
+<script src="/assets/origins.js"></script>
+<script src="/assets/page.js"></script>
+<script src="/assets/work.js"></script>
+<script>
+  var slug = aisc.project();
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var enc = encodeURIComponent;
+  var w = aiscWork;
+  var query = new URLSearchParams(location.search);
+  var kind = query.get('kind') || '', subject = query.get('subject') || '';
+  var path = w.taskPath(slug, kind, subject);
+  var msg = document.getElementById('msg');
+  document.getElementById('back').href = '/work.html?project=' + enc(slug);
+
+  function answerRow(task) {
+    var row = document.getElementById('answer-row');
+    row.textContent = '';
+    document.getElementById('answer').hidden = !task.may.sign;
+    if (!task.may.sign) return;
+    var reason = w.el('textarea');
+    reason.rows = 2; reason.maxLength = 2000; reason.placeholder = 'Why it goes back (needed to send back)';
+    reason.setAttribute('aria-label', 'Why it goes back');
+    var agree = w.button('Agree');
+    var back = w.button('Send back', true);
+    function sign(body) {
+      body.content_hash = task.content_hash;
+      agree.disabled = back.disabled = true;
+      aisc.call(path + '/sign', {method: 'POST', body: body}).then(function (done) {
+        agree.disabled = back.disabled = false;
+        if (!done.ok) { w.say(msg, 'Not signed: ' + done.message, true); return; }
+        w.say(msg, done.data && done.data.state === 'done' ? 'Signed. The task is done.'
+                   : body.answer === 'send_back' ? 'Sent back.' : 'Signed.');
+        load();
+      });
+    }
+    agree.addEventListener('click', function () { sign({answer: 'agree'}); });
+    back.addEventListener('click', function () { sign({answer: 'send_back', reason: reason.value}); });
+    row.appendChild(agree); row.appendChild(reason); row.appendChild(back);
+  }
+
+  function render(task) {
+    document.getElementById('task-name').textContent = task.kind_label;
+    var needed = task.checkers_needed === null || task.checkers_needed === undefined ? ''
+      : ' It needs ' + task.checkers_needed + (task.checkers_needed === 1 ? ' checker.' : ' checkers.');
+    var submitted = task.submitted_by_name
+      ? ' Submitted by ' + task.submitted_by_name + ', ' + w.when(task.submitted_at) + '.' : '';
+    document.getElementById('summary').textContent = 'State: ' + w.state(task.state) + ', round ' + task.round + '.'
+      + submitted + needed + (task.content_hash ? ' Content hash ' + task.content_hash + '.' : '');
+    var contentRow = document.getElementById('content-row');
+    contentRow.textContent = '';
+    if (task.page) {
+      var link = w.el('a', 'Open the submitted content');
+      // the apps are served from the engine's origin (origins.js)
+      link.href = window.aiscOrigin('engine') + task.page;
+      link.target = '_blank'; link.rel = 'noopener';
+      contentRow.appendChild(link);
+    }
+    var doers = document.getElementById('doers');
+    doers.textContent = '';
+    if (!task.doers.length) doers.appendChild(w.el('li', 'Nobody has saved on it in this round.'));
+    task.doers.forEach(function (d) {
+      doers.appendChild(w.el('li', d.person_name + ' on ' + d.part + ', from ' + w.when(d.first_saved_at)));
+    });
+    var list = document.getElementById('sign-offs');
+    list.textContent = '';
+    if (!task.sign_offs.length) list.appendChild(w.el('li', 'None yet.'));
+    task.sign_offs.forEach(function (s) {
+      var said = s.answer === 'agree' ? ' agreed' : ' sent it back: ' + (s.reason || '');
+      var stale = s.content_hash !== task.content_hash ? ' (on earlier content)' : '';
+      list.appendChild(w.el('li', s.signer_name + said + stale + ', ' + w.when(s.at)));
+    });
+    answerRow(task);
+    document.getElementById('content').hidden = false;
+  }
+
+  function load() {
+    return aisc.call(path).then(function (answer) {
+      var page = document.getElementById('page-message');
+      if (!answer.ok) {
+        document.getElementById('content').hidden = true;
+        page.hidden = false;
+        page.textContent = 'The task could not be read: ' + answer.message;
+        return;
+      }
+      page.hidden = true;
+      render(answer.data);
+    });
+  }
+
+  aisc.call('/api/projects/' + enc(slug)).then(function (answer) {
+    document.getElementById('project-name').textContent = 'Sign-off, ' + (answer.ok && answer.data ? answer.data.name : slug);
+  });
+  load();
+  aisc.call('/oauth2/userinfo').then(function (answer) {
+    var d = answer.data;
+    if (d) document.getElementById('who').textContent = d.preferredUsername || d.user || d.email || 'user';
+  });
+</script>
+</body>
+</html>

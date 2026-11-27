@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Work board - AI Assessment Sandbox Configurator</title>
+<link rel="icon" href="/assets/laif-logo.svg"/>
+<link rel="stylesheet" href="/assets/launcher.css"/>
+<link rel="stylesheet" href="/assets/work.css"/>
+</head>
+<body>
+<div class="shell">
+
+<div class="topbar">
+  <a class="back" id="back" href="/" aria-label="Back to the project">&larr; Project</a>
+  <img src="/assets/laif-logo.svg" alt="Luxembourg AI Factory"/>
+  <span class="rule"></span>
+  <h1>AI Assessment Sandbox Configurator</h1>
+  <span class="session"><b id="who">&hellip;</b><a href="/oauth2/sign_out?rd=%2F">sign out</a></span>
+</div>
+
+<main>
+  <h1 class="title" id="project-name">&hellip;</h1>
+  <p class="subtitle">Work board <a id="rules-link">Who does what</a></p>
+  <p class="note">Each part of a task is held by one person at a time, and only they save on it. Saving on a part
+    nobody holds takes it. An owner can take a part over, or give it to someone else, with a reason.</p>
+  <p class="note" id="holding-off" hidden>Holding is off for this project: saves neither take nor check a part.</p>
+  <p class="note" id="page-message" hidden></p>
+  <div class="wrap" id="content" hidden><table>
+    <thead><tr><th>Task</th><th>Part</th><th>Holder</th><th>Since</th><th>State</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <span class="msg" id="msg" role="status"></span>
+</main>
+
+</div>
+
+<script src="/assets/page.js"></script>
+<script src="/assets/work.js"></script>
+<script>
+  var slug = aisc.project();
+  if (!slug) { location.replace('/'); throw new Error('no project'); }
+  var enc = encodeURIComponent;
+  var w = aiscWork;
+  var msg = document.getElementById('msg');
+  document.getElementById('back').href = '/p/' + enc(slug);
+  document.getElementById('rules-link').href = '/rules.html?project=' + enc(slug);
+
+  // a part change through the platform; its refusal is said in its words and the board is read again
+  function act(path, body, done) {
+    return aisc.call(path, body === undefined ? {method: 'POST'} : {method: 'POST', body: body}).then(function (answer) {
+      if (!answer.ok) { w.say(msg, answer.message, true); return; }
+      w.say(msg, done);
+      load();
+    });
+  }
+
+  // what the person may do on a part is the platform's to say (can_take, can_release, can_take_over)
+  function actions(board, task, part) {
+    var cell = w.el('td');
+    var row = w.el('div', null, 'row');
+    var path = w.partPath(slug, task.kind, task.subject, part.key);
+    if (part.can_release) {
+      var release = w.button('Release', true);
+      release.addEventListener('click', function () { act(path + '/release', undefined, part.label + ' is released.'); });
+      row.appendChild(release);
+    }
+    if (part.can_take) {
+      var take = w.button('Take');
+      take.addEventListener('click', function () { act(path + '/take', undefined, 'You hold ' + part.label + '.'); });
+      row.appendChild(take);
+    }
+    if (part.can_take_over) {
+      var reason = w.el('input');
+      reason.type = 'text'; reason.maxLength = 2000; reason.placeholder = 'Reason';
+      reason.setAttribute('aria-label', 'Reason for ' + part.label);
+      var over = w.button('Take over', true);
+      over.addEventListener('click', function () {
+        act(path + '/take-over', {reason: reason.value}, 'You hold ' + part.label + '.');
+      });
+      var to = w.el('select');
+      to.setAttribute('aria-label', 'Give ' + part.label + ' to');
+      (board.give_to || []).forEach(function (m) {
+        var o = w.el('option', m.name + ' (' + m.role + ')'); o.value = m.subject; to.appendChild(o);
+      });
+      var give = w.button('Give to', true);
+      give.addEventListener('click', function () {
+        act(path + '/take-over', {to: to.value, reason: reason.value}, part.label + ' was given.');
+      });
+      row.appendChild(reason); row.appendChild(over); row.appendChild(to); row.appendChild(give);
+    }
+    cell.appendChild(row);
+    return cell;
+  }
+
+  function render(board) {
+    var body = document.getElementById('rows');
+    body.textContent = '';
+    document.getElementById('holding-off').hidden = !!board.holding;
+    if (!board.tasks.length) {
+      var none = w.el('tr'); var cell = w.el('td', 'No task yet: the first save on a step makes its task.');
+      cell.colSpan = 6; none.appendChild(cell); body.appendChild(none);
+    }
+    board.tasks.forEach(function (task) {
+      var parts = task.parts.length ? task.parts : [{key: '', label: '', holder_subject: null}];
+      parts.forEach(function (part, i) {
+        var tr = w.el('tr');
+        var name = w.el('td');
+        if (i === 0) {
+          name.appendChild(w.el('div', task.kind_label));
+          name.appendChild(w.el('div', task.subject, 'mono'));
+        }
+        tr.appendChild(name);
+        tr.appendChild(w.el('td', part.label));
+        var holder = part.holder_subject ? (part.holder_name || part.holder_subject) : 'nobody';
+        if (part.offered_to_subject) holder += ', offered to ' + (part.offered_to_name || part.offered_to_subject);
+        tr.appendChild(w.el('td', holder));
+        tr.appendChild(w.el('td', w.when(part.since), 'mono'));
+        var state = w.el('td');
+        if (i === 0) {
+          state.appendChild(w.el('span', w.state(task.state) + ', round ' + task.round, 'state'));
+          if (task.state === 'in_check') {
+            var link = w.el('a', 'Sign-off page');
+            link.href = w.signPage(slug, task.kind, task.subject);
+            state.appendChild(w.el('div')).appendChild(link);
+          }
+        }
+        tr.appendChild(state);
+        tr.appendChild(part.key ? actions(board, task, part) : w.el('td'));
+        body.appendChild(tr);
+      });
+    });
+    document.getElementById('content').hidden = false;
+  }
+
+  function load() {
+    return aisc.call('/api/projects/' + enc(slug) + '/work').then(function (answer) {
+      var page = document.getElementById('page-message');
+      if (!answer.ok) {
+        document.getElementById('content').hidden = true;
+        page.hidden = false;
+        page.textContent = 'The work board could not be read: ' + answer.message;
+        return;
+      }
+      page.hidden = true;
+      render(answer.data);
+    });
+  }
+
+  aisc.call('/api/projects/' + enc(slug)).then(function (answer) {
+    document.getElementById('project-name').textContent = answer.ok && answer.data ? answer.data.name : slug;
+  });
+  load();
+  aisc.call('/oauth2/userinfo').then(function (answer) {
+    var d = answer.data;
+    if (d) document.getElementById('who').textContent = d.preferredUsername || d.user || d.email || 'user';
+  });
+</script>
+</body>
+</html>

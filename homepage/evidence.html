@@ -162,6 +162,11 @@
       <!-- every project's evaluation tasks: an admin's only (Caddy's admin gate refuses the rest) -->
       <a id="inspect-flower" class="admin-only" hidden data-origin="engine" data-path="/flower/">Background tasks</a>
       <span class="sep member-only" hidden></span>
+      <!-- who holds which part of each task, and how many people check each kind -->
+      <span class="group member-only" hidden>Work</span>
+      <a id="work-board" class="member-only" hidden>Work board</a>
+      <a id="work-rules" class="member-only" hidden>Who does what</a>
+      <span class="sep member-only" hidden></span>
       <span class="group member-only" hidden>Logs</span>
       <a id="activity-log" class="member-only" hidden>Activity log</a>
       <span class="sep member-only" hidden></span>
@@ -537,6 +542,8 @@
         }
         $('inspect-schema').href = '/inspect/schema/?project=' + enc(p.pid);
         $('activity-log').href = '/logs.html?project=' + enc(slug);
+        $('work-board').href = '/work.html?project=' + enc(slug);
+        $('work-rules').href = '/rules.html?project=' + enc(slug);
         reveal('#manage .member-only');
         gateWays(a.admin || a.role === 'owner');
         document.addEventListener('visibilitychange', function () {

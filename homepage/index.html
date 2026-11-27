@@ -124,6 +124,24 @@
   dialog.new input:focus, dialog.new textarea:focus{outline:2px solid var(--primary); outline-offset:-1px}
   dialog.new .row{display:flex; gap:10px; justify-content:flex-end; margin-top:4px}
   dialog.new .err{color:var(--error); font-size:12.5px; min-height:1em}
+
+  /* ---- my tasks: what the platform lists for me across my projects, above the projects ---- */
+  .mine{width:100%; max-width:1360px; margin:0 auto 40px; padding:22px 26px; border:1px solid var(--border);
+    background:var(--panel)}
+  .mine h2{margin:0 0 6px; font-size:16px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--heading)}
+  .mine h3{margin:16px 0 6px; font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--faint)}
+  .mine ul{margin:0; padding:0; list-style:none}
+  .mine li{display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--border);
+    font-size:14.5px}
+  .mine li .where{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .mine li a{color:var(--primary); font-family:var(--mono); font-size:12px}
+  .mine button{padding:5px 10px; cursor:pointer; border:1px solid var(--primary); background:var(--primary); color:#fff;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase}
+  .mine button.ghost{background:transparent; color:var(--primary)}
+  .mine .msg{min-height:1em; font-size:12.5px; color:var(--muted)}
+  .mine .msg.err{color:var(--error)}
 </style>
 </head>
 <body>
@@ -146,6 +164,11 @@
 </div>
 
 <main>
+  <section class="mine" id="my-tasks" hidden>
+    <h2>My tasks</h2>
+    <div id="my-lists"></div>
+    <span class="msg" id="my-msg" role="status"></span>
+  </section>
   <div class="stage">
     <div class="head">
       <h2>Projects</h2>
@@ -176,6 +199,106 @@
 
 <script src="/assets/origins.js"></script>
 <script src="/assets/page.js"></script>
+<script src="/assets/work.js"></script>
+<script>
+  // My tasks: the parts I hold, what is offered to me, what waits for my sign-off, what was sent back to me, and
+  // the parts nobody holds that I could take, across my projects, as the platform lists them (GET /work/mine).
+  (function () {
+    var w = aiscWork;
+    var enc = encodeURIComponent;
+    var box = document.getElementById('my-tasks');
+    var lists = document.getElementById('my-lists');
+    var said = document.getElementById('my-msg');
+
+    function boardLink(row) {
+      var a = w.el('a', 'Work board');
+      a.href = '/work.html?project=' + enc(row.project);
+      return a;
+    }
+
+    function act(path, done) {
+      return aisc.call(path, {method: 'POST'}).then(function (answer) {
+        if (!answer.ok) { w.say(said, answer.message, true); return; }
+        w.say(said, done);
+        load();
+      });
+    }
+
+    function line(row, words) {
+      var li = w.el('li');
+      li.appendChild(w.el('span', words));
+      li.appendChild(w.el('span', row.project_name + ', ' + row.kind_label, 'where'));
+      return li;
+    }
+
+    var SECTIONS = [
+      ['held', 'Parts I hold', function (row) {
+        var li = line(row, row.label + (row.since ? ', since ' + w.when(row.since) : ''));
+        li.appendChild(boardLink(row));
+        return li;
+      }],
+      ['offered', 'Offered to me', function (row) {
+        var li = line(row, row.label + ', offered by ' + row.holder_name);
+        var path = w.partPath(row.project, row.kind, row.subject, row.part);
+        var yes = w.button('Accept'), no = w.button('Decline', true);
+        yes.addEventListener('click', function () { act(path + '/accept', 'You hold ' + row.label + '.'); });
+        no.addEventListener('click', function () { act(path + '/decline', row.label + ' stays with ' + row.holder_name + '.'); });
+        li.appendChild(yes); li.appendChild(no);
+        return li;
+      }],
+      ['to_sign', 'Waiting for my sign-off', function (row) {
+        var li = line(row, 'Submitted by ' + row.submitted_by_name + ', ' + w.when(row.submitted_at));
+        var a = w.el('a', 'Sign off');
+        a.href = w.signPage(row.project, row.kind, row.subject);
+        li.appendChild(a);
+        return li;
+      }],
+      ['sent_back', 'Sent back to me', function (row) {
+        var li = line(row, row.by + ' sent it back: ' + row.reason);
+        li.appendChild(boardLink(row));
+        return li;
+      }],
+      ['takeable', 'Parts nobody holds that I could take', function (row) {
+        var li = line(row, row.label);
+        var take = w.button('Take');
+        take.addEventListener('click', function () {
+          act(w.partPath(row.project, row.kind, row.subject, row.part) + '/take', 'You hold ' + row.label + '.');
+        });
+        li.appendChild(take);
+        return li;
+      }]
+    ];
+
+    function render(mine) {
+      lists.textContent = '';
+      var any = false;
+      SECTIONS.forEach(function (section) {
+        var rows = mine[section[0]] || [];
+        if (!rows.length) return;
+        any = true;
+        lists.appendChild(w.el('h3', section[1]));
+        var ul = w.el('ul');
+        rows.forEach(function (row) { ul.appendChild(section[2](row)); });
+        lists.appendChild(ul);
+      });
+      if (!any) lists.appendChild(w.el('p', 'Nothing waits for you: you hold no part and no task waits for your sign-off.'));
+      box.hidden = false;
+    }
+
+    function load() {
+      return aisc.call('/api/work/mine').then(function (answer) {
+        if (!answer.ok) {
+          lists.textContent = '';
+          w.say(said, 'Your tasks could not be read: ' + answer.message, true);
+          box.hidden = false;
+          return;
+        }
+        render(answer.data);
+      });
+    }
+    load();
+  })();
+</script>
 <script>
   var list = document.getElementById('projects');
   var dialog = document.getElementById('dialog');

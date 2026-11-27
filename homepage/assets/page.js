@@ -6,7 +6,7 @@
 // aisc.call(path, {method, body, file}) calls with the person's sign-in and always settles, never rejects, on
 // {ok, status, data, message}: data is the JSON answer or null (empty, or not JSON, as Caddy's 502 while
 // the platform is down); message is null when ok, else the platform's own words (FastAPI's detail, a
-// sentence or a list of field errors) or 'Refused (HTTP n)'. Status 0 is nothing answering. body is sent as
+// sentence, a list of field errors or a refusal's message) or 'Refused (HTTP n)'. Status 0 is nothing answering. body is sent as
 // JSON; file (a File or Blob, for an upload) is sent as it is, as application/octet-stream.
 // A call that fails because the person is no longer signed in (signed out in another tab, or the session
 // ended) does not settle: the gateway sent it on to the sign-in on another origin, which fetch refuses as if
@@ -31,6 +31,8 @@
   function message(status, data) {
     var detail = data && data.detail;
     if (typeof detail === 'string' && detail) return detail;
+    // the platform's refusal object (who holds a part, a task in check): its message says it
+    if (detail && typeof detail.message === 'string' && detail.message) return detail.message;
     if (Array.isArray(detail) && detail.length) {
       return detail.map(function (e) { return e && e.msg ? e.msg : String(e); }).join('; ');
     }

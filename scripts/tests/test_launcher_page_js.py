@@ -115,6 +115,14 @@ def test_a_refusal_is_in_the_platforms_words(tmp_path):
                              "message": "no project 'demo'"}
 
 
+def test_a_refusal_object_is_said_in_its_message(tmp_path):
+    """The platform's refusal (docs/specs/who-does-what.md, section 5) is an object whose message names the
+    thing, the person and the time: the page says that message."""
+    refusal = {"code": "not_holder", "message": "Bob holds this part since 27 Nov 10:40.", "current": {}}
+    out = call(tmp_path, {"status": 409, "body": json.dumps({"detail": refusal})})
+    assert out["answer"]["message"] == "Bob holds this part since 27 Nov 10:40."
+
+
 def test_field_errors_are_listed(tmp_path):
     detail = [{"loc": ["body", "name"], "msg": "Field required", "type": "missing"},
               {"loc": ["body", "slug"], "msg": "String should match pattern", "type": "string_pattern_mismatch"}]

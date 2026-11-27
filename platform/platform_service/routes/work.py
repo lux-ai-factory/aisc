@@ -21,7 +21,7 @@ from platform_service.ledger import outbox
 from aisc_identity.access import Refused
 
 from platform_service.routes.admission import admitted
-from platform_service.work import checks, holds, presets, staffing
+from platform_service.work import board, checks, holds, mapping, presets, staffing
 from platform_service.work.kinds import KINDS, LABELS
 
 router = APIRouter()
@@ -102,12 +102,16 @@ class TakeOverIn(BaseModel):
         return value.strip()
 
 
-def _admit(project: str, caller: Caller, needed: str) -> str:
-    """The project's pid, or the refusal: 404 for a stranger, 403 for too low a rank."""
+def _admitted(project: str, caller: Caller, needed: str):
+    """The project as admitted (pid, slug, role), or the refusal: 404 for a stranger, 403 for too low a rank."""
     try:
-        return admitted(project, caller, needed).pid
+        return admitted(project, caller, needed)
     except Refused as refused:
         raise HTTPException(status_code=refused.status, detail=refused.message) from None
+
+
+def _admit(project: str, caller: Caller, needed: str) -> str:
+    return _admitted(project, caller, needed).pid
 
 
 def _name(caller: Caller) -> str:
@@ -196,9 +200,12 @@ def switch_holding(project: str, body: SwitchIn, caller: Annotated[Caller, Depen
 @router.get("/projects/{project}/work/rules")
 def read_rules(project: str, caller: Annotated[Caller, Depends(caller_dependency)]):
     """How many people check each kind of task, in the order of the steps."""
-    with db.project_connection(_admit(project, caller, "viewer")) as conn:
+    seen = _admitted(project, caller, "viewer")
+    with db.project_connection(seen.pid) as conn:
         found = staffing.rules(conn)
-    return {"rules": [{"kind": r.kind, "label": LABELS[r.kind], "checkers": r.checkers, "set_by": r.set_by,
+    return {"may_change": seen.role == "owner",
+            "presets": [{"name": name, "checkers": presets.checkers(name)} for name in presets.NAMES],
+            "rules": [{"kind": r.kind, "label": LABELS[r.kind], "checkers": r.checkers, "set_by": r.set_by,
                        "set_at": r.set_at.isoformat() if r.set_at else None} for r in found]}
 
 
@@ -226,17 +233,56 @@ def apply_preset(project: str, body: PresetIn, caller: Annotated[Caller, Depends
 def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, Depends(caller_dependency)]):
     """The task: its round and state, the checkers it needs, its parts and who holds them, and the doers and
     sign-offs of its current round."""
-    with db.project_connection(_admit(project, caller, "viewer")) as conn:
+    seen = _admitted(project, caller, "viewer")
+    with db.project_connection(seen.pid) as conn:
         try:
             task = checks.view(conn, kind=_kind(kind), subject=subject)
         except checks.NoSuchTask:
             raise HTTPException(status_code=404, detail="No such task.") from None
+        signs = board.may_sign(conn, kind=kind, subject=subject, person_subject=caller.subject)
         parts = conn.execute("select p.key, p.label, h.holder_subject, h.holder_name, h.since, h.offered_to_subject"
                              "  from work.part p join work.task t on t.id = p.task"
                              "  left join work.hold h on h.task = p.task and h.part = p.key"
                              " where t.kind = %s and t.subject = %s order by p.key", (kind, subject)).fetchall()
         holding = _holding(conn)
-    return {"kind": kind, "subject": subject, **task, "holding": holding, "parts": [dict(p) for p in parts]}
+    return {"kind": kind, "kind_label": LABELS[kind], "subject": subject, **task, "holding": holding,
+            "parts": [{**p, "yours": p["holder_subject"] == caller.subject,
+                       **board.part_actions(task["state"], p["holder_subject"], person_subject=caller.subject,
+                                            role=seen.role)} for p in parts],
+            "may": {**board.may(seen.role), "sign": signs},
+            "page": mapping.page_of(kind, seen.slug, subject)}
+
+
+@router.get("/projects/{project}/work")
+def read_board(project: str, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """The project's work board: every task and part, its holder and since when, its state; what the caller
+    may do on it; and, for an owner, who a part can be given to."""
+    seen = _admitted(project, caller, "viewer")
+    with db.project_connection(seen.pid) as conn:
+        found = board.tasks(conn, person_subject=caller.subject, role=seen.role)
+        holding = _holding(conn)
+    give_to = ([{"subject": m["subject"], "name": m["email"] or m["subject"], "role": m["role"]}
+                for m in db.members(seen.pid) if m["role"] in board.WRITERS] if seen.role == "owner" else [])
+    return {"project": seen.slug, "you": caller.subject, "role": seen.role, "holding": holding, "may": board.may(seen.role),
+            "give_to": give_to, "tasks": found}
+
+
+@router.get("/work/mine")
+def read_mine(caller: Annotated[Caller, Depends(caller_dependency)]):
+    """My tasks, across every project the caller is a member of: the parts they hold, the parts offered to
+    them, the tasks waiting for their sign-off, the tasks sent back to them, and the parts nobody holds that
+    they could take. A project whose database is not there is left out."""
+    found: dict[str, list] = {"held": [], "offered": [], "to_sign": [], "sent_back": [], "takeable": []}
+    for project in db.projects_for(caller.subject):
+        try:
+            with db.project_connection(project["pid"]) as conn:
+                lists = board.mine(conn, person_subject=caller.subject, role=project["role"])
+        except db.ProjectDatabaseGone:
+            continue
+        for name, rows in lists.items():
+            found[name] += [{"project": project["slug"], "project_name": project["name"],
+                             "kind_label": LABELS.get(row["kind"], row["kind"]), **row} for row in rows]
+    return found
 
 
 @router.post(_TASK + "/submit")

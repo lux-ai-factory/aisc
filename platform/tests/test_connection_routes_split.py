@@ -126,6 +126,9 @@ ROUTES = {
     ('POST', '/projects/{project}/work/preset'),
     ('POST', '/projects/{project}/work/{kind}/{subject}/submit'),
     ('POST', '/projects/{project}/work/{kind}/{subject}/sign'),
+    # the work pages: a project's board and one person's own list
+    ('GET', '/projects/{project}/work'),
+    ('GET', '/work/mine'),
 }
 
 ROUTE_MODULE = Path(platform_service.__file__).parent / "routes/connections.py"

@@ -57,3 +57,20 @@ ROWS: dict[str, Row] = {
         submits=Where(f"{CONTROL_OBJECTIVES}/api/app.py", "submit_register_form", "submit_task("),
     ),
 }
+
+
+#: the page that shows a task's content, under the apps' origin, so a checker reads what they sign
+PAGES: dict[str, str] = {
+    "describe_system": "/qualification/p/{project}/system",
+    "fill_checklist": "/controls/p/{project}/submissions/{subject}",
+    "rate_risks": "/control-objectives/p/{project}/registers/{subject}",
+}
+
+
+def page_of(kind: str, project: str, subject: str) -> str | None:
+    """The address of the page showing the content of task `kind`/`subject` in `project` (its handle), or None
+    for a kind not held in this version."""
+    from urllib.parse import quote
+
+    template = PAGES.get(kind)
+    return template.format(project=quote(project, safe=""), subject=quote(subject, safe="")) if template else None

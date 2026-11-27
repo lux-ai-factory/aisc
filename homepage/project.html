@@ -275,6 +275,11 @@
       <!-- every project's evaluation tasks: an admin's only (Caddy's admin gate refuses the rest) -->
       <a id="inspect-flower" class="admin-only" hidden data-origin="engine" data-path="/flower/">Background tasks</a>
       <span class="sep member-only" hidden></span>
+      <!-- who holds which part of each task, and how many people check each kind -->
+      <span class="group member-only" hidden>Work</span>
+      <a id="work-board" class="member-only" hidden>Work board</a>
+      <a id="work-rules" class="member-only" hidden>Who does what</a>
+      <span class="sep member-only" hidden></span>
       <span class="group member-only" hidden>Logs</span>
       <a id="activity-log" class="member-only" hidden>Activity log</a>
       <span class="sep member-only" hidden></span>
@@ -411,6 +416,8 @@
       // The diagrams open on one page for this project's database and the shared one.
       document.getElementById('inspect-schema').href = '/inspect/schema/?project=' + encodeURIComponent(p.pid);
       document.getElementById('activity-log').href = '/logs.html?project=' + encodeURIComponent(slug);
+      document.getElementById('work-board').href = '/work.html?project=' + encodeURIComponent(slug);
+      document.getElementById('work-rules').href = '/rules.html?project=' + encodeURIComponent(slug);
       [].forEach.call(document.querySelectorAll('#manage .member-only'), function (el) { el.hidden = false; });
       if (window.aiscBeacon) window.aiscBeacon(slug, 'page.opened', {page: '/p/' + slug});
       if (a.admin || a.role === 'owner') {      // an owner decides which internal hosts connections reach
