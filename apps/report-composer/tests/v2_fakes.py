@@ -206,6 +206,13 @@ def _v2_types() -> list[dict]:
         "include_archived": _p({"type": "boolean"}, "Include archived", "Also lists amendments whose submission is "
                                "archived.", more=True),
     }, {"include_archived": False}, description="The amendments made to the card and its checklists."))
+    out.append(_type("provider_evidence", "Provider evidence", {
+        "evidence": _p({"type": "string", "maxLength": 200}, "Evidence", "What the evidence is."),
+        "decision": _p({"enum": ["checked", "partly_repeated", "mentioned"]}, "What LIST did with it",
+                       "Checked, partly repeated or only mentioned.",
+                       **{"x-aisc-enum-labels": {"checked": "Checked by LIST", "partly_repeated": "Partly repeated by LIST",
+                                                 "mentioned": "Results only mentioned, not checked by LIST"}}),
+    }, {"objectives": [], "decision": "mentioned"}, description="Evidence handed in by the provider."))
     # the runs of the report's period
     out.append(_type("test_runs", "Test runs", {
         "detail": _p({"enum": ["summary", "full"]}, "Detail", "One line per run, or each tool.",

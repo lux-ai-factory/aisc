@@ -88,3 +88,14 @@ def test_a_built_in_exports_as_a_file(client_v2, auth):
     assert r.status_code == 200
     doc = r.json()
     assert (doc["format"], doc["version"], doc["name"]) == ("aisc-report-preset", 2, "Summary")
+
+
+@pytest.mark.parametrize("level", [2, 3, 4])
+def test_provider_evidence_is_a_chapter_of_its_own_between_the_coverage_and_the_tests_by_list(client_v2, auth, level):
+    blocks = _builtins(client_v2, auth)[level]["blocks"]
+    types = [b["block_type"] for b in blocks]
+    at = types.index("provider_evidence")
+    assert blocks[at - 1]["block_type"] == "chapter"
+    assert blocks[at - 1]["options"]["title"] == "Evidence from the provider"
+    assert "summary_coverage" in types[:at - 1] and "test_results" not in types[:at]
+    assert blocks[at + 1]["block_type"] == "chapter"     # the tests by LIST start their own chapter right after

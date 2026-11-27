@@ -70,6 +70,17 @@
     {
       "block_type": "chapter",
       "options": {
+        "title": "Evidence from the provider",
+        "intro": "Evidence handed in by the organisation behind the product, for objectives that the tests by LIST do not cover. It is not a test carried out by LIST: each item says how and when it was produced, by whom, and whether LIST checked it, repeated part of it or only mentions the results."
+      }
+    },
+    {
+      "block_type": "provider_evidence",
+      "options": {}
+    },
+    {
+      "block_type": "chapter",
+      "options": {
         "title": "Evidence"
       }
     },
