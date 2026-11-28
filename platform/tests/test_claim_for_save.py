@@ -28,6 +28,12 @@ def holding_on(dsn, project):
                      " on conflict (name) do update set enabled = true")
 
 
+def holding_off(dsn, project):
+    """A project that has holding off (a new one starts with it on)."""
+    with project_db(dsn, project) as conn:
+        conn.execute("update work.setting set enabled = false where name = 'holds'")
+
+
 def claim(conn, who, where=WHERE):
     conn.execute("select work.claim_for_save(%s, %s, %s, %s, %s, %s)", (*where, *who))
 
@@ -45,6 +51,7 @@ def tasks(dsn, project):
 
 
 def test_while_holding_is_off_a_save_neither_takes_nor_refuses(dsn, project):
+    holding_off(dsn, project)
     with project_db(dsn, project, role="controls_rw") as conn:
         claim(conn, ANNA)
         claim(conn, LUCA)
@@ -129,6 +136,7 @@ def test_an_app_cannot_switch_holding_itself(dsn, project):
 
 @pytest.mark.parametrize("role", ["qualification_rw", "controls_rw", "control_objectives_rw"])
 def test_an_app_reads_whether_holding_is_on(dsn, project, role):
+    holding_off(dsn, project)
     with project_db(dsn, project, role=role) as conn:
         assert conn.execute("select work.holds_on()").fetchone()[0] is False
     holding_on(dsn, project)

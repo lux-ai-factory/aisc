@@ -57,13 +57,18 @@ def provision(base_dsn: str, pid: str | UUID) -> str:
     up to date. Safe to call again: that is how existing projects get theirs.
 
     `base_dsn` is the platform database as platform_migrator (db.migrate_dsn()): only platform_owner may
-    create databases, and the template is applied as it."""
+    create databases, and the template is applied as it.
+
+    A database made by this call starts with holding on (work.setting): the pages say who holds a part, so a
+    new project holds parts from its first save. An existing project keeps the setting it has."""
     name = database_name(pid)
+    made = False
     with psycopg.connect(base_dsn, autocommit=True) as conn:
         exists = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone()
         if not exists:
             try:
                 conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+                made = True
             except errors.DuplicateDatabase:
                 pass  # another instance made it between the check and here
         # the role the platform's requests use connects to it (the template gives it its rows)
@@ -71,7 +76,17 @@ def provision(base_dsn: str, pid: str | UUID) -> str:
     with psycopg.connect(make_conninfo(base_dsn, dbname=name)) as conn:
         migrate(conn, TEMPLATE, TRACKING_TABLE)
         sync_platform_actions(conn)
+        if made:
+            switch_holding_on(conn)
     return name
+
+
+def switch_holding_on(conn) -> None:
+    """Holding on in a database just made; a template before work.setting (0044) has no switch to set."""
+    if conn.execute("SELECT to_regclass('work.setting')").fetchone()[0] is None:
+        return
+    with conn.transaction():
+        conn.execute("INSERT INTO work.setting (name, enabled) VALUES ('holds', true) ON CONFLICT DO NOTHING")
 
 
 def sync_platform_actions(conn) -> None:

@@ -213,6 +213,8 @@ def _v2_types() -> list[dict]:
                        **{"x-aisc-enum-labels": {"checked": "Checked by LIST", "partly_repeated": "Partly repeated by LIST",
                                                  "mentioned": "Results only mentioned, not checked by LIST"}}),
     }, {"objectives": [], "decision": "mentioned"}, description="Evidence handed in by the provider."))
+    out.append(_type("who_did_what", "Who did what", {}, {},
+                     description="Per task and round, who did the work and who agreed or sent it back."))
     # the runs of the report's period
     out.append(_type("test_runs", "Test runs", {
         "detail": _p({"enum": ["summary", "full"]}, "Detail", "One line per run, or each tool.",

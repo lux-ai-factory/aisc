@@ -7,7 +7,7 @@ GROUPS: list[tuple[str, tuple[str, ...]]] = [
                                            "provider_evidence")),
     ("Tests run", ("test_runs",)),
     ("Results", ("superset_exports", "test_results", "dashboard_chart", "chart")),
-    ("Summary", ("key_figures", "changes_since")),
+    ("Summary", ("key_figures", "changes_since", "who_did_what")),
     ("Document", ("cover", "chapter", "free_text", "appendix")),
 ]
 

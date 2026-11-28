@@ -36,6 +36,13 @@ def test_the_palette_is_grouped(client_v2, auth):
     assert [b["data-add"] for b in tests_run.find_all("button")] == ["test_runs"]
 
 
+def test_who_did_what_is_offered_under_summary(client_v2, auth):
+    lay = new_layout(client_v2, auth, name="W")
+    groups = {g.find("h3").get_text(strip=True): [b["data-add"] for b in g.find_all("button")]
+              for g in _editor(client_v2, auth, lay["id"]).select("[data-palette] .palette-group")}
+    assert "who_did_what" in groups["Summary"]
+
+
 def test_the_toolbar_has_name_index_and_numbering_and_no_version(client_v2, auth):
     lay = new_layout(client_v2, auth, name="T", show_index=False)
     tb = _editor(client_v2, auth, lay["id"]).find(class_="toolbar")

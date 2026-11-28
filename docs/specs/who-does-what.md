@@ -85,9 +85,10 @@ you." The page keeps the typed text.
 A save on a task in check is refused with `not_final`: the content of a submitted task does not change.
 
 **A switch per project.** Holding is on or off per project, in `work.setting`. While it is off,
-`claim_for_save` neither takes nor refuses, so the project works as before. It is off for existing projects and,
-in this version, for new ones; an owner turns it on (`PUT /projects/{p}/work/holds` with `{"on": true}`, event
-`work.holds_switched`). It becomes on by default once the pages show who holds a part.
+`claim_for_save` neither takes nor refuses, so the project works as before. It is on by default: a new project
+starts with holding on, since the pages show who holds a part. An existing project keeps the setting it had (off
+unless an owner turned it on). An owner switches it (`PUT /projects/{p}/work/holds` with `{"on": true}` or
+`{"on": false}`, event `work.holds_switched`).
 
 **Who did the work.** Holds say who holds a part now; a release deletes the row and a take-over overwrites it. So
 every save that passes the check also records its person in `work.doer (task, round, part, person_subject,
