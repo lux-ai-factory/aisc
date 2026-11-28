@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from . import anchor as ledger_anchor
-from . import builtin_reports, db, declared_charts, evidence_links, layouts
+from . import authorship, builtin_reports, db, declared_charts, evidence_links, layouts
 from . import selection as data_selection
 from . import templates as looks
 from .errors import ApiError, fail_on
@@ -68,6 +68,15 @@ def _sent_options(block: dict) -> dict:
     return options
 
 
+def _sent_block(block: dict, written) -> dict:
+    """A block as sent, with who last changed each of its texts when any is known (authorship.py)."""
+    out = {"instance_id": block["instance_id"], "block_type": block["block_type"], "options": _sent_options(block)}
+    stamps = authorship.for_renderer(written, block["instance_id"])
+    if stamps:
+        out["written"] = stamps
+    return out
+
+
 def snapshot_of(project, layout, mode, caller, template=None, *, system_id, card_revision, pinned_at,
                 selection=None, document_id=None, coverage_links=(), declared_charts=None) -> dict:
     """What the renderer is sent: the layout, and the data it covers (the anchor version and the
@@ -79,8 +88,7 @@ def snapshot_of(project, layout, mode, caller, template=None, *, system_id, card
     snap = {"snapshot_version": 3, "project_id": project["pid"], "system_id": system_id,
             "card_revision": card_revision, "pinned_at": pinned_at.isoformat(),
             "layout": {"id": layout["id"], "name": layout["name"], "revision": layout["revision"]},
-            "blocks": [{"instance_id": b["instance_id"], "block_type": b["block_type"], "options": _sent_options(b)}
-                       for b in layout["blocks"]],
+            "blocks": [_sent_block(b, layout.get("written")) for b in layout["blocks"]],
             "mode": mode, "requested_by": requested_by(caller),
             "document": snapshot_document(layout, document_id),
             "coverage_links": list(coverage_links),

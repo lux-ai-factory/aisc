@@ -179,3 +179,34 @@ def test_e2e_v2_preset_coverage_draft_pdf_and_docx(e2e, auth, full_bed):
         assert snap["document"]["id"] == rid and snap["coverage_links"] == links
     listed = c.get(f"/api/p/mike/layouts/{lay['id']}/reports", headers=mia).json()
     assert sorted(x["format"] for x in listed) == ["docx", "pdf"]
+
+
+def test_e2e_v2_each_commentary_in_the_report_names_who_wrote_it(e2e, auth, full_bed):
+    """Anna writes commentary A and saves; Luca writes commentary B, leaves A as it was, and saves; the PDF made by
+    the real renderer prints "Written by Anna" under A and "Written by Luca" under B."""
+    full_bed.psql("platform", "INSERT INTO core.project_member (project_id, subject, email, role) SELECT"
+                              f" '{IDS['M']}', 'luca', 'luca@localhost', 'editor' WHERE NOT EXISTS (SELECT 1 FROM"
+                              f" core.project_member WHERE project_id = '{IDS['M']}' AND subject = 'luca')")
+    c, anna, luca = e2e, auth("mia", username="Anna"), auth("luca", username="Luca")
+    a = {"instance_id": "40000000-0000-4000-8000-0000000000a1", "block_type": "ai_card",
+         "options": {"commentary": "COMMENTARYA reviewed by the first editor."}}
+    r = c.post("/api/p/mike/layouts", json={"name": "Two writers", "blocks": [a]}, headers=anna)
+    assert r.status_code == 201, r.text[:800]
+    lay = r.json()
+    b = {"instance_id": "40000000-0000-4000-8000-0000000000b2", "block_type": "free_text",
+         "options": {"text": "Free words.", "commentary": "COMMENTARYB added by the second editor."}}
+    body = {k: lay[k] for k in ("name", "template_id", "revision")}
+    r = c.put(f"/api/p/mike/layouts/{lay['id']}", json={**body, "blocks": lay["blocks"] + [b]}, headers=luca)
+    assert r.status_code == 200, r.text[:800]
+    r = c.post(f"/api/p/mike/layouts/{lay['id']}/reports", json={"format": "pdf", "system_id": IDS["M_V2"]},
+               headers=luca)
+    assert r.status_code == 201, r.text[:800]
+    pdf = c.get(f"/api/p/mike/reports/{r.json()['id']}/download", headers=luca)
+    from pypdf import PdfReader
+
+    words = " ".join(" ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages).split())
+    date = FIXED_NOW.strftime("%Y-%m-%d")
+    after_a = words[words.index("COMMENTARYA"):words.index("Free words.")]
+    after_b = words[words.index("COMMENTARYB"):]
+    assert f"Written by Anna, {date}" in after_a and "Luca" not in after_a
+    assert after_b.split("Written by ")[1].startswith(f"Luca, {date}")

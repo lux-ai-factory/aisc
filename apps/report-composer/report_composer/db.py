@@ -15,6 +15,8 @@ from aisc_identity import card_lock
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from . import authorship
+
 
 #: seconds a connection attempt may take: psycopg has no limit of its own, so a server that accepts and
 #: never answers would hold the request (or a migration) forever
@@ -102,6 +104,9 @@ def get_layout(conn, layout_id, for_update=False, builtin_ok=False) -> dict | No
     row["blocks"] = [dict(b) for b in conn.execute(
         "SELECT instance_id::text AS instance_id, block_type, options FROM report_composer.layout_block"
         " WHERE layout_id = %s ORDER BY position", (lid,)).fetchall()]
+    kept = conn.execute("SELECT written FROM report_composer.layout_revision WHERE layout_id = %s AND revision = %s",
+                        (lid, row["revision"])).fetchone()
+    row["written"] = (kept or {}).get("written") or {}     # who last changed each text (authorship.py)
     return row
 
 
@@ -112,7 +117,10 @@ def _insert_blocks(conn, layout_id, blocks) -> None:
                      (layout_id, b["instance_id"], i, b["block_type"], Jsonb(b.get("options") or {})))
 
 
-def insert_layout(conn, *, template_id, name, description, blocks, who, now, settings=None, builtin_id=None) -> str:
+def insert_layout(conn, *, template_id, name, description, blocks, who, now, settings=None, builtin_id=None,
+                  by=None, written=None) -> str:
+    """A new layout and its first revision. `by` ({"sub", "name"}) wrote its texts; `written` gives the stamps
+    instead (a duplicate's); with neither its texts name nobody."""
     s = {**DEFAULT_SETTINGS, **(settings or {})}
     row = conn.execute(
         "INSERT INTO report_composer.layout (template_id, name, description, created_at,"
@@ -121,7 +129,7 @@ def insert_layout(conn, *, template_id, name, description, blocks, who, now, set
         (template_id, name, description, now, who, now, who, s["show_index"],
          s["numbering"], builtin_id)).fetchone()
     _insert_blocks(conn, row["id"], blocks)
-    keep_revision(conn, row["id"], now)
+    keep_revision(conn, row["id"], now, by=by, written=written)
     return row["id"]
 
 
@@ -142,17 +150,26 @@ def builtin_record(conn, builtin_id) -> str | None:
     return row["id"] if row else None
 
 
-def keep_revision(conn, layout_id, now) -> None:
-    """The layout's revision as saved, kept for good (layout_revision is append-only)."""
+def keep_revision(conn, layout_id, now, by=None, written=None) -> None:
+    """The layout's revision as saved, kept for good (layout_revision is append-only), with who last changed
+    each of its texts: `by` for the texts that differ from the previous revision, the earlier stamp for the
+    others (authorship.stamps), or `written` as given."""
     from .ledger import layout_state
 
-    state = layout_state(get_layout(conn, layout_id, builtin_ok=True))
-    conn.execute("INSERT INTO report_composer.layout_revision (layout_id, revision, state, saved_at)"
-                 " VALUES (%s, %s, %s, %s)", (layout_id, state["revision"], Jsonb(state), now))
+    layout = get_layout(conn, layout_id, builtin_ok=True)
+    state = layout_state(layout)
+    if written is None:
+        prev = conn.execute("SELECT state, written FROM report_composer.layout_revision WHERE layout_id = %s"
+                            " ORDER BY revision DESC LIMIT 1", (layout_id,)).fetchone()
+        written = authorship.stamps(prev["state"].get("blocks") or [] if prev else [],
+                                    prev["written"] if prev else {}, layout["blocks"], by, now.isoformat())
+    conn.execute("INSERT INTO report_composer.layout_revision (layout_id, revision, state, saved_at, written)"
+                 " VALUES (%s, %s, %s, %s, %s)", (layout_id, state["revision"], Jsonb(state), now, Jsonb(written)))
 
 
 def update_layout(conn, layout_id, *, based_on, name, description, template_id, blocks, who,
-                  now, settings) -> int | None:
+                  now, settings, by=None) -> int | None:
+    """The layout saved as its next revision; `by` ({"sub", "name"}) is stamped on the texts it changed."""
     row = conn.execute(
         "UPDATE report_composer.layout SET revision = revision + 1, name = %s, description = %s,"
         " template_id = %s, updated_at = %s, updated_by = %s, show_index = %s, numbering = %s"
@@ -163,7 +180,7 @@ def update_layout(conn, layout_id, *, based_on, name, description, template_id, 
         return None
     conn.execute("DELETE FROM report_composer.layout_block WHERE layout_id = %s", (layout_id,))
     _insert_blocks(conn, layout_id, blocks)
-    keep_revision(conn, layout_id, now)
+    keep_revision(conn, layout_id, now, by=by)
     return row["revision"]
 
 

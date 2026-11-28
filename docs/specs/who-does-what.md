@@ -186,6 +186,11 @@ names the thing as the page labels it, the person and the time; never a generic 
    records it was built from."
 5. **Who did what.** One block: per task and part, the doers, the checkers with their dates, "no check required"
    where the rule was 0, and parts taken over, with the reason.
+6. **Who wrote each text.** Every text written in the report editor (a section's commentary, a free text, a
+   chapter's introduction, a tool's commentary in Exported results) prints "Written by {name}, {date}" under it:
+   the person who last changed that text and when, stamped when the layout is saved and kept with its revision.
+   A text left unchanged keeps its earlier stamp; a text written before stamps were kept, or brought in from a
+   layout file, names nobody. Chart comments and plots saved for the report keep their own author and date.
 
 ## 7. Pages
 

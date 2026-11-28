@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from . import builtin_layouts, builtin_reports, db, declared_charts, evidence_links, layouts, ledger, presets, preview_with, reports
+from . import authorship, builtin_layouts, builtin_reports, db, declared_charts, evidence_links, layouts, ledger, presets, preview_with, reports
 from . import templates as looks
 from .errors import ApiError, fail_on, refuse_lone_surrogate
 from .guards import Guarded, project_guard
@@ -37,6 +37,11 @@ def layout_view(layout: dict, project_pid: str) -> dict:
     layout = {**layout, "project_id": project_pid}
     return {k: layout[k] for k in ("id", "project_id", "name", "description", "template_id", "revision",
                                    "blocks", "created_at", "updated_at", "show_index", "numbering")}
+
+
+def _signer(g: Guarded) -> dict:
+    """Who a save stamps on the texts it changed: the subject and the name the report prints."""
+    return {"sub": g.caller.subject, "name": reports.requested_by(g.caller)}
 
 
 def _text(body: dict, name: str, *, required: bool, max_len: int) -> str:
@@ -139,8 +144,10 @@ def post_layout(request: Request, body: dict = Body(...), g: Guarded = Depends(p
     now = request.app.state.clock()
     try:
         with _project_db(request, g) as conn:
+            # a layout from a file carries texts someone else wrote: nobody is named for them
             lid = db.insert_layout(conn, template_id=template_id, name=name, description=description, blocks=blocks,
-                                   who=g.caller.subject, now=now, settings=settings)
+                                   who=g.caller.subject, now=now, settings=settings,
+                                   by=None if imported is not None else _signer(g))
             saved = db.get_layout(conn, lid)
             ledger.emit(conn, "report.layout.created", item_type="layout", item_id=lid, item_version="1",
                         details={"from": "file" if imported is not None else ("blocks" if blocks else "empty")},
@@ -197,7 +204,8 @@ def put_layout(request: Request, layout_id: str, body: dict = Body(...),
             before = ledger.layout_state(locked)
             new = db.update_layout(conn, current["id"], based_on=revision, name=name, description=description,
                                    template_id=template_id, blocks=blocks,
-                                   who=g.caller.subject, now=request.app.state.clock(), settings=settings)
+                                   who=g.caller.subject, now=request.app.state.clock(), settings=settings,
+                                   by=_signer(g))
             if new is None:
                 latest = layout_or_404(conn, layout_id)
                 raise ApiError(409, "stale_revision",
@@ -335,7 +343,10 @@ def _draft_preview(request: Request, g: Guarded, layout_id: str, body: dict) -> 
     settings = document_settings(body, current)
     blocks = _blocks(body) if body.get("blocks") is not None else current["blocks"]
     problems = _problems_for(request, g, blocks, pw)
-    draft = {**current, **settings, "blocks": blocks}
+    # the texts the editor changed name the editor, as saving the draft would
+    draft = {**current, **settings, "blocks": blocks,
+             "written": authorship.stamps(current["blocks"], current.get("written"), blocks, _signer(g),
+                                          request.app.state.clock().isoformat())}
     result = _render_preview(request, g, draft, template, pw, links)
     return {"html": reports.with_csp_meta(result.get("html") or ""), "problems": problems,
             "block_statuses": list(result.get("block_statuses") or [])}
@@ -357,12 +368,15 @@ def duplicate_layout(request: Request, layout_id: str, body: dict | None = Body(
                 name = _text(body, "name", required=True, max_len=NAME_MAX)
             else:
                 name = presets.copy_name(src["name"], db.layout_names(conn))
-            blocks = [{"instance_id": str(uuid.uuid4()), "block_type": b["block_type"], "options": b["options"]}
+            new_ids = {b["instance_id"]: str(uuid.uuid4()) for b in src["blocks"]}
+            blocks = [{"instance_id": new_ids[b["instance_id"]], "block_type": b["block_type"], "options": b["options"]}
                       for b in src["blocks"]]
             settings = {k: src[k] for k in ("show_index", "numbering")}
+            # the copy's texts keep who wrote them
             lid = db.insert_layout(conn, template_id=src["template_id"],
                                    name=name, description=src.get("description") or "", blocks=blocks,
-                                   who=g.caller.subject, now=now, settings=settings)
+                                   who=g.caller.subject, now=now, settings=settings,
+                                   written=authorship.renamed(src.get("written"), new_ids))
             saved = db.get_layout(conn, lid)
             ledger.emit(conn, "report.layout.created", item_type="layout", item_id=lid, item_version="1",
                         details={"from": "duplicate"}, content={**ledger.layout_state(saved), "source": layout_id},
