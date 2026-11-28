@@ -60,7 +60,11 @@
     var row = document.getElementById('answer-row');
     row.textContent = '';
     document.getElementById('answer').hidden = !task.may.sign;
-    if (!task.may.sign) return;
+    if (!task.may.sign) {
+      // the platform's reason, so a person shown no buttons knows why
+      if (task.may.sign_why_not) w.say(msg, task.may.sign_why_not);
+      return;
+    }
     var reason = w.el('textarea');
     reason.rows = 2; reason.maxLength = 2000; reason.placeholder = 'Why it goes back (needed to send back)';
     reason.setAttribute('aria-label', 'Why it goes back');
@@ -103,7 +107,7 @@
     doers.textContent = '';
     if (!task.doers.length) doers.appendChild(w.el('li', 'Nobody has saved on it in this round.'));
     task.doers.forEach(function (d) {
-      doers.appendChild(w.el('li', d.person_name + ' on ' + d.part + ', from ' + w.when(d.first_saved_at)));
+      doers.appendChild(w.el('li', d.person_name + ' on ' + (d.label || d.part) + ', from ' + w.when(d.first_saved_at)));
     });
     var list = document.getElementById('sign-offs');
     list.textContent = '';

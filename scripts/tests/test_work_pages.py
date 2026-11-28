@@ -203,12 +203,14 @@ def task_answer(sign=True):
     return {"kind": "fill_checklist", "kind_label": "Fill a checklist", "subject": "s1", "round": 2,
             "state": "in_check", "checkers_needed": 1, "content_hash": "c0ffee", "card_state": None,
             "submitted_by": BOB, "submitted_by_name": "Bob Rossi", "submitted_at": "2026-11-27T11:00:00+00:00",
-            "doers": [{"part": "governance", "person_subject": BOB, "person_name": "Bob Rossi",
-                       "first_saved_at": "2026-11-27T10:40:00+00:00"}],
+            "doers": [{"part": "governance", "label": "Governance", "person_subject": BOB,
+                       "person_name": "Bob Rossi", "first_saved_at": "2026-11-27T10:40:00+00:00"}],
             "sign_offs": [{"signer_subject": "carla-subject", "signer_name": "Carla Bianchi", "answer": "send_back",
                            "reason": "Say who decides", "content_hash": "bad", "card_state": None,
                            "at": "2026-11-27T10:50:00+00:00"}],
-            "holding": True, "parts": [], "may": {"take": True, "take_over": False, "sign": sign},
+            "holding": True, "parts": [],
+            "may": {"take": True, "take_over": False, "sign": sign,
+                    "sign_why_not": None if sign else "You worked on this task in this round, so someone else checks it."},
             "page": "/controls/p/demo/submissions/s1"}
 
 
@@ -221,7 +223,7 @@ def on_sign(tmp_path, body, steps=(), **answers):
 def test_the_sign_off_page_shows_the_submitted_task_its_doers_and_earlier_sign_offs(tmp_path):
     out = on_sign(tmp_path, task_answer())
     shown = text(out)
-    for said in ("Fill a checklist", "Bob Rossi", "c0ffee", "Carla Bianchi", "Say who decides", "governance"):
+    for said in ("Fill a checklist", "Bob Rossi", "c0ffee", "Carla Bianchi", "Say who decides", "Governance"):
         assert said in shown, f"{said!r} not on the page: {shown}"
     assert ["Open the submitted content", "https://launcher.example/controls/p/demo/submissions/s1"] in out["links"]
 
@@ -251,6 +253,14 @@ def test_someone_who_may_not_sign_sees_the_task_and_no_buttons(tmp_path):
     out = on_sign(tmp_path, task_answer(sign=False))
     assert "Fill a checklist" in text(out)
     assert out["buttons"] == []
+
+
+def test_the_sign_off_page_names_each_doers_part_as_its_page_labels_it(tmp_path):
+    assert "Bob Rossi on Governance" in text(on_sign(tmp_path, task_answer()))
+
+
+def test_someone_who_may_not_sign_is_told_why(tmp_path):
+    assert "You worked on this task in this round" in text(on_sign(tmp_path, task_answer(sign=False)))
 
 
 def test_the_project_page_leads_its_members_to_the_work_board_and_who_does_what(tmp_path):

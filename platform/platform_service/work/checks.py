@@ -225,8 +225,10 @@ def view(conn, *, kind: str, subject: str) -> dict:
     if row is None:
         raise NoSuchTask(f"no {kind} task about {subject}")
     task, state, round_, needed, content_hash, card_state, by_subject, by_name, at = row
-    doers = _run(conn, "select part, person_subject, person_name, first_saved_at from work.doer"
-                       " where task = %s and round = %s order by part, first_saved_at", (task, round_)).fetchall()
+    doers = _run(conn, "select d.part, p.label, d.person_subject, d.person_name, d.first_saved_at from work.doer d"
+                       "  left join work.part p on p.task = d.task and p.key = d.part"
+                       " where d.task = %s and d.round = %s order by d.part, d.first_saved_at",
+                 (task, round_)).fetchall()
     sign_offs = _run(conn, "select signer_subject, signer_name, answer, reason, content_hash, card_state, at"
                            "  from work.sign_off where task = %s and round = %s order by at, id",
                      (task, round_)).fetchall()
@@ -234,8 +236,8 @@ def view(conn, *, kind: str, subject: str) -> dict:
         "round": round_, "state": state, "checkers_needed": needed, "content_hash": content_hash,
         "card_state": card_state, "submitted_by": by_subject, "submitted_by_name": by_name,
         "submitted_at": at.isoformat() if at else None,
-        "doers": [{"part": p, "person_subject": s, "person_name": n, "first_saved_at": f.isoformat()}
-                  for p, s, n, f in doers],
+        "doers": [{"part": p, "label": label, "person_subject": s, "person_name": n,
+                   "first_saved_at": f.isoformat()} for p, label, s, n, f in doers],
         "sign_offs": [{"signer_subject": s, "signer_name": n, "answer": a, "reason": r, "content_hash": h,
                        "card_state": c, "at": t.isoformat()} for s, n, a, r, h, c, t in sign_offs],
     }

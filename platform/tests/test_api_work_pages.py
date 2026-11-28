@@ -227,6 +227,21 @@ def test_a_task_says_whether_the_caller_may_sign_it(client, as_user, team, dsn):
     assert task(client, as_user, team, BOB)["may"]["sign"] is False, "a doer of the round"
 
 
+def test_a_task_says_why_the_caller_may_not_sign_it(client, as_user, team, dsn):
+    # without a reason the sign-off page shows a task in check and no buttons, and the person cannot tell why
+    checkers(client, as_user, team, 1)
+    save(dsn, team, BOB)
+    submit(client, as_user, team, BOB)
+    assert "worked on this task in this round" in task(client, as_user, team, BOB)["may"]["sign_why_not"]
+    assert task(client, as_user, team, CAROL)["may"]["sign_why_not"] is None
+
+
+def test_a_task_names_each_doers_part_as_its_page_labels_it(client, as_user, team, dsn):
+    save(dsn, team, BOB)
+    assert [(d["part"], d["label"]) for d in task(client, as_user, team, VERA)["doers"]] == [
+        ("governance", "Governance")]
+
+
 def test_a_task_names_the_page_that_shows_its_content(client, as_user, team, dsn):
     save(dsn, team, BOB)
     assert task(client, as_user, team, VERA)["page"] == f"/controls/p/{team['slug']}/submissions/s1"

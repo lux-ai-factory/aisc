@@ -75,6 +75,25 @@ def may_sign(conn, *, kind: str, subject: str, person_subject: str) -> bool:
                 (kind, subject, person_subject, person_subject)).fetchone() is not None
 
 
+def sign_why_not(conn, *, kind: str, subject: str, person_subject: str) -> str | None:
+    """Why the person may not sign a task in check, in the words the sign-off page shows; None when they may, or
+    when the task is not in check (the page says its state)."""
+    row = _run(conn, "select t.state,"
+                     " exists (select 1 from work.doer d where d.task = t.id and d.round = t.round"
+                     "         and d.person_subject = %s),"
+                     " exists (select 1 from work.sign_off s where s.task = t.id and s.round = t.round"
+                     "         and s.signer_subject = %s and s.answer = 'agree' and s.content_hash = t.content_hash)"
+                     " from work.task t where t.kind = %s and t.subject = %s",
+               (person_subject, person_subject, kind, subject)).fetchone()
+    if row is None or row[0] != "in_check":
+        return None
+    if row[1]:
+        return "You worked on this task in this round, so someone else checks it."
+    if row[2]:
+        return "You agreed to this content already."
+    return None
+
+
 def mine(conn, *, person_subject: str, role: str) -> dict[str, list[dict]]:
     """One person's work in one project: the parts they hold, the parts offered to them, the tasks waiting for
     their sign-off, the tasks sent back to them, and the parts nobody holds that they could take."""

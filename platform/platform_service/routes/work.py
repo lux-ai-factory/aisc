@@ -240,6 +240,8 @@ def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, D
         except checks.NoSuchTask:
             raise HTTPException(status_code=404, detail="No such task.") from None
         signs = board.may_sign(conn, kind=kind, subject=subject, person_subject=caller.subject)
+        why_not = None if signs else board.sign_why_not(conn, kind=kind, subject=subject,
+                                                         person_subject=caller.subject)
         parts = conn.execute("select p.key, p.label, h.holder_subject, h.holder_name, h.since, h.offered_to_subject"
                              "  from work.part p join work.task t on t.id = p.task"
                              "  left join work.hold h on h.task = p.task and h.part = p.key"
@@ -249,7 +251,7 @@ def read_task(project: str, kind: str, subject: str, caller: Annotated[Caller, D
             "parts": [{**p, "yours": p["holder_subject"] == caller.subject,
                        **board.part_actions(task["state"], p["holder_subject"], person_subject=caller.subject,
                                             role=seen.role)} for p in parts],
-            "may": {**board.may(seen.role), "sign": signs},
+            "may": {**board.may(seen.role), "sign": signs, "sign_why_not": why_not},
             "page": mapping.page_of(kind, seen.slug, subject)}
 
 
