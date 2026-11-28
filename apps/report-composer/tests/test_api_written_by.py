@@ -105,3 +105,15 @@ def test_the_draft_preview_names_the_editor_for_the_texts_they_changed(client_v2
     assert r.status_code == 200, r.text[:500]
     assert sent_written(fake_v2) == {a["instance_id"]: {"commentary": {"by": "Anna", "at": AT}},
                                      b["instance_id"]: {"commentary": {"by": "Luca", "at": AT}}}
+
+
+def test_a_text_is_stamped_with_the_writers_display_name(client_v2, auth, fake_v2):
+    # one name per person (docs/specs/who-does-what.md, section 7): the display name first, then the user name
+    a = v2blk("ai_card", commentary="Commentary A")
+    lay = new_layout(client_v2, auth, who="alice", blocks=[a])
+    r = client_v2.put(f"/api/p/alpha/layouts/{lay['id']}", headers=auth("alice", username="anna", name="Anna Rossi"),
+                      json={"name": lay["name"], "revision": lay["revision"], "template_id": lay["template_id"],
+                            "blocks": [{**a, "options": {"commentary": "Commentary A by Anna"}}]})
+    assert r.status_code == 200, r.text[:500]
+    generate(client_v2, auth, r.json(), anna)
+    assert sent_written(fake_v2)[a["instance_id"]]["commentary"]["by"] == "Anna Rossi"

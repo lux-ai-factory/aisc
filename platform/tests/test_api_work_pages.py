@@ -127,7 +127,7 @@ def test_my_tasks_leaves_out_projects_i_am_not_in(client, as_user, team, dsn, ma
     save(dsn, team, BOB)
     outsider = str(uuid.uuid4())
     assert mine(client, as_user, outsider) == {"held": [], "offered": [], "to_sign": [], "sent_back": [],
-                                               "takeable": []}
+                                               "takeable": [], "taken_from_me": []}
 
 
 # the work board

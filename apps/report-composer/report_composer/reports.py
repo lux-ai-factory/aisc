@@ -57,7 +57,10 @@ def with_csp_meta(html: str) -> str:
 
 
 def requested_by(caller) -> str:
-    return caller.username or caller.email or caller.subject
+    """The person as every page names them: the display name, else the user name, else the email."""
+    from aisc_identity import display_name
+
+    return display_name(caller)
 
 
 def _sent_options(block: dict) -> dict:

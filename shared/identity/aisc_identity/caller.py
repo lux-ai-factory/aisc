@@ -20,6 +20,8 @@ class Caller:
     email: str | None
     username: str | None
     roles: tuple[str, ...]
+    #: the display name the identity provider gives (Keycloak's `name`: first and last name), when it has one
+    name: str | None = None
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
@@ -35,4 +37,15 @@ def caller_from_claims(claims: dict) -> Caller:
         email=claims.get("email"),
         username=claims.get("preferred_username"),
         roles=tuple(realm.get("roles") or ()),
+        name=claims.get("name"),
     )
+
+
+def display_name(caller) -> str:
+    """The one name a person is shown by: the display name, else the user name, else the email, else the subject.
+    Takes any object with the Caller's fields; a missing or blank one is skipped."""
+    for field in ("name", "username", "email", "subject"):
+        value = getattr(caller, field, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return getattr(caller, "subject", "")

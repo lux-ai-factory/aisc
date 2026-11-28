@@ -201,8 +201,9 @@
 <script src="/assets/page.js"></script>
 <script src="/assets/work.js"></script>
 <script>
-  // My tasks: the parts I hold, what is offered to me, what waits for my sign-off, what was sent back to me, and
-  // the parts nobody holds that I could take, across my projects, as the platform lists them (GET /work/mine).
+  // My tasks: the parts I hold, what is offered to me, what waits for my sign-off, what was sent back to me, the
+  // parts an owner took over from me (with the reason, until I put the line away), and the parts nobody holds that
+  // I could take, across my projects, as the platform lists them (GET /work/mine).
   (function () {
     var w = aiscWork;
     var enc = encodeURIComponent;
@@ -256,6 +257,19 @@
       ['sent_back', 'Sent back to me', function (row) {
         var li = line(row, row.by + ' sent it back: ' + row.reason);
         li.appendChild(boardLink(row));
+        return li;
+      }],
+      ['taken_from_me', 'Taken over from me', function (row) {
+        var words = row.to_name === row.by_name
+          ? row.by_name + ' took over ' + row.label + ' from you: ' + row.reason
+          : row.by_name + ' gave ' + row.label + ' to ' + row.to_name + ': ' + row.reason;
+        var li = line(row, words);
+        var away = w.button('Dismiss', true);
+        away.addEventListener('click', function () {
+          act('/api/projects/' + enc(row.project) + '/work/take-overs/' + enc(String(row.id)) + '/dismiss',
+              'Put away.');
+        });
+        li.appendChild(away);
         return li;
       }],
       ['takeable', 'Parts nobody holds that I could take', function (row) {

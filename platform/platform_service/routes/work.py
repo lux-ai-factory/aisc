@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from aisc_identity import Caller
+from aisc_identity import Caller, display_name
 from aisc_identity.fastapi import caller_dependency
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
@@ -103,11 +103,14 @@ class TakeOverIn(BaseModel):
 
 
 def _admitted(project: str, caller: Caller, needed: str):
-    """The project as admitted (pid, slug, role), or the refusal: 404 for a stranger, 403 for too low a rank."""
+    """The project as admitted (pid, slug, role), or the refusal: 404 for a stranger, 403 for too low a rank.
+    The caller's display name is kept with their membership, for the Give-to list to name them."""
     try:
-        return admitted(project, caller, needed)
+        seen = admitted(project, caller, needed)
     except Refused as refused:
         raise HTTPException(status_code=refused.status, detail=refused.message) from None
+    db.remember_name(caller.subject, _name(caller))
+    return seen
 
 
 def _admit(project: str, caller: Caller, needed: str) -> str:
@@ -115,7 +118,13 @@ def _admit(project: str, caller: Caller, needed: str) -> str:
 
 
 def _name(caller: Caller) -> str:
-    return getattr(caller, "name", None) or caller.username or caller.email or caller.subject
+    """The one name a person is shown by (aisc_identity.display_name)."""
+    return display_name(caller)
+
+
+def _member_name(member: dict) -> str:
+    """A member as the pages name them: their display name as last seen, else their email, else their subject."""
+    return member.get("name") or member["email"] or member["subject"]
 
 
 def _kind(kind: str) -> str:
@@ -136,6 +145,17 @@ def _writer(project: str, subject: str) -> dict:
 
 def _refusal(code: str, message: str, **current) -> HTTPException:
     return HTTPException(status_code=409, detail={"code": code, "message": message, "current": current})
+
+
+def not_enough_checkers_message(label: str, needed: int, available: int) -> str:
+    """Why a task cannot be submitted when too few people are left to check it, and what an owner can do."""
+    checkers = f"{needed} checker" + ("" if needed == 1 else "s")
+    if available == 0:
+        left = "everyone in the project worked on it in this round"
+    else:
+        left = f"only {available} {'person' if available == 1 else 'people'} in the project did not work on it in this round"
+    return (f"{label} needs {checkers}, and {left}. Nobody else is left to check it: an owner can add a person to"
+            " the project or lower the number of checkers.")
 
 
 def card_moved_question(now: dict, verb: str) -> str:
@@ -263,7 +283,7 @@ def read_board(project: str, caller: Annotated[Caller, Depends(caller_dependency
     with db.project_connection(seen.pid) as conn:
         found = board.tasks(conn, person_subject=caller.subject, role=seen.role)
         holding = _holding(conn)
-    give_to = ([{"subject": m["subject"], "name": m["email"] or m["subject"], "role": m["role"]}
+    give_to = ([{"subject": m["subject"], "name": _member_name(m), "role": m["role"]}
                 for m in db.members(seen.pid) if m["role"] in board.WRITERS] if seen.role == "owner" else [])
     return {"project": seen.slug, "you": caller.subject, "role": seen.role, "holding": holding, "may": board.may(seen.role),
             "give_to": give_to, "tasks": found}
@@ -274,7 +294,9 @@ def read_mine(caller: Annotated[Caller, Depends(caller_dependency)]):
     """My tasks, across every project the caller is a member of: the parts they hold, the parts offered to
     them, the tasks waiting for their sign-off, the tasks sent back to them, and the parts nobody holds that
     they could take. A project whose database is not there is left out."""
-    found: dict[str, list] = {"held": [], "offered": [], "to_sign": [], "sent_back": [], "takeable": []}
+    found: dict[str, list] = {"held": [], "offered": [], "to_sign": [], "sent_back": [], "takeable": [],
+                              "taken_from_me": []}
+    db.remember_name(caller.subject, _name(caller))
     for project in db.projects_for(caller.subject):
         try:
             with db.project_connection(project["pid"]) as conn:
@@ -292,14 +314,16 @@ def submit(project: str, kind: str, subject: str, caller: Annotated[Caller, Depe
            body: SubmitIn | None = None):
     """A doer of the current round submits the task for check: refused while someone else holds a part. When
     the card state moved since the page was drawn, the person is asked once (upstream_moved_confirm): sending
-    the submit again on the card state it names goes through."""
+    the submit again on the card state it names goes through. Refused while fewer people are left to check it
+    than its kind needs (everyone in the project who is not a doer of the round may sign)."""
     pid = _admit(project, caller, "editor")
+    members = [m["subject"] for m in db.members(pid)]
     label = LABELS[_kind(kind)]
     drawn = body.card_state.model_dump() if body and body.card_state else None
     with db.project_connection(pid) as conn, conn.transaction():
         try:
             done = checks.submit(conn, kind=kind, subject=subject, person_subject=caller.subject,
-                                 person_name=_name(caller), drawn_card_state=drawn)
+                                 person_name=_name(caller), drawn_card_state=drawn, members=members)
         except checks.NoSuchTask:
             raise HTTPException(status_code=404, detail="No such task.") from None
         except checks.NotOpen as not_open:
@@ -324,6 +348,10 @@ def submit(project: str, kind: str, subject: str, caller: Annotated[Caller, Depe
             raise HTTPException(status_code=422, detail=f"{label} cannot be submitted for check yet.") from None
         except checks.CardMoved as moved:
             raise card_moved_refusal(moved.now, "Submit") from None
+        except checks.NotEnoughCheckers as short:
+            refusal = _refusal("not_enough_checkers", not_enough_checkers_message(label, short.needed, short.available))
+            refusal.detail.update(needed=short.needed, available=short.available)
+            raise refusal from None
         _task_event(conn, "task.submitted", kind, subject, {"round": done.round,
                                                             "checkers_needed": done.checkers_needed})
         if done.state == "done":
@@ -405,7 +433,7 @@ def offer(project: str, kind: str, subject: str, part: str, body: ToIn,
     with db.project_connection(pid) as conn, conn.transaction():
         try:
             holds.offer(conn, **_where(_kind(kind), subject, part), person_subject=caller.subject,
-                        to_subject=to["subject"], to_name=to["email"] or to["subject"])
+                        to_subject=to["subject"], to_name=_member_name(to))
         except holds.NoSuchPart as gone:
             raise HTTPException(status_code=404, detail=str(gone)) from None
         except holds.NotHolder:
@@ -446,14 +474,33 @@ def decline(project: str, kind: str, subject: str, part: str,
 @router.post(_PART + "/take-over")
 def take_over(project: str, kind: str, subject: str, part: str, body: TakeOverIn,
               caller: Annotated[Caller, Depends(caller_dependency)]):
+    """An owner takes a part over, or gives it to someone else, with a reason. The take-over is kept with its
+    reason (work.take_over), in the same transaction: the former holder is told in My tasks, and the report lists
+    it."""
     pid = _admit(project, caller, "owner")
-    to = _writer(project, body.to) if body.to else {"subject": caller.subject, "email": _name(caller)}
+    to = _writer(project, body.to) if body.to else {"subject": caller.subject, "name": _name(caller), "email": None}
     with db.project_connection(pid) as conn, conn.transaction():
         try:
             before = holds.take_over(conn, **_where(_kind(kind), subject, part), to_subject=to["subject"],
-                                     to_name=to["email"] or to["subject"])
+                                     to_name=_member_name(to), by_subject=caller.subject, by_name=_name(caller),
+                                     reason=body.reason)
         except holds.NoSuchPart as gone:
             raise HTTPException(status_code=404, detail=str(gone)) from None
         _event(conn, "hold.taken_over", kind, subject, part, {"had_holder": before is not None},
                content={"reason": body.reason})
     return {"holder_subject": to["subject"], "previous_holder_subject": before.holder_subject if before else None}
+
+
+@router.post("/projects/{project}/work/take-overs/{take_over_id}/dismiss")
+def dismiss_take_over(project: str, take_over_id: int, caller: Annotated[Caller, Depends(caller_dependency)]):
+    """The person a part was taken from puts its line in My tasks away; the take-over itself stays."""
+    pid = _admit(project, caller, "viewer")
+    with db.project_connection(pid) as conn, conn.transaction():
+        try:
+            holds.dismiss(conn, take_over_id=take_over_id, person_subject=caller.subject)
+        except holds.NoSuchTakeOver:
+            raise HTTPException(status_code=404, detail="No such take-over.") from None
+        except holds.NotTakenFrom:
+            raise HTTPException(status_code=403, detail="Only the person the part was taken from puts this away.") \
+                from None
+    return {"dismissed": True}

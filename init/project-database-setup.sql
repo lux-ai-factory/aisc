@@ -69,6 +69,8 @@ WITH listed (table_name, trigger_name) AS (VALUES
     ('project.system', 'system_no_truncate'),
     ('work.sign_off', 'sign_off_is_append_only'),
     ('work.sign_off', 'sign_off_is_not_truncated'),
+    ('work.take_over', 'take_over_is_append_only'),
+    ('work.take_over', 'take_over_is_not_truncated'),
     ('qualification.card_history', 'card_history_is_append_only'),
     ('qualification.card_history', 'card_history_is_not_truncated'),
     ('qualification.qualification', 'qualification_only_latest_changes'),

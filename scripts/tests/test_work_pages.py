@@ -38,6 +38,10 @@ MINE = {
                    "reason": "Rate the data risk", "at": "2026-11-27T12:00:00+00:00"}],
     "takeable": [{"project": "demo", "project_name": "Demo", "kind": "fill_checklist",
                   "kind_label": "Fill a checklist", "subject": "s1", "part": "data", "label": "Data"}],
+    "taken_from_me": [{"project": "demo", "project_name": "Demo", "kind": "fill_checklist", "id": 7,
+                       "kind_label": "Fill a checklist", "subject": "s1", "part": "risks", "label": "Risks",
+                       "by_name": "Anna Rossi", "to_name": "Anna Rossi", "reason": "You are away this week",
+                       "at": "2026-11-27T13:00:00+00:00"}],
 }
 
 
@@ -55,6 +59,25 @@ def test_my_tasks_shows_what_i_hold_what_waits_for_my_sign_off_what_came_back_an
         assert said in shown, f"{said!r} not on the launcher: {shown}"
     assert ["Sign off", "/sign.html?project=demo&kind=describe_system&subject=card"] in out["links"]
     assert ["Work board", "/work.html?project=demo"] in out["links"]
+
+
+def test_my_tasks_tells_me_who_took_a_part_over_from_me_and_why(tmp_path):
+    shown = text(launcher(tmp_path))
+    assert "Anna Rossi took over Risks from you: You are away this week" in shown, shown
+
+
+def test_my_tasks_says_who_a_part_was_given_to_when_the_owner_gave_it_to_someone_else(tmp_path):
+    mine = {**MINE, "taken_from_me": [{**MINE["taken_from_me"][0], "to_name": "Luca Bianchi"}]}
+    shown = text(launcher(tmp_path, mine={"status": 200, "body": mine}))
+    assert "Anna Rossi gave Risks to Luca Bianchi: You are away this week" in shown, shown
+
+
+def test_a_take_over_line_is_put_away_from_my_tasks(tmp_path):
+    out = run_page(tmp_path, "index.html", answers={
+        "/api/projects": {"status": 200, "body": []}, "/api/work/mine": {"status": 200, "body": MINE},
+        "/api/projects/demo/work/take-overs/7/dismiss": {"status": 200, "body": {"dismissed": True}}},
+        steps=[{"click": "Dismiss"}])
+    assert calls(out, "POST") == [("/api/projects/demo/work/take-overs/7/dismiss", None)]
 
 
 def test_a_part_nobody_holds_is_taken_from_my_tasks(tmp_path):

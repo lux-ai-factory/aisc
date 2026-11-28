@@ -421,3 +421,68 @@ def test_a_submit_that_names_no_card_state_is_not_asked(client, as_user, team, d
     wc.card(team, "c1", V1)
     save(dsn, team, BOB)
     assert submit(client, as_user, team, BOB).status_code == 200
+
+
+# too few people left to check it
+
+@pytest.fixture
+def pair(make_project, client, as_user):
+    """A project of two people: Alice (owner) and Bob (editor)."""
+    if not wc.SUPERUSER:
+        pytest.skip("PLATFORM_TEST_SUPERUSER_URL is not set")
+    project = make_project(owner=ALICE, editors=(BOB,))
+    wc.make_tables(project)
+    wc.sql(project, 'INSERT INTO controls.submission_answer ("submissionId", "questionId", answer, score)'
+                    " VALUES ('s1', 'q1', 'yes', 4)")
+    assert client.put(f"/projects/{project['slug']}/work/holds", json={"on": True},
+                      headers=as_user(ALICE)).status_code == 200
+    return project
+
+
+def test_a_submit_nobody_is_left_to_check_is_refused_and_says_what_an_owner_can_do(client, as_user, pair, dsn):
+    checkers(client, as_user, pair, 1)
+    save(dsn, pair, BOB)
+    save(dsn, pair, ALICE, "data", "Data")
+    assert client.post(TASK.format(slug=pair["slug"]) + "/parts/data/release",
+                       headers=as_user(ALICE)).status_code == 200
+    refused = submit(client, as_user, pair, BOB)
+    assert refused.status_code == 409, refused.text
+    detail = refused.json()["detail"]
+    assert detail["code"] == "not_enough_checkers"
+    assert (detail["needed"], detail["available"]) == (1, 0)
+    message = detail["message"]
+    assert "needs 1 checker" in message and "nobody else is left" in message.lower(), message
+    assert "add a person" in message and "lower the number of checkers" in message, message
+    assert stored(dsn, pair)[0] == "open"
+    assert holders(dsn, pair) == {"governance": BOB}, "a refused submit releases nothing"
+
+
+def test_a_submit_with_fewer_people_left_than_checkers_needed_says_how_many_are_needed(client, as_user, pair, dsn):
+    checkers(client, as_user, pair, 2)
+    save(dsn, pair, BOB)
+    refused = submit(client, as_user, pair, BOB)
+    assert refused.status_code == 409, refused.text
+    detail = refused.json()["detail"]
+    assert (detail["code"], detail["needed"], detail["available"]) == ("not_enough_checkers", 2, 1)
+    assert "needs 2 checkers" in detail["message"], detail["message"]
+
+
+def test_a_submit_goes_through_once_an_owner_lowers_the_number_of_checkers(client, as_user, pair, dsn):
+    checkers(client, as_user, pair, 2)
+    save(dsn, pair, BOB)
+    assert submit(client, as_user, pair, BOB).status_code == 409
+    checkers(client, as_user, pair, 1)
+    assert submit(client, as_user, pair, BOB).status_code == 200
+    assert stored(dsn, pair)[:3] == ("in_check", 1, 1)
+
+
+def test_a_viewer_who_did_not_work_on_the_round_counts_as_a_checker(client, as_user, team, dsn):
+    # anyone in the project who is not a doer of the round signs (section 4), a viewer too
+    checkers(client, as_user, team, 4)
+    for who in (ALICE, BOB, CAROL):
+        save(dsn, team, who, who, who)
+        if who != BOB:
+            client.post(TASK.format(slug=team["slug"]) + f"/parts/{who}/release", headers=as_user(who))
+    refused = submit(client, as_user, team, BOB)
+    assert refused.status_code == 409, refused.text
+    assert (refused.json()["detail"]["needed"], refused.json()["detail"]["available"]) == (4, 2)

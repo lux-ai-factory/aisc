@@ -10,7 +10,7 @@ from importlib import import_module
 #: where each name of the package lives. Loaded on first use (PEP 562), so a module of the package that needs only
 #: the standard library (canonical) can be imported without pyjwt.
 _NAMES = {
-    "Caller": "caller", "IdentityMissing": "caller", "caller_from_claims": "caller",
+    "Caller": "caller", "IdentityMissing": "caller", "caller_from_claims": "caller", "display_name": "caller",
     "GATEWAY_TOKEN_HEADER": "headers", "token_from_headers": "headers",
     "Misconfigured": "service", "NotAuthenticated": "service", "Settings": "service",
     "caller_from_headers": "service", "settings": "service",
@@ -26,6 +26,7 @@ def __getattr__(name):
 
 __all__ = [
     "Caller",
+    "display_name",
     "GATEWAY_TOKEN_HEADER",
     "IdentityMissing",
     "Misconfigured",

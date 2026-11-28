@@ -147,7 +147,8 @@ def test_a_take_over_gives_the_part_to_the_new_person(dsn, project):
     take(dsn, project, ANNA)
     with project_db(dsn, project) as conn:
         before = holds.take_over(conn, kind="fill_checklist", subject="submission-1", part="governance",
-                                 to_subject=LUCA[0], to_name=LUCA[1])
+                                 to_subject=LUCA[0], to_name=LUCA[1], by_subject="owner",
+                                 by_name="Owner", reason="away")
     assert before.holder == ANNA[1]
     with project_db(dsn, project, role="controls_rw") as conn:
         require(conn, LUCA)
@@ -166,7 +167,8 @@ def test_a_take_over_waits_for_a_save_in_progress(dsn, project):
             conn.execute("set lock_timeout = '300ms'")
             with pytest.raises(psycopg.errors.LockNotAvailable):
                 holds.take_over(conn, kind="fill_checklist", subject="submission-1", part="governance",
-                                to_subject=LUCA[0], to_name=LUCA[1])
+                                to_subject=LUCA[0], to_name=LUCA[1], by_subject="owner",
+                                by_name="Owner", reason="away")
     finally:
         saving.rollback()
         saving.close()

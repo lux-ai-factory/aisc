@@ -33,3 +33,35 @@ def test_a_caller_without_a_subject_is_not_a_caller():
 
     with pytest.raises(IdentityMissing):
         caller_from_claims({"email": "a@b.c"})
+
+
+# One name per person (docs/specs/who-does-what.md, section 7): the display name the identity provider gives,
+# else the user name, else the email, else the subject.
+
+def test_the_display_name_is_read_from_the_claims():
+    caller = caller_from_claims({"sub": "abc", "preferred_username": "anna", "name": "Anna Rossi"})
+    assert caller.name == "Anna Rossi"
+
+
+def test_a_person_is_named_by_their_display_name_first():
+    from aisc_identity import display_name
+
+    assert display_name(caller_from_claims(
+        {"sub": "s", "email": "anna@aisc.local", "preferred_username": "anna", "name": "Anna Rossi"})) == "Anna Rossi"
+
+
+def test_without_a_display_name_the_user_name_then_the_email_then_the_subject():
+    from aisc_identity import display_name
+
+    assert display_name(caller_from_claims({"sub": "s", "email": "anna@aisc.local", "preferred_username": "anna",
+                                            "name": "  "})) == "anna"
+    assert display_name(caller_from_claims({"sub": "s", "email": "anna@aisc.local"})) == "anna@aisc.local"
+    assert display_name(caller_from_claims({"sub": "s"})) == "s"
+
+
+def test_a_caller_shaped_object_without_the_newer_fields_is_named_too():
+    from types import SimpleNamespace
+
+    from aisc_identity import display_name
+
+    assert display_name(SimpleNamespace(username="ada", subject="sub-ada")) == "ada"

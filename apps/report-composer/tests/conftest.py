@@ -251,9 +251,11 @@ def key():
 def token(key):
     import jwt
 
-    def make(subject, roles=("primary-user",), username=None, email=None):
+    def make(subject, roles=("primary-user",), username=None, email=None, name=None):
         claims = {"sub": subject, "iss": ISSUER, "exp": int(time.time()) + 300,
                   "realm_access": {"roles": list(roles)}}
+        if name:
+            claims["name"] = name
         if username is not False:
             claims["preferred_username"] = username or subject
         claims["email"] = email or f"{subject}@localhost"

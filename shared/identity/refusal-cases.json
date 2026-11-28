@@ -8,7 +8,8 @@
     {"code": "syncing", "http": 409},
     {"code": "not_final", "http": 409},
     {"code": "token_required", "http": 400},
-    {"code": "not_holder", "http": 409}
+    {"code": "not_holder", "http": 409},
+    {"code": "not_enough_checkers", "http": 409}
   ],
   "valid": [
     {

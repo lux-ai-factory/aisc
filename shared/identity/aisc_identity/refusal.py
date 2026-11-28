@@ -22,6 +22,7 @@ CODES: Mapping[str, int] = {
     "not_final": 409,              # the action marks something complete and it is not
     "token_required": 400,         # a save without a token, on a write that needs one
     "not_holder": 409,             # someone else holds the part this save writes
+    "not_enough_checkers": 409,    # fewer people are left to check the task than its kind needs
 }
 
 #: a time in UTC to the second, as `current.changed_at` gives it

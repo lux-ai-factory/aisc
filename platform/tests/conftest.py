@@ -141,12 +141,13 @@ def key():
 def token(key):
     import jwt
 
-    def make(subject, roles=("primary-user",), username=None):
+    def make(subject, roles=("primary-user",), username=None, name=None):
         return jwt.encode(
             {
                 "sub": subject,
                 "email": f"{subject}@localhost",
                 "preferred_username": username or subject,
+                **({"name": name} if name else {}),
                 "iss": ISSUER,
                 "exp": int(time.time()) + 300,
                 "realm_access": {"roles": list(roles)},
@@ -177,7 +178,8 @@ def client(monkeypatch, key):
 @pytest.fixture
 def as_user(token):
     """Headers for a caller, the way the gateway sends them."""
-    return lambda subject, roles=("primary-user",): {"Authorization": f"Bearer {token(subject, roles)}"}
+    return lambda subject, roles=("primary-user",), name=None: {
+        "Authorization": f"Bearer {token(subject, roles, name=name)}"}
 
 
 #: The owner of a test project unless a test says otherwise.

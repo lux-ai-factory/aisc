@@ -21,6 +21,7 @@ export const REFUSAL_STATUS = {
   not_final: 409, // the action marks something complete and it is not
   token_required: 400, // a save without a token, on a write that needs one
   not_holder: 409, // someone else holds the part this save writes
+  not_enough_checkers: 409, // fewer people are left to check the task than its kind needs
 } as const;
 
 export type RefusalCode = keyof typeof REFUSAL_STATUS;

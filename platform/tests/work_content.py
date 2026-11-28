@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS qualification.qualification (
     id text PRIMARY KEY, system_id uuid NOT NULL, revision int NOT NULL DEFAULT 1, "ontologyPatch" jsonb,
     "systemName" text NOT NULL DEFAULT 'S', "systemVersion" text NOT NULL DEFAULT '',
     company text NOT NULL DEFAULT '', description text NOT NULL DEFAULT '', saved_by text, amended_by text,
-    created_at timestamptz NOT NULL DEFAULT now());
+    created_at timestamptz NOT NULL DEFAULT now(), "targetUseCase" text NOT NULL DEFAULT '',
+    "targetUsers" text NOT NULL DEFAULT '', "intendedDeployers" text, system_type text, purpose text,
+    provider_term text, deployer_term text, "targetSystemTags" text[] NOT NULL DEFAULT '{}',
+    "sectorTags" text[] NOT NULL DEFAULT '{}', "marketFormTags" text[] NOT NULL DEFAULT '{}',
+    "localityTags" text[] NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS qualification.qualification_answer (
     id text PRIMARY KEY DEFAULT gen_random_uuid()::text, "qualificationId" text NOT NULL, "toolId" text NOT NULL,
     "questionId" text NOT NULL, answer text NOT NULL);
@@ -49,6 +53,10 @@ CREATE TABLE IF NOT EXISTS control_objectives.objective_key (
 GRANTS = (
     'GRANT SELECT (id, system_id, revision, "ontologyPatch") ON qualification.qualification TO platform_rw;',
     'GRANT SELECT (saved_by, amended_by, created_at) ON qualification.qualification TO platform_rw;',
+    'GRANT SELECT ("systemName", "systemVersion", company, description) ON qualification.qualification TO platform_rw;',
+    'GRANT SELECT ("targetUseCase", "targetUsers", "intendedDeployers", system_type, purpose, provider_term,'
+    ' deployer_term, "targetSystemTags", "sectorTags", "marketFormTags", "localityTags")'
+    ' ON qualification.qualification TO platform_rw;',
     'GRANT SELECT ("qualificationId", "toolId", "questionId", answer) ON qualification.qualification_answer'
     ' TO platform_rw;',
     'GRANT SELECT (qualification_id, position, key, name, role, kind, vair_type, provider, provider_name)'

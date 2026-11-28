@@ -120,6 +120,8 @@ ROUTES = {
     ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/accept'),
     ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/decline'),
     ('POST', '/projects/{project}/work/{kind}/{subject}/parts/{part}/take-over'),
+    # the person a part was taken from puts its line in My tasks away
+    ('POST', '/projects/{project}/work/take-overs/{take_over_id}/dismiss'),
     # how many people check each kind of task, and submitting a task and signing it off
     ('GET', '/projects/{project}/work/rules'),
     ('PUT', '/projects/{project}/work/rules/{kind}'),

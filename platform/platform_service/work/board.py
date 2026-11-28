@@ -96,7 +96,8 @@ def sign_why_not(conn, *, kind: str, subject: str, person_subject: str) -> str |
 
 def mine(conn, *, person_subject: str, role: str) -> dict[str, list[dict]]:
     """One person's work in one project: the parts they hold, the parts offered to them, the tasks waiting for
-    their sign-off, the tasks sent back to them, and the parts nobody holds that they could take."""
+    their sign-off, the tasks sent back to them, the parts nobody holds that they could take, and the parts an
+    owner took from them in the task's current round, with the reason."""
     held = [{"kind": k, "subject": s, "part": p, "label": label, "since": _iso(since)} for k, s, p, label, since in _run(
         conn, "select t.kind, t.subject, h.part, p.label, h.since from work.hold h join work.task t on t.id = h.task"
               " join work.part p on p.task = h.task and p.key = h.part where h.holder_subject = %s"
@@ -134,4 +135,16 @@ def mine(conn, *, person_subject: str, role: str) -> dict[str, list[dict]]:
                   " where t.state = 'open' and not exists (select 1 from work.hold h where h.task = p.task"
                   "                                         and h.part = p.key)"
                   " order by t.created_at, p.key").fetchall()]
-    return {"held": held, "offered": offered, "to_sign": to_sign, "sent_back": sent_back, "takeable": takeable}
+    # taken from me: a part an owner took over or gave away from this person, in the task's current round, until
+    # they put the line away
+    taken_from_me = [{"id": i, "kind": k, "subject": s, "part": p, "label": label, "by_name": by, "to_name": to,
+                      "reason": reason, "at": _iso(at)}
+                     for i, k, s, p, label, by, to, reason, at in _run(
+        conn, "select o.id, t.kind, t.subject, o.part, coalesce(p.label, o.part), o.by_name, o.to_name, o.reason, o.at"
+              "  from work.take_over o join work.task t on t.id = o.task and t.round = o.round"
+              "  left join work.part p on p.task = o.task and p.key = o.part"
+              " where o.from_subject = %s and o.to_subject <> o.from_subject"
+              "   and not exists (select 1 from work.take_over_dismissed d where d.take_over = o.id)"
+              " order by o.at, o.id", (person_subject,)).fetchall()]
+    return {"held": held, "offered": offered, "to_sign": to_sign, "sent_back": sent_back, "takeable": takeable,
+            "taken_from_me": taken_from_me}

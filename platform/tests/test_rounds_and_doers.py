@@ -82,7 +82,8 @@ def test_the_former_holder_and_the_new_one_are_both_doers_after_a_take_over(dsn,
     claim(dsn, project, ANNA)
     with project_db(dsn, project) as conn:
         holds.take_over(conn, kind="fill_checklist", subject="submission-1", part="governance",
-                        to_subject=LUCA[0], to_name=LUCA[1])
+                        to_subject=LUCA[0], to_name=LUCA[1], by_subject="owner",
+                        by_name="Owner", reason="away")
     claim(dsn, project, LUCA)
     assert doers(dsn, project) == [(1, "governance", *ANNA), (1, "governance", *LUCA)]
 

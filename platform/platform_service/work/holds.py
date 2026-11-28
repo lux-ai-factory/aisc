@@ -112,10 +112,12 @@ def decline(conn, *, kind: str, subject: str, part: str, person_subject: str) ->
                  " where task = %s and part = %s", (task, part))
 
 
-def take_over(conn, *, kind: str, subject: str, part: str, to_subject: str, to_name: str) -> Hold | None:
-    """Give the part to `to`, whoever holds it now. Who may do this (an owner, with a reason) is decided by the
-    route. Waits for a save in progress: the save holds the row FOR SHARE until it commits. Answers the hold as it
-    was before, or None when nobody held the part."""
+def take_over(conn, *, kind: str, subject: str, part: str, to_subject: str, to_name: str, by_subject: str,
+              by_name: str, reason: str) -> Hold | None:
+    """Give the part to `to`, whoever holds it now, and keep the take-over with who moved it and why
+    (work.take_over, in the same transaction). Who may do this (an owner, with a reason) is decided by the route.
+    Waits for a save in progress: the save holds the row FOR SHARE until it commits. Answers the hold as it was
+    before, or None when nobody held the part."""
     task, row = _held(conn, kind, subject, part)
     if _run(conn, "select 1 from work.part where task = %s and key = %s", (task, part)).fetchone() is None:
         raise NoSuchPart(f"the task has no part {part}")
@@ -123,4 +125,28 @@ def take_over(conn, *, kind: str, subject: str, part: str, to_subject: str, to_n
                  " on conflict (task, part) do update set holder_subject = excluded.holder_subject,"
                  " holder_name = excluded.holder_name, since = now(), offered_to_subject = null,"
                  " offered_to_name = null", (task, part, to_subject, to_name))
+    _run(conn, "insert into work.take_over (task, round, part, from_subject, from_name, to_subject, to_name,"
+               " by_subject, by_name, reason) select %s, round, %s, %s, %s, %s, %s, %s, %s, %s from work.task"
+               " where id = %s",
+         (task, part, row[0] if row else None, row[1] if row else None, to_subject, to_name, by_subject, by_name,
+          reason, task))
     return Hold(row[0], row[1], row[2]) if row else None
+
+
+class NoSuchTakeOver(LookupError):
+    """No take-over with that id in the project."""
+
+
+class NotTakenFrom(Exception):
+    """The part of that take-over was not taken from this person."""
+
+
+def dismiss(conn, *, take_over_id: int, person_subject: str) -> None:
+    """The person the part was taken from puts the take-over's line in My tasks away; it is kept itself."""
+    row = _run(conn, "select from_subject from work.take_over where id = %s", (take_over_id,)).fetchone()
+    if row is None:
+        raise NoSuchTakeOver(take_over_id)
+    if row[0] != person_subject:
+        raise NotTakenFrom(person_subject)
+    _run(conn, "insert into work.take_over_dismissed (take_over) values (%s) on conflict do nothing",
+         (take_over_id,))

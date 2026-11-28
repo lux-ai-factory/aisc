@@ -41,10 +41,27 @@ def test_the_card_hash_moves_with_an_answer_of_the_latest_card_and_only_then(dsn
     first = hash_of(dsn, content, "describe_system", "card")
     assert re.fullmatch(r"[0-9a-f]{64}", first), first
     assert hash_of(dsn, content, "describe_system", "card") == first
-    wc.sql(content, "UPDATE qualification.qualification SET description = 'not part of the hash'")
+    wc.sql(content, "UPDATE qualification.qualification SET saved_by = 'who stored it is not content'")
     assert hash_of(dsn, content, "describe_system", "card") == first
     wc.sql(content, "UPDATE qualification.qualification_answer SET answer = 'Lending'")
     assert hash_of(dsn, content, "describe_system", "card") != first
+
+
+@needs_database
+@pytest.mark.parametrize("column,value", [
+    ('"systemName"', "'Other name'"), ('"systemVersion"', "'2.0'"), ("company", "'Other Corp'"),
+    ("description", "'Another description'"), ('"targetUseCase"', "'Lending'"), ('"targetUsers"', "'Banks'"),
+    ('"intendedDeployers"', "'Branches'"), ("system_type", "'Recommender'"), ("purpose", "'Scoring'"),
+    ("provider_term", "'Provider'"), ("deployer_term", "'Deployer'"), ('"targetSystemTags"', "'{vision}'"),
+    ('"sectorTags"', "'{finance}'"), ('"marketFormTags"', "'{saas}'"), ('"localityTags"', "'{eu}'"),
+])
+def test_the_card_hash_moves_with_every_identification_field_the_card_page_shows(dsn, content, column, value):
+    # an agreement stops counting when any field of the card changes, the Identification and use section too
+    wc.card_version(content, V1, 1)
+    wc.card(content, "c1", V1)
+    before = hash_of(dsn, content, "describe_system", "card")
+    wc.sql(content, f"UPDATE qualification.qualification SET {column} = {value}")
+    assert hash_of(dsn, content, "describe_system", "card") != before
 
 
 @needs_database

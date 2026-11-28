@@ -548,11 +548,19 @@ def projects_for(subject: str) -> list[dict]:
         ).fetchall()
 
 
+def remember_name(subject: str, name: str) -> None:
+    """Keep the person's display name with each of their memberships, as the pages name them (the Give-to list
+    names members who are not the caller). Writes only when it changed."""
+    with pool().connection() as conn:
+        conn.execute("update core.project_member set name = %s where subject = %s and name is distinct from %s",
+                     (name, subject, name))
+
+
 def members(project: str) -> list[dict]:
     column = _key_column(project)
     with pool().connection() as conn:
         return conn.execute(
-            "select m.subject, m.email, m.role, m.added_at"
+            "select m.subject, m.email, m.name, m.role, m.added_at"
             "  from core.project_member m join core.project p on p.pid = m.project_id"
             f" where p.{column} = %s order by m.added_at",
             (project,),

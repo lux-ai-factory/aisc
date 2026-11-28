@@ -64,6 +64,15 @@ class HeldByOthers(Exception):
         self.held = held
 
 
+class NotEnoughCheckers(Exception):
+    """Fewer people are left to check the task than its kind needs: everyone else in the project worked on it in
+    this round. An owner adds a person to the project or lowers the number of checkers."""
+
+    def __init__(self, needed: int, available: int):
+        super().__init__(f"{needed} checkers needed, {available} left")
+        self.needed, self.available = needed, available
+
+
 class CardMoved(Exception):
     """The card state moved since the page the submit came from was drawn: the person is asked once."""
 
@@ -145,9 +154,11 @@ def _card_moved(conn, drawn: dict | None) -> None:
 
 
 def submit(conn, *, kind: str, subject: str, person_subject: str, person_name: str,
-           drawn_card_state: dict | None = None) -> Outcome:
+           drawn_card_state: dict | None = None, members: list[str] | None = None) -> Outcome:
     """Submit the task for check, or finish it when its kind needs no checker. `drawn_card_state` is the card
-    state the submitting page was drawn on: when the card moved since, CardMoved, and nothing changes."""
+    state the submitting page was drawn on: when the card moved since, CardMoved, and nothing changes. `members`
+    are the subjects of everyone in the project, who may sign unless they are doers of the round: when fewer of
+    them are left than the checkers needed, NotEnoughCheckers, and nothing changes (None: not counted)."""
     _card_lock_shared(conn, kind)
     task, state, round_, by, at, _, _ = _locked_task(conn, kind, subject)
     if state != "open":
@@ -163,6 +174,12 @@ def submit(conn, *, kind: str, subject: str, person_subject: str, person_name: s
     _card_moved(conn, drawn_card_state)
     content_hash = _content_hash(conn, kind, subject)
     needed = staffing.checkers(conn, kind)
+    if needed and members is not None:
+        doers = {row[0] for row in _run(conn, "select distinct person_subject from work.doer"
+                                              " where task = %s and round = %s", (task, round_)).fetchall()}
+        available = len(set(members) - doers)
+        if available < needed:
+            raise NotEnoughCheckers(needed, available)
     state = "done" if needed == 0 else "in_check"
     released = {row[0]: [row[2], row[3]] for row in holds}
     _run(conn, "delete from work.hold where task = %s", (task,))

@@ -59,8 +59,12 @@ longer changes.
 - **Take.** Any editor or owner takes a part nobody holds.
 - **Release.** The holder lets it go.
 - **Hand over.** The holder gives it to another editor or owner, who accepts or declines.
-- **Take over.** An owner takes a part from its holder, or gives it to someone else, with a reason. The former
-  holder is told.
+- **Take over.** An owner takes a part from its holder, or gives it to someone else, with a reason. The take-over
+  is kept with its reason in `work.take_over (task, round, part, from, to, by, reason, at)`, written in the same
+  transaction and never changed. The former holder is told in My tasks ("Anna Rossi took over Governance from you:
+  reason", or "... gave Governance to Luca Bianchi: reason") until they put the line away
+  (`POST /projects/{p}/work/take-overs/{id}/dismiss`, kept in `work.take_over_dismissed`) or the task's round moves
+  on.
 - Take, hand over and take over are platform routes. Each runs under a row lock on the part, so two people taking
   the same part at once get one holder and one refusal.
 
@@ -69,7 +73,10 @@ the task and the part when they do not exist yet. Nobody has to press Take befor
 in a state where nobody can save on it.
 
 **Only the holder saves.** Every save on the content of a part checks, in the same transaction as the write, that
-the person saving holds that part (taking it when nobody does). The database function is
+the person saving holds that part (taking it when nobody does). A save that writes several parts at once claims
+only the parts it changes: a card save claims the sections whose content differs from the card it starts from (a
+first card: the sections it fills), so a section someone else holds refuses only a save that changes it. A card save
+that changes nothing claims the Identification and use section, so it still meets the task's state (`not_final`). The database function is
 `work.claim_for_save(kind, subject, part, label, person_subject, person_name)`; apps call it through:
 
 | Language | Helper |
@@ -136,7 +143,11 @@ card state it was made on.
 - **Submit.** A doer submits the task: the step's own completing action where one exists (closing a checklist
   submission, generating a report), else a "Submit for check" button. Submitting releases the parts the submitter
   holds. It is refused, with who holds what, while someone else holds a part: they release it, or an owner takes
-  it over. The platform stores the content hash and the card state, and copies `checkers_needed` from the rule.
+  it over. It is refused with `not_enough_checkers` when fewer people are left to check it than the rule needs:
+  everyone in the project may sign except the doers of the round, so with two people who both worked on it nobody
+  is left. The message says how many checkers are needed, that nobody else is left, and that an owner can add a
+  person to the project or lower the number of checkers (a change to 0 is recorded as `staffing.rule_changed`).
+  The platform stores the content hash and the card state, and copies `checkers_needed` from the rule.
 - **Sign-off.** Agree, or send back with a reason. Nobody who is a doer of the task's current round can sign. The
   page sends the content hash it showed and the platform compares it in the same transaction.
 - **Send back** returns the task to `open` and gives each part back to its last holder.
@@ -144,8 +155,9 @@ card state it was made on.
   0, at submit. Each person's agreement counts once; a second one is refused (`already_exists`). Agreements given
   before a send back still count when the content is unchanged. Signing a task that is not in check is refused
   (`not_in_check`).
-- **What the content hash covers.** The card: its answers, components and risks and the corrections of its
-  components, not the AI's draft. A checklist submission: its answers and scores, not its proof files. The risk
+- **What the content hash covers.** The card: every field the card page shows (its Identification and use section:
+  system name, release, provider, description, use case, users, deployers, the VAIR terms and tags), its answers,
+  components and risks and the corrections of its components, not the AI's draft or who stored it. A checklist submission: its answers and scores, not its proof files. The risk
   register: ratings, comments, mappings and key ticks of that card version. Other kinds cannot be submitted yet.
 - `work.sign_off (task, round, signer_subject, signer_name, answer, reason, content_hash, card_state, at)`, never
   updated.
@@ -165,7 +177,7 @@ Each app keeps its own error envelope; inside it a refusal carries the same obje
 For `not_holder`, `changed_by` and `changed_at` are the holder and since when; for `not_final`, the person who
 submitted the task and when.
 
-Codes: `not_holder`, `not_final`, `not_in_check`, `upstream_moved`, `upstream_moved_confirm`, `already_exists`, `cited_by_report`,
+Codes: `not_holder`, `not_final`, `not_in_check`, `not_enough_checkers`, `upstream_moved`, `upstream_moved_confirm`, `already_exists`, `cited_by_report`,
 `syncing`, `token_required`, `changed_since_opened` (kept for the pages not held in this version). The message
 names the thing as the page labels it, the person and the time; never a generic error. Every refusal is an event
 `write.refused`, without the refused values. Helpers: `aisc_identity.refusal.Refusal` and
@@ -185,28 +197,38 @@ names the thing as the page labels it, the person and the time; never a generic 
 4. **Until reports list the records they were built from,** every report prints: "This report does not list the
    records it was built from."
 5. **Who did what.** One block: per task and part, the doers, the checkers with their dates, "no check required"
-   where the rule was 0, and parts taken over, with the reason.
+   where the rule was 0, and parts taken over, with the reason ("Taken over: Users from Maria Rossi by Anna Neri,
+   {date}: {reason}", from `work.take_over`, which `report_ro` reads).
 6. **Who wrote each text.** Every text written in the report editor (a section's commentary, a free text, a
    chapter's introduction, a tool's commentary in Exported results) prints "Written by {name}, {date}" under it:
    the person who last changed that text and when, stamped when the layout is saved and kept with its revision.
    A text left unchanged keeps its earlier stamp; a text written before stamps were kept, or brought in from a
-   layout file, names nobody. Chart comments and plots saved for the report keep their own author and date.
+   layout file, names nobody. Chart comments and plots saved for the report keep their own author and date; a saved
+   plot with a comment says "Saved by {author} on {date}, with this comment:" above it.
 
 ## 7. Pages
 
-- **My tasks** (launcher): parts I hold, tasks waiting for my sign-off, tasks sent back to me, parts nobody holds
-  that I could take.
+- **My tasks** (launcher): parts I hold, tasks waiting for my sign-off, tasks sent back to me, parts taken over
+  from me with the reason (section 2), parts nobody holds that I could take.
 - **Work board** per project: each task and part, its holder and since when, its state; for owners, take over and
   give to.
 - **Who does what**: the number of checkers per kind, editable by owners.
 - **Sign-off**: the submitted content, the doers, earlier sign-offs and send-backs, Agree / Send back.
-- On every held page: who holds this part, a Take button when nobody does, and the card banner of section 3.
+- On every held page: who holds this part, a Take button when nobody does, and the card banner of section 3. The
+  page keeps saying who holds the part when it comes back refusing a save or a submit.
+- Submit for check is offered only while the task is open; a task in check or done shows its state instead.
+- **One name per person.** Every page names a person by their display name (the identity provider's `name`), else
+  their user name, else their email: holders, doers, sign-offs, submits, My tasks, the Give-to list, the report's
+  "Written by" and "Who did what". The Give-to list names a member by the display name kept from the last time they
+  used the work pages (`core.project_member.name`), else their email, else their subject. Only a proof file names
+  its uploader by email first, for its own record.
 
 ## 8. Events
 
 `hold.taken`, `hold.released`, `hold.offered`, `hold.handed_over` (the offer accepted), `hold.offer_declined`,
 `hold.taken_over` (with the reason as content), `task.submitted`,
-`task.signed`, `task.sent_back`, `task.done`, `staffing.rule_changed`, `staffing.preset_applied`, `write.refused`. The person in an event is given by their actor reference. A task change the platform
+`task.signed`, `task.sent_back`, `task.done`, `staffing.rule_changed`, `staffing.preset_applied`, `write.refused`.
+Putting a take-over's line away in My tasks is not an event: it changes nothing of the work. The person in an event is given by their actor reference. A task change the platform
 makes because an app's event arrived is recorded as an event derived from it.
 
 ## 9. Tests
